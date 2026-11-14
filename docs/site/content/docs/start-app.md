@@ -4,7 +4,7 @@ title: "Installation mit der Start-App"
 
 Dieser Weg ist für dich, wenn du **keinen eigenen Server** hast, aber einen Mac oder Windows-PC, der durchlaufen kann (zum Beispiel einen Mac mini). Du lädst eine Datei, öffnest die Start-App, und sie führt dich Frage für Frage durch alles. Ein Terminal brauchst du nicht, und du musst nicht wissen, wie die Technik dahinter heißt. Der Bot kann danach genau dasselbe wie bei der [Installation auf einem eigenen Server](installation.html).
 
-**Stand:** Die Start-App ist noch im Bau. Der Mac ist der erste Weg; Windows folgt aus derselben App und wird erst geprüft, wenn der Mac läuft. Wo hier „wird geprüft“ steht, bestätigt das erst der Test auf einem echten Mac.
+**Stand:** Die Start-App ist noch im Bau. Es gibt sie für den Mac (Datei `.dmg`) und für Windows (Datei `.exe`); beide Dateien stehen auf der Release-Seite. Die automatischen Tests laufen für beide, der Test auf echten Rechnern ist aber noch nicht abgeschlossen. Wo hier „wird geprüft“ steht, ist genau das noch offen.
 
 ## Bevor du startest
 
@@ -93,11 +93,11 @@ Auf **Windows** legt die App ein eigenes Energieschema an (kein Standby, Bildsch
 
 ## Im Alltag
 
-Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Läuft** oder **Docker ist aus**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Deinstallieren** und **Beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
+Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Assistent läuft** oder **Assistent ist aus: Docker läuft nicht**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Notfallblatt speichern …**, **Sicherungsordner ändern …**, **Sicherung wiederherstellen …**, **Deinstallieren** und **App beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
 
 Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf **Jetzt aktualisieren** sichert vorher deine Daten ([mehr zu Updates](installation.html#funktionen-hinzufügen)). Eine neue Fassung der Start-App selbst meldet der Bot im Chat, sie lädst du dann wie in Schritt 1.
 
-Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern**, eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
+Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern …**, eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
 
 ## Wenn etwas nicht klappt
 

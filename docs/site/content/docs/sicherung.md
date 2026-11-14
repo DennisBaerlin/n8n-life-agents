@@ -19,7 +19,7 @@ Jede Sicherung ist eine Datei mit einem Namen wie `lifeagents-backup-20261112033
 Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank liegt. Geht der Rechner kaputt, ist auch dieser Schlüssel weg. **Ohne den Schlüssel lässt sich keine Sicherung öffnen, auch nicht von uns.** Darum gibt es das Notfallblatt: Darauf steht der Schlüssel in vier Zeilen. Die zwei Zeichen am Ende jeder Zeile sind Prüfzeichen und zeigen einen Tippfehler sofort an.
 
 - **Ausdrucken oder im Passwort-Manager speichern.** Lege das Blatt nicht in den Sicherungsordner, sonst liegen Schloss und Schlüssel zusammen.
-- **Wieder holen:** in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt **Notfallblatt speichern**. Auf einem Server im Terminal: `lifeagents backup key`.
+- **Wieder holen:** in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt **Notfallblatt speichern …**. Auf einem Server im Terminal: `lifeagents backup key`.
 - **Gilt weiter:** Nach einer Wiederherstellung auf einem neuen Rechner gilt der Schlüssel deines Notfallblatts weiter. Druckst du später ein neues Blatt, steht der ältere Schlüssel darauf unter „Für ältere Sicherungen“. Bewahre das alte Blatt trotzdem auf.
 
 ## Mit der Start-App (Mac, Windows) {#start-app}

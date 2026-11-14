@@ -1045,6 +1045,7 @@
   "finance.note.statement_insurance_premium_missing": "Premium still missing for: {names}. If you see it on the statement, send it to me afterwards.",
   "finance.note.insurance_premium_missing": "Will be saved without a premium. As soon as you know it, send it to me.",
   "finance.value.premium_missing": "— (premium still missing)",
+  "finance.label.statement_other_heading": "Everything else",
   "finance.label.statement_rest_net": "Rest (as one total)",
   "finance.label.statement_rest_other": "of which other items (not booked or not explainable)",
   "finance.label.statement_rest_pending": "of which still pending (evens out with the next file)",

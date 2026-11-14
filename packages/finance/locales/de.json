@@ -1045,6 +1045,7 @@
   "finance.note.statement_insurance_premium_missing": "Beitrag fehlt noch bei: {names}. Siehst du ihn im Auszug, schreib ihn mir danach.",
   "finance.note.insurance_premium_missing": "Wird ohne Beitrag gespeichert. Sobald du ihn weißt, schreib ihn mir.",
   "finance.value.premium_missing": "— (Beitrag fehlt noch)",
+  "finance.label.statement_other_heading": "Alles andere",
   "finance.label.statement_rest_net": "Rest (als eine Summe)",
   "finance.label.statement_rest_other": "darin Übriges (nicht gebucht oder nicht erklärbar)",
   "finance.label.statement_rest_pending": "darin noch vorgemerkt (gleicht sich mit der nächsten Datei aus)",

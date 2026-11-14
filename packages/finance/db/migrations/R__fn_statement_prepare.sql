@@ -80,7 +80,8 @@
 --   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: nicht cash "Sonstige Abweichung"; mit offenen
 --   Ein- und Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
 --   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
---   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
+--   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Steht davor ein Block mit Ueberschrift, beginnt der Schlussteil (Zinskorrektur,
+--   Hinweise, Rest) mit der Ueberschrift statement_other_heading ("Alles andere"), sonst keine. Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
 --   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
 --   Haushaltsweiter Hinweis: aktive Versicherungen ohne Beitrag (finance.note.statement_insurance_premium_missing mit
 --   den Namen), ausserhalb des fingerprint.
@@ -1285,6 +1286,13 @@ BEGIN
                         'amount', core.fn_ui_money((u->>'cash_amount')::numeric, v_acct.currency),
                         'date', core.fn_ui_date((u->>'date')::date)))) ORDER BY (u->>'row_no')::int)
                 FROM jsonb_array_elements(v_file_unk) u);
+    END IF;
+    -- Schlussteil (Zinskorrektur, Kleinbetraege, Hinweise zum Rest, Rest, Abgleich-Satz): steht davor ein Block mit
+    -- Ueberschrift (z. B. "Schon erfasst"), bekommt er eine eigene, sonst liest ein Laie ihn als Teil des Blocks darueber.
+    -- Ohne Block davor bleibt die Karte flach wie bisher. Bewusst neutral ("Alles andere"): der Rest wird mitgebucht,
+    -- "offen" waere nach dem Bestaetigen falsch.
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_card) c WHERE c->>'kind' = 'heading') THEN
+        v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_other_heading'));
     END IF;
     -- Datei mit gedrucktem Endstand: Zinskorrektur (Zinsen laut Auszug vs. geschaetzt), Kleinbetraege, Skips
     IF v_printed_file AND (v_int_lines <> 0 OR v_int_booked <> 0) THEN

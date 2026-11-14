@@ -1123,7 +1123,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($pkg -ne 'core') {
         foreach ($r in $refs) {
             if (-not $allowed.Contains($r)) {
-                $errors.Add("CREDENTIALS FEHLT: packages/$pkg/workflows referenziert '$r', aber weder Host-Map noch Rollen-Konvention noch packages/$pkg/manifest.json credentials deklarieren ihn -- inject legt die Credential NIE an, der Platzhalter bleibt beim Deploy dangling (genau der fruehere career-Fall).")
+                $errors.Add("CREDENTIALS FEHLT: packages/$pkg/workflows referenziert '$r', aber weder Host-Map noch Rollen-Konvention noch packages/$pkg/manifest.json credentials deklarieren ihn -- inject legt die Credential NIE an, der Platzhalter bleibt beim Deploy dangling. Den Key im credentials-Block von packages/$pkg/manifest.json deklarieren.")
             }
         }
     }
@@ -1150,7 +1150,7 @@ foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -E
     }
     foreach ($k in $credEnvKeys) {
         if ($txt -match "\b$([regex]::Escape($k))\b") {
-            $errors.Add("CREDENTIALS NAHT-GUARD: $rel referenziert den paket-deklarierten Secret-Key '$k' -- genau der fruehere career-Rueckfall (inject-Stufen/_INSTALL_ENV_KEYS); der Key gehoert NUR ins Paket-Manifest + /etc/lifeagents/<pkg>.env.")
+            $errors.Add("CREDENTIALS NAHT-GUARD: $rel referenziert den paket-deklarierten Secret-Key '$k' -- paket-deklarierte Secrets gehoeren nicht in die inject-Stufen/_INSTALL_ENV_KEYS; der Key gehoert nur ins Paket-Manifest + /etc/lifeagents/<pkg>.env.")
         }
     }
 }
@@ -1195,7 +1195,7 @@ foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -E
 # Gate-Asserts: ui_input gatet ueber ui_interactive; ui_interactive prueft UNATTENDED; _prompt_validated nutzt beide.
 $commonTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'lib\common.sh'), $Utf8NoBom)
 if ($commonTxt -notmatch '(?s)ui_input\(\)\s*\{.{0,200}?ui_interactive') {
-    $errors.Add("PROMPT-GATE-GUARD Selbst-Assert: common.sh ui_input() traegt kein ui_interactive-Gate (Befund-1-Haertung verloren?).")
+    $errors.Add("PROMPT-GATE-GUARD Selbst-Assert: common.sh ui_input() traegt kein ui_interactive-Gate (ohne das Gate fragt ui_input auch im unattended-Lauf).")
 }
 if ($commonTxt -notmatch 'ui_interactive\(\)\s*\{[^\n]*UNATTENDED') {
     $errors.Add("PROMPT-GATE-GUARD Selbst-Assert: common.sh ui_interactive() prueft UNATTENDED nicht (unattended-Garantie verloren?).")
@@ -1270,7 +1270,7 @@ foreach ($t in $cliTargets) {
     if ($null -eq $docs -or $docs.Count -lt 2) { $errors.Add("CLI-HELP Selbst-Assert: $($t.Rel) Help-Text nicht extrahierbar (Struktur-Drift?)."); continue }
     foreach ($v in $arms) {
         if (-not $docs.Contains($v)) {
-            $errors.Add("CLI-HELP FEHLT: $($t.Rel) hat den Verb-Arm '$v', aber die Hilfe dokumentiert ihn nicht -- niemand erfaehrt, dass der Befehl existiert (Owner-Direktive: Help = die eine Referenz).")
+            $errors.Add("CLI-HELP FEHLT: $($t.Rel) hat den Verb-Arm '$v', aber die Hilfe dokumentiert ihn nicht -- niemand erfaehrt, dass der Befehl existiert (die Hilfe ist die eine Befehls-Referenz). Den Verb im help-Heredoc ergaenzen.")
         }
     }
     foreach ($v in $docs) {
@@ -2221,7 +2221,7 @@ function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols
     foreach ($m in [regex]::Matches($Cy, '(?m)^\s+(\w+):\s*&img_\w+\s+(\S+)\s*$')) { $imgs[$m.Groups[1].Value] = $m.Groups[2].Value }
     if ($imgs.Count -lt 4) { $iss.Add("x-images-Block nicht lesbar ($($imgs.Count) Images) -- Check 33 ist defekt."); return , $iss }
     $imgs.Remove('master')   # eigene Pruefung unten (Get-MasterPin)
-    foreach ($k in $imgs.Keys) { if ($imgs[$k] -notmatch '@sha256:[0-9a-f]{64}$') { $iss.Add("Image '$k' ($($imgs[$k])) ohne Digest -- nur per @sha256 (Einwand 30).") } }
+    foreach ($k in $imgs.Keys) { if ($imgs[$k] -notmatch '@sha256:[0-9a-f]{64}$') { $iss.Add("Image '$k' ($($imgs[$k])) ohne Digest -- nur per @sha256 pinnen (ein Tag allein kann sich verschieben).") } }
     if ($imgs['n8n'] -notmatch "^n8nio/n8n:$([regex]::Escape($Pin.N8N_VERSION))@") { $iss.Add("n8n-Image '$($imgs['n8n'])' passt nicht zu N8N_VERSION=$($Pin.N8N_VERSION) (provision.sh).") }
     if ($imgs['postgres'] -notmatch "^postgres:$([regex]::Escape($Pin.PG_VERSION))[.@]") { $iss.Add("Postgres-Image '$($imgs['postgres'])' passt nicht zu PG_VERSION=$($Pin.PG_VERSION).") }
     if ($imgs['node'] -notmatch "^node:$([regex]::Escape($Pin.NODE_MAJOR))[-.@]") { $iss.Add("Gateway-Image '$($imgs['node'])' passt nicht zu NODE_MAJOR=$($Pin.NODE_MAJOR).") }

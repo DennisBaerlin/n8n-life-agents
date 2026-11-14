@@ -77,7 +77,7 @@ With the tunnel, the installer sets up Tailscale right after the summary and sho
 
 Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
 
-**No server of your own?** A second, equivalent way is in the works: a desktop start app for a Mac (Windows to follow) that installs Docker if needed and walks you through every question in a window, no terminal. Telegram reaches the computer through a Tailscale Funnel tunnel (recommended) or a FritzBox share. Guide: **[Start app](https://dennisbaerlin.github.io/n8n-life-agents/docs/start-app.html)** (German).
+**No server of your own?** A second, equivalent way is in the works: a desktop start app for a Mac or a Windows PC (tests on real machines are still open) that installs Docker if needed and walks you through every question in a window, no terminal. Telegram reaches the computer through a Tailscale Funnel tunnel (recommended) or a FritzBox share. Guide: **[Start app](https://dennisbaerlin.github.io/n8n-life-agents/docs/start-app.html)** (German).
 
 <details>
 <summary><strong>What the run does in detail</strong></summary>

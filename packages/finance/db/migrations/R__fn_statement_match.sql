@@ -9,11 +9,16 @@
 --       Transfer-Ziel (+|amount|, nur gleiche Waehrung), Faelligkeit in [p_cut-10, p_period_end+5];
 --     * offene Zins-Vorkommen dieses Kontos (Soll fn_interest_amount_due), nur Zeilen mit "zins" im Text;
 --     * Stufe 0: schon gebuchte Dauerauftrags-/Zinsbuchungen dieses Kontos im Zeitraum (z. B. das Gegenbein aus dem
---       Auszug des Partnerkontos oder eine manuell bestaetigte Abbuchung) — werden nicht erneut gebucht.
+--       Auszug des Partnerkontos oder eine manuell bestaetigte Abbuchung) und von Hand gebuchte Einzelbuchungen
+--       — werden nicht erneut gebucht.
 --   Stufen (Paar Zeile x Kandidat, Vorzeichen muss stimmen):
 --     0 = gebuchte Buchung: gleicher Betrag, Buchungsdatum +-5 Tage. Liegt das Buchungsdatum nach period_end, nur wenn
 --         die Buchung (alle Beine der group_id) aufs Zeilendatum verschiebbar ist (kein Bein-Konto dort abgeglichen):
 --         fn_apply_bank_statement verschiebt sie, sonst zaehlte sie zusaetzlich im Rest.
+--     0 (Handbuchung) = von Hand gebuchte Einzelbuchung dieses Kontos (fn_book_transaction: Kategorie other|fee|interest,
+--         ohne Dauerauftrag/Zinsperiode/Position/Gruppe, nicht aus einem Auszug), Buchungsdatum bis period_end: gleicher
+--         Betrag, +-5 Tage, nur Zeilen ohne Treffer der Stufen 0/A/T und nur eindeutig (die Zeile passt zu genau einer
+--         solchen Buchung und die Buchung zu genau einer dieser Zeilen), sonst offen. Schlaegt Stufe B.
 --     A = Schluessel: SEPA-Mandat (Glaeubiger-ID|Mandatsreferenz) oder Gegen-IBAN eines Glieds der Vorgaenger-Kette,
 --         bzw. Gegen-IBAN = Kontonummer des Transfer-Gegenkontos; Betrag 50-150 % des Solls; Faelligkeit +-10 Tage.
 --     B = Betrag + Datum: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit; Betrag exakt (+-0,005) oder, wenn ein
@@ -200,6 +205,30 @@ BEGIN
                   OR (l.iban IS NULL AND l.sub_kind IN ('deposit', 'withdrawal')
                       AND a.id = (SELECT s.settlement_account_id FROM finance.accounts s WHERE s.id = p_account_id)))
         WHERE l.amt <> 0 AND (l.kind IS NULL OR l.kind = 'cash')
+    ),
+    manual AS (
+        -- Stufe 0 (Handbuchung): Zeilen mit starkem Treffer (schon gebucht, Schluessel, eigenes Konto) gehoeren dorthin und
+        -- zaehlen fuer die Eindeutigkeit nicht mit; Stufe B (nur Betrag + Datum) schon, die Handbuchung gewinnt dann, weil
+        -- der Nutzer die Zahlung selbst gebucht hat. Gleiche Betraege mehrfach bleiben offen (sonst still die falsche Zeile).
+        -- Nur bis period_end: eine spaeter datierte Handbuchung ist eher eine noch nicht abgebuchte Zahlung, und apply
+        -- verschoebe ihr Datum unwiderruflich.
+        SELECT h.idx, '0'::text AS stage, 'booked' AS kind, 't:' || h.tx_id AS ckey, NULL::int AS rp_id, NULL::date AS due,
+               NULL::date AS ipe, h.tx_id, h.d, h.amt, h.amt AS expected, h.name, NULL::text AS side,
+               abs(h.d - h.tx_date) AS ddiff, NULL::text AS learn_mandate, NULL::text AS learn_iban, h.tx_date,
+               NULL::uuid AS group_id, NULL::int AS other_id
+        FROM (SELECT l.idx, l.d, l.amt, t.id AS tx_id, t.transaction_date AS tx_date, t.description AS name,
+                     count(*) OVER (PARTITION BY l.idx) AS per_line, count(*) OVER (PARTITION BY t.id) AS per_tx
+              FROM lines l
+              JOIN finance.transactions t ON t.account_id = p_account_id
+                   AND t.recurring_payment_id IS NULL AND t.interest_period_end IS NULL AND t.holding_id IS NULL
+                   AND t.group_id IS NULL AND t.bank_statement_id IS NULL
+                   -- Allowlist von fn_book_transaction; eine dort neue Kategorie faellt hier sicher heraus (bleibt offen)
+                   AND t.category::text IN ('other', 'fee', 'interest')
+                   AND t.transaction_date > p_cut AND t.transaction_date <= p_period_end
+                   AND t.amount = l.amt AND abs(l.d - t.transaction_date) <= 5
+              WHERE (l.kind IS NULL OR l.kind IN ('cash', 'fee', 'interest'))
+                AND NOT EXISTS (SELECT 1 FROM pairs p WHERE p.idx = l.idx AND p.stage IN ('0', 'A', 'T'))) h
+        WHERE h.per_line = 1 AND h.per_tx = 1
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'line_idx', p.idx, 'stage', p.stage::text, 'kind', p.kind, 'ckey', p.ckey,
@@ -210,7 +239,10 @@ BEGIN
              ORDER BY p.stage::text, abs(p.amt - p.expected), p.ddiff, p.idx, p.ckey), '[]'::jsonb)
     INTO v_pairs
     FROM (SELECT idx, stage::text AS stage, kind, ckey, rp_id, due, ipe, tx_id, d, amt, expected, name, side, ddiff,
-                 learn_mandate, learn_iban, tx_date, group_id, other_id FROM pairs) p;
+                 learn_mandate, learn_iban, tx_date, group_id, other_id FROM pairs
+          UNION ALL
+          SELECT idx, stage, kind, ckey, rp_id, due, ipe, tx_id, d, amt, expected, name, side, ddiff,
+                 learn_mandate, learn_iban, tx_date, group_id, other_id FROM manual) p;
 
     FOR v_pair IN SELECT e FROM jsonb_array_elements(v_pairs) e LOOP
         CONTINUE WHEN (v_pair->>'line_idx')::int = ANY(v_used_lines) OR (v_pair->>'ckey') = ANY(v_used_cands);

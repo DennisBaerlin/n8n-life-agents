@@ -429,10 +429,10 @@ BEGIN
     RAISE NOTICE 'PASS [S13 Rest getrennt]';
 
     -- ---------- S14: der Rest laeuft durch 0: die zweite Verrechnung desselben Auszugs mindert ihn trotzdem ----------
-    --   B: +100 und -40 offen, dazu eine Buchung -40 ohne Zeile -> Rest 100, Rest-Anteil ausserhalb der offenen Summen +40
+    --   B: +100 und -40 offen, dazu eine Buchung -40 ohne Zeile (mehr als 5 Tage neben der Zeile, sonst Stufe 0 Handbuchung) -> Rest 100, Rest-Anteil ausserhalb der offenen Summen +40
     SELECT x.a, x.b INTO a, b FROM pg_temp.mk_pair('s14', ps) x;
     na := '__t_a_s14'; nb := '__t_b_s14'; ib := 'TESTB' || b;
-    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description) VALUES (b, -40, ps + 5, 'other', 'ohne Zeile');
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description) VALUES (b, -40, ps + 20, 'other', 'ohne Zeile');
     v_app := pg_temp.apply(pg_temp.stmt(nb, ps, pe, 1000, jsonb_build_array(pg_temp.line(ps + 3, 100), pg_temp.line(ps + 4, -40))));
     IF (v_app->>'lump_amount')::numeric <> 100 THEN RAISE EXCEPTION 'FAIL [S14a Vorbedingung Rest 100]: %', v_app; END IF;
     v_app := pg_temp.apply(pg_temp.stmt(na, ps, pe, 1000, jsonb_build_array(pg_temp.line(ps + 3, -100, ib), pg_temp.line(ps + 6, -40, ib))));

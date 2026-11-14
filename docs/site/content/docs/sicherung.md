@@ -36,13 +36,9 @@ Unter Windows sieht der Ordner zum Beispiel so aus: `"D:\Sicherungen"`. Den gena
 
 ## Auf einem eigenen Server (LXC) {#server}
 
-Auf einem Server sicherst du selbst:
+Auf einem Server sichert der Assistent von selbst. Jede Nacht ab 03:30 Uhr legt er eine verschlüsselte Sicherung in `/var/backups/lifeagents/daily` ab (die letzten 14 bleiben) und schickt eine Kopie an deinen Telegram-Chat. Du musst nichts einrichten; eine frühere crontab-Zeile aus dieser Anleitung entfernt das Update selbst.
 
-```bash
-lifeagents backup export --notify-telegram
-```
-
-Das legt die Sicherung in den aktuellen Ordner und schickt eine verschlüsselte Kopie an deinen Telegram-Chat. Kopiere die Datei regelmäßig vom Server weg. Täglich automatisch geht es mit einer Zeile in der root-crontab (`lifeagents backup help` zeigt sie). `lifeagents doctor` warnt, wenn die letzte Sicherung älter als zwei Tage ist.
+Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, und `lifeagents doctor` zeigt „Letzte Sicherung“ rot. Kopiere die Dateien zusätzlich regelmäßig vom Server weg, sonst liegt die Sicherung auf demselben Rechner wie die Daten. Eine Sicherung von Hand startest du mit `lifeagents backup auto`, den Verlauf zeigt `journalctl -u lifeagents-backup`.
 
 ## Neuer Rechner: Schritt für Schritt {#neuer-rechner}
 

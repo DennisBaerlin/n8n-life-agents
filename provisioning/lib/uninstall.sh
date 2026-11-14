@@ -67,6 +67,8 @@ uninstall() {
   # Update-Timer zuerst (install_update_timers.sh): kein Release-Check und kein Chat-Update mitten im Abbau. Beide
   # Modi; ein erneuter Installer-Lauf legt sie wieder an.
   if declare -F uninstall_update_timers >/dev/null; then uninstall_update_timers; fi
+  # Sicherungs-Timer (install_backup_timer.sh): keine Sicherung mitten im Abbau; Sicherungs-Dateien bleiben.
+  if declare -F uninstall_backup_timer >/dev/null; then uninstall_backup_timer; fi
   _u_stop_unit n8n.service 1
   # LLM-Gateway (install_llm_gateway.sh) nach n8n: Unit + Code-Ordner weg (beide Modi; ein erneuter Installer-
   # Lauf legt ihn wieder an — er haelt keine Daten).

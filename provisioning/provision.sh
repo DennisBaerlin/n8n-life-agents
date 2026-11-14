@@ -58,6 +58,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 . "$LIB_DIR/install_llm_gateway.sh"   # lokaler LLM-Gateway: Prompt-Caching + Nutzungs-Messung (vor inject_credentials)
 # shellcheck source=lib/install_update_timers.sh
 . "$LIB_DIR/install_update_timers.sh"   # Update im Chat: Release-Check alle 2 Stunden + Runner fuer Update-Auftraege
+# shellcheck source=lib/install_backup_timer.sh
+. "$LIB_DIR/install_backup_timer.sh"   # taegliche Sicherung (klassischer Betrieb) + alte crontab-Zeile abraeumen
 # shellcheck source=lib/upgrade_guard.sh
 . "$LIB_DIR/upgrade_guard.sh"   # Versionswechsel auf Bestands-Instanzen: erst sichern, dann tauschen
 # shellcheck source=lib/master_swap.sh
@@ -474,7 +476,8 @@ main() {
   # `if … | write_if_changed`-Aufrufer sonst als "unveraendert" lesen.
   local t
   for t in n8n.env.tpl n8n.service.tpl Caddyfile.tpl lifeagents.tpl lifeagents-firewall.service.tpl n8n-firewall.conf.tpl firewall.nft.tpl lifeagents-llm-gateway.service.tpl \
-           lifeagents-update-check.service.tpl lifeagents-update-check.timer.tpl lifeagents-update-run.service.tpl lifeagents-update-run.timer.tpl; do
+           lifeagents-update-check.service.tpl lifeagents-update-check.timer.tpl lifeagents-update-run.service.tpl lifeagents-update-run.timer.tpl \
+           lifeagents-backup.service.tpl lifeagents-backup.timer.tpl; do
     [ -f "$TEMPLATE_DIR/$t" ] || die "Template fehlt: $TEMPLATE_DIR/$t (unvollständiges Paket)."
   done
 
@@ -586,6 +589,8 @@ main() {
   ui_step 'Verwaltungsbefehl lifeagents einrichten' cli
   install_cli            # lifeagents-Admin-CLI nach /usr/local/bin + Provisioning-Baum spiegeln
   rt_is_compose || install_update_timers  # Verbund: kein systemd-Timer, Ersatz im master. Braucht die CLI (ExecStart=/usr/local/bin/lifeagents update --check|--run-requested)
+  install_backup_timer     # klassisch: taegliche Sicherung per Timer (Verbund: no-op, Tick im master)
+  remove_legacy_backup_cron  # genau die frueher empfohlene root-crontab-Zeile, sonst sicherten Zeile und Timer doppelt
   install_release_keyring  # einmalig: ab jetzt nur noch unterschriebene Updates (nie ueberschrieben)
   ui_step_done
   # Ein altes GH_TOKEN (aus core.env + Alt-Bootstrap-Env) braucht die neue CLI nicht mehr. Erst nach install_cli:

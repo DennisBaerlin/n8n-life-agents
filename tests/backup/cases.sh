@@ -7,6 +7,7 @@
 #      bisheriger als prev; prev-Sicherung ohne Eingabe; zweimal hintereinander.
 #   K  `backup key`: nur Terminal/--file/--file -, Datei 0600, nie ueberschreiben; die Datei selbst taugt als --key-stdin.
 #   U  Rueckweg nach Update: _upg_carry_backup_keys behaelt den uebernommenen Schluessel.
+#   F  `backup auto` (klassisch): Ordner, 14 behalten (Fremdes bleibt), --scheduled nur einmal am Tag, doctor ROT/gruen.
 #   L  Leck-Probe: kein Schluessel in Ausgaben, /proc/*/cmdline|environ waehrend eines Restores, Resten im tmpfs.
 # Schluessel: der echte Test-Schluessel des Substrats (zufaellig) + erfundene. Meldungen nennen nie einen Schluesselwert.
 # Am Ende steht core.backup_key wieder wie vorher.
@@ -285,6 +286,56 @@ set_active "$KB"
 # shellcheck source=/dev/null
 ( . "$ROOT/provisioning/lib/upgrade_guard.sh"; _upg_carry_backup_keys bk_carry ) > "$W/out.u1" 2>&1; rc=$?
 ok_if U.rueckweg-behaelt-blatt '[ "$rc" -eq 0 ] && active_is "$KA" && prev_has "$KB"' "rc=$rc"
+
+# ---------------------------------------------------------------------------- F: automatische Sicherung (klassischer Betrieb)
+# `backup auto` im LXC: Ordner BACKUP_LOCAL_DIR (hier ein Wegwerf-Ordner), die letzten 14, Vorab-Sicherungen und fremde Schluessel
+# bleiben, --scheduled nur wenn heute noch nichts gelang. curl ist eine Attrappe (die Off-Site-Kopie ginge sonst ans Netz).
+set_active "$KA"
+mkdir -p "$W/shim"; printf '#!/bin/sh\nexit 0\n' > "$W/shim/curl"; chmod +x "$W/shim/curl"
+export BACKUP_LOCAL_DIR="$W/local"; PATH_VOR_F="$PATH"; export PATH="$W/shim:$PATH"
+own_n() { find "$W/local" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | grep -cE "^lifeagents-backup-[0-9]{14}-${kidA}-v[0-9A-Za-z.-]+\.nla\.enc\$"; }
+rm -f "$BACKUP_STATE_FILE"
+cli backup auto; rc=$?
+ok_if F.auto-schreibt-in-ordner '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
+ok_if F.ordner-nur-fuer-root '[ "$(stat -c %a "$W/local")" = 700 ]'
+ok_if F.auto-last-ok '[ "$(( $(date +%s) - $(read_env_value "$BACKUP_STATE_FILE" LAST_OK) ))" -lt 120 ]'
+ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qFf "$W/needles" "$W/out.$n"'
+erste="$(ls -1 "$W/local" | head -n1)"
+# --scheduled: heute schon gesichert -> nichts; seit 3 Tagen nicht -> eine neue Datei.
+cli backup auto --scheduled; rc=$?
+ok_if F.scheduled-heute-schon-gesichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
+env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
+sleep 1; cli backup auto --scheduled; rc=$?
+ok_if F.scheduled-nach-3-tagen-sichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 2 ]' "rc=$rc n=$(own_n)"
+# Aufbewahrung: 16 alte eigene + 1 fremder Schluessel + 1 Vorab-Sicherung; danach bleiben 14 eigene (die neuesten).
+for i in $(seq 1 16); do : > "$W/local/lifeagents-backup-2026010100$(printf %02d "$i")00-${kidA}-v0.0.1.nla.enc"; done
+: > "$W/local/lifeagents-backup-20250101000000-kdeadbeef-v0.0.1.nla.enc"
+: > "$W/local/pre-upgrade-n8n-1.0.0-20260101T000000Z.dump.gpg"
+env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
+sleep 1; cli backup auto; rc=$?
+ok_if F.rotation-behaelt-14 '[ "$rc" -eq 0 ] && [ "$(own_n)" = 14 ]' "rc=$rc n=$(own_n)"
+ok_if F.rotation-loescht-die-aeltesten '[ ! -e "$W/local/lifeagents-backup-20260101000100-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/lifeagents-backup-20260101001600-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/$erste" ]' "Reihenfolge"
+ok_if F.rotation-laesst-fremdes-liegen '[ -e "$W/local/lifeagents-backup-20250101000000-kdeadbeef-v0.0.1.nla.enc" ] && [ -e "$W/local/pre-upgrade-n8n-1.0.0-20260101T000000Z.dump.gpg" ]'
+# Ordner nicht anlegbar: kein Abbruch (rc 0), Grund "write" in backup.state.
+BACKUP_LOCAL_DIR=/proc/nirgends/sicherung cli backup auto; rc=$?
+ok_if F.ordner-fehlt-grund-write '[ "$rc" -eq 0 ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON)" = write ]' "rc=$rc"
+# doctor (klassisch): ROT statt WARN; frisch = gruen. Echter Code von doctor.sh in einer Teilschale.
+dr_backup() {   # dr_backup <LAST_OK-Alter in s|-> <grund|-> <VERSION-Alter-Tage> -> Zeile + fail=<n>
+  local st="$W/dr.state" ver="$W/dr.VERSION"; rm -f "$st"; : > "$ver"
+  [ "$1" = - ] || env_upsert "$st" LAST_OK "$(( $(date +%s) - $1 ))"
+  [ "$2" = - ] || env_upsert "$st" LAST_FAIL_REASON "$2"
+  touch -d "$3 days ago" "$ver"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    BACKUP_STATE_FILE="$st"; _fail=0; unset LIFEAGENTS_RUNTIME
+    lifeagents_version_marker() { printf '%s' "$ver"; }
+    _doctor_backup; echo "fail=$_fail" )
+}
+out="$(dr_backup 3600 - 30)"; ok_if F.doctor-heute-gruen 'printf "%s" "$out" | grep -q "^  \[ OK \] Letzte Sicherung: heute" && [ "$(printf "%s" "$out" | tail -n1)" = fail=0 ]' "$out"
+out="$(dr_backup $((3 * 86400)) - 30)"; ok_if F.doctor-veraltet-rot 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung: vor 3 Tagen — Verlauf: journalctl -u lifeagents-backup" && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
+out="$(dr_backup $((3 * 86400)) encrypt 30)"; ok_if F.doctor-volles-ziel-rot-mit-platzhinweis 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung.*Platz prüfen: df -h " && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
+out="$(dr_backup - - 0)"; ok_if F.doctor-frische-installation-gruen 'printf "%s" "$out" | grep -q "^  \[ OK \] Letzte Sicherung: noch keine erfasst" && [ "$(printf "%s" "$out" | tail -n1)" = fail=0 ]' "$out"
+out="$(dr_backup - - 5)"; ok_if F.doctor-nie-gesichert-nach-frist-rot 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung: noch keine" && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
+export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
 
 # ---------------------------------------------------------------------------- L: Leck-Probe Ausgaben + tmpfs
 leak=0

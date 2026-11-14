@@ -97,8 +97,8 @@ _doctor_compose_tick() {
 }
 
 # _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
-#   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: WARN (Sicherung per export/crontab
-#   ist dort Sache des Owners). Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
+#   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: ebenso ROT (Timer lifeagents-backup).
+#   Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
 _doctor_backup() {
   local ok_at age days reason folder fix
   if [ "$(id -u)" -ne 0 ]; then _skip "Letzte Sicherung (braucht root)"; return 0; fi
@@ -129,7 +129,8 @@ _doctor_backup() {
     esac
     _red "Letzte Sicherung: ${when} — ${fix}"
   else
-    _warn "Letzte Sicherung: ${when} — lifeagents backup export (Anleitung: ${BACKUP_GUIDE_URL})"
+    # Ein volles Ziel meldet je nach Schritt write, dump oder encrypt -> der Platz-Hinweis steht immer dabei.
+    _red "Letzte Sicherung: ${when} — Verlauf: journalctl -u lifeagents-backup -n 50; Platz prüfen: df -h ${BACKUP_LOCAL_DIR} (Anleitung: ${BACKUP_GUIDE_URL})"
   fi
 }
 
@@ -253,6 +254,7 @@ main() {
   else
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
+    svc_active lifeagents-backup.timer "Tägliche Sicherung"
   fi
   _doctor_backup
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then

@@ -477,7 +477,6 @@ _ur_swap_continue() {
 #   Vor der ersten Installation (keine VERSION) still. Zustand in UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
-BACKUP_AUTO_AT="${BACKUP_AUTO_AT:-0330}"     # HHMM, taegliche Sicherung in den Rechner-Ordner (nur Verbund)
 BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # nach einem Fehlschlag am selben Tag erneut
 update_tick() {
   require_root

@@ -844,6 +844,11 @@ BACKUP_KEY_PREV_PREFIX="backup_encryption_key_prev_"
 # Sicherung gilt sie als veraltet.
 BACKUP_STATE_FILE="${BACKUP_STATE_FILE:-/var/lib/lifeagents/backup.state}"
 BACKUP_STALE_S="${BACKUP_STALE_S:-172800}"   # 2 Tage
+# Uhrzeit (HHMM, Haushalts-Zeitzone) der taeglichen Sicherung: Docker-Tick (update_runner.sh) und systemd-Timer (install_backup_timer.sh)
+# lesen denselben Wert. BACKUP_LOCAL_DIR = Ziel im klassischen Betrieb (kein Rechner-Ordner wie im Verbund); eigener Unterordner, damit die Rotation nie die Sicherung vor einer Wiederherstellung (gleicher Dateiname, backup_cli.sh restore) im Elternordner erfasst.
+BACKUP_AUTO_AT="${BACKUP_AUTO_AT:-0330}"
+BACKUP_LOCAL_DIR="${BACKUP_LOCAL_DIR:-/var/backups/lifeagents/daily}"
+BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
 # backup_ref_epoch -> Bezugszeit fuer "wie alt ist die Sicherung": LAST_OK, ohne gelungene Sicherung die Installation bzw. das
 #   letzte Update (VERSION) — sonst gaelte eine frische Installation oder ein Bestand vor backup.state sofort als veraltet.
 backup_ref_epoch() {

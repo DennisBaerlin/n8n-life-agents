@@ -10,6 +10,7 @@
 #   N  PG-Minor-Neustart (install_pg.sh): laufende Minor != Paket-Minor -> gezielter Neustart, Zweitlauf/Verbund no-op.
 #   T  Telegram-Pruefung (Pruefliste Nr. 10): frei / unser Webhook / fremder Webhook / 409 Long-Polling / nicht pruefbar;
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
+#   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
@@ -703,5 +704,81 @@ eq N.install_postgres-veraltet-startet-neu-einmal 1 "$(pg_n_run '17.11 (Debian 1
 eq N.install_postgres-aktuell-kein-neustart 0 "$(pg_n_run '17.12 (Debian 17.12-1.pgdg12+1)' 0 systemd)"
 eq N.install_postgres-server-steht-kein-neustart 0 "$(pg_n_run '17.11' 1 systemd)"
 eq N.install_postgres-verbund-kein-neustart 0 "$(pg_n_run '17.11' 0 compose)"
+
+# ---------------------------------------------------------------------------- I: Sicherungs-Timer (install_backup_timer.sh, klassisch)
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/install_backup_timer.sh"
+unset LIFEAGENTS_RUNTIME
+TEMPLATE_DIR="$ROOT/provisioning/templates"; SYSTEMD_UNIT_DIR="$W/units"; mkdir -p "$SYSTEMD_UNIT_DIR"
+PROVISION_REPO_SLUG=o/r; UPDATE_CLI_BIN=/usr/local/bin/lifeagents
+rm -f "$W/log"; : > "$STUB_LOG"
+( TIMEZONE=Europe/Berlin BACKUP_AUTO_AT=0330 install_backup_timer ) >/dev/null 2>&1
+bt="$SYSTEMD_UNIT_DIR/lifeagents-backup.timer"; bs="$SYSTEMD_UNIT_DIR/lifeagents-backup.service"
+if [ -s "$bt" ] && [ -s "$bs" ]; then pass I.units-angelegt; else fail I.units-angelegt "Unit-Dateien fehlen"; fi
+if grep -qFx 'OnCalendar=*-*-* 03..23:30:00 Europe/Berlin' "$bt"; then pass I.timer-kalender-haushalts-zeitzone; else fail I.timer-kalender-haushalts-zeitzone "$(grep OnCalendar "$bt")"; fi
+if grep -qFx 'Persistent=true' "$bt"; then pass I.timer-persistent; else fail I.timer-persistent "Persistent=true fehlt"; fi
+if grep -qFx 'ExecStart=/usr/local/bin/lifeagents backup auto --scheduled' "$bs"; then pass I.service-ruft-backup-auto; else fail I.service-ruft-backup-auto "$(grep ExecStart "$bs")"; fi
+if grep -qE '^(Requires|PartOf|BindsTo)=' "$bs"; then fail I.service-ohne-n8n-bindung "Bindung gefunden"; else pass I.service-ohne-n8n-bindung; fi
+if grep -q '@@' "$bt" "$bs"; then fail I.keine-platzhalter-uebrig "$(grep -h '@@' "$bt" "$bs")"; else pass I.keine-platzhalter-uebrig; fi
+if grep -q 'daemon-reload' "$STUB_LOG" && grep -q 'enable|lifeagents-backup.timer' "$STUB_LOG" && grep -q 'restart|lifeagents-backup.timer' "$STUB_LOG"; then pass I.timer-wird-aktiviert; else fail I.timer-wird-aktiviert "$(tr '\n' ' ' < "$STUB_LOG")"; fi
+if grep -q 'restart|lifeagents-backup.service\|start|lifeagents-backup.service' "$STUB_LOG"; then fail I.service-nie-gestartet "Service angefasst"; else pass I.service-nie-gestartet; fi
+: > "$STUB_LOG"; ( TIMEZONE=Europe/Berlin BACKUP_AUTO_AT=0330 install_backup_timer ) >/dev/null 2>&1
+if grep -qE 'daemon-reload|restart' "$STUB_LOG"; then fail I.zweitlauf-noop "$(tr '\n' ' ' < "$STUB_LOG")"; else pass I.zweitlauf-noop; fi
+( TIMEZONE=UTC BACKUP_AUTO_AT=0415 install_backup_timer ) >/dev/null 2>&1
+if grep -qFx 'OnCalendar=*-*-* 04..23:15:00 UTC' "$bt"; then pass I.uhrzeit-aus-backup-auto-at; else fail I.uhrzeit-aus-backup-auto-at "$(grep OnCalendar "$bt")"; fi
+( TIMEZONE=UTC BACKUP_AUTO_AT=2460 install_backup_timer ) >/dev/null 2>&1; rc=$?
+if [ "$rc" -ne 0 ]; then pass I.ungueltige-uhrzeit-bricht-ab; else fail I.ungueltige-uhrzeit-bricht-ab "rc=$rc"; fi
+rm -f "$bt" "$bs"; : > "$STUB_LOG"
+( LIFEAGENTS_RUNTIME=compose install_backup_timer; LIFEAGENTS_RUNTIME=compose uninstall_backup_timer ) >/dev/null 2>&1
+if [ ! -e "$bt" ] && [ ! -s "$STUB_LOG" ]; then pass I.verbund-no-op; else fail I.verbund-no-op "Datei oder Aufruf im Verbund"; fi
+_u_stop_unit() { echo "stop $*" >> "$W/ustop"; }
+: > "$W/ustop"; ( uninstall_backup_timer ) >/dev/null 2>&1
+eq I.abbau-timer-und-service 'stop lifeagents-backup.timer 1 stop lifeagents-backup.service 1' "$(tr '\n' ' ' < "$W/ustop" | sed 's/ $//')"
+
+# alte crontab-Zeile: genau diese Zeile geht, alles andere bleibt (Attrappe: der Speicher ist eine Datei)
+cat > "$W/bin/crontab" <<'STUB'
+#!/usr/bin/env bash
+store="$CRON_STORE"
+case "$*" in
+  "-l -u root") [ -f "$store" ] || exit 1; cat "$store" ;;
+  "-u root "*) cp "$3" "$store"; echo x >> "$store.writes" ;;
+  *) exit 2 ;;
+esac
+STUB
+chmod +x "$W/bin/crontab"; export CRON_STORE="$W/crontab.store"
+LEGACY='30 3 * * * cd /root && lifeagents backup export --notify-telegram >> /var/log/lifeagents-backup.log 2>&1'
+printf 'MAILTO=owner@example.test\n%s\n0 5 * * * /usr/local/bin/other-job\n' "$LEGACY" > "$CRON_STORE"; rm -f "$CRON_STORE.writes"
+out="$( remove_legacy_backup_cron 2>&1 )"
+eq I.cron-nur-diese-zeile-weg $'MAILTO=owner@example.test\n0 5 * * * /usr/local/bin/other-job' "$(cat "$CRON_STORE")"
+case "$out" in *"Alte Sicherungs-Zeile aus der root-crontab entfernt"*) pass I.cron-protokoll-vermerk ;; *) fail I.cron-protokoll-vermerk "$out" ;; esac
+rm -f "$CRON_STORE.writes"; out="$( remove_legacy_backup_cron 2>&1 )"
+if [ -z "$out" ] && [ ! -e "$CRON_STORE.writes" ]; then pass I.cron-zweitlauf-still-ohne-schreiben; else fail I.cron-zweitlauf-still-ohne-schreiben "Ausgabe '$out'"; fi
+printf '45 3 * * * cd /root && lifeagents backup export --notify-telegram >> /var/log/lifeagents-backup.log 2>&1\n# %s\n' "$LEGACY" > "$CRON_STORE"; cp "$CRON_STORE" "$W/cron.before"
+out="$( remove_legacy_backup_cron 2>&1 )"
+if cmp -s "$CRON_STORE" "$W/cron.before" && [ -z "$out" ]; then pass I.cron-abgewandelte-zeile-bleibt; else fail I.cron-abgewandelte-zeile-bleibt "veraendert"; fi
+rm -f "$CRON_STORE"; out="$( remove_legacy_backup_cron 2>&1 )"
+if [ -z "$out" ] && [ ! -e "$CRON_STORE" ]; then pass I.cron-ohne-crontab-still; else fail I.cron-ohne-crontab-still "$out"; fi
+printf '%s\n' "$LEGACY" > "$CRON_STORE"; out="$( LIFEAGENTS_RUNTIME=compose remove_legacy_backup_cron 2>&1 )"
+if [ "$(cat "$CRON_STORE")" = "$LEGACY" ]; then pass I.cron-verbund-no-op; else fail I.cron-verbund-no-op "Zeile im Verbund entfernt"; fi
+out="$( svc_is_active() { return 1; }; remove_legacy_backup_cron 2>&1 )"
+if [ "$(cat "$CRON_STORE")" = "$LEGACY" ] && [ -z "$out" ]; then pass I.cron-bleibt-ohne-laufenden-timer; else fail I.cron-bleibt-ohne-laufenden-timer "Zeile trotz inaktivem Timer entfernt"; fi
+eq I.standard-ordner-getrennt-von-vorab-sicherungen '/var/backups/lifeagents/daily' "$BACKUP_LOCAL_DIR"
+( backup_cli help 2>&1 ) > "$W/help.out" 2>&1 || true
+if grep -q 'crontab' "$W/help.out"; then fail I.hilfe-ohne-crontab-empfehlung "$(grep crontab "$W/help.out")"; else pass I.hilfe-ohne-crontab-empfehlung; fi
+
+# _bkp_auto_due: seit dem letzten BACKUP_AUTO_AT (Haushalts-Zeitzone) keine Sicherung gelungen?
+printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$W/core.env"; lifeagents_env_file() { printf '%s' "$W/core.env"; }
+_bs="$W/due.state"; rm -f "$_bs"
+due() { ( BACKUP_STATE_FILE="$_bs" BACKUP_AUTO_AT="$1"; _bkp_auto_due ) && printf due || printf none; }
+eq I.faellig-nie-gesichert due "$(due 0000)"
+env_upsert "$_bs" LAST_OK "$(date +%s)"
+eq I.heute-gesichert-nicht-faellig none "$(due 0000)"
+env_upsert "$_bs" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
+eq I.vor-3-tagen-faellig due "$(due 0000)"
+_two="$(date -u -d '2 hours ago' +%H%M)"
+env_upsert "$_bs" LAST_OK "$(( $(date +%s) - 3600 ))"
+eq I.nach-letzter-uhrzeit-gesichert-nicht-faellig none "$(due "$_two")"
+env_upsert "$_bs" LAST_OK "$(( $(date +%s) - 3 * 3600 ))"
+eq I.vor-letzter-uhrzeit-gesichert-faellig due "$(due "$_two")"
 
 exit "$fails"

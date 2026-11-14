@@ -210,7 +210,6 @@ _bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd 
 # vom Nutzer gewaehlten Ordner auf dem Rechner. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim) in der Schreibweise des
 # Nutzers (Mac/Linux /…, Windows C:\…); an Docker geht immer die Docker-Form (_bkp_hd). Kein Komma (Trenner der --mount-
 # Angabe), kein Anfuehrungszeichen, kein Zeilenumbruch.
-BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
 _bkp_host_dir() { read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true; }
 _bkp_host_dir_valid() {
   case "$1" in
@@ -392,10 +391,52 @@ _bkp_stale_notify() {
   return 0
 }
 
-# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh: 03:30, nach einem Fehlschlag
-#   stuendlich). Ohne gemerkten Ordner nur der Vermerk "nofolder" (Bestand ohne Ordner: doctor ROT + Chat-Hinweis
-#   statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+# _bkp_auto_due -> rc 0, wenn seit der letzten BACKUP_AUTO_AT (Haushalts-Zeitzone) keine Sicherung gelang. Nur backup.state (LAST_OK):
+#   ueberlebt Neustart und Uhr-Stellen ohne eigenen Marker.
+_bkp_auto_due() {
+  local tz now since ok_at hhmm
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
+  now="$(date +%s)"; hhmm="${BACKUP_AUTO_AT:0:2}:${BACKUP_AUTO_AT:2:2}"
+  since="$(TZ="${tz:-Europe/Berlin}" date -d "today ${hhmm}" +%s)"
+  [ "$since" -le "$now" ] || since="$(TZ="${tz:-Europe/Berlin}" date -d "yesterday ${hhmm}" +%s)"
+  ok_at="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; case "$ok_at" in ''|*[!0-9]*) ok_at=0 ;; esac
+  [ "$ok_at" -lt "$since" ]
+}
+# _bkp_local_rotate <ordner> <schluessel-id> — eigene alte Sicherungen im lokalen Ordner entfernen (Auswahl wie im Rechner-Ordner,
+#   _bkp_rotate_victims: Vorab-Sicherungen und Dateien fremder Schluessel bleiben liegen).
+_bkp_local_rotate() {
+  local v=() f
+  mapfile -t v < <(find "$1" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | _bkp_rotate_victims "$BACKUP_HOST_KEEP" "$2" || true)
+  for f in "${v[@]}"; do [ -n "$f" ] && { rm -f -- "$1/$f" || warn "Alte Sicherung '$f' ließ sich nicht entfernen."; }; done
+  return 0
+}
+_bkp_auto_local() {
+  local dir="$BACKUP_LOCAL_DIR" key kid
+  if [ "$1" = 1 ] && ! _bkp_auto_due; then return 0; fi
+  if ! { mkdir -p "$dir" && chmod 0700 "$dir"; } 2>/dev/null; then
+    _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON write
+    warn "Sicherungs-Ordner '${dir}' ließ sich nicht anlegen — nächster Versuch in einer Stunde."
+    return 0
+  fi
+  ( cd "$dir" && backup_cmd_export --notify-telegram ) || { warn "Tägliche Sicherung fehlgeschlagen — nächster Versuch in einer Stunde."; return 0; }
+  key="$(_bkp_key)"   # ohne den Zeilenumbruch von psql: die ID entsteht aus dem reinen Schluessel (wie im Export)
+  kid="$(printf '%s' "$key" | backup_key_id)"
+  _bkp_local_rotate "$dir" "$kid"
+  return 0
+}
+# backup_cmd_auto [--scheduled] — taegliche Sicherung.
+#   Verbund: in den Rechner-Ordner (Tick im master, update_runner.sh: BACKUP_AUTO_AT, nach einem Fehlschlag stuendlich). Ohne
+#   gemerkten Ordner nur der Vermerk "nofolder" (doctor ROT + Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der
+#   Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+#   Klassisch (systemd): nach BACKUP_LOCAL_DIR, dazu wie die fruehere crontab-Zeile die verschluesselte Kopie an den Owner-Chat
+#   (Off-Site). `--scheduled` (Timer lifeagents-backup, stuendlich ab BACKUP_AUTO_AT) tut nichts, wenn seit BACKUP_AUTO_AT schon
+#   eine Sicherung gelang; ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler stehen in backup.state).
 backup_cmd_auto() {
+  local scheduled=0 a
+  for a in "$@"; do
+    case "$a" in --scheduled) scheduled=1 ;; *) die "Unbekannte Option: $a" ;; esac
+  done
+  if ! rt_is_compose; then _bkp_auto_local "$scheduled"; return 0; fi
   if [ -z "$(_bkp_host_dir)" ]; then
     _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
   else
@@ -1228,7 +1269,7 @@ MENU
   case "$verb" in
     export)  backup_cmd_export "$@" ;;
     host-dir) backup_cmd_host_dir "$@" ;;
-    auto)    backup_cmd_auto ;;
+    auto)    backup_cmd_auto "$@" ;;
     restore) backup_cmd_restore "$@" ;;
     restore-status) backup_cmd_restore_status "$@" ;;
     list)    backup_cmd_list "$@" ;;
@@ -1256,6 +1297,8 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
   key [--file <pfad>|-]    Notfallblatt mit dem Sicherungs-Schlüssel: ohne Option nur aufs Terminal; --file legt eine
                            neue Datei an (nur für root lesbar), --file - schreibt auf stdout. Ausdrucken oder im
                            Passwort-Manager ablegen — ohne den Schlüssel lässt sich keine Sicherung öffnen.
+  auto [--scheduled]       Tägliche Sicherung jetzt machen (Docker: in den Rechner-Ordner, ohne Ordner nur ein Vermerk; LXC/Server:
+                           nach /var/backups/lifeagents/daily). --scheduled (nur der Timer) tut nichts, wenn heute schon eine gelang.
 
 Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner AUF DEM RECHNER, nicht auf der Docker-Platte:
   host-dir [<ordner>]      Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (absoluter Pfad, wird auf Schreibrecht geprüft).
@@ -1268,11 +1311,10 @@ Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner A
                            Hintergrund; Stand: restore-status --json), --in-stdin (Sicherung + Blatt über stdin).
   list --json              Sicherungen im Rechner-Ordner (für die Start-App).
   restore-status --json    Stand der letzten Wiederherstellung im Hintergrund (für die Start-App).
-  auto                     Tägliche Sicherung in den Rechner-Ordner (läuft von selbst um 03:30 im master; ohne Ordner still).
 
-Automatisch (Off-Site, taeglich 03:30) — eine Zeile in die root-crontab ('crontab -e'):
-  30 3 * * * cd /root && lifeagents backup export --notify-telegram >> /var/log/lifeagents-backup.log 2>&1
-  (lokale Dateien sammeln sich an — keine Auto-Rotation; regelmaessig aufraeumen oder die Telegram-Historie als Generationen nutzen.)
+Automatisch (LXC/Server, klassischer Betrieb) — läuft von selbst, nichts einzurichten: der Timer lifeagents-backup sichert täglich ab
+03:30 (Haushalts-Zeitzone) nach /var/backups/lifeagents/daily, behält die letzten 14 und schickt eine verschlüsselte Kopie an deinen
+Telegram-Chat. Verlauf: journalctl -u lifeagents-backup; Stand: lifeagents doctor.
 
 Schlüssel: liegt in core.backup_key (gpg-Passphrase, AES256). OFFLINE separat sichern (lifeagents backup key) — ohne
 ihn kein Restore auf einem neuen Rechner.

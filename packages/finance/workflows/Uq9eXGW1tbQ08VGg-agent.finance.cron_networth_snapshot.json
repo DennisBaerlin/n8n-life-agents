@@ -1,0 +1,227 @@
+{
+    "id":  "Uq9eXGW1tbQ08VGg",
+    "name":  "agent.finance.cron_networth_snapshot",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_NETWORTH_SNAPSHOT__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -700,
+                                       0
+                                   ],
+                      "id":  "9e568484-7d2d-5838-b9ff-019fd1208eb2",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027networth_snapshot\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -480,
+                                       0
+                                   ],
+                      "id":  "69d5c61a-dcd7-5ffa-8dc4-a61837e075bd",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fc01ef2b-869b-5181-922d-57da7c669436",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -260,
+                                       0
+                                   ],
+                      "id":  "c9c56cc3-c0c9-59e8-a17c-d709b7d16b7f",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       200
+                                   ],
+                      "id":  "8e201d0c-dab0-5ec4-affb-c4ee3d79479a",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT finance.fn_record_networth_snapshot() AS r",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -40,
+                                       0
+                                   ],
+                      "id":  "604c29b0-a44e-5006-9f3e-6a45ac58d788",
+                      "name":  "Record snapshot",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Vermögens-Tagesstand (kein LLM, keine Nachricht)**\n\nJede Stunde (Minute 55, core.config schedule.networth_snapshot) ersetzt finance.fn_record_networth_snapshot den Stand des heutigen Tages in finance.networth_snapshots: je Konto, Depot, Immobilie und Vorsorge mit Anlageklasse und Person, Kredite negativ, aus der View networth_items. So bleibt der letzte Lauf des Tages stehen. Frühere Tage schreibt der Lauf nie: ist das Gerät einen ganzen Tag aus, bleibt der Tag leer, nichts wird nachgetragen. Die Anzeige füllt Lücken erst beim Lesen und markiert sie. Gate: Paket aktiv und cron_enable networth_snapshot = true (fail-closed); aus: lifeagents config set cron_enable networth_snapshot false.",
+                                         "height":  380,
+                                         "width":  360,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -760,
+                                       -320
+                                   ],
+                      "id":  "6e979b95-ea27-5d89-bff6-7a1cc8a115e3",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -700,
+                                       180
+                                   ],
+                      "id":  "79e462fd-2a69-5ebf-b307-c3041aaf8df0",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -740,
+                                       300
+                                   ],
+                      "id":  "ad00ecf9-992d-52ab-bfc8-0faf1a2a8571",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Record snapshot",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

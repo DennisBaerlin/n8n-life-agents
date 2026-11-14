@@ -5,6 +5,7 @@
 --   dem Sentinel-Marker '__E2E__', FK-sicher und atomar (laeuft in der Transaktion des Dispatchers).
 --   Guard 1 (Pre-Assertion): jede eingesammelte Konto-ID muss den Marker tragen + Runaway-Obergrenze -> bricht vor
 --     jedem DELETE ab. Guard 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
+--   Tagesstaende (networth_snapshots) der Sentinel-Objekte gehen mit.
 --   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
 --   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE).
 --   Eingabe: p_runid (optional); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
@@ -80,6 +81,11 @@ BEGIN
     DELETE FROM finance.insurances    WHERE name LIKE v_pat;  GET DIAGNOSTICS v_ins  = ROW_COUNT;
     DELETE FROM finance.loans         WHERE name LIKE v_pat;  GET DIAGNOSTICS v_loan = ROW_COUNT;
     DELETE FROM finance.savings_goals WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat));  GET DIAGNOSTICS v_sg   = ROW_COUNT;
+    -- Tagesstand der Sentinel-Objekte (kein FK auf das Objekt, der Cron schreibt Testkonten stuendlich mit).
+    DELETE FROM finance.networth_snapshots
+     WHERE (item_kind = 'account'     AND item_id = ANY(v_acct))
+        OR (item_kind = 'real_estate' AND item_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat))
+        OR (item_kind = 'pension'     AND item_id IN (SELECT id FROM finance.pension     WHERE name LIKE v_pat));
     DELETE FROM finance.real_estate   WHERE name LIKE v_pat;  GET DIAGNOSTICS v_re   = ROW_COUNT;
     DELETE FROM finance.pension       WHERE name LIKE v_pat;  GET DIAGNOSTICS v_pen  = ROW_COUNT;
 

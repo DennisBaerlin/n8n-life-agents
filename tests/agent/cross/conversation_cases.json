@@ -61,5 +61,82 @@
       { "text": "Mein Geld liegt auf dem Girokonto __E2E__ Ahornbank Giro, da sind gerade 1.200 Euro drauf.", "expect_agent": "finance_advisor" },
       { "text": "Das Gehalt sind 3000 netto, das kommt am 1.", "expect_agent": "finance_advisor" }
     ]
+  },
+  {
+    "id": "s6",
+    "name": "S6 Ersteinrichtung: Haushalt, Konto, erste Buchung, Monats-Check, Plan-Start",
+    "sender": "owner",
+    "start": "fresh_household",
+    "hitl": "approve",
+    "notes": "Gesamtablauf nach der Installation, bezahlt gedacht (conversation_test -Real). Alle Karten werden bestaetigt (Fall-Vorgabe approve): das Ergebnis nach der Bestaetigung ist pruefbar, darum stehen DB-Pruefungen und Rubrics mit Ergebnis-Aussagen. Runde 5 und 8 sind Ketten: ohne Haushalt-Abschluss (Runde 4) sperrt das Core-first-Gate die Finanz-Agenten, ohne Konto (Runde 6) fehlt der Boden fuer 8 bis 10 -> stop_on_fail. Kontoauszug-Fixture ist statisch auf Maerz 2000 datiert (tests/mock_telegram/make_doc_fixtures.ps1: IBAN, Anfangssaldo 500, Endsaldo 2012,60), darum liegen Eroeffnungsdatum und Buchung in dieser Zeit. Der Monats-Check gleicht eine von Hand gebuchte Zahlung nicht mit der Auszugszeile ab (nur Dauerauftraege, Transfers, gelernte Schluessel): Er bucht die Differenz (1.550 EUR) als eine Abgleichsbuchung und nennt die Handbuchung als moegliche Dublette; der Endsaldo 2.012,60 stimmt trotzdem (gegen die echten fn_* geprueft). Konto traegt __E2E__ im Namen (Cleanup), Stand am Ende: Reset + Fixture-Seed.",
+    "turns": [
+      {
+        "text": "/start", "expect_node": "Send welcome new", "forbid_texts": ["NEXT_STEP"], "stop_on_fail": true,
+        "expect_sql": [ { "sql": "SELECT count(*) FROM finance.accounts;", "equals": "0" } ]
+      },
+      {
+        "tap": "onboarding:core:household", "expect_node": "Run onboarding cb", "forbid_texts": ["NEXT_STEP"],
+        "expected_behavior": "The guide opens the household setup in German. The owner already exists in the household (Household so far): it must NOT ask again for the owner's name or birth date, but may confirm them briefly and asks only for what is missing (further household members, employment). One step at a time, no list of all sections, no booking or finance question, no invented data."
+      },
+      {
+        "text": "Wir sind nur zu zweit im Haushalt und ich bin angestellt. Weitere Personen trage ich später ein.",
+        "forbid_texts": ["NEXT_STEP"],
+        "expected_behavior": "The guide takes the answer without asking for anything it already knows. It either stores the fact (the user may be shown a confirmation card, which is confirmed in this test) or asks at most ONE short follow-up. It does not push for details the user said to add later and does not ask about finance topics yet."
+      },
+      {
+        "text": "Ja, das passt so. Der Haushalt ist damit fertig.",
+        "forbid_texts": ["NEXT_STEP"],
+        "stop_on_fail": true,
+        "expect_sql": [ { "sql": "SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household';", "equals": "completed" } ],
+        "expected_behavior": "The household area is marked as done and the reply says so in a friendly short sentence. It points to the next step (the finance areas) at most once, without a list of commands and without a topic list."
+      },
+      {
+        "tap": "onboarding:finance:accounts", "expect_node": "Run onboarding finance", "forbid_texts": ["NEXT_STEP"],
+        "expected_behavior": "The bookkeeper starts the accounts area: it asks which accounts there are, one step at a time, and may mention that a statement photo or PDF works as well. It does not invent accounts, does not book anything and does not talk about areas other than accounts."
+      },
+      {
+        "text": "Mein Girokonto ist das __E2E__ Erlenbank Giro bei der Erlenbank, IBAN DE89 3704 0044 0532 0130 00, Inhaberin ich. Am 29.02.2000 waren 500 Euro drauf.",
+        "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"], "stop_on_fail": true,
+        "expect_sql": [
+          { "sql": "SELECT count(*) FROM finance.accounts WHERE name = '__E2E__ Erlenbank Giro' AND replace(account_number, ' ', '') = 'DE89370400440532013000';", "equals": "1" },
+          { "sql": "SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ Erlenbank Giro';", "equals": "500.00" }
+        ],
+        "expected_behavior": "After the confirmed card the reply states that the account __E2E__ Erlenbank Giro is created with a balance of 500 EUR. It does not claim a different bank, IBAN or amount, does not ask for confirmation again and does not create further accounts."
+      },
+      {
+        "text": "Das waren alle Konten.",
+        "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"],
+        "expect_sql": [ { "sql": "SELECT status FROM finance.onboarding_state WHERE section_key = 'accounts';", "equals": "completed" } ],
+        "expected_behavior": "The accounts area is marked as done and the reply says so briefly. It may name the next area once; it does not pressure the user to continue and does not start asking about investments in detail."
+      },
+      {
+        "text": "Buche bitte am 17.03.2000 eine Ausgabe von 37,40 Euro für Buchladen Test auf das __E2E__ Erlenbank Giro.",
+        "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"], "stop_on_fail": true,
+        "expect_sql": [
+          { "sql": "SELECT count(*) FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id WHERE a.name = '__E2E__ Erlenbank Giro' AND t.amount = -37.40 AND t.transaction_date = DATE '2000-03-17';", "equals": "1" },
+          { "sql": "SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ Erlenbank Giro';", "equals": "462.60" }
+        ],
+        "expected_behavior": "After the confirmed card the reply confirms the booking of 37,40 EUR (Buchladen Test, 17.03.2000) on __E2E__ Erlenbank Giro and names the new balance 462,60 EUR. It does not ask again for confirmation and does not book anything else."
+      },
+      {
+        "doc": "mock_photo_132", "caption": "Hier ist mein Kontoauszug März von der Erlenbank, bitte gleiche ihn ab.", "timeout_s": 240,
+        "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"],
+        "expect_sql": [
+          { "sql": "SELECT count(*) FROM finance.bank_statements s JOIN finance.accounts a ON a.id = s.account_id WHERE a.name = '__E2E__ Erlenbank Giro' AND s.period_end = DATE '2000-03-31';", "equals": "1" },
+          { "sql": "SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ Erlenbank Giro';", "equals": "2012.60" }
+        ],
+        "expected_behavior": "After the confirmed card the reply reports the monthly check of the statement in plain words: the statement was read, the difference to the app was booked as one adjustment, and the balance now matches the statement (2.012,60 EUR). It names the account __E2E__ Erlenbank Giro, may point out that the manually booked Buchladen purchase (37,40 EUR) could be the same as a statement line, does not claim a different balance, and does not ask the user to export the file again."
+      },
+      {
+        "text": "kannst du mich beraten?", "expect_agent": "finance_advisor", "forbid_texts": ["NEXT_STEP", "Buchhalter", "bookkeeper"],
+        "expected_behavior": "The advisor starts the planning conversation without asking for a topic first. It asks only ONE thing at a time in plain language, does not ask for the account or balance it already sees in the data, and does not book anything."
+      },
+      {
+        "text": "Das Gehalt sind 2.400 netto, das kommt am Monatsletzten aufs Erlenbank Giro.",
+        "expect_agent": "finance_advisor", "forbid_texts": ["NEXT_STEP", "Buchhalter", "bookkeeper"],
+        "expect_sql": [ { "sql": "SELECT (count(*) > 0)::int FROM finance.recurring_payments;", "equals": "1" } ],
+        "expected_behavior": "After the confirmed card the reply says the salary of 2.400 EUR (end of month, Erlenbank Giro) is recorded as a regular income and the advisor asks at most ONE next question for the plan (for example the fixed costs). It does not repeat the income question and does not mention an internal agent."
+      }
+    ]
   }
 ]

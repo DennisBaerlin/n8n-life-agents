@@ -218,6 +218,9 @@ function ConvertTo-BotOutputs($Reqs) {
         $b = $r.body
         $o = [ordered]@{ method = $m; chat = "$($b.chat_id)"; text = ''; buttons = @(); sticker = ''; reaction = ''; card = $false }
         $t = if ($b.text) { "$($b.text)" } elseif ($b.caption) { "$($b.caption)" } else { '' }
+        # Die Send-Knoten escapen & < > einmal und senden mit parse_mode HTML; Telegram zeigt den Klartext. Der Judge
+        # soll lesen, was die Person sieht, nicht "Depot &amp; Sparplaene" (&amp; zuletzt, sonst doppelt entschluesselt).
+        if ("$($b.parse_mode)" -eq 'HTML') { $t = $t.Replace('&lt;', '<').Replace('&gt;', '>').Replace('&amp;', '&') }
         $o.text = $t
         if ($b.reply_markup) { $o.buttons = @(Get-ButtonList $b.reply_markup) }
         # Persona-Sticker kommen als Upload (body.sticker_file = Dateiname) oder per file_id (body.sticker).
@@ -384,6 +387,7 @@ foreach ($tc in $cases) {
             $judgeBundle += [ordered]@{
                 id = ("{0}-r{1:D2}" -f $tc.id, $rd.n); name = "$($tc.name) / Runde $($rd.n)"; task = "$($rd.input)"
                 expected_behavior = $rd.rubric; expected_tool = ''
+                card_decision = $(if ($rd.card_decision -eq 'angenommen') { 'approved' } else { 'declined' })
                 det_pass = ($rd.failures.Count -eq 0); actual_tool = $agentShown; actual_tool_input = ''
                 read_tools = ''; specialist_output = ''; actual_output = (Get-OutputText $rd.outputs)
             }

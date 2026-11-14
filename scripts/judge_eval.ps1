@@ -62,51 +62,7 @@ $Provider = 'anthropic'   # nur fuer die Ausgabe-Zeilen
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $script:JudgeUsage = New-Object System.Collections.ArrayList
 
-$SystemText = @'
-Du bewertest, ob das Verhalten eines Finanz-Agenten eine vorgegebene Erwartungs-Rubric erfuellt.
-Beruecksichtige sowohl den Antworttext als auch den tatsaechlichen Tool-Aufruf inkl. seiner
-Argumente; die eigentliche Entscheidung steht oft in ACTUAL_TOOL_INPUT.
-
-So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
-- Jede Bestaetigungs-Karte eines Schreib-Werkzeugs wird im Test absichtlich ABGELEHNT. Das Werkzeug
-  meldet dann "abgebrochen" (cancelled). Meldet der Agent danach den Abbruch oder fragt, was er aendern
-  soll, ist das korrekt. Bewerte, ob der Tool-Aufruf davor richtig war.
-- Schreib-Werkzeuge machen vor der Karte einen Probelauf in der Datenbank. ok:false (ohne Karte) heisst:
-  die Datenbank hat den Vorgang sachlich abgelehnt; der Agent soll das sachlich melden, nichts erfinden.
-- READ_TOOLS ist unvollstaendig protokolliert. Ein fehlender Lese-Aufruf ist nie allein ein Grund fuer
-  PARTIAL/FAIL. Die Werkzeuge loesen Namen selbst auf; ein Lese-Aufruf vorher ist kein Muss.
-- ACTUAL_TOOL_OUTPUT ist die Rueckgabe des Werkzeugs (gekuerzt, kann fehlen). Was dort steht, darf der Agent
-  sagen, auch wenn die Rubric es nicht nennt. Stehen in ACTUAL_TOOL_INPUT mehrere Aufrufe, ist der erste der aelteste.
-- Zahlen, ids und Wahrheitswerte als Text ("1", "2.0", "true") sind gleichwertig zu Zahl/Boolean.
-- Optionale Felder mit Datenbank-Standard (Datum = heute, Ordergebuehr = 0, Gueltig-ab = heute) darf der
-  Agent leer lassen; "heute" ergibt ein leeres Datum. Ein ERFUNDENES anderes Datum ist dagegen falsch.
-- Ein optionales Angebot ("wenn du magst, trage ich die IBAN nach") ist keine Rueckfrage; eine
-  Rueckfrage, die den Vorgang blockiert, schon.
-
-Antworte AUSSCHLIESSLICH als JSON ohne Markdown-Fences in der Form:
-{"verdict":"PASS|FAIL|PARTIAL","reason":"kurze Begruendung"}.
-PASS nur, wenn die Rubric vollstaendig erfuellt ist; PARTIAL bei teilweiser Erfuellung; sonst FAIL.
-'@
-
-function Format-JudgeUserText([object]$Entry) {
-    return @"
-TASK:
-$($Entry.task)
-
-EXPECTED_BEHAVIOR (Rubric):
-$($Entry.expected_behavior)
-
-ACTUAL_TOOL: $($Entry.actual_tool)
-ACTUAL_TOOL_INPUT: $($Entry.actual_tool_input)
-ACTUAL_TOOL_OUTPUT: $($Entry.actual_tool_output)
-READ_TOOLS: $($Entry.read_tools)
-$(if ($Entry.other_write_tools) { "OTHER_WRITE_TOOLS (further write tools called in the same run, oldest first, tool: output):`n$($Entry.other_write_tools)`n" })
-$(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
-ACTUAL_OUTPUT:
-$($Entry.actual_output)
-"@
-}
-
+. "$PSScriptRoot\lib\judge_prompt.ps1"   # Get-JudgeSystemText, Format-JudgeUserText (Karten-Entscheid je Eintrag)
 # Structured Output: die API garantiert parsebares JSON mit genau diesen Feldern.
 $VerdictSchema = [ordered]@{
     type                 = 'object'
@@ -126,7 +82,7 @@ function Invoke-JudgeOnce([object]$Entry) {
         $body = [ordered]@{
             model         = $Model
             max_tokens    = 16000
-            system        = $SystemText
+            system        = (Get-JudgeSystemText (Get-JudgeCardDecision $Entry))
             messages      = @(@{ role = 'user'; content = $userText })
             output_config = [ordered]@{ effort = 'low'; format = [ordered]@{ type = 'json_schema'; schema = $VerdictSchema } }
         } | ConvertTo-Json -Depth 12

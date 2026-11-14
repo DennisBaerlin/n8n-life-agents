@@ -398,7 +398,7 @@
     {
         "id":  "tc33",
         "name":  "Sparplan anlegen (create_savings_plan)",
-        "task":  "Lege einen neuen Sparplan \u0027EIMI Monatsplan\u0027 an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 50 Euro monatlich, erste Ausführung am 2027-01-02.",
+        "task":  "Lege einen neuen Sparplan \u0027EIMI Monatsplan\u0027 an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 50 Euro monatlich, erste Ausführung am {{date:+30d@2}}.",
         "chat_id":  "test_tc33",
         "expected_tool":  "tool_create_savings_plan",
         "expected_tool_args":  {
@@ -406,13 +406,13 @@
                                    "symbol":  "EIMI",
                                    "amount":  50
                                },
-        "expected_behavior":  "Ruft tool_create_savings_plan mit plan_name=\u0027EIMI Monatsplan\u0027, depot_name=\u0027Testbroker Depot\u0027, isin=\u0027IE00BKM4GZ66\u0027, symbol=\u0027EIMI\u0027, security_name=\u0027iShares Core MSCI EM IMI\u0027, amount=50, first_payment_date=\u00272027-01-02\u0027 auf.",
-        "notes":  "Neues tool_create_savings_plan. Self-contained create (neuer Name UND anderes Wertpapier als der Fixture-Bestandsplan - bei gleichem Symbol fragt der Agent korrekt nach Dubletten, real 2026-10-20). Judge: actual_tool_input enthaelt plan_name + depot_name=\u0027Testbroker Depot\u0027 + isin=\u0027IE00BKM4GZ66\u0027 + amount=50. Datum bewusst fest und auf einem Ausfuehrungstag der Bank (2., fn_broker_plan_days: das Fixture-Depot ist Trade Republic): eine erste Ausfuehrung in der Vergangenheit liess den Agenten nachfragen statt anlegen -> sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + expected_tool_args + scenarios.json nachziehen."
+        "expected_behavior":  "Ruft tool_create_savings_plan mit plan_name=\u0027EIMI Monatsplan\u0027, depot_name=\u0027Testbroker Depot\u0027, isin=\u0027IE00BKM4GZ66\u0027, symbol=\u0027EIMI\u0027, security_name=\u0027iShares Core MSCI EM IMI\u0027, amount=50, first_payment_date=\u0027{{date:+30d@2}}\u0027 auf.",
+        "notes":  "Neues tool_create_savings_plan. Self-contained create (neuer Name UND anderes Wertpapier als der Fixture-Bestandsplan - bei gleichem Symbol fragt der Agent korrekt nach Dubletten, real 2026-10-20). Judge: actual_tool_input enthaelt plan_name + depot_name=\u0027Testbroker Depot\u0027 + isin=\u0027IE00BKM4GZ66\u0027 + amount=50. Datum per Platzhalter {{date:+30d@2}} (Harness loest auf): ein Ausfuehrungstag der Bank (der 2., fn_broker_plan_days: das Fixture-Depot ist Trade Republic) in der Zukunft; eine erste Ausfuehrung in der Vergangenheit liess den Agenten nachfragen statt anlegen."
     },
     {
         "id":  "tc68",
         "name":  "Woechentlicher Sparplan bei Bank mit festen Ausfuehrungstagen (create_savings_plan, Rhythmus roh)",
-        "task":  "Lege einen neuen Sparplan 'EIMI Wochenplan' an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 25 Euro pro Woche, erste Ausführung am 2027-01-02.",
+        "task":  "Lege einen neuen Sparplan 'EIMI Wochenplan' an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI, 25 Euro pro Woche, erste Ausführung am {{date:+30d@2}}.",
         "chat_id":  "test_tc68",
         "expected_tool":  "tool_create_savings_plan",
         "expected_tool_args":  {
@@ -420,13 +420,13 @@
                                    "amount":  25,
                                    "schedule_unit":  "week"
                                },
-        "expected_behavior":  "Ruft tool_create_savings_plan mit schedule_unit='week' (schedule_interval 1 oder leer), amount=25 und first_payment_date='2027-01-02' auf. Rechnet KEINE Ausfuehrungstage oder Monatsbetraege selbst aus, setzt kein depot_execution_days und keine beneficiary_person (Depot-Inhaber per Default).",
-        "notes":  "Befund 2026-10-24: Trade Republic fuehrt woechentlich am 2./9./16./23. aus (4x/Monat). Der Agent uebergibt den Rhythmus roh (week/1); die DB leitet ueber den Depot-Kalender (fn_resolve_plan_schedule, Vorbelegung fn_broker_plan_days) month + Tage {2,9,16,23} und 100 EUR/Monat ab und zeigt sie auf der Karte. Fixture-Depot 'Testbroker Depot' traegt bank=Trade Republic. Datum auf einem Ausfuehrungstag (2.); sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + scenarios.json nachziehen."
+        "expected_behavior":  "Ruft tool_create_savings_plan mit schedule_unit='week' (schedule_interval 1 oder leer), amount=25 und first_payment_date='{{date:+30d@2}}' auf. Rechnet KEINE Ausfuehrungstage oder Monatsbetraege selbst aus, setzt kein depot_execution_days und keine beneficiary_person (Depot-Inhaber per Default).",
+        "notes":  "Befund 2026-10-24: Trade Republic fuehrt woechentlich am 2./9./16./23. aus (4x/Monat). Der Agent uebergibt den Rhythmus roh (week/1); die DB leitet ueber den Depot-Kalender (fn_resolve_plan_schedule, Vorbelegung fn_broker_plan_days) month + Tage {2,9,16,23} und 100 EUR/Monat ab und zeigt sie auf der Karte. Fixture-Depot 'Testbroker Depot' traegt bank=Trade Republic. Datum per Platzhalter {{date:+30d@2}} auf einem Ausfuehrungstag (2.)."
     },
     {
         "id":  "tc69",
         "name":  "Wochenplan mit Broker-Muster beschrieben: EIN Plan, kein Aufteilen, keine Rueckfrage vorab (create_savings_plan)",
-        "task":  "In meinem Testbroker Depot gibt es einen Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI. Er wird wöchentlich ausgeführt nach dem Trade-Republic-Muster mit den 4 Tagen im Monat, mit einem Betrag von 40 Euro. Die nächste Ausführung ist am 2027-01-02.",
+        "task":  "In meinem Testbroker Depot gibt es einen Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66, Symbol EIMI, Wertpapier iShares Core MSCI EM IMI. Er wird wöchentlich ausgeführt nach dem Trade-Republic-Muster mit den 4 Tagen im Monat, mit einem Betrag von 40 Euro. Die nächste Ausführung ist am {{date:+30d@2}}.",
         "chat_id":  "test_tc69",
         "expected_tool":  "tool_create_savings_plan",
         "expected_tool_args":  {
@@ -434,8 +434,8 @@
                                    "amount":  40,
                                    "schedule_unit":  "week"
                                },
-        "expected_behavior":  "Ruft tool_create_savings_plan GENAU EINMAL direkt auf (ein Plan, schedule_unit='week', schedule_interval 1 oder leer, amount=40, first_payment_date='2027-01-02'). Fragt NICHT vorab, ob alle 7 Tage oder feste Monatstage gemeint sind, schlaegt KEINE vier Einzel-Plaene vor und rechnet keinen Monatsbetrag selbst aus - die DB kennt den Depot-Kalender.",
-        "notes":  "Befund 2026-10-24 (v0.13.1, vor dem Depot-Kalender): Bei dieser Formulierung rief der Agent das Tool gar nicht auf, hielt 'woechentlich' und '4 Tage im Monat' fuer widerspruechlich und bot 'vier einzelne Sparplaene' an. Der Satz NEVER split / do not ask in der Tool-Description von tool_create_savings_plan sichert das ab. Datum auf einem Ausfuehrungstag (2.); sobald 2027-01-02 naeher als ~1 Monat rueckt, in task + scenarios.json nachziehen."
+        "expected_behavior":  "Ruft tool_create_savings_plan GENAU EINMAL direkt auf (ein Plan, schedule_unit='week', schedule_interval 1 oder leer, amount=40, first_payment_date='{{date:+30d@2}}'). Fragt NICHT vorab, ob alle 7 Tage oder feste Monatstage gemeint sind, schlaegt KEINE vier Einzel-Plaene vor und rechnet keinen Monatsbetrag selbst aus - die DB kennt den Depot-Kalender.",
+        "notes":  "Befund 2026-10-24 (v0.13.1, vor dem Depot-Kalender): Bei dieser Formulierung rief der Agent das Tool gar nicht auf, hielt 'woechentlich' und '4 Tage im Monat' fuer widerspruechlich und bot 'vier einzelne Sparplaene' an. Der Satz NEVER split / do not ask in der Tool-Description von tool_create_savings_plan sichert das ab. Datum per Platzhalter {{date:+30d@2}} auf einem Ausfuehrungstag (2.)."
     },
     {
         "id":  "tc34",

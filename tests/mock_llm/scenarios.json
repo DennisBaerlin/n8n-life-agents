@@ -602,21 +602,21 @@
   {
     "match": "Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Viertagesplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 40, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Viertagesplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 40, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
   },
   {
     "match": "EIMI Wochenplan' an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Wochenplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 25, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Wochenplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 25, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
   },
   {
     "match": "Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Monatsplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 50, "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Monatsplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 50, "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt."
   },

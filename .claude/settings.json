@@ -40,6 +40,15 @@
         ]
       },
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/enforce_lead_start_first.ps1"
+          }
+        ]
+      },
+      {
         "matcher": "ListAgents|SendMessage",
         "hooks": [
           {

@@ -1,25 +1,49 @@
 ﻿#Requires -Version 5.1
-# Traegt eine von der Leitung gestartete Session ein: Sie kann den Owner danach nicht mehr direkt fragen, ihre Fragen laufen ueber
-# die Leitung (Hook .claude/hooks/enforce_sub_session_questions.ps1, wirkt ab dem naechsten Tool-Aufruf dieser Session, sofern der
-# Hook beim Start der Session schon im Stand ihres Checkouts lag).
-# Die Leitung faehrt das direkt nach start_session. Die Liste liegt gitignored im Haupt-Checkout; -Clear leert sie am Sprint-Ende.
+# Traegt Sessions fuer die Leitungs-Hooks ein. Beide Dateien liegen gitignored im Haupt-Checkout; -Clear loescht beide am Sprint-Ende.
+# Die Hooks wirken ab dem naechsten Tool-Aufruf der betroffenen Session, sofern sie beim Start der Session schon im Stand ihres
+# Checkouts lagen.
+#   -Id      Unter-Session (direkt nach start_session): fragt den Owner danach nicht mehr direkt, ihre Fragen laufen ueber die
+#            Leitung (Hook .claude/hooks/enforce_sub_session_questions.ps1). Der erste Eintrag gibt der Leitung Unteragenten frei.
+#   -Lead    die aufrufende Session ist Leitung (Kennung aus CLAUDE_CODE_HOST_SESSION_ID): Bis zur ersten Unter-Session sperrt
+#            .claude/hooks/enforce_lead_start_first.ps1 ihre Unteragenten, weil deren Meldung jeden start_session blockiert.
+#   -NoStarts  Sprint ohne Unter-Sessions: gibt der Leitung Unteragenten frei.
 #
-# Usage:  .\scripts\register_sub_session.ps1 -Id local_...
+# Usage:  .\scripts\register_sub_session.ps1 -Lead
+#         .\scripts\register_sub_session.ps1 -Id local_...
+#         .\scripts\register_sub_session.ps1 -NoStarts
 #         .\scripts\register_sub_session.ps1 -Clear
 param(
     [string]$Id,
+    [switch]$Lead,
+    [switch]$NoStarts,
     [switch]$Clear
 )
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $common = git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir
-$file = Join-Path (Split-Path $common -Parent) '.claude\sub_sessions.txt'
+$dir = Join-Path (Split-Path $common -Parent) '.claude'
+$file = Join-Path $dir 'sub_sessions.txt'
+$leadFile = Join-Path $dir 'lead_session.txt'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 if ($Clear) {
-    if (Test-Path $file) { Remove-Item $file -Force }
-    Write-Host 'Liste der Unter-Sessions geleert.' -ForegroundColor Green
+    foreach ($f in $file, $leadFile) { if (Test-Path $f) { Remove-Item $f -Force } }
+    Write-Host 'Unter-Sessions und Leitung ausgetragen.' -ForegroundColor Green
+    exit 0
+}
+if ($Lead) {
+    $self = $env:CLAUDE_CODE_HOST_SESSION_ID
+    if ($self -notmatch '^local_[0-9a-f-]+$') { throw "Keine Session-Kennung in CLAUDE_CODE_HOST_SESSION_ID ('$self'); nur aus einer Claude-Session aufrufen." }
+    [System.IO.File]::WriteAllLines($leadFile, [string[]]@($self), $Utf8NoBom)
+    Write-Host "Leitung eingetragen: $self" -ForegroundColor Green
+    exit 0
+}
+if ($NoStarts) {
+    if (-not (Test-Path $leadFile)) { throw 'Keine Leitung eingetragen (erst -Lead).' }
+    $lines = @([System.IO.File]::ReadAllLines($leadFile, $Utf8NoBom))
+    if ($lines -notcontains 'no-starts') { [System.IO.File]::WriteAllLines($leadFile, [string[]]($lines + 'no-starts'), $Utf8NoBom) }
+    Write-Host 'Leitung ohne Unter-Sessions: Unteragenten frei.' -ForegroundColor Green
     exit 0
 }
 if ($Id -notmatch '^local_[0-9a-f-]+$') { throw "Unerwartete Session-Kennung '$Id' (erwartet local_...)." }

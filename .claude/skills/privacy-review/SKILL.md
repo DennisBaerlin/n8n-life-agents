@@ -23,7 +23,7 @@ Der Stempel gilt für genau einen Hash. Ein neuer Commit, ein geänderter Commit
 5. **Prüflauf:** Ein Unteragent mit `model: "sonnet"`. Ab etwa 300 KB Text teilst du nach Commits auf mehrere Unteragenten auf. Du liest den Text nicht selbst.
 6. **Auftrag an den Unteragenten, wörtlich:** „Prüfe nur hinzugefügte Zeilen (`+`), Commit- und Tag-Texte, Branch- und Tag-Namen. Melde jede Stelle, die auf das Leben einer echten Person schließen lässt: Name, Ort, Beruf, Familie, Wohnform, Pläne, Beträge, Konten, Versicherer, Herkunft, auch als Umschreibung, Übersetzung oder als ‚echter Fall‘ markiert. Maßstab ist der Steckbrief. Allgemeine Produkt-Funktionen und offensichtlich erfundene Beispiele sind kein Fund. Antworte je Fund mit Commit, Datei, Zeile und Art (ein bis drei Wörter wie „Wohnform“ oder „Betrag“). Keine Einzelheit aus der Stelle: kein Ort, kein Verwandtschaftsgrad, keine Zahl, auch nicht umschrieben. Zitiere nichts.“
 7. **Bewerten:** Echte Funde bereinigst du. Der Text wird allgemein, der Wert wird erfunden, die geprüfte Eigenschaft bleibt. Steckt der Fund in einem früheren, noch nicht öffentlichen Commit, schreibst du diesen Commit neu; ein weiterer Commit obendrauf hilft nicht. Neue echte Werte meldest du der Leitung nur mit Datei und Zeile, damit sie in die lokale Liste kommen. Unklare Fälle entscheidet der Owner über die Leitung. Wird etwas schon öffentlich gefunden: `/privacy-incident`.
-8. **Stempel:** Erst wenn nichts offen ist: `.\scripts\privacy_review_stamp.ps1 <Angaben>`.
+8. **Stempel:** Erst wenn nichts offen ist: `.\scripts\privacy_review_stamp.ps1 <Angaben>`. Stempel und `git push` in getrennten Aufrufen: Die Sperre prüft vor dem Befehl, ein Stempel im selben Aufruf zählt noch nicht.
 
 ## Bericht
 

@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Test der Hooks .claude/hooks/enforce_sub_session_questions.ps1 und enforce_no_push.ps1: fuettert sie mit Tool-Aufrufen wie Claude
+# Test der Hooks .claude/hooks/enforce_sub_session_questions.ps1, enforce_lead_start_first.ps1 und enforce_no_push.ps1: fuettert sie mit Tool-Aufrufen wie Claude
 # Code (JSON auf stdin) und prueft deny/allow. Kein Substrat, keine Kosten, schreibt nur in einen eigenen Temp-Klon des Hook-Ordners.
 # Usage:  .\scripts\dev\lead_guard_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
@@ -9,9 +9,11 @@ $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 $sandbox = Join-Path $env:TEMP ("lead_guard_hook_" + [guid]::NewGuid().ToString('N'))
 $hookDir = Join-Path $sandbox '.claude\hooks'
 New-Item -ItemType Directory -Force $hookDir | Out-Null
-Copy-Item (Join-Path $repo '.claude\hooks\enforce_sub_session_questions.ps1'), (Join-Path $repo '.claude\hooks\enforce_no_push.ps1') $hookDir
+Copy-Item (Join-Path $repo '.claude\hooks\enforce_sub_session_questions.ps1'), (Join-Path $repo '.claude\hooks\enforce_lead_start_first.ps1'), (Join-Path $repo '.claude\hooks\enforce_no_push.ps1') $hookDir
 $askHook = Join-Path $hookDir 'enforce_sub_session_questions.ps1'
 $pushHook = Join-Path $hookDir 'enforce_no_push.ps1'
+$agentHook = Join-Path $hookDir 'enforce_lead_start_first.ps1'
+$leadFile = Join-Path $sandbox '.claude\lead_session.txt'
 $list = Join-Path $sandbox '.claude\sub_sessions.txt'
 $lock = Join-Path $sandbox '.claude\no_push.txt'
 $failed = 0
@@ -51,6 +53,24 @@ Assert-Case 'Unter-Session: leere Knoepfe'     $false $askHook $wrap @{ recap = 
 Assert-Case 'Leitung darf fragen'              $false $askHook 'AskUserQuestion' $q 'local_lead'
 Assert-Case 'Leitung: wrap_up mit ask'         $false $askHook $wrap @{ recap = 'r'; ask = 'Mergen?' } 'local_lead'
 Assert-Case 'Keine Kennung: fail-open'         $false $askHook 'AskUserQuestion' $q ''
+
+$ag = @{ description = 'x'; prompt = 'y' }
+Write-Host 'Unteragenten, ohne Leitungs-Datei:'
+Assert-Case 'Agent frei'                       $false $agentHook 'Agent' $ag 'local_lead'
+Remove-Item $list -Force
+[System.IO.File]::WriteAllText($leadFile, "local_lead`r`n")
+Write-Host 'Unteragenten, Leitung eingetragen, keine Unter-Session:'
+Assert-Case 'Leitung: Agent gesperrt'          $true  $agentHook 'Agent' $ag 'local_lead'
+Assert-Case 'Leitung: alter Name Task'         $true  $agentHook 'Task' $ag 'local_lead'
+Assert-Case 'Andere Session: Agent frei'       $false $agentHook 'Agent' $ag 'local_other'
+Assert-Case 'Keine Kennung: fail-open'         $false $agentHook 'Agent' $ag ''
+[System.IO.File]::WriteAllText($list, "`r`n")
+Assert-Case 'Leere Liste: gesperrt'            $true  $agentHook 'Agent' $ag 'local_lead'
+[System.IO.File]::WriteAllText($list, "local_child`r`n")
+Assert-Case 'Nach erster Unter-Session frei'   $false $agentHook 'Agent' $ag 'local_lead'
+Remove-Item $list -Force
+[System.IO.File]::WriteAllText($leadFile, "local_lead`r`nno-starts`r`n")
+Assert-Case 'Sprint ohne Starts: frei'         $false $agentHook 'Agent' $ag 'local_lead'
 
 Write-Host 'Push, ohne Sperre:'
 Assert-Case 'git push frei'                    $false $pushHook 'Bash' @{ command = 'git push origin main' }

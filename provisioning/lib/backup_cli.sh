@@ -359,8 +359,9 @@ backup_cmd_host_dir() {
   fi
 }
 
-# _bkp_stale_notify — Docker-Verbund: ist die Bezugszeit (backup_ref_epoch) aelter als BACKUP_STALE_S, bekommt der Owner eine
-#   Telegram-Nachricht mit dem festen Grund als Alltagssatz (Ordnername ja, Pfad und Schluessel nie). Nur tagsueber
+# _bkp_stale_notify — Verbund und klassisch: ist die Bezugszeit (backup_ref_epoch) aelter als BACKUP_STALE_S, bekommt der Owner eine
+#   Telegram-Nachricht mit dem festen Grund als Alltagssatz (nie ein Nutzerpfad oder Schluessel; Verbund: Ordnername, klassisch der feste
+#   Systemordner BACKUP_LOCAL_DIR, Texte `notify.lxc.*` ohne Start-App; der Systempfad ist kein Personenbezug). Nur tagsueber
 #   (BACKUP_NOTIFY_HOURS, Haushalts-Zeitzone; der Takt laeuft um 03:30 und danach stuendlich bis zum Erfolg), hoechstens alle
 #   20 h, ohne gewaehlten Ordner nur woechentlich (dort hilft taegliches Erinnern nicht). Sperre LAST_NOTIFY.
 #   Best-effort, immer rc 0.
@@ -385,7 +386,14 @@ _bkp_stale_notify() {
   folder="$(_bkp_host_dir)"; folder="${folder//\\//}"; folder="${folder##*/}"
   if [ "$ok_at" -gt 0 ]; then days=$(( (now - ok_at) / 86400 )); txt="$(backup_text notify.stale_since days "$days")"
   else txt="$(backup_text notify.stale_never)"; fi
-  txt="${txt} $(backup_text "notify.reason.${reason}" folder "${folder:-?}")"$'\n'"$(backup_text notify.guide url "$BACKUP_GUIDE_URL")"
+  if rt_is_compose; then
+    txt="${txt} $(backup_text "notify.reason.${reason}" folder "${folder:-?}")"
+  else
+    # Klassisch gibt es weder Start-App noch gewaehlten Ordner: eigene Texte, der Pfad ist der feste Systemordner.
+    case "$reason" in write|key) ;; *) reason=failed ;; esac
+    txt="${txt} $(backup_text "notify.lxc.${reason}" dir "$BACKUP_LOCAL_DIR")"
+  fi
+  txt="${txt}"$'\n'"$(backup_text notify.guide url "$BACKUP_GUIDE_URL")"
   notify_owner_telegram "$txt" >/dev/null 2>&1 || return 0
   _bkp_state_set LAST_NOTIFY "$now"
   return 0
@@ -410,18 +418,26 @@ _bkp_local_rotate() {
   for f in "${v[@]}"; do [ -n "$f" ] && { rm -f -- "$1/$f" || warn "Alte Sicherung '$f' ließ sich nicht entfernen."; }; done
   return 0
 }
-_bkp_auto_local() {
+_bkp_auto_local_run() {
   local dir="$BACKUP_LOCAL_DIR" key kid
-  if [ "$1" = 1 ] && ! _bkp_auto_due; then return 0; fi
   if ! { mkdir -p "$dir" && chmod 0700 "$dir"; } 2>/dev/null; then
     _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON write
     warn "Sicherungs-Ordner '${dir}' ließ sich nicht anlegen — nächster Versuch in einer Stunde."
     return 0
   fi
-  ( cd "$dir" && backup_cmd_export --notify-telegram ) || { warn "Tägliche Sicherung fehlgeschlagen — nächster Versuch in einer Stunde."; return 0; }
+  if ! ( cd "$dir" && backup_cmd_export --notify-telegram ); then
+    warn "Tägliche Sicherung fehlgeschlagen — nächster Versuch in einer Stunde."
+    return 0
+  fi
   key="$(_bkp_key)"   # ohne den Zeilenumbruch von psql: die ID entsteht aus dem reinen Schluessel (wie im Export)
   kid="$(printf '%s' "$key" | backup_key_id)"
   _bkp_local_rotate "$dir" "$kid"
+}
+# _bkp_auto_local <scheduled 0|1> — ein Versuch; danach in jedem Fall der Chat-Hinweis (prueft selbst, ob die Sicherung veraltet ist).
+_bkp_auto_local() {
+  if [ "$1" = 1 ] && ! _bkp_auto_due; then return 0; fi
+  _bkp_auto_local_run
+  _bkp_resolve_db; _bkp_stale_notify
   return 0
 }
 # backup_cmd_auto [--scheduled] — taegliche Sicherung.

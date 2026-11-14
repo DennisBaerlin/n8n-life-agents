@@ -31,9 +31,9 @@ Write-Host "Betriebsart-Naht (Antwort-Datei, Wrapper systemd/compose, Telegram-P
 Write-Host ("-" * 64)
 
 $root = '/opt/runtime_test'
-$r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
+$r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root/packages/core")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
-foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_runtime', 'mock_runtime'))) {
+foreach ($pair in @(@('provisioning', 'provisioning'), @('packages\core\locales', 'packages/core/locales'),@('tests\mock_runtime', 'mock_runtime'))) {
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:$root/$($pair[1])")
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }

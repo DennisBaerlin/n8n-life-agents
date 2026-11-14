@@ -781,4 +781,33 @@ eq I.nach-letzter-uhrzeit-gesichert-nicht-faellig none "$(due "$_two")"
 env_upsert "$_bs" LAST_OK "$(( $(date +%s) - 3 * 3600 ))"
 eq I.vor-letzter-uhrzeit-gesichert-faellig due "$(due "$_two")"
 
+# Chat-Hinweis im klassischen Betrieb: derselbe Rahmen (2 Tage, nur tagsueber, 20 h Sperre), aber LXC-Texte ohne Start-App.
+lxc_note() {   # lxc_note <grund> [<sprache>] -> Text der Telegram-Nachricht
+  ( _pkg_dir() { printf "%s" "$ROOT/packages"; }; BACKUP_STATE_FILE="$W/lxc.state"; : > "$BACKUP_STATE_FILE"; BACKUP_NOTIFY_HOURS=00-23; BACKUP_LOCAL_DIR=/srv/sicherung; _BACKUP_LANG="${2:-de}"
+    notify_owner_telegram() { printf '%s' "$1" > "$W/lxc.note"; }
+    env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"; env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON "$1"
+    rm -f "$W/lxc.note"; _bkp_stale_notify; cat "$W/lxc.note" 2>/dev/null )
+}
+for g in write key dump encrypt busy; do
+  t="$(lxc_note "$g")"
+  case "$t" in *"Start-App"*|*"Sicherungsordner ändern"*) fail "I.hinweis-lxc-ohne-start-app:$g" "$t" ;; *"auf dem Server"*|*"Auf dem Server"*) pass "I.hinweis-lxc-ohne-start-app:$g" ;; *) fail "I.hinweis-lxc-ohne-start-app:$g" "kein LXC-Text: $t" ;; esac
+done
+case "$(lxc_note write)" in *"/srv/sicherung"*"voll oder schreibgeschützt"*) pass I.hinweis-lxc-schreibfehler-nennt-ordner ;; *) fail I.hinweis-lxc-schreibfehler-nennt-ordner "$(lxc_note write)" ;; esac
+case "$(lxc_note dump)" in *"journalctl -u lifeagents-backup"*"Anleitung:"*) pass I.hinweis-lxc-verweist-auf-protokoll ;; *) fail I.hinweis-lxc-verweist-auf-protokoll "$(lxc_note dump)" ;; esac
+case "$(lxc_note key en)" in *"backup key is missing"*"journalctl"*) pass I.hinweis-lxc-englisch ;; *) fail I.hinweis-lxc-englisch "$(lxc_note key en)" ;; esac
+# Verbund bleibt bei den Start-App-Texten.
+case "$( LIFEAGENTS_RUNTIME=compose lxc_note key )" in *"Start-App"*) pass I.hinweis-verbund-unveraendert ;; *) fail I.hinweis-verbund-unveraendert "$( LIFEAGENTS_RUNTIME=compose lxc_note key )" ;; esac
+# backup auto (klassisch) ruft den Hinweis nach jedem Versuch: Ordner nicht anlegbar, Export gescheitert, Erfolg.
+na() {   # na <ordner> <export-rc> -> "<Hinweis-Pruefungen>/<Rotationen>"
+  ( BACKUP_LOCAL_DIR="$1"; rm -f "$W/na.n" "$W/na.r"; : > "$W/na.n"; : > "$W/na.r"
+    _rc="$2"; _bkp_stale_notify() { echo x >> "$W/na.n"; }; backup_cmd_export() { return "$_rc"; }; _bkp_key() { printf k; }
+    _bkp_local_rotate() { echo r >> "$W/na.r"; }
+    BACKUP_STATE_FILE="$W/na.state"; : > "$BACKUP_STATE_FILE"
+    _bkp_auto_local 0 >/dev/null 2>&1; printf '%s/%s' "$(wc -l < "$W/na.n" | tr -d ' ')" "$(wc -l < "$W/na.r" | tr -d ' ')" )
+}
+eq I.auto-ordner-nicht-anlegbar-hinweis-ohne-rotation 1/0 "$(na /proc/nirgends/x 0)"
+eq I.auto-export-gescheitert-hinweis-ohne-rotation 1/0 "$(na "$W/na.dir" 1)"
+eq I.auto-erfolg-rotiert-und-hinweis 1/1 "$(na "$W/na.dir2" 0)"
+eq I.auto-hinweis-nicht-faellig-kein-aufruf 0 "$( ( BACKUP_LOCAL_DIR="$W/na.dir3"; rm -f "$W/na.n"; _bkp_stale_notify() { echo x >> "$W/na.n"; }; _bkp_auto_due() { return 1; }; _bkp_auto_local 1 >/dev/null 2>&1; cat "$W/na.n" 2>/dev/null | wc -l | tr -d ' ' ) )"
+
 exit "$fails"

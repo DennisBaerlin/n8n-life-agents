@@ -76,7 +76,7 @@ function Build-Harness {
                 else { ($H.inputMap.Keys -join ', ') }
     $targetDesc = if ($dynamic) { "den Workflow mit der id aus $($H.targetIdField)" } else { $H.targetName }
     $waitNote = if ($H.noWait) { "`nwaitForSubWorkflow=false: antwortet sofort nach dem Start; das Skript verfolgt die Ziel-Execution." } else { '' }
-    $gateNote = if ($null -eq $H.inputMap) { "`nnumerische chat_id (per Get-TestChatId) + Gate-Resolve ueber Mock-Telegram; kein test_-Bypass mehr." } else { '' }
+    $gateNote = if ($null -eq $H.inputMap) { "`nnumerische chat_id (der gepairte Fixture-Owner) + Gate-Resolve ueber Mock-Telegram; kein test_-Bypass mehr." } else { '' }
     $sticky = [ordered]@{
         parameters = [ordered]@{
             content = @"

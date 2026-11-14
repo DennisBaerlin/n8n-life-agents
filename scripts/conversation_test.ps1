@@ -9,13 +9,23 @@
 # Fall mehrere Runden fahren, ohne das Gedaechtnis dazwischen zu leeren (einmal je Fall), und der Lauf laeuft auch mit dem
 # echten Modell. Anders als multiturn_test trifft er den Orchestrator, nicht den Harness eines Agenten.
 #
-# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account, hitl: decline|approve (Default decline),
-#         turns: [ { text: "hallo" } | { tap: "<callback_data>" }, optional expect_texts, forbid_texts, expect_agent ] }
+# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|fresh_household,
+#         hitl: decline|approve (Default decline),
+#         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
+#                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
+#                  timeout_s, expect_sql: [ { sql: "SELECT ...", equals: "<Wert>" } ] (nach der Runde, erste Zeile gleich equals),
+#                  stop_on_fail: true (rote Runde bricht den Fall ab, die Folgerunden haetten keinen Boden),
+#                  expected_behavior: Rubric fuer judge_eval (nur -Real, ein Eintrag je Runde im Judge-Bundle) ] }
 # Ein /befehl ist ein Text mit fuehrendem Schraegstrich. Startzustand: alle Onboarding-Abschnitte completed, keine
 # Berater-Plaene, Owner (Fixture-Person) und Mitglied (Fixture-Person Lena) gepairt, Sprache de, Persona neutral.
 # no_cash_account = wie onboarding_done, aber ohne aktives Geldkonto (die Fixture-Konten sind nur waehrend des Falls
 # geschlossen; Wiederherstellung auch nach Abbruch, Mechanik beim Pfad $ClosedAccountsFile unten). Ein Fall, der Konten
 # anlegt, nennt sie mit __E2E__-Praefix, sonst raeumt agent.fn_clear_e2e_data sie nicht weg.
+# fresh_household = Zustand direkt nach der Installation: Werkszustand-Reset (core.fn_reset_user_data), nur der Owner im
+# family-Skelett (gepairt), Haushalt und alle Finanz-Bereiche offen, keine Daten. Danach ist das Substrat leer; der Lauf
+# stellt am Ende per Reset + Fixture-Seed den Fixture-Stand wieder her (auch nach Abbruch). Nur auf dem Test-Substrat.
+# Die Rubrics einer Runde wissen, wie die Karte entschieden wird: bei hitl approve darf sie das Ergebnis nach der Bestaetigung
+# verlangen, bei decline nur die Antwort danach (tests/CLAUDE.md, Flakiness-Absatz zu abgelehnten Karten).
 #
 # Usage:  .\scripts\conversation_test.ps1 [-Id s1,s2] [-Timeout 120] [-OutDir <Ordner>] [-Verbose]       # gratis, Mock-Modell
 #         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt
@@ -84,11 +94,11 @@ $VisibleMethods = @('sendMessage', 'sendSticker', 'sendAnimation', 'sendPhoto', 
 $ClosedAccountsFile = Join-Path $RepoRoot ".local\conversation_closed_accounts.$Container.json"
 
 # SQL mit JSON geht als Datei: docker exec verliert in -c die doppelten Anfuehrungszeichen (psql meldet dann einen Rollen-Namen als Fehler).
-function Invoke-SqlViaFile([string]$Sql) {
+function Invoke-SqlViaFile([string]$Sql, [string[]]$PsqlArgs = @('-q')) {
     $tmp = Join-Path $RepoRoot ".local\conversation_sql.$Container.sql"
     [System.IO.Directory]::CreateDirectory((Split-Path $tmp)) | Out-Null
     [System.IO.File]::WriteAllText($tmp, $Sql, $Utf8NoBom)
-    try { return Invoke-TestN8nPsqlFile -Container $Container -HostFile $tmp -PsqlArgs @('-q') }
+    try { return Invoke-TestN8nPsqlFile -Container $Container -HostFile $tmp -PsqlArgs $PsqlArgs }
     finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 }
 
@@ -116,9 +126,48 @@ function Close-CashAccounts {
     if ((@($left.Output) -join '').Trim() -ne '0') { throw "Nach dem Schliessen gibt es noch aktive Geldkonten: $($left.Output -join ' ')" }
 }
 
+$script:FreshRan = $false
+
+# SQL-Einzelwert: erste nicht leere Ausgabezeile.
+function Get-SqlValue([string]$Sql) {
+    $q = Invoke-SqlViaFile $Sql @('-tA')
+    if ($q.Code -ne 0) { throw "SQL fehlgeschlagen: $(($q.Output | Where-Object { $_ }) -join ' ')" }
+    return "$(@($q.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1))"
+}
+
+# fresh_household: Werkszustand wie nach der Installation. Die Vorbedingungen werden geprueft, weil ein Fall, der auf einem
+# nicht leeren Haushalt startet, einen anderen Ablauf prueft als er behauptet (Setup-Fehler statt stiller Falsch-Gruen).
+function Reset-ToFreshHousehold {
+    Clear-HitlPending -Container $Container
+    Clear-ThinkingLease -Container $Container
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT core.fn_reset_user_data('RESET');")
+    if ($r.Code -ne 0) { throw "Werkszustand-Reset fehlgeschlagen: $(($r.Output | Where-Object { $_ }) -join ' ')" }
+    $script:FreshRan = $true
+}
+function Assert-FreshHousehold {
+    # Paketfrei: jedes <schema>.onboarding_state (Konvention contract §3.2) muss Zeilen haben und darf keinen erledigten Bereich tragen.
+    # Dass die Paket-Daten selbst leer sind (z. B. keine Konten), prueft der Fall in seiner ersten Runde per expect_sql.
+    $schemas = @((Get-SqlValue "SELECT string_agg(table_schema, ',' ORDER BY table_schema) FROM information_schema.tables WHERE table_name = 'onboarding_state' AND table_schema <> 'agent';") -split ',' | Where-Object { $_ })
+    if ($schemas.Count -eq 0) { throw 'fresh_household: keine <paket>.onboarding_state-Tabelle gefunden (Substrat ohne Pakete?).' }
+    $checks = @(foreach ($s in $schemas) {
+        @{ sql = "SELECT (count(*) > 0)::int FROM $s.onboarding_state;"; want = '1'; what = "Bereiche von $s (Zeilen vorhanden)" }
+        @{ sql = "SELECT count(*) FROM $s.onboarding_state WHERE status <> 'unknown';"; want = '0'; what = "erledigte Bereiche von $s" }
+    })
+    $checks += @(
+        @{ sql = "SELECT count(*) FROM agent.guide_onboarding_state WHERE status <> 'unknown';"; want = '0'; what = 'erledigter Haushalts-Bereich' },
+        @{ sql = "SELECT count(*) FROM agent.advisor_plans;"; want = '0'; what = 'Berater-Plaene' },
+        @{ sql = "SELECT count(*) FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = 'family' AND (p->>'telegram_user_id') = '${script:TestOwnerTelegramUid}';"; want = '1'; what = 'gepairter Owner' }
+    )
+    foreach ($c in $checks) {
+        $got = Get-SqlValue $c.sql
+        if ($got -ne $c.want) { throw "fresh_household: $($c.what) = '$got', erwartet '$($c.want)' (Reset hat den Zustand nicht hergestellt)." }
+    }
+}
+
 function Initialize-ConversationState($Tc) {
     Restore-ClosedAccounts   # Rest eines frueheren Falls/Abbruchs, bevor der Fixture-Seed laeuft
-    Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
+    $fresh = ("$($Tc.start)" -eq 'fresh_household')
+    if ($fresh) { Reset-ToFreshHousehold } else { Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot }
     $pairSql = @"
 UPDATE agent.core_contexts
 SET metadata = jsonb_set(metadata, '{facts,persons}',
@@ -131,7 +180,12 @@ WHERE name = 'family';
 "@
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
     if ($r.Code -ne 0) { throw "Pairing (Container-DB) fehlgeschlagen: $($r.Output -join ' ')" }
-    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account)." }
+    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account', 'fresh_household')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account|fresh_household)." }
+    if ($fresh) {
+        Clear-TestNextStepOffers -Container $Container
+        Assert-FreshHousehold
+        return
+    }
     Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
     Set-TestPackageOnboarding -Container $Container -Sections $null
     Clear-TestNextStepOffers -Container $Container   # Gruss-/Lebenszeichen-Knopf je Fall frisch (fruehere Suiten verbrauchen den Tagesmerker)
@@ -179,6 +233,27 @@ function Get-OutputText($Outs) {
     (@(foreach ($o in $Outs) { $o.text; foreach ($b in $o.buttons) { $b.label } }) | Where-Object { $_ }) -join "`n"
 }
 
+# Ein Dokument (message.document + Bildunterschrift) an den echten Eingang, wie Telegram es bei einem angehaengten Auszug schickt.
+function Send-TelegramDocIngress([long]$ChatId, [long]$FromUid, [string]$FileId, [string]$Caption, [string]$FileName, [string]$MimeType) {
+    $msg = @{
+        message_id = [int](Get-Random -Minimum 1000 -Maximum 99999)
+        date       = [long][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        from       = @{ id = $FromUid; is_bot = $false; first_name = 'IngressTest' }
+        chat       = @{ id = $ChatId; type = 'private' }
+        document   = @{ file_id = $FileId; file_unique_id = "u$FileId"; file_name = $FileName; mime_type = $MimeType }
+    }
+    if ($Caption) { $msg['caption'] = $Caption }
+    $body = @{ update_id = New-TestUpdateId; message = $msg } | ConvertTo-Json -Depth 8 -Compress
+    try {
+        Invoke-RestMethod -Uri $ingress.Url -Method Post -TimeoutSec 8 -Headers @{ 'X-Telegram-Bot-Api-Secret-Token' = $ingress.Secret } `
+            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+    } catch {
+        if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) { throw }
+    }
+}
+
+function Test-HasField($Obj, [string]$Name) { return ($Obj.PSObject.Properties.Name -contains $Name) -and $null -ne $Obj.$Name -and "$($Obj.$Name)" -ne '' }
+
 function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
     Clear-MockTelegramRequests -Container $Container
     Clear-HitlPending -Container $Container
@@ -187,15 +262,23 @@ function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
     $cursor = Get-LlmUsageCursor -Container $Container
     $t0 = Get-Date
     $kind = 'text'; $input = ''
-    if ($Turn.PSObject.Properties['tap'] -and $Turn.tap) {
+    if (Test-HasField $Turn 'tap') {
         $kind = 'tap'; $input = "$($Turn.tap)"
         Send-TelegramCallbackIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $Uid -FromUid $Uid -Data $input
-    } elseif ($Turn.PSObject.Properties['text'] -and $Turn.text) {
+    } elseif (Test-HasField $Turn 'doc') {
+        $kind = 'doc'; $input = "$($Turn.doc)"
+        $fname = if (Test-HasField $Turn 'file_name') { "$($Turn.file_name)" } else { 'auszug.pdf' }
+        $mime  = if (Test-HasField $Turn 'mime_type') { "$($Turn.mime_type)" } else { 'application/pdf' }
+        $cap   = if (Test-HasField $Turn 'caption') { "$($Turn.caption)" } else { '' }
+        Send-TelegramDocIngress -ChatId $Uid -FromUid $Uid -FileId $input -Caption $cap -FileName $fname -MimeType $mime
+        if ($cap) { $input = "$input | $cap" }
+    } elseif (Test-HasField $Turn 'text') {
         $input = "$($Turn.text)"
         Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $Uid -FromUid $Uid -Text $input | Out-Null
-    } else { throw "Runde $N von $($Tc.id): weder text noch tap." }
-    $approve = ("$($Tc.hitl)" -eq 'approve')
-    $ex = Wait-ExecResolvingGates -WfId $OrchWfId -AfterId $base -Approve $approve -Container $Container -BridgeUrl $N8nUrl -ApiKey $ApiKey -TimeoutSec $Timeout
+    } else { throw "Runde $N von $($Tc.id): weder text noch tap noch doc." }
+    $approve = if (Test-HasField $Turn 'hitl') { "$($Turn.hitl)" -eq 'approve' } else { "$($Tc.hitl)" -eq 'approve' }
+    $roundTimeout = if (Test-HasField $Turn 'timeout_s') { [int]$Turn.timeout_s } else { $Timeout }
+    $ex = Wait-ExecResolvingGates -WfId $OrchWfId -AfterId $base -Approve $approve -Container $Container -BridgeUrl $N8nUrl -ApiKey $ApiKey -TimeoutSec $roundTimeout
     Start-Sleep -Milliseconds 1500   # Relay-/Reaktions-Sends und das Gateway-Journal brauchen einen Atemzug nach dem Lauf-Ende
     $secs = [Math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
 
@@ -218,12 +301,28 @@ function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
     if ($Turn.PSObject.Properties['expect_agent'] -and $Turn.expect_agent -and $agents -notcontains "$($Turn.expect_agent)") {
         $fails += "Agent '$($Turn.expect_agent)' nicht gerufen (gerufen: $($agents -join ', '))"
     }
+    # expect_node: ein fester Pfad (Knopf-Arm, Befehl) hat keinen Route-Agenten; dessen Orchestrator-Knoten steht im runData.
+    if ((Test-HasField $Turn 'expect_node') -and $nodes -notcontains "$($Turn.expect_node)") {
+        $fails += "Knoten '$($Turn.expect_node)' lief nicht"
+    }
+    # expect_sql: Zustand nach der Runde (Karte entschieden, Write gelaufen). Ein Fehler der Abfrage selbst ist ein roter Fall, kein Abbruch.
+    $sqlChecks = @()
+    foreach ($chk in @($Turn.expect_sql)) {
+        if (-not $chk) { continue }
+        $got = ''
+        try { $got = Get-SqlValue "$($chk.sql)" } catch { $got = "(Abfrage-Fehler: $($_.Exception.Message))" }
+        $okSql = ($got -eq "$($chk.equals)")
+        $sqlChecks += [pscustomobject]@{ sql = "$($chk.sql)"; equals = "$($chk.equals)"; got = $got; ok = $okSql }
+        if (-not $okSql) { $fails += "DB-Pruefung: erwartet '$($chk.equals)', gefunden '$got' ($($chk.sql))" }
+    }
+    $rubric = if (Test-HasField $Turn 'expected_behavior') { "$($Turn.expected_behavior)" } else { '' }
+    $stopOnFail = (Test-HasField $Turn 'stop_on_fail') -and [bool]$Turn.stop_on_fail
     return [pscustomobject]@{
         n = $N; kind = $kind; input = $input; status = $status; seconds = $secs; execution = $(if ($ex) { "$($ex.id)" } else { '' })
         agents = $agents; cards = @($conv.outputs | Where-Object { $_.card }).Count; card_decision = $(if ($approve) { 'angenommen' } else { 'abgelehnt' })
         outputs = $conv.outputs; other_calls = $conv.other
         usage = [pscustomobject]@{ requests = $usage.Count; cost_usd = [Math]::Round($cost, 4); unpriced = $unpriced; models = $models }
-        nodes = $nodes; failures = $fails
+        nodes = $nodes; failures = $fails; sql_checks = $sqlChecks; rubric = $rubric; stop_on_fail = $stopOnFail
     }
 }
 
@@ -231,6 +330,7 @@ $runStart = Get-Date
 $runCursor = Get-LlmUsageCursor -Container $Container
 $failed = 0
 $results = @()
+$judgeBundle = @()
 $script:runCost = 0.0; $script:stopRun = $false
 
 Write-Host ""
@@ -272,7 +372,21 @@ foreach ($tc in $cases) {
         if ($rd.failures.Count) { Write-Host $line -ForegroundColor Red; foreach ($f in $rd.failures) { Write-Host "      - $f" -ForegroundColor Red }; $failed += $rd.failures.Count }
         else { Write-Host $line -ForegroundColor Green }
         if ($Verbose) { foreach ($o in $rd.outputs) { Write-Host "      > [$($o.method)] $($o.text)" -ForegroundColor DarkGray } }
+        # Rubric der Runde -> Judge-Bundle (nur das echte Modell; die gescripteten Mock-Antworten sagen nichts ueber echte Texte).
+        if ($Real -and $rd.rubric) {
+            $agentShown = if ($rd.agents.Count) { $rd.agents -join '+' } else { '(kein)' }
+            $judgeBundle += [ordered]@{
+                id = ("{0}-r{1:D2}" -f $tc.id, $rd.n); name = "$($tc.name) / Runde $($rd.n)"; task = "$($rd.input)"
+                expected_behavior = $rd.rubric; expected_tool = ''
+                det_pass = ($rd.failures.Count -eq 0); actual_tool = $agentShown; actual_tool_input = ''
+                read_tools = ''; specialist_output = ''; actual_output = (Get-OutputText $rd.outputs)
+            }
+        }
         if ($abortCase) { break }
+        if ($rd.stop_on_fail -and $rd.failures.Count) {
+            Write-Host "    Fall abgebrochen: Runde $n ist rot und als stop_on_fail markiert (die Folgerunden haetten keinen Boden)." -ForegroundColor Red
+            break
+        }
     }
     $results += [pscustomobject]$res
     if ($script:stopRun) { break }
@@ -280,6 +394,14 @@ foreach ($tc in $cases) {
 } finally {
     # Auch bei Ctrl-C oder Fehler: geschlossene Geldkonten wieder oeffnen, __E2E__-Konten wegraeumen.
     try { Restore-ClosedAccounts } catch { Write-Host "    [FAIL] Wiederherstellung: $($_.Exception.Message)" -ForegroundColor Red; $failed++ }
+    # fresh_household hat das Substrat geleert (und der Fall Daten angelegt, die nicht alle __E2E__ heissen): erst leeren, dann den
+    # Fixture-Stand neu saeen, damit die naechste Suite auf demselben Substrat nicht ohne Fixtures startet.
+    if ($script:FreshRan) {
+        try {
+            Reset-ToFreshHousehold
+            Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
+        } catch { Write-Host "    [FAIL] Fixture-Stand nach fresh_household nicht wiederhergestellt: $($_.Exception.Message) (Abhilfe: bootstrap_test_n8n.ps1 -Reset)" -ForegroundColor Red; $failed++ }
+    }
 }
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
 Clear-HitlPending -Container $Container
@@ -301,7 +423,7 @@ foreach ($r in $results) {
     if ($r.setup_error) { [void]$md.AppendLine(""); [void]$md.AppendLine("**Setup-Fehler:** $($r.setup_error)") }
     foreach ($rd in $r.rounds) {
         $who = if ($r.sender -eq 'member') { 'Mitglied' } else { 'Owner' }
-        $what = if ($rd.kind -eq 'tap') { "tippt Knopf ``$($rd.input)``" } else { "schreibt: `"$($rd.input)`"" }
+        $what = if ($rd.kind -eq 'tap') { "tippt Knopf ``$($rd.input)``" } elseif ($rd.kind -eq 'doc') { "schickt Dokument ``$($rd.input)``" } else { "schreibt: `"$($rd.input)`"" }
         [void]$md.AppendLine("")
         [void]$md.AppendLine("### Runde $($rd.n) - $who $what")
         $ag = if ($rd.agents.Count) { $rd.agents -join ' + ' } else { '(Router antwortet selbst / fester Pfad)' }
@@ -317,6 +439,7 @@ foreach ($r in $results) {
             if (@($o.buttons).Count) { [void]$md.AppendLine("Knoepfe: " + ((@($o.buttons) | ForEach-Object { "[$($_.label)]" }) -join ' ')) }
         }
         if ($rd.other_calls) { [void]$md.AppendLine(""); [void]$md.AppendLine("*($($rd.other_calls) weitere technische Telegram-Aufrufe)*") }
+        foreach ($c in @($rd.sql_checks)) { [void]$md.AppendLine(""); [void]$md.AppendLine("DB-Pruefung $(if ($c.ok) { 'ok' } else { 'ROT' }): ``$($c.sql)`` = '$($c.got)' (erwartet '$($c.equals)')") }
         foreach ($f in $rd.failures) { [void]$md.AppendLine(""); [void]$md.AppendLine("**Pruefung:** $f") }
     }
 }
@@ -329,6 +452,8 @@ $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$($cases.Count) Fall/Faelle gespielt, $failed Fehler." -ForegroundColor $color
 Write-Host "Aufzeichnung: $base.md" -ForegroundColor Cyan
 Write-Host "              $base.json" -ForegroundColor Cyan
+# Ohne Rubric-Runde bleibt ein vorhandenes Bundle (z. B. von n8n_test) unangetastet; mit -Real ersetzt es dieser Lauf.
+if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot }
 Write-LlmCostReport -Usage $allUsage -Label "conversation_test-$mode" -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

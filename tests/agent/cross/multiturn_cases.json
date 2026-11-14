@@ -2,19 +2,17 @@
   {
     "id": "mt01",
     "name": "HITL-Korrektur-Loop: ablehnen -> korrigieren -> neu planen",
-    "chat_id": "test_mt01",
     "turns": [
       "Lege ein neues Eichenbank Tagesgeldkonto an, Inhaber bin ich, ohne Zinsen.",
       "Den Namen bitte aendern: nenne es lieber 'Birkenbank Tagesgeld' statt Eichenbank."
     ],
     "expected_tool": "tool_create_account",
     "expected_tool_args": { "name": "Birkenbank Tagesgeld" },
-    "notes": "M9 Korrektur-Loop: Turn 1 wird unter dem Routing-Bypass abgelehnt (cancelled). Turn 2 korrigiert NUR den Namen -> der Agent muss aus dem Chat-Memory wissen, dass es weiterhin ein Cash-Konto fuer Erika anlegt, und mit dem KORRIGIERTEN Namen 'Birkenbank Tagesgeld' erneut tool_create_account aufrufen (nicht den alten Eichenbank-Plan). Prueft Memory + Re-Planung ueber Turns."
+    "notes": "M9 Korrektur-Loop: Turn 1: die Karte wird ueber das abgefangene Mock-Telegram abgelehnt (cancelled). Turn 2 korrigiert NUR den Namen -> der Agent muss aus dem Chat-Memory wissen, dass es weiterhin ein Cash-Konto fuer Erika anlegt, und mit dem KORRIGIERTEN Namen 'Birkenbank Tagesgeld' erneut tool_create_account aufrufen (nicht den alten Eichenbank-Plan). Prueft Memory + Re-Planung ueber Turns."
   },
   {
     "id": "mt02",
     "name": "Memory: Pronomen-Aufloesung ueber Turns ('dort')",
-    "chat_id": "test_mt02",
     "turns": [
       "Wie hoch ist aktuell mein Saldo beim Lindenbank Giro?",
       "Buche dort bitte eine Ausgabe von 25 Euro fuer Kaffee, Datum heute."
@@ -26,7 +24,6 @@
   {
     "id": "mt03",
     "name": "Neue Export-Datei nach frueherer Ablehnung: Marker -> Tool-Aufruf, keine Bank aus dem Verlauf",
-    "chat_id": "test_mt03",
     "turns": [
       "Hier ist mein Export vom Konto Bondora Go&Grow [attachment file_id=mock_xlsname_ole type=document ext=xls]",
       "Ich habe die Datei neu exportiert, bitte nochmal versuchen. [attachment file_id=mock_xlsname_book type=document ext=xls]"
@@ -38,7 +35,6 @@
   {
       "id":  "mt04",
       "name":  "Drei Kontoauszuege in drei Nachrichten: der Stapel waechst, nur Neues oder Geaendertes geht raus",
-      "chat_id":  "test_mt04",
       "setup_sql":  "SELECT pg_temp.ok('__E2E__ RZ Birke', finance.fn_create_account(jsonb_build_object('name','__E2E__ RZ Birke','account_type','cash','currency','EUR','account_number','DE02120300000000202051','opening_balance',889.03,'opening_balance_date','2000-06-30'))); DELETE FROM finance.import_staging WHERE origin = 'recurring_suggestion';",
       "turns":  [
                     "Hier ist mein Auszug April von der Birkenbank [attachment file_id=mock_photo_136a type=document]",

@@ -4,6 +4,9 @@
 # Turns) -> prueft Kontext-Erhalt (Pronomen-Aufloesung) und den HITL-Korrektur-Loop (ablehnen ->
 # korrigieren -> neu planen). Der letzte Turn wird gegen expected_tool (+ optional expected_tool_args)
 # deterministisch geprueft.
+# Absender = der gepairte Fixture-Owner (wie n8n_test/orch_test): eine fremde Zufalls-chat_id gehoert keiner Person,
+# dann lehnen Haushalts-Schreibwege ab und der Agent fragt "wer schreibt?". Die Isolation zwischen den Cases haelt das
+# Leeren des Chat-Gedaechtnisses je Case; die Fixture-Konten (Lindenbank Giro ...) kommen aus Initialize-AgentTestState.
 #
 # Jeder Turn feuert am Agent-Harness (finance-test); ruft ein Turn ein Write-Tool, wird das echte
 # Send-and-Wait-Gate ueber das abgefangene Mock-Telegram declined (= die "ablehnen"-Haelfte des
@@ -42,6 +45,9 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
+# Fixtures + Owner-Pairing + abgeschlossenes Onboarding (dieselbe Vorbereitung wie n8n_test): ohne sie kennt der Agent weder die
+# Konten der Faelle noch den Absender.
+Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
 
 $wfList    = Invoke-N8nGet 'workflows?limit=200'
 $financeWf = $wfList.data | Where-Object { $_.name -eq 'agent.finance' } | Select-Object -First 1
@@ -82,7 +88,7 @@ foreach ($tc in $cases) {
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)  ($($tc.turns.Count) Turns)"
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
-    [long]$chatId = Get-TestChatId -Seed $tc.id
+    [long]$chatId = $TestOwnerTelegramUid
     # Einmal je Case leeren: Turns innerhalb des Cases bauen bewusst aufeinander auf.
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     # Voraussetzungen ueber Invoke-TestCaseSetup; vorher alte __E2E__-Reste weg
@@ -121,6 +127,10 @@ foreach ($tc in $cases) {
 }
 
 try { (Invoke-N8nGet "executions?workflowId=$FinanceWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
+# Die __E2E__-Konten eines setup_sql-Cases (mt04) nicht fuer die naechste Suite stehen lassen.
+if (@($cases | Where-Object { $_.PSObject.Properties['setup_sql'] -and $_.setup_sql }).Count -gt 0) {
+    [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
+}
 
 Write-Host ""
 Write-Host ("-" * 64)

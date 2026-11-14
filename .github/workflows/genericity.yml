@@ -479,7 +479,7 @@ jobs:
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
-          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down --remove-orphans || true
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down -v --remove-orphans || true
           docker rm -fv ci-port80 >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
@@ -680,7 +680,7 @@ jobs:
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
-          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down -v --remove-orphans || true
           docker rm -fv "$LA_PROJECT-swap" >/dev/null 2>&1 || true
           docker volume rm "${LA_PROJECT}_fremd" "${LA_PROJECT}_shared" "${LA_PROJECT}_gw_code" "${LA_PROJECT}_n8n_patches" >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.

@@ -374,15 +374,13 @@
   },
   {
     "id": "es32",
-    "name": "cancel_case: unbekannte Fall-Nummer -> saubere Ablehnung statt Stille",
+    "name": "cancel_case: unbekannte Fall-Nummer -> klare Absage, kein Fall erfunden",
     "task": "Brich bitte den Fall mit der Nummer 99999 ab. Die Nummer stimmt sicher, ich habe sie gerade aus der Fallübersicht kopiert.",
     "chat_id": "test_es32",
     "timeout_s": 300,
-    "expected_tool": "tool_cancel_case",
-    "expected_tool_args": {
-      "case_id": "99999"
-    },
-    "expected_behavior": "The advisor calls tool_cancel_case with case_id 99999. The case does not exist: the tool answers with a clean rejection (ok:false, not an open case) as data - NOT a technical failure. The advisor tells the user briefly that there is no open case with that number, invents no case and opens none.",
-    "notes": "Werkzeug-Fehler 2026-11-15: ein blosses SELECT vor dem Probelauf lieferte bei unbekannter case_id kein Item (Antwort 'did not return a response'). alwaysOutputData am Read-Knoten (Muster New-RequiredRowGate). Dieser Fall belegt den Fehlerpfad; der Golden es25 nutzt einen echten offenen Fall aus setup_sql."
+    "expected_tool": null,
+    "tolerated_tools": ["tool_cancel_case"],
+    "expected_behavior": "No case with that number exists. The advisor tells the user briefly and clearly that there is no open case with that number (whether it looked it up read-only or tried tool_cancel_case and got the clean rejection as data, both are fine), cancels nothing, invents no case and opens none. No other write tool is called.",
+    "notes": "Werkzeug-Fehler 2026-11-15: ein blosses SELECT vor dem Probelauf lieferte bei unbekannter case_id kein Item (Antwort did not return a response); Fix alwaysOutputData am Read-Knoten (New-RequiredRowGate). Der echte Agent liest oft erst und lehnt dann ab, der Werkzeug-Aufruf ist per Routing nicht erzwingbar; darum beobachtbares Verhalten. Das Mock-Szenario (Match: Fall mit der Nummer 99999) ruft tool_cancel_case weiterhin auf (tolerated). Der Golden es25 nutzt einen echten offenen Fall aus setup_sql."
   }
 ]

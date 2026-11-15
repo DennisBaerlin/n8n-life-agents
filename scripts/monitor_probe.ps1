@@ -21,6 +21,7 @@ Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
 }
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\paid_guard.ps1"
+. "$PSScriptRoot\lib\http_json.ps1"
 if ([string]::IsNullOrEmpty($ANTHROPIC_API_KEY)) { throw 'ANTHROPIC_API_KEY fehlt in .env.' }
 $conn = Get-TestN8nConnection; $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Container = $conn.Container
 $state = Get-TestN8nState
@@ -101,8 +102,8 @@ function Invoke-NewsCase($Case) {
     if ($Case.structured) { $body.output_config = @{ format = @{ type = 'json_schema'; schema = $Case.schema } } }
     $json = $body | ConvertTo-Json -Depth 30
     try {
-        $r = Invoke-RestMethod -Uri 'https://api.anthropic.com/v1/messages' -Method Post -TimeoutSec $Timeout -ContentType 'application/json; charset=utf-8' `
-            -Headers @{ 'x-api-key' = $ANTHROPIC_API_KEY; 'anthropic-version' = '2023-06-01' } -Body ([Text.Encoding]::UTF8.GetBytes($json))
+        $r = Invoke-JsonPostUtf8 -Uri 'https://api.anthropic.com/v1/messages' -TimeoutSec $Timeout -Body $json `
+            -Headers @{ 'x-api-key' = $ANTHROPIC_API_KEY; 'anthropic-version' = '2023-06-01' }
     } catch {
         $msg = $_.ErrorDetails.Message; if (-not $msg) { $msg = $_.Exception.Message }
         [IO.File]::WriteAllText((Join-Path $RunDir "$($Case.id).error.txt"), [string]$msg, $Utf8NoBom)

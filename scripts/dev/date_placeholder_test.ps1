@@ -25,6 +25,8 @@ foreach ($bad in @($vec.invalid)) {
     $threw = $false; try { [void](Resolve-DatePlaceholder -Text $bad -Today (ConvertTo-Day '2026-11-15')) } catch { $threw = $true }
     Assert-That $threw "wirft bei $bad"
 }
+foreach ($t in @($vec.lint.ok)) { Assert-That (@(Get-DatePlaceholderError $t).Count -eq 0) "Lint ok: $t" }
+foreach ($t in @($vec.lint.bad)) { Assert-That (@(Get-DatePlaceholderError $t).Count -gt 0) "Lint meldet: $t" }
 $obj = '{"task":"ab {{date:0d}}","expected_tool_args":{"first":"{{date:+1d}}","amount":50,"list":["{{date:+2d}}"]},"n":null}' | ConvertFrom-Json
 $res = Resolve-DatePlaceholderDeep -Obj $obj -Today (ConvertTo-Day '2026-11-15')
 Assert-That ($res.task -eq 'ab 2026-11-15' -and $res.expected_tool_args.first -eq '2026-11-16' -and $res.expected_tool_args.amount -eq 50 -and $res.expected_tool_args.list[0] -eq '2026-11-17') 'Deep: ganzer Testfall (task, expected_tool_args, Liste, Zahl bleibt)'

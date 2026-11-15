@@ -36,6 +36,22 @@ function Get-DatePlaceholderValue {
     return $d.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
 }
 
+# Get-DatePlaceholderError <text> -> Liste von Fehlertexten (leer = in Ordnung): ein Platzhalter mit ungueltiger Grammatik oder ein
+# Beinahe-Platzhalter ({{ date:..}}, {{Date:..}}, {date:..}, fehlendes Schliessen), der sonst still als Text durchginge. Fuer mock_lint (C4).
+function Get-DatePlaceholderError {
+    param([AllowNull()][AllowEmptyString()][string]$Text)
+    $errs = @()
+    if ([string]::IsNullOrEmpty($Text)) { return $errs }
+    $strict = [regex]::Matches($Text, '\{\{date:[^}]*\}\}')
+    foreach ($m in $strict) {
+        try { [void](Get-DatePlaceholderValue -Expr $m.Value.Substring(7, $m.Value.Length - 9) -Today ([datetime]'2026-01-01')) }
+        catch { $errs += $_.Exception.Message }
+    }
+    $loose = [regex]::Matches($Text, '(?i)\{\{\s*date|(?<!\{)\{date:').Count
+    if ($loose -ne $strict.Count) { $errs += "Beinahe-Platzhalter: $($loose - $strict.Count) Vorkommen von {{date.. weichen von der Schreibweise {{date:<offset>[@<tag>]}} ab (Leerzeichen, Gross-/Kleinschreibung, einfache Klammer oder fehlendes }})." }
+    return $errs
+}
+
 # Resolve-DatePlaceholder <text> [-Today] -> Text mit aufgeloesten Platzhaltern (ohne Platzhalter unveraendert).
 function Resolve-DatePlaceholder {
     param([AllowNull()][AllowEmptyString()][string]$Text, [datetime]$Today = $script:DatePlaceholderToday)

@@ -1,70 +1,70 @@
 {
-    "_comment":  "Ratchet fuer contract_lint Check 40 (LESE-KNOTEN OHNE ZEILE): Werkzeug-Lese-Knoten mit WHERE ohne alwaysOutputData. Die Liste darf nur schrumpfen; ein Eintrag ohne Treffer ist ein Fehler.",
+    "_comment":  "Ratchet fuer contract_lint Check 40 (LESE-KNOTEN OHNE ZEILE): Werkzeug-Lese-Knoten mit WHERE ohne alwaysOutputData. Jeder Eintrag ist einzeln belegt: der Knoten kann keine 0 Zeilen liefern, weil ein Knoten davor das schon abfaengt (Resolve mit hit_count=1-If, Probelauf, Pre-Check) oder die Abfrage immer eine Zeile ergibt. Kommt ein neuer Knoten ohne solchen Beleg dazu -> New-RequiredRowGate. Die Liste darf nur schrumpfen; ein Eintrag ohne Treffer ist ein Fehler.",
     "allow":  [
                   {
                       "workflow":  "agent.guide.tool_invite_household_member",
                       "node":  "Load bot username",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: laeuft erst nach dem Write; agent.fn_check_household_invite lehnt vor der Karte ab, wenn core.fn_app_bot_username() NULL ist (auch bei fehlender Config-Zeile)."
                   },
                   {
                       "workflow":  "agent.estate.tool_set_case_task",
                       "node":  "Read task",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: der Probelauf estate.fn_set_case_task lehnt eine unbekannte case_task_id ab (Dry run rejected), Read task laeuft nur nach ok:true."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_savings_goal",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Goal (fn_resolve_savings_goal, immer genau eine Zeile) + If hit_count=1; 0 Treffer -> Goal ambiguous (ToolError). Gelesen wird nur die eben aufgeloeste id."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_real_estate",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Real Estate (fn_resolve_real_estate, immer genau eine Zeile) + If hit_count=1; 0 Treffer -> Real estate ambiguous (ToolError). Gelesen wird nur die eben aufgeloeste id."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_insurance",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Insurance (fn_resolve_insurance, immer genau eine Zeile) + If hit_count=1; 0 Treffer -> Insurance ambiguous (ToolError). Der Recurring-Teil ist LEFT JOIN."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_pension",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Pension (fn_resolve_pension, immer genau eine Zeile) + If hit_count=1; 0 Treffer -> Pension ambiguous (ToolError). Gelesen wird nur die eben aufgeloeste id."
                   },
                   {
                       "workflow":  "agent.finance.tool_close_account",
                       "node":  "Read Current Balance",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Account (fn_resolve_account, immer genau eine Zeile) + If hit_count=1; die Saldo-Zeile legt trg_finance_account_balance_init bei jedem Konto-INSERT an."
                   },
                   {
                       "workflow":  "agent.finance.tool_create_savings_plan",
                       "node":  "Read Settlement",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Immer eine Zeile: FROM finance.fn_resolve_account(...) liefert genau eine Zeile; das WHERE steht nur in der Skalar-Unterabfrage fuer settlement_name."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_loan",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Loan (count(*)-Aggregat, immer genau eine Zeile) + If hit_count=1; 0 Treffer -> Loan ambiguous (ToolError). Gelesen wird nur die eben aufgeloeste id."
                   },
                   {
                       "workflow":  "agent.finance.tool_book_loan_payment",
                       "node":  "Read Loan Overview",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Loan (fn_resolve_loan, immer genau eine Zeile) + If hit_count=1; loan_overview ist FROM finance.loans mit nur LEFT JOINs, also eine Zeile je Kredit."
                   },
                   {
                       "workflow":  "agent.finance.tool_set_recurring_payment",
                       "node":  "Read Current",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Payment (fn_resolve_recurring_payment, immer genau eine Zeile) + If hit_count=1; account_id ist NOT NULL-FK, der JOIN auf accounts trifft also immer."
                   },
                   {
                       "workflow":  "agent.finance.tool_book_dividend",
                       "node":  "Get Settlement Account",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Depot (fn_resolve_account, immer genau eine Zeile) + If hit_count=1; gelesen wird das eben aufgeloeste Depot, das Verrechnungskonto ist LEFT JOIN."
                   },
                   {
                       "workflow":  "agent.finance.tool_book_stock_buy",
                       "node":  "Get Settlement Account",
-                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                      "reason":  "Abgefangen davor: Resolve Depot (fn_resolve_account, immer genau eine Zeile) + If hit_count=1; gelesen wird das eben aufgeloeste Depot, das Verrechnungskonto ist LEFT JOIN."
                   }
               ]
 }

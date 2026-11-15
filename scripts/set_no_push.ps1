@@ -5,6 +5,7 @@
 #
 # Usage:  .\scripts\set_no_push.ps1 -On
 #         .\scripts\set_no_push.ps1 -Off
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [switch]$On,
     [switch]$Off

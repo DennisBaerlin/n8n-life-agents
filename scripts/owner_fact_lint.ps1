@@ -3,8 +3,8 @@
 # Ergaenzung zu privacy_lint.ps1, das nur feste Werte kennt):
 #   (P) Prompt-Dateien (Contexts, Manifeste, Build-Defs, Seeds): keine Saetze ueber die Lage des Betreibers. Fakten ueber Personen
 #       stehen zur Laufzeit in der Datenbank (Onboarding, Profil), Prompts sind Code und oeffentlich.
-#   (M) Ueberall: keine Herkunftsmarken, die einen Sachverhalt als echt ausweisen. Der Anlass einer Aenderung heisst "Befund
-#       <Datum>", und er beschreibt die Eigenschaft, nicht die Person, Bank oder Summe.
+#   (M) Ueberall: keine Herkunftsmarken, die einen Sachverhalt als echt ausweisen. Ein Befund beschreibt die Eigenschaft, nicht
+#       die Person, Bank oder Summe.
 #   (B) Ueberall: kein "Live-Befund" zusammen mit einem Geldbetrag auf derselben Zeile oder, bei Kommentaren, auf der Folgezeile.
 # Die Muster bleiben grob: Sie finden typische Formulierungen, keine Umschreibungen; die pruefen /privacy-review und der Owner.
 # Ausgenommen: generierte Dateien (ihre Quellen werden geprueft), angewandte V__-Migrationen (Pruefsummen-Schutz), diese Datei.

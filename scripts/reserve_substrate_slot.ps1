@@ -16,6 +16,7 @@
 #         .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By lifeagents-dbtest-xx             # naechsten freien DB-Port nennen und reservieren
 #         .\scripts\reserve_substrate_slot.ps1 -List                                            # gueltige Reservierungen
 # DB-Ports (DBTEST_PG_PORT) laufen ueber dieselbe Liste; bootstrap_test_db.ps1 prueft und traegt den Port beim Start selbst ein.
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [string]$Container,
     [string]$Release,

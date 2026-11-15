@@ -12,6 +12,7 @@
 #         .\scripts\register_sub_session.ps1 -Id local_...
 #         .\scripts\register_sub_session.ps1 -NoStarts
 #         .\scripts\register_sub_session.ps1 -Clear
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [string]$Id,
     [switch]$Lead,

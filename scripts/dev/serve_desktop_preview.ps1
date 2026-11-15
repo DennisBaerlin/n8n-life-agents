@@ -6,6 +6,7 @@
 #   .\scripts\dev\serve_desktop_preview.ps1 [-Port 8766]
 #   http://localhost:8766/?state=ready&theme=dark&os=win&screen=power     Faelle: Kopf von preview/mock.js
 # Strg+C (bzw. Stoppen der Vorschau) beendet den Server. Nur localhost.
+# Exit-Code: der Server laeuft bis Strg+C; scheitert der Start (z. B. Port belegt), bricht er mit Exit 1 ab.
 param([int]$Port = 8766)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

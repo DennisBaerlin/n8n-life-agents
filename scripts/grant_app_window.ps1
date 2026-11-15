@@ -8,6 +8,7 @@
 # Die Datei (.claude/app_grant.txt) liegt immer im Haupt-Checkout, damit das Fenster auch fuer Sessions in einem Worktree gilt.
 #
 # Usage:  .\scripts\grant_app_window.ps1 [-Minutes 60]
+# Exit-Code 0 = Fenster offen; jeder Fehler (z. B. Datei nicht schreibbar) bricht per ErrorActionPreference Stop mit Exit 1 ab.
 param([int]$Minutes = 60)
 
 $ErrorActionPreference = 'Stop'

@@ -14,6 +14,7 @@
 #                                                                               Handy und Fenster; -Cached nimmt die letzte Sammlung
 #   -Title 'Hinweis kuerzer'                                                    Ueberschrift der Seite
 # Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/. Kein Netz, keine DB, kein Container.
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,
     [ValidateSet('mini-app', 'site', 'desktop', 'wizard')][string]$Surface = 'mini-app',

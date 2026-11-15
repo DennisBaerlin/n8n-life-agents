@@ -8,6 +8,7 @@
 #   http://localhost:8790/?lang=de&t=4.5               alle Bilder bei Sekunde 4.5 angehalten (Aufnahmen je Szene)
 #   http://localhost:8790/svg/reach-tunnel.de.light.svg  ein Bild
 # Strg+C (bzw. Stoppen der Vorschau) beendet den Server. Nur localhost.
+# Exit-Code: der Server laeuft bis Strg+C; scheitert der Start (z. B. Port belegt), bricht er mit Exit 1 ab.
 param([int]$Port = 8790)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

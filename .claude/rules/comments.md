@@ -9,7 +9,7 @@ paths:
 
 # Kommentare (lädt beim Öffnen von Code)
 
-Den Code lesen nur KI-Modelle, meist beim Suchen. Ein Kommentar sagt, was der Code nicht zeigt; jeder andere kostet Kontext und veraltet.
+Den Code lesen nur KI-Modelle, meist beim Suchen. Ein Kommentar sagt, was der Code nicht zeigt; jeder andere kostet Kontext und veraltet. Wächter für neue Kommentarzeilen: `scripts/comment_lint.ps1` (was er mechanisch nicht erkennt, liest der Kommentar-Prüfer in `/feature` §4).
 
 ## Gehört hinein
 

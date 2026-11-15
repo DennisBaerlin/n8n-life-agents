@@ -9,6 +9,7 @@
 #   http://localhost:8767/                 Liste aller Seiten
 #   http://localhost:8767/?p=review        eine Seite (Farbschema nach dem System; &scheme=light|dark erzwingt eins)
 # Strg+C (bzw. Stoppen der Vorschau) beendet den Server. Nur localhost.
+# Exit-Code: der Server laeuft bis Strg+C; scheitert der Start (z. B. Port belegt), bricht er mit Exit 1 ab.
 param([int]$Port = 8767, [switch]$Refresh)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

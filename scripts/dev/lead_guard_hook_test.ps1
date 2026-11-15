@@ -25,6 +25,8 @@ function Invoke-Hook($hook, $tool, $inputObj, $sessionId) {
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$hook`""
     $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
     $psi.EnvironmentVariables['CLAUDE_CODE_HOST_SESSION_ID'] = $sessionId
+    # Im Commit-Hook setzt git GIT_DIR & Co.: damit fuehrte der git-Aufruf im Hook ins echte Repo und laese dessen Leitungs-Dateien.
+    foreach ($k in @($psi.EnvironmentVariables.Keys | Where-Object { $_ -like 'GIT_*' })) { $psi.EnvironmentVariables.Remove($k) }
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.StandardInput.Write($payload); $p.StandardInput.Close()
     $out = $p.StandardOutput.ReadToEnd(); $p.WaitForExit()

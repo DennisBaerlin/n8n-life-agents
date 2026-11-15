@@ -9,6 +9,7 @@
 # Canvas zeichnet und als WebP in den DOM schreibt (--dump-dom). Kein Netz, keine DB, kein Container.
 # Prueft: jede Persona aus dem Core-Manifest (personas.list) hat ein Set; jede Datei ist ein WebP.
 #   .\scripts\dev\render_stickers.ps1
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param([switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

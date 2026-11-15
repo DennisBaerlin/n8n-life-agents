@@ -109,6 +109,7 @@
 #   (37) APP-BEFEHLE EXISTIEREN: jeder `lifeagents <verb> <sub>` der Start-App (provisioning/desktop/**/*.rs) existiert im CLI-Dispatcher (lifeagents.tpl + *_cli.sh). Selbst-Asserts.
 #   (38) WERKZEUG-EINGABEN STIMMEN: die Input-Zeile einer Tool-Description nennt genau die $fromAI-Felder. Selbst-Asserts.
 #   (39) Telegram nur ueber die Helfer: Bot-API-URLs in provisioning/ nur in tg_api_curl/_tg_post; Ausnahmeliste scripts/build/telegram_direct_allowlist.json (Ratchet). Selbst-Asserts.
+#   (40) Lese-Knoten ohne Zeile: ein Werkzeug-Lese-Knoten mit WHERE braucht alwaysOutputData (New-RequiredRowGate); Ausnahmeliste scripts/build/read_gate_allowlist.json (Ratchet). Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -2714,6 +2715,71 @@ foreach ($sa in @(
 $saL = "foo() {`n  curl `"`$u`"/bot`${t}/getMe`n}`n# /bot`${x} im Kommentar`nbar() { echo `"`${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}`"; }`nbaz() { curl https://api.telegram.org/x; }"
 $saN = Get-TelegramDirectHits $saL 'a.sh'
 if ($saN.Count -ne 2 -or $saN[0].fn -ne 'foo' -or $saN[1].fn -ne 'baz') { $errors.Add("TELEGRAM-DIREKT SELBST-ASSERT 'Zeilen-Erkennung': erwartet foo+baz, gefunden $($saN.Count) -- Check 39 ist defekt.") }
+
+# ---------------------------------------------------------------
+# (40) Lese-Knoten ohne Zeile: ein Postgres-Knoten eines Werkzeug-Workflows, der per FROM/WHERE einen Datensatz sucht (keine
+#      Aggregation, die immer eine Zeile liefert), braucht alwaysOutputData (New-RequiredRowGate setzt es). Ohne liefert n8n
+#      bei 0 Treffern kein Item, der Lauf endet still ("did not return a response") statt mit {ok:false}. Bestehende Knoten
+#      stehen in scripts/build/read_gate_allowlist.json (Ratchet: Liste schrumpft nur, ein Eintrag ohne Treffer ist ein
+#      Fehler). Selbst-Asserts, darunter der Rueckbau des echten cancel_case-Workflows.
+# ---------------------------------------------------------------
+function Get-ReadGateFindings($Wf) {
+    $res = New-Object System.Collections.Generic.List[object]
+    if ([string]$Wf.name -notmatch '\.tool_') { return , $res }
+    foreach ($n in $Wf.nodes) {
+        if ($n.type -ne 'n8n-nodes-base.postgres') { continue }
+        $q = [string]$n.parameters.query
+        if ($q -notmatch '(?is)\bFROM\s+[a-z_]+\.[a-z_]+\s' -or $q -notmatch '(?i)\bWHERE\b') { continue }
+        if ($q -match '(?i)\b(count|jsonb_agg|json_agg|bool_or|bool_and|array_agg|string_agg|sum|max|min)\s*\(') { continue }
+        if (-not $n.alwaysOutputData) { $res.Add(@{ workflow = [string]$Wf.name; node = [string]$n.name }) }
+    }
+    return , $res
+}
+function Get-ReadGateIssues($Findings, $Allow) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $used = @{}
+    foreach ($h in $Findings) {
+        $k = "$($h.workflow)::$($h.node)"
+        if (@($Allow | Where-Object { "$($_.workflow)::$($_.node)" -eq $k }).Count) { $used[$k] = $true }
+        else { $iss.Add("$($h.workflow): Lese-Knoten '$($h.node)' sucht per WHERE ohne alwaysOutputData -- 0 Treffer beenden den Lauf still; New-RequiredRowGate verwenden (neue Eintraege in die Ausnahmeliste sind verboten).") }
+    }
+    foreach ($a in $Allow) { if (-not $used["$($a.workflow)::$($a.node)"]) { $iss.Add("Ausnahmeliste: '$($a.workflow)::$($a.node)' hat keinen Treffer mehr -- Eintrag streichen (Ratchet).") } }
+    return , $iss
+}
+$rgFindings = New-Object System.Collections.Generic.List[object]
+$rgCancel = $null
+foreach ($wfFile in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\workflows\*.json'))) {
+    $wfObj = [System.IO.File]::ReadAllText($wfFile.FullName, $Utf8NoBom) | ConvertFrom-Json
+    if ($wfObj.name -eq 'agent.estate.tool_cancel_case') { $rgCancel = $wfObj }
+    $found = Get-ReadGateFindings $wfObj
+    foreach ($h in $found) { $rgFindings.Add($h) }
+}
+$rgAllow = @(([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build\read_gate_allowlist.json'), $Utf8NoBom) | ConvertFrom-Json).allow)
+foreach ($i in (Get-ReadGateIssues $rgFindings $rgAllow)) { $errors.Add("LESE-KNOTEN: $i") }
+function New-SaWf([string]$Q, $Aoo) {
+    $nd = @{ type = 'n8n-nodes-base.postgres'; name = 'Read x'; parameters = @{ query = $Q } }
+    if ($Aoo) { $nd['alwaysOutputData'] = $true }
+    return [pscustomobject]@{ name = 'agent.x.tool_y'; nodes = @([pscustomobject]$nd) }
+}
+$saQ = '=SELECT a FROM s.t WHERE id = 1;'
+$saAl = @([pscustomobject]@{ workflow = 'agent.x.tool_y'; node = 'Read x' })
+foreach ($sa in @(
+    @{ n = 'ohne Gate';        w = (New-SaWf $saQ $false);                                        a = @();    want = 1 },
+    @{ n = 'mit Gate';         w = (New-SaWf $saQ $true);                                         a = @();    want = 0 },
+    @{ n = 'Aggregation';      w = (New-SaWf '=SELECT count(*) FROM s.t WHERE id = 1;' $false);   a = @();    want = 0 },
+    @{ n = 'ohne WHERE';       w = (New-SaWf '=SELECT a FROM s.t;' $false);                       a = @();    want = 0 },
+    @{ n = 'Ausnahme gilt';    w = (New-SaWf $saQ $false);                                        a = $saAl;  want = 0 },
+    @{ n = 'Ausnahme stale';   w = (New-SaWf $saQ $true);                                         a = $saAl;  want = 1 })) {
+    $got = (Get-ReadGateIssues (Get-ReadGateFindings $sa.w) $sa.a).Count
+    if ($got -ne $sa.want) { $errors.Add("LESE-KNOTEN SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 40 ist defekt.") }
+}
+if ($null -eq $rgCancel) { $errors.Add("LESE-KNOTEN SELBST-ASSERT 'Rueckbau': agent.estate.tool_cancel_case nicht gebaut gefunden -- Check 40 ist defekt.") }
+else {
+    $rgBase = (Get-ReadGateFindings $rgCancel).Count
+    foreach ($rn in $rgCancel.nodes) { if ($rn.name -eq 'Read case') { $rn.alwaysOutputData = $false } }
+    $rgBack = (Get-ReadGateFindings $rgCancel).Count
+    if ($rgBase -ne 0 -or $rgBack -ne 1) { $errors.Add("LESE-KNOTEN SELBST-ASSERT 'Rueckbau': cancel_case gebaut=$rgBase (erwartet 0), ohne alwaysOutputData=$rgBack (erwartet 1) -- Check 40 ist defekt.") }
+}
 
 # ---------------------------------------------------------------
 # Report

@@ -35,6 +35,7 @@ Kosten je Block = **Kaltstart des Agenten** (einmal je Agent und Stunde) + **Aus
 | agent.finance (Sonnet) | 0,25–0,35 $ | 0,02–0,04 $ |
 | agent.finance_advisor (Opus) | 0,20–0,35 $ | 0,04–0,08 $ |
 | agent.career_advisor | 0,15–0,25 $ | 0,03–0,07 $ |
+| agent.estate_advisor (Opus) | nicht getrennt gemessen | Gesamtlauf 22 Fälle (69 Anfragen): 0,94 $, im Schnitt ≈ 0,043 $ je Fall inkl. Kaltstart |
 | agent.guide | 0,03–0,05 $ | 0,01–0,02 $ |
 | agent.monitor | 0,04–0,06 $ | 0,005–0,01 $ |
 | Orchestrator | 0,02–0,05 $ | 0,005–0,01 $ |

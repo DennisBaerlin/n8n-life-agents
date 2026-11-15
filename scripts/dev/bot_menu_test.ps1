@@ -210,13 +210,13 @@ if ($tids.Count -gt 0) {
 # (6) Menue einmal je Lauf, Wiederholversuch, Fehlergrund im Protokoll: Fall-Runner im Container gegen einen eigenen Mock
 $mroot = '/opt/menu_once_test'
 $prev5 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-[void](& docker exec $Container sh -c "rm -rf $mroot && mkdir -p $mroot" 2>&1)
+[void](& docker exec $Container sh -c "rm -rf $mroot && mkdir -p $mroot/packages/core" 2>&1)
 $cpFail = $false
-foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_telegram', 'mock_telegram'))) {
+foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_telegram', 'mock_telegram'), @('packages\core\locales', 'packages/core/locales'))) {
     $cp = & docker cp (Join-Path $RepoRoot $pair[0]) "${Container}:$mroot/$($pair[1])" 2>&1
     if ($LASTEXITCODE -ne 0) { $cpFail = $true; Fail "docker cp $($pair[0]) fehlgeschlagen: $($cp -join ' | ')" }
 }
-$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/release_webhook_cases.sh" $mroot 8094 2>&1 | ForEach-Object { "$_" }) }
+$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/release_webhook_cases.sh" $mroot 8094 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/backup_notify_cases.sh" $mroot 8095 2>&1 | ForEach-Object { "$_" }) }
 $ErrorActionPreference = $prev5
 $moPass = 0
 foreach ($l in $mo) {

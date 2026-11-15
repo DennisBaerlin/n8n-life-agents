@@ -14,10 +14,13 @@
 #
 # Usage:  .\scripts\multiturn_test.ps1 [-Id mt01] [-Timeout 70] [-Verbose]
 # Exit-Code = Anzahl Fehler. Kostet LLM-Credits (owner-gegatet).
+# Abbruch-Absicherung wie n8n_test (-MaxCostUsd, -ForceAbortId, finally-Aufraeumen; lib/paid_guard.ps1).
 # Voraussetzung: Docker-Test-Substrat + enable_mock_telegram.ps1 (fuers Gate) + .env TEST_HARNESS_SECRET.
 param(
     [string]$Id,
     [int]$Timeout = 70,
+    [double]$MaxCostUsd = 10.0,   # haelt den Lauf vor dem naechsten Case an (lib/paid_guard.ps1); 0 = aus
+    [string]$ForceAbortId,        # wirft am Anfang dieses Cases: zeigt den Abbruch-Pfad, ohne dass ein Case LLM-Kosten verursacht
     [switch]$Verbose
 )
 
@@ -45,6 +48,8 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
+. "$PSScriptRoot\lib\paid_guard.ps1"
+$llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 # Fixtures + Owner-Pairing + abgeschlossenes Onboarding (dieselbe Vorbereitung wie n8n_test): ohne sie kennt der Agent weder die
 # Konten der Faelle noch den Absender.
 Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
@@ -62,7 +67,10 @@ foreach ($node in $wfDef.nodes) { if ($node.type -match 'langchain.agent') { $Ag
 $tcFile   = Join-Path $RepoRoot 'tests\agent\cross\multiturn_cases.json'
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases    = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
+. "$PSScriptRoot\lib\date_placeholder.ps1"
+$cases    = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep -Obj $_ })   # {{date:+30d@2}} in task/Erwartung aufloesen
 if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
 Write-Host ""
 Write-Host "Multi-Turn-Agent-Tests -- $($cases.Count) Case(s)  (Webhook: $WebhookUrl)"
@@ -84,7 +92,12 @@ function Invoke-Turn([string]$Task, [long]$ChatId, [int]$TurnTimeout) {
     return Wait-ExecResolvingGates -WfId $FinanceWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $TurnTimeout
 }
 
+$completed = $false
+try {
 foreach ($tc in $cases) {
+    if (Test-RunCostExceeded -Container $Container -Cursor $llmCursor -Prices $llmPrices -MaxCostUsd $MaxCostUsd) { $failed++; break }
+    try {   # Ausnahme in einem Case = roter Case, der Lauf geht weiter (catch am Schleifenende, Muster: test_n8n_state.ps1 *Fall-Abbruch*)
+    Test-ForceAbort $tc.id $ForceAbortId
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)  ($($tc.turns.Count) Turns)"
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
@@ -124,14 +137,25 @@ foreach ($tc in $cases) {
         $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
         Write-Host "    output: $(Get-AgentOutput $runData $AgentNodeName)" -ForegroundColor Yellow
     }
+    } catch {
+        $failed++
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Invoke-PaidRunCleanup -Container $Container -WorkflowId @($wfDef.id) }
+    }
 }
 
-try { (Invoke-N8nGet "executions?workflowId=$FinanceWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
-# Die __E2E__-Konten eines setup_sql-Cases (mt04) nicht fuer die naechste Suite stehen lassen.
-if (@($cases | Where-Object { $_.PSObject.Properties['setup_sql'] -and $_.setup_sql }).Count -gt 0) {
-    [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
+$completed = $true
+} finally {
+    # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): wartende Karten-Executions stoppen, Karten-Sperre loesen.
+    Invoke-PaidRunCleanup -Container $Container -WorkflowId @($FinanceWfId)
+    # Die __E2E__-Konten eines setup_sql-Cases (mt04) nicht fuer die naechste Suite stehen lassen.
+    if (@($cases | Where-Object { $_.PSObject.Properties['setup_sql'] -and $_.setup_sql }).Count -gt 0) {
+        try { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) } catch { }
+    }
+    if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'multiturn_test (abgebrochen)' -RepoRoot $RepoRoot }
 }
 
+Write-AbortedCases
+$failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }

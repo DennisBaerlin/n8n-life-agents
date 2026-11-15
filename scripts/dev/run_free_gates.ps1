@@ -85,6 +85,12 @@ if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }
 if ($ListSuites) { ConvertTo-Json -InputObject @($Gates.Keys) -Compress; exit 0 }
 
+# Vorab-Pruefung: ein frischer Worktree hat keine .env (gitignored). Ohne sie wuerden Substrat-Aufbau und fast jede Suite
+# einzeln rot (TEST_HARNESS_SECRET fehlt) -- eine klare Meldung vorn ersetzt die vielen roten Suiten. In CI legt new_ci_env.ps1 sie an.
+if (-not $Child -and -not (Test-Path (Join-Path $RepoRoot '.env'))) {
+    throw ".env fehlt in $RepoRoot (frischer Worktree?). Aus dem Haupt-Checkout kopieren (Copy-Item <Haupt-Checkout>\.env $RepoRoot\.env) oder scripts\dev\new_ci_env.ps1 nutzen; Keys siehe .env.example."
+}
+
 # Sperre gegen parallele Laeufe auf denselben Containern (ein git push waehrend des Skripts:
 # Pre-Push-db_test und infra-softcheck kollidieren mit den Suiten). db_test.ps1 prueft dieselbe Datei. Ein Kind-Prozess
 # laeuft unter der Sperre seines Eltern-Laufs.

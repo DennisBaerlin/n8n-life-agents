@@ -16,16 +16,6 @@ $bare = Join-Path $env:TEMP "release_pin_remote_$id"
 New-Item -ItemType Directory -Force $sandbox, $bare | Out-Null
 $failed = 0
 
-function Invoke-SandboxGit([string[]]$GitArgs, [string]$Dir = $sandbox) {
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try { & git -C $Dir -c user.name=Test -c user.email=test@example.com -c core.autocrlf=false @GitArgs *> $null } finally { $ErrorActionPreference = $prev }
-    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') fehlgeschlagen" }
-}
-function Write-SandboxFile([string]$Rel, [string]$Text) {
-    $path = Join-Path $sandbox $Rel
-    New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
-    [System.IO.File]::WriteAllText($path, $Text, $u8)
-}
 function New-SandboxCommit([string]$Rel, [string]$Line) {
     Add-Content -LiteralPath (Join-Path $sandbox $Rel) -Value $Line -Encoding UTF8
     Invoke-SandboxGit @('add', '-A')

@@ -176,6 +176,8 @@ if ($isOrch) {
 $tcFile = Join-Path $RepoRoot $CasesFile
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases = @(if ($Id) { $allCases | Where-Object { $_.id -in $Id } } else { $allCases })
+. "$PSScriptRoot\..\lib\date_placeholder.ps1"
+$cases = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep -Obj $_ })   # {{date:+30d@2}} in task/Erwartung aufloesen (Szenarien: server.js)
 # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf.
 $missing = @(foreach ($one in $Id) { if ($one -notin @($allCases.id)) { $one } })
 if ($missing.Count) { throw "Testfall nicht gefunden in ${CasesFile}: $($missing -join ', ')." }

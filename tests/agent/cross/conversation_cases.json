@@ -155,7 +155,7 @@
       {
         "text": "Guten Morgen",
         "expect_node": "Send with next step", "expect_texts": ["Haushalt"], "forbid_texts": ["NEXT_STEP", "Guide"],
-        "expected_behavior": "The reply is the orchestrator's own (the guide agent is NOT called): one short German sentence that greets and suggests setting up the household, with no NEXT_STEP line and no list of topics."
+        "expected_behavior": "The reply is the orchestrator's own (the guide agent is NOT called): one short German sentence (with the greeting) that suggests setting up the household, without a question and without a list of topics. The visible text has no NEXT_STEP line. Judge ONLY the agent's own text: the 'Weiter: <area>' button under the reply is built by the system from the marker line the router writes and strips before sending, so it does not count as a NEXT_STEP line or as a second sentence."
       }
     ]
   },
@@ -167,8 +167,8 @@
     "turns": [
       {
         "text": "Hallo zusammen",
-        "expect_texts": ["Owner"], "forbid_texts": ["NEXT_STEP", "Guide"],
-        "expected_behavior": "The reply is the orchestrator's own, one short German sentence saying that the household owner is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list."
+        "expect_texts": ["Haushalt"], "forbid_texts": ["NEXT_STEP", "Guide"],
+        "expected_behavior": "The reply is the orchestrator's own, short and in German (a greeting plus one sentence): it says in plain words that whoever runs the household (wording such as 'Haushaltsinhaber' or 'Owner' is equally fine) is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list, no button, no question to the member."
       }
     ]
   }

@@ -318,6 +318,18 @@ foreach ($tc in $cases) {
             Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red
         }
 
+        # Absender kommt an: Ein Fall mit bekannter numerischer chat_id (TestSenderUids) muss im Agenten als diese Person samt Rolle ankommen
+        # (Knoten 'Household status read' des Guide = fn_resolve_sender); sonst pruefte er still den Owner. Agenten ohne diesen Knoten: keine Pruefung.
+        if ($pass -and -not $isOrch -and $runData.PSObject.Properties.Name -contains 'Household status read') {
+            $wantRole = Get-TestSenderRole -Container $Container -ChatId $chatId
+            if ($wantRole) {
+                $got = $null; try { $got = $runData.'Household status read'[0].data.main[0][0].json.sender } catch { }
+                $gotRole = if ($got) { [string]$got.role } else { '' }
+                if ($gotRole -ne $wantRole) { $pass = $false; Write-Host "    FEHLER: Absender kommt als Rolle '$gotRole' an, erwartet '$wantRole' (chat_id $chatId)." -ForegroundColor Red }
+                else { Write-Host "    Absender: chat_id $chatId kommt als Rolle '$gotRole' an." -ForegroundColor DarkGray }
+            }
+        }
+
         # "Bot denkt nach": der Mock-LLM antwortet sofort -> ob vor der Antwort ein Draft kam, ist ein Wettlauf und wird
         # hier nicht verlangt (das pruefen [thinking-keepalive] und [draft-fail] mit langsamem Mock). Hart: der Schalter
         # ist nach der Antwort weg und kein Draft kam nach ihr.

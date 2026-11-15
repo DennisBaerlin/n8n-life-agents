@@ -77,8 +77,14 @@ function datePlaceholderValue(expr, today) {
   }
   return d.toISOString().slice(0, 10);
 }
+// Bezugstag: MOCK_LLM_TODAY (YYYY-MM-DD, setzt enable_mock_llm.ps1 und schreibt ihn in den State) haelt Harness und Mock auf
+// demselben Tag, auch wenn ein Lauf ueber 00:00 UTC geht; ohne die Variable gilt die aktuelle UTC-Zeit.
+function referenceDay() {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(process.env.MOCK_LLM_TODAY || '');
+  return m ? utcDate(+m[1], +m[2] - 1, +m[3]) : new Date();
+}
 function resolveDatePlaceholders(v, today) {
-  today = today || new Date();
+  today = today || referenceDay();
   if (typeof v === 'string') return v.indexOf('{{date:') === -1 ? v : v.replace(/\{\{date:([^}]*)\}\}/g, (all, e) => datePlaceholderValue(e, today));
   if (Array.isArray(v)) return v.map((x) => resolveDatePlaceholders(x, today));
   if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = resolveDatePlaceholders(v[k], today); return o; }

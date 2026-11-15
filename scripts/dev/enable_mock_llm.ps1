@@ -59,6 +59,9 @@ $ScnHost    = Join-Path $RepoRoot 'tests\mock_llm\scenarios.json'
 $ServerInC  = '/opt/mock_llm/server.js'
 $ScnInC     = '/opt/mock_llm/scenarios.json'
 $StateFile  = Get-TestN8nStateFile
+# Bezugstag der Datums-Platzhalter ({{date:..}}) fuer Mock und Harness: der UTC-Tag des Starts, bis der Mock neu startet (auch
+# -UpdateScenarios startet neu). Harness liest ihn aus mock_llm.today im State (scripts/lib/date_placeholder.ps1).
+$MockToday  = [datetime]::UtcNow.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 
 # Invoke-Native — natives Tool, stdout+stderr + Exit-Code (EAP-Quirk wie die uebrigen dev-Treiber).
@@ -183,7 +186,7 @@ Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
 Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
 Write-Host "Starte Mock-LLM (systemd-unit $Unit, 127.0.0.1:$MockPort) ..."
 $r = Invoke-Native docker @('exec',$Container,'systemd-run',"--unit=$Unit",'--collect',
-    "--setenv=MOCK_LLM_PORT=$MockPort","--setenv=MOCK_LLM_LOG=$MockLog","--setenv=MOCK_LLM_SCENARIOS=$ScnInC",
+    "--setenv=MOCK_LLM_PORT=$MockPort","--setenv=MOCK_LLM_LOG=$MockLog","--setenv=MOCK_LLM_SCENARIOS=$ScnInC","--setenv=MOCK_LLM_TODAY=$MockToday",
     $nodeBin,$ServerInC)
 if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join "`n")" }
 
@@ -212,7 +215,7 @@ if ($credId) {
 }
 
 # --- 4) State-Block schreiben -----------------------------------------------------------------------
-$mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId; gateway_upstream = $MockUrl }
+$mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId; gateway_upstream = $MockUrl; today = $MockToday }
 Write-StateMock (Read-State) $mockBlock
 
 Write-Host ""

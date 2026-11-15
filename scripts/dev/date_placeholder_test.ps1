@@ -49,6 +49,22 @@ Assert-That ((Get-FixedCount '{"turns":[{"text":"am 2027-01-02"},"und 03.04.2027
 Assert-That ((Get-FixedCount '{"match":"x","calls":[{"tool":"t","args":{"transaction_date":"2026-06-16"}}]}') -eq 1) 'Szenario-Args (calls) werden gelesen'
 Assert-That ((Get-FixedCount '{"task":"a 2027-01-02 b 2027-01-03"}') -eq 2) 'jedes Literal zaehlt einzeln'
 
+Write-Host "Bezugstag aus dem Substrat-State (enable_mock_llm.ps1 -> mock_llm.today)"
+$tmpState = Join-Path ([System.IO.Path]::GetTempPath()) ("dpt_" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.json')
+try {
+    [System.IO.File]::WriteAllText($tmpState, '{"mock_llm":{"port":8088,"today":"2026-03-01"}}', $Utf8NoBom)
+    Assert-That ((Get-DatePlaceholderReferenceDay -StateFile $tmpState).ToString('yyyy-MM-dd') -eq '2026-03-01') 'mock_llm.today aus dem State gilt als Bezugstag'
+    [System.IO.File]::WriteAllText($tmpState, '{"mock_llm":{"port":8088}}', $Utf8NoBom)
+    Assert-That ((Get-DatePlaceholderReferenceDay -StateFile $tmpState) -eq [datetime]::UtcNow.Date) 'Mock-Block ohne today: UTC-Datum'
+    [System.IO.File]::WriteAllText($tmpState, '{"mock_llm":{"today":"kaputt"}}', $Utf8NoBom)
+    Assert-That ((Get-DatePlaceholderReferenceDay -StateFile $tmpState) -eq [datetime]::UtcNow.Date) 'unlesbarer Stempel: UTC-Datum'
+    [System.IO.File]::WriteAllText($tmpState, 'kein json', $Utf8NoBom)
+    Assert-That ((Get-DatePlaceholderReferenceDay -StateFile $tmpState) -eq [datetime]::UtcNow.Date) 'kaputter State: UTC-Datum'
+} finally { Remove-Item -LiteralPath $tmpState -ErrorAction SilentlyContinue }
+Assert-That ((Get-DatePlaceholderReferenceDay -StateFile (Join-Path ([System.IO.Path]::GetTempPath()) 'dpt_gibtes_nicht.json')) -eq [datetime]::UtcNow.Date) 'ohne State-Datei: UTC-Datum'
+$src = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\enable_mock_llm.ps1'), $Utf8NoBom)
+Assert-That ($src -match 'MOCK_LLM_TODAY=\$MockToday' -and $src -match 'today = \$MockToday') 'enable_mock_llm setzt MOCK_LLM_TODAY am Mock und mock_llm.today im State'
+
 Write-Host "JS (tests/mock_llm/server.js)"
 $node = Get-Command node -ErrorAction SilentlyContinue
 $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

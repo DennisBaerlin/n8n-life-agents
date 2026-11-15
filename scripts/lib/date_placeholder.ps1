@@ -11,8 +11,31 @@
 # "Heute" ist das UTC-Datum: der Mock-Stub im Container rechnet in UTC, beide Seiten muessen dasselbe Datum bekommen.
 # Ein Platzhalter, der die Grammatik verfehlt, wirft (Tippfehler duerfen nicht als Text durchgehen).
 
-# Ein Bezugstag je Prozess (beim Laden fixiert): alle Faelle eines Laufs bekommen denselben Wert, auch ueber Mitternacht hinweg.
-$script:DatePlaceholderToday = [datetime]::UtcNow.Date
+# Bezugstag: der Tag, den enable_mock_llm.ps1 dem Mock gesetzt hat (State-Block mock_llm.today des aktuellen Substrats), damit
+# Harness und Mock ueber 00:00 UTC hinweg denselben Wert rechnen. Ohne Mock-Block (kein Substrat, Selbsttests) das UTC-Datum
+# beim Laden: ein Wert je Prozess. Get-DatePlaceholderReferenceDay ist die eine Adresse (Selbsttest: dev/date_placeholder_test.ps1).
+function Get-DatePlaceholderReferenceDay {
+    param([string]$StateFile)
+    if (-not $StateFile) {
+        $container = if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }
+        $root = & git -C $PSScriptRoot rev-parse --show-toplevel 2>$null
+        if ($LASTEXITCODE -eq 0 -and $root) { $StateFile = Join-Path $root ".local\n8ntest_state.$container.json" }
+    }
+    if ($StateFile -and (Test-Path -LiteralPath $StateFile)) {
+        try {
+            $st = [System.IO.File]::ReadAllText($StateFile, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
+            $stamp = if ($st.PSObject.Properties['mock_llm'] -and $st.mock_llm.PSObject.Properties['today']) { [string]$st.mock_llm.today } else { '' }
+            $day = [datetime]::MinValue
+            if ($stamp -match '^\d{4}-\d{2}-\d{2}$' -and [datetime]::TryParseExact($stamp, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$day)) {
+                # Der Mock rechnet mit demselben Tag, also folgt der Harness ihm; die DB (heute) kann bei altem Stempel abweichen -> Hinweis.
+                if (([datetime]::UtcNow.Date - $day).TotalDays -gt 1) { Write-Warning "Datums-Bezugstag $stamp ist aelter als ein Tag (Mock seit damals ohne Neustart); enable_mock_llm.ps1 setzt ihn neu." }
+                return $day
+            }
+        } catch { Write-Verbose "State ohne lesbaren Bezugstag: $($_.Exception.Message)" }
+    }
+    return [datetime]::UtcNow.Date
+}
+$script:DatePlaceholderToday = Get-DatePlaceholderReferenceDay
 
 function Get-DatePlaceholderValue {
     param([Parameter(Mandatory)][string]$Expr, [Parameter(Mandatory)][datetime]$Today)

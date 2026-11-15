@@ -716,6 +716,17 @@ WHERE name = 'family';
 "@
 }
 
+# Rolle der Fixture-Person, der $ChatId gehoert (laut TestSenderUids), aus den family-Facts der Container-DB; '' = keine Fixture-Person
+# (Owner oder unbekannt). Dient dem Beleg, dass der Absender mit dieser Rolle im Agenten ankommt (mock_route_test).
+function Get-TestSenderRole {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][long]$ChatId)
+    $who = $script:TestSenderUids["$ChatId"]
+    if (-not $who) { return '' }
+    $q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT p->>'role' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = 'family' AND p->>'person_id' = '$who';")
+    if ($q.Code -ne 0) { throw "Rolle der Fixture-Person $who nicht lesbar: $($q.Output -join ' ')" }
+    return (@($q.Output | ForEach-Object { "$_".Trim() }) | Select-Object -First 1)
+}
+
 function Set-TestSenderPairing {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][long]$ChatId)
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', (Get-TestSenderPairingSql -ChatId $ChatId))

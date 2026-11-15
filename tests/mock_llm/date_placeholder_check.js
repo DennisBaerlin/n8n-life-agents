@@ -20,4 +20,9 @@ for (const bad of v.invalid) {
 }
 const deep = resolveDatePlaceholders({ match: 'am {{date:0d}}', args: { d: ['{{date:+1d}}'], n: 3 } }, day('2026-11-15'));
 check(deep.match === 'am 2026-11-15' && deep.args.d[0] === '2026-11-16' && deep.args.n === 3, 'js loest verschachtelte Szenario-Objekte auf');
+process.env.MOCK_LLM_TODAY = '2026-03-01';
+check(resolveDatePlaceholders('{{date:+1d}}') === '2026-03-02', 'js: MOCK_LLM_TODAY legt den Bezugstag fest (ohne today-Argument)');
+process.env.MOCK_LLM_TODAY = 'kaputt';
+check(resolveDatePlaceholders('{{date:0d}}') === new Date().toISOString().slice(0, 10), 'js: ungueltiges MOCK_LLM_TODAY faellt auf heute zurueck');
+delete process.env.MOCK_LLM_TODAY;
 process.exit(failed);

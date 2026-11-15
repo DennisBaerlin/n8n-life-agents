@@ -34,6 +34,11 @@ Write-Host "Verdrahtung"
 $drv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\n8n_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Assert-That ($drv -match 'Resolve-TestCaseChatId \$tc' -and $drv -match 'Set-TestSenderPairing') 'n8n_test loest die chat_id des Falls auf und paart den Absender'
 Assert-That ($drv -notmatch '\[long\]\$chatId\s*=\s*\$TestOwnerTelegramUid') 'n8n_test setzt die chat_id nicht mehr fest auf den Owner'
+$mrt = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\mock_route_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
+Assert-That ($mrt -match "Get-TestSenderRole" -and $mrt -match "Household status read") 'mock_route_test belegt im Agenten die Rolle des Absenders (Knoten Household status read)'
+Assert-That ($lisa -match "880055201" -and $script:TestSenderUids['880055201'] -eq 'lisa') 'gc13: die id des Kind-Falls gehoert der Fixture-Person lisa'
+$gc13 = ([System.IO.File]::ReadAllText((Join-Path $repo 'tests\agent\core\guide_cases.json'), (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json) | Where-Object { $_.id -eq 'gc13' }
+Assert-That ($gc13 -and "$($gc13.chat_id)" -eq '880055201') 'gc13 laeuft mit der Kind-id'
 
 if ($failed -eq 0) { Write-Host "chat_sender_test: alles gruen." -ForegroundColor Green } else { Write-Host "chat_sender_test: $failed Fehler." -ForegroundColor Red }
 exit $failed

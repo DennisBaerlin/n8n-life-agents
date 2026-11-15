@@ -255,6 +255,56 @@ $expected = [regex]::Match($initText, "SET checksum = '([0-9a-f]{32})'\s+WHERE v
 if ($expected -ceq $actual) { $passed++; Write-Host '  [PASS] Reparatur nennt die Summe der Datei' -ForegroundColor Green }
 else { $failed++; Write-Host '  [FAIL] Reparatur nennt nicht die Summe der Datei' -ForegroundColor Red }
 
+Write-Host 'privacy_lint_test: Baum-Modus, gebuendeltes Regex gegen Einzel-Teilstring (gleiche Funde auf einem Korpus)'
+# (7b) Der Baum-Modus sucht per git grep -P mit EINEM Regex statt je Begriff per -F; Schutz = dieselben Funde. Alle Begriffe erfunden.
+$uml = [char]0xFC; $ae = [char]0xE4; $euro = [char]0x20AC; $dash = [char]0x2013
+$corpusTerms = @('Zauberwort', "Gr${uml}nfink", 'ab-cd 12', 'x@probe.test', '12345.67', "K${ae}se$euro", 'Kleinst')
+$corpusFiles = [ordered]@{
+    'a.txt' = "Zauberwort steht hier`nZAUBERWORT in Gross`nein Zauberworts Akte`nZauberworte sind kein Treffer`nzauberwort_key`nnichts`n"
+    'b.txt' = "Der GR$([char]0xDC)NFINK singt`ngr${uml}nfinks Nest`nGr${uml}nfinken sind erlaubt`nuegr${uml}nfink`n"
+    'c.md'  = "Mail x@probe.test oder <X@PROBE.TEST>`nwert 12345.67 hier`nwert 112345.67x`nsteht ab-cd 12 da`nab-cd 123`n"
+    'd.txt' = "Nach #Tag folgt Text`n${dash}K${ae}se$euro$dash`n$([char]0xE2)K${ae}se$euro`nKleinst und Kleinstes`nKleinstadt`n"
+    'e.txt' = "Zauberwort${dash}Lob`n${dash}zauberwort$dash`n"
+}
+# Funde = Quelle:Zeile aller "Wert aus ..."-Meldungen eines Laufs (Meldungen nennen nie den Wert selbst).
+function Get-CorpusFinds([string]$Repo, [hashtable]$Environment) {
+    $saved = @{}
+    foreach ($k in $Environment.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $Environment[$k]) }
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $out = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\privacy_lint.ps1') 2>&1 | ForEach-Object { "$_" }) }
+    finally { $ErrorActionPreference = $prev; foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
+    @($out | Where-Object { $_ -match 'Wert aus \.local' } | ForEach-Object { ($_ -replace '^.*bzw\. \.env:?\s*', '').Trim() } | Where-Object { $_ -like 'corpus/*' } | Sort-Object -Unique)
+}
+$r = New-TestRepo
+Write-Utf8 (Join-Path $r '.env') $RealEnv
+Write-Utf8 (Join-Path $r '.local\privacy_denylist.txt') (($corpusTerms -join "`n") + "`n")
+foreach ($f in $corpusFiles.Keys) { Write-Utf8 (Join-Path $r "corpus\$f") $corpusFiles[$f] }
+# Latin-1-Datei (kein gueltiges UTF-8): -P darf daran nicht still blind werden, sonst greift der Rueckfall auf -F.
+[System.IO.File]::WriteAllBytes((Join-Path $r 'corpus\latin1.txt'), [byte[]](0x4B, 0xE4, 0x73, 0x65, 0x0A) + [System.Text.Encoding]::ASCII.GetBytes("Zauberwort`n"))
+Invoke-TestGit $r @('add', '-A')
+$viaPcre = Get-CorpusFinds $r @{}
+$viaPcreC = Get-CorpusFinds $r @{ LC_ALL = 'C' }
+$viaFixed = Get-CorpusFinds $r @{ PRIVACY_LINT_NO_PCRE = '1' }
+$expectedFinds = @('corpus/a.txt:1', 'corpus/a.txt:2', 'corpus/a.txt:3', 'corpus/a.txt:5', 'corpus/b.txt:1', 'corpus/b.txt:2', 'corpus/c.md:1', 'corpus/c.md:2', 'corpus/c.md:4',
+    'corpus/d.txt:2', 'corpus/d.txt:3', 'corpus/d.txt:4', 'corpus/e.txt:1', 'corpus/e.txt:2', 'corpus/latin1.txt:2')
+$same = { param($a, $b) if ((@($a | Sort-Object -Unique) -join '|') -ceq (@($b | Sort-Object -Unique) -join '|')) { 0 } else { 1 } }
+Assert-Lint 'Korpus: gebuendeltes Regex findet genau die erwarteten Zeilen' $false (& $same $viaPcre $expectedFinds)
+Assert-Lint 'Korpus: dieselben Funde wie der Einzel-Teilstring-Weg' $false (& $same $viaPcre $viaFixed)
+Assert-Lint 'Korpus: dieselben Funde mit LC_ALL=C' $false (& $same $viaPcreC $viaPcre)
+# Selbstprobe: liest PCRE einen aktiven Begriff anders als .NET (hier simuliert: das Muster kennt 'Zauberwort' nicht), faellt der Lauf auf
+# den alten Weg zurueck und meldet den Fund trotzdem; die Ausgabe nennt weder Begriff noch Zeile der Probe, die Temp-Datei ist weg.
+$tmpBefore = @(Get-ChildItem ([System.IO.Path]::GetTempPath()) -Directory -Filter 'plp_*' -ErrorAction SilentlyContinue).Count
+$viaProbe = Get-CorpusFinds $r @{ PRIVACY_LINT_TEST_PCRE_DROP = 'Zauberwort' }
+Assert-Lint 'Selbstprobe: abweichend gelesener Begriff erzwingt den Rueckfall, alle Funde bleiben' $false (& $same $viaProbe $expectedFinds)
+$probeOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $r 'scripts\privacy_lint.ps1') 2>&1 | ForEach-Object { "$_" })
+Assert-Lint 'Selbstprobe: ohne Abweichung kein Rueckfall-Hinweis' $false $(if (@($probeOut | Where-Object { $_ -match 'Selbstprobe fehlgeschlagen' }).Count -eq 0) { 0 } else { 1 })
+$env:PRIVACY_LINT_TEST_PCRE_DROP = 'Zauberwort'
+$dropOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $r 'scripts\privacy_lint.ps1') 2>&1 | ForEach-Object { "$_" })
+Remove-Item Env:PRIVACY_LINT_TEST_PCRE_DROP
+Assert-Lint 'Selbstprobe: Rueckfall wird gemeldet, ohne Begriff in der Ausgabe' $false $(if (@($dropOut | Where-Object { $_ -match 'Selbstprobe fehlgeschlagen, alter Weg' }).Count -eq 1 -and @($dropOut | Where-Object { $_ -match 'Zauberwort' }).Count -eq 0) { 0 } else { 1 })
+Assert-Lint 'Selbstprobe: keine Temp-Datei mit Begriffen bleibt liegen' $false $(if (@(Get-ChildItem ([System.IO.Path]::GetTempPath()) -Directory -Filter 'plp_*' -ErrorAction SilentlyContinue).Count -le $tmpBefore) { 0 } else { 1 })
+Remove-TestRepo $r
+
 Write-Host 'privacy_lint_test: owner_fact_lint'
 # (8) Saetze ueber den Betreiber nur in Prompt-Dateien, Marken und Betraege ueberall; generierte und V__-Dateien bleiben aussen vor
 $OwnerLint = Join-Path $PSScriptRoot '..\owner_fact_lint.ps1'

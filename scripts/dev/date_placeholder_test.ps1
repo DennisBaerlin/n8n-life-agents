@@ -31,6 +31,24 @@ $obj = '{"task":"ab {{date:0d}}","expected_tool_args":{"first":"{{date:+1d}}","a
 $res = Resolve-DatePlaceholderDeep -Obj $obj -Today (ConvertTo-Day '2026-11-15')
 Assert-That ($res.task -eq 'ab 2026-11-15' -and $res.expected_tool_args.first -eq '2026-11-16' -and $res.expected_tool_args.amount -eq 50 -and $res.expected_tool_args.list[0] -eq '2026-11-17') 'Deep: ganzer Testfall (task, expected_tool_args, Liste, Zahl bleibt)'
 
+Write-Host "Feste Daten (Get-FixedDateFinding, mock_lint C5)"
+$t0 = ConvertTo-Day '2026-11-15'
+function Get-FixedCount([string]$Json) { @(Get-FixedDateFinding -Obj ($Json | ConvertFrom-Json) -Today $t0).Count }
+Assert-That ((Get-FixedCount '{"task":"ab 2026-12-01"}') -eq 1) 'Zukunft (ISO) in task ist ein Fund'
+Assert-That ((Get-FixedCount '{"task":"erste Rate am 15.12.2026"}') -eq 1) 'Zukunft (TT.MM.JJJJ) in task ist ein Fund'
+Assert-That ((Get-FixedCount '{"task":"am 2024-11-16"}') -eq 1) 'knapp unter zwei Jahre zurueck ist ein Fund'
+Assert-That ((Get-FixedCount '{"task":"am 2024-11-15"}') -eq 0) 'genau zwei Jahre zurueck ist kein Fund'
+Assert-That ((Get-FixedCount '{"task":"am 01.07.2020 und 2019-03-04"}') -eq 0) 'laenger als zwei Jahre zurueck ist kein Fund'
+Assert-That ((Get-FixedCount '{"task":"am 31.02.2027, Version 2026-13-40"}') -eq 0) 'Unmoegliche Kalenderdaten sind kein Fund'
+Assert-That ((Get-FixedCount '{"task":"{{date:+30d@2}} und 0d"}') -eq 0) 'Platzhalter ist kein Fund'
+Assert-That ((Get-FixedCount '{"notes":"Fund 2026-11-05","name":"x 2027-01-01","setup_sql":"SELECT 2027-01-01","_comment":"2027-01-01","task":"ohne Datum"}') -eq 0) 'notes, name, _comment und setup_sql bleiben frei'
+Assert-That ((Get-FixedCount '{"task":"ab 2026-12-01","fixed_date_reason":"Stichtag ist der Testgegenstand"}') -eq 0) 'fixed_date_reason nimmt den Fall aus'
+Assert-That ((Get-FixedCount '{"task":"ab 2026-12-01","fixed_date_reason":"  "}') -eq 1) 'leeres fixed_date_reason nimmt nichts aus'
+Assert-That ((Get-FixedCount '{"expected_tool_args":{"d":"2027-01-02","n":5},"expected_behavior":"bis 2027-02-03"}') -eq 2) 'expected_tool_args und expected_behavior werden gelesen'
+Assert-That ((Get-FixedCount '{"turns":[{"text":"am 2027-01-02"},"und 03.04.2027"]}') -eq 2) 'turns (Objekte und Strings) werden gelesen'
+Assert-That ((Get-FixedCount '{"match":"x","calls":[{"tool":"t","args":{"transaction_date":"2026-06-16"}}]}') -eq 1) 'Szenario-Args (calls) werden gelesen'
+Assert-That ((Get-FixedCount '{"task":"a 2027-01-02 b 2027-01-03"}') -eq 2) 'jedes Literal zaehlt einzeln'
+
 Write-Host "JS (tests/mock_llm/server.js)"
 $node = Get-Command node -ErrorAction SilentlyContinue
 $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

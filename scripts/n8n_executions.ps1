@@ -8,7 +8,8 @@
 #   .\scripts\n8n_executions.ps1 -Limit 50
 #   .\scripts\n8n_executions.ps1 -Id 1234              # detail of one execution incl. error
 #   .\scripts\n8n_executions.ps1 -Id 1234 -Dump        # + dump each node's output JSON (messages/tool I/O)
-#   .\scripts\n8n_executions.ps1 -Id 1234 -Stop        # stop a specific execution (POST /stop)
+#   .\scripts\n8n_executions.ps1 -Id 1234 -RawOut x.json  # + full execution JSON to a file (tool inputs/outputs untruncated)
+#   .\scripts\n8n_executions.ps1 -Id 1234 -Stop       # stop a specific execution (POST /stop)
 #   .\scripts\n8n_executions.ps1 -StopWaiting          # stop ALL waiting executions (stale gates/approvals)
 #
 # -StopWaiting is safe: only touches executions with status=waiting. Useful when a gate
@@ -24,6 +25,7 @@ param(
     [switch]$ErrorsOnly,
     [string]$Status,
     [switch]$Dump,
+    [string]$RawOut,
     [switch]$Stop,
     [switch]$StopWaiting
 )
@@ -86,6 +88,7 @@ if ($StopWaiting) {
 
 if ($Id) {
     $ex = Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$Id`?includeData=true" -Headers $Headers -Method Get
+    if ($RawOut) { [System.IO.File]::WriteAllText($RawOut, ($ex | ConvertTo-Json -Depth 60), (New-Object System.Text.UTF8Encoding($false))); Write-Host "  raw JSON -> $RawOut" }
     $name = if ($wfNames.ContainsKey($ex.workflowId)) { $wfNames[$ex.workflowId] } else { $ex.workflowId }
     Write-Host "Execution $($ex.id)  [$($ex.status)]  workflow: $name"
     Write-Host "  started: $($ex.startedAt)   stopped: $($ex.stoppedAt)   mode: $($ex.mode)"
@@ -118,7 +121,9 @@ if ($Id) {
             $run = $p.Value[0]
             $j = '<no output>'
             try {
-                $out = $run.data.main[0]
+                # Werkzeug- und Modell-Knoten am Agenten liefern unter ai_tool/ai_languageModel, nicht main.
+                $conn1 = @($run.data.PSObject.Properties)[0]
+                $out = if ($conn1) { $conn1.Value[0] } else { $null }
                 if ($out) { $j = ($out | ConvertTo-Json -Depth 8 -Compress) }
             } catch { $j = '<unparseable>' }
             Write-Host "  ── [$($p.Name)]"

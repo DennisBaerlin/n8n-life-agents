@@ -5,7 +5,7 @@
 # Bau-Kontext = der Release-Baum, genau wie das Release-Asset (`git archive`, nur getrackte Dateien, LF laut .gitattributes):
 #   git archive --format=tar HEAD provisioning packages .gitattributes | docker build -f provisioning/compose/master.Dockerfile -t <name> -
 # Bau fuer amd64 + arm64, Veroeffentlichung und Digest in compose.yml: Paket 5 (Auslieferung der Images).
-FROM node:24-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS node
+FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS node
 FROM docker:cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1 AS dockercli
 FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 RUN apt-get update \

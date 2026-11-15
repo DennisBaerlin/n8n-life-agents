@@ -219,8 +219,8 @@ CI runs the *same* commit-stage hooks via the same runner OS (Windows), so there
 | **post-merge / post-commit** | after a merge/pull; after a hand-resolved conflict merge commit (git skips post-merge there) | `post-merge-regenerate` / `post-commit-regenerate` (rebuild the generated UI token blocks and the site when their sources changed in the merge; the result stays uncommitted; a failing generator prints a warning with the command to rerun) | **Soft** (never commits). |
 
 The Docker-substrate and slow hooks are pre-push only and are **excluded from `ci.yml`** (no test substrate
-there). The **LLM-cost test suites** (`n8n_test`, `orch_test`, `e2e_test`, `judge_eval`,
-`multiturn_test`) are **not** wired into the gates — they cost real credits and are owner-triggered;
+there). The **LLM-cost test suites** (the full list is the header of `.claude/hooks/enforce_owner_window.ps1`)
+are **not** wired into the gates — they cost real credits and are owner-triggered;
 `llm_suite_advice` only *recommends* them based on what you touched. For Claude Code sessions the
 PreToolUse hook `.claude/hooks/enforce_owner_window.ps1` denies them (and the dev-instance reset) unless the
 owner opened a window in the terminal with `scripts/grant_owner_window.ps1`. Changes to the Mini App are gated the

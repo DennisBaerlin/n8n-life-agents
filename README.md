@@ -61,7 +61,7 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
 
-**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing, plan reminders and the document assistant run on Haiku, bookkeeping, help, monitoring, web search, reading uploaded documents and job scoring on Sonnet, and only the advisor agents on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
+**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing, plan reminders and the document assistant run on Haiku, bookkeeping, help, monitoring, web search, reading uploaded documents and job scoring on Sonnet, and only the advisor agents (and the stronger lane of their second-opinion panel) on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
 
 ## Installation
 

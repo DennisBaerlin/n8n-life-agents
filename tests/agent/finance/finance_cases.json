@@ -119,13 +119,13 @@
     },
     {
         "id":  "tc12",
-        "name":  "Zwei Konten in einer Nachricht: Sammel-Import (Cash + Depot)",
-        "quarantined":  true,
+        "name":  "Depot mit neuem Verrechnungskonto in einer Nachricht: zwei Einzelkarten, Girokonto zuerst",
         "task":  "Lege ein neues Birkenbank Girokonto an (Inhaber Erika, ohne Zinsen) und zusaetzlich ein neues Birkenbank Depot, das dieses Birkenbank Girokonto als Verrechnungskonto nutzt.",
         "chat_id":  "test_tc12",
-        "expected_tool":  "tool_import_stage_rows",
-        "expected_behavior":  "Zwei Eintraege in einer Nachricht -> Sammel-Import: stagt BEIDE Konten in einem Batch (tool_import_stage_rows: Birkenbank Girokonto als cash, Birkenbank Depot als stocks_depot mit settlement_account = Birkenbank Girokonto), nicht zwei Einzel-Anlagen; danach tool_commit_import fuer die eine Sammelkarte. Nach der Ablehnung meldet er den Abbruch.",
-        "notes":  "QUARANTAENE: Sonnet wechselt zwischen Sammel-Import (Regel von tool_import_stage_rows) und zwei Einzel-Anlagen in richtiger Reihenfolge (Girokonto zuerst) - fuer den Nutzer gleiches Ergebnis, nur zwei Karten statt einer. RE-EVALUIEREN beim naechsten gezielten bezahlten Lauf durch den Owner: >=3 isolierte Laeufe mit Sammel-Import -> quarantined entfernen. Abgrenzung zu tc40: tc12 hat die Abhaengigkeit Depot -> neues Girokonto innerhalb des Batches und erwartet den Commit, tc40 nur Stage ohne Commit."
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {"account_type":  "cash"},
+        "expected_behavior":  "Depot plus sein NEUES Verrechnungskonto -> zwei Einzel-Anlagen nacheinander: ruft zuerst NUR tool_create_account fuer das Birkenbank Girokonto (account_type cash, Inhaber Erika, ohne Zinsen), nicht den Sammel-Import und nicht beide Konten gleichzeitig. Nach der Ablehnung dieser Karte meldet er den Abbruch und legt das Depot NICHT an (sein Verrechnungskonto fehlt); ein Angebot, beides erneut anzulegen, ist erlaubt.",
+        "notes":  "2026-11-15 Owner-Entscheid (bezahlter Lauf, 0 von 3 Sammel-Import): zwei Einzelkarten nacheinander sind richtig; Regel als Ausnahme in der Description von tool_import_stage_rows, Verweis in tool_create_account. Quarantaene aufgehoben. Die Routing-Suite lehnt jede Karte ab, darum prueft der Fall nur Schritt 1 und das Nicht-Anlegen des Depots nach Ablehnung. Schritt 2 (Depot auf dem frisch bestaetigten Girokonto) belegt e2e03 mit echter Bestaetigung (Depot-Bestand nach Kauf). Abgrenzung: andere Mehrfach-Eingaben bleiben beim Sammel-Import (tc40, e2e31)."
     },
     {
         "id":  "tc13",

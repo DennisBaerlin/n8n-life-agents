@@ -348,6 +348,13 @@ repos:
         pass_filenames: false
         files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
 
+      - id: precondition-lint-test
+        name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/precondition_lint_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(dev/precondition_lint_test|lib/precondition_check|mock_lint)\.ps1|tests/util/precondition_allowlist\.json)$
+
       - id: run-free-gates-filter-test
         name: run_free_gates_filter_test (-Suites runs only the named suites; no substrate is started)
         language: system

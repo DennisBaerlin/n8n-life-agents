@@ -37,8 +37,8 @@
     "chat_id": "test_cc04",
     "timeout_s": 240,
     "expected_tool": null,
-    "expected_behavior": "The affordability of a job change belongs to the career advisor (its runway), it must not hand the whole question to the finance advisor. It must NOT call a write tool. It answers from the runway line of the career plan; without a plan or data it says so plainly, invents no financial figures and offers to set up the plan. It may send the general monthly budget to the finance advisor via a new message.",
-    "notes": "WS-1 Abgrenzung: Leistbarkeit/Runway = finance_advisor (Runway-Bruecke erst WS-5). Spiegelt die Orchestrator-Abgrenzung oc13 auf Agent-Ebene. Ueberarbeitet 2026-11-02: der Fall verlangte noch den Verweis an den Finanzberater, seit WS-5 beantwortet der Coach das selbst (Prompt Runway, Routing oc13)."
+    "expected_behavior": "The reply answers as the career coach and does not say the question belongs to someone else. Without a published career plan it says plainly that the runway cannot be calculated yet, invents no figures and offers to set up the plan. No write tool. Mentioning the finance advisor for the general monthly budget is optional and never a fault.",
+    "notes": "WS-1 Abgrenzung: Leistbarkeit/Runway = finance_advisor (Runway-Bruecke erst WS-5). Spiegelt die Orchestrator-Abgrenzung oc13 auf Agent-Ebene. Rubrik 2026-11-15 geschaerft: die Kann-Klausel zum Finanzberater war als Pflicht gewertet worden (vier Mal PARTIAL). Ueberarbeitet 2026-11-02: der Fall verlangte noch den Verweis an den Finanzberater, seit WS-5 beantwortet der Coach das selbst (Prompt Runway, Routing oc13)."
   },
   {
     "id": "cc05",

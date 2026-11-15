@@ -915,7 +915,7 @@
                                    "amount":  50,
                                    "schedule_unit":  "month"
                                },
-        "expected_behavior":  "Ruft tool_create_recurring_payment auf und gibt first_payment_date relativ in Ziffern-Form weiter (z. B. in 1 week oder +7 days), nicht als selbst ausgerechnetes Datum und nicht in Worten (in a week).",
+        "expected_behavior":  "Ruft tool_create_recurring_payment auf und gibt first_payment_date als relativen Ausdruck mit Ziffer und Einheit weiter (z. B. in 1 week oder +7 days) - das ist richtig. FAIL nur bei einem selbst ausgerechneten Kalenderdatum oder bei einer Form ohne Ziffer wie in a week.",
         "notes":  "Relative Datumsangaben 2026-10-26: die Grammatik von core.fn_resolve_date kennt nur Ziffern. Mock-Tier: Szenario Dauerauftrag Sportverein."
     },
     {
@@ -1183,9 +1183,10 @@
         "name":  "Lesen: erfasste Altersvorsorge aus der Datenbank nennen",
         "task":  "Welche Altersvorsorge habe ich schon erfasst?",
         "chat_id":  "test_tc106",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ Testrente', finance.fn_create_pension(jsonb_build_object('name','__E2E__ Testrente','pension_type','ruerup','provider','Testversicherung')));",
         "expected_tool":  null,
-        "expected_behavior":  "Liest die Altersvorsorge per Datenbank-Abfrage (finance.pension_overview), ruft kein Write-Tool auf und erfindet nichts. Meldet nur dann, dass nichts erfasst ist, wenn die Abfrage erfolgreich war und leer ist; scheitert eine Abfrage, korrigiert er sie oder sagt, dass er es nicht lesen konnte.",
-        "notes":  "Befund 2026-11-01: pension_overview fehlte in der Ansichten-Liste, der Agent riet finance.pensions, liess den Teil nach dem Fehler weg und meldete die Vorsorge als fehlend."
+        "expected_behavior":  "Nennt die erfasste Altersvorsorge __E2E__ Testrente, sagt nicht, dass nichts erfasst ist, und ruft kein Write-Tool auf. Bewertet wird die Antwort, nicht der Sichtname im Lese-Protokoll (finance.pension_overview). Scheitert eine Abfrage, korrigiert der Agent sie oder sagt, dass er es nicht lesen konnte.",
+        "notes":  "Setup 2026-11-15: das Fixture hat bewusst keine Rente (Kopf util_seed_test_fixtures.sql), also legt setup_sql die Vorsorge __E2E__ Testrente an; mit leerer Datenlage pruefte der Fall den Live-Befund nicht und die Rubrik verlangte den Sichtnamen. Befund 2026-11-01: pension_overview fehlte in der Ansichten-Liste, der Agent riet finance.pensions, liess den Teil nach dem Fehler weg und meldete die Vorsorge als fehlend."
     },
     {
         "id":  "tc104",

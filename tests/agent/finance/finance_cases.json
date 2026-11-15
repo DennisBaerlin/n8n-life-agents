@@ -165,9 +165,8 @@
                                    "price_per_share":  115,
                                    "order_fee":  2
                                },
-        "quarantined":  true,
         "expected_behavior":  "Ruft tool_book_stock_sell direkt mit depot_name=Testbroker Depot, symbol=VWCE, shares=5, price_per_share=115, order_fee=2 auf (keine eigene holding_id-Abfrage vorher, die Position findet das Tool). Rechnet den Erloes nicht selbst.",
-        "notes":  "QUARANTAENE: bekannt flaky (Lauf-zu-Lauf-Varianz error/timeout/pass), Rest-Varianz ist LLM-Nichtdeterminismus; wird ausgefuehrt und berichtet, nicht gewertet. Haupt-Ursachen behoben (Position per depot_name + symbol statt holding_id-Lookup, Tool-Description entzerrt). RE-EVALUIEREN: naechster gezielter bezahlter Lauf durch den Owner; ueber >=5 isolierte Laeufe stabil gruen -> quarantined entfernen. Korrektheit voll via DB-Test test_fn_book_stock_sell.sql + E2E e2e05."
+        "notes":  "Position per depot_name + symbol statt holding_id-Lookup. Korrektheit voll via DB-Test test_fn_book_stock_sell.sql + E2E e2e05."
     },
     {
         "id":  "tc17",

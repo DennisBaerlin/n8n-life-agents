@@ -96,7 +96,7 @@
     "chat_id": "880055200",
     "expected_tool": null,
     "expected_behavior": "The reply addresses the member in the second person and never mentions them in the third person (no list of known people that includes them). It does not call itself 'Guide' or name any agent. It offers nothing only the owner may do: no inviting members, no changing the household, no working on a plan. It gives a few example questions in everyday words.",
-    "notes": "Befund Station 11. chat_id = Lena (partner) im Substrat (real_ingress pairt sie)."
+    "notes": "Befund Station 11. chat_id = Lena (partner): n8n_test und mock_route_test paaren sie vor dem Fall (TestSenderUids)."
   },
   {
     "id": "gc12",
@@ -115,6 +115,6 @@
     "expected_tool": null,
     "expected_behavior": "The reply is for a child without household view: it contains no money or household-finance examples (no balances, accounts, payments or plans) and offers nothing only the owner may do. It stays short and friendly.",
     "quarantined": true,
-    "notes": "Quarantaene bis n8n_test einen Kind-Absender setzen kann (Re-Evaluierung dann). Owner-Entscheid 2026-11-11 (Kinder sehen keine Haushaltsfinanzen). Braucht die Telegram-id 880055201 an der Fixture-Person lisa (real_ingress setzt sie nur je Fall) -> vor dem Lauf im Substrat setzen, sonst erscheint der Abschnitt 'Who is writing' nicht."
+    "notes": "Quarantaene bis zum naechsten bezahlten Lauf als Kind (Re-Evaluierung dann): n8n_test paart die id 880055201 jetzt vor dem Fall an der Fixture-Person lisa (TestSenderUids), der Mock-Lauf liefert den Absender 'Lisa (role child)'. Owner-Entscheid 2026-11-11 (Kinder sehen keine Haushaltsfinanzen)."
   }
 ]

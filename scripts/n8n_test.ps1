@@ -12,6 +12,9 @@
 #   Ziel-Workflow (Get-MaxExecId vor dem Feuern; die suspendierte Execution liefert keine
 #   Run-Info-subExecution).
 #
+# Absender: Ein Fall mit numerischer chat_id (z. B. 880055200 = Lena, Mitglied; Liste TestSenderUids in dev/test_n8n_state.ps1) laeuft als diese
+#   Person (Pairing vor dem Fall); alle anderen Werte (z. B. 'test_ac01') und fehlende Felder laufen als gepairter Owner.
+#
 # Pre-Flight (jeder Paket-Agent): seedet + verifiziert die Routing-Fixtures + abgeschlossenes Onboarding.
 # Ziel/Paket-Eigenschaften leitet Get-TestRouteAgent aus den Manifesten + core.context_scopes ab (kein Paket im Treiber).
 #
@@ -170,7 +173,9 @@ foreach ($tc in $cases) {
     Write-Host "    Erwartet: tool=$expShow"
 
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
-    [long]$chatId = $TestOwnerTelegramUid
+    [long]$chatId = Resolve-TestCaseChatId $tc
+    try { Set-TestSenderPairing -Container $Container -ChatId $chatId }
+    catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
     Clear-HitlPending -Container $Container

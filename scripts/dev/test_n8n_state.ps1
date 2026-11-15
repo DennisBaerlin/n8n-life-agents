@@ -683,6 +683,45 @@ WHERE name = 'family';
     if ($r.Code -ne 0) { throw "Owner-Pairing (Container-DB) fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
+# Absender-Uids der Fixture-Personen fuer Faelle mit eigener numerischer chat_id (n8n_test). Nicht gelistete Uids erkennt
+# fn_resolve_sender nicht (Knock-Zweig); mock_lint C6 haelt die Fall-Dateien auf diese Liste.
+$script:TestSenderUids = @{ '880055200' = 'lena'; '880055201' = 'lisa' }
+
+# chat_id eines Falls: eine numerische chat_id (String oder Zahl) gilt, jeder andere Wert (z. B. 'test_ac01') und ein fehlendes Feld
+# bedeuten den gepairten Owner. Ohne diese Aufloesung lief jeder Fall still als Owner.
+function Resolve-TestCaseChatId {
+    param([Parameter(Mandatory)][object]$Case)
+    $v = if ($Case.PSObject.Properties['chat_id']) { "$($Case.chat_id)" } else { '' }
+    if ($v -match '^\d{1,18}$') { return [long]$v }
+    return [long]$script:TestOwnerTelegramUid
+}
+
+# SQL, das den Owner paart und die Telegram-id genau der Person setzt, der $ChatId gehoert (lena/lisa laut TestSenderUids);
+# die uebrigen Fixture-Personen verlieren ihre id, damit ein Fall nie die Pairing-Reste des vorigen sieht. Idempotent.
+function Get-TestSenderPairingSql {
+    param([Parameter(Mandatory)][long]$ChatId)
+    $who = $script:TestSenderUids["$ChatId"]
+    $ownerUid = [long]$script:TestOwnerTelegramUid
+    $cases = @("WHEN p->>'person_id' = 'owner' THEN p || jsonb_build_object('telegram_user_id', ${ownerUid}::bigint)")
+    foreach ($person in @($script:TestSenderUids.Values | Sort-Object)) {   # nicht $pid: automatische Variable
+        if ($person -eq $who) { $cases += "WHEN p->>'person_id' = '$person' THEN p || jsonb_build_object('telegram_user_id', ${ChatId}::bigint)" }
+        else { $cases += "WHEN p->>'person_id' = '$person' THEN p - 'telegram_user_id'" }
+    }
+    return @"
+UPDATE agent.core_contexts
+SET metadata = jsonb_set(metadata, '{facts,persons}',
+  (SELECT jsonb_agg(CASE $($cases -join ' ') ELSE p END)
+   FROM jsonb_array_elements(metadata->'facts'->'persons') p))
+WHERE name = 'family';
+"@
+}
+
+function Set-TestSenderPairing {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][long]$ChatId)
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', (Get-TestSenderPairingSql -ChatId $ChatId))
+    if ($r.Code -ne 0) { throw "Absender-Pairing (Container-DB) fehlgeschlagen: $($r.Output -join "`n")" }
+}
+
 # Bot-Persona einer Person in den family-Facts setzen ('' oder 'neutral' = Key entfernen, wie fn_set_context_facts) bzw.
 # zuruecklesen ('' = Key fehlt). Konsumenten: real_ingress_test (persona_person/-before/expect_persona) und orch_test
 # (Case-Feld persona, Owner). Der Code wird nicht geprueft — der Validator der Container-DB lehnt Unbekanntes ab.

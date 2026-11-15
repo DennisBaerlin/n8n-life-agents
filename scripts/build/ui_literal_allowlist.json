@@ -428,12 +428,6 @@
                       "reason":  "data:vergleichswort (Erkennungsmuster fuer eine Verneinung in einer Modell-Eingabe, nie ein Nutzertext)"
                   },
                   {
-                      "where":  "provisioning/lib/backup_cli.sh",
-                      "literal":  "n8n-life-agents Off-Site-Backup {}",
-                      "count":  1,
-                      "reason":  "debt:caption der naechtlichen Off-Site-Kopie (Entwickler-Text an den Owner; Umstellung auf backup_text laeuft, danach Eintrag entfernen)"
-                  },
-                  {
                       "where":  "provisioning/lib/release_inputs.sh",
                       "literal":  "Update wartet: Für die neue Version fehlt eine Pflichtangabe ({}). Es wurde nichts geändert, dein Bot läuft wie bisher. Bitte auf dem Server eintragen: sudo lifeagents reconfigure — danach läuft das nächste Update normal durch.",
                       "count":  1,

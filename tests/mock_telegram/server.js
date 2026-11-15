@@ -146,6 +146,8 @@ function buildResult(method, body) {
         text: body && body.text,
         reply_markup: body && body.reply_markup,
       };
+    case 'sendDocument':
+      return { message_id: ++messageId, from: BOT_USER, chat: { id: body && body.chat_id, type: 'private' }, date: Math.floor(Date.now() / 1000), document: { file_name: body && body.doc_name } };
     case 'getFile':
       // Sprach-Test-Dateien (file_id mock_voice_*): file_path traegt die file_id wie bei Telegram ('voice/file_12.oga')
       // -> der Download liefert markierte Bytes, an denen der Mock-LLM die Gemini-Transkription erkennt
@@ -298,6 +300,15 @@ const server = http.createServer((req, res) => {
       ? inspectProfileUpload(ct.indexOf('multipart/form-data') !== -1 ? parseMultipart(Buffer.concat(chunks), ct) : [])
       : null;
     if (upload) body = upload;
+    // sendDocument (Sicherungs-Kopie): Textfelder + Dateiname + Groesse, nie die Bytes.
+    if (method === 'sendDocument' && ct.indexOf('multipart/form-data') !== -1) {
+      const parts = parseMultipart(Buffer.concat(chunks), ct);
+      body = { doc_name: null, doc_size: 0 };
+      for (const p of parts) {
+        if (p.filename !== null) { body.doc_name = p.filename; body.doc_size = p.data.length; }
+        else body[p.name] = p.data.toString('utf8');
+      }
+    }
 
     const result = buildResult(method, typeof body === 'object' ? body : {});
     // Aufzeichnung anhaengen (eine JSON-Zeile je Call; der Harness liest sie via `docker exec cat`). result_message_id =

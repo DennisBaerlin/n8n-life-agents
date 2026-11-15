@@ -139,34 +139,35 @@ _bkp_tmpdir() {
   if [ -d /dev/shm ] && [ -w /dev/shm ]; then
     d="$(mktemp -d -p /dev/shm lifeagents-bkp.XXXXXX)" || return 1
   else
-    warn "/dev/shm (tmpfs) nicht verfuegbar -> Klartext-Dump liegt transient auf Disk (mktemp). Off-Site-Hygiene beachten."
+    warn "/dev/shm (tmpfs) nicht verfuegbar -> Klartext-Dump liegt transient auf Disk (mktemp). Klartext-Hygiene beachten."
     d="$(mktemp -d -p /tmp lifeagents-bkp.XXXXXX)" || return 1   # ohne -p entstuende der Ordner im aktuellen Verzeichnis
   fi
   chmod 0700 "$d"
   printf '%s' "$d"
 }
 
-# _bkp_notify_telegram <datei> -> Off-Site-Zustellung: das fertige (AES256-verschluesselte) Bundle per
-# Telegram sendDocument an den gepairten Owner-Chat schicken. Best-effort: jeder Pfad endet mit `return 0`
-# (das lokale Backup ist hier bereits sicher geschrieben -> der Versand darf den Export nie kippen; der von
-# der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Token nie ins argv -> 600-`mktemp`-
-# curl-config; nur die Nicht-Geheim-Felder (document/chat_id/caption) als -F-Flags. Token + Owner ueber die
-# geteilten Helfer owner_tg_token/owner_tg_chat_id (common.sh; der Owner via _resolve_owner_chat_id aus
-# deploy_workflows.sh) -> braucht N8N_DB_NAME, also _bkp_resolve_db zuerst (sonst faellt der Resolver still
-# auf '0'). Datenschutz: das Bundle landet im persistenten Telegram-Cloud-Speicher (bleibt dort auch nach
-# Loeschen vorerst als Kopie), aber als verschluesseltes Chiffrat (gpg-Schluessel nur offline) -> Telegram
-# sieht nie Klartext; Restexposition = Metadaten + nicht-sofort-loeschbare Chiffrat-Kopie.
+# _bkp_notify_telegram <datei> -> die fertige (AES256-verschluesselte) Sicherung als stille Kopie per Telegram sendDocument an
+# den gepairten Owner-Chat. Der Text kommt aus dem Textkatalog (core.backup.notify.doc_first/doc_next: das erste Mal
+# erklaert, danach kurz; Merker NOTIFY_EXPLAINED in backup.state). Nur die neueste Kopie bleibt im Chat: die Nachricht
+# wird als NOTIFY_DOC=<chat>:<message_id> gemerkt und erst nach einem geglueckten neuen Versand per deleteMessage entfernt.
+# Der Dateiname bleibt: Schluessel-ID und Version im Namen traegt die Restore-Pruefung (_bkp_rotate_victims, Version-Gate).
+# Best-effort: jeder Pfad endet mit `return 0` (die lokale Sicherung ist hier bereits sicher geschrieben -> der Versand
+# darf den Export nie kippen; der von der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Token nie
+# ins argv (tg_api_curl, curl-Config ueber stdin). Token + Owner ueber owner_tg_token/owner_tg_chat_id (common.sh; der
+# Owner via _resolve_owner_chat_id aus deploy_workflows.sh) -> braucht N8N_DB_NAME, also _bkp_resolve_db zuerst (sonst
+# faellt der Resolver still auf '0'). Datenschutz: das Chiffrat landet im Telegram-Cloud-Speicher (gpg-Schluessel nur
+# offline) -> Telegram sieht nie Klartext; Restexposition = Metadaten + eine nicht sofort loeschbare Chiffrat-Kopie.
 _bkp_notify_telegram() {
   local file="$1"
-  need_cmd curl || { warn "curl fehlt -> Off-Site-Versand (Telegram) uebersprungen. Backup liegt lokal: $file"; return 0; }
+  need_cmd curl || { warn "curl fehlt -> Kopie an Telegram uebersprungen. Backup liegt lokal: $file"; return 0; }
 
   local token; token="$(owner_tg_token)"   # common.sh, geteilt mit notify_owner_telegram
-  [ -n "$token" ] || { warn "Kein TELEGRAM_BOT_TOKEN in $(lifeagents_env_file core) -> Off-Site-Versand uebersprungen. Backup liegt lokal: $file"; return 0; }
+  [ -n "$token" ] || { warn "Kein TELEGRAM_BOT_TOKEN in $(lifeagents_env_file core) -> Kopie an Telegram uebersprungen. Backup liegt lokal: $file"; return 0; }
 
   _bkp_resolve_db   # _resolve_owner_chat_id liest N8N_DB_NAME (sonst still '0')
   local chat; chat="$(owner_tg_chat_id)"
   if [ -z "$chat" ]; then
-    warn "Owner-chat_id unbekannt/ungepairt -> Off-Site-Versand uebersprungen. Backup liegt lokal: $file"
+    warn "Owner-chat_id unbekannt/ungepairt -> Kopie an Telegram uebersprungen. Backup liegt lokal: $file"
     return 0
   fi
 
@@ -175,28 +176,30 @@ _bkp_notify_telegram() {
   local size; size="$(stat -c '%s' "$file" 2>/dev/null || echo 0)"
   case "$size" in ''|*[!0-9]*) size=0 ;; esac
   if [ "$size" -gt $((50 * 1024 * 1024)) ]; then
-    warn "Backup ${size} Byte > 50 MB (Telegram-sendDocument-Limit) -> Off-Site-Versand uebersprungen. Backup liegt lokal: $file"
+    warn "Backup ${size} Byte > 50 MB (Telegram-sendDocument-Limit) -> Kopie an Telegram uebersprungen. Backup liegt lokal: $file"
     return 0
   fi
 
-  # Token nie ins argv: URL (mit Token) ueber eine 600-curl-config; document/chat_id/caption als -F (kein Secret).
-  # Config bevorzugt in tmpfs (/dev/shm, analog _bkp_tmpdir: Klartext-Secret nie auf Disk; mktemp legt 0600 an),
-  # Fallback /tmp. mktemp via '|| true' -> set -e kippt den fertigen Export nicht; Fehlschlag = warn+skip.
-  local cfg=""
-  if [ -d /dev/shm ] && [ -w /dev/shm ]; then cfg="$(mktemp -p /dev/shm la_tg.XXXXXX 2>/dev/null || true)"; fi
-  [ -n "$cfg" ] || cfg="$(mktemp 2>/dev/null || true)"
-  [ -n "$cfg" ] && [ -f "$cfg" ] || { warn "Konnte curl-Config nicht anlegen -> Off-Site-Versand uebersprungen. Backup liegt lokal: $file"; return 0; }
-  chmod 600 "$cfg"
-  printf 'url = "https://api.telegram.org/bot%s/sendDocument"\n' "$token" > "$cfg"
-  local cap; cap="n8n-life-agents Off-Site-Backup $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  local rc=0
-  curl -fsS --max-time 60 -K "$cfg" \
-       -F "chat_id=${chat}" -F "document=@${file}" -F "caption=${cap}" >/dev/null 2>&1 || rc=$?
-  rm -f "$cfg"
-  if [ "$rc" -eq 0 ]; then
-    ok "Off-Site-Kopie an Telegram-Owner-Chat gesendet (${size} Byte)."
-  else
-    warn "Off-Site-Versand (Telegram sendDocument) fehlgeschlagen (Token/Netz/Chat?) -> unkritisch, Backup liegt lokal: $file"
+  local cap
+  if [ "$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_EXPLAINED 2>/dev/null || true)" = 1 ]; then cap="$(backup_text notify.doc_next)"
+  else cap="$(backup_text notify.doc_first)"; fi
+  local newid old
+  if _tg_upload "$token" sendDocument -F "chat_id=${chat}" -F "document=@${file}" -F "caption=${cap}" -F "disable_notification=true"; then
+    newid="$(printf '%s' "$TG_BODY" | jq -r '.result.message_id // empty' 2>/dev/null || true)"
+    [ -z "$TG_RETRIED" ] || note "Kopie an den Telegram-Chat: erster Versuch scheiterte (${TG_RETRIED}), zweiter gelungen."
+  fi
+  if [ -z "${newid:-}" ]; then
+    warn "Kopie an den Telegram-Chat nicht gesendet (${TG_ERR:-Telegram-Antwort unklar}) -> unkritisch, Backup liegt lokal: $file"
+    return 0
+  fi
+  old="$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_DOC 2>/dev/null || true)"
+  _bkp_state_set NOTIFY_EXPLAINED 1
+  _bkp_state_set NOTIFY_DOC "${chat}:${newid}"
+  ok "Kopie der Sicherung an den Telegram-Chat gesendet (${size} Byte)."
+  # Die Vortags-Kopie erst jetzt entfernen (die neue ist sicher angekommen); ein Fehler hier bleibt still.
+  if [[ "$old" =~ ^(-?[0-9]+):([0-9]+)$ ]]; then
+    _tg_post "$token" deleteMessage "{\"chat_id\":${BASH_REMATCH[1]},\"message_id\":${BASH_REMATCH[2]}}" ||
+      log "Die Kopie von gestern ließ sich im Chat nicht entfernen (${TG_ERR}) — unkritisch."
   fi
   return 0
 }
@@ -445,7 +448,7 @@ _bkp_auto_local() {
 #   gemerkten Ordner nur der Vermerk "nofolder" (doctor ROT + Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der
 #   Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
 #   Klassisch (systemd): nach BACKUP_LOCAL_DIR, dazu wie die fruehere crontab-Zeile die verschluesselte Kopie an den Owner-Chat
-#   (Off-Site). `--scheduled` (Timer lifeagents-backup, stuendlich ab BACKUP_AUTO_AT) tut nichts, wenn seit BACKUP_AUTO_AT schon
+#   (stille Kopie). `--scheduled` (Timer lifeagents-backup, stuendlich ab BACKUP_AUTO_AT) tut nichts, wenn seit BACKUP_AUTO_AT schon
 #   eine Sicherung gelang; ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler stehen in backup.state).
 backup_cmd_auto() {
   local scheduled=0 a
@@ -592,11 +595,14 @@ backup_cmd_export() {
   fi
   _bkp_state_set LAST_OK "$(date +%s)"
   log "Inhalt:$(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + $(_bkp_filtered | grep -c .) gefilterte; aktive Pakete: ${pkgs_json}"
-  # Off-Site: optional verschluesselt an den Telegram-Owner-Chat (best-effort, kippt den fertigen Export nie).
-  if [ "$notify" -eq 1 ]; then
+  # Stille Kopie in den Telegram-Chat (best-effort, kippt den fertigen Export nie). Liegt die Sicherung schon im Ordner auf
+  # dem Rechner (want_host), ist sie ausserhalb des Verbunds gesichert: dann keine Datei in den Chat.
+  if [ "$notify" -eq 1 ] && [ "$want_host" -eq 0 ]; then
     _bkp_notify_telegram "$out" || true
+  elif [ "$notify" -eq 1 ]; then
+    log "Sicherung liegt im Ordner auf dem Rechner -> keine Kopie in den Telegram-Chat."
   elif [ "$want_host" -eq 0 ]; then
-    log "Off-Site-Hinweis: liegt auf der VM — per scp/Backup wegkopieren (der Schluessel liegt OFFLINE separat). Tipp: 'lifeagents backup export --notify-telegram' schickt eine verschluesselte Kopie an deinen Telegram-Chat."
+    log "Hinweis: Die Sicherung liegt auf der VM — per scp/Backup wegkopieren (der Schluessel liegt separat im Notfallblatt). Tipp: 'lifeagents backup export --notify-telegram' schickt eine verschluesselte Kopie an deinen Telegram-Chat."
   fi
 }
 
@@ -1301,8 +1307,9 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
                            ./lifeagents-backup-<ts>-k<schlüssel-id>-v<version>.nla.enc).
                            Sichert NUR echte Nutzerdaten (Finanzen/Profil/Trigger/Plaene/Onboarding) via pg_dump —
                            NICHT Code/Workflows/Geheimnisse (die stellt der Installer wieder her).
-                           --notify-telegram schickt die fertige .nla.enc zusätzlich als Off-Site-Kopie an den
-                           Owner-Telegram-Chat (best-effort: schlaegt der Versand fehl, bleibt das lokale Backup gueltig).
+                           --notify-telegram schickt die fertige .nla.enc zusätzlich als stille Kopie an den
+                           Owner-Telegram-Chat (nur die neueste bleibt dort; best-effort: schlaegt der Versand fehl, bleibt das lokale Backup gueltig;
+                           liegt die Sicherung im Ordner auf dem Rechner, geht keine Datei in den Chat).
   restore <datei> [--key-stdin] [--yes]
                            Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
                            zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Ein fehlendes Bundle-Paket wird

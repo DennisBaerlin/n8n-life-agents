@@ -663,6 +663,18 @@ deploy_workflows() {
 # Verschatten. Texte = Katalog-Keys <pkg>.cmd.<name> direkt aus den getrackten locales/<lang>.json (Datei = Wahrheit,
 # der Host liest schon die Manifeste; Key fehlt -> en -> Befehlsname).
 
+# _tg_explain <bot-token> <curl-rc> <http-code> <antwort-body> -> Grund eines Fehlschlags in einer Zeile:
+#   "HTTP <code> — <description>" bzw. "keine Verbindung (curl <rc>)". Gekuerzt, ohne Bot-Schluessel und ohne URLs
+#   (Beschreibungen koennen die App-Adresse nennen). Gemeinsam fuer _tg_post und die Datei-Uploads (multipart).
+_tg_explain() {
+  local token="$1" rc="$2" code="$3" body="$4" desc
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=''
+  desc="$(printf '%s' "$body" | jq -r '.description // empty' 2>/dev/null | tr -d '\r\n' | head -c 200 || true)"
+  desc="${desc//"$token"/***}"
+  desc="$(printf '%s' "$desc" | sed -E 's#https?://[^[:space:]]+#<URL>#g')"
+  if [ -z "$code" ] || [ "$code" = 000 ]; then printf 'keine Verbindung (curl %s)' "$rc"; else printf 'HTTP %s%s' "$code" "${desc:+ — $desc}"; fi
+}
+
 # _tg_post <bot-token> <methode> <body-json> [secret] — ein Bot-API-POST mit genau einem Wiederholversuch.
 #   Rueckgabe 0 = ok:true. Setzt TG_BODY (Antwort), TG_ERR (Grund des letzten Fehlschlags: "HTTP <code> — <description>"
 #   bzw. "keine Verbindung") und TG_RETRIED (Grund des ersten Versuchs, wenn der zweite lief). Bei HTTP 429 wartet er
@@ -670,13 +682,20 @@ deploy_workflows() {
 #   Aufrufe scheitert gelegentlich gesammelt (Rate-Limit, 5xx), die naechste geht durch.
 #   Der Grund ist gekuerzt, ohne Bot-Schluessel und ohne URLs (Beschreibungen koennen die App-Adresse nennen).
 #   secret=1: Body ueber die curl-Config statt argv (Body mit der je Instanz geheimen App-Adresse).
+#   secret=upload (Datei-Versand, siehe _tg_upload): body leer, die weiteren Argumente sind curl-Formularfelder (-F), --max-time 60.
+#   Grenze: scheitert ein Upload erst nach dem Senden (Zeitablauf), kann der zweite Versuch eine Doppelkopie erzeugen.
 _tg_post() {
-  local token="$1" method="$2" body="$3" secret="${4:-}" attempt=1 out rc code desc ra wait cap
+  local token="$1" method="$2" body="$3" secret="${4:-}" attempt=1 out rc code ra wait cap
+  local -a form=()
+  if [ "$#" -ge 4 ]; then shift 4; else shift "$#"; fi
+  form=("$@")
   TG_BODY=''; TG_ERR=''; TG_RETRIED=''
   cap="${LIFEAGENTS_TG_RETRY_MAX:-10}"; case "$cap" in ''|*[!0-9]*) cap=10 ;; esac
   while :; do
     rc=0
-    if [ "$secret" = 1 ]; then
+    if [ "$secret" = upload ]; then
+      out="$(tg_api_curl "$token" "$method" -sS --max-time 60 -X POST -w '\n%{http_code}' "${form[@]}" 2>/dev/null)" || rc=$?
+    elif [ "$secret" = 1 ]; then
       out="$({ curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot${token}/${method}"; curl_cfg data "$body"; } |
              curl_secret -sS --max-time 10 -X POST -H 'content-type: application/json' -w '\n%{http_code}' 2>/dev/null)" || rc=$?
     else
@@ -688,10 +707,7 @@ _tg_post() {
     if [ "$rc" -eq 0 ] && { [ -z "$code" ] || [ "$code" = 200 ]; } && printf '%s' "$TG_BODY" | jq -e '.ok == true' >/dev/null 2>&1; then
       TG_ERR=''; return 0
     fi
-    desc="$(printf '%s' "$TG_BODY" | jq -r '.description // empty' 2>/dev/null | tr -d '\r\n' | head -c 200 || true)"
-    desc="${desc//"$token"/***}"
-    desc="$(printf '%s' "$desc" | sed -E 's#https?://[^[:space:]]+#<URL>#g')"
-    if [ -z "$code" ] || [ "$code" = 000 ]; then TG_ERR="keine Verbindung (curl $rc)"; else TG_ERR="HTTP ${code}${desc:+ — $desc}"; fi
+    TG_ERR="$(_tg_explain "$token" "$rc" "$code" "$TG_BODY")"
     [ "$attempt" -eq 1 ] || return 1
     ra="$(printf '%s' "$TG_BODY" | jq -r '.parameters.retry_after // empty' 2>/dev/null || true)"
     case "$ra" in ''|*[!0-9]*) wait=1 ;; *) wait="$ra" ;; esac
@@ -700,6 +716,10 @@ _tg_post() {
     sleep "$wait"
   done
 }
+
+# _tg_upload <bot-token> <methode> <curl-F-argument>... — Datei-Versand (sendDocument) wie _tg_post: ein Wiederholversuch,
+#   TG_BODY/TG_ERR/TG_RETRIED, kein Schluessel im argv. Beispiel: _tg_upload "$t" sendDocument -F chat_id=1 -F "document=@f".
+_tg_upload() { local t="$1" m="$2"; shift 2; _tg_post "$t" "$m" '' upload "$@"; }
 
 # _push_bot_commands <bot-token> <cmds-json> <scope-json> <label> [<language_code>] — einen BotCommandScope (+ Sprache)
 # setzen + sofort verifizieren (wie inject_credentials::_cred_test). <cmds-json>

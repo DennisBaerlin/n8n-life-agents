@@ -9,7 +9,7 @@
 # Fall mehrere Runden fahren, ohne das Gedaechtnis dazwischen zu leeren (einmal je Fall), und der Lauf laeuft auch mit dem
 # echten Modell. Anders als multiturn_test trifft er den Orchestrator, nicht den Harness eines Agenten.
 #
-# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|fresh_household,
+# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|household_open|fresh_household,
 #         hitl: decline|approve (Default decline), mock_fresh_memory: true (nur Mock: Chat-Gedaechtnis vor jeder Runde leeren),
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
@@ -21,6 +21,9 @@
 # no_cash_account = wie onboarding_done, aber ohne aktives Geldkonto (die Fixture-Konten sind nur waehrend des Falls
 # geschlossen; Wiederherstellung auch nach Abbruch, Mechanik beim Pfad $ClosedAccountsFile unten). Ein Fall, der Konten
 # anlegt, nennt sie mit __E2E__-Praefix, sonst raeumt agent.fn_clear_e2e_data sie nicht weg.
+# household_open = wie onboarding_done, aber der Haushalt-Bereich steht auf 'unknown' (Set-TestHouseholdOnboarding; Finanz-Bereiche bleiben
+# completed). Der Absender kommt allein aus `sender`: sender owner = Owner bei offenem Haushalt, sender member = bestaetigtes Mitglied
+# (Lena, gepairt) bei offenem Haushalt; einen eigenen Mitglied-Start gibt es nicht, member_confirmed setzt den Absender ebenfalls nicht.
 # fresh_household = Zustand direkt nach der Installation: Werkszustand-Reset (core.fn_reset_user_data), nur der Owner im
 # family-Skelett (gepairt), Haushalt und alle Finanz-Bereiche offen, keine Daten. Danach ist das Substrat leer; der Lauf
 # stellt am Ende per Reset + Fixture-Seed den Fixture-Stand wieder her (auch nach Abbruch). Nur auf dem Test-Substrat.
@@ -186,13 +189,13 @@ WHERE name = 'family';
 "@
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
     if ($r.Code -ne 0) { throw "Pairing (Container-DB) fehlgeschlagen: $($r.Output -join ' ')" }
-    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account', 'fresh_household')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account|fresh_household)." }
+    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account', 'household_open', 'fresh_household')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account|household_open|fresh_household)." }
     if ($fresh) {
         Clear-TestNextStepOffers -Container $Container
         Assert-FreshHousehold
         return
     }
-    Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
+    Set-TestHouseholdOnboarding -Container $Container -Status $(if ("$($Tc.start)" -eq 'household_open') { 'unknown' } else { 'completed' })
     Set-TestPackageOnboarding -Container $Container -Sections $null
     Clear-TestNextStepOffers -Container $Container   # Gruss-/Lebenszeichen-Knopf je Fall frisch (fruehere Suiten verbrauchen den Tagesmerker)
     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.advisor_plans;')

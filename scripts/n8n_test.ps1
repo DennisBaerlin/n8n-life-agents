@@ -69,6 +69,7 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 . "$PSScriptRoot\lib\paid_guard.ps1"
+. "$PSScriptRoot\lib\next_step_marker.ps1"
 $llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 function Clear-TestCaseSetup {
@@ -296,13 +297,17 @@ foreach ($tc in $cases) {
         [array]::Reverse($otherRuns)
         $otherTools = (@($otherRuns | ForEach-Object { "$($_.tool): $(Get-ToolRunOutput $_.execId)" }) -join "`n")
         $readTools = ($allCalls | Where-Object { -not (Test-IsWriteTool $_.tool) } | ForEach-Object { $_.tool } | Select-Object -Unique) -join ', '
+        # Der Bewerter sieht, was der Nutzer sieht: die Markerzeile NEXT_STEP wird wie im Relay aus dem Text genommen und als Knopf mitgegeben.
+        $agentText = Split-NextStepMarker (Get-AgentOutput $runData $AgentNodeName)
+        $stepLabel = ''
+        if ($agentText.marker) { $stepLabel = Get-SystemNextStepLabel $runData; if (-not $stepLabel) { $stepLabel = 'yes' } }
         $judgeBundle += [ordered]@{
             id = $tc.id; name = $tc.name; task = $tc.task
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
             other_write_tools = $otherTools
-            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); actual_output = (Get-AgentOutput $runData $AgentNodeName)
+            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); next_step_button = $stepLabel; actual_output = $agentText.text
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }

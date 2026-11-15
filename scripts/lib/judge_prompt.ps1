@@ -39,8 +39,9 @@ So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
     $tail = @'
 - Schreib-Werkzeuge machen vor der Karte einen Probelauf in der Datenbank. ok:false (ohne Karte) heisst:
   die Datenbank hat den Vorgang sachlich abgelehnt; der Agent soll das sachlich melden, nichts erfinden.
-- READ_TOOLS ist unvollstaendig protokolliert. Ein fehlender Lese-Aufruf ist nie allein ein Grund fuer
-  PARTIAL/FAIL. Die Werkzeuge loesen Namen selbst auf; ein Lese-Aufruf vorher ist kein Muss.
+- READ_TOOLS nennt die Lese-Aufrufe, READ_TOOL_OUTPUTS (kann fehlen) ihre gekuerzten Rueckgaben. Was dort steht,
+  hat der Agent gelesen: Gibt er es wieder, ist es belegt, nicht erfunden. Ein fehlender Lese-Aufruf ist nie
+  allein ein Grund fuer PARTIAL/FAIL. Die Werkzeuge loesen Namen selbst auf; ein Lese-Aufruf vorher ist kein Muss.
 - ACTUAL_TOOL_OUTPUT ist die Rueckgabe des Werkzeugs (gekuerzt, kann fehlen). Was dort steht, darf der Agent
   sagen, auch wenn die Rubric es nicht nennt. Stehen in ACTUAL_TOOL_INPUT mehrere Aufrufe, ist der erste der aelteste.
 - Zahlen, ids und Wahrheitswerte als Text ("1", "2.0", "true") sind gleichwertig zu Zahl/Boolean.
@@ -71,6 +72,7 @@ ACTUAL_TOOL: $($Entry.actual_tool)
 ACTUAL_TOOL_INPUT: $($Entry.actual_tool_input)
 ACTUAL_TOOL_OUTPUT: $($Entry.actual_tool_output)
 READ_TOOLS: $($Entry.read_tools)
+$(if ($Entry.read_tool_outputs) { "READ_TOOL_OUTPUTS (what the agent read, oldest first, tool: output, shortened):`n$($Entry.read_tool_outputs)`n" })
 $(if ($Entry.other_write_tools) { "OTHER_WRITE_TOOLS (further write tools called in the same run, oldest first, tool: output):`n$($Entry.other_write_tools)`n" })
 $(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
 ACTUAL_OUTPUT:

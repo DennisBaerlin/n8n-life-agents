@@ -9,6 +9,8 @@
 #   - Agent-Ziel (jeder Route-Agent aus provides.agents) -> feuert am Agent-Harness (<x>-test), der
 #                            den Agenten als Sub-Workflow ueber seinen Produktions-executeWorkflowTrigger
 #                            aufruft (kein Test-Sonderknoten im Agenten).
+#   Absender: Agent-Ziele nehmen eine numerische chat_id des Falls (z. B. 880055200 = Lena, Mitglied) als Absender und paaren sie vorher
+#   (Set-TestSenderPairing); sonst laeuft der Fall als gepairter Owner. Orchestrator-Ziel: immer Owner.
 #   Beide: Execution-Korrelation ueber monotone Exec-id (Get-MaxExecId vor dem Feuern); jedes echte
 #   Send-and-Wait-Gate wird ueber das abgefangene Mock-Telegram abgelehnt (Wait-ExecResolvingGates) ->
 #   das Tool nimmt den 'cancelled'-Ausgang (kein DB-Write), die Routing-Entscheidung steht im runData.
@@ -204,8 +206,11 @@ foreach ($tc in $cases) {
         Test-ForceAbort $tc.id $ForceAbortId
 
         $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
-        [long]$chatId = $PairedUid
+        Register-TestCaseTeardown $tc   # vor dem setup_sql: laeuft im finally auch nach Abbruch der Vorbereitung
+        # Agent-Ziele: numerische chat_id des Falls = dieser Absender (Resolve-TestCaseChatId); der Orchestrator-Pfad bleibt der gepairte Owner.
+        [long]$chatId = if ($isOrch) { $PairedUid } else { Resolve-TestCaseChatId $tc }
         try {
+            if (-not $isOrch) { Set-TestSenderPairing -Container $Container -ChatId $chatId }
             # Gedaechtnis + Wiederhol-Sperre (ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt) + Onboarding.
             Reset-TestCaseState -Container $Container -SessionId $(if ($KeepMemory) { '' } else { "$chatId" }) `
                 -Onboarding $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
@@ -326,6 +331,8 @@ foreach ($tc in $cases) {
     } finally {
         # setup_sql-Voraussetzungen nie liegen lassen: spaetere Suiten (z. B. real_ingress Plan-Mindestdaten) saehen sie sonst
         if ($tc.setup_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) }
+        $tdErr = Complete-TestCaseTeardown -Container $Container
+        if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
     }
 }
 

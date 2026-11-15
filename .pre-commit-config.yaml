@@ -328,6 +328,20 @@ repos:
         pass_filenames: false
         files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
 
+      - id: case-teardown-test
+        name: case_teardown_test (a case's teardown_sql runs after every case with setup_sql, also after a red case or a failed setup, and at the end of the run)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/case_teardown_test.ps1
+        pass_filenames: false
+        files: ^scripts/(dev/(case_teardown_test|test_n8n_state|mock_route_test)|n8n_test|e2e_test|multiturn_test)\.ps1$
+
+      - id: chat-sender-test
+        name: chat_sender_test (a case's numeric chat_id reaches the agent as that person, not always as the owner)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/chat_sender_test.ps1
+        pass_filenames: false
+        files: ^scripts/(dev/(chat_sender_test|test_n8n_state|mock_route_test)|n8n_test)\.ps1$
+
       - id: tool-call-order-test
         name: tool_call_order_test (tool calls of an agent run in time order, also the ones the n8n action log drops; no Docker)
         language: system
@@ -340,7 +354,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/judge_prompt_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/judge_prompt|judge_eval|conversation_test|dev/judge_prompt_test|dev/test_n8n_state)\.ps1$
+        files: ^scripts/(lib/judge_prompt|judge_eval|conversation_test|n8n_test|dev/judge_prompt_test|dev/test_n8n_state)\.ps1$
 
       - id: http-json-test
         name: http_json_test (API answers without charset are read as UTF-8, no mojibake; local listener, no API call)

@@ -21,7 +21,7 @@ Check ($declined -cmatch 'ABGELEHNT' -and $declined -cnotmatch 'ANGENOMMEN') 'Sy
 Check ($approved -cmatch 'ANGENOMMEN' -and $approved -cnotmatch 'ABGELEHNT') 'System-Text approved: Karte angenommen, nichts von abgelehnt'
 Check ((Get-JudgeSystemText) -eq $declined) 'System-Text ohne Argument = declined'
 # Der Rest der Regeln ist in beiden Fassungen gleich (nur die Karten-Regel wechselt).
-Check ($declined -match 'READ_TOOLS ist unvollstaendig' -and $approved -match 'READ_TOOLS ist unvollstaendig' -and $approved -match 'Antworte AUSSCHLIESSLICH') 'Restregeln und Antwortformat in beiden Fassungen'
+Check ($declined -match 'READ_TOOL_OUTPUTS' -and $approved -match 'READ_TOOL_OUTPUTS' -and $approved -match 'Antworte AUSSCHLIESSLICH') 'Restregeln und Antwortformat in beiden Fassungen'
 # Kann-Punkte (darf/may) sind kein Abzug; der Judge bewertet alle Agenten, nicht nur finance.
 Check ($declined -match 'Kann-Punkte der Rubric' -and $approved -match 'Kann-Punkte der Rubric' -and $declined -match "'darf', 'may'") 'Kann-Punkte-Regel in beiden Fassungen'
 Check ($declined -match 'eines Agenten' -and $declined -notmatch 'Finanz-Agent') 'Judge-Kopf nennt keinen Paket-Agenten'
@@ -52,6 +52,32 @@ $conv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\conversation_tes
 Check ($conv.Contains("card_decision = `$(if (`$rd.card_decision -eq 'angenommen') { 'approved' } else { 'declined' })")) 'conversation_test schreibt card_decision je Bundle-Eintrag'
 $je = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\judge_eval.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Check ($je -match 'lib\\judge_prompt\.ps1' -and $je -match 'Get-JudgeSystemText \(Get-JudgeCardDecision \$Entry\)' -and $je -notmatch '\$SystemText = ') 'judge_eval nutzt Get-JudgeSystemText je Eintrag'
+
+# Lese-Rueckgaben im Buendel: was der Agent aus der Datenbank las, steht im User-Text (sonst wertet der Bewerter es als erfunden).
+$withReads = [pscustomobject]@{ task = 'x'; read_tools = 'postgres_select'; read_tool_outputs = 'postgres_select: {"balance":123.45}' }
+Check ((Format-JudgeUserText $withReads) -match 'READ_TOOL_OUTPUTS[^\n]*\npostgres_select: \{"balance":123\.45\}') 'User-Text traegt die Lese-Rueckgaben'
+Check ((Format-JudgeUserText $base) -notmatch 'READ_TOOL_OUTPUTS') 'ohne Lese-Rueckgaben kein leerer Abschnitt'
+
+$rdJson = @'
+{ "Guide Agent": [ { "startTime": 1 } ],
+  "postgres_select": [
+    { "startTime": 300, "data": { "ai_tool": [ [ { "json": { "ok": true, "rows": [ { "x": "spaeter" } ] } } ] ] } },
+    { "startTime": 100, "data": { "ai_tool": [ [ { "json": { "ok": true, "rows": [ { "x": "frueher" } ] } } ] ] } } ],
+  "tool_set_household_facts": [ { "startTime": 200, "data": { "ai_tool": [ [ { "json": { "ok": true, "written": "geheim" } } ] ] } } ] }
+'@
+$rd = $rdJson | ConvertFrom-Json
+$out = Get-ReadToolOutput $rd
+$outLines = @($out -split "`n")
+Check ($outLines.Count -eq 2 -and $outLines[0] -match 'frueher' -and $outLines[1] -match 'spaeter') 'Lese-Rueckgaben: aeltester Aufruf zuerst, ein Zeile je Aufruf'
+Check ($out -notmatch 'geheim' -and $out -notmatch 'Guide Agent') 'Schreib-Werkzeug und Agent-Knoten gehoeren nicht zu den Lese-Rueckgaben'
+$long = (@{ postgres_select = @(@{ startTime = 1; data = @{ ai_tool = @(,@(@{ json = @{ blob = ('a' * 5000) } })) } }) } | ConvertTo-Json -Depth 10) | ConvertFrom-Json
+Check ((Get-ReadToolOutput $long -PerCall 300).Length -lt 330) 'Rueckgabe je Aufruf gekuerzt'
+$many = [ordered]@{ postgres_select = @(1..10 | ForEach-Object { @{ startTime = $_; data = @{ ai_tool = @(,@(@{ json = @{ n = ('b' * 400) } })) } } }) }
+$cap = (Get-ReadToolOutput ($many | ConvertTo-Json -Depth 10 | ConvertFrom-Json) -PerCall 1000 -Total 1500)
+Check ($cap.Length -lt 1500 + 100 -and $cap -match 'weitere Aufrufe gekuerzt') 'Gesamtdeckel: Rest wird als gekuerzt gemeldet'
+Check ((Get-ReadToolOutput ('{ "Guide Agent": [ { "startTime": 1 } ] }' | ConvertFrom-Json)) -eq '') 'ohne Lese-Aufruf leer'
+$nt = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\n8n_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
+Check ($nt -match 'read_tool_outputs = \(Get-ReadToolOutput \$runData\)') 'n8n_test schreibt read_tool_outputs ins Buendel'
 
 if ($fail -eq 0) { Write-Host 'judge_prompt_test: alle Pruefungen bestanden.' -ForegroundColor Green }
 else { Write-Host "judge_prompt_test: $fail Pruefung(en) fehlgeschlagen." -ForegroundColor Red }

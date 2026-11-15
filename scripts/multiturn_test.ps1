@@ -105,6 +105,9 @@ foreach ($tc in $cases) {
     # Einmal je Case leeren: Turns innerhalb des Cases bauen bewusst aufeinander auf.
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     # Voraussetzungen ueber Invoke-TestCaseSetup; vorher alte __E2E__-Reste weg
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
+    Register-TestCaseTeardown $tc
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
         try { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" }
@@ -151,6 +154,8 @@ $completed = $true
     if (@($cases | Where-Object { $_.PSObject.Properties['setup_sql'] -and $_.setup_sql }).Count -gt 0) {
         try { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) } catch { }
     }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
     if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'multiturn_test (abgebrochen)' -RepoRoot $RepoRoot }
 }
 

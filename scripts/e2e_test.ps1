@@ -165,6 +165,9 @@ try {
         Write-Host "    Task: '$($tc.task)'"
 
         Invoke-Clean
+        $tdErr = Complete-TestCaseTeardown -Container $Container
+        if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
+        Register-TestCaseTeardown $tc
         if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
             try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) }
             catch { Write-Host "    [FAIL] Vorbereitung: $_" -ForegroundColor Red; $failed++; continue }
@@ -250,6 +253,8 @@ finally {
     Write-Host ""
     Write-Host "Post-Flight-Cleanup ..."
     try { Invoke-Clean } catch { Write-Host "  [WARN] Post-Flight-Cleanup: $_" -ForegroundColor Yellow }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "  [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
 
     $hWfId = try { ((Invoke-N8nGet 'workflows?limit=200').data | Where-Object { $_.name -eq "$TargetWorkflow.test_harness" } | Select-Object -First 1).id } catch { $null }
     Invoke-PaidRunCleanup -Container $Container -WorkflowId @($wfDef.id, $hWfId)

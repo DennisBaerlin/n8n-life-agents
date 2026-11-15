@@ -12,6 +12,9 @@
 #   Ziel-Workflow (Get-MaxExecId vor dem Feuern; die suspendierte Execution liefert keine
 #   Run-Info-subExecution).
 #
+# Absender: Ein Fall mit numerischer chat_id (z. B. 880055200 = Lena, Mitglied; Liste TestSenderUids in dev/test_n8n_state.ps1) laeuft als diese
+#   Person (Pairing vor dem Fall); alle anderen Werte (z. B. 'test_ac01') und fehlende Felder laufen als gepairter Owner.
+#
 # Pre-Flight (jeder Paket-Agent): seedet + verifiziert die Routing-Fixtures + abgeschlossenes Onboarding.
 # Ziel/Paket-Eigenschaften leitet Get-TestRouteAgent aus den Manifesten + core.context_scopes ab (kein Paket im Treiber).
 #
@@ -170,7 +173,9 @@ foreach ($tc in $cases) {
     Write-Host "    Erwartet: tool=$expShow"
 
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
-    [long]$chatId = $TestOwnerTelegramUid
+    [long]$chatId = Resolve-TestCaseChatId $tc
+    try { Set-TestSenderPairing -Container $Container -ChatId $chatId }
+    catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
     Clear-HitlPending -Container $Container
@@ -188,6 +193,9 @@ foreach ($tc in $cases) {
     # Optionale Voraussetzungen des Cases (setup_sql, __E2E__-Entitaeten, z. B. die Einnahme, ohne die fn_plan_readiness das
     # Plan-Interview sperrt): gelten nur fuer diesen Case, die Fixtures bleiben ohne Einnahme (real_ingress ri07e).
     if ($setupDirty) { Clear-TestCaseSetup; $setupDirty = $false }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
+    Register-TestCaseTeardown $tc
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         $setupDirty = $true
         try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) }
@@ -294,7 +302,7 @@ foreach ($tc in $cases) {
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
             other_write_tools = $otherTools
-            read_tools = $readTools; actual_output = (Get-AgentOutput $runData $AgentNodeName)
+            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); actual_output = (Get-AgentOutput $runData $AgentNodeName)
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }
@@ -307,6 +315,8 @@ $completed = $true
 } finally {
     # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): __E2E__-Setup wegraeumen, wartende Karten-Executions stoppen, Karten-Sperre loesen.
     if ($setupDirty) { try { Clear-TestCaseSetup } catch { Write-Host "    [FAIL] Aufraeumen: $($_.Exception.Message)" -ForegroundColor Red; $failed++ } }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
     Invoke-PaidRunCleanup -Container $Container -WorkflowId @($TargetWfId)
     if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'n8n_test (abgebrochen)' -RepoRoot $RepoRoot }
 }

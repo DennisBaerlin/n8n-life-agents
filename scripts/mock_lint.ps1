@@ -21,6 +21,8 @@
 #   C5 (keine festen Zukunfts-Daten): woertliches Datum (ISO oder TT.MM.JJJJ) in task/turns/expected_tool_args/expected_behavior bzw. Szenario-match/calls,
 #      das in der Zukunft liegt oder weniger als zwei Jahre zurueckliegt, ist ein Fehler, ausser der Fall traegt fixed_date_reason oder steht
 #      im Ratchet tests/util/fixed_dates_allowlist.json (nur sinkend). notes/name/_comment/setup_sql bleiben frei.
+#   C6 (bekannter Absender): eine numerische chat_id eines Agent-Falls muss der Owner oder eine Person aus TestSenderUids (dev/test_n8n_state.ps1) sein,
+#      sonst laeuft der Fall als nicht erkannter Absender. Nicht numerische chat_ids bleiben der Owner.
 #
 # tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
@@ -223,6 +225,23 @@ foreach ($k in ($fixedAllow.Keys | Sort-Object)) {
     if ($seen -lt $fixedAllow[$k]) {
         Write-Host "  [FAIL] C5 ${k}: Allowlist erlaubt $($fixedAllow[$k]), gefunden $seen. Eintrag in tests/util/fixed_dates_allowlist.json senken oder entfernen (Ratchet)." -ForegroundColor Red
         $failed++
+    }
+}
+
+# --- C6: numerische chat_id eines Agent-Falls ist ein bekannter Absender (TestSenderUids in dev/test_n8n_state.ps1) ---
+# n8n_test und mock_route_test paaren nur diese Personen; eine andere Zahl liefe als nicht erkannter Absender (Knock-Zweig) statt als gemeinte Person.
+# Nicht numerische Werte (z. B. 'test_ac01') bedeuten bewusst den Owner. Faelle mit `kind` (Real-Ingress/Infra) haben eigene Treiber und eigene uids.
+. (Join-Path $RepoRoot 'scripts\dev\test_n8n_state.ps1')
+$knownSenders = @{ "$($script:TestOwnerTelegramUid)" = $true }
+foreach ($u in $script:TestSenderUids.Keys) { $knownSenders[$u] = $true }
+foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
+    foreach ($c in $f.Cases) {
+        if (-not $c.PSObject.Properties['task'] -or $c.PSObject.Properties['kind'] -or -not $c.PSObject.Properties['chat_id']) { continue }
+        $v = "$($c.chat_id)"
+        if ($v -match '^\d+$' -and -not $knownSenders.ContainsKey($v)) {
+            Write-Host "  [FAIL] C6 $($f.Rel)|$($c.id): chat_id $v ist kein bekannter Absender (bekannt: $(($knownSenders.Keys | Sort-Object) -join ', ')). In TestSenderUids ergaenzen oder die chat_id aendern." -ForegroundColor Red
+            $failed++
+        }
     }
 }
 

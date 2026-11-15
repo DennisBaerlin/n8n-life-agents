@@ -683,6 +683,45 @@ WHERE name = 'family';
     if ($r.Code -ne 0) { throw "Owner-Pairing (Container-DB) fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
+# Absender-Uids der Fixture-Personen fuer Faelle mit eigener numerischer chat_id (n8n_test). Nicht gelistete Uids erkennt
+# fn_resolve_sender nicht (Knock-Zweig); mock_lint C6 haelt die Fall-Dateien auf diese Liste.
+$script:TestSenderUids = @{ '880055200' = 'lena'; '880055201' = 'lisa' }
+
+# chat_id eines Falls: eine numerische chat_id (String oder Zahl) gilt, jeder andere Wert (z. B. 'test_ac01') und ein fehlendes Feld
+# bedeuten den gepairten Owner. Ohne diese Aufloesung lief jeder Fall still als Owner.
+function Resolve-TestCaseChatId {
+    param([Parameter(Mandatory)][object]$Case)
+    $v = if ($Case.PSObject.Properties['chat_id']) { "$($Case.chat_id)" } else { '' }
+    if ($v -match '^\d{1,18}$') { return [long]$v }
+    return [long]$script:TestOwnerTelegramUid
+}
+
+# SQL, das den Owner paart und die Telegram-id genau der Person setzt, der $ChatId gehoert (lena/lisa laut TestSenderUids);
+# die uebrigen Fixture-Personen verlieren ihre id, damit ein Fall nie die Pairing-Reste des vorigen sieht. Idempotent.
+function Get-TestSenderPairingSql {
+    param([Parameter(Mandatory)][long]$ChatId)
+    $who = $script:TestSenderUids["$ChatId"]
+    $ownerUid = [long]$script:TestOwnerTelegramUid
+    $cases = @("WHEN p->>'person_id' = 'owner' THEN p || jsonb_build_object('telegram_user_id', ${ownerUid}::bigint)")
+    foreach ($person in @($script:TestSenderUids.Values | Sort-Object)) {   # nicht $pid: automatische Variable
+        if ($person -eq $who) { $cases += "WHEN p->>'person_id' = '$person' THEN p || jsonb_build_object('telegram_user_id', ${ChatId}::bigint)" }
+        else { $cases += "WHEN p->>'person_id' = '$person' THEN p - 'telegram_user_id'" }
+    }
+    return @"
+UPDATE agent.core_contexts
+SET metadata = jsonb_set(metadata, '{facts,persons}',
+  (SELECT jsonb_agg(CASE $($cases -join ' ') ELSE p END)
+   FROM jsonb_array_elements(metadata->'facts'->'persons') p))
+WHERE name = 'family';
+"@
+}
+
+function Set-TestSenderPairing {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][long]$ChatId)
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', (Get-TestSenderPairingSql -ChatId $ChatId))
+    if ($r.Code -ne 0) { throw "Absender-Pairing (Container-DB) fehlgeschlagen: $($r.Output -join "`n")" }
+}
+
 # Bot-Persona einer Person in den family-Facts setzen ('' oder 'neutral' = Key entfernen, wie fn_set_context_facts) bzw.
 # zuruecklesen ('' = Key fehlt). Konsumenten: real_ingress_test (persona_person/-before/expect_persona) und orch_test
 # (Case-Feld persona, Owner). Der Code wird nicht geprueft — der Validator der Container-DB lehnt Unbekanntes ab.
@@ -851,6 +890,32 @@ CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plp
 '@
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', ($prelude + $Sql))
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
+}
+
+# Teardown (optional je Case, Feld teardown_sql): raeumt, was agent.fn_clear_e2e_data() nicht kennt (Zustand ohne __E2E__-Sentinel, den ein
+# setup_sql setzt, z. B. Plan-Zahlen in core_contexts), damit er spaetere Faelle nicht erreicht. Gleiche Regeln wie setup_sql (einfache
+# Hochkommas). Ablauf aller Treiber mit setup_sql (n8n_test, mock_route_test, e2e_test, multiturn_test): Register-TestCaseTeardown merkt
+# das Feld VOR dem setup_sql (es laeuft also auch, wenn das setup_sql mittendrin scheitert); Complete-TestCaseTeardown fuehrt es aus, und zwar
+# nach dem fn_clear_e2e_data des Falls, vor dem naechsten Fall und im finally am Lauf-Ende (rot, abgebrochen, Vorbereitung gescheitert: egal).
+# Complete wirft nie (laeuft im finally) und liefert die Fehlermeldung oder $null; der Treiber zaehlt sie als roten Fall.
+$script:PendingTeardown = $null
+function Invoke-TestCaseTeardown {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql)
+    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', $Sql)
+    if ($res.Code -ne 0) { throw "teardown_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
+}
+function Register-TestCaseTeardown {
+    param([Parameter(Mandatory)][object]$Case)
+    $sql = if ($Case.PSObject.Properties['teardown_sql'] -and $Case.teardown_sql) { [string]$Case.teardown_sql } else { '' }
+    $script:PendingTeardown = if ($sql) { @{ id = "$($Case.id)"; sql = $sql } } else { $null }
+}
+function Complete-TestCaseTeardown {
+    param([Parameter(Mandatory)][string]$Container)
+    $p = $script:PendingTeardown
+    if ($null -eq $p) { return $null }
+    $script:PendingTeardown = $null
+    try { Invoke-TestCaseTeardown -Container $Container -Sql $p.sql; return $null }
+    catch { return "Aufraeumen nach [$($p.id)]: $($_.Exception.Message)" }
 }
 
 # Agent-Test-Vorbereitung (n8n_test + mock_route_test + e2e_test, eine Stelle): der Test-Absender ist immer der gepairte
@@ -1148,6 +1213,29 @@ function Get-ToolCall([object]$RunData, [string]$AgentNodeName) {
 function Test-IsWriteTool([string]$Name) {
     if ($script:WriteTools -and $script:WriteTools.Count -gt 0) { return ($script:WriteTools -contains $Name) }
     return ($Name -like 'tool_*')
+}
+# Rueckgaben der Lese-Aufrufe (Werkzeuge, die nicht Schreib-Werkzeug sind) aus dem runData des Agenten, aeltester zuerst, fuer den Bewerter:
+# "<tool>: <Rueckgabe>" je Zeile. Je Aufruf auf $PerCall Zeichen gekuerzt, insgesamt auf $Total (Rest als "... (N weitere Aufrufe gekuerzt)"),
+# damit das Bewerter-Buendel klein bleibt.
+function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total = 6000) {
+    $runs = @()
+    foreach ($p in $RunData.PSObject.Properties) {
+        if (Test-IsWriteTool $p.Name) { continue }
+        foreach ($r in @($p.Value)) {
+            $j = $null; try { $j = $r.data.ai_tool[0][0].json } catch { }
+            if ($null -eq $j) { continue }
+            $txt = ($j | ConvertTo-Json -Depth 6 -Compress)
+            if ($txt.Length -gt $PerCall) { $txt = $txt.Substring(0, $PerCall) + ' ...' }
+            $runs += [pscustomobject]@{ start = [double]$r.startTime; line = "$($p.Name): $txt" }
+        }
+    }
+    $lines = @(); $used = 0; $cut = 0
+    foreach ($r in ($runs | Sort-Object start)) {
+        if ($used + $r.line.Length -gt $Total -and $lines.Count -gt 0) { $cut++; continue }
+        $lines += $r.line; $used += $r.line.Length
+    }
+    if ($cut -gt 0) { $lines += "... ($cut weitere Aufrufe gekuerzt)" }
+    return ($lines -join "`n")
 }
 function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
     foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }

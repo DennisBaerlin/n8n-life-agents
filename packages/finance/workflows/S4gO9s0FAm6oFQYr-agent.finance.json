@@ -7605,7 +7605,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_onboarding_section",
-                                         "description":  "Mark a finance onboarding section as captured or deliberately skipped - a PROGRESS MARKER ONLY (no financial write, no confirmation). Call this only after the user confirmed nothing is missing in that area (completed), or when the user explicitly wants to leave it out (skipped). section_key is one of: accounts, investments, liabilities, protection, emergency_reserve, goals, monthly_check. status is \"completed\" or \"skipped\".",
+                                         "description":  "Mark a finance onboarding section as captured or deliberately skipped - a PROGRESS MARKER ONLY (no financial write, no confirmation). Call this only after the user confirmed nothing is missing in that area (completed), or when the user explicitly wants to leave it out (skipped). After skipping, say in ONE short sentence that skipped areas can be captured later at any time (no command name, no extra paragraph). section_key is one of: accounts, investments, liabilities, protection, emergency_reserve, goals, monthly_check. status is \"completed\" or \"skipped\".",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "PQAtisGpWc7DatoV",

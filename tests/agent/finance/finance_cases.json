@@ -1143,7 +1143,7 @@
                                    "reserve_account_name":  "Lindenbank Giro",
                                    "already_saved":  "6000"
                                },
-        "expected_behavior":  "Ruft tool_create_savings_goal mit kind=emergency_reserve, target_months=3, reserve_account_name='Lindenbank Giro' und already_saved=6000 auf, OHNE target_date, ohne Sparplan, ohne target_amount und ohne eine Monatsrate zu erfinden. Rechnet den Zielbetrag nicht selbst aus.",
+        "expected_behavior":  "Ruft tool_create_savings_goal mit kind=emergency_reserve, target_months=3, reserve_account_name='Lindenbank Giro' und already_saved=6000 auf, OHNE target_date, ohne Sparplan, ohne target_amount und ohne eine Monatsrate zu erfinden. Rechnet keinen Betrag selbst aus: Betraege, die er nennt (Zielbetrag je Monatszahl, freies Geld je Konto, Datum), stammen aus einer Datenbank-Lese-Abfrage (fn_emergency_reserve_status.month_options, fn_emergency_reserve_candidates) und sind erlaubt; ein Produkt oder eine Summe, die keine Datenbank-Ausgabe liefert, ist selbst gerechnet.",
         "notes":  "Transparenz 2026-10-30: Notreserve = Ruecklage kind emergency_reserve (statt Plan-Fakt). Lindenbank Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab."
     },
     {

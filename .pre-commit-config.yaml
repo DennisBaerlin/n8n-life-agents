@@ -141,7 +141,7 @@ repos:
         always_run: true
 
       - id: layout-lint
-        name: layout_lint (repo layout/structure invariants L1-L7 + retired-roots ratchet)
+        name: layout_lint (repo layout/structure invariants L1-L8 incl. no mojibake in tracked text files + retired-roots ratchet)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1
         pass_filenames: false
@@ -553,3 +553,10 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/comment_lint_test.ps1
         pass_filenames: false
         files: ^scripts/(comment_lint|dev/comment_lint_test|lib/git_sandbox)\.ps1$
+
+      - id: layout-lint-test
+        name: layout_lint_test (rule L8 - mojibake in a text file turns red, real umlauts/euro/Korean stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/layout_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(layout_lint|dev/layout_lint_test)\.ps1$

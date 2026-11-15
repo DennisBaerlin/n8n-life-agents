@@ -30,7 +30,7 @@ function Get-JudgeSystemText([string]$CardDecision = 'declined') {
 '@
     }
     $head = @'
-Du bewertest, ob das Verhalten eines Finanz-Agenten eine vorgegebene Erwartungs-Rubric erfuellt.
+Du bewertest, ob das Verhalten eines Agenten eine vorgegebene Erwartungs-Rubric erfuellt.
 Beruecksichtige sowohl den Antworttext als auch den tatsaechlichen Tool-Aufruf inkl. seiner
 Argumente; die eigentliche Entscheidung steht oft in ACTUAL_TOOL_INPUT.
 
@@ -48,6 +48,8 @@ So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
   Agent leer lassen; "heute" ergibt ein leeres Datum. Ein ERFUNDENES anderes Datum ist dagegen falsch.
 - Ein optionales Angebot ("wenn du magst, trage ich die IBAN nach") ist keine Rueckfrage; eine
   Rueckfrage, die den Vorgang blockiert, schon.
+- Kann-Punkte der Rubric ('darf', 'may', 'is correct', 'passes', 'optional') sind nie Pflicht: ihr Fehlen ist
+  kein Abzug. PARTIAL/FAIL nur fuer einen verletzten Muss- oder Verbots-Punkt.
 
 Antworte AUSSCHLIESSLICH als JSON ohne Markdown-Fences in der Form:
 {"verdict":"PASS|FAIL|PARTIAL","reason":"kurze Begruendung"}.

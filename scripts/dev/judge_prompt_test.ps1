@@ -22,6 +22,9 @@ Check ($approved -cmatch 'ANGENOMMEN' -and $approved -cnotmatch 'ABGELEHNT') 'Sy
 Check ((Get-JudgeSystemText) -eq $declined) 'System-Text ohne Argument = declined'
 # Der Rest der Regeln ist in beiden Fassungen gleich (nur die Karten-Regel wechselt).
 Check ($declined -match 'READ_TOOLS ist unvollstaendig' -and $approved -match 'READ_TOOLS ist unvollstaendig' -and $approved -match 'Antworte AUSSCHLIESSLICH') 'Restregeln und Antwortformat in beiden Fassungen'
+# Kann-Punkte (darf/may) sind kein Abzug; der Judge bewertet alle Agenten, nicht nur finance.
+Check ($declined -match 'Kann-Punkte der Rubric' -and $approved -match 'Kann-Punkte der Rubric' -and $declined -match "'darf', 'may'") 'Kann-Punkte-Regel in beiden Fassungen'
+Check ($declined -match 'eines Agenten' -and $declined -notmatch 'Finanz-Agent') 'Judge-Kopf nennt keinen Paket-Agenten'
 
 $base = [pscustomobject]@{ task = 'Buche 5 EUR'; expected_behavior = 'bucht'; actual_output = 'Gebucht.' }
 $withApproved = [pscustomobject]@{ task = 'Buche 5 EUR'; expected_behavior = 'bucht'; actual_output = 'Gebucht.'; card_decision = 'approved' }

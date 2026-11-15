@@ -328,6 +328,13 @@ repos:
         pass_filenames: false
         files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
 
+      - id: run-free-gates-filter-test
+        name: run_free_gates_filter_test (-Suites runs only the named suites; no substrate is started)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/run_free_gates_filter_test.ps1
+        pass_filenames: false
+        files: ^scripts/dev/(run_free_gates|run_free_gates_filter_test)\.ps1$
+
       - id: next-step-marker-test
         name: next_step_marker_test (the direct test strips the NEXT_STEP line like the relay and hands it to the judge as a button; one pattern for both)
         language: system

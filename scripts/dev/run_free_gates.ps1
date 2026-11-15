@@ -21,7 +21,9 @@
 #   .\scripts\dev\run_free_gates.ps1 -Reset -Cold       # vorher kalt (nur wenn der Install-Kern geaendert wurde)
 # Exit-Code = Anzahl roter Suiten (0 = alles gruen). Logs: $env:TEMP\free_gate_<N8NTEST_CONTAINER>_<suite>.log
 # (je Container benannt: den TEMP-Ordner teilen alle Sessions desselben Windows-Nutzers).
-# -Child / -Suites / -ResultFile sind intern (Kind-Prozess eines -Parallel-Laufs, je Suite ein Job in .github/workflows/free-gates.yml).
+#   .\scripts\dev\run_free_gates.ps1 -Suites mr_estate,hitl_gate   # nur diese Substrat-Suiten, ohne db_test (mit -Reset frisches Substrat)
+# -Child / -ResultFile sind intern (Kind-Prozess eines -Parallel-Laufs, je Suite ein Job in .github/workflows/free-gates.yml).
+# -ListPlan gibt die Suiten aus, die dieser Aufruf fahren wuerde (Selbsttest: scripts/dev/run_free_gates_filter_test.ps1).
 # -ListSuites gibt die Substrat-Suiten als JSON aus: daraus baut free-gates.yml seine Matrix, eine neue Suite fehlt dort nie still.
 # =====================================================================================================
 param(
@@ -31,7 +33,8 @@ param(
     [switch]$Child,
     [string[]]$Suites,
     [string]$ResultFile,
-    [switch]$ListSuites
+    [switch]$ListSuites,
+    [switch]$ListPlan
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,6 +87,12 @@ $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }
 if ($ListSuites) { ConvertTo-Json -InputObject @($Gates.Keys) -Compress; exit 0 }
+# Ein -Suites-Filter im normalen Lauf (ohne -Child/-Parallel) faehrt nur diese Suiten und kein db_test; -Parallel verteilt
+# immer alle Suiten, ein Filter dazu waere still wirkungslos -> Fehler statt Ignorieren.
+if ($Parallel -and $Suites.Count -gt 0 -and -not $Child) { throw '-Suites und -Parallel schliessen sich aus (Parallel verteilt immer alle Suiten).' }
+$Filtered = ($Suites.Count -gt 0 -and -not $Child)
+$Planned = if ($Filtered) { @($Suites) } else { @($Gates.Keys) }
+if ($ListPlan) { ConvertTo-Json -InputObject @($Planned) -Compress; exit 0 }
 
 # Vorab-Pruefung: ein frischer Worktree hat keine .env (gitignored). Ohne sie wuerden Substrat-Aufbau und fast jede Suite
 # einzeln rot (TEST_HARNESS_SECRET fehlt) -- eine klare Meldung vorn ersetzt die vielen roten Suiten. In CI legt new_ci_env.ps1 sie an.
@@ -203,16 +212,16 @@ if ($Parallel) {
         Invoke-Gate 'substrat' 'scripts\dev\bootstrap_test_n8n.ps1' $boot
         if (-not $results[-1].Ok) { Remove-Item $lock -Force -ErrorAction SilentlyContinue; Write-Host "Substrat-Aufbau rot -> Abbruch (Log: $env:TEMP\free_gate_$($env:N8NTEST_CONTAINER)_substrat.log)" -ForegroundColor Red; exit 1 }
     }
-    Invoke-Gate 'db' 'scripts\db_test.ps1'
+    if (-not $Filtered) { Invoke-Gate 'db' 'scripts\db_test.ps1' }
     $Reset = $false   # Substrat steht -> Invoke-SubstrateSuites baut nicht erneut
-    [void](Invoke-SubstrateSuites @($Gates.Keys))
+    [void](Invoke-SubstrateSuites $Planned)
 }
 
 Remove-Item $lock -Force -ErrorAction SilentlyContinue
 
 # Vollstaendigkeit: jede Suite hat genau ein Ergebnis (ein fehlendes Kind-Ergebnis oder ein verschlucktes rotes darf nie
 # als "alles gruen" durchgehen).
-foreach ($n in @($Gates.Keys) + 'db') {
+foreach ($n in $(if ($Filtered) { $Planned } else { @($Gates.Keys) + 'db' })) {
     if (-not ($results | Where-Object { $_.Suite -eq $n })) {
         $results.Add([pscustomobject]@{ Suite = $n; Substrat = '-'; Ok = $false; Exit = 98; Minuten = 0; Ergebnis = 'kein Ergebnis (nicht gelaufen?)' })
     }

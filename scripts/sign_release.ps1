@@ -77,8 +77,15 @@ Invoke-Git rev-parse --verify --quiet "$Tag^{commit}" | Out-Null
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("sign_release_" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $work | Out-Null
 try {
+    # Zu frueh gestartet fehlen exe/dmg noch: den Grund beim Namen nennen statt "Assets nicht ladbar".
+    $run = (& gh run list -R $slug -w release.yml -b $Tag -L 1 --json status,conclusion,url 2>$null | Out-String).Trim()
+    if ($run) {
+        $r = @($run | ConvertFrom-Json) | Select-Object -First 1
+        if ($r -and $r.status -ne 'completed') { throw "Der Release-Lauf fuer $Tag ist noch nicht fertig (Status: $($r.status)). Abwarten, bis alle Jobs gruen sind, dann erneut: $($r.url)" }
+        if ($r -and $r.conclusion -ne 'success') { throw "Der Release-Lauf fuer $Tag ist nicht gruen (Ergebnis: $($r.conclusion)). Erst reparieren: $($r.url)" }
+    }
     $tarball = "n8n-life-agents-$Tag.tar.gz"
-    $dl = @('-p', $tarball, '-p', 'SHA256SUMS'); foreach ($a in $ReleaseSumAssets) { $dl += @('-p', $a) }
+    $dl =@('-p', $tarball, '-p', 'SHA256SUMS'); foreach ($a in $ReleaseSumAssets) { $dl += @('-p', $a) }
     & gh release download $Tag -R $slug -D $work @dl
     if ($LASTEXITCODE -ne 0) { throw "Assets von $Tag nicht ladbar (Entwurf vorhanden? CI fertig, auch der Job desktop-assets?)." }
     $isDraft = (& gh release view $Tag -R $slug --json isDraft --jq '.isDraft').Trim()

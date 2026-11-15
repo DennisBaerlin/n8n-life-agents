@@ -5,7 +5,7 @@ description: Macht diese Session zur Leit-Session – liest die gemeinsame Stand
 
 # Leit-Session (`/leitung`)
 
-Der Satz „du bist die Leitung“ reicht; alles Weitere steht hier, der Owner muss keine Datei nennen.
+Der Satz „du bist die Leitung“ reicht, der Owner muss keine Datei nennen.
 
 | Was | Wo |
 |---|---|
@@ -39,11 +39,11 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 - **Plan-Freigabe:** Planende Unter-Sessions melden die Plan-Datei aus ihrem Worktree statt einer Plan-Karte (`/feature` §2); die Leitung kopiert sie ins Haupt-Checkout, prüft `Plan-Reviewer:` und `Denkstufe:` und legt den Plan selbst vor (`docs/reference/sessions.md` *Plan-Freigabe*).
 - **Warten auf GitHub-Läufe** → `/coordinate` §5 *Offene Läufe*; der Owner soll nicht nachfragen müssen.
 - **Über Remote Control:** keine Seitenfenster, also Bilder und Diffs als Datei in den Chat.
-- **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was nicht geprüft wurde, steht als ungeprüft im Bericht.
+- **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was nicht geprüft wurde, steht als ungeprüft im Bericht. Eine Streichung legt die Leitung nur mit selbst im Code gelesenem Beleg vor; ein Session-Bericht reicht nicht (Urteil, kein Wächter).
 
 ## 3. Arbeitsweise weiterentwickeln
 
-Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
+Auslöser: Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
 
 1. **Festhalten:** Jede Reibung, jeder eigene Fehler und jede Owner-Korrektur kommt sofort als Zeile in die Stand-Datei unter `## Verbesserungen`: was passiert ist, die Ursache, ein Vorschlag mit Ziel-Adresse (Skill, Hook, Skript). Leitfragen: Wo stand die Arbeit still? Was musste der Owner zweimal sagen oder selbst bemerken? Was hat Kontingent gekostet, ohne zu helfen?
 2. **Vorlegen:** gebündelt über `/retro-bundle` bzw. in der Prozess-Session am Sprint-Ende (§4), höchstens drei Vorschläge je Runde, einzeln zur Entscheidung; was sich sonst im selben Sprint wiederholen würde, sofort (§2 *Entscheidungen gebündelt*).
@@ -60,7 +60,7 @@ Ein Sprint endet mit dem Tag, der Archivierung aller Unter-Sessions, Worktrees, 
 3. **Prozess-Session:** Nach dem Aufräumen, nicht erst am Freitag: Die Leitung schlägt dem Owner eine eigene Session vor (`start_session`, „fresh“, eigener Worktree), die auf sein getipptes Wort startet; sie wird nicht registriert (`register_sub_session.ps1`), die Session fragt den Owner direkt. Der Brief nennt die Verbesserungs-Zeilen des Sprints, die Feedback-Memorys seit dem letzten Sprint-Ende und die Leitfragen aus §3.1. Die Session bündelt nach Ursache wie `/retro-bundle`, legt höchstens drei Vorschläge mit Empfehlung und Ziel-Adresse (§3.3) als Karten vor und baut die freigegebenen selbst ein; erledigte Zeilen streicht danach die Leitung. Merge und Push nach `/coordinate` §3.
 4. **Übergabe:** Stand-Datei und Memory so aktualisieren, dass eine neue Session ohne dieses Gespräch weitermachen kann; auf neue Session oder `/clear` hinweisen (Root-`CLAUDE.md` *Entwicklungszyklus*). Die nächste Leitung startet der Owner mit dem einen Satz.
 
-Routinen daneben (`/retro-bundle`, `/session-hygiene`, `/paid-run`) → `docs/reference/sessions.md` *Sprint-Ende*.
+Routinen daneben → `docs/reference/sessions.md` *Sprint-Ende*.
 
 ## 5. Vorlage der Stand-Datei
 

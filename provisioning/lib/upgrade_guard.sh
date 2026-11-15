@@ -91,6 +91,11 @@ _upg_changes_systemd() {
   if need_cmd node; then
     cur="$(node_major)"
     if [ -n "$cur" ] && [ "$cur" != "$NODE_MAJOR" ]; then printf 'Node.js %s -> %s\n' "$cur" "$NODE_MAJOR"; fi
+    # Gleiche Hauptversion, neuere NodeSource-Unterversion (ensure_node hebt sie an; Sicherheits-Releases).
+    if [ "$cur" = "$NODE_MAJOR" ]; then
+      inst="$(_node_pkg_installed)"; cand="$(_node_pkg_candidate)"
+      if node_minor_newer "$inst" "$cand"; then printf 'Node.js %s -> %s\n' "${inst%%-*}" "${cand%%-*}"; fi
+    fi
   fi
   read -r inst cand <<<"$(_upg_pg_versions)"
   if [ -n "${inst:-}" ] && [ -n "${cand:-}" ] && [ "$cand" != "(none)" ] \

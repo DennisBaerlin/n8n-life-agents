@@ -74,17 +74,41 @@ prepare_n8n_env() {
 node_major() { node -v 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\)\..*/\1/p'; }
 _node_ok() { need_cmd node && [ "$(node_major)" = "$NODE_MAJOR" ]; }
 
+# Neueste angebotene Version genau der Hauptversion NODE_MAJOR (madison, neueste zuerst): ein schon installiertes hoeheres
+# Node bliebe sonst apt-Kandidat (Rueckweg 24 -> 22), und Debians eigenes nodejs-Paket koennte dazwischenfunken.
+_node_pkg_candidate() { apt-cache madison nodejs 2>/dev/null | awk -v m="$NODE_MAJOR" '$3 ~ ("^" m "\\.") {print $3; exit}'; }
+_node_pkg_installed() { dpkg-query -W -f='${Version}' nodejs 2>/dev/null || true; }
+
+# node_minor_newer <installiert> <angebot> — 0, wenn das Angebot hoeher ist. Eine leere Seite (Node nicht per dpkg, kein
+# NodeSource-Angebot) ist kein Tausch: nie auf Verdacht handeln, nie ein Downgrade.
+node_minor_newer() { [ -n "${1:-}" ] && [ -n "${2:-}" ] && dpkg --compare-versions "$2" gt "$1"; }
+
+# ensure_node — setzt NODE_MINOR_CHANGED=1, wenn dieser Lauf Node innerhalb der Hauptversion anhebt: n8n und der LLM-Gateway
+# muessen dann neu starten (der laufende Prozess haelt das alte Binary im Speicher; install_n8n_unit/install_llm_gateway).
+# Die Node-ABI (NODE_MODULE_VERSION) gilt je Hauptversion -> kein npm rebuild fuer die nativen n8n-Bausteine (nur der
+# Hauptversions-Sprung baut neu, NODE_SWITCHED/upgrade_node_switched). upgrade_detect zaehlt dieselbe Anhebung als Tausch
+# (Sicherung vorher, n8n steht).
 ensure_node() {
-  if _node_ok; then ok "Node.js $(node -v) (Hauptversion ${NODE_MAJOR})."; return; fi
+  if _node_ok; then
+    local have want
+    apt_update_once
+    have="$(_node_pkg_installed)"; want="$(_node_pkg_candidate)"
+    if node_minor_newer "$have" "$want"; then
+      log "Node.js ${have%%-*} -> ${want%%-*} (gleiche Hauptversion ${NODE_MAJOR}) ..."
+      apt_install "nodejs=${want}"
+      NODE_MINOR_CHANGED=1
+      _node_ok || die "Node-Aktualisierung ergab nicht Hauptversion ${NODE_MAJOR}: $(node -v 2>/dev/null)."
+    fi
+    ok "Node.js $(node -v) (Hauptversion ${NODE_MAJOR})."; return
+  fi
   log "Node.js ${NODE_MAJOR}.x via NodeSource installieren ..."
   add_apt_key "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key" "$NODE_KEYRING"
   add_apt_source "$NODE_LIST" \
     "deb [signed-by=${NODE_KEYRING}] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main"
   force_apt_update
-  # Explizit die neueste Version dieser Hauptversion: ein schon installiertes hoeheres Node bliebe sonst apt-Kandidat
-  # (Rueckweg 24 -> 22), und Debians eigenes nodejs-Paket koennte dazwischenfunken. --allow-downgrades fuer den Rueckweg.
+  # --allow-downgrades fuer den Rueckweg auf eine niedrigere Hauptversion (Kandidatenwahl: _node_pkg_candidate).
   local ver
-  ver="$(apt-cache madison nodejs 2>/dev/null | awk -v m="$NODE_MAJOR" '$3 ~ ("^" m "\\.") {print $3; exit}')"
+  ver="$(_node_pkg_candidate)"
   [ -n "$ver" ] || die "Das NodeSource-Repo bietet kein Node.js ${NODE_MAJOR}.x an (apt-cache madison nodejs)."
   apt_install --allow-downgrades "nodejs=${ver}"
   # Ein schon installiertes n8n wurde gegen die alte Node-ABI gebaut -> ensure_n8n_package baut neu (auch ohne
@@ -212,6 +236,8 @@ install_n8n_unit() {
   # Versionswechsel (upgrade_guard.sh): n8n steht bereits bzw. ein abgebrochener Tausch wird fortgesetzt -> der
   # (Neu-)Start laedt die getauschten Dateien; ohne das liefe nach npm install die alte Version im Speicher weiter.
   [ "${UPGRADE_ACTIVE:-0}" -eq 1 ] && changed=0
+  # Node wurde in dieser Hauptversion angehoben (ensure_node) -> der Neustart laedt das neue Binary.
+  [ "${NODE_MINOR_CHANGED:-0}" -eq 1 ] && changed=0
   # Eine n8n-Korrektur wurde gerade angewendet (apply_n8n_patches) -> der Neustart laedt die korrigierte Datei.
   [ "${N8N_PATCH_CHANGED:-0}" -eq 1 ] && changed=0
 

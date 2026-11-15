@@ -106,6 +106,8 @@ install_llm_gateway() {
   # Versionswechsel (upgrade_guard.sh, auch ein fortgesetzter): nach einem Node-Tausch liefe sonst der alte
   # Node-Prozess weiter (Unit + Pfad /usr/bin/node bleiben gleich).
   [ "${UPGRADE_ACTIVE:-0}" -eq 1 ] && changed=0
+  # Node-Unterversion angehoben (ensure_node): derselbe Grund, auch ohne Versionswechsel-Merkzettel.
+  [ "${NODE_MINOR_CHANGED:-0}" -eq 1 ] && changed=0
   enable_start_unit "$LLM_GATEWAY_UNIT_NAME" "$changed"
   _wait_llm_gateway_health \
     || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: $(svc_logs_hint "$LLM_GATEWAY_UNIT_NAME" 50)"

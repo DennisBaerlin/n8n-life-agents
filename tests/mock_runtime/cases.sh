@@ -706,6 +706,37 @@ eq N.install_postgres-aktuell-kein-neustart 0 "$(pg_n_run '17.12 (Debian 17.12-1
 eq N.install_postgres-server-steht-kein-neustart 0 "$(pg_n_run '17.11' 1 systemd)"
 eq N.install_postgres-verbund-kein-neustart 0 "$(pg_n_run '17.11' 0 compose)"
 
+# ---------------------------------------------------------------------------- N: Node-Unterversion im Update (install_n8n.sh)
+# Gleiche Hauptversion, neuere NodeSource-Unterversion: ensure_node hebt an, upgrade_detect zaehlt es als Tausch.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/install_n8n.sh"
+node_minor_newer "24.22.2-1nodesource1" "24.22.3-1nodesource1"; eq N.node-neueres-angebot 0 $?
+node_minor_newer "24.22.3-1nodesource1" "24.22.3-1nodesource1"; eq N.node-gleich-kein-tausch 1 $?
+node_minor_newer "24.22.3-1nodesource1" "24.22.2-1nodesource1"; eq N.node-aelteres-angebot-kein-downgrade 1 $?
+node_minor_newer "" "24.22.3-1nodesource1"; eq N.node-nicht-per-dpkg-kein-tausch 1 $?
+node_minor_newer "24.22.2-1nodesource1" ""; eq N.node-kein-kandidat-kein-tausch 1 $?
+# node_stub_env <installiert> <angebotene-version> — Attrappen fuer Node-Pakete (madison-Zeilen wie apt-cache sie liefert)
+node_stub_env() {
+  NODE_MAJOR=24; INST="$1"; CAND="$2"; NODE_MINOR_CHANGED=0
+  node() { echo "v${INST%%-*}"; }
+  dpkg-query() { [ -n "$INST" ] && printf '%s' "$INST"; return 0; }
+  apt-cache() { printf '     nodejs | %s | https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages\n     nodejs | 24.22.1-1nodesource1 | https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages\n' "$CAND"; }
+  apt_update_once() { :; }
+  apt_install() { echo "$*" >> "$W/node_inst"; local a; for a in "$@"; do case "$a" in nodejs=*) INST="${a#nodejs=}";; esac; done; }
+}
+# node_n_run <installiert> <angebot> — ensure_node zweimal in einem SUBSHELL; gibt "<Installationen> <Neustart-Schalter>" aus
+node_n_run() {
+  : > "$W/node_inst"
+  ( node_stub_env "$1" "$2"; ensure_node; ensure_node; echo "$(wc -l < "$W/node_inst" | tr -d ' ') ${NODE_MINOR_CHANGED:-0} ${INST%%-*}" ) 2>/dev/null | tail -n1
+}
+eq N.ensure_node-hebt-einmal-an "1 1 24.22.3" "$(node_n_run 24.22.2-1nodesource1 24.22.3-1nodesource1)"
+eq N.ensure_node-aktuell-kein-eingriff "0 0 24.22.3" "$(node_n_run 24.22.3-1nodesource1 24.22.3-1nodesource1)"
+eq N.ensure_node-andere-hauptversion-nie "0 0 24.22.2" "$(node_n_run 24.22.2-1nodesource1 25.1.0-1nodesource1)"
+# _upg_changes_systemd: Node-Minor erscheint als Zeile, ohne neueres Angebot bleibt die Liste leer (kein Merkzettel/Stopp)
+node_chg() { ( node_stub_env "$1" "$2"; N8N_VERSION=2.45.7; n8n() { echo 2.45.7; }; _upg_pg_versions() { :; }; _upg_changes_systemd ) 2>/dev/null; }
+eq U.node-minor-zeile 'Node.js 24.22.2 -> 24.22.3' "$(node_chg 24.22.2-1nodesource1 24.22.3-1nodesource1)"
+eq U.node-aktuell-leer '' "$(node_chg 24.22.3-1nodesource1 24.22.3-1nodesource1)"
+
 # ---------------------------------------------------------------------------- I: Sicherungs-Timer (install_backup_timer.sh, klassisch)
 # shellcheck source=/dev/null
 . "$ROOT/provisioning/lib/install_backup_timer.sh"

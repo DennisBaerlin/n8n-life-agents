@@ -44,6 +44,8 @@ So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
   allein ein Grund fuer PARTIAL/FAIL. Die Werkzeuge loesen Namen selbst auf; ein Lese-Aufruf vorher ist kein Muss.
 - ACTUAL_TOOL_OUTPUT ist die Rueckgabe des Werkzeugs (gekuerzt, kann fehlen). Was dort steht, darf der Agent
   sagen, auch wenn die Rubric es nicht nennt. Stehen in ACTUAL_TOOL_INPUT mehrere Aufrufe, ist der erste der aelteste.
+- NEXT_STEP_BUTTON (kann fehlen) ist der Knopf, den das System unter die Antwort setzt, mit dem vom System gelieferten
+  naechsten Schritt: nicht Teil des Antworttexts, kein stehengebliebener Platzhalter. Fehlt das Feld, gab es keinen Knopf.
 - Zahlen, ids und Wahrheitswerte als Text ("1", "2.0", "true") sind gleichwertig zu Zahl/Boolean.
 - Optionale Felder mit Datenbank-Standard (Datum = heute, Ordergebuehr = 0, Gueltig-ab = heute) darf der
   Agent leer lassen; "heute" ergibt ein leeres Datum. Ein ERFUNDENES anderes Datum ist dagegen falsch.
@@ -75,6 +77,7 @@ READ_TOOLS: $($Entry.read_tools)
 $(if ($Entry.read_tool_outputs) { "READ_TOOL_OUTPUTS (what the agent read, oldest first, tool: output, shortened):`n$($Entry.read_tool_outputs)`n" })
 $(if ($Entry.other_write_tools) { "OTHER_WRITE_TOOLS (further write tools called in the same run, oldest first, tool: output):`n$($Entry.other_write_tools)`n" })
 $(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
+$(if ($Entry.next_step_button) { "NEXT_STEP_BUTTON (button the system adds under the reply; the suggested next step):`n$($Entry.next_step_button)`n" })
 ACTUAL_OUTPUT:
 $($Entry.actual_output)
 "@

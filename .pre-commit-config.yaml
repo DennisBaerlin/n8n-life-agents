@@ -328,6 +328,13 @@ repos:
         pass_filenames: false
         files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
 
+      - id: next-step-marker-test
+        name: next_step_marker_test (the direct test strips the NEXT_STEP line like the relay and hands it to the judge as a button; one pattern for both)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/next_step_marker_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(next_step_marker|judge_prompt)|dev/next_step_marker_test|build/lib/build_helpers|n8n_test)\.ps1$
+
       - id: case-teardown-test
         name: case_teardown_test (a case's teardown_sql runs after every case with setup_sql, also after a red case or a failed setup, and at the end of the run)
         language: system

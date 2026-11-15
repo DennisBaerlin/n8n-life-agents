@@ -3,6 +3,8 @@
 # Wird von build.ps1 dot-gesourct (nicht &/Import-Module),
 # damit Build-Pg/Build-* die Script-Scope-Creds ($CRED_POSTGRES/$CRED_TELEGRAM) sehen.
 
+. (Join-Path $PSScriptRoot '..\..\lib\next_step_marker.ps1')   # Muster der Markerzeile NEXT_STEP, vom Relay-Baustein und vom Direkt-Test geteilt
+
 # ============================================================
 # COMMON BUILDERS
 # ============================================================
@@ -1493,7 +1495,7 @@ function New-TelegramRelayChain {
     # Vorschlags-Markerzeile NEXT_STEP (Router-/Hilfe-Agent-Grammatik, core.fn_get_next_step) nie roh senden: jeder Sendeweg
     # laeuft hier durch, auch die, deren Text 'Relay compose' nie sieht (Onboarding-Tipp, Befehle, Paket-Arme).
     $js = @"
-const body = String(($TextJs) || ($FallbackJs) || '').split('\n').filter((l) => !/^\s*NEXT_STEP\s*`$/.test(l)).join('\n').trim();
+const body = String(($TextJs) || ($FallbackJs) || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l)).join('\n').trim();
 const LIMIT = 3500;
 const chunks = [];
 let cur = '';

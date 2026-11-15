@@ -42,7 +42,7 @@ Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, u
 
 ## Neuer Rechner: Schritt für Schritt {#neuer-rechner}
 
-1. **Die Version aus dem Dateinamen installieren.** Eine Sicherung lässt sich nur in genau die Version zurückspielen, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. `v0.44.0`).
+1. **Die Version aus dem Dateinamen installieren.** Eine Sicherung spielst du am sichersten in genau der Version zurück, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. `v0.44.0`).
    - Start-App: Lade die App dieser Version, `https://github.com/DennisBaerlin/n8n-life-agents/releases/download/v0.44.0/lifeagents.dmg` (Mac) bzw. `…/lifeagents-setup.exe` (Windows), Version im Link anpassen. Richte sie ein wie beim ersten Mal und wähle im Fragebogen bei „Wohin sichern?“ den Ordner mit deinen alten Sicherungen.
    - Server: `curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --version v0.44.0`, dann die Sicherungsdatei auf den Server kopieren.
 2. **Wiederherstellen starten.**

@@ -68,7 +68,7 @@ Versicherungsbeiträge und Kreditraten werden in Euro geführt; ein Abbuchungsko
 
 ## Was er NICHT tut
 
-Der Buchhalter gibt keine Empfehlungen und beantwortet keine „soll ich?"/„lohnt sich das?"-Fragen — dafür ist der [Finanzberater](finanzberater.html) zuständig, der rein lesend arbeitet und nichts bucht. Und: ohne deine Bestätigung per Tastendruck wird nie etwas geschrieben — eine Textnachricht erreicht ein wartendes Bestätigungsfenster nicht.
+Der Buchhalter gibt keine Empfehlungen und beantwortet keine „soll ich?"/„lohnt sich das?"-Fragen — dafür ist der [Finanzberater](finanzberater.html) zuständig, der nichts bucht (Ausnahmen: Depot-Zuordnung und fehlende Mindestdaten des Plans, jeweils per Karte). Und: ohne deine Bestätigung per Tastendruck wird nie etwas geschrieben — eine Textnachricht erreicht ein wartendes Bestätigungsfenster nicht.
 
 ## Beispiel
 

@@ -45,7 +45,8 @@
                                                            "id":  "__CRED_POSTGRES_ESTATE_RW__",
                                                            "name":  "Postgres estate_rw (read-write)"
                                                        }
-                                      }
+                                      },
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -496,7 +497,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**estate.fn_cancel_case (offener Fall -\u003e cancelled, Verlauf bleibt)**\n\nRead case zeigt Typ/Person/Datum für die Bestätigung; \"Case open?\" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist. Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.",
+                                         "content":  "## DB-Automatik\n**estate.fn_cancel_case (offener Fall -\u003e cancelled, Verlauf bleibt)**\n\nRead case zeigt Typ/Person/Datum für die Bestätigung; \"Case open?\" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist oder nicht existiert (Read case liefert dann per alwaysOutputData ein leeres Item statt Stille). Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.",
                                          "height":  300,
                                          "width":  640,
                                          "color":  4

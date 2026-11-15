@@ -199,7 +199,7 @@ foreach ($tc in $cases) {
     Register-TestCaseTeardown $tc
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         $setupDirty = $true
-        try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) }
+        try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) -Precondition ([string]$tc.precondition_sql) }
         catch { Write-Host "    [FAIL] Vorbereitung: $_" -ForegroundColor Red; $failed++; continue }
     }
     Clear-MockTelegramRequests -Container $Container

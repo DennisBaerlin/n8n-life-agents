@@ -10,6 +10,7 @@
 #   N  PG-Minor-Neustart (install_pg.sh): laufende Minor != Paket-Minor -> gezielter Neustart, Zweitlauf/Verbund no-op.
 #   T  Telegram-Pruefung (Pruefliste Nr. 10): frei / unser Webhook / fremder Webhook / 409 Long-Polling / nicht pruefbar;
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
+#   R  Netz-Wiederholung (rt_stack_up dreimal, add_apt_key curl --retry-all-errors).
 #   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
 # Braucht kein n8n, kein Docker und kein Netz.
 #
@@ -810,4 +811,23 @@ eq I.auto-export-gescheitert-hinweis-ohne-rotation 1/0 "$(na "$W/na.dir" 1)"
 eq I.auto-erfolg-rotiert-und-hinweis 1/1 "$(na "$W/na.dir2" 0)"
 eq I.auto-hinweis-nicht-faellig-kein-aufruf 0 "$( ( BACKUP_LOCAL_DIR="$W/na.dir3"; rm -f "$W/na.n"; _bkp_stale_notify() { echo x >> "$W/na.n"; }; _bkp_auto_due() { return 1; }; _bkp_auto_local 1 >/dev/null 2>&1; cat "$W/na.n" 2>/dev/null | wc -l | tr -d ' ' ) )"
 
+# R  Netz-Wiederholung: rt_stack_up versucht es bis zu dreimal (Registry-Limit, Aussetzer); add_apt_key laedt erst in eine Datei
+#    und schaltet curl-Wiederholung auch fuer curl 18 ein (kein halber Schluessel in gpg).
+rt_try() {   # rt_try <fehlschlaege-vor-erfolg> -> "<rc>/<aufrufe>"
+  ( : > "$W/rt.n"; RT_UP_RETRY_DELAY=0; _fails="$1"
+    _rt_compose() { echo x >> "$W/rt.n"; [ "$(wc -l < "$W/rt.n" | tr -d ' ')" -gt "$_fails" ]; }
+    warn() { :; }; sleep() { :; }
+    rt_stack_up master >/dev/null 2>&1; printf '%s/%s' "$?" "$(wc -l < "$W/rt.n" | tr -d ' ')" )
+}
+eq R.up-gelingt-sofort 0/1 "$(rt_try 0)"
+eq R.up-zweiter-versuch 0/2 "$(rt_try 1)"
+eq R.up-dritter-versuch 0/3 "$(rt_try 2)"
+eq R.up-gibt-nach-drei-versuchen-auf 1/3 "$(rt_try 9)"
+mkdir -p "$W/akbin"
+printf '#!/usr/bin/env bash\nprintf "%%s " "$@" > "%s/curl.args"\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && { printf KEY > "$2"; }; shift; done\n' "$W" > "$W/akbin/curl"
+printf '#!/usr/bin/env bash\ncat > "$4"\n' > "$W/akbin/gpg"
+chmod +x "$W/akbin/curl" "$W/akbin/gpg"
+( PATH="$W/akbin:$PATH"; add_apt_key https://example.invalid/k.asc "$W/ak/key.gpg" ) >/dev/null 2>&1
+eq R.apt-key-curl-wiederholt-auch-curl18 1 "$(grep -c -e '--retry-all-errors' "$W/curl.args" 2>/dev/null)"
+eq R.apt-key-landet-vollstaendig-im-schluesselbund KEY "$(cat "$W/ak/key.gpg" 2>/dev/null)"
 exit "$fails"

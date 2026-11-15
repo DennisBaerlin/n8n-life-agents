@@ -110,7 +110,7 @@ foreach ($tc in $cases) {
     Register-TestCaseTeardown $tc
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
-        try { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" }
+        try { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" -Precondition "$($tc.precondition_sql)" }
         catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
     }
     $ex = $null

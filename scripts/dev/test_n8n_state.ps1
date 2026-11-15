@@ -883,13 +883,21 @@ function Get-TestRouteAgent {
 # prueft. Helfer (session-lokal, pg_temp, paketneutral): ok(label, res) macht {ok:false} zum harten Fehler; ids per Subselect
 # im Case. Nur einfache Hochkommas im SQL (doppelte verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
 # __E2E__ im Namen; aufgeraeumt wird nur ueber agent.fn_clear_e2e_data().
+# Optional -Precondition (Case-Feld precondition_sql): ein boolescher SQL-Ausdruck, der nach dem setup_sql wahr sein muss. Er belegt
+# den Zustand, den die Erwartung des Falls voraussetzt (z. B. das Konto, ohne das der Agent nachfragen muss); ist er falsch, ist der
+# Fall rot, BEVOR ein bezahlter Aufruf losgeht (dann ist die Vorbereitung des Falls schuld, nicht der Agent).
 function Invoke-TestCaseSetup {
-    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql)
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql, [string]$Precondition = '')
     $prelude = @'
 CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$ BEGIN IF COALESCE((p_res->>'ok')::boolean, TRUE) = FALSE THEN RAISE EXCEPTION 'e2e setup: % fehlgeschlagen: %', p_label, COALESCE(p_res->>'reason', p_res::text); END IF; RETURN p_res; END $f$;
 '@
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', ($prelude + $Sql))
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
+    if ($Precondition) {
+        $chk = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', "SELECT COALESCE(($Precondition), false);")
+        if ($chk.Code -ne 0) { throw "precondition_sql nicht auswertbar: $(($chk.Output | Where-Object { $_ }) -join ' ')" }
+        if ((@($chk.Output | Where-Object { $_ }) -join '').Trim() -ne 't') { throw "precondition_sql nicht erfuellt (Vorbereitung des Falls unvollstaendig): $Precondition" }
+    }
 }
 
 # Teardown (optional je Case, Feld teardown_sql): raeumt, was agent.fn_clear_e2e_data() nicht kennt (Zustand ohne __E2E__-Sentinel, den ein

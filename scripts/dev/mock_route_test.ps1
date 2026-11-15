@@ -222,7 +222,7 @@ foreach ($tc in $cases) {
             # Voraussetzungen wie im bezahlten Tier (eine Stelle: Invoke-TestCaseSetup); vorher alte __E2E__-Reste weg
             if ($tc.setup_sql) {
                 [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
-                Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)"
+                Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" -Precondition "$($tc.precondition_sql)"
             }
         }
         catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }

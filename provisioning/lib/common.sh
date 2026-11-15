@@ -321,7 +321,13 @@ add_apt_key() {
   local url="$1" keyring="$2"
   if [ -s "$keyring" ]; then return 0; fi
   mkdir -p "$(dirname "$keyring")"
-  curl -fsSL "$url" | gpg --dearmor --yes -o "$keyring"
+  # Erst vollstaendig in eine Datei: bei einem Abbruch mitten im Download (curl 18) bekaeme gpg sonst einen halben Schluessel.
+  # --retry-all-errors faengt auch curl 18/56 ab (--retry allein nur Zeitueberschreitung und 5xx).
+  local tmp; tmp="$(mktemp)"
+  if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$url" -o "$tmp"; then rm -f "$tmp"; return 1; fi
+  gpg --dearmor --yes -o "$keyring" < "$tmp"; local rc=$?
+  rm -f "$tmp"
+  [ "$rc" -eq 0 ] || return "$rc"
   chmod 0644 "$keyring"
 }
 

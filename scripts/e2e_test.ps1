@@ -169,7 +169,7 @@ try {
         if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
         Register-TestCaseTeardown $tc
         if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
-            try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) }
+            try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) -Precondition ([string]$tc.precondition_sql) }
             catch { Write-Host "    [FAIL] Vorbereitung: $_" -ForegroundColor Red; $failed++; continue }
         }
 

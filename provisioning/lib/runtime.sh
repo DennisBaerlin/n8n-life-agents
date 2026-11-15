@@ -272,7 +272,16 @@ rt_published_ports_json() {
       | {ip: (.ip | ltrimstr("[") | rtrimstr("]")), port: (.port | tonumber)} ] | unique' <<<"$rows" 2>/dev/null || return 1
 }
 # rt_stack_up <dienste…> — Dienste des Verbunds starten (Abhaengigkeiten laut compose.yml, z. B. master -> gesunde DB).
-rt_stack_up() { _rt_compose up -d "$@"; }
+# Bis zu 3 Versuche: ein Netz-Aussetzer oder das Mengenlimit der Image-Registry beim Holen der Images (toomanyrequests)
+# soll weder einen Installer-Lauf noch die CI kippen; `up -d` ist wiederholbar (macht dort weiter, wo es stand).
+rt_stack_up() {
+  local n=1
+  until _rt_compose up -d "$@"; do
+    [ "$n" -lt 3 ] || return 1
+    warn "Verbund starten gescheitert (Versuch $n/3) - neuer Versuch in ${RT_UP_RETRY_DELAY:-10} s."
+    sleep "${RT_UP_RETRY_DELAY:-10}"; n=$((n + 1))
+  done
+}
 # rt_stack_ps — Zustand der laufenden eigenen Container (nur dieses Projekt; Name, Dienst, Status).
 rt_stack_ps() { _rt_compose ps --format '{{.Name}}\t{{.Service}}\t{{.State}}\t{{.Health}}'; }
 # rt_master_container -> Name des master-Containers (Host-Seite: Start-App bzw. CI).

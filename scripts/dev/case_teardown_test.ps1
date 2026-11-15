@@ -58,5 +58,24 @@ foreach ($rel in $drivers.Keys) {
 $mr = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\mock_route_test.ps1'), $utf8)
 Assert-That ($mr -match '(?s)finally \{[^}]*fn_clear_e2e_data[^}]*\}?[^}]*Complete-TestCaseTeardown') 'mock_route_test: im finally jedes Falls, nach dem fn_clear_e2e_data'
 
+Write-Host "precondition_sql (Invoke-TestCaseSetup -Precondition)"
+$script:Out = @('t')
+function Invoke-TestN8nPsql { param([string]$Container, [string[]]$PsqlArgs) $script:Sent += ($PsqlArgs -join ' '); [pscustomobject]@{ Code = $script:NextCode; Output = $script:Out } }
+$script:Sent = @()
+Invoke-TestCaseSetup -Container 'c' -Sql 'SELECT 1;' -Precondition '1 = 1'
+Assert-That ($script:Sent.Count -eq 2 -and $script:Sent[1] -match 'SELECT COALESCE\(\(1 = 1\), false\);') 'wahre Vorbedingung: nach dem setup_sql geprueft, Fall laeuft weiter'
+$script:Sent = @(); Invoke-TestCaseSetup -Container 'c' -Sql 'SELECT 1;' -Precondition ''
+Assert-That ($script:Sent.Count -eq 1) 'ohne precondition_sql: keine zweite Abfrage'
+$script:Out = @('f'); $threw = ''
+try { Invoke-TestCaseSetup -Container 'c' -Sql 'SELECT 1;' -Precondition '1 = 2' } catch { $threw = $_.Exception.Message }
+Assert-That ($threw -match 'precondition_sql nicht erfuellt' -and $threw -match '1 = 2') 'falsche Vorbedingung: Fall rot mit dem Ausdruck, bevor ein bezahlter Aufruf losgeht'
+$script:Out = @(); $threw = ''
+try { Invoke-TestCaseSetup -Container 'c' -Sql 'SELECT 1;' -Precondition 'NULL' } catch { $threw = $_.Exception.Message }
+Assert-That ($threw -match 'nicht erfuellt') 'leere Antwort (NULL) zaehlt als nicht erfuellt'
+foreach ($rel in $drivers.Keys) {
+    $t = [System.IO.File]::ReadAllText((Join-Path $repo $rel), $utf8)
+    Assert-That ($t -match 'Invoke-TestCaseSetup[^\r\n]*-Precondition') "$rel reicht precondition_sql an das setup durch"
+}
+
 if ($failed -eq 0) { Write-Host "case_teardown_test: alles gruen." -ForegroundColor Green } else { Write-Host "case_teardown_test: $failed Fehler." -ForegroundColor Red }
 exit $failed

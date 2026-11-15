@@ -11,6 +11,9 @@
 # "Heute" ist das UTC-Datum: der Mock-Stub im Container rechnet in UTC, beide Seiten muessen dasselbe Datum bekommen.
 # Ein Platzhalter, der die Grammatik verfehlt, wirft (Tippfehler duerfen nicht als Text durchgehen).
 
+# Ein Bezugstag je Prozess (beim Laden fixiert): alle Faelle eines Laufs bekommen denselben Wert, auch ueber Mitternacht hinweg.
+$script:DatePlaceholderToday = [datetime]::UtcNow.Date
+
 function Get-DatePlaceholderValue {
     param([Parameter(Mandatory)][string]$Expr, [Parameter(Mandatory)][datetime]$Today)
     $m = [regex]::Match($Expr, '^([+-]?)(\d+)([dwm])(?:@(-?\d{1,2}))?$')
@@ -35,7 +38,7 @@ function Get-DatePlaceholderValue {
 
 # Resolve-DatePlaceholder <text> [-Today] -> Text mit aufgeloesten Platzhaltern (ohne Platzhalter unveraendert).
 function Resolve-DatePlaceholder {
-    param([AllowNull()][AllowEmptyString()][string]$Text, [datetime]$Today = ([datetime]::UtcNow.Date))
+    param([AllowNull()][AllowEmptyString()][string]$Text, [datetime]$Today = $script:DatePlaceholderToday)
     if ([string]::IsNullOrEmpty($Text) -or $Text.IndexOf('{{date:', [StringComparison]::Ordinal) -lt 0) { return $Text }
     $eval = [System.Text.RegularExpressions.MatchEvaluator]{ param($m) Get-DatePlaceholderValue -Expr $m.Groups[1].Value -Today $Today }
     return [regex]::Replace($Text, '\{\{date:([^}]*)\}\}', $eval)
@@ -44,7 +47,7 @@ function Resolve-DatePlaceholder {
 # Resolve-DatePlaceholderDeep <Objekt> -> dasselbe Objekt, alle Strings darin aufgeloest (PSCustomObject aus ConvertFrom-Json wird
 # in place geaendert, Arrays neu gebaut). Fuer ganze Testfaelle: $cases = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep $_ })
 function Resolve-DatePlaceholderDeep {
-    param($Obj, [datetime]$Today = ([datetime]::UtcNow.Date))
+    param($Obj, [datetime]$Today = $script:DatePlaceholderToday)
     if ($null -eq $Obj) { return $null }
     if ($Obj -is [string]) { return (Resolve-DatePlaceholder -Text $Obj -Today $Today) }
     if ($Obj -is [System.Management.Automation.PSCustomObject]) {

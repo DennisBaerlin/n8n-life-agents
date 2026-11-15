@@ -86,8 +86,12 @@ function resolveDatePlaceholders(v, today) {
 }
 
 function loadScenarios() {
-  try { return resolveDatePlaceholders(JSON.parse(fs.readFileSync(SCENARIOS_FILE, 'utf8'))); }
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(SCENARIOS_FILE, 'utf8')); }
   catch (e) { process.stderr.write('mock-llm: Szenarien nicht ladbar: ' + e.message + '\n'); return []; }
+  // Ein verfehlter Platzhalter darf nicht alle Szenarien kosten: unaufgeloest weiterreichen (die betroffenen matchen dann nicht).
+  try { return resolveDatePlaceholders(raw); }
+  catch (e) { process.stderr.write('mock-llm: Datums-Platzhalter ungueltig, Szenarien unaufgeloest: ' + e.message + '\n'); return raw; }
 }
 
 function isAnthropic(url) { return (url || '').indexOf('/v1/messages') !== -1; }

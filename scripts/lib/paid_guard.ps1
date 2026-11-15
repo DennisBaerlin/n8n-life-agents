@@ -27,6 +27,8 @@ function Test-CostLimitExceeded {
 # die Absicherung darf einen Lauf nicht an einem Messfehler scheitern lassen.
 function Test-RunCostExceeded {
     param([Parameter(Mandatory)][string]$Container, [string]$Cursor, [Parameter(Mandatory)][hashtable]$Prices, [Parameter(Mandatory)][double]$MaxCostUsd)
+    # Ohne Start-Marke lieferte Get-LlmUsage die Nutzung ALLER frueheren Laeufe -> falscher Abbruch. Dann gibt es keine Messung.
+    if (-not $Cursor) { Write-Host "    [WARN] Keine Journal-Start-Marke - Kostengrenze nicht geprueft." -ForegroundColor Yellow; return $false }
     try { $cost = Get-UsageCostUsd -Usage (Get-LlmUsage -Container $Container -AfterCursor $Cursor) -Prices $Prices }
     catch { Write-Host "    [WARN] Kosten nicht lesbar ($($_.Exception.Message)) - Grenze nicht geprueft." -ForegroundColor Yellow; return $false }
     if (-not (Test-CostLimitExceeded -CostUsd $cost -MaxCostUsd $MaxCostUsd)) { return $false }

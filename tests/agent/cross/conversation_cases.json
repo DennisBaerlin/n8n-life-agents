@@ -145,5 +145,31 @@
         "expected_behavior": "After the confirmed card the reply says the salary of 2.400 EUR (end of month, Erlenbank Giro) is recorded as a regular income and the advisor asks at most ONE next question for the plan (for example the fixed costs). It does not repeat the income question and does not mention an internal agent."
       }
     ]
+  },
+  {
+    "id": "s7",
+    "name": "S7 Owner gruesst bei offenem Haushalt: ein Satz mit Haushalt-Vorschlag, kein Marker, kein Guide",
+    "sender": "owner",
+    "start": "household_open",
+    "turns": [
+      {
+        "text": "Guten Morgen",
+        "expect_node": "Send with next step", "expect_texts": ["Haushalt"], "forbid_texts": ["NEXT_STEP", "Guide"],
+        "expected_behavior": "The reply is the orchestrator's own (the guide agent is NOT called): one short German sentence that greets and suggests setting up the household, with no NEXT_STEP line and no list of topics."
+      }
+    ]
+  },
+  {
+    "id": "s8",
+    "name": "S8 Mitglied gruesst bei offenem Haushalt: der Owner richtet noch ein, keine Markerzeile",
+    "sender": "member",
+    "start": "household_open",
+    "turns": [
+      {
+        "text": "Hallo zusammen",
+        "expect_texts": ["Owner"], "forbid_texts": ["NEXT_STEP", "Guide"],
+        "expected_behavior": "The reply is the orchestrator's own, one short German sentence saying that the household owner is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list."
+      }
+    ]
   }
 ]

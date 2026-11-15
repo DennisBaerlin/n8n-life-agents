@@ -756,11 +756,13 @@ pkg_cmd_install() {
   if [ "$no_seed" -eq 1 ] || ! ui_interactive || [ "${UI_QUIET:-0}" = 1 ]; then
     if [ "${#pkgs[@]}" -eq 1 ]; then pkg_install_one "${pkgs[0]}" "${extra[@]}"; return; fi
     local done_n=0 failed=""
+    _pkg_menus_defer
     while IFS= read -r p; do
       [ -n "$p" ] || continue
       # Subshell: ein die in Paket k bricht die restlichen nicht ab (Muster provision.sh-Bundle-Loop).
       if ( pkg_install_one "$p" "${extra[@]}" ); then done_n=$((done_n + 1)); else failed="${failed:+$failed }$p"; fi
     done <<<"$work"
+    _pkg_menus_flush
     [ -z "$failed" ] || { warn "Installiert: ${done_n}/${#pkgs[@]}; fehlgeschlagen: ${failed} — erneut ausführen setzt fort."; return 1; }
     return 0
   fi
@@ -782,6 +784,7 @@ pkg_cmd_install() {
   # (2) Ruhige Ausgabe (Muster provision.sh): eine Zeile je Paket, Details ins Log. Ohne TUI-Terminal -> volle Ausgabe.
   ui_quiet_wanted 0 && ui_log_begin package
   local name ok_list="" fail_list=""
+  _pkg_menus_defer
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     name="$(pkg_display_name "$p")"
@@ -793,6 +796,7 @@ pkg_cmd_install() {
     fi
   done <<<"$work"
   _ui_spin_stop
+  _pkg_menus_flush
 
   # (3) Uebersicht (fd3-faehig: im ruhigen Modus aufs Terminal).
   {
@@ -972,6 +976,11 @@ _pkg_set_status() {
   _pkg_refresh_surfaces
   return 0
 }
+
+# _pkg_menus_defer / _pkg_menus_flush — Menue, Bot-Name und Knoepfe einmal nach einer Paket-Schleife statt je Paket
+#   (deploy_workflows.sh menus_defer_begin/menus_flush; ohne diese Datei im Lauf: no-op, jeder Statuswechsel setzt sofort).
+_pkg_menus_defer() { if declare -F menus_defer_begin >/dev/null; then menus_defer_begin; fi; return 0; }
+_pkg_menus_flush() { if declare -F menus_flush >/dev/null; then _pkg_resolve_env; menus_flush; fi; return 0; }
 
 # _pkg_refresh_surfaces — /help-Katalog (seed_data.sh) + Telegram-Befehlsmenue (deploy_workflows.sh) nach
 # einem Paket-Statuswechsel neu setzen (beide zeigen nur aktive Pakete). Nie fatal; _pkg_resolve_env stellt

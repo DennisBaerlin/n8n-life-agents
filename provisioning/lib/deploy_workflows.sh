@@ -663,6 +663,44 @@ deploy_workflows() {
 # Verschatten. Texte = Katalog-Keys <pkg>.cmd.<name> direkt aus den getrackten locales/<lang>.json (Datei = Wahrheit,
 # der Host liest schon die Manifeste; Key fehlt -> en -> Befehlsname).
 
+# _tg_post <bot-token> <methode> <body-json> [secret] — ein Bot-API-POST mit genau einem Wiederholversuch.
+#   Rueckgabe 0 = ok:true. Setzt TG_BODY (Antwort), TG_ERR (Grund des letzten Fehlschlags: "HTTP <code> — <description>"
+#   bzw. "keine Verbindung") und TG_RETRIED (Grund des ersten Versuchs, wenn der zweite lief). Bei HTTP 429 wartet er
+#   parameters.retry_after, gedeckelt auf LIFEAGENTS_TG_RETRY_MAX (Standard 10 s), sonst 1 s. Grund: eine Runde Telegram-
+#   Aufrufe scheitert gelegentlich gesammelt (Rate-Limit, 5xx), die naechste geht durch.
+#   Der Grund ist gekuerzt, ohne Bot-Schluessel und ohne URLs (Beschreibungen koennen die App-Adresse nennen).
+#   secret=1: Body ueber die curl-Config statt argv (Body mit der je Instanz geheimen App-Adresse).
+_tg_post() {
+  local token="$1" method="$2" body="$3" secret="${4:-}" attempt=1 out rc code desc ra wait cap
+  TG_BODY=''; TG_ERR=''; TG_RETRIED=''
+  cap="${LIFEAGENTS_TG_RETRY_MAX:-10}"; case "$cap" in ''|*[!0-9]*) cap=10 ;; esac
+  while :; do
+    rc=0
+    if [ "$secret" = 1 ]; then
+      out="$({ curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot${token}/${method}"; curl_cfg data "$body"; } |
+             curl_secret -sS --max-time 10 -X POST -H 'content-type: application/json' -w '\n%{http_code}' 2>/dev/null)" || rc=$?
+    else
+      out="$(tg_api_curl "$token" "$method" -sS --max-time 10 -X POST -H 'content-type: application/json' \
+             --data "$body" -w '\n%{http_code}' 2>/dev/null)" || rc=$?
+    fi
+    code="${out##*$'\n'}"
+    if [[ "$code" =~ ^[0-9]{3}$ ]]; then TG_BODY="${out%$'\n'*}"; else code=''; TG_BODY="$out"; fi   # Stub ohne -w-Zeile: Antwort = alles
+    if [ "$rc" -eq 0 ] && { [ -z "$code" ] || [ "$code" = 200 ]; } && printf '%s' "$TG_BODY" | jq -e '.ok == true' >/dev/null 2>&1; then
+      TG_ERR=''; return 0
+    fi
+    desc="$(printf '%s' "$TG_BODY" | jq -r '.description // empty' 2>/dev/null | tr -d '\r\n' | head -c 200 || true)"
+    desc="${desc//"$token"/***}"
+    desc="$(printf '%s' "$desc" | sed -E 's#https?://[^[:space:]]+#<URL>#g')"
+    if [ -z "$code" ] || [ "$code" = 000 ]; then TG_ERR="keine Verbindung (curl $rc)"; else TG_ERR="HTTP ${code}${desc:+ — $desc}"; fi
+    [ "$attempt" -eq 1 ] || return 1
+    ra="$(printf '%s' "$TG_BODY" | jq -r '.parameters.retry_after // empty' 2>/dev/null || true)"
+    case "$ra" in ''|*[!0-9]*) wait=1 ;; *) wait="$ra" ;; esac
+    [ "$wait" -le "$cap" ] || wait="$cap"
+    TG_RETRIED="$TG_ERR"; attempt=2
+    sleep "$wait"
+  done
+}
+
 # _push_bot_commands <bot-token> <cmds-json> <scope-json> <label> [<language_code>] — einen BotCommandScope (+ Sprache)
 # setzen + sofort verifizieren (wie inject_credentials::_cred_test). <cmds-json>
 # ist die jq-c-Ausgabe (gueltiges kompaktes JSON), <scope-json> ein validiertes JSON-Fragment
@@ -682,11 +720,11 @@ _push_bot_commands() {
     lcf=",\"language_code\":\"${lc}\""
   fi
 
-  if tg_api_curl "$token" setMyCommands -fsS --max-time 10 -X POST -H 'content-type: application/json' \
-       --data "{\"commands\":${cmds},\"scope\":${scope}${lcf}}" >/dev/null 2>&1; then
+  if _tg_post "$token" setMyCommands "{\"commands\":${cmds},\"scope\":${scope}${lcf}}"; then
+    [ -z "$TG_RETRIED" ] || note "Telegram-${label}-Menue: erster Versuch scheiterte (${TG_RETRIED}), zweiter gelungen."
     ok "Telegram-${label}-Menue gesetzt: ${names}."
   else
-    warn "Telegram-${label}-Menue (setMyCommands) fehlgeschlagen (Token/Netz/Chat?) — unkritisch, spaeter nachziehbar."
+    warn "Telegram-${label}-Menue (setMyCommands) fehlgeschlagen: ${TG_ERR} — unkritisch, spaeter nachziehbar."
     return 0
   fi
 
@@ -746,6 +784,8 @@ _bot_menu_cmds() {
 # numerisch) -> Owner-Scopes uebersprungen; das Pairing (owner_connect.sh) setzt sie danach.
 _set_bot_command_menus() {
   local token="$1"
+  # Aufschub (menus_defer_begin): Menue, Bot-Name und Knoepfe setzt der Lauf einmal am Ende (menus_flush).
+  [ "${LIFEAGENTS_MENU_DEFER:-0}" != 1 ] || return 0
   need_cmd jq || { warn "jq fehlt -> Telegram-Befehlsmenue uebersprungen."; return 0; }
   local -a mfs=()
   local m lang owner_chat owner_lang owner_ok=0
@@ -784,10 +824,11 @@ _set_bot_command_menus() {
 _sync_bot_username() {
   local token="$1" name
   need_cmd jq || return 0
-  name="$(tg_api_curl "$token" getMe -fsS --max-time 10 2>/dev/null | jq -r '.result.username // empty' 2>/dev/null || true)"
+  _tg_post "$token" getMe "{}" || true
+  name="$(printf '%s' "$TG_BODY" | jq -r '.result.username // empty' 2>/dev/null || true)"
   # Das Muster sichert auch das Einsetzen in die SQL; [[ =~ ]] statt grep, das eine zweite Zeile durchliesse.
   if [[ ! "$name" =~ ^[A-Za-z0-9_]{5,32}$ ]]; then
-    warn "Bot-Name nicht ermittelt (Telegram-Antwort unklar) — Wert bleibt, nächstes Update prüft neu."
+    warn "Bot-Name nicht ermittelt (${TG_ERR:-Telegram-Antwort unklar}) — Wert bleibt, nächstes Update prüft neu."
     return 0
   fi
   pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_set_bot_username('$name')" >/dev/null 2>&1 \
@@ -819,8 +860,7 @@ WHERE core.app_secret.webapp_key IS DISTINCT FROM EXCLUDED.webapp_key;\n" "$key"
 # _tg_set_menu_button <bot-token> <body-json> — ein setChatMenuButton. Der Body traegt die je Instanz geheime App-Adresse
 #   -> URL und Body nur ueber die curl-Config auf stdin (curl_cfg/curl_secret), nie im argv (/proc/<pid>/cmdline).
 _tg_set_menu_button() {
-  { curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot$1/setChatMenuButton"; curl_cfg data "$2"; } |
-    curl_secret -fsS --max-time 10 -X POST -H 'content-type: application/json' >/dev/null 2>&1
+  _tg_post "$1" setChatMenuButton "$2" 1
 }
 
 # _set_bot_menu_buttons <bot-token> — der dauerhafte Knopf „📊 Übersicht“ links neben dem Eingabefeld
@@ -954,7 +994,7 @@ _set_bot_menu_buttons_run() {
     else
       fails=$((fails + 1))
       case "$prev" in *" $tid "*) got="${got}${tid} " ;; esac
-      warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, neuer Versuch in etwa 10 Minuten."
+      warn "Übersicht-Knopf für einen Chat nicht gesetzt: ${TG_ERR} — unkritisch, neuer Versuch in etwa 10 Minuten."
     fi
   done <<EOF
 $rows
@@ -969,7 +1009,7 @@ EOF
       else
         keep="${keep}${tid} "
         fails=$((fails + 1))
-        warn "Befehlsmenü für einen früheren Chat nicht zurückgesetzt — neuer Versuch in etwa 10 Minuten."
+        warn "Befehlsmenü für einen früheren Chat nicht zurückgesetzt: ${TG_ERR} — neuer Versuch in etwa 10 Minuten."
       fi
     done < "$state"
   fi
@@ -995,3 +1035,10 @@ refresh_bot_command_menus() {
   _set_bot_command_menus "$token" || true
   return 0
 }
+
+# menus_defer_begin / menus_flush — Menue, Bot-Name und Knoepfe nur einmal je Lauf setzen. provision.sh schaltet den Aufschub
+#   vor dem Owner-Bootstrap ein; waehrend der Paket-Installs (jeder Statuswechsel ruft _pkg_refresh_surfaces) und in
+#   _wire_telegram passiert nichts, menus_flush setzt danach einmal fuer den Endstand. Ohne Aufschub (Einzelpaket-Befehle,
+#   Pairing) setzt jeder Aufruf sofort. Der Merker ist eine Shell-Variable: Subshells (`( pkg_install_one )`) erben ihn.
+menus_defer_begin() { LIFEAGENTS_MENU_DEFER=1; }
+menus_flush() { LIFEAGENTS_MENU_DEFER=0; refresh_bot_command_menus; return 0; }

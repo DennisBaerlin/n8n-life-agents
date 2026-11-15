@@ -210,6 +210,7 @@
     "chat_id": "test_es20",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Steuerberater Weidenfeld', estate.fn_create_contact(jsonb_build_object('chat_id','test_e2e_wt','name','Steuerberater Weidenfeld','role','tax_advisor','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.contacts WHERE name = 'Steuerberater Weidenfeld') = 1 AND (SELECT count(*) FROM estate.contacts WHERE name = 'Steuerberater Weidenfeld' AND role = 'tax_advisor' AND phone IS DISTINCT FROM '0123 555000') = 1",
     "expected_tool": "tool_set_contact",
     "expected_tool_args": {
       "name": "Steuerberater Weidenfeld",
@@ -225,6 +226,7 @@
     "chat_id": "test_es21",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Hausarzt Dr. Lindner', estate.fn_create_contact(jsonb_build_object('chat_id','test_e2e_wt','name','Hausarzt Dr. Lindner','role','physician','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.contacts WHERE name = 'Hausarzt Dr. Lindner') = 1",
     "expected_tool": "tool_delete_contact",
     "expected_tool_args": {
       "name": "Hausarzt Dr. Lindner"
@@ -239,6 +241,7 @@
     "chat_id": "test_es22",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Stadtwerke Beispielstadt', estate.fn_create_provider_contract(jsonb_build_object('chat_id','test_e2e_wt','provider','Stadtwerke Beispielstadt','category','utilities','customer_no','KD-1','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.provider_contracts WHERE provider = 'Stadtwerke Beispielstadt') = 1 AND (SELECT count(*) FROM estate.provider_contracts WHERE provider = 'Stadtwerke Beispielstadt' AND customer_no = 'KD-1') = 1",
     "expected_tool": "tool_set_provider_contract",
     "expected_tool_args": {
       "provider": "Stadtwerke Beispielstadt",
@@ -254,6 +257,7 @@
     "chat_id": "test_es23",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Beispielnetz', estate.fn_create_provider_contract(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielnetz','category','telecom','customer_no','KD-1','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.provider_contracts WHERE provider = 'Beispielnetz') = 1",
     "expected_tool": "tool_delete_provider_contract",
     "expected_tool_args": {
       "provider": "Beispielnetz"
@@ -268,6 +272,7 @@
     "chat_id": "test_es24",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death') = 1 AND (SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death' AND subject_person_id = 'lena') = 1 AND (SELECT count(*) FROM estate.cases WHERE status = 'open' AND COALESCE(flags->>'tenant', 'false') <> 'true') = 1",
     "expected_tool": "tool_set_case",
     "expected_tool_args": {
       "tenant": "true"
@@ -282,6 +287,7 @@
     "chat_id": "test_es25",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death') = 1 AND (SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death' AND subject_person_id = 'lena') = 1",
     "expected_tool": "tool_cancel_case",
     "expected_behavior": "The advisor looks up the open case and cancels it via tool_cancel_case. It does not delete tasks or open a new case.",
     "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): cancel_* auf den offenen Fall aus setup_sql."
@@ -293,6 +299,7 @@
     "chat_id": "test_es26",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death') = 1 AND (SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death' AND subject_person_id = 'lena') = 1 AND (SELECT count(*) FROM estate.case_tasks t JOIN estate.cases c ON c.id = t.case_id WHERE c.status = 'open' AND t.status <> 'done' AND t.template_key = 'sterbefallanzeige') = 1",
     "expected_tool": "tool_set_case_task",
     "expected_tool_args": {
       "status": "done"
@@ -307,6 +314,7 @@
     "chat_id": "test_es27",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death') = 1 AND (SELECT count(*) FROM estate.cases WHERE status = 'open' AND case_type = 'death' AND subject_person_id = 'lena') = 1 AND NOT EXISTS (SELECT 1 FROM estate.case_tasks WHERE title ILIKE '%Werkstatt%')",
     "expected_tool": "tool_create_case_task",
     "expected_tool_args": {
       "title": "Werkstatt"
@@ -321,6 +329,7 @@
     "chat_id": "test_es28",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Beispielmail', estate.fn_create_digital_account(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielmail','category','email','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.digital_accounts WHERE provider = 'Beispielmail') = 1 AND (SELECT count(*) FROM estate.digital_accounts WHERE provider = 'Beispielmail' AND desired_action IS DISTINCT FROM 'delete') = 1",
     "expected_tool": "tool_set_digital_account",
     "expected_tool_args": {
       "provider": "Beispielmail",
@@ -336,6 +345,7 @@
     "chat_id": "test_es29",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Beispielforum', estate.fn_create_digital_account(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielforum','category','social','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.digital_accounts WHERE provider = 'Beispielforum') = 1",
     "expected_tool": "tool_delete_digital_account",
     "expected_tool_args": {
       "provider": "Beispielforum"
@@ -350,6 +360,7 @@
     "chat_id": "test_es30",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Lastenrad Beispielmarke', estate.fn_create_special_asset(jsonb_build_object('chat_id','test_e2e_wt','asset_type','vehicle','description','Lastenrad Beispielmarke','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.special_assets WHERE description = 'Lastenrad Beispielmarke') = 1",
     "expected_tool": "tool_delete_special_asset",
     "expected_tool_args": {
       "description": "Beispielmarke"
@@ -364,6 +375,7 @@
     "chat_id": "test_es31",
     "timeout_s": 300,
     "setup_sql": "SELECT pg_temp.ok('Aktenordner Wohnzimmer', estate.fn_create_storage_place(jsonb_build_object('chat_id','test_e2e_wt','name','Aktenordner Wohnzimmer','kind','folder','notes','__E2E__')))",
+    "precondition_sql": "(SELECT count(*) FROM estate.storage_places WHERE name = 'Aktenordner Wohnzimmer') = 1 AND (SELECT count(*) FROM estate.storage_places WHERE name = 'Aktenordner Wohnzimmer' AND location IS DISTINCT FROM 'Arbeitszimmer') = 1",
     "expected_tool": "tool_set_storage_place",
     "expected_tool_args": {
       "name": "Aktenordner Wohnzimmer",

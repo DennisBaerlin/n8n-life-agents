@@ -1,0 +1,4 @@
+{
+  "_comment": "Ratchet fuer mock_lint C7: Faelle mit setup_sql, die begruendet kein precondition_sql tragen koennen. Schluessel = <Datei>|<Fall-id>, Wert = Grund. Nur schrumpfen, nie wachsen: jeder neue Fall mit setup_sql bekommt ein precondition_sql (docs/reference/tests.md).",
+  "entries": {}
+}

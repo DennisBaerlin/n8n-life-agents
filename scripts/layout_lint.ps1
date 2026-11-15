@@ -3,8 +3,11 @@
 # Invariante. git-ls-files-basiert, also unabhaengig vom Platten-Zustand (transiente Agent-Worktrees
 # unter .claude/** und gitignorte .local/** sind nicht getrackt und damit ausgeschlossen).
 # Aufruf: .\scripts\layout_lint.ps1 [-Verbose] [-Baseline]   (-Baseline druckt das L4-Allowlist-Geruest)
+#         .\scripts\layout_lint.ps1 -MojibakeFile a.md,b.sql   (nur L8 auf diesen Dateien; Test: scripts/dev/layout_lint_test.ps1)
+#         .\scripts\layout_lint.ps1 -Staged                    (Commit-Hook: L4/L8 nur auf gestagten Dateien, Struktur L1-L3/L5-L7 baumweit;
+#                                                               ohne gestagte Dateien voller Lauf; -Files a.md,b.sql nennt die Dateien selbst)
 #
-# Sieben Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
+# Acht Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
 # die Extraktion/Praedikat-Logik still, wird das Lint hart rot statt leise gruen):
 #   L1 Top-Level-Allowlist: jeder getrackte Root-Eintrag (Dir bzw. Datei) steht in der In-Skript-Allowlist
 #      -> re-committetes db/ o.ae. failt hart.
@@ -34,11 +37,31 @@
 #   L7 (SOLLTE) SQL-Selbst-/Tests-Header: jeder Repo-Pfad-Token im fuehrenden Kommentar-Block einer
 #      tests/db/**- oder packages/*/db/**-SQL existiert (verschobene Datei -> alter Self-Header-Pfad ist
 #      weg -> Fail); ein Token mit dem eigenen Dateinamen muss dem realen Pfad gleichen.
+#   L8 Kein Mojibake in getrackten Textdateien (git ls-files --eol ohne -text, auch generierter Output: er erbt den Fehler
+#      der Quelle): typische Folgen von UTF-8, das als Windows-1252/Latin-1 gelesen und wieder gespeichert wurde -- Ã vor einem
+#      Zeichen aus 0x80-0xBF bzw. dessen 1252-Abbild (ü -> Ã+¼), â€ + Folgezeichen, Â vor 0xA0-0xBF. Die Muster stehen als
+#      \u-Escapes im Regex, damit diese Datei selbst sauber bleibt. Ausnahme nur mit Grund in $L8Allow (Pfad -> Grund).
 #
 # Erweitern der L1/L2/L3-Allowlists oder des L4-Ban-Sets = bewusster reviewter Edit der In-Skript-Arrays
 # (+ Begruendung), nie ad-hoc -> docs/reference/packages.md *Struktur-Invariante*.
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
-param([switch]$Baseline, [switch]$Verbose)
+param([switch]$Baseline, [string[]]$MojibakeFile, [string[]]$Files, [switch]$Staged, [switch]$Verbose)
+
+# -Staged (Commit-Hook) bzw. -Files <rel,..>: die Inhaltsregeln je Datei (L4 Retired-Roots-Token, L8 Mojibake) laufen nur auf den
+# gestagten bzw. genannten Dateien; die Strukturregeln (L1-L3, L5-L7) bleiben baumweit. Ohne gestagte Dateien (CI-Checkout, prek --all-files
+# auf sauberem Baum), ohne Schalter und im pre-push-Hook laeuft alles. Wird die L4-Allowlist selbst gestagt, laeuft L4 voll (ihre Zaehler
+# lassen sich nur gegen den ganzen Baum pruefen).
+if ($Staged -and -not $Files) {
+    $RepoForStaged = git -C $PSScriptRoot rev-parse --show-toplevel
+    $Files = @(git -C $RepoForStaged -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR)
+}
+$script:FileScope = $null
+if ($Files) {
+    $script:FileScope = @{}
+    foreach ($f in @($Files | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) { $script:FileScope[($f -replace '\\', '/')] = $true }
+}
+function Test-InFileScope([string]$rel) { return ($null -eq $script:FileScope) -or $script:FileScope.ContainsKey($rel) }
+$script:L4Full = ($null -eq $script:FileScope) -or $script:FileScope.ContainsKey('scripts/build/retired_paths_allowlist.json')
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -56,6 +79,10 @@ $L2DirectFiles = @('manifest.json', 'CLAUDE.md')                         # einzi
 $L6Generated   = @('VERSION')   # Release-Zeit-Artefakt, nicht getrackt (provision.sh install_cli-Mirror)
 $placeholderRx = '[<>{}\*\$\s]|http|\.\.\.'
 $L4Rx  = [regex]'((?<![\w./@-])(?:db|n8n)/)|(^/(?:db|n8n)/)'
+# L8: Abbild der Bytes 0x80-0x9F in Windows-1252 (in Latin-1 bleiben sie Steuerzeichen U+0080-U+009F, die der Bereich mit abdeckt).
+$L8Cp1252 = '\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178'
+$L8Rx = [regex]('\u00C3[\u0080-\u00BF' + $L8Cp1252 + ']|\u00E2[\u20AC\u0080][\u0080-\u00BF' + $L8Cp1252 + ']|\u00C2[\u00A0-\u00BF]')
+$L8Allow = @{}   # 'pfad' = 'Grund' (z. B. Testdaten fuer genau diesen Fehler)
 $L7PathRx = [regex]'(?:packages/[^/\s<>]+/db|tests/db/[a-z]+|tests/(?:util|fixtures))/[A-Za-z0-9_./-]+\.(?:sql|md|json)'
 
 function Test-L1TopLevel([string]$rel) {
@@ -177,10 +204,29 @@ $st7 = Get-LeadingCommentTokens @('-- packages/finance/db/migrations/R__fn_x.sql
                                   '--   Tests: tests/db/finance/test_fn_x.sql',
                                   '-- siehe packages/<pkg>/db/migrations/R__x.sql (Platzhalter)',
                                   'CREATE FUNCTION finance.fn_x() ...')
-if ($st7.Count -ne 2) { $st++ }   # 2 echte Pfade trotz Leerzeile; Platzhalter (<pkg>) verworfen; Break erst an CREATE
+if ($st7.Count -ne 2) { $st++ }
+# L8 (Proben per [char], damit die Datei selbst kein Mojibake enthaelt)
+if (-not $L8Rx.IsMatch('d' + [char]0xC3 + [char]0xBC + 'rfen'))       { $st++ }   # ue als Ã+¼
+if (-not $L8Rx.IsMatch('x' + [char]0xC3 + [char]0x201E))              { $st++ }   # Ae, 1252-Abbild von 0x84
+if (-not $L8Rx.IsMatch([string][char]0xE2 + [char]0x20AC + [char]0x201C)) { $st++ }   # typografisches Anfuehrungszeichen
+if (-not $L8Rx.IsMatch('1' + [char]0xC2 + [char]0xB0 + 'C'))         { $st++ }   # Grad-Zeichen mit Â davor
+if ($L8Rx.IsMatch('d' + [char]0xFC + 'rfen, Gr' + [char]0xF6 + [char]0xDF + 'e, 5 ' + [char]0x20AC)) { $st++ }   # echte Umlaute, Euro
+if ($L8Rx.IsMatch('S' + [char]0xC3 + 'O Paulo, ' + [char]0xC2 + '-Taste'))  { $st++ }   # Ã/Â vor normalen Zeichen   # 2 echte Pfade trotz Leerzeile; Platzhalter (<pkg>) verworfen; Break erst an CREATE
 if ($st -gt 0) {
     Fail "Selbst-Assert fehlgeschlagen ($st) -- Praedikat-/Extraktions-Logik defekt, Scan abgebrochen."
     Write-Host "layout_lint: $fails Fehler (Selbst-Assert)." -ForegroundColor Red
+    exit $fails
+}
+
+# L8 Dateizeilen mit Mojibake: Liste "pfad:zeile".
+function Get-L8Hits([string]$rel, [string]$full) {
+    $i = 0
+    foreach ($line in [System.IO.File]::ReadAllLines($full, $script:u8)) { $i++; if ($script:L8Rx.IsMatch($line)) { "${rel}:$i" } }
+}
+if ($MojibakeFile) {
+    foreach ($f in @($MojibakeFile | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) {
+        foreach ($h in (Get-L8Hits $f $f)) { Fail "L8: Mojibake in $h" }
+    }
     exit $fails
 }
 
@@ -196,6 +242,7 @@ $pkgNames = @($tracked | Where-Object { $_ -match '^packages/[^/]+/' } | ForEach
 $found = @{}
 foreach ($rel in $tracked) {
     if (Test-L4Skip $rel) { continue }
+    if (-not $script:L4Full -and -not (Test-InFileScope $rel)) { continue }
     $full = Join-Path $RepoRoot ($rel -replace '/', '\')
     if (-not (Test-Path $full)) { continue }
     foreach ($line in [System.IO.File]::ReadAllLines($full, $u8)) {
@@ -284,6 +331,8 @@ if (-not (Test-Path $alPath)) {
     foreach ($key in ($allow.Keys | Sort-Object)) {
         if (-not $found.ContainsKey($key)) {
             $p = $key -split '\|', 2
+            # Dateibegrenzter Lauf: Eintraege fremder, nicht uebergebener Dateien bleiben unberuehrt (der volle Lauf prueft sie).
+            if (-not $script:L4Full -and -not (Test-InFileScope $p[0]) -and (Test-Path -LiteralPath (Join-Path $RepoRoot ($p[0] -replace '/', '\')))) { continue }
             Fail "L4: allowlist-ORPHAN '$($p[1])' in $($p[0]) -- Token nicht (mehr) vorhanden, Eintrag entfernen (Ratchet schrumpft)."
         }
     }
@@ -347,8 +396,21 @@ foreach ($rel in ($tracked | Where-Object { $_ -match '^(packages/[^/]+/db|tests
 }
 
 # =====================================================================================================
+# L8 -- kein Mojibake in getrackten Textdateien
+# =====================================================================================================
+foreach ($e in @(git -C $RepoRoot -c core.quotepath=false ls-files --eol)) {
+    if ($e -match '^i/-text') { continue }                                          # Binaerdatei laut git
+    $rel = ($e -split "`t", 2)[1]
+    if (-not (Test-InFileScope $rel)) { continue }
+    if ($L8Allow.ContainsKey($rel)) { continue }
+    $full = Join-Path $RepoRoot ($rel -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $full)) { continue }
+    foreach ($h in (Get-L8Hits $rel $full)) { Fail "L8: Mojibake in $h -- UTF-8 wurde als Windows-1252/Latin-1 gelesen; Zeichen wiederherstellen (Datei UTF-8 lesen und schreiben)." }
+}
+
+# =====================================================================================================
 if ($Verbose) { foreach ($k in ($found.Keys | Sort-Object)) { Write-Host "  L4 $k = $($found[$k])" -ForegroundColor DarkGray } }
 Write-Host ""
-if ($fails -eq 0) { Write-Host "layout_lint: OK (L1-L7 konsistent; $($tracked.Count) getrackte Pfade, $($pkgNames.Count) Pakete, $($found.Count) allowlistete Retired-Root-Stelle(n))." -ForegroundColor Green }
+if ($fails -eq 0) { Write-Host "layout_lint: OK (L1-L8 konsistent; $($tracked.Count) getrackte Pfade, $($pkgNames.Count) Pakete, $($found.Count) allowlistete Retired-Root-Stelle(n))." -ForegroundColor Green }
 else              { Write-Host "layout_lint: $fails Fehler -- Layout/Struktur gegen die Invarianten abgleichen." -ForegroundColor Red }
 exit $fails

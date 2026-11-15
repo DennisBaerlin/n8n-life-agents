@@ -8,8 +8,12 @@
 # Voraussetzung: PSScriptAnalyzer ist ein PS-Modul (kein Binary): auf windows-latest-CI vorinstalliert; lokal
 # liegt es in $HOME/.local/psmodules (das umgeleitete Documents-Modulverzeichnis ist kaputt, Install-Module
 # schlaegt dort fehl, s. CONTRIBUTING.md). Darum laeuft der Hook als `language: system` lokal und in CI.
+#
+# -Staged (Commit-Hook): analysiert nur die gestagten .ps1-Dateien unter scripts/ und packages/*/build/ (PSScriptAnalyzer-Regeln gelten je
+# Datei). Ohne irgendeine gestagte Datei (CI-Checkout, prek --all-files auf sauberem Baum), ohne Schalter und im pre-push-Hook
+# laeuft der ganze Baum.
 [CmdletBinding()]
-param()
+param([switch]$Staged)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -26,7 +30,16 @@ $Settings = Join-Path $RepoRoot 'config/PSScriptAnalyzerSettings.psd1'
 $Targets  = @((Join-Path $RepoRoot 'scripts')) +
             @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue |
               ForEach-Object { Join-Path $_.FullName 'build' } | Where-Object { Test-Path $_ })
-$Findings = @($Targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Recurse -Settings $Settings })
+$StagedFiles = @()
+$LimitToStaged = $Staged -and (@(git -C $RepoRoot diff --cached --name-only).Count -gt 0)
+if ($LimitToStaged) {
+    # Nur Skripte im Lint-Umfang (wie $Targets); .claude/hooks u. a. waren nie Teil dieses Lints.
+    $StagedFiles = @(git -C $RepoRoot -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR |
+        Where-Object { $_ -match '(?i)^(scripts/|packages/[^/]+/build/).*\.ps1$' } |
+        ForEach-Object { Join-Path $RepoRoot $_ } | Where-Object { Test-Path -LiteralPath $_ })
+}
+$Findings = if ($LimitToStaged) { @($StagedFiles | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings $Settings }) }
+            else { @($Targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Recurse -Settings $Settings }) }
 
 if ($Findings.Count -gt 0) {
     $Findings | Sort-Object ScriptPath, Line | ForEach-Object {

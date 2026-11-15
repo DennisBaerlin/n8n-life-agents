@@ -1,0 +1,7 @@
+{
+  "_comment": "Ratchet fuer contract_lint Check 39 (TELEGRAM-DIREKT): Funktionen in provisioning/lib/*.sh und provisioning/*.sh, die eine Bot-API-URL selbst bauen statt ueber tg_api_curl/_tg_post. Die Liste darf nur schrumpfen; ein Eintrag ohne Direktaufruf ist ein Fehler.",
+  "allow": [
+    { "file": "provisioning/lib/release_inputs.sh", "fn": "_validate_telegram", "reason": "getMe-Statuscode als Frage-Validator vor der Installation; nutzt _http_status_secret statt tg_api_curl." },
+    { "file": "provisioning/lib/deploy_workflows.sh", "fn": "_app_button_legacy", "reason": "getChatMenuButton lesen (alter Knopf erkennen): eigene curl-Konfiguration mit Token im Config-Kanal." }
+  ]
+}

@@ -18,7 +18,7 @@ Betreiben statt nutzen? → [Installation & Betrieb](installation.html).
 ## Die Agenten auf einen Blick
 
 - 📒 [**Buchhalter**](buchhalter.html) (`agent.finance`) — bucht Konten, Ausgaben, Überweisungen, Wertpapiere, Zinsen, Kredite und mehr; pflegt Salden automatisch.
-- 🧭 [**Finanzberater**](finanzberater.html) (`agent.finance_advisor`) — interviewt dich, pflegt deinen Finanzplan, recherchiert und meldet Abweichungen. Bucht selbst nie etwas — er hat dafür gar keine Werkzeuge. Einzige Ausnahme: In der Finanzplanung ordnet er deine Depot-Positionen den Bausteinen deines Plans zu (eine Karte zum Bestätigen).
+- 🧭 [**Finanzberater**](finanzberater.html) (`agent.finance_advisor`) — interviewt dich, pflegt deinen Finanzplan, recherchiert und meldet Abweichungen. Bucht selbst nie etwas — er hat dafür keine Werkzeuge. Ausnahmen, jeweils mit einer Karte zum Bestätigen: In der Finanzplanung ordnet er deine Depot-Positionen den Bausteinen deines Plans zu und trägt fehlende Mindestdaten des Plans (Geld-Konto, laufendes Einkommen, laufende Ausgabe) selbst ein.
 - 🔭 [**Monitor**](monitor-guide.html) (`agent.monitor`) — überwacht von dir angelegte Schwellwerte (z. B. einen Kurs oder eine Fälligkeit) und meldet sich, wenn einer auslöst. Gibt selbst keine Ratschläge.
 - 🚪 [**Guide**](monitor-guide.html) (`agent.guide`) — begleitet dich durch die Ersteinrichtung, erklärt, was der Assistent kann und was sich noch installieren lässt, und schlägt (nur wenn du es einschaltest) täglich merkenswerte Fakten vor.
 - 💼 [**Karriere-Coach**](karriere-coach.html) (`agent.career_advisor`) — liest deinen Lebenslauf, pflegt Profil und Karriereplan, scannt regelmäßig Stellenangebote und lernt aus deinem Feedback.

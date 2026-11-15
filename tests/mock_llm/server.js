@@ -46,9 +46,52 @@ const PORT = parseInt(process.env.MOCK_LLM_PORT || '8088', 10);
 const LOG_FILE = process.env.MOCK_LLM_LOG || '/tmp/mock_llm.jsonl';
 const SCENARIOS_FILE = process.env.MOCK_LLM_SCENARIOS || '/opt/mock_llm/scenarios.json';
 
+// Datums-Platzhalter {{date:<offset>[@<tag>]}} in Szenarien (match, args, Texte): Zwilling von scripts/lib/date_placeholder.ps1
+// (Grammatik dort), beide gegen tests/util/date_placeholder_vectors.json geprueft (scripts/dev/date_placeholder_test.ps1).
+// "Heute" = UTC-Datum, wie im Harness. Ein verfehlter Platzhalter wirft (das Laden faengt es: Szenarien bleiben dann unaufgeloest).
+function utcDate(y, m, d) { return new Date(Date.UTC(y, m, d)); }
+function addMonthsClamped(d, n) {
+  const first = utcDate(d.getUTCFullYear(), d.getUTCMonth() + n, 1);
+  const last = utcDate(first.getUTCFullYear(), first.getUTCMonth() + 1, 0).getUTCDate();
+  return utcDate(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d.getUTCDate(), last));
+}
+function datePlaceholderValue(expr, today) {
+  const m = /^([+-]?)(\d+)([dwm])(?:@(-?\d{1,2}))?$/.exec(expr);
+  if (!m) throw new Error('Ungueltiger Datums-Platzhalter {{date:' + expr + '}}');
+  let n = parseInt(m[2], 10); if (m[1] === '-') n = -n;
+  let d = utcDate(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (m[3] === 'd') d = new Date(d.getTime() + n * 86400000);
+  else if (m[3] === 'w') d = new Date(d.getTime() + 7 * n * 86400000);
+  else d = addMonthsClamped(d, n);
+  if (m[4] !== undefined) {
+    const day = parseInt(m[4], 10);
+    if (day === 0 || Math.abs(day) > 31) throw new Error('Ungueltiger Datums-Platzhalter {{date:' + expr + '}}: Tag ausserhalb 1-31 bzw. -1..-31');
+    for (let k = 0; k <= 12; k++) {
+      const first = utcDate(d.getUTCFullYear(), d.getUTCMonth() + k, 1);
+      const dim = utcDate(first.getUTCFullYear(), first.getUTCMonth() + 1, 0).getUTCDate();
+      const want = day > 0 ? day : dim + day + 1;   // @-1 = letzter, @-2 = vorletzter Tag
+      if (want < 1 || want > dim) continue;
+      const cand = utcDate(first.getUTCFullYear(), first.getUTCMonth(), want);
+      if (cand.getTime() >= d.getTime()) { d = cand; break; }
+    }
+  }
+  return d.toISOString().slice(0, 10);
+}
+function resolveDatePlaceholders(v, today) {
+  today = today || new Date();
+  if (typeof v === 'string') return v.indexOf('{{date:') === -1 ? v : v.replace(/\{\{date:([^}]*)\}\}/g, (all, e) => datePlaceholderValue(e, today));
+  if (Array.isArray(v)) return v.map((x) => resolveDatePlaceholders(x, today));
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = resolveDatePlaceholders(v[k], today); return o; }
+  return v;
+}
+
 function loadScenarios() {
-  try { return JSON.parse(fs.readFileSync(SCENARIOS_FILE, 'utf8')); }
-  catch (e) { return []; }
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(SCENARIOS_FILE, 'utf8')); }
+  catch (e) { process.stderr.write('mock-llm: Szenarien nicht ladbar: ' + e.message + '\n'); return []; }
+  // Ein verfehlter Platzhalter darf nicht alle Szenarien kosten: unaufgeloest weiterreichen (die betroffenen matchen dann nicht).
+  try { return resolveDatePlaceholders(raw); }
+  catch (e) { process.stderr.write('mock-llm: Datums-Platzhalter ungueltig, Szenarien unaufgeloest: ' + e.message + '\n'); return raw; }
 }
 
 function isAnthropic(url) { return (url || '').indexOf('/v1/messages') !== -1; }
@@ -405,7 +448,11 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  logLine({ method: '__start', port: PORT, scenarios: SCENARIOS_FILE });
-  process.stdout.write('mock-llm (anthropic) listening on 127.0.0.1:' + PORT + ' (scenarios: ' + SCENARIOS_FILE + ')\n');
-});
+if (require.main === module) {
+  server.listen(PORT, '127.0.0.1', () => {
+    logLine({ method: '__start', port: PORT, scenarios: SCENARIOS_FILE });
+    process.stdout.write('mock-llm (anthropic) listening on 127.0.0.1:' + PORT + ' (scenarios: ' + SCENARIOS_FILE + ')\n');
+  });
+} else {
+  module.exports = { datePlaceholderValue, resolveDatePlaceholders };   // fuer scripts/dev/date_placeholder_test.ps1
+}

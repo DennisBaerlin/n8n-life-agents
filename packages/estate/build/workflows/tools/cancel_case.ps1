@@ -12,9 +12,13 @@ function Build-EstateCancelCase {
     $readCase = Build-Pg 'Read case' @(220, 0) `
         "=SELECT c.case_type, c.event_date, c.status, COALESCE(hp.full_name, 'Haushalt') AS subject FROM estate.cases c LEFT JOIN LATERAL (SELECT full_name FROM core.fn_household_persons() WHERE person_id = c.subject_person_id) hp ON true WHERE c.id = (`$1::jsonb->>'case_id')::bigint;" `
         ([ordered]@{ case_id = '$(''Start'').item.json.case_id' })
+    # Unbekannte case_id: 0 Zeilen = kein Item = "did not return a response" (New-RequiredRowGate: Tool-Fehler als Daten).
+    $found = New-RequiredRowGate -Read $readCase -KeyField 'case_type' -IfPos @(330, 0) -ErrPos @(330, 200) `
+        -IfName 'Case found?' -ErrName 'Case not found' `
+        -NotFoundExpr "=No case with number {{ `$('Start').item.json.case_id }} exists (ask the user for the right number, or look it up via a SELECT on estate.cases). Nothing to cancel."
     $ifOpen = Build-If 'Case open?' @(440, 0) "={{ `$('Read case').item.json.status }}" 'open' 'equals' 'string'
     $errNotOpen = Build-ToolError 'Case not open' @(660, 200) `
-        "=Case {{ `$('Start').item.json.case_id }} is not an open case (it may not exist, or is already closed/cancelled). Nothing to cancel."
+        "=Case {{ `$('Start').item.json.case_id }} is not an open case (it is already closed or cancelled). Nothing to cancel."
 
     $S = "`$('Start').item.json"
     $R = "`$('Read case').item.json"
@@ -46,12 +50,16 @@ function Build-EstateCancelCase {
         'Dry run = estate.fn_cancel_case mit denselben Werten, immer zurückgerollt. ok:false (z. B. Fall nicht offen, nicht erwachsen/berechtigt) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 300 400
     $stickyFn = Build-Sticky 'Break-Glass owner_info (Verb cancel Floor 0)' @(1320, -280) `
         'estate.fn_cancel_case (offener Fall -> cancelled, Verlauf bleibt)' `
-        'Read case zeigt Typ/Person/Datum für die Bestätigung; "Case open?" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist. Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.' 300 640
-    $nodes = @($trig, $readCase, $ifOpen, $errNotOpen) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
+        'Read case zeigt Typ/Person/Datum für die Bestätigung; "Case open?" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist ; "Case found?" (New-RequiredRowGate) fängt eine unbekannte Fall-Nummer vorher mit eigener Meldung ab, statt dass der Lauf ohne Antwort endet. Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.' 300 640
+    $nodes = @($trig, $readCase, $found.If, $found.Err, $ifOpen, $errNotOpen) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn)
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Read case' ) ) }
-        'Read case'              = @{ main = @( ,@( E 'Case open?' ) ) }
+        'Read case'              = @{ main = @( ,@( E 'Case found?' ) ) }
+        'Case found?'            = @{ main = @(
+            @( E 'Case open?' ),
+            @( E 'Case not found' )
+        ) }
         'Case open?'             = @{ main = @(
             @( E 'Dry run' ),
             @( E 'Case not open' )

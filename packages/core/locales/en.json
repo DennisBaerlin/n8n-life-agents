@@ -444,6 +444,8 @@
   "core.backup.notify.lxc.key": "The backup key is missing. Check on the server: journalctl -u lifeagents-backup",
   "core.backup.notify.lxc.failed": "The backup could not be created. Details are in the log: journalctl -u lifeagents-backup. Also check the free space on the server (“{dir}”).",
   "core.backup.notify.guide": "Guide: {url}",
+  "core.backup.notify.doc_first": "🔒 Your backup from last night. This is an encrypted copy of your data in case your computer fails. You don't need to do anything, just leave it here. To restore, you need this file and your emergency sheet.",
+  "core.backup.notify.doc_next": "🔒 Backup from last night. Nothing to do.",
   "core.desktop.done.deviations": "Something changed in other programs in Docker during the setup ({n} places). Please send the error report.",
   "core.desktop.tidy.title": "Last step: tidy up",
   "core.desktop.tidy.text": "You no longer need the downloaded file {file}. The app moves it to the trash.",

@@ -35,6 +35,7 @@
 #   .\scripts\e2e_test.ps1 -Verbose        # Agent-runData + Cleanup-Counts anzeigen
 #
 # Exit-Code = Anzahl fehlgeschlagener Tests.
+# Abbruch-Absicherung wie n8n_test (-MaxCostUsd, -ForceAbortId, finally-Aufraeumen; lib/paid_guard.ps1).
 # Voraussetzungen: Docker-Test-Substrat hochgefahren (scripts\dev\bootstrap_test_n8n.ps1 — bringt
 #   agent.finance + Harness + agent.fn_clear_e2e_data mit) + scripts\dev\enable_mock_telegram.ps1 (das Gate wird
 #   ueber Mock-Telegram approved; Mock-LLM darf nicht aktiv sein, der Lauf kostet echte LLM-Credits);
@@ -48,6 +49,8 @@ param(
     [string]$TargetWorkflow = 'agent.finance',
     [string]$WebhookPath = 'finance-test',
     [string]$CasesFile = 'tests\agent\finance\e2e_cases.json',
+    [double]$MaxCostUsd = 10.0,   # haelt den Lauf vor dem naechsten Fall an (lib/paid_guard.ps1); 0 = aus
+    [string]$ForceAbortId,        # wirft am Anfang dieses Falls: zeigt den Abbruch-Pfad, ohne dass ein Fall LLM-Kosten verursacht
     [switch]$Verbose
 )
 
@@ -85,6 +88,8 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
+. "$PSScriptRoot\lib\paid_guard.ps1"
+$llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 # Cleanup nur ueber die geguardete Function (in der Container-DB). Wirft bei Guard-Verletzung.
 function Invoke-Clean {
@@ -119,7 +124,10 @@ if (-not $AgentNodeName) { throw "Kein AI-Agent-Node (langchain.agent) in '$Targ
 $tcFile   = if ([System.IO.Path]::IsPathRooted($CasesFile)) { $CasesFile } else { Join-Path $RepoRoot $CasesFile }
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases    = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
+. "$PSScriptRoot\lib\date_placeholder.ps1"
+$cases    = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep -Obj $_ })   # {{date:+30d@2}} in task/Erwartung aufloesen
 if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
 Write-Host ""
 Write-Host "E2E-Write-Tests (Tier 5) -- $($cases.Count) Fall(e)  ECHTE Writes  (Webhook: $WebhookUrl)"
@@ -145,9 +153,13 @@ $obSeed = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c',
 if ($obSeed.Code -ne 0) { throw "Onboarding-Seed (Core-first-Gate) fehlgeschlagen: $(($obSeed.Output | Where-Object { $_ }) -join ' ')" }
 
 $passed = 0; $failed = 0
+$completed = $false
 
 try {
     foreach ($tc in $cases) {
+        if (Test-RunCostExceeded -Container $Container -Cursor $llmCursor -Prices $llmPrices -MaxCostUsd $MaxCostUsd) { $failed++; break }
+        try {   # Ausnahme in einem Fall = roter Fall, der Lauf geht weiter (catch am Schleifenende, Muster: test_n8n_state.ps1 *Fall-Abbruch*)
+        Test-ForceAbort $tc.id $ForceAbortId
         Write-Host ""
         Write-Host "  [$($tc.id)] $($tc.name)"
         Write-Host "    Task: '$($tc.task)'"
@@ -226,7 +238,12 @@ try {
             Write-Host "    $(Format-AgentRunData $ex.data.resultData.runData $AgentNodeName)" -ForegroundColor Yellow
             Write-Host "    -----------------------------------" -ForegroundColor Yellow
         }
+        } catch {
+            $failed++
+            Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Invoke-PaidRunCleanup -Container $Container -WorkflowId @($wfDef.id); Invoke-Clean }
+        }
     }
+    $completed = $true
 }
 finally {
     # Post-Flight-Cleanup (Best-Effort; Pre-/Per-Case-Clean ist das eigentliche Netz gegen harte Abbrueche)
@@ -234,12 +251,13 @@ finally {
     Write-Host "Post-Flight-Cleanup ..."
     try { Invoke-Clean } catch { Write-Host "  [WARN] Post-Flight-Cleanup: $_" -ForegroundColor Yellow }
 
-    try {
-        $hWf = (Invoke-N8nGet 'workflows?limit=200').data | Where-Object { $_.name -eq "$TargetWorkflow.test_harness" } | Select-Object -First 1
-        if ($hWf) { (Invoke-N8nGet "executions?workflowId=$($hWf.id)&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } }
-    } catch { }
+    $hWfId = try { ((Invoke-N8nGet 'workflows?limit=200').data | Where-Object { $_.name -eq "$TargetWorkflow.test_harness" } | Select-Object -First 1).id } catch { $null }
+    Invoke-PaidRunCleanup -Container $Container -WorkflowId @($wfDef.id, $hWfId)
+    if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'e2e_test (abgebrochen)' -RepoRoot $RepoRoot }
 }
 
+Write-AbortedCases
+$failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }

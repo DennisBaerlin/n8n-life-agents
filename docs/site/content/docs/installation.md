@@ -198,6 +198,8 @@ Noch kein Bot-Token? So bekommst du eins:
 3. Einen **Anzeige-Namen** wählen (frei), dann einen **Usernamen**, der auf `bot` endet (z. B. `mein_agent_bot`).
 4. BotFather antwortet mit dem **Token** (Form `123456:ABC-DEF…`) — den kopierst du und gibst ihn beim Installer ein. Der Installer prüft ihn sofort gegen Telegram.
 
+**Ein Bot gehört zu genau einem System.** Merkt der Installer, dass dein Bot schon mit einem anderen Programm oder Rechner verbunden ist, ändert er nichts, bevor du es erlaubt hast: Er fragt nach (die Start-App zeigt dafür eine eigene Seite), und ohne dein Ja bricht er ab. Mit deinem Ja wird die alte Verbindung überschrieben, und das andere System bekommt keine Nachrichten mehr. Der sichere Weg ist ein eigener, neuer Bot für diese Installation.
+
 ## Mit Telegram verbinden
 
 Am Ende der Installation verbindet der Installer dich als Owner (Besitzer) mit deinem Bot — in vier Schritten, ohne dass du etwas abtippen musst:

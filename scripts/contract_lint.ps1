@@ -106,6 +106,9 @@
 #   (35) KNOPF-STUFE: ein Registry-Prefix, der per Knopf ohne HITL-Gate anlegt (rsug), bleibt an die Freigabe-Stufe
 #       (approval_matrix) der gekoppelten Einzel-Werkzeuge gebunden. Selbst-Asserts.
 #   (36) WERKZEUG BRAUCHT TESTFALL: jedes Schreib-Werkzeug (approval_matrix oder fn mit WRITE-Tag) hat einen expected_tool-Fall in tests/agent; Ausnahmeliste scripts/build/tool_case_allowlist.json (Ratchet). Selbst-Asserts.
+#   (37) APP-BEFEHLE EXISTIEREN: jeder `lifeagents <verb> <sub>` der Start-App (provisioning/desktop/**/*.rs) existiert im CLI-Dispatcher (lifeagents.tpl + *_cli.sh). Selbst-Asserts.
+#   (38) WERKZEUG-EINGABEN STIMMEN: die Input-Zeile einer Tool-Description nennt genau die $fromAI-Felder. Selbst-Asserts.
+#   (39) Telegram nur ueber die Helfer: Bot-API-URLs in provisioning/ nur in tg_api_curl/_tg_post; Ausnahmeliste scripts/build/telegram_direct_allowlist.json (Ratchet). Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -2524,6 +2527,193 @@ foreach ($sa in @(
     $got = (Get-ToolCaseIssues $sa.w $sa.c $sa.a $sa.all).Count
     if ($got -ne $sa.want) { $errors.Add("TOOL-TESTFALL SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 36 ist defekt.") }
 }
+
+# ---------------------------------------------------------------
+# (37) APP-BEFEHLE EXISTIEREN: jeder `lifeagents <verb> [<unterbefehl>]`, den die Start-App im Master-Container aufruft
+#      (provisioning/desktop/**/*.rs, Form "lifeagents", "verb", "sub"), existiert im CLI-Dispatcher: das Verb als case-Arm
+#      in provisioning/templates/lifeagents.tpl, der Unterbefehl als case-Arm in der lib, die dieser Arm sourct
+#      (*_cli.sh, pkg_lifecycle.sh, update_runner.sh). Ein Aufruf ins Leere scheitert sonst erst auf dem Rechner des Nutzers
+#      ("unbekannter Befehl"). Keine Ausnahmeliste. Selbst-Asserts.
+# ---------------------------------------------------------------
+function Get-CaseArmLabels([string]$Text) {
+    # Labels der case-Arme "  name)" / "  a|b)" (eine Zeile, Einrueckung, kein Mustertext mit Leerzeichen/Klammer).
+    $l = New-Object System.Collections.Generic.List[string]
+    foreach ($m in [regex]::Matches($Text, '(?m)^[ \t]+([A-Za-z0-9_\-|]+(?:\*)?)\)')) {
+        foreach ($p in ($m.Groups[1].Value -split '\|')) { if ($p) { $l.Add($p) } }
+    }
+    return , $l
+}
+function Get-AppCommandIssues([string]$RustText, [string]$Rel, [string]$Tpl, [hashtable]$LibText) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $arms = @{}   # verb -> Arm-Text (bis zum naechsten Arm auf Verb-Ebene)
+    $cm = [regex]::Match($Tpl, '(?s)case "\$cmd" in\r?\n(.*?)\r?\nesac')
+    if (-not $cm.Success) { $iss.Add("lifeagents.tpl: kein case `"`$cmd`"-Dispatcher gefunden -- Check 37 kann nicht pruefen."); return , $iss }
+    $body = $cm.Groups[1].Value
+    $starts = [regex]::Matches($body, '(?m)^  ([A-Za-z0-9_\-|]+)\)[ \t]*\r?$')
+    for ($k = 0; $k -lt $starts.Count; $k++) {
+        $end = if ($k + 1 -lt $starts.Count) { $starts[$k + 1].Index } else { $body.Length }
+        $txt = $body.Substring($starts[$k].Index, $end - $starts[$k].Index)
+        foreach ($v in ($starts[$k].Groups[1].Value -split '\|')) { $arms[$v] = $txt }
+    }
+    $seen = @{}
+    foreach ($m in [regex]::Matches($RustText, '"lifeagents"\s*,\s*"([a-z][a-z0-9\-]*)"(?:\s*,\s*"([a-z][a-z0-9\-]*)")?')) {
+        $verb = $m.Groups[1].Value; $sub = $m.Groups[2].Value
+        $key = "$verb $sub"; if ($seen[$key]) { continue }; $seen[$key] = $true
+        if (-not $arms.ContainsKey($verb)) { $iss.Add("$Rel ruft 'lifeagents $key' auf, aber lifeagents.tpl kennt das Verb '$verb' nicht -- Befehl bauen oder den Aufruf streichen."); continue }
+        if (-not $sub -or $sub.StartsWith('-')) { continue }
+        $libs = @([regex]::Matches($arms[$verb], '\b([a-z_]+_cli\.sh|pkg_lifecycle\.sh|update_runner\.sh)\b') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        if ($libs.Count -eq 0) { continue }
+        $found = $false
+        foreach ($lb in $libs) { if ($LibText.ContainsKey($lb) -and ((Get-CaseArmLabels $LibText[$lb]) -contains $sub)) { $found = $true } }
+        if (-not $found) { $iss.Add("$Rel ruft 'lifeagents $key' auf, aber der Dispatcher von '$verb' ($($libs -join ', ')) kennt den Unterbefehl '$sub' nicht -- Befehl bauen oder den Aufruf streichen.") }
+    }
+    return , $iss
+}
+$tplText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\templates\lifeagents.tpl'), $Utf8NoBom)
+$libText = @{}
+foreach ($lf in (Get-ChildItem (Join-Path $RepoRoot 'provisioning\lib\*.sh'))) { $libText[$lf.Name] = [System.IO.File]::ReadAllText($lf.FullName, $Utf8NoBom) }
+foreach ($rf in (Get-ChildItem (Join-Path $RepoRoot 'provisioning\desktop') -Recurse -Filter *.rs | Where-Object { $_.FullName -notmatch '\\(target|node_modules)\\' })) {
+    $rel = $rf.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+    foreach ($i in (Get-AppCommandIssues ([System.IO.File]::ReadAllText($rf.FullName, $Utf8NoBom)) $rel $tplText $libText)) { $errors.Add("APP-BEFEHL: $i") }
+}
+$saTpl = "case `"`$cmd`" in`n  backup)`n    for f in common.sh backup_cli.sh; do :; done`n    backup_cli `"`$@`"`n    ;;`n  doctor)`n    exec bash x`n    ;;`n  *)`n    exit 1`n    ;;`nesac"
+$saLib = @{ 'backup_cli.sh' = "  case `"`$verb`" in`n    list)    x ;;`n    key|k)   y ;;`n    help|--help) z ;;`n  esac" }
+foreach ($sa in @(
+    @{ n = 'bekannt';            r = '["lifeagents", "backup", "list", "--json"]'; want = 0 },
+    @{ n = 'Alias-Arm';          r = '["lifeagents", "backup", "k"]';              want = 0 },
+    @{ n = 'Verb fehlt';         r = '["lifeagents", "telegram", "release-webhook"]'; want = 1 },
+    @{ n = 'Unterbefehl fehlt';  r = '["lifeagents", "backup", "nope"]';           want = 1 },
+    @{ n = 'Verb ohne Lib';      r = '["lifeagents", "doctor", "x"]';              want = 0 },
+    @{ n = 'kein lifeagents';    r = '["lifeagents-db", "telegram"]';              want = 0 })) {
+    $got = (Get-AppCommandIssues $sa.r 'x.rs' $saTpl $saLib).Count
+    if ($got -ne $sa.want) { $errors.Add("APP-BEFEHL SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 37 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
+# (38) WERKZEUG-EINGABEN STIMMEN: traegt die Description eines Agent-Werkzeugs (toolWorkflow-Knoten in
+#      packages/*/workflows/*.json, alle Pakete) eine Zeile "Input: ..." / "Inputs: ...", nennt sie genau die $fromAI-Felder
+#      des Werkzeugs. Sonst ruft das Modell mit Feldern, die es nicht gibt (tool_delete_holding nannte holding_id statt
+#      depot_name + position), oder kennt ein Feld nicht, das der Knoten verlangt. Zeilenende = erster Punkt ausserhalb von
+#      Klammern; Klammer-Text zaehlt nicht; "optional x" / "and y" sind Felder. Gebaut wird aus den Build-Defs, geprueft
+#      wird das Gebaute. Selbst-Asserts.
+# ---------------------------------------------------------------
+function Get-InputLineFields([string]$Desc) {
+    $m = [regex]::Match($Desc, '(?<![A-Za-z])Inputs?:\s*')
+    if (-not $m.Success) { return $null }
+    $s = $Desc.Substring($m.Index + $m.Length)
+    $depth = 0; $seg = ''; $segs = New-Object System.Collections.Generic.List[string]; $done = $false
+    for ($i = 0; $i -lt $s.Length -and -not $done; $i++) {
+        $ch = $s[$i]
+        if ($ch -eq '(') { $depth++; continue }
+        if ($ch -eq ')') { if ($depth -gt 0) { $depth-- }; continue }
+        if ($depth -gt 0) { continue }
+        if ($ch -eq '.' -and ($i + 1 -ge $s.Length -or $s[$i + 1] -match '\s')) { $done = $true; continue }
+        if ($ch -eq ',' -or $ch -eq ';') { $segs.Add($seg); $seg = ''; continue }
+        $seg += $ch
+    }
+    $segs.Add($seg)
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($sg in $segs) {
+        foreach ($part in ($sg -split '\s+and\s+')) {
+            $t = ($part.Trim() -replace '^(?i)(and|optional)\s+', '')
+            $mm = [regex]::Match($t, '^[a-z][a-z0-9_]*')
+            if ($mm.Success) { $out.Add($mm.Value) }
+        }
+    }
+    return , $out
+}
+function Get-ToolInputIssues([string]$Desc, [string[]]$AiFields, [string]$Name) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $listed = Get-InputLineFields $Desc
+    if ($null -eq $listed) { return , $iss }
+    $a = @($listed | Sort-Object -Unique); $b = @($AiFields | Sort-Object -Unique)
+    $miss = @($a | Where-Object { $b -notcontains $_ }); $extra = @($b | Where-Object { $a -notcontains $_ })
+    if ($miss.Count -or $extra.Count) {
+        $iss.Add("$Name : die Input-Zeile der Description nennt [$($a -join ', ')], die `$fromAI-Felder sind [$($b -join ', ')]" +
+            $(if ($miss.Count) { " -- nur in der Description: $($miss -join ', ')" } else { '' }) +
+            $(if ($extra.Count) { " -- nur als `$fromAI: $($extra -join ', ')" } else { '' }) + '.')
+    }
+    return , $iss
+}
+foreach ($wf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\workflows\*.json'))) {
+    $wj = [System.IO.File]::ReadAllText($wf.FullName, $Utf8NoBom) | ConvertFrom-Json
+    foreach ($nd in $wj.nodes) {
+        if ($nd.type -ne '@n8n/n8n-nodes-langchain.toolWorkflow') { continue }
+        $ai = @()
+        foreach ($pp in $nd.parameters.workflowInputs.value.PSObject.Properties) {
+            $am = [regex]::Match([string]$pp.Value, '\$fromAI\(''([a-z0-9_]+)''')
+            if ($am.Success) { $ai += $am.Groups[1].Value }
+        }
+        foreach ($i in (Get-ToolInputIssues ([string]$nd.parameters.description) $ai "$($wf.Name) / $($nd.name)")) { $errors.Add("TOOL-EINGABEN: $i") }
+    }
+}
+foreach ($sa in @(
+    @{ n = 'gleich';             d = 'Do x. Input: depot_name, position.';                          f = @('depot_name', 'position'); want = 0 },
+    @{ n = 'falsches Feld';      d = 'Do x. Input: holding_id.';                                    f = @('depot_name', 'position'); want = 1 },
+    @{ n = 'Feld fehlt';         d = 'Do x. Inputs: account_name.';                                 f = @('account_name', 'notes'); want = 1 },
+    @{ n = 'ohne Input-Zeile';   d = 'Do x. Identify it by name.';                                  f = @('a', 'b'); want = 0 },
+    @{ n = 'Klammer-Text';       d = 'Inputs: amount (positive, e.g. 0.82. ok), optional purpose (free text).'; f = @('amount', 'purpose'); want = 0 },
+    @{ n = 'and-Feld';           d = 'Inputs: a; optional b (empty = today) and notes (reason). Only for X.'; f = @('a', 'b', 'notes'); want = 0 })) {
+    $got = (Get-ToolInputIssues $sa.d $sa.f 't').Count
+    if ($got -ne $sa.want) { $errors.Add("TOOL-EINGABEN SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 38 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
+# (39) Telegram nur ueber die Helfer: in provisioning/lib/*.sh und provisioning/*.sh baut nur `tg_api_curl` (common.sh,
+#      Token im Config-Kanal) und `_tg_post` (deploy_workflows.sh, ein Wiederholversuch) eine Bot-API-URL
+#      (`.../bot<token>/<methode>` bzw. das Literal api.telegram.org ohne LIFEAGENTS_TELEGRAM_API). Jeder andere Aufruf
+#      umgeht Grund-Protokoll (LIFEAGENTS_TELEGRAM_API fuer Tests) und Wiederholversuch. Bestehende Direktaufrufe stehen mit
+#      Grund in scripts/build/telegram_direct_allowlist.json (Ratchet: Liste schrumpft nur, ein Eintrag ohne Treffer ist ein
+#      Fehler). Kommentarzeilen zaehlen nicht. Selbst-Asserts.
+# ---------------------------------------------------------------
+function Get-TelegramDirectHits([string]$Text, [string]$Rel) {
+    $hits = New-Object System.Collections.Generic.List[object]
+    $fn = ''
+    foreach ($ln in ($Text -split "`r?`n")) {
+        $fm = [regex]::Match($ln, '^(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{?')
+        if ($fm.Success) { $fn = $fm.Groups[1].Value }
+        if ($ln -match '^\s*#') { continue }
+        if (($ln -match '/bot[\$%\{]') -or (($ln -match 'api\.telegram\.org') -and ($ln -notmatch 'LIFEAGENTS_TELEGRAM_API'))) {
+            $hits.Add(@{ file = $Rel; fn = $fn })
+        }
+    }
+    return , $hits
+}
+function Get-TelegramDirectIssues($Hits, [string[]]$Helpers, $Allow) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $used = @{}
+    foreach ($h in $Hits) {
+        if ($Helpers -contains $h.fn) { continue }
+        $k = "$($h.file)::$($h.fn)"
+        $hit = @($Allow | Where-Object { "$($_.file)::$($_.fn)" -eq $k })
+        if ($hit.Count) { $used[$k] = $true }
+        else { $iss.Add("$($h.file): Funktion '$($h.fn)' baut eine Bot-API-URL selbst -- ueber tg_api_curl (oder _tg_post) rufen, damit Grund-Protokoll und Wiederholversuch gelten (neue Eintraege in die Ausnahmeliste sind verboten).") }
+    }
+    foreach ($a in $Allow) { if (-not $used["$($a.file)::$($a.fn)"]) { $iss.Add("Ausnahmeliste: '$($a.file)::$($a.fn)' hat keinen Direktaufruf mehr -- Eintrag streichen (Ratchet).") } }
+    return , $iss
+}
+$tgHelpers = @('tg_api_curl', '_tg_post')
+$tgHits = New-Object System.Collections.Generic.List[object]
+foreach ($sf in (@(Get-ChildItem (Join-Path $RepoRoot 'provisioning\lib\*.sh')) + @(Get-ChildItem (Join-Path $RepoRoot 'provisioning\*.sh')))) {
+    $rel = $sf.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+    $fileHits = Get-TelegramDirectHits ([System.IO.File]::ReadAllText($sf.FullName, $Utf8NoBom)) $rel
+    foreach ($h in $fileHits) { $tgHits.Add($h) }
+}
+$tgAllow = @(([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build\telegram_direct_allowlist.json'), $Utf8NoBom) | ConvertFrom-Json).allow)
+foreach ($i in (Get-TelegramDirectIssues $tgHits $tgHelpers $tgAllow)) { $errors.Add("TELEGRAM-DIREKT: $i") }
+$saH = @(@{ file = 'a.sh'; fn = 'tg_api_curl' }, @{ file = 'a.sh'; fn = 'my_fn' })
+$saA = @([pscustomobject]@{ file = 'a.sh'; fn = 'my_fn'; reason = 'x' })
+foreach ($sa in @(
+    @{ n = 'nur Helfer';        h = @(@{ file = 'a.sh'; fn = 'tg_api_curl' }); a = @();    want = 0 },
+    @{ n = 'Direktaufruf';      h = $saH;                                      a = @();    want = 1 },
+    @{ n = 'Ausnahme gilt';     h = $saH;                                      a = $saA;   want = 0 },
+    @{ n = 'Ausnahme stale';    h = @(@{ file = 'a.sh'; fn = 'tg_api_curl' }); a = $saA;   want = 1 })) {
+    $got = (Get-TelegramDirectIssues $sa.h $tgHelpers $sa.a).Count
+    if ($got -ne $sa.want) { $errors.Add("TELEGRAM-DIREKT SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 39 ist defekt.") }
+}
+$saL = "foo() {`n  curl `"`$u`"/bot`${t}/getMe`n}`n# /bot`${x} im Kommentar`nbar() { echo `"`${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}`"; }`nbaz() { curl https://api.telegram.org/x; }"
+$saN = Get-TelegramDirectHits $saL 'a.sh'
+if ($saN.Count -ne 2 -or $saN[0].fn -ne 'foo' -or $saN[1].fn -ne 'baz') { $errors.Add("TELEGRAM-DIREKT SELBST-ASSERT 'Zeilen-Erkennung': erwartet foo+baz, gefunden $($saN.Count) -- Check 39 ist defekt.") }
 
 # ---------------------------------------------------------------
 # Report

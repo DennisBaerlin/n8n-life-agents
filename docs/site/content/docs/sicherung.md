@@ -36,13 +36,13 @@ Unter Windows sieht der Ordner zum Beispiel so aus: `"D:\Sicherungen"`. Den gena
 
 ## Auf einem eigenen Server (LXC) {#server}
 
-Auf einem Server sichert der Assistent von selbst. Jede Nacht ab 03:30 Uhr legt er eine verschlüsselte Sicherung in `/var/backups/lifeagents/daily` ab (die letzten 14 bleiben) und schickt eine Kopie an deinen Telegram-Chat. Du musst nichts einrichten; eine frühere crontab-Zeile aus dieser Anleitung entfernt das Update selbst.
+Auf einem Server sichert der Assistent von selbst. Jede Nacht ab 03:30 Uhr legt er eine verschlüsselte Sicherung in `/var/backups/lifeagents/daily` ab (die letzten 14 bleiben) und schickt eine stille Kopie an deinen Telegram-Chat (ohne Ton; es bleibt immer nur die neueste dort liegen, die von gestern räumt er weg). Das erste Mal erklärt dir die Nachricht, was sie ist: eine verschlüsselte Kopie für den Fall, dass der Rechner ausfällt. Du musst nichts damit tun. Zum Wiederherstellen brauchst du diese Datei und dein Notfallblatt. Du musst nichts einrichten; eine frühere crontab-Zeile aus dieser Anleitung entfernt das Update selbst.
 
 Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, und `lifeagents doctor` zeigt „Letzte Sicherung“ rot. Kopiere die Dateien zusätzlich regelmäßig vom Server weg, sonst liegt die Sicherung auf demselben Rechner wie die Daten. Eine Sicherung von Hand startest du mit `lifeagents backup auto`, den Verlauf zeigt `journalctl -u lifeagents-backup`.
 
 ## Neuer Rechner: Schritt für Schritt {#neuer-rechner}
 
-1. **Die Version aus dem Dateinamen installieren.** Eine Sicherung lässt sich nur in genau die Version zurückspielen, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. `v0.44.0`).
+1. **Die Version aus dem Dateinamen installieren.** Eine Sicherung spielst du am sichersten in genau der Version zurück, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. `v0.44.0`).
    - Start-App: Lade die App dieser Version, `https://github.com/DennisBaerlin/n8n-life-agents/releases/download/v0.44.0/lifeagents.dmg` (Mac) bzw. `…/lifeagents-setup.exe` (Windows), Version im Link anpassen. Richte sie ein wie beim ersten Mal und wähle im Fragebogen bei „Wohin sichern?“ den Ordner mit deinen alten Sicherungen.
    - Server: `curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --version v0.44.0`, dann die Sicherungsdatei auf den Server kopieren.
 2. **Wiederherstellen starten.**

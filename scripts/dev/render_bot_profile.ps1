@@ -11,6 +11,7 @@
 # InputProfilePhotoStatic).
 # Maße und JPEG-Kopf des committeten Bildes prueft scripts/dev/bot_profile_photo_test.ps1.
 #   .\scripts\dev\render_bot_profile.ps1 [-MarkFile <pfad>] [-OutDir <ordner>]   (Optionen nur fuer eine Vorschau: anderes Zeichen, anderer Zielordner)
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param([string]$MarkFile, [string]$OutDir, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

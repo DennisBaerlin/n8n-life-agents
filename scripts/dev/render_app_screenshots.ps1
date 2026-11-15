@@ -10,6 +10,7 @@
 # (--force-dark-mode). Kein Netz, keine DB, kein Container.
 #   .\scripts\dev\render_app_screenshots.ps1
 # Danach: .\scripts\build_site.ps1
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param([switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

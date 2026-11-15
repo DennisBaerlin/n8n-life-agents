@@ -1,4 +1,18 @@
 [
+  {"_comment": "Durchspiel s7 (conversation_test, household_open): Owner gruesst bei offenem Haushalt -> ein Satz, Haushalt-Vorschlag, Marker wird vor dem Senden entfernt.", "match": "guten morgen", "driver": "scripts/conversation_test.ps1", "final": "Guten Morgen! Als Nächstes würde ich mit dir den Haushalt einrichten.\nNEXT_STEP"},
+  {"_comment": "Durchspiel s8 (conversation_test, household_open): Mitglied gruesst bei offenem Haushalt -> der Owner richtet noch ein, keine Markerzeile.", "match": "hallo zusammen", "driver": "tests/agent/cross/conversation_cases.json", "final": "Hallo! Der Owner richtet gerade noch den Haushalt ein, danach helfe ich dir gern."},
+  {"_comment": "tc106 Altersvorsorge lesen: kein Werkzeug, Antwort nennt die per setup_sql angelegte Vorsorge.", "match": "Welche Altersvorsorge habe ich schon erfasst", "calls": [], "final": "Erfasst ist die Altersvorsorge __E2E__ Testrente."},
+  {"_comment": "tc151 Import uebernehmen: tool_commit_import mit der Batch-ID.", "match": "bitte uebernimm den Import jetzt", "calls": [{"tool": "tool_commit_import", "args": {"batch_id": "7f3c2a10-5b1e-4c7a-9d2e-3a6b8c1d4e50"}}], "final": "Der Import wurde nicht uebernommen."},
+  {"_comment": "tc152 Konto aus Versehen: tool_delete_account.", "match": "__E2E__ DA Konto' habe ich aus Versehen angelegt", "calls": [{"tool": "tool_delete_account", "args": {"account_name": "__E2E__ DA Konto"}}], "final": "Das Konto wurde nicht geloescht."},
+  {"_comment": "tc153 Position aus Versehen: tool_delete_holding.", "match": "Position VWCE im Testbroker Depot habe ich aus Versehen", "calls": [{"tool": "tool_delete_holding", "args": {"depot_name": "Testbroker Depot", "position": "VWCE"}}], "final": "Die Position wurde nicht geloescht."},
+  {"_comment": "tc154 Kredit aus Versehen: tool_delete_loan.", "match": "habe ich aus Versehen angelegt, es wurde noch nichts gezahlt", "calls": [{"tool": "tool_delete_loan", "args": {"loan_name": "Baufinanzierung Buchenbank"}}], "final": "Der Kredit wurde nicht geloescht."},
+  {"_comment": "tc155 Dauerauftrag aus Versehen: tool_delete_recurring_payment.", "match": "Dauerauftrag 'Stromabschlag Stadtwerke' habe ich aus Versehen", "calls": [{"tool": "tool_delete_recurring_payment", "args": {"recurring_payment_name": "Stromabschlag Stadtwerke"}}], "final": "Der Dauerauftrag wurde nicht geloescht."},
+  {"_comment": "tc156 Altersvorsorge entfernen: tool_close_pension.", "match": "Altersvorsorge '__E2E__ CP Rente' habe ich falsch angelegt", "calls": [{"tool": "tool_close_pension", "args": {"pension_name": "__E2E__ CP Rente"}}], "final": "Die Altersvorsorge wurde nicht entfernt."},
+  {"_comment": "tc157 Sparziel aufgeben: tool_close_savings_goal.", "match": "__E2E__ CG Ziel' lasse ich fallen", "calls": [{"tool": "tool_close_savings_goal", "args": {"savings_goal_name": "__E2E__ CG Ziel", "outcome": "cancelled"}}], "final": "Das Sparziel wurde nicht geschlossen."},
+  {"_comment": "tc158 Altersvorsorge pausieren: tool_set_pension.", "match": "Pausiere bitte die Altersvorsorge '__E2E__ SP Rente'", "calls": [{"tool": "tool_set_pension", "args": {"pension_name": "__E2E__ SP Rente", "status": "paused"}}], "final": "Die Altersvorsorge wurde nicht geaendert."},
+  {"_comment": "tc159 Dauerauftrag teurer: tool_set_recurring_payment.", "match": "Stromabschlag Stadtwerke steigt ab jetzt auf 95 Euro", "calls": [{"tool": "tool_set_recurring_payment", "args": {"payment_name": "Stromabschlag Stadtwerke", "amount": "95"}}], "final": "Der Dauerauftrag wurde nicht geaendert."},
+  {"_comment": "tc160 Geld vormerken: tool_book_savings_reservation.", "match": "sollen 3000 Euro fuer das Sparziel '__E2E__ BR Ziel' vorgemerkt sein", "calls": [{"tool": "tool_book_savings_reservation", "args": {"savings_goal_name": "__E2E__ BR Ziel", "account_name": "__E2E__ BR Tagesgeld", "amount": 3000}}], "final": "Die Vormerkung wurde nicht gebucht."},
+  {"_comment": "tc161 Handoff-Eintrag ueberspringen: tool_cancel_handoff_task.", "match": "I do not want to enter this one, skip it", "calls": [{"tool": "tool_cancel_handoff_task", "args": {"handoff_task_id": "990011", "reason": "skipped"}}], "final": "Der Eintrag wurde nicht geschlossen."},
   {
     "_comment": "Mehr Tool-Runden als das Memory-Fenster (mock_route_test [memory-thinking]): thinking_binding prueft die Signaturen wie die API.",
     "match": "__mock_thinking_binding__",
@@ -125,7 +139,7 @@
     "match": "20 Euro fuer Kaffee mit dem Lindenbank Giro",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "20 Euro fuer Kaffee mit dem Lindenbank Giro als Ausgabe buchen" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 20, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Kaffee" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 20, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Kaffee" } }
     ],
     "final": "Ausgabe von 20 EUR auf Lindenbank Giro gebucht."
   },
@@ -134,8 +148,8 @@
     "match": "33 Euro Wiederholprobe mit dem Lindenbank Giro",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "33 Euro Wiederholprobe mit dem Lindenbank Giro buchen" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Wiederholprobe" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Wiederholprobe" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Wiederholprobe" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Wiederholprobe" } }
     ],
     "final": "Die Buchung wurde nicht bestaetigt, es wurde nichts gespeichert."
   },
@@ -260,7 +274,7 @@
   {
     "match": "Kauf im Testbroker Depot 10 Anteile",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 10, "price_per_share": 110, "order_fee": "1", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 10, "price_per_share": 110, "order_fee": "1", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Kauf gebucht."
   },
@@ -268,7 +282,7 @@
     "_comment": "tc123 Fremdwaehrungs-Kauf mit abgebuchtem Betrag: Rohwert, den Stueckpreis rechnet die DB.",
     "match": "abgebucht wurden 1254,30 Euro",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 0, "cost_basis_total": "1254.30", "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 0, "cost_basis_total": "1254.30", "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Kauf gebucht."
   },
@@ -276,7 +290,7 @@
     "_comment": "tc125 Verkauf mit Fremdwaehrungs-Kurs: die DB lehnt nach dem Aufruf ab.",
     "match": "5 Anteile VWCE zu 150 US-Dollar",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "symbol": "VWCE", "shares": 5, "price_per_share": 150, "quote_currency": "USD", "order_fee": "0", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "symbol": "VWCE", "shares": 5, "price_per_share": 150, "quote_currency": "USD", "order_fee": "0", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Wie viel Euro wurden gutgeschrieben?"
   },
@@ -284,7 +298,7 @@
     "_comment": "tc48 Bestandsuebernahme: bestehende Position, Verrechnungskonto bleibt unberuehrt (existing_position).",
     "match": "liegen schon 10 Anteile iShares Core MSCI EM IMI",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BKM4GZ66", "symbol": "EIMI", "shares": 10, "price_per_share": 30, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16", "existing_position": "true" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BKM4GZ66", "symbol": "EIMI", "shares": 10, "price_per_share": 30, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}", "existing_position": "true" } }
     ],
     "final": "Position übernommen."
   },
@@ -307,28 +321,28 @@
   {
     "match": "5 Anteile Apple",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 293, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16", "quote_currency": "USD" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 293, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}", "quote_currency": "USD" } }
     ],
     "final": "Kauf gebucht."
   },
   {
     "match": "Buche eine Dividende von 12,50 Euro",
     "calls": [
-      { "tool": "tool_book_dividend", "args": { "symbol": "VWCE", "depot_name": "Testbroker Depot", "amount": 12.5, "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_dividend", "args": { "symbol": "VWCE", "depot_name": "Testbroker Depot", "amount": 12.5, "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Dividende gebucht."
   },
   {
     "match": "Überweise 500 Euro vom Lindenbank Giro",
     "calls": [
-      { "tool": "tool_book_transfer", "args": { "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_transfer", "args": { "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Transfer gebucht."
   },
   {
     "match": "neue Haftpflichtversicherung bei der Lindenversicherung",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung Lindenversicherung", "policyholder_person": "Lena Beispiel", "annual_premium": "89", "schedule_unit": "year", "valid_from": "2026-01-01", "first_payment_date": "2026-01-15", "debit_account_name": "Lindenbank Giro", "policy_number": "Lindenversicherung-9876" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung Lindenversicherung", "policyholder_person": "Lena Beispiel", "annual_premium": "89", "schedule_unit": "year", "valid_from": "{{date:-3m@1}}", "first_payment_date": "{{date:+1m@15}}", "debit_account_name": "Lindenbank Giro", "policy_number": "Lindenversicherung-9876" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -359,7 +373,7 @@
     "_comment": "tc57 Kredit: Abbuchungstag leer = Tag der ersten Rate.",
     "match": "Lege einen Kredit 'Autokredit VW Bank' an",
     "calls": [
-      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": "18000", "disbursement_date": "2026-09-01", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "2026-10-15", "schedule_day_of_month": "", "debit_account_name": "Lindenbank Giro" } }
+      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": "18000", "disbursement_date": "{{date:-2m@1}}", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "{{date:+1m@15}}", "schedule_day_of_month": "", "debit_account_name": "Lindenbank Giro" } }
     ],
     "final": "Kredit angelegt."
   },
@@ -367,7 +381,7 @@
     "_comment": "tc71 laufender Kredit: nur Restschuld/Zins/Rate/naechste Faelligkeit, vorletzter Tag (-2); Ursprungswerte leer.",
     "match": "Trag meinen laufenden Hauskredit",
     "calls": [
-      { "tool": "tool_create_loan", "args": { "name": "Baufi Erlenkasse Alt", "lender": "Erlenkasse", "original_amount": "", "current_balance": "84000", "disbursement_date": "", "interest_rate": 1.1, "monthly_annuity": "520", "first_payment_date": "2027-03-30", "schedule_day_of_month": "-2", "debit_account_name": "Lindenbank Giro" } }
+      { "tool": "tool_create_loan", "args": { "name": "Baufi Erlenkasse Alt", "lender": "Erlenkasse", "original_amount": "", "current_balance": "84000", "disbursement_date": "", "interest_rate": 1.1, "monthly_annuity": "520", "first_payment_date": "{{date:+30d@-2}}", "schedule_day_of_month": "-2", "debit_account_name": "Lindenbank Giro" } }
     ],
     "final": "Kredit angelegt."
   },
@@ -383,7 +397,7 @@
     "_comment": "tc73 WP2: Versicherung 30 Euro monatlich -> Betrag je Abbuchung roh + Rhythmus, kein Jahresbeitrag.",
     "match": "Lege eine Zahnzusatzversicherung",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Zahnzusatz Ahornversicherung", "insurance_company": "Ahornversicherung", "premium_amount": "30", "schedule_unit": "month", "first_payment_date": "2026-12-01", "debit_account_name": "Lindenbank Giro" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Zahnzusatz Ahornversicherung", "insurance_company": "Ahornversicherung", "premium_amount": "30", "schedule_unit": "month", "first_payment_date": "in 4 weeks", "debit_account_name": "Lindenbank Giro" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -423,7 +437,7 @@
     "_comment": "tc58 Versicherung fuer Kind per Vorname.",
     "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Kinder-Unfall Lisa", "insurance_company": "Eichenversicherung", "annual_premium": "96", "first_payment_date": "2026-12-01", "debit_account_name": "Lindenbank Giro", "policyholder_person": "Lisa" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Kinder-Unfall Lisa", "insurance_company": "Eichenversicherung", "annual_premium": "96", "first_payment_date": "in 4 weeks", "debit_account_name": "Lindenbank Giro", "policyholder_person": "Lisa" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -431,7 +445,7 @@
     "_comment": "tc54 Oversell: der Probelauf lehnt VOR der Karte ab (kein sendAndWait).",
     "match": "Verkaufe 5000 Anteile Vanguard FTSE All-World",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5000, "price_per_share": 115, "order_fee": "0", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5000, "price_per_share": 115, "order_fee": "0", "transaction_date": "{{date:0d}}", "symbol": "VWCE" } }
     ],
     "final": "So viele Anteile liegen nicht im Depot."
   },
@@ -447,28 +461,28 @@
     "_comment": "tc15 Krypto auf Aktien-Depot: der Probelauf lehnt den Depot-Typ ab (kein sendAndWait).",
     "match": "Kauf im Testbroker Depot 0,01 Bitcoin",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "symbol": "BTC", "shares": 0.01, "price_per_share": 65000, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "symbol": "BTC", "shares": 0.01, "price_per_share": 65000, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Bitcoin braucht ein Krypto-Depot."
   },
   {
     "match": "Verkaufe 5 Anteile Vanguard FTSE All-World",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5, "price_per_share": 115, "order_fee": "2", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5, "price_per_share": 115, "order_fee": "2", "transaction_date": "{{date:0d}}", "symbol": "VWCE" } }
     ],
     "final": "Verkauf gebucht."
   },
   {
     "match": "monatliche Kreditrate für meinen Baufinanzierungs-Kredit",
     "calls": [
-      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung Buchenbank", "payment_amount": "1200", "payment_date": "2026-06-16" } }
+      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung Buchenbank", "payment_amount": "1200", "payment_date": "{{date:0d}}" } }
     ],
     "final": "Kreditrate gebucht."
   },
   {
     "match": "Das Geld liegt schon komplett auf dem Tagesgeld Plus",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Sommerreise 2027", "target_amount": 3000, "target_date": "2027-07-31", "reserve_account_name": "Tagesgeld Plus", "already_saved": "3000" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Sommerreise 2027", "target_amount": 3000, "target_date": "{{date:+8m@-1}}", "reserve_account_name": "Tagesgeld Plus", "already_saved": "3000" } }
     ],
     "final": "Sparziel angelegt, keine Sparrate noetig."
   },
@@ -482,14 +496,14 @@
   {
     "match": "Zielbetrag 10000 Euro, bis Ende 2027",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "2027-12-31", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "{{date:+13m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Sparziel angelegt."
   },
   {
     "match": "Gleiche mein Lindenbank Giro ab",
     "calls": [
-      { "tool": "tool_reconcile_account", "args": { "account_name": "Lindenbank Giro", "confirmed_balance": 1234.56, "reconciliation_date": "2026-06-16" } }
+      { "tool": "tool_reconcile_account", "args": { "account_name": "Lindenbank Giro", "confirmed_balance": 1234.56, "reconciliation_date": "{{date:0d}}" } }
     ],
     "final": "Konto abgeglichen."
   },
@@ -504,21 +518,21 @@
     "_comment": "tc20 + tc23: beide schliessen das Testbroker Cash Girokonto -> EIN Szenario deckt beide (Substring in beiden Tasks).",
     "match": "Schliesse das Testbroker Cash Girokonto",
     "calls": [
-      { "tool": "tool_close_account", "args": { "account_name": "Testbroker Cash Girokonto", "closure_date": "2026-06-16" } }
+      { "tool": "tool_close_account", "args": { "account_name": "Testbroker Cash Girokonto", "closure_date": "{{date:0d}}" } }
     ],
     "final": "Konto geschlossen."
   },
   {
     "match": "wiederkehrende Ausgabe an: Netflix-Abo",
     "calls": [
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Netflix", "account_name": "Lindenbank Giro", "direction": "expense", "amount": 13.99, "schedule_unit": "month", "first_payment_date": "2026-07-05" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Netflix", "account_name": "Lindenbank Giro", "direction": "expense", "amount": 13.99, "schedule_unit": "month", "first_payment_date": "{{date:+1m@5}}" } }
     ],
     "final": "Dauerauftrag angelegt."
   },
   {
     "match": "monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "2026-07-01" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Wiederkehrender Transfer eingerichtet."
   },
@@ -602,21 +616,21 @@
   {
     "match": "Sparplan 'EIMI Viertagesplan' auf ISIN IE00BKM4GZ66",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Viertagesplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 40, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Viertagesplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 40, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
   },
   {
     "match": "EIMI Wochenplan' an: Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Wochenplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 25, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Wochenplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 25, "schedule_unit": "week", "schedule_interval": "1", "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt: jeden Monat am 2., 9., 16. und 23."
   },
   {
     "match": "Testbroker Depot, ISIN IE00BKM4GZ66, Symbol EIMI",
     "calls": [
-      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Monatsplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 50, "first_payment_date": "2027-01-02" } }
+      { "tool": "tool_create_savings_plan", "args": { "plan_name": "EIMI Monatsplan", "depot_name": "Testbroker Depot", "isin": "IE00BKM4GZ66", "symbol": "EIMI", "security_name": "iShares Core MSCI EM IMI", "amount": 50, "first_payment_date": "{{date:+30d@2}}" } }
     ],
     "final": "Sparplan angelegt."
   },
@@ -678,7 +692,7 @@
   },
   {
     "_comment": "tc79 Befund 2026-10-26 (Werte erfunden): eingefuegter Betriebsrenten-Stand -> pension + datierte pension_statement-Zeile ueber den Import, nie guaranteed_monthly_pension.",
-    "match": "meiner Betriebsrente Testversorgung Mock",
+    "fixed_date_reason": "Stichtag der Standmitteilung ist feste Historie (Vertragsdokument), kein Abstand zu heute", "match": "meiner Betriebsrente Testversorgung Mock",
     "calls": [
       { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"pension\",\"name\":\"Testversorgung Mock\",\"pension_type\":\"occupational\",\"provider\":\"Testversorgungskasse\",\"contract_number\":\"TV-4711-K\"},{\"entity_type\":\"pension_statement\",\"pension\":\"Testversorgung Mock\",\"statement_date\":\"2025-12-31\",\"reached_claim\":74,\"notes\":\"18,50 Versorgungspunkte\"}]" } }
     ],
@@ -713,7 +727,7 @@
   {
     "match": "85 Euro für Lebensmittel mit dem Lindenbank Giro",
     "calls": [
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 85, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Lebensmittel" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 85, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Lebensmittel" } }
     ],
     "final": "Ausgabe von 85 EUR auf Lindenbank Giro gebucht."
   },
@@ -722,8 +736,8 @@
     "match": "18 Euro für Parkgebühren und 32 Euro für Blumen",
     "parallel": true,
     "calls": [
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 18, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Parkgebuehren" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 32, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Blumen" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 18, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Parkgebuehren" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 32, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Blumen" } }
     ],
     "final": "Zwei Ausgaben (18 EUR und 32 EUR) auf Lindenbank Giro vorgemerkt, noch nicht bestaetigt."
   },
@@ -739,7 +753,7 @@
     "_comment": "WS-4 beneficiary_person (tc41): person name resolves to lena in the family fixture.",
     "match": "Ausbildung Lena",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Ausbildung Lena", "target_amount": 10000, "target_date": "2035-12-31", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-08-01", "beneficiary_person": "Lena Beispiel" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Ausbildung Lena", "target_amount": 10000, "target_date": "{{date:+109m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "{{date:+2m@1}}", "beneficiary_person": "Lena Beispiel" } }
     ],
     "final": "Sparziel Ausbildung Lena angelegt."
   },
@@ -804,7 +818,7 @@
     "_comment": "ADVISOR (Anthropic/Opus, Phase 6b): der dialekt-aware Stub bedient /v1/messages -> tool_use. Lauf: mock_route_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test -CasesFile tests\\agent\\finance\\advisor_cases.json -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger. Voraussetzung: Onboarding aufgeloest (sonst blockt das feature.onboarding_gate VOR dem LLM). Pflicht-$fromAI: tool_save_plan_section{section_key,section_content}; tool_create_monitor_trigger{label,trigger_type,check_interval,action_note}. tool_publish_plan ist in -WriteTools nur zur Erkennung gelistet (kein advisor_cases-Case erwartet es) -> kein Szenario, kein Lint-Drift. Das tool_create_monitor_trigger-Szenario deckt zugleich den Monitor-Case mc01 ab (gleiches Tool, 'Lege den Trigger jetzt an' steht in beiden Tasks).",
     "match": "Speichere die Sektion jetzt in den Plan-Entwurf",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "2 Erwachsene (Erika Vollzeit, Lena Teilzeit), 2 Kinder (Lisa, Tom), Nettoeinkommen 5000 EUR/Monat, Sparquote 1200 EUR." } }
+      { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "2 Erwachsene (Erika Vollzeit, Lena Teilzeit), 1 Kind (Lisa), Nettoeinkommen 5000 EUR/Monat, Sparquote 1200 EUR." } }
     ],
     "final": "Sektion household_basics gespeichert."
   },
@@ -818,7 +832,7 @@
   },
   {
     "_comment": "ADVISOR ac17: der Mock zaehlt das tool_use aus chat_history als schon erledigten Aufruf (anthropicPriorTurns), darum steht es hier zuerst und der gepruefte Aufruf danach. Die Sprache prueft nur der bezahlte Lauf (Judge), den deutschen Text hier liefert der Mock selbst.",
-    "match": "Speichere den Abschnitt Haushaltsbasis neu",
+    "fixed_date_reason": "Stichtag 31.12.2028 liegt bewusst fest (wie ac17)", "match": "Speichere den Abschnitt Haushaltsbasis neu",
     "calls": [
       { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Household basics: two adults, two children." } },
       { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Haushaltsbasis: 2 Erwachsene, 2 Kinder, der Dauerauftrag auf das Testkonto endet am 31.12.2028." } }
@@ -837,7 +851,7 @@
     "_comment": "ADVISOR ac08 (Phase A): risk_profile-Sektion -> tool_save_plan_section. Eigener Match-Substring (NICHT 'Speichere die Sektion jetzt ...' = ac06) -> keine Kollision. Pflicht-$fromAI section_key+section_content; section_data optional, hier mit dem risk_profile-Block.",
     "match": "Speichere die Sektion risk_profile",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Risikoprofil", "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"2026-06-24\"}}" } }
+      { "tool": "tool_save_plan_section", "args": { "topic": "Risikoprofil", "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"{{date:-1w}}\"}}" } }
     ],
     "final": "Sektion risk_profile gespeichert."
   },
@@ -1068,7 +1082,7 @@
     "_comment": "WS-3 estate (es15): create_case (Ereignisfall, owner_info Break-Glass). Pflicht-$fromAI: subject_person + case_type + event_date. Match auf 'Bitte lege den Todesfall an'.",
     "match": "Bitte lege den Todesfall an",
     "calls": [
-      { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "2026-10-15", "bundesland": "bayern", "employed": "true", "has_will": "true" } }
+      { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "yesterday", "bundesland": "bayern", "employed": "true", "has_will": "true" } }
     ],
     "final": "Todesfall angelegt, hier die ersten Schritte."
   },
@@ -1103,6 +1117,110 @@
       { "tool": "tool_set_system_profile", "args": { "backup_key_location": "Umschlag im Tresor", "system_location": "Mini-PC im Keller" } }
     ],
     "final": "System-Steckbrief eingetragen."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es20): tool_set_contact. Alle Pflicht-$fromAI als Args.",
+    "match": "Telefonnummer von Steuerberater Weidenfeld",
+    "calls": [
+      {"tool": "tool_set_contact", "args": {"name": "Steuerberater Weidenfeld", "phone": "0123 555000"}}
+    ],
+    "final": "Telefonnummer geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es21): tool_delete_contact. Alle Pflicht-$fromAI als Args.",
+    "match": "Streich bitte den Hausarzt Dr. Lindner",
+    "calls": [
+      {"tool": "tool_delete_contact", "args": {"name": "Hausarzt Dr. Lindner"}}
+    ],
+    "final": "Kontakt entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es22): tool_set_provider_contract. Alle Pflicht-$fromAI als Args.",
+    "match": "Vertrag mit den Stadtwerken Beispielstadt",
+    "calls": [
+      {"tool": "tool_set_provider_contract", "args": {"provider": "Stadtwerke Beispielstadt", "customer_no": "KD-9001"}}
+    ],
+    "final": "Kundennummer geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es23): tool_delete_provider_contract. Alle Pflicht-$fromAI als Args.",
+    "match": "Vertrag mit Beispielnetz ist gekündigt",
+    "calls": [
+      {"tool": "tool_delete_provider_contract", "args": {"provider": "Beispielnetz"}}
+    ],
+    "final": "Vertrag entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es24): tool_set_case. Alle Pflicht-$fromAI als Args.",
+    "match": "Beim Todesfall von Lena sind wir doch Mieter",
+    "calls": [
+      {"tool": "tool_set_case", "args": {"case_id": "1", "tenant": "true"}}
+    ],
+    "final": "Fall korrigiert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es25): tool_cancel_case. Alle Pflicht-$fromAI als Args.",
+    "match": "versehentlich angelegt, bitte brich ihn ab",
+    "calls": [
+      {"tool": "tool_cancel_case", "args": {"case_id": "1"}}
+    ],
+    "final": "Fall abgebrochen."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es26): tool_set_case_task. Alle Pflicht-$fromAI als Args.",
+    "match": "Sterbefallanzeige beim Standesamt erledigt",
+    "calls": [
+      {"tool": "tool_set_case_task", "args": {"case_task_id": "1", "status": "done"}}
+    ],
+    "final": "Aufgabe abgehakt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es27): tool_create_case_task. Alle Pflicht-$fromAI als Args.",
+    "match": "Aufgabe hinzu: Auto aus der Werkstatt holen",
+    "calls": [
+      {"tool": "tool_create_case_task", "args": {"case_id": "1", "title": "Auto aus der Werkstatt holen"}}
+    ],
+    "final": "Aufgabe hinzugefügt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es28): tool_set_digital_account. Alle Pflicht-$fromAI als Args.",
+    "match": "Konto bei Beispielmail soll im Todesfall",
+    "calls": [
+      {"tool": "tool_set_digital_account", "args": {"provider": "Beispielmail", "desired_action": "delete"}}
+    ],
+    "final": "Konto angepasst."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es29): tool_delete_digital_account. Alle Pflicht-$fromAI als Args.",
+    "match": "Konto beim Beispielforum gibt es nicht mehr",
+    "calls": [
+      {"tool": "tool_delete_digital_account", "args": {"provider": "Beispielforum"}}
+    ],
+    "final": "Konto entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es30): tool_delete_special_asset. Alle Pflicht-$fromAI als Args.",
+    "match": "Lastenrad Beispielmarke haben wir verkauft",
+    "calls": [
+      {"tool": "tool_delete_special_asset", "args": {"description": "Lastenrad Beispielmarke"}}
+    ],
+    "final": "Eintrag entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es31): tool_set_storage_place. Alle Pflicht-$fromAI als Args.",
+    "match": "Aktenordner Wohnzimmer steht jetzt im Arbeitszimmer",
+    "calls": [
+      {"tool": "tool_set_storage_place", "args": {"name": "Aktenordner Wohnzimmer", "location": "Arbeitszimmer, Regal"}}
+    ],
+    "final": "Fundort geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es32): cancel_case mit unbekannter case_id -> saubere Ablehnung (Tool-Fehler als Daten).",
+    "match": "Fall mit der Nummer 99999",
+    "calls": [
+      {"tool": "tool_cancel_case", "args": {"case_id": "99999"}}
+    ],
+    "final": "Es gibt keinen offenen Fall mit dieser Nummer."
   },
   {
     "_comment": "paperless Phase 2 (oc24): reine Dokumenten-Frage -> Call_agent_paperless_assistant_ (sanitisierter Route-Tool-Name).",
@@ -1391,7 +1509,7 @@
   },
   {
     "_comment": "tc82 Kaufliste einer neuen Position -> drei datierte stock_buy-Zeilen in einem Batch (Tranchen-Import, Befund 2026-10-28).",
-    "match": "Bitte so mit echten Kaufkursen erfassen",
+    "fixed_date_reason": "Kaufliste mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute", "match": "Bitte so mit echten Kaufkursen erfassen",
     "calls": [
       { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.5,\"price_per_share\":540.2,\"transaction_date\":\"2026-06-03\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.4,\"price_per_share\":552.8,\"transaction_date\":\"2026-06-10\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.45,\"price_per_share\":548.1,\"transaction_date\":\"2026-06-17\"}]" } }
     ],
@@ -1648,25 +1766,25 @@
   },
   {
     "_comment": "tc112 Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen -> ein Aufruf, kein vorheriges Stornieren.",
-    "match": "Meine VWCE-Position im Testbroker Depot war nur als Bestand uebernommen",
+    "fixed_date_reason": "Einzelkaeufe mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute", "match": "Meine VWCE-Position im Testbroker Depot war nur als Bestand uebernommen",
     "calls": [
       { "tool": "tool_replace_holding_lots", "args": { "depot_name": "Testbroker Depot", "position": "VWCE", "lots": "[{\"date\":\"2025-03-12\",\"shares\":4,\"cost_basis_total\":80},{\"date\":\"2025-06-30\",\"shares\":3,\"cost_basis_total\":66},{\"date\":\"2025-09-15\",\"shares\":3,\"cost_basis_total\":90}]" } }
     ],
     "final": "Die Position wurde nicht ersetzt, es wurde nichts gespeichert."
   },
-  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Notgroschen", "section_key": "goals_triggers", "section_content": "Notgroschen 6000 Euro bis Ende 2027 als Sparziel.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"2027-12-31\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]"}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Notgroschen", "section_key": "goals_triggers", "section_content": "Notgroschen 6000 Euro bis Ende 2027 als Sparziel.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"{{date:+13m@-1}}\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]"}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "ADVISOR ac23 Uebergabe: Nutzer will gleich eintragen -> Uebersicht mit Knopf Durchgehen.", "match": "Lass uns das Vereinbarte gleich eintragen", "calls": [{"tool": "tool_send_handoff_overview", "args": {}}], "final": "Die Liste kommt gleich, tippe dort auf Durchgehen."},
   {"_comment": "ADVISOR ac24 Uebergabe-Negativfall: abgelehnte Idee -> Abschnitt ohne handoff_tasks.", "match": "Speichere den Abschnitt retirement_pension ohne neuen Sparplan", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Vorsorge", "section_key": "retirement_pension", "section_content": "Gesetzliche Rente und bestehende Vorsorge bleiben die Basis, kein zusaetzlicher Sparplan."}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
-  {"_comment": "tc120 Uebergabe: Durchgehen-Auftrag -> erster Punkt mit handoff_task_id.", "match": "Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro", "calls": [{"tool": "tool_create_recurring_payment", "args": {"name": "__E2E__ HO Miete", "account_name": "__E2E__ HO Giro", "direction": "expense", "amount": 900, "schedule_unit": "month", "schedule_day_of_month": "3", "first_payment_date": "2026-12-03", "handoff_task_id": "990001"}}], "final": "Die Miete ist nicht bestaetigt. Anders eintragen oder ueberspringen?"},
+  {"_comment": "tc120 Uebergabe: Durchgehen-Auftrag -> erster Punkt mit handoff_task_id.", "match": "Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro", "calls": [{"tool": "tool_create_recurring_payment", "args": {"name": "__E2E__ HO Miete", "account_name": "__E2E__ HO Giro", "direction": "expense", "amount": 900, "schedule_unit": "month", "schedule_day_of_month": "3", "first_payment_date": "in 4 weeks", "handoff_task_id": "990001"}}], "final": "Die Miete ist nicht bestaetigt. Anders eintragen oder ueberspringen?"},
   {"_comment": "oc51 Uebergabe: Folgenachricht zum Eintragen -> Call_agent_finance_.", "match": "die Miete geht vom __E2E__ HO Giro ab", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein."}}], "final": "Der Buchhalter kuemmert sich darum."},
   {"_comment": "tc121 Immobilie anlegen: tool_create_real_estate mit Rohwerten (Rate/Ruecklage rechnet die DB).", "match": "Lege eine neue Immobilie an: 'Ferienhaus Probestadt'", "calls": [{"tool": "tool_create_real_estate", "args": {"name": "Ferienhaus Probestadt", "current_value": "280000", "living_area_m2": "90", "year_built": "1998"}}], "final": "Die Karte fuer das Ferienhaus Probestadt ist unterwegs."},
   {"_comment": "tc126 Konto-Zeichen genannt.", "match": "Lindenbank Giro bitte mit dem Sparschwein als Zeichen.", "calls": [{"tool": "tool_set_account", "args": {"account_name": "Lindenbank Giro", "emoji": "🐷"}}], "final": "Bitte bestaetige die Karte."},
   {"_comment": "tc127 Konto-Zeichen nicht in der Liste.", "match": "Gib dem Lindenbank Giro ein Einhorn als Zeichen.", "calls": [{"tool": "tool_set_account", "args": {"account_name": "Lindenbank Giro", "emoji": "🦄"}}], "final": "Dieses Zeichen gibt es nicht."},
   {"_comment": "tc128 Konto-Zeichen ohne Nennung.", "match": "Ich möchte dem Lindenbank Giro ein anderes Zeichen geben.", "calls": [{"tool": "tool_send_account_emoji_picker", "args": {"account_name": "Lindenbank Giro"}}], "final": "Ich habe dir die Auswahl geschickt."},
   {"_comment": "tc124 Bank-Zettel auf Nachfrage.", "match": "Was muss ich bei der Bank noch einstellen?", "calls": [{"tool": "tool_send_bank_todos", "args": {}}], "final": "Ich habe dir die Liste je Bank geschickt."},
-  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Erstfassung mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"2027-03-15\",\"deadline\":true}]","change_summary":"Erstfassung","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
-  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"2027-06-01\"}]","change_summary":"Termine","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
-  {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"Versicherung pruefen\",\"remind_on\":\"2027-07-01\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
+  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Erstfassung mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"{{date:+4m@15}}\",\"deadline\":true}]","change_summary":"Erstfassung","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"{{date:+7m@1}}\"}]","change_summary":"Termine","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"Versicherung pruefen\",\"remind_on\":\"{{date:+8m@1}}\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
   {"_comment": "tc130 Ersteinrichtung offen: kurze Antwort gehoert zum Lauf.", "match": "Der Stand ist gerade 1234,56 Euro", "calls": [{"tool": "tool_import_setup", "args": {"question_key": "current_balance", "answer": "1234,56"}}], "final": "Danke, ich mache weiter."},
   {"_comment": "tc131 Ersteinrichtung abbrechen.", "match": "Lass die Einrichtung, ich mag gerade nicht mehr.", "calls": [{"tool": "tool_import_setup", "args": {"action": "cancel"}}], "final": "Ich habe die Einrichtung beendet; Bestaetigtes bleibt bestehen."}
   ,{"_comment": "tc140 Immobilie verkauft.", "match": "Wir haben die Musterimmobilie verkauft", "calls": [{"tool": "tool_sell_real_estate", "args": {"real_estate_name": "Musterimmobilie", "proceeds_account_name": "Lindenbank Giro", "sale_price": 320000}}], "final": "Verkauf gebucht."}
@@ -1728,8 +1846,8 @@
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } },
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"
@@ -1922,7 +2040,7 @@
     "driver": "scripts/conversation_test.ps1",
     "calls": [
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 2.400 netto am Monatsletzten aufs Erlenbank Giro" } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Erlenbank Giro", "direction": "income", "amount": 2400, "schedule_unit": "month", "first_payment_date": "2026-12-31" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Erlenbank Giro", "direction": "income", "amount": 2400, "schedule_unit": "month", "first_payment_date": "{{date:+1m@-1}}" } }
     ],
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"

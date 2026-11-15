@@ -19,13 +19,8 @@ if (-not $state.mock_llm -or -not $state.mock_telegram) { throw 'Mock-LLM und Mo
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
 $Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
-function Invoke-Sql([string]$Sql) {
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) "rollout_$([guid]::NewGuid().ToString('N')).sql"
-    try { [IO.File]::WriteAllText($tmp, $Sql, $Utf8NoBom); $r = Invoke-TestN8nPsqlFile -Container $Container -HostFile $tmp -PsqlArgs @('-q', '-tA') }
-    finally { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }
-    if ($r.Code -ne 0) { throw "SQL fehlgeschlagen: $Sql`n$($r.Output -join "`n")" }
-    return ((@($r.Output) | ForEach-Object { "$_" }) -join "`n").Trim()
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
+function Invoke-Sql([string]$Sql) { Invoke-SqlViaTempFile -Container $Container -Sql $Sql }
 function Assert-Equal($Actual, $Expected, [string]$Msg) { if ("$Actual" -ne "$Expected") { throw "${Msg}: erwartet '$Expected', ist '$Actual'" } }
 function Add-Scn($List) {
     $raw = (& docker exec $Container cat /opt/mock_llm/scenarios.json) -join "`n"

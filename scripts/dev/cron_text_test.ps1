@@ -52,16 +52,8 @@ $Recipient = @{ 'owner' = $OwnerUid; 'person:lena' = $LenaUid }
 
 # SQL ueber eine Datei, nicht per -c: PS 5.1 verstuemmelt eingebettete Anfuehrungszeichen (JSON-Literale) beim
 # Uebergeben an docker. Leere Fall-Felder (kein reset_sql) sind ein No-op.
-function Invoke-Sql([string]$Sql) {
-    if ([string]::IsNullOrWhiteSpace($Sql)) { return @() }
-    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "crontext_$([guid]::NewGuid().ToString('N')).sql"
-    try {
-        [System.IO.File]::WriteAllText($tmp, $Sql, $Utf8NoBom)
-        $r = Invoke-TestN8nPsqlFile -Container $Container -HostFile $tmp -PsqlArgs @('-q', '-tA')
-    } finally { Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue }
-    if ($r.Code -ne 0) { throw "SQL fehlgeschlagen: $Sql`n$($r.Output -join "`n")" }
-    return @($r.Output | ForEach-Object { "$_" })
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
+function Invoke-Sql([string]$Sql) { Invoke-SqlViaTempFile -Container $Container -Sql $Sql -AsLines }
 function Invoke-LifeagentsConfig([string[]]$CmdArgs) {
     $a = @('exec', '-e', 'LIFEAGENTS_HITL_CHAT_APPROVAL=true', $Container, 'lifeagents', 'config') + $CmdArgs
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

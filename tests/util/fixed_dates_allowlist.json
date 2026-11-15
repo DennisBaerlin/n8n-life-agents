@@ -1,0 +1,4 @@
+{
+  "_comment": "Ratchet fuer mock_lint C5: Faelle/Szenarien mit woertlichem Datum, das in der Zukunft liegt oder weniger als zwei Jahre zurueckliegt, ohne fixed_date_reason. Schluessel = <Datei>|<Fall-id oder Szenario-match>, Wert = Anzahl Funde. Nur sinken, nie steigen: neue Datumswerte als {{date:..}}-Platzhalter schreiben (docs/reference/tests.md), bewusst feste mit fixed_date_reason im Fall.",
+  "entries": {}
+}

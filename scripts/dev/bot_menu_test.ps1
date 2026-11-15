@@ -15,7 +15,8 @@
 #     (`lifeagents update --run-requested`) setzt nur die Knoepfe (keine Befehlsmenues) fuer alle gekoppelten Personen
 #     und schliesst ihn; Zweitlauf ruft Telegram nicht; scheitert Telegram, bleibt er offen mit Wartezeit; ein
 #     normaler Menue-Lauf (Install/Update) schliesst einen offenen Auftrag mit. Der echte Timer pausiert dafuer kurz.
-#   - Menü einmal je Install-/Update-Lauf, ein Wiederholversuch je Telegram-Aufruf, Fehlergrund im Protokoll (menu_once_cases.sh).
+#   - Menü einmal je Install-/Update-Lauf, ein Wiederholversuch je Telegram-Aufruf, Fehlergrund im Protokoll (menu_once_cases.sh);
+#     `lifeagents telegram release-webhook` (Schnittstelle der Start-App beim Abbau) in allen Zustaenden (release_webhook_cases.sh).
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -209,13 +210,13 @@ if ($tids.Count -gt 0) {
 # (6) Menue einmal je Lauf, Wiederholversuch, Fehlergrund im Protokoll: Fall-Runner im Container gegen einen eigenen Mock
 $mroot = '/opt/menu_once_test'
 $prev5 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-[void](& docker exec $Container sh -c "rm -rf $mroot && mkdir -p $mroot" 2>&1)
+[void](& docker exec $Container sh -c "rm -rf $mroot && mkdir -p $mroot/packages/core" 2>&1)
 $cpFail = $false
-foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_telegram', 'mock_telegram'))) {
+foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_telegram', 'mock_telegram'), @('packages\core\locales', 'packages/core/locales'))) {
     $cp = & docker cp (Join-Path $RepoRoot $pair[0]) "${Container}:$mroot/$($pair[1])" 2>&1
     if ($LASTEXITCODE -ne 0) { $cpFail = $true; Fail "docker cp $($pair[0]) fehlgeschlagen: $($cp -join ' | ')" }
 }
-$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) }
+$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/release_webhook_cases.sh" $mroot 8094 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/backup_notify_cases.sh" $mroot 8095 2>&1 | ForEach-Object { "$_" }) }
 $ErrorActionPreference = $prev5
 $moPass = 0
 foreach ($l in $mo) {

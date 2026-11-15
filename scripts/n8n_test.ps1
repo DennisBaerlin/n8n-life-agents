@@ -22,6 +22,9 @@
 #       -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes,tool_record_plan_wish,tool_send_handoff_overview,tool_sync_plan,tool_create_account,tool_create_recurring_payment -CasesFile tests\agent\finance\advisor_cases.json
 #
 # Exit-Code = Anzahl fehlgeschlagener Tests. Kostet LLM-Credits (owner-gegatet).
+# Abbruch-Absicherung aller bezahlten Suiten (lib/paid_guard.ps1, Selbsttest dev/paid_guard_test.ps1): -MaxCostUsd (Default 10) haelt den Lauf
+# vor dem naechsten Fall an; ein Fall mit Ausnahme ist rot und der Lauf geht weiter; finally raeumt auf (wartende Karten, Sperre) und druckt den
+# Kostenbericht auch beim Abbruch; -ForceAbortId <id> zeigt den Abbruch-Pfad (docs/reference/tests.md).
 # Voraussetzung: Docker-Test-Substrat + enable_mock_telegram.ps1 (fuers Gate) + .env TEST_HARNESS_SECRET.
 #   Mock-LLM nicht aktiv (echtes Routing). Test-Memory wird je Case in der Container-DB geleert.
 param(
@@ -31,6 +34,8 @@ param(
     [string]$TargetWorkflow = 'agent.finance',
     [string]$WebhookPath = 'finance-test',
     [string[]]$WriteTools = @(),
+    [double]$MaxCostUsd = 10.0,   # haelt den Lauf vor dem naechsten Fall an (lib/paid_guard.ps1); 0 = aus
+    [string]$ForceAbortId,        # wirft am Anfang dieses Falls: zeigt den Abbruch-Pfad, ohne dass ein Fall LLM-Kosten verursacht
     [switch]$Verbose
 )
 
@@ -60,6 +65,8 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 # Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
+. "$PSScriptRoot\lib\paid_guard.ps1"
+$llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 function Clear-TestCaseSetup {
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', 'SELECT agent.fn_clear_e2e_data();')
@@ -124,7 +131,10 @@ $script:WfNameById = @{}; foreach ($w in $wfList.data) { $script:WfNameById[[str
 $tcFile = if ([System.IO.Path]::IsPathRooted($CasesFile)) { $CasesFile } else { Join-Path $RepoRoot $CasesFile }
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
+. "$PSScriptRoot\lib\date_placeholder.ps1"
+$cases = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep -Obj $_ })   # {{date:+30d@2}} in task/Erwartung aufloesen
 if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
 # Pre-Flight (jedes Ziel, gemeinsam mit mock_route_test: Initialize-AgentTestState): Absender = gepairter
 # Fixture-Owner, Fixtures + abgeschlossenes Onboarding in die Container-DB seeden, dann verifizieren.
@@ -146,8 +156,13 @@ Write-Host ("-" * 64)
 $passed = 0; $failed = 0; $quarantined = 0; $judgeBundle = @(); $pkgOnbDirty = $false
 # Einmal auch vor dem ersten Case: raeumt Reste eines abgebrochenen Laufs.
 $setupDirty = $true
+$completed = $false
 
+try {
 foreach ($tc in $cases) {
+    if (Test-RunCostExceeded -Container $Container -Cursor $llmCursor -Prices $llmPrices -MaxCostUsd $MaxCostUsd) { $failed++; break }
+    try {   # Ausnahme in einem Fall = roter Fall, der Lauf geht weiter (catch am Schleifenende, Muster: test_n8n_state.ps1 *Fall-Abbruch*)
+    Test-ForceAbort $tc.id $ForceAbortId
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)"
     Write-Host "    Task: '$($tc.task)'"
@@ -283,17 +298,28 @@ foreach ($tc in $cases) {
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }
+    } catch {
+        $failed++
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Invoke-PaidRunCleanup -Container $Container -WorkflowId @($TargetWfId) }
+    }
+}
+$completed = $true
+} finally {
+    # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): __E2E__-Setup wegraeumen, wartende Karten-Executions stoppen, Karten-Sperre loesen.
+    if ($setupDirty) { try { Clear-TestCaseSetup } catch { Write-Host "    [FAIL] Aufraeumen: $($_.Exception.Message)" -ForegroundColor Red; $failed++ } }
+    Invoke-PaidRunCleanup -Container $Container -WorkflowId @($TargetWfId)
+    if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'n8n_test (abgebrochen)' -RepoRoot $RepoRoot }
 }
 
-if ($setupDirty) { Clear-TestCaseSetup }
-
+Write-AbortedCases
+$failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 $qNote = if ($quarantined -gt 0) { " ($quarantined in Quarantaene, nicht gewertet)" } else { '' }
 Write-Host "Deterministisch (Tool-Routing): $passed/$($cases.Count) bestanden, $failed fehlgeschlagen$qNote." -ForegroundColor $color
 
-Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot
+Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite "n8n_test-$([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))"
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label "n8n_test $([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))" -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

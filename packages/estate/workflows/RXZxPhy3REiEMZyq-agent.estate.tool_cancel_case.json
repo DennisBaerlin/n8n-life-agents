@@ -45,7 +45,73 @@
                                                            "id":  "__CRED_POSTGRES_ESTATE_RW__",
                                                            "name":  "Postgres estate_rw (read-write)"
                                                        }
-                                      }
+                                      },
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "289942ca-8e74-5f8d-becc-3018b17648de",
+                                                                                   "leftValue":  "={{ $json.case_type !== undefined \u0026\u0026 $json.case_type !== null }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       330,
+                                       0
+                                   ],
+                      "id":  "4934fe7e-b835-58b9-a913-edc1088adfb3",
+                      "name":  "Case found?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "32b18c4c-4c2f-52d7-92e4-eb8d478028b8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0c56dc64-1a33-5bd7-b249-b4dcaa6d4e1a",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=No case with number {{ $(\u0027Start\u0027).item.json.case_id }} exists (ask the user for the right number, or look it up via a SELECT on estate.cases). Nothing to cancel.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       330,
+                                       200
+                                   ],
+                      "id":  "1d319251-3ff2-5489-a003-594bf5b35728",
+                      "name":  "Case not found"
                   },
                   {
                       "parameters":  {
@@ -94,7 +160,7 @@
                                                                                  {
                                                                                      "id":  "307b41e2-3782-57cf-8119-4cfaea5454f8",
                                                                                      "name":  "error",
-                                                                                     "value":  "=Case {{ $(\u0027Start\u0027).item.json.case_id }} is not an open case (it may not exist, or is already closed/cancelled). Nothing to cancel.",
+                                                                                     "value":  "=Case {{ $(\u0027Start\u0027).item.json.case_id }} is not an open case (it is already closed or cancelled). Nothing to cancel.",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -496,7 +562,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**estate.fn_cancel_case (offener Fall -\u003e cancelled, Verlauf bleibt)**\n\nRead case zeigt Typ/Person/Datum für die Bestätigung; \"Case open?\" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist. Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.",
+                                         "content":  "## DB-Automatik\n**estate.fn_cancel_case (offener Fall -\u003e cancelled, Verlauf bleibt)**\n\nRead case zeigt Typ/Person/Datum für die Bestätigung; \"Case open?\" blockt vor dem Gate, wenn der Fall nicht (mehr) offen ist ; \"Case found?\" (New-RequiredRowGate) fängt eine unbekannte Fall-Nummer vorher mit eigener Meldung ab, statt dass der Lauf ohne Antwort endet. Nach Approve setzt estate.fn_cancel_case status=cancelled + closed_at (die case_tasks bleiben als Audit). Verb cancel = NEUES Floor-0-Verb (owner_info-fähig, Break-Glass; ein erwachsenes Mitglied kann allein abbrechen, Owner-Info=Audit). adults_only-DB-Backstop.",
                                          "height":  300,
                                          "width":  640,
                                          "color":  4
@@ -528,12 +594,30 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Case open?",
+                                                               "node":  "Case found?",
                                                                "type":  "main"
                                                            }
                                                        ]
                                                    ]
                                       },
+                        "Case found?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Case open?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Case not found",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
                         "Case open?":  {
                                            "main":  [
                                                         [

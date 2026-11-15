@@ -28,12 +28,18 @@
 #   Ein API-Timeout/Parse-Fehler des Judges (verdict=ERROR) ist Infra-Flake, kein inhaltliches FAIL.
 #   ERROR wird einmal ge-retry-t und im Summary getrennt ausgewiesen (nicht als Rubric-FAIL).
 #
+# --- Urteile bleiben erhalten ---
+#   Je Lauf eine Datei .local/judge_runs/<zeit>-<suite>.jsonl im Haupt-Checkout (gitignored), eine Zeile je Fall: Suite, Fall-ID, Urteil,
+#   Begruendung, det_pass, Gesamturteil, Modell, Commit (+ dirty). Das Bundle ist nach dem Lauf leer; Format und Schreibweg: lib/judge_record.ps1.
+#
 # Exit-Code = Anzahl OVERALL FAILs + nicht-aufloesbare ERRORs (Gate bleibt ehrlich: unjudged != gruen).
 # Voraussetzungen: .env mit ANTHROPIC_API_KEY; der Lauf kostet LLM-Calls und braucht das Owner-Fenster.
 param(
     [string]$Model = 'claude-haiku-5-5',
     [switch]$Calibrate,
     [double]$KappaThreshold = 0.6,
+    [double]$MaxCostUsd = 1.0,   # haelt den Lauf vor dem naechsten Eintrag an (lib/paid_guard.ps1); ein Lauf kostet ~0,01 $, 0 = aus
+    [string]$ForceAbortId,       # wirft am Anfang dieses Eintrags: zeigt den Abbruch-Pfad ohne API-Aufruf
     [switch]$Verbose
 )
 
@@ -61,8 +67,33 @@ $Provider = 'anthropic'   # nur fuer die Ausgabe-Zeilen
 # und keine Batch-API (~40 Haiku-Aufrufe ~ 0,01 $/Lauf -> -50 % spart < 1 Cent).
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $script:JudgeUsage = New-Object System.Collections.ArrayList
+. "$PSScriptRoot\lib\paid_guard.ps1"
+$JudgePrices = Get-LlmPriceTable -RepoRoot $RepoRoot
+$script:CostReported = $false
+# Kostengrenze: die Judge-Aufrufe laufen direkt gegen die API, die Kosten stehen lokal in $script:JudgeUsage (kein Gateway-Journal).
+function Test-JudgeBudget {
+    $cost = Get-UsageCostUsd -Usage @($script:JudgeUsage) -Prices $JudgePrices
+    if (-not (Test-CostLimitExceeded -CostUsd $cost -MaxCostUsd $MaxCostUsd)) { return $false }
+    Write-Host "    [FAIL] Kostengrenze $MaxCostUsd USD ueberschritten ($([Math]::Round($cost, 3)) USD) - Lauf angehalten." -ForegroundColor Red
+    return $true
+}
+# Ein Eintrag, bei dem der Judge-Aufruf selbst wirft (oder -ForceAbortId trifft), zaehlt als ERROR; der Lauf geht weiter.
+function Invoke-JudgeGuarded([object]$Entry) {
+    try { Test-ForceAbort ([string]$Entry.id) $ForceAbortId; return (Invoke-Judge $Entry) }
+    catch { Write-CaseAbort -ErrorRecord $_ -CaseId ([string]$Entry.id); return @{ verdict = 'ERROR'; reason = 'Abbruch (Ausnahme)' } }
+}
+function Write-JudgeCostReport([string]$Label) {
+    $script:CostReported = $true
+    Write-LlmCostReport -Usage @($script:JudgeUsage) -Label $Label -RepoRoot $RepoRoot
+}
 
 . "$PSScriptRoot\lib\judge_prompt.ps1"   # Get-JudgeSystemText, Format-JudgeUserText (Karten-Entscheid je Eintrag)
+. "$PSScriptRoot\lib\judge_record.ps1"   # Urteile je Fall dauerhaft nach .local/judge_runs (das Bundle ist nach dem Lauf leer)
+$script:RunStamp = Get-JudgeRunStamp -RepoRoot $RepoRoot
+$script:RunFile  = $null
+function Save-JudgeVerdict([object]$Entry, [hashtable]$Verdict, [string]$Mode, [string]$Overall) {
+    Add-JudgeRunRecord -Path $script:RunFile -Entry $Entry -Verdict $Verdict.verdict -Reason $Verdict.reason -Model $Model -Mode $Mode -Overall $Overall -Commit $script:RunStamp.commit -Dirty $script:RunStamp.dirty
+}
 # Structured Output: die API garantiert parsebares JSON mit genau diesen Feldern.
 $VerdictSchema = [ordered]@{
     type                 = 'object'
@@ -130,6 +161,7 @@ function Invoke-Judge([object]$Entry) {
     return $r
 }
 
+try {   # finally am Dateiende: Kostenbericht auch bei Ctrl-C oder Ausnahme
 # A1: Kalibrierungs-Modus
 if ($Calibrate) {
     $labelPath = Join-Path $RepoRoot 'tests\agent\cross\judge_labels.json'
@@ -146,10 +178,13 @@ if ($Calibrate) {
     # Binaer: human/judge auf PASS vs. nicht-PASS (PARTIAL/FAIL = nicht-PASS) reduzieren, wie das OVERALL-Gate
     # (nur PASS zaehlt).
     $tp = 0; $tn = 0; $fp = 0; $fn = 0; $errc = 0
+    $script:RunFile = Get-JudgeRunFile -RepoRoot $RepoRoot -Suite 'calibrate'
     foreach ($e in $labels) {
+        if (Test-JudgeBudget) { $errc++; break }
         $human = "$($e.human_verdict)".ToUpper()
         if ($human -notin @('PASS','FAIL','PARTIAL')) { throw "Case '$($e.id)': human_verdict fehlt/ungueltig ('$human')." }
-        $j = Invoke-Judge $e
+        $j = Invoke-JudgeGuarded $e
+        Save-JudgeVerdict $e $j 'calibrate' ''
         if ($j.verdict -eq 'ERROR') {
             $errc++
             Write-Host ("  [{0}] human={1}  judge=ERROR  ({2})" -f $e.id, $human, $j.reason) -ForegroundColor Yellow
@@ -180,7 +215,11 @@ if ($Calibrate) {
     Write-Host ("Confusion (PASS vs. nicht-PASS):  TP={0}  TN={1}  FP={2}  FN={3}  (ERROR={4})" -f $tp,$tn,$fp,$fn,$errc)
     Write-Host ("Agreement (po): {0:P1}    Cohen's kappa: {1:N3}    Schwelle: {2:N2}" -f $po, $kappa, $KappaThreshold)
     if ($fp -gt 0) { Write-Host ("  WARNUNG: {0}x Judge zu NACHSICHTIG (FP) -- laesst echte Fehler durch." -f $fp) -ForegroundColor Yellow }
-    Write-LlmCostReport -Usage @($script:JudgeUsage) -Label 'judge_eval -Calibrate' -RepoRoot $RepoRoot
+    $failedForce = Assert-ForceAbortFired $ForceAbortId
+    if ($script:RunFile -and (Test-Path $script:RunFile)) { Write-Host "Urteile gespeichert: $script:RunFile" -ForegroundColor Cyan }
+    Write-AbortedCases
+    Write-JudgeCostReport 'judge_eval -Calibrate'
+    if ($failedForce -gt 0) { exit 1 }
     if ($kappa -ge $KappaThreshold) {
         Write-Host "[KALIBRIERUNG OK] Judge ist ausreichend mit den Labels aligned." -ForegroundColor Green
         exit 0
@@ -205,13 +244,17 @@ Write-Host ("-" * 64)
 
 $overallFail = 0
 $errorCount  = 0
+$script:RunFile = Get-JudgeRunFile -RepoRoot $RepoRoot -Suite (Get-JudgeRunSuite $bundle)
 foreach ($e in $bundle) {
+    if (Test-JudgeBudget) { $errorCount++; break }
     Write-Host ""
     Write-Host "  [$($e.id)] $($e.name)"
     $detPass = [bool]$e.det_pass
     Write-Host "    det_pass (Routing+Args): $detPass   (erwartet tool=$($e.expected_tool), tatsaechlich=$($e.actual_tool))"
 
-    $j = Invoke-Judge $e
+    $j = Invoke-JudgeGuarded $e
+    $ov = if ($j.verdict -eq 'ERROR') { 'ERROR' } elseif ($detPass -and $j.verdict -eq 'PASS') { 'PASS' } else { 'FAIL' }
+    Save-JudgeVerdict $e $j 'bundle' $ov
     Write-Host "    Judge: $($j.verdict)"
     if ($Verbose -or $j.verdict -ne 'PASS') { Write-Host "      reason: $($j.reason)" -ForegroundColor DarkGray }
 
@@ -242,5 +285,11 @@ Write-Host ""
 
 # Gate bleibt ehrlich: unjudged (ERROR) zaehlt in den Exit-Code (gruen nur, wenn alles wirklich PASS),
 # wird im Summary aber von echten Rubric-FAILs getrennt.
-Write-LlmCostReport -Usage @($script:JudgeUsage) -Label 'judge_eval' -RepoRoot $RepoRoot
+if (Test-Path $script:RunFile) { Write-Host "Urteile gespeichert: $script:RunFile" -ForegroundColor Cyan }
+Write-AbortedCases
+$errorCount += Assert-ForceAbortFired $ForceAbortId
+Write-JudgeCostReport 'judge_eval'
 exit ($overallFail + $errorCount)
+} finally {
+    if (-not $script:CostReported) { Write-JudgeCostReport 'judge_eval (abgebrochen)' }
+}

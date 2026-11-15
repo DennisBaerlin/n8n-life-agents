@@ -3,6 +3,7 @@
 # fuer den Browser der Desktop-App (Vorschau-Eintrag "ui-compare" in .claude/launch.json), der lokale Dateien nicht oeffnet.
 #   .\scripts\dev\serve_ui_compare.ps1 [-Port 8768]
 # Neu bauen, dann Seite neu laden. Nur localhost, kein Netz, keine DB.
+# Exit-Code: der Server laeuft bis Strg+C; scheitert der Start (z. B. Port belegt), bricht er mit Exit 1 ab.
 param([int]$Port = 8768)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

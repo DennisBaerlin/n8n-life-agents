@@ -12,6 +12,7 @@
 # zugleich, auch wenn der Owner das Skript aus einem Worktree startet.
 #
 # Usage:  .\scripts\grant_owner_window.ps1 [-Minutes 30]
+# Exit-Code 0 = Fenster offen; jeder Fehler (z. B. Datei nicht schreibbar) bricht per ErrorActionPreference Stop mit Exit 1 ab.
 param([int]$Minutes = 30)
 
 $ErrorActionPreference = 'Stop'

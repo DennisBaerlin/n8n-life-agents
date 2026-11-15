@@ -228,7 +228,7 @@
     <p>Tippst du in der Update-Karte im Chat auf <strong>Jetzt aktualisieren</strong>, zeigt eine Nachricht mit Ladebalken, wie weit das Update ist. Sie aktualisiert sich selbst; bei langen Schritten bleibt die Zahl eine Weile stehen. Sobald der Bot wieder antwortet, kommt eine kurze Ergebnis-Nachricht. Ist Telegram gerade nicht erreichbar, läuft das Update trotzdem normal durch, und die Nachricht kommt später. Geht etwas schief, beantwortet seine Nachricht drei Fragen: Was ist passiert? Läuft mein System noch? Was kann ich tun? Diese Seite erklärt jeden Fall etwas ausführlicher. Die Nachricht verlinkt direkt auf den passenden Abschnitt.</p>
 <p>Zwei Dinge gelten immer:</p>
 <ul>
-<li><strong>Vor jedem Update wird gesichert.</strong> Die ganze Datenbank liegt verschlüsselt unter <code>/var/backups/lifeagents/</code>, die letzten zwei Sicherungen bleiben liegen.</li>
+<li><strong>Vor jedem Update, das die Version wechselt, wird gesichert.</strong> Die ganze Datenbank liegt verschlüsselt unter <code>/var/backups/lifeagents/</code>, die letzten zwei Sicherungen bleiben liegen.</li>
 <li><strong>Das vollständige Protokoll</strong> eines Updates aus dem Chat steht unter <code>/var/log/lifeagents/update-&lt;zeit&gt;.log</code>. Den genauen Pfad nennt die Nachricht.</li>
 </ul>
 <p>Alle Befehle auf dieser Seite führst du auf dem Server als root aus (meist mit <code>sudo</code> davor).</p>
@@ -253,6 +253,14 @@
 			<tr>
 					<td>Nicht genug Speicherplatz</td>
 					<td>Platz schaffen (<code>df -h</code> zeigt, wie voll der Server ist; alte Dateien in <code>/tmp</code> oder Container-Abbilder sind typische Platzfresser), dann <strong>Erneut versuchen</strong>. Das Update braucht mindestens 2 GB frei, bei einer neuen n8n-Version deutlich mehr (rund 5 GB).</td>
+			</tr>
+			<tr>
+					<td>Diese Version gibt es bei GitHub nicht</td>
+					<td>Den Versions-Namen prüfen (er steht in der Release-Liste des Projekts), dann das Update mit der richtigen Version neu anstoßen.</td>
+			</tr>
+			<tr>
+					<td>Das wäre eine ältere Version als die installierte</td>
+					<td>Ein Update spielt nie von selbst eine ältere Version ein. Brauchst du die ältere bewusst, geht das nur im Terminal mit <code>lifeagents update --version &lt;Version&gt; --allow-downgrade</code>.</td>
 			</tr>
 			<tr>
 					<td>Ein anderes Update läuft schon</td>
@@ -285,7 +293,7 @@
 <li>Hilft das nicht: <code>lifeagents doctor</code> zeigt, was noch nicht stimmt.</li>
 </ol>
 <h2 id="midway">Mittendrin abgebrochen</h2>
-<p>Das Update hat schon angefangen, das System umzubauen, und ist dann in einem Schritt abgebrochen. Die Nachricht nennt den Schritt. Dein System läuft, aber vielleicht nicht vollständig.</p>
+<p>Das Update hat schon angefangen, das System umzubauen, und ist dann in einem Schritt abgebrochen (zum Beispiel, weil n8n nach dem Update nicht wieder gestartet ist). Die Nachricht nennt den Schritt. Dein System läuft, aber vielleicht nicht vollständig.</p>
 <ol>
 <li><strong>Erneut versuchen</strong> tippen. Das Update setzt an der Abbruchstelle fort und nutzt dieselbe Sicherung.</li>
 <li>Klappt das nicht, kannst du zur vorherigen Version zurück, siehe <a href="#rollback">Zurück zur vorherigen Version</a>.</li>

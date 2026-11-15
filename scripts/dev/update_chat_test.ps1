@@ -25,13 +25,7 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_tel
 $TgPort = "$($state.mock_telegram.port)"
 if (-not $TgPort) { $TgPort = '8089' }
 
-function Invoke-Native([string]$Exe, [string[]]$Arguments) {
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out | ForEach-Object { "$_" }) }
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
 
 Write-Host ""
 Write-Host "Update im Chat (Karte, Runner, Fehler-Hilfe, Signatur) gegen Mock-GitHub + Mock-Telegram — Container $Container"

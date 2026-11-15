@@ -141,11 +141,21 @@ repos:
         always_run: true
 
       - id: layout-lint
-        name: layout_lint (repo layout/structure invariants L1-L7 + retired-roots ratchet)
+        name: layout_lint (repo layout/structure invariants L1-L8 incl. no mojibake in tracked text files + retired-roots ratchet)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1 -Staged
+        pass_filenames: false
+        always_run: true
+
+      # Voller Baumlauf (L4/L8 ueber alle getrackten Dateien): der Commit-Hook oben prueft sie nur auf den gestagten Dateien. CI faehrt den
+      # Commit-Hook auf sauberem Checkout (nichts gestagt = voller Lauf); vor dem Push laeuft er hier.
+      - id: layout-lint-full
+        name: layout_lint (full tree, L1-L8 over all tracked files)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1
         pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: config-test
         name: config_test (manifest .config types/defaults + cron cases + schedule placeholders + baking ratchet)
@@ -208,10 +218,20 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/core_literal_lint.ps1
         pass_filenames: false
+        # Nur wenn eine Datei im Umfang des Lints gestagt ist (Core-Build/-DB/-Kontexte/-Manifest, Manifeste der Pakete = Literal-Quelle,
+        # Bau-Engine samt Allowlist, Test-Treiber); die Aussage des Ratchets bleibt baumweit, CI (--all-files) und pre-push fahren ihn voll.
+        files: ^(packages/core/(build|db|contexts)/|packages/core/manifest\.json|packages/[^/]+/manifest\.json|scripts/(build/|dev/[^/]+\.ps1|[^/]+\.ps1))
+
+      - id: core-literal-lint-full
+        name: core_literal_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/core_literal_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: ui-literal-lint
-        name: ui_literal_lint (Textkatalog Phase B no new fixed German user text; ratchet allowlist)
+        name: ui_literal_lint (no new fixed German user text in workflows/R__ fns, no fixed word in installer Telegram texts; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
         pass_filenames: false
@@ -293,6 +313,20 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/case_abort_test.ps1
         pass_filenames: false
         files: ^scripts/dev/(case_abort_test|test_n8n_state|hitl_gate_test|mock_route_test|real_ingress_test)\.ps1$|^scripts/infra_test\.ps1$
+
+      - id: paid-guard-test
+        name: paid_guard_test (every paid suite keeps cost limit, abort handling and cleanup; no suite is started)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/paid_guard_test.ps1
+        pass_filenames: false
+        files: ^scripts/(dev/paid_guard_test|dev/test_n8n_state|lib/paid_guard|lib/judge_record|n8n_test|orch_test|e2e_test|multiturn_test|conversation_test|monitor_probe|judge_eval)\.ps1$
+
+      - id: date-placeholder-test
+        name: date_placeholder_test ({{date:+30d@2}} resolves identically in PowerShell and in the mock-LLM server)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/date_placeholder_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
 
       - id: tool-call-order-test
         name: tool_call_order_test (tool calls of an agent run in time order, also the ones the n8n action log drops; no Docker)
@@ -392,9 +426,17 @@ repos:
       - id: ps-lint
         name: ps_lint (PSScriptAnalyzer on scripts/**/*.ps1)
         language: system
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1 -Staged
         files: '(?i)\.ps1$'
         pass_filenames: false
+
+      - id: ps-lint-full
+        name: ps_lint (full tree before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       # Postgres-migration safety lint over packages/*/db/migrations/V*.sql (Flyway versioned).
       # Catches unsafe ALTER/lock patterns that APPLY cleanly yet would block or fail at runtime on a
@@ -553,3 +595,17 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/comment_lint_test.ps1
         pass_filenames: false
         files: ^scripts/(comment_lint|dev/comment_lint_test|lib/git_sandbox)\.ps1$
+
+      - id: layout-lint-test
+        name: layout_lint_test (rule L8 - mojibake in a text file turns red, real umlauts/euro/Korean stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/layout_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(layout_lint|dev/layout_lint_test)\.ps1$
+
+      - id: ui-literal-lint-test
+        name: ui_literal_lint_test (installer Telegram texts - fixed words in text=/caption=/helper args turn red, catalog lookups and log lines stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ui_literal_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(ui_literal_lint|dev/ui_literal_lint_test)\.ps1$

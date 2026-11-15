@@ -14,6 +14,7 @@
 # Voraussetzung: gpg (PATH oder Git for Windows). Existiert schon ein Schluessel (Datei oder gpg-Speicher), bricht das Skript mit throw ab.
 #
 # Usage: .\scripts\new_release_key.ps1 [-Name 'n8n-life-agents release signing'] [-Email <adresse>]
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [string]$Name = 'n8n-life-agents release signing',
     [string]$Email = ''

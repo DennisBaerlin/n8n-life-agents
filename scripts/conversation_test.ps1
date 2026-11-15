@@ -9,7 +9,7 @@
 # Fall mehrere Runden fahren, ohne das Gedaechtnis dazwischen zu leeren (einmal je Fall), und der Lauf laeuft auch mit dem
 # echten Modell. Anders als multiturn_test trifft er den Orchestrator, nicht den Harness eines Agenten.
 #
-# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|fresh_household,
+# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|household_open|fresh_household,
 #         hitl: decline|approve (Default decline), mock_fresh_memory: true (nur Mock: Chat-Gedaechtnis vor jeder Runde leeren),
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
@@ -21,6 +21,9 @@
 # no_cash_account = wie onboarding_done, aber ohne aktives Geldkonto (die Fixture-Konten sind nur waehrend des Falls
 # geschlossen; Wiederherstellung auch nach Abbruch, Mechanik beim Pfad $ClosedAccountsFile unten). Ein Fall, der Konten
 # anlegt, nennt sie mit __E2E__-Praefix, sonst raeumt agent.fn_clear_e2e_data sie nicht weg.
+# household_open = wie onboarding_done, aber der Haushalt-Bereich steht auf 'unknown' (Set-TestHouseholdOnboarding; Finanz-Bereiche bleiben
+# completed). Der Absender kommt allein aus `sender`: sender owner = Owner bei offenem Haushalt, sender member = bestaetigtes Mitglied
+# (Lena, gepairt) bei offenem Haushalt; einen eigenen Mitglied-Start gibt es nicht, member_confirmed setzt den Absender ebenfalls nicht.
 # fresh_household = Zustand direkt nach der Installation: Werkszustand-Reset (core.fn_reset_user_data), nur der Owner im
 # family-Skelett (gepairt), Haushalt und alle Finanz-Bereiche offen, keine Daten. Danach ist das Substrat leer; der Lauf
 # stellt am Ende per Reset + Fixture-Seed den Fixture-Stand wieder her (auch nach Abbruch). Nur auf dem Test-Substrat.
@@ -28,7 +31,8 @@
 # verlangen, bei decline nur die Antwort danach (tests/CLAUDE.md, Flakiness-Absatz zu abgelehnten Karten).
 #
 # Usage:  .\scripts\conversation_test.ps1 [-Id s1,s2] [-Timeout 120] [-OutDir <Ordner>] [-Verbose]       # gratis, Mock-Modell
-#         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt
+#         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt (0 = aus)
+#         -ForceAbortId s2: wirft am Anfang dieses Falls (zeigt den Abbruch-Pfad ohne Kosten; gemeinsame Absicherung: lib/paid_guard.ps1)
 #         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # kostet LLM-Credits
 # Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help",
 # "da sind gerade 1.200 Euro drauf", "Das Gehalt sind 3000 netto, das kommt am 1." (Mock-Szenarien matchen woertlich, mock_lint C2).
@@ -43,6 +47,7 @@ param(
     [switch]$Real,
     [int]$Timeout = 120,
     [double]$MaxCostUsd = 2.0,
+    [string]$ForceAbortId,
     [string]$CasesFile,
     [string]$OutDir,
     [switch]$Verbose
@@ -54,6 +59,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
+. "$PSScriptRoot\lib\paid_guard.ps1"
 $conn      = Get-TestN8nConnection
 $N8nUrl    = $conn.Url
 $ApiKey    = $conn.ApiKey
@@ -82,6 +88,7 @@ $cases    = @(if ($Id) { $allCases | Where-Object { $_.id -in $Id } } else { $al
 $missing  = @(foreach ($one in @($Id)) { if ($one -and $one -notin @($allCases.id)) { $one } })
 if ($missing.Count) { throw "Fall nicht gefunden: $($missing -join ', ')." }
 if (-not $cases) { throw "Keine Faelle in $CasesFile." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
 # Sichtbare Telegram-Aufrufe; alles andere (Tipp-Anzeige, Menue-Setup ...) wird nur gezaehlt.
 $VisibleMethods = @('sendMessage', 'sendSticker', 'sendAnimation', 'sendPhoto', 'sendDocument', 'setMessageReaction',
@@ -182,13 +189,13 @@ WHERE name = 'family';
 "@
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
     if ($r.Code -ne 0) { throw "Pairing (Container-DB) fehlgeschlagen: $($r.Output -join ' ')" }
-    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account', 'fresh_household')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account|fresh_household)." }
+    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account', 'household_open', 'fresh_household')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account|household_open|fresh_household)." }
     if ($fresh) {
         Clear-TestNextStepOffers -Container $Container
         Assert-FreshHousehold
         return
     }
-    Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
+    Set-TestHouseholdOnboarding -Container $Container -Status $(if ("$($Tc.start)" -eq 'household_open') { 'unknown' } else { 'completed' })
     Set-TestPackageOnboarding -Container $Container -Sections $null
     Clear-TestNextStepOffers -Container $Container   # Gruss-/Lebenszeichen-Knopf je Fall frisch (fruehere Suiten verbrauchen den Tagesmerker)
     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.advisor_plans;')
@@ -355,6 +362,7 @@ foreach ($tc in $cases) {
     $uid = if ("$($tc.sender)" -eq 'member') { [long]$MemberUid } else { [long]$script:TestOwnerTelegramUid }
     $res = [ordered]@{ id = "$($tc.id)"; name = "$($tc.name)"; sender = "$($tc.sender)"; start = "$($tc.start)"; hitl = $(if ("$($tc.hitl)" -eq 'approve') { 'approve' } else { 'decline' }); setup_error = ''; rounds = @() }
     try {
+        Test-ForceAbort $tc.id $ForceAbortId   # zeigt den Abbruch-Pfad (roter Fall, Lauf geht weiter) ohne LLM-Kosten
         Initialize-ConversationState $tc
         Clear-ChatSessionMemory -Container $Container -SessionId "$uid"   # einmal je Fall: Runden bauen aufeinander auf
     } catch {
@@ -364,7 +372,7 @@ foreach ($tc in $cases) {
     $n = 0; $abortCase = $false
     foreach ($turn in @($tc.turns)) {
         $n++
-        if ($Real -and $script:runCost -gt $MaxCostUsd) {
+        if ($Real -and (Test-CostLimitExceeded -CostUsd $script:runCost -MaxCostUsd $MaxCostUsd)) {
             Write-Host "    [FAIL] Kostengrenze $MaxCostUsd USD ueberschritten ($([Math]::Round($script:runCost, 3)) USD) - Lauf angehalten." -ForegroundColor Red
             $failed++; $script:stopRun = $true; break
         }
@@ -402,7 +410,9 @@ foreach ($tc in $cases) {
     if ($script:stopRun) { break }
 }
 } finally {
-    # Auch bei Ctrl-C oder Fehler: geschlossene Geldkonten wieder oeffnen, __E2E__-Konten wegraeumen.
+    # Auch bei Ctrl-C oder Fehler: wartende Karten-Executions stoppen, Karten-Sperre loesen (lib/paid_guard.ps1).
+    Invoke-PaidRunCleanup -Container $Container -WorkflowId @($OrchWfId)
+    # Geschlossene Geldkonten wieder oeffnen, __E2E__-Konten wegraeumen.
     try { Restore-ClosedAccounts } catch { Write-Host "    [FAIL] Wiederherstellung: $($_.Exception.Message)" -ForegroundColor Red; $failed++ }
     # fresh_household hat das Substrat geleert (und der Fall Daten angelegt, die nicht alle __E2E__ heissen): erst leeren, dann den
     # Fixture-Stand neu saeen, damit die naechste Suite auf demselben Substrat nicht ohne Fixtures startet.
@@ -413,8 +423,6 @@ foreach ($tc in $cases) {
         } catch { Write-Host "    [FAIL] Fixture-Stand nach fresh_household nicht wiederhergestellt: $($_.Exception.Message) (Abhilfe: bootstrap_test_n8n.ps1 -Reset)" -ForegroundColor Red; $failed++ }
     }
 }
-try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
-Clear-HitlPending -Container $Container
 
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot '.local\conversation_runs' }
 [System.IO.Directory]::CreateDirectory($OutDir) | Out-Null
@@ -463,7 +471,8 @@ Write-Host "$($cases.Count) Fall/Faelle gespielt, $failed Fehler." -ForegroundCo
 Write-Host "Aufzeichnung: $base.md" -ForegroundColor Cyan
 Write-Host "              $base.json" -ForegroundColor Cyan
 # Ohne Rubric-Runde bleibt ein vorhandenes Bundle (z. B. von n8n_test) unangetastet; mit -Real ersetzt es dieser Lauf.
-if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot }
+if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite "conversation_test-$mode" }
 Write-LlmCostReport -Usage $allUsage -Label "conversation_test-$mode" -RepoRoot $RepoRoot
+$failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""
 exit $failed

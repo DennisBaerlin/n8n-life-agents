@@ -1,8 +1,7 @@
 # AGENTS.md
 
 Fast onboarding surface for contributors — human or coding agent. The conventions live in the
-`CLAUDE.md` family (root + `packages/`, `packages/<pkg>/`, `scripts/`, `scripts/build/`, `tests/`,
-`provisioning/`), path-scoped rules in `.claude/rules/` (SQL, PowerShell, code comments) and per-area reference material in `docs/reference/`; when this file and a `CLAUDE.md` disagree, `CLAUDE.md` wins.
+`CLAUDE.md` family (root + `packages/`, `packages/<pkg>/`, `scripts/`, `scripts/build/`, `tests/`, `provisioning/**`), path-scoped rules in `.claude/rules/` (SQL, PowerShell, code comments) and per-area reference material in `docs/reference/`; when this file and a `CLAUDE.md` disagree, `CLAUDE.md` wins.
 
 ## What this project is
 
@@ -34,8 +33,8 @@ No API credits are needed for any of this. The paid LLM suites need your own Ant
 - **Workflows are generated** — write `packages/<pkg>/workflows/` only via `scripts/build/build.ps1`;
   every workflow carries sticky notes (German) as its documentation.
 - **Run repo scripts through the PowerShell tool**, never ad-hoc `psql`/`curl`/`Invoke-RestMethod`;
-  `.ps1` files are UTF-8 with BOM.
-- **LLM-cost test suites** (`n8n_test`, `orch_test`, `e2e_test`, `judge_eval`, `multiturn_test`) and the
+  `.ps1` files are UTF-8 with BOM (except `.claude/hooks/*.ps1`: ASCII, no BOM).
+- **LLM-cost test suites** (the list is the header of `.claude/hooks/enforce_owner_window.ps1`) and the
   dev-instance reset run only inside an owner-opened window (`scripts/grant_owner_window.ps1`, terminal);
   a PreToolUse hook denies them otherwise. The hook only gates Claude Code sessions; the "owner" is
   whoever sits at the terminal of their own clone, and the suites bill that person's Anthropic key.

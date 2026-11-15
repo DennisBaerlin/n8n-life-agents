@@ -607,17 +607,6 @@
     "notes": "S2b (Leitung 2026-11-11): eine Bitte um Rat geht immer an den Spezialisten, dessen router_description sie annimmt (Paket B ergaenzt die Beschreibung); der Router fragt nie selbst nach dem Thema (Befund Station 8)."
   },
   {
-    "id": "oc64",
-    "name": "Naechster Schritt: Gruss bei offenem Haushalt -> eigener Satz statt Hilfe-Agent (3b ohne Gruss)",
-    "task": "Guten Morgen",
-    "chat_id": "test_orc64",
-    "onboarding": "unknown",
-    "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own (agent.guide is NOT called): one short German sentence that greets and suggests setting up the household, then a last line NEXT_STEP. No list of topics.",
-    "quarantined": true,
-    "notes": "Regel 3b nimmt Gruesse aus. Quarantaene: orch_test kennt das Feld onboarding nicht und feuert bei fertigem Haushalt -> der Fall prueft sonst einen anderen Zustand. Re-Evaluierung, sobald orch_test einen Onboarding-Vorzustand setzt; bis dahin deckt real_ingress ri92 (Mock) und das Durchspiel S1 der Leitung den Zustand."
-  },
-  {
     "id": "oc65",
     "name": "Naechster Schritt: zweiter Gruss am Tag (offer no) -> Beispielfrage ohne Markerzeile",
     "task": "Hallo nochmal",
@@ -625,16 +614,5 @@
     "expected_route": null,
     "expected_behavior": "The reply is the orchestrator's own, one short German sentence. When the system flag offer is no it must not end with NEXT_STEP; it invites the user to write, with one quoted example question.",
     "notes": "Laeuft sinnvoll direkt nach oc59 im selben Lauf (Tagesgrenze schon verbraucht); allein entspricht er oc62."
-  },
-  {
-    "id": "oc66",
-    "name": "Naechster Schritt: Mitglied bei offenem Haushalt (wait) -> 'der Owner richtet noch ein', keine Markerzeile",
-    "task": "Hallo",
-    "chat_id": "test_orc66",
-    "onboarding": "unknown",
-    "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own, one short German sentence saying that the household owner is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list.",
-    "quarantined": true,
-    "notes": "Quarantaene: braucht einen Mitglieds-Absender und einen offenen Haushalt; orch_test feuert als Owner ohne Onboarding-Vorzustand. Re-Evaluierung, sobald orch_test beides kann; bis dahin prueft die Leitung den Zustand im Durchspiel (conversation_test S3)."
   }
 ]

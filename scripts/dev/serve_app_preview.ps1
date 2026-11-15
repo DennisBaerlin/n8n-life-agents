@@ -9,6 +9,7 @@
 #   .\scripts\dev\serve_app_preview.ps1 [-Port 8765]
 #   http://localhost:8765/              hell        http://localhost:8765/?scheme=dark   dunkel
 # Strg+C (bzw. Stoppen der Vorschau) beendet den Server. Nur localhost (HttpListener braucht dafuer keine Admin-Rechte).
+# Exit-Code: der Server laeuft bis Strg+C; scheitert der Start (z. B. Port belegt), bricht er mit Exit 1 ab.
 param([int]$Port = 8765)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

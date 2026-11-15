@@ -8,7 +8,9 @@
 # Voraussetzung: Substrat, enable_mock_llm.ps1 -Down, enable_mock_telegram.ps1 aktiv, ANTHROPIC_API_KEY in .env.
 # Usage:  $env:N8NTEST_CONTAINER='..'; $env:N8NTEST_PORT='..'; .\scripts\monitor_probe.ps1 [-Id mp01]
 # Exit-Code = Anzahl roter Faelle; Abbruch durch die Geldgrenze zaehlt als 1.
-param([string[]]$Id, [decimal]$Limit = 0.95, [int]$Timeout = 240)
+# Abbruch-Absicherung wie die uebrigen bezahlten Suiten (lib/paid_guard.ps1): -MaxCostUsd ist die Obergrenze der Summe ueber Wiederholungen
+# (Alias -Limit), -ForceAbortId <id> zeigt den Abbruch-Pfad ohne Kosten, finally raeumt auf und druckt den Kostenbericht auch beim Abbruch.
+param([string[]]$Id, [Alias('Limit')][decimal]$MaxCostUsd = 0.95, [int]$Timeout = 240, [string]$ForceAbortId)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -18,6 +20,7 @@ Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
 }
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
+. "$PSScriptRoot\lib\paid_guard.ps1"
 if ([string]::IsNullOrEmpty($ANTHROPIC_API_KEY)) { throw 'ANTHROPIC_API_KEY fehlt in .env.' }
 $conn = Get-TestN8nConnection; $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Container = $conn.Container
 $state = Get-TestN8nState
@@ -131,12 +134,19 @@ function Invoke-E2eCase($Case) {
     return [pscustomobject]@{ Pass = ($code -eq 0); Usd = $m.Usd; Tokens = $m.Tokens; Searches = $m.Searches; Finding = "exit=$code" }
 }
 
+if ($ForceAbortId -and $ForceAbortId -notin @($Cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 $failed = 0
+$completed = $false
+$runCursor = Get-LlmUsageCursor -Container $Container
+try {
 foreach ($c in $Cases) {
-    if (([decimal]$Ledger.total_usd + [decimal]$c.cap_usd) -gt $Limit) {
-        Write-Host "ABBRUCH vor $($c.id): bisher $([Math]::Round([double]$Ledger.total_usd,3)) $ + Obergrenze $($c.cap_usd) $ > $Limit $." -ForegroundColor Red
+    # Gerundet: die Summe in double darf eine Summe genau auf der Grenze (0,65 + 0,3 = 0,95) nicht ueber sie heben.
+    if (Test-CostLimitExceeded -CostUsd ([Math]::Round([double]$Ledger.total_usd + [double]$c.cap_usd, 6)) -MaxCostUsd ([double]$MaxCostUsd)) {
+        Write-Host "ABBRUCH vor $($c.id): bisher $([Math]::Round([double]$Ledger.total_usd,3)) $ + Obergrenze $($c.cap_usd) $ > $MaxCostUsd $." -ForegroundColor Red
         $failed++; break
     }
+    # Vor dem bezahlten Teil und ohne Verbuchung der Obergrenze: der erzwungene Abbruch kostet nichts.
+    try { Test-ForceAbort $c.id $ForceAbortId } catch { $failed++; Write-CaseAbort -ErrorRecord $_ -CaseId $c.id; continue }
     Assert-LlmGatewayUpstream -Container $Container -Expect real
     Write-Host "[$($c.id)] $($c.name)" -ForegroundColor Cyan
     try {
@@ -152,5 +162,14 @@ foreach ($c in $Cases) {
         Write-Host "    [FAIL] $($_.Exception.Message) (Obergrenze des Falls verbucht)" -ForegroundColor Red
     }
 }
-Write-Host ("Summe gesamt: {0:N3} $ (Grenze {1} $), {2} rot. Rohdaten: {3}" -f [double]$Ledger.total_usd, $Limit, $failed, $RunDir)
+$completed = $true
+} finally {
+    # Auch bei Ctrl-C oder Fehler: __E2E__-Reste des Cron-Falls weg, Karten-Sperre loesen, Kosten des Laufs zeigen.
+    try { Invoke-Sql "SELECT agent.fn_clear_e2e_data();" | Out-Null } catch { }
+    Invoke-PaidRunCleanup -Container $Container
+    if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $runCursor) -Label 'monitor_probe (abgebrochen)' -RepoRoot $RepoRoot }
+}
+Write-AbortedCases
+$failed += Assert-ForceAbortFired $ForceAbortId
+Write-Host ("Summe gesamt: {0:N3} $ (Grenze {1} $), {2} rot. Rohdaten: {3}" -f [double]$Ledger.total_usd, $MaxCostUsd, $failed, $RunDir)
 exit $failed

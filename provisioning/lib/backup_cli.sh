@@ -1131,6 +1131,7 @@ backup_cmd_restore() {
 #   jetzigen Daten, dann eine TX. Jeder Abbruch ueber _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
 _bkp_rs_apply() {
   local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" pkg
+  _pkg_menus_defer   # Menue einmal nach den Paketen (jeder Statuswechsel setzt es sonst neu)
   for pkg in $to_install; do
     log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
     # Subshell: ein internes `die` beendet nur den Install, dann sauberer Abbruch HIER (vor dem Wipe).
@@ -1139,6 +1140,7 @@ _bkp_rs_apply() {
   for pkg in $to_activate; do
     ( _pkg_set_status "$pkg" active ) || _bkp_rdie internal "Paket '$pkg' ließ sich nicht einschalten -> Abbruch vor dem Wipe."
   done
+  _pkg_menus_flush
   # Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
   # Restore-Menge) zaehlt nur aktive Pakete, ein inaktives wuerde nicht truncatet (UNIQUE/PK-Konflikte, Rollback).
   while IFS= read -r pkg; do

@@ -1188,6 +1188,29 @@ function Test-IsWriteTool([string]$Name) {
     if ($script:WriteTools -and $script:WriteTools.Count -gt 0) { return ($script:WriteTools -contains $Name) }
     return ($Name -like 'tool_*')
 }
+# Rueckgaben der Lese-Aufrufe (Werkzeuge, die nicht Schreib-Werkzeug sind) aus dem runData des Agenten, aeltester zuerst, fuer den Bewerter:
+# "<tool>: <Rueckgabe>" je Zeile. Je Aufruf auf $PerCall Zeichen gekuerzt, insgesamt auf $Total (Rest als "... (N weitere Aufrufe gekuerzt)"),
+# damit das Bewerter-Buendel klein bleibt.
+function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total = 6000) {
+    $runs = @()
+    foreach ($p in $RunData.PSObject.Properties) {
+        if (Test-IsWriteTool $p.Name) { continue }
+        foreach ($r in @($p.Value)) {
+            $j = $null; try { $j = $r.data.ai_tool[0][0].json } catch { }
+            if ($null -eq $j) { continue }
+            $txt = ($j | ConvertTo-Json -Depth 6 -Compress)
+            if ($txt.Length -gt $PerCall) { $txt = $txt.Substring(0, $PerCall) + ' ...' }
+            $runs += [pscustomobject]@{ start = [double]$r.startTime; line = "$($p.Name): $txt" }
+        }
+    }
+    $lines = @(); $used = 0; $cut = 0
+    foreach ($r in ($runs | Sort-Object start)) {
+        if ($used + $r.line.Length -gt $Total -and $lines.Count -gt 0) { $cut++; continue }
+        $lines += $r.line; $used += $r.line.Length
+    }
+    if ($cut -gt 0) { $lines += "... ($cut weitere Aufrufe gekuerzt)" }
+    return ($lines -join "`n")
+}
 function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
     foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }
     return $null

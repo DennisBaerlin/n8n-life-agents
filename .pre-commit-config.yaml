@@ -347,7 +347,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/judge_prompt_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/judge_prompt|judge_eval|conversation_test|dev/judge_prompt_test|dev/test_n8n_state)\.ps1$
+        files: ^scripts/(lib/judge_prompt|judge_eval|conversation_test|n8n_test|dev/judge_prompt_test|dev/test_n8n_state)\.ps1$
 
       - id: http-json-test
         name: http_json_test (API answers without charset are read as UTF-8, no mojibake; local listener, no API call)

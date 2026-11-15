@@ -299,7 +299,7 @@ foreach ($tc in $cases) {
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
             other_write_tools = $otherTools
-            read_tools = $readTools; actual_output = (Get-AgentOutput $runData $AgentNodeName)
+            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); actual_output = (Get-AgentOutput $runData $AgentNodeName)
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }

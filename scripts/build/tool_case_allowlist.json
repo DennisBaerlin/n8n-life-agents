@@ -12,17 +12,6 @@
     { "tool": "estate.tool_set_contact", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
     { "tool": "estate.tool_set_digital_account", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
     { "tool": "estate.tool_set_provider_contract", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "estate.tool_set_storage_place", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_book_savings_reservation", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_cancel_handoff_task", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_close_pension", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_close_savings_goal", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_commit_import", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_account", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_holding", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_loan", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_recurring_payment", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_set_pension", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_set_recurring_payment", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" }
+    { "tool": "estate.tool_set_storage_place", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" }
   ]
 }

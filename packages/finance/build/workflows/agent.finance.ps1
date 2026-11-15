@@ -814,7 +814,7 @@ $nToolDeleteRealEstate = New-ToolWorkflowNode 'tool_delete_real_estate' `
     ) @(5280, 208)
 
 $nToolDeleteHolding = New-ToolWorkflowNode 'tool_delete_holding' `
-    'Delete a depot position (holding) that was created BY MISTAKE or left empty (shares=0) after voiding all its trades. Hard-DELETE only when it has NO trade transactions; if trades reference it the tool returns ok:false (void the trades first via tool_void_transaction) - relay that and do NOT retry. Identify it by depot_name + position (its symbol or ISIN as the user names it) - the tool finds it itself; unknown/ambiguous -> ok:false with candidates. Call this tool directly - it shows an approve/decline summary first. Input: depot_name, position.' `
+    'Delete a depot position (holding) that was created BY MISTAKE or left empty (shares=0) after voiding all its trades. Hard-DELETE only when it has NO trade transactions; if trades reference it the tool returns ok:false (only voiding those trades with tool_void_transaction would empty it; that also undoes their money movement) - relay that and do NOT retry. Identify it by depot_name + position (its symbol or ISIN as the user names it) - the tool finds it itself; unknown/ambiguous -> ok:false with candidates. Call this tool directly - it shows an approve/decline summary first. Input: depot_name, position.' `
     @(
         ,@('depot_name', 'Name of the depot holding the position', 'string')
         ,@('position', 'Symbol or ISIN of the position as the user names it', 'string')

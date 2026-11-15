@@ -244,13 +244,21 @@ try {
                 if ($denyAll.IsMatch((Get-BinaryText (Resolve-Path -LiteralPath $b).Path))) { Fail "Wert aus .local/privacy_denylist.txt bzw. .env in Binaerdatei: $b" }
             }
         }
-        # git grep sucht nur vor (Teilstring), ueber Grenze und Endungen entscheidet dasselbe Regex wie in den Text-Modi.
+        # Ein git grep -P mit dem gebuendelten Regex aller Begriffe (dasselbe Regex wie die Text-Modi; (*UTF)(*UCP) macht Falten und
+        # Grenzen locale-unabhaengig). Der -F-Vorfilter mit je einem Teilstring traf ~7000 Zeilen, deren Nachfilter in PowerShell
+        # ueber 60 s brauchte. Faellt -P aus (Build ohne PCRE2, ungueltiges UTF-8 in einer Datei: Exit > 1), gilt der alte Weg.
+        # Der PowerShell-Nachfilter bleibt die letzte Instanz. Schutz-Beleg: privacy_lint_test (Korpus, beide Wege, LC_ALL=C).
         if ($gTerms.Count -gt 0) {
             $denyRx = New-DenyRegex $terms
             $pat = [System.IO.Path]::GetTempFileName()
             try {
-                [System.IO.File]::WriteAllLines($pat, [string[]]$gTerms, $u8)
-                foreach ($h in (Invoke-GitGrep (@('-n', '-I', '-i', '-F', '-f', $pat, '--') + $pathspec))) {
+                [System.IO.File]::WriteAllText($pat, ('(*UTF)(*UCP)' + $denyRx.ToString()), $u8)
+                $hits = @(& git (@('grep', '-n', '-I', '-i', '-P', '-f', $pat, '--') + $pathspec))
+                if ($LASTEXITCODE -gt 1 -or $env:PRIVACY_LINT_NO_PCRE) {
+                    [System.IO.File]::WriteAllLines($pat, [string[]]$gTerms, $u8)
+                    $hits = Invoke-GitGrep (@('-n', '-I', '-i', '-F', '-f', $pat, '--') + $pathspec)
+                }
+                foreach ($h in @($hits | Where-Object { $_ })) {
                     if ($h -match '^(.*?):(\d+):(.*)$' -and $denyRx.IsMatch($Matches[3])) {
                         Fail "Wert aus .local/privacy_denylist.txt bzw. .env: $($Matches[1]):$($Matches[2])"
                     }

@@ -183,14 +183,34 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/locale_lint.ps1
         pass_filenames: false
+        # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer-Texte, Umlaut-Helfer, Fixture, Lint selbst); sonst entfaellt er.
+        # Voller Lauf: pre-push (locale-lint-full) und CI (--all-files).
+        files: ^(packages/|provisioning/|scripts/(build/lib/|locale_lint\.ps1|dev/render_app_intro\.ps1)|tests/fixtures/app_view_model_v1\.json)
+
+      - id: locale-lint-full
+        name: locale_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/locale_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: contract-lint
         name: contract_lint (cross-layer fn/tool/agent contract drift)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/contract_lint.ps1
         pass_filenames: false
+        # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer, Bau-Engine samt Allowlists, Release-Image-Helfer, View-Test); sonst entfaellt er.
+        # Voller Lauf: pre-push (contract-lint-full) und CI (--all-files).
+        files: ^(packages/|provisioning/|scripts/(build/|lib/release_images\.ps1|contract_lint\.ps1)|tests/db/finance/test_view_column_hints\.sql)
+
+      - id: contract-lint-full
+        name: contract_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/contract_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: approval-lint
         name: approval_lint (WS-5b HITL approval_tier matrix vs built workflows, fail-closed)

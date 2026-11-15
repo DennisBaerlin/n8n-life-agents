@@ -202,5 +202,187 @@
     "expected_tool_args": { "backup_key_location": "Umschlag im Tresor", "system_location": "Mini-PC im Keller" },
     "expected_behavior": "The advisor records the household system profile via tool_set_system_profile (backup_key_location = envelope in the safe, system_location = mini-PC in the cellar). LOCATION references only - it must NOT ask for or store the key/passwords. HITL owner_approval.",
     "notes": "WS-5 estate: set_system_profile routing golden (Haushalts-Singleton, owner_approval, adults_only). Korrektheit deckt test_fn_set_system_profile (Kind-Reject/Singleton/partial). Kein e2e (Singleton nicht sentinel-scopebar)."
+  },
+  {
+    "id": "es20",
+    "name": "set_contact: Telefonnummer eines bestehenden Kontakts ändern",
+    "task": "Die Telefonnummer von Steuerberater Weidenfeld hat sich geändert, die neue ist 0123 555000.",
+    "chat_id": "test_es20",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Steuerberater Weidenfeld', estate.fn_create_contact(jsonb_build_object('chat_id','test_e2e_wt','name','Steuerberater Weidenfeld','role','tax_advisor','notes','__E2E__')))",
+    "expected_tool": "tool_set_contact",
+    "expected_tool_args": {
+      "name": "Steuerberater Weidenfeld",
+      "phone": "0123 555000"
+    },
+    "expected_behavior": "The advisor changes the existing contact via tool_set_contact (identify by name, only the phone changes) and does NOT create a new contact.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): set_* mit Voraussetzung (Kontakt) per setup_sql."
+  },
+  {
+    "id": "es21",
+    "name": "delete_contact: Kontakt aus dem Register nehmen",
+    "task": "Streich bitte den Hausarzt Dr. Lindner aus meinen Kontakten, ich habe die Praxis gewechselt.",
+    "chat_id": "test_es21",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Hausarzt Dr. Lindner', estate.fn_create_contact(jsonb_build_object('chat_id','test_e2e_wt','name','Hausarzt Dr. Lindner','role','physician','notes','__E2E__')))",
+    "expected_tool": "tool_delete_contact",
+    "expected_tool_args": {
+      "name": "Hausarzt Dr. Lindner"
+    },
+    "expected_behavior": "The advisor deletes the existing contact via tool_delete_contact (identify by name) and does not merely edit it.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): delete_* mit Voraussetzung (Kontakt) per setup_sql."
+  },
+  {
+    "id": "es22",
+    "name": "set_provider_contract: Kundennummer ändern",
+    "task": "Beim Vertrag mit den Stadtwerken Beispielstadt hat sich die Kundennummer geändert: neu KD-9001.",
+    "chat_id": "test_es22",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Stadtwerke Beispielstadt', estate.fn_create_provider_contract(jsonb_build_object('chat_id','test_e2e_wt','provider','Stadtwerke Beispielstadt','category','utilities','customer_no','KD-1','notes','__E2E__')))",
+    "expected_tool": "tool_set_provider_contract",
+    "expected_tool_args": {
+      "provider": "Stadtwerke Beispielstadt",
+      "customer_no": "KD-9001"
+    },
+    "expected_behavior": "The advisor changes the existing provider contract via tool_set_provider_contract (identify by provider, only customer_no changes) and creates no second contract.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): set_* mit Voraussetzung (Vertrag) per setup_sql."
+  },
+  {
+    "id": "es23",
+    "name": "delete_provider_contract: gekündigten Vertrag entfernen",
+    "task": "Der Vertrag mit Beispielnetz ist gekündigt und ausgelaufen, nimm ihn bitte aus dem Register.",
+    "chat_id": "test_es23",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Beispielnetz', estate.fn_create_provider_contract(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielnetz','category','telecom','customer_no','KD-1','notes','__E2E__')))",
+    "expected_tool": "tool_delete_provider_contract",
+    "expected_tool_args": {
+      "provider": "Beispielnetz"
+    },
+    "expected_behavior": "The advisor deletes the existing provider contract via tool_delete_provider_contract (identify by provider).",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): delete_* mit Voraussetzung (Vertrag) per setup_sql."
+  },
+  {
+    "id": "es24",
+    "name": "set_case: Merkmal eines offenen Falls korrigieren",
+    "task": "Beim Todesfall von Lena sind wir doch Mieter gewesen, bitte korrigiere das.",
+    "chat_id": "test_es24",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "expected_tool": "tool_set_case",
+    "expected_tool_args": {
+      "tenant": "true"
+    },
+    "expected_behavior": "The advisor looks up the open case (SELECT on estate.cases) and corrects the intake fact via tool_set_case (tenant = true). It does not open a new case.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): Der offene Fall entsteht per setup_sql (fn_create_case, relatives Datum); case_id wird dynamisch aufgelöst und nicht geprüft."
+  },
+  {
+    "id": "es25",
+    "name": "cancel_case: versehentlich angelegten Fall abbrechen",
+    "task": "Den Todesfall für Lena habe ich versehentlich angelegt, bitte brich ihn ab.",
+    "chat_id": "test_es25",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "expected_tool": "tool_cancel_case",
+    "expected_behavior": "The advisor looks up the open case and cancels it via tool_cancel_case. It does not delete tasks or open a new case.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): cancel_* auf den offenen Fall aus setup_sql."
+  },
+  {
+    "id": "es26",
+    "name": "set_case_task: Aufgabe als erledigt markieren",
+    "task": "Im Todesfall von Lena ist die Sterbefallanzeige beim Standesamt erledigt, hak die Aufgabe bitte ab.",
+    "chat_id": "test_es26",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "expected_tool": "tool_set_case_task",
+    "expected_tool_args": {
+      "status": "done"
+    },
+    "expected_behavior": "The advisor finds the checklist task (SELECT on estate.case_tasks, template sterbefallanzeige) and marks it done via tool_set_case_task.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): Die Checkliste entsteht mit dem Fall aus setup_sql; case_task_id dynamisch."
+  },
+  {
+    "id": "es27",
+    "name": "create_case_task: eigene Aufgabe zum Fall hinzufügen",
+    "task": "Füge dem Todesfall von Lena die Aufgabe hinzu: Auto aus der Werkstatt holen.",
+    "chat_id": "test_es27",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
+    "expected_tool": "tool_create_case_task",
+    "expected_tool_args": {
+      "title": "Auto aus der Werkstatt holen"
+    },
+    "expected_behavior": "The advisor adds a MANUAL task to the open case via tool_create_case_task (title about collecting the car from the workshop) and does not open a new case.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): Offener Fall aus setup_sql."
+  },
+  {
+    "id": "es28",
+    "name": "set_digital_account: gewünschte Aktion im Todesfall ändern",
+    "task": "Beim Konto bei Beispielmail soll im Todesfall alles gelöscht werden.",
+    "chat_id": "test_es28",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Beispielmail', estate.fn_create_digital_account(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielmail','category','email','notes','__E2E__')))",
+    "expected_tool": "tool_set_digital_account",
+    "expected_tool_args": {
+      "provider": "Beispielmail",
+      "desired_action": "delete"
+    },
+    "expected_behavior": "The advisor changes the existing digital account via tool_set_digital_account (desired_action = delete). It never asks for or stores a password.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): set_* mit Voraussetzung (Konto) per setup_sql."
+  },
+  {
+    "id": "es29",
+    "name": "delete_digital_account: nicht mehr existierendes Konto entfernen",
+    "task": "Mein Konto beim Beispielforum gibt es nicht mehr, nimm es aus dem Register.",
+    "chat_id": "test_es29",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Beispielforum', estate.fn_create_digital_account(jsonb_build_object('chat_id','test_e2e_wt','provider','Beispielforum','category','social','notes','__E2E__')))",
+    "expected_tool": "tool_delete_digital_account",
+    "expected_tool_args": {
+      "provider": "Beispielforum"
+    },
+    "expected_behavior": "The advisor deletes the existing digital account via tool_delete_digital_account (identify by provider).",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): delete_* mit Voraussetzung (Konto) per setup_sql."
+  },
+  {
+    "id": "es30",
+    "name": "delete_special_asset: verkauften Gegenstand entfernen",
+    "task": "Das Lastenrad Beispielmarke haben wir verkauft, nimm es bitte aus dem Register.",
+    "chat_id": "test_es30",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Lastenrad Beispielmarke', estate.fn_create_special_asset(jsonb_build_object('chat_id','test_e2e_wt','asset_type','vehicle','description','Lastenrad Beispielmarke','notes','__E2E__')))",
+    "expected_tool": "tool_delete_special_asset",
+    "expected_tool_args": {
+      "description": "Lastenrad Beispielmarke"
+    },
+    "expected_behavior": "The advisor deletes the existing special-asset stub via tool_delete_special_asset (identify by description).",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): delete_* mit Voraussetzung (Eintrag) per setup_sql."
+  },
+  {
+    "id": "es31",
+    "name": "set_storage_place: Fundort ändern",
+    "task": "Der Aktenordner Wohnzimmer steht jetzt im Arbeitszimmer im Regal.",
+    "chat_id": "test_es31",
+    "timeout_s": 300,
+    "setup_sql": "SELECT pg_temp.ok('Aktenordner Wohnzimmer', estate.fn_create_storage_place(jsonb_build_object('chat_id','test_e2e_wt','name','Aktenordner Wohnzimmer','kind','folder','notes','__E2E__')))",
+    "expected_tool": "tool_set_storage_place",
+    "expected_tool_args": {
+      "name": "Aktenordner Wohnzimmer",
+      "location": "Arbeitszimmer, Regal"
+    },
+    "expected_behavior": "The advisor updates the existing storage place via tool_set_storage_place (only the location changes) and does not create a new one.",
+    "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): set_* mit Voraussetzung (Fundort) per setup_sql."
+  },
+  {
+    "id": "es32",
+    "name": "cancel_case: unbekannte Fall-Nummer -> saubere Ablehnung statt Stille",
+    "task": "Brich bitte den Fall mit der Nummer 99999 ab.",
+    "chat_id": "test_es32",
+    "timeout_s": 300,
+    "expected_tool": "tool_cancel_case",
+    "expected_tool_args": {
+      "case_id": "99999"
+    },
+    "expected_behavior": "The advisor calls tool_cancel_case with case_id 99999. The case does not exist: the tool answers with a clean rejection (ok:false, not an open case) as data - NOT a technical failure. The advisor tells the user briefly that there is no open case with that number, invents no case and opens none.",
+    "notes": "Werkzeug-Fehler 2026-11-15: ein blosses SELECT vor dem Probelauf lieferte bei unbekannter case_id kein Item (Antwort 'did not return a response'). alwaysOutputData am Read-Knoten (Muster New-RequiredRowGate). Dieser Fall belegt den Fehlerpfad; der Golden es25 nutzt einen echten offenen Fall aus setup_sql."
   }
 ]

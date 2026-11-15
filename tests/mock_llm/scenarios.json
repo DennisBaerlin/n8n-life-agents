@@ -1105,6 +1105,110 @@
     "final": "System-Steckbrief eingetragen."
   },
   {
+    "_comment": "Werkzeug-Testfall estate (es20): tool_set_contact. Alle Pflicht-$fromAI als Args.",
+    "match": "Telefonnummer von Steuerberater Weidenfeld",
+    "calls": [
+      {"tool": "tool_set_contact", "args": {"name": "Steuerberater Weidenfeld", "phone": "0123 555000"}}
+    ],
+    "final": "Telefonnummer geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es21): tool_delete_contact. Alle Pflicht-$fromAI als Args.",
+    "match": "Streich bitte den Hausarzt Dr. Lindner",
+    "calls": [
+      {"tool": "tool_delete_contact", "args": {"name": "Hausarzt Dr. Lindner"}}
+    ],
+    "final": "Kontakt entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es22): tool_set_provider_contract. Alle Pflicht-$fromAI als Args.",
+    "match": "Vertrag mit den Stadtwerken Beispielstadt",
+    "calls": [
+      {"tool": "tool_set_provider_contract", "args": {"provider": "Stadtwerke Beispielstadt", "customer_no": "KD-9001"}}
+    ],
+    "final": "Kundennummer geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es23): tool_delete_provider_contract. Alle Pflicht-$fromAI als Args.",
+    "match": "Vertrag mit Beispielnetz ist gekündigt",
+    "calls": [
+      {"tool": "tool_delete_provider_contract", "args": {"provider": "Beispielnetz"}}
+    ],
+    "final": "Vertrag entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es24): tool_set_case. Alle Pflicht-$fromAI als Args.",
+    "match": "Beim Todesfall von Lena sind wir doch Mieter",
+    "calls": [
+      {"tool": "tool_set_case", "args": {"case_id": "1", "tenant": "true"}}
+    ],
+    "final": "Fall korrigiert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es25): tool_cancel_case. Alle Pflicht-$fromAI als Args.",
+    "match": "versehentlich angelegt, bitte brich ihn ab",
+    "calls": [
+      {"tool": "tool_cancel_case", "args": {"case_id": "1"}}
+    ],
+    "final": "Fall abgebrochen."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es26): tool_set_case_task. Alle Pflicht-$fromAI als Args.",
+    "match": "Sterbefallanzeige beim Standesamt erledigt",
+    "calls": [
+      {"tool": "tool_set_case_task", "args": {"case_task_id": "1", "status": "done"}}
+    ],
+    "final": "Aufgabe abgehakt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es27): tool_create_case_task. Alle Pflicht-$fromAI als Args.",
+    "match": "Aufgabe hinzu: Auto aus der Werkstatt holen",
+    "calls": [
+      {"tool": "tool_create_case_task", "args": {"case_id": "1", "title": "Auto aus der Werkstatt holen"}}
+    ],
+    "final": "Aufgabe hinzugefügt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es28): tool_set_digital_account. Alle Pflicht-$fromAI als Args.",
+    "match": "Konto bei Beispielmail soll im Todesfall",
+    "calls": [
+      {"tool": "tool_set_digital_account", "args": {"provider": "Beispielmail", "desired_action": "delete"}}
+    ],
+    "final": "Konto angepasst."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es29): tool_delete_digital_account. Alle Pflicht-$fromAI als Args.",
+    "match": "Konto beim Beispielforum gibt es nicht mehr",
+    "calls": [
+      {"tool": "tool_delete_digital_account", "args": {"provider": "Beispielforum"}}
+    ],
+    "final": "Konto entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es30): tool_delete_special_asset. Alle Pflicht-$fromAI als Args.",
+    "match": "Lastenrad Beispielmarke haben wir verkauft",
+    "calls": [
+      {"tool": "tool_delete_special_asset", "args": {"description": "Lastenrad Beispielmarke"}}
+    ],
+    "final": "Eintrag entfernt."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es31): tool_set_storage_place. Alle Pflicht-$fromAI als Args.",
+    "match": "Aktenordner Wohnzimmer steht jetzt im Arbeitszimmer",
+    "calls": [
+      {"tool": "tool_set_storage_place", "args": {"name": "Aktenordner Wohnzimmer", "location": "Arbeitszimmer, Regal"}}
+    ],
+    "final": "Fundort geändert."
+  },
+  {
+    "_comment": "Werkzeug-Testfall estate (es32): cancel_case mit unbekannter case_id -> saubere Ablehnung (Tool-Fehler als Daten).",
+    "match": "Fall mit der Nummer 99999",
+    "calls": [
+      {"tool": "tool_cancel_case", "args": {"case_id": "99999"}}
+    ],
+    "final": "Es gibt keinen offenen Fall mit dieser Nummer."
+  },
+  {
     "_comment": "paperless Phase 2 (oc24): reine Dokumenten-Frage -> Call_agent_paperless_assistant_ (sanitisierter Route-Tool-Name).",
     "match": "Wann läuft mein Personalausweis ab",
     "calls": [

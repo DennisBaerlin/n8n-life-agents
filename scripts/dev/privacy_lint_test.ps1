@@ -291,6 +291,18 @@ $same = { param($a, $b) if ((@($a | Sort-Object -Unique) -join '|') -ceq (@($b |
 Assert-Lint 'Korpus: gebuendeltes Regex findet genau die erwarteten Zeilen' $false (& $same $viaPcre $expectedFinds)
 Assert-Lint 'Korpus: dieselben Funde wie der Einzel-Teilstring-Weg' $false (& $same $viaPcre $viaFixed)
 Assert-Lint 'Korpus: dieselben Funde mit LC_ALL=C' $false (& $same $viaPcreC $viaPcre)
+# Selbstprobe: liest PCRE einen aktiven Begriff anders als .NET (hier simuliert: das Muster kennt 'Zauberwort' nicht), faellt der Lauf auf
+# den alten Weg zurueck und meldet den Fund trotzdem; die Ausgabe nennt weder Begriff noch Zeile der Probe, die Temp-Datei ist weg.
+$tmpBefore = @(Get-ChildItem ([System.IO.Path]::GetTempPath()) -Directory -Filter 'plp_*' -ErrorAction SilentlyContinue).Count
+$viaProbe = Get-CorpusFinds $r @{ PRIVACY_LINT_TEST_PCRE_DROP = 'Zauberwort' }
+Assert-Lint 'Selbstprobe: abweichend gelesener Begriff erzwingt den Rueckfall, alle Funde bleiben' $false (& $same $viaProbe $expectedFinds)
+$probeOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $r 'scripts\privacy_lint.ps1') 2>&1 | ForEach-Object { "$_" })
+Assert-Lint 'Selbstprobe: ohne Abweichung kein Rueckfall-Hinweis' $false $(if (@($probeOut | Where-Object { $_ -match 'Selbstprobe fehlgeschlagen' }).Count -eq 0) { 0 } else { 1 })
+$env:PRIVACY_LINT_TEST_PCRE_DROP = 'Zauberwort'
+$dropOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $r 'scripts\privacy_lint.ps1') 2>&1 | ForEach-Object { "$_" })
+Remove-Item Env:PRIVACY_LINT_TEST_PCRE_DROP
+Assert-Lint 'Selbstprobe: Rueckfall wird gemeldet, ohne Begriff in der Ausgabe' $false $(if (@($dropOut | Where-Object { $_ -match 'Selbstprobe fehlgeschlagen, alter Weg' }).Count -eq 1 -and @($dropOut | Where-Object { $_ -match 'Zauberwort' }).Count -eq 0) { 0 } else { 1 })
+Assert-Lint 'Selbstprobe: keine Temp-Datei mit Begriffen bleibt liegen' $false $(if (@(Get-ChildItem ([System.IO.Path]::GetTempPath()) -Directory -Filter 'plp_*' -ErrorAction SilentlyContinue).Count -le $tmpBefore) { 0 } else { 1 })
 Remove-TestRepo $r
 
 Write-Host 'privacy_lint_test: owner_fact_lint'

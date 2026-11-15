@@ -98,6 +98,27 @@ function New-DenyRegex([string[]]$Terms) {
     if ($alts.Count -eq 0) { return $null }
     New-Object System.Text.RegularExpressions.Regex(($alts -join '|'), 'IgnoreCase')
 }
+# Selbstprobe des PCRE-Wegs (Baum-Modus): .NET-Regex und PCRE koennen einen Begriff verschieden lesen; dann uebersaehe git grep -P still
+# einen Treffer und der PowerShell-Nachfilter sah die Zeile nie. Jeder aktive Begriff steht als eigene Zeile in einer Temp-Datei ausserhalb
+# des Repos (enthaelt echte Werte: nie ausgeben, im finally loeschen) und muss mit demselben Muster treffen; sonst false -> alter -F-Weg.
+function Test-PcreCoversTerms([string[]]$Terms, [string]$PatternFile) {
+    $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('plp_' + [guid]::NewGuid().ToString('N'))
+    $savedEnv = @{}
+    foreach ($k in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE') { $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $null) }
+    try {
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        [System.IO.File]::WriteAllLines((Join-Path $dir 'p.txt'), $Terms, $u8)
+        Push-Location $dir
+        try { $out = @(& git grep --no-index -n -I -i -P -f $PatternFile -- p.txt); $code = $LASTEXITCODE } finally { Pop-Location }
+        if ($code -gt 1) { return $false }
+        $lines = @($out | ForEach-Object { if ($_ -match '^p\.txt:(\d+):') { [int]$Matches[1] } } | Sort-Object -Unique)
+        return ($lines.Count -eq @($Terms).Count)
+    } catch { return $false }
+    finally {
+        foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k]) }
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 # Prueft einen Text zeilenweise gegen (A) + (B); $Label = Quelle in der Meldung (nie der Wert selbst).
 function Test-PrivacyText([string]$Text, [string]$Label, $DenyRx) {
     $n = 0
@@ -252,9 +273,14 @@ try {
             $denyRx = New-DenyRegex $terms
             $pat = [System.IO.Path]::GetTempFileName()
             try {
-                [System.IO.File]::WriteAllText($pat, ('(*UTF)(*UCP)' + $denyRx.ToString()), $u8)
-                $hits = @(& git (@('grep', '-n', '-I', '-i', '-P', '-f', $pat, '--') + $pathspec))
-                if ($LASTEXITCODE -gt 1 -or $env:PRIVACY_LINT_NO_PCRE) {
+                # Test-Naht (privacy_lint_test): laesst PCRE genau diesen Begriff nicht kennen, wie bei einer abweichend gelesenen Schreibweise.
+                $pcreTerms = if ($env:PRIVACY_LINT_TEST_PCRE_DROP) { New-DenyRegex @($terms | Where-Object { $_ -ne $env:PRIVACY_LINT_TEST_PCRE_DROP }) } else { $denyRx }
+                [System.IO.File]::WriteAllText($pat, ('(*UTF)(*UCP)' + $pcreTerms.ToString()), $u8)
+                $probeOk = Test-PcreCoversTerms $terms $pat
+                if (-not $probeOk) { Write-Host '  [info] Selbstprobe fehlgeschlagen, alter Weg' -ForegroundColor DarkGray }
+                $hits = @()
+                if ($probeOk -and -not $env:PRIVACY_LINT_NO_PCRE) { $hits = @(& git (@('grep', '-n', '-I', '-i', '-P', '-f', $pat, '--') + $pathspec)) }
+                if (-not $probeOk -or $LASTEXITCODE -gt 1 -or $env:PRIVACY_LINT_NO_PCRE) {
                     [System.IO.File]::WriteAllLines($pat, [string[]]$gTerms, $u8)
                     $hits = Invoke-GitGrep (@('-n', '-I', '-i', '-F', '-f', $pat, '--') + $pathspec)
                 }

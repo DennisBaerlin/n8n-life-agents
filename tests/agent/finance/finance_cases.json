@@ -66,7 +66,7 @@
         "notes":  "Externe Ausgabe, Konto explizit -\u003e tool_book_transaction (outflow)."
     },
     {
-        "id":  "tc07",
+        "id":  "tc07", "fixed_date_reason": "Katalog-Beispiel: der Task-Text steht woertlich im Manifest (help examples) und muss mit ihm uebereinstimmen; das Datum ist nur Beispiel, die DB verankert den Rhythmus selbst",
         "name":  "Versicherung anlegen (Personenaufloesung)",
         "task":  "Erfasse eine neue Haftpflichtversicherung bei der Lindenversicherung, Policennummer Lindenversicherung-9876, Jahresprämie 89 Euro, Inhaberin ist meine Frau, Abbuchung vom Lindenbank Giro, gültig ab 01.01.2026, jährliche Zahlung jeweils am 15., erste Abbuchung am 15.01.2026.",
         "chat_id":  "test_tc07",
@@ -182,7 +182,7 @@
         "notes":  "Neues tool_book_loan_payment. Normaler Raten-Pfad ohne expliziten Tilgungsanteil -\u003e fn berechnet aus Restschuld. Judge: actual_tool_input enthaelt loan_name + payment_amount=1200."
     },
     {
-        "id":  "tc18",
+        "id":  "tc18", "fixed_date_reason": "Katalog-Beispiel: der Task-Text steht woertlich im Manifest (help examples) und muss mit ihm uebereinstimmen; das Datum ist nur Beispiel, die DB verankert den Rhythmus selbst",
         "name":  "Sparziel anlegen",
         "task":  "Lege ein neues Sparziel \u0027Notfallfonds\u0027 an: Zielbetrag 10000 Euro, bis Ende 2027, vom Lindenbank Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026.",
         "chat_id":  "test_tc18",
@@ -275,7 +275,7 @@
         "notes":  "Neue weiche Ablehnung aus fn_close_account (settlement-dependency). Hier wird das Tool bewusst AUFGERUFEN (expected_tool gesetzt) und liefert {ok:false, depot_count}; das Pruefobjekt ist, dass der Agent den Grund sauber relayed statt zu retryen. Setzt voraus, dass das Testbroker Cash Girokonto Verrechnungskonto des Testbroker Depot ist (Fixture). Judge: Agent erklaert die Abhaengigkeit + bittet, zuerst das Depot zu loesen."
     },
     {
-        "id":  "tc24",
+        "id":  "tc24", "fixed_date_reason": "Katalog-Beispiel: der Task-Text steht woertlich im Manifest (help examples) und muss mit ihm uebereinstimmen; das Datum ist nur Beispiel, die DB verankert den Rhythmus selbst",
         "name":  "Wiederkehrende Ausgabe anlegen (Abo)",
         "task":  "Lege eine wiederkehrende Ausgabe an: Netflix-Abo, 13,99 Euro monatlich vom Lindenbank Giro, Abbuchungstag 5, erste Zahlung am 05.07.2026.",
         "chat_id":  "test_tc24",
@@ -289,7 +289,7 @@
         "notes":  "Neues tool_create_recurring_payment. Standalone Ausgabe (kein insurance/loan/savings). Judge: actual_tool_input enthaelt direction=expense + amount=13.99 (positiv) + schedule_unit=month."
     },
     {
-        "id":  "tc24b",
+        "id":  "tc24b", "fixed_date_reason": "Katalog-Beispiel: der Task-Text steht woertlich im Manifest (help examples) und muss mit ihm uebereinstimmen; das Datum ist nur Beispiel, die DB verankert den Rhythmus selbst",
         "name":  "Wiederkehrenden internen Transfer notieren",
         "task":  "Notiere meinen monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro auf das Testbroker Cash Girokonto, ab dem 01.07.2026, am 1. des Monats.",
         "chat_id":  "test_tc24b",
@@ -503,7 +503,7 @@
     {
         "id":  "tc40",
         "name":  "Bulk-Import: mehrere Entitaeten stagen",
-        "task":  "Stage bitte folgende Daten fuer den Import, aber committe noch NICHT (ich will erst die Validierung sehen): Konto \"Consors Tagesgeldkonto Neu\" (Girokonto bei Consors, Saldo heute 4200 Euro) und Dauerauftrag \"Spotify Family Neu\" (Ausgabe, 17,99 Euro monatlich vom Consors Tagesgeldkonto Neu, erste Zahlung 2026-07-01).",
+        "task":  "Stage bitte folgende Daten fuer den Import, aber committe noch NICHT (ich will erst die Validierung sehen): Konto \"Consors Tagesgeldkonto Neu\" (Girokonto bei Consors, Saldo heute 4200 Euro) und Dauerauftrag \"Spotify Family Neu\" (Ausgabe, 17,99 Euro monatlich vom Consors Tagesgeldkonto Neu, erste Zahlung {{date:+1m@1}}).",
         "chat_id":  "test_tc40",
         "expected_tool":  "tool_import_stage_rows",
         "notes":  "Stage-only-Intent (explizit KEIN Commit) -\u003e deterministisch genau ein Write-Tool. Erste Fassung (\"importiere in einem Rutsch\") liess den Agenten korrekt stage+commit in einem Turn fahren -\u003e Harness sah den letzten Call (commit) -\u003e False-FAIL. Der volle Pipeline-Pfad ist e2e31."
@@ -523,7 +523,7 @@
     {
         "id":  "tc41",
         "name":  "Sparziel mit beguenstigter Person (beneficiary_person)",
-        "task":  "Lege ein Sparziel 'Ausbildung Lena' an: Zielbetrag 10000 Euro bis Ende 2035, vom Lindenbank Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.08.2026, beguenstigt ist meine Frau.",
+        "task":  "Lege ein Sparziel 'Ausbildung Lena' an: Zielbetrag 10000 Euro bis Ende 2035, vom Lindenbank Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am {{date:+2m@1}}, beguenstigt ist meine Frau.",
         "chat_id":  "test_tc41",
         "expected_tool":  "tool_create_savings_goal",
         "expected_behavior":  "Loest 'meine Frau' via family zu Lena Beispiel auf und uebergibt sie als beneficiary_person; legt das Sparziel mit Abbuchung vom Lindenbank Giro an. Bestaetigt die Beguenstigte (beneficiary_person = Lena) im Tool-Aufruf oder Antworttext.",
@@ -710,11 +710,11 @@
     {
         "id":  "tc57",
         "name":  "Kredit mit erster Rate: kein zusaetzlicher Abbuchungstag erfragt",
-        "task":  "Lege einen Kredit 'Autokredit VW Bank' an: 18000 Euro ausgezahlt am 01.09.2026 direkt an den Autohaendler, 4,9 Prozent Zins, Rate 350 Euro, erste Rate am 15.10.2026 vom Lindenbank Giro.",
+        "task":  "Lege einen Kredit 'Autokredit VW Bank' an: 18000 Euro ausgezahlt am {{date:-2m@1}} direkt an den Autohaendler, 4,9 Prozent Zins, Rate 350 Euro, erste Rate am {{date:+1m@15}} vom Lindenbank Giro.",
         "chat_id":  "test_tc57",
         "expected_tool":  "tool_create_loan",
         "expected_tool_args":  {
-                                   "first_payment_date":  "2026-10-15"
+                                   "first_payment_date":  "{{date:+1m@15}}"
                                },
         "expected_behavior":  "Ruft tool_create_loan direkt auf und laesst schedule_day_of_month leer (der Tag kommt aus der ersten Rate). Fragt nicht zusaetzlich nach dem Abbuchungstag. Laesst disbursement_account_name leer (das Geld ging an den Haendler, nicht auf ein eigenes Konto) und fragt nicht danach. Rechnet Zins/Tilgung nicht selbst.",
         "notes":  "Paket DB-ist-das-Gesetz Top-5-Rueckfrage 'Tag + Datum doppelt' (W5: monthly_annuity/schedule_day nicht mehr als Pflicht gelistet)."
@@ -929,7 +929,7 @@
         "notes":  "Relative Datumsangaben 2026-10-26 (Prompt-Regel 1). Deterministisch: kein Tool. Mock-Tier: kein Szenario (kein Match -> Text)."
     },
     {
-        "id":  "tc79",
+        "id":  "tc79", "fixed_date_reason": "Stichtag der Standmitteilung ist feste Historie (Vertragsdokument), kein Abstand zu heute",
         "name":  "Betriebsrente als eingefuegter Text: Stand zum Stichtag wird Standmitteilung, keine garantierte Rente",
         "task":  "Hier sind die Daten meiner Betriebsrente Testversorgung Mock bei der Testversorgungskasse, Vertragsnummer TV-4711-K: Stand Ihres Versorgungskontos zum 31.12.2025: 18,50 Versorgungspunkte. Anwartschaft auf eine monatliche Betriebsrente wegen Alters: 74,00 Euro.",
         "chat_id":  "test_tc79",
@@ -966,7 +966,7 @@
         "notes":  "Instandhaltungsruecklage 2026-10-27. Judge: actual_tool_input real_estate_name='Musterimmobilie' ohne target_amount/target_date; keine selbst gerechnete Rate."
     },
     {
-        "id":  "tc82",
+        "id":  "tc82", "fixed_date_reason": "Kaufliste mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute",
         "name":  "Kaufliste einer neuen Position: Tranchen-Import statt normaler Kaeufe",
         "task":  "Ich halte im Testbroker Depot schon den iShares Core S&P 500 (ISIN IE00B5BMR087), das ist bisher nicht eingetragen. Hier meine Kaeufe: 03.06.2026 2,5 Stueck zu 540,20 Euro; 10.06.2026 2,4 Stueck zu 552,80 Euro; 17.06.2026 2,45 Stueck zu 548,10 Euro. Bitte so mit echten Kaufkursen erfassen.",
         "chat_id":  "test_tc82",
@@ -1250,7 +1250,7 @@
         "notes":  "Mock-Tier: 10 Aufrufe + Antwort = 11 Modell-Runden, nur mit dem maxIterations-Ausdruck (12 bei drei Markern) moeglich; ein Abbruch endet in status=error und ist rot."
     },
     {
-        "id":  "tc112",
+        "id":  "tc112", "fixed_date_reason": "Einzelkaeufe mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute",
         "name":  "Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen",
         "task":  "Meine VWCE-Position im Testbroker Depot war nur als Bestand uebernommen. Ersetze sie bitte durch die echten Einzelkaeufe: 4 Stueck am 12.03.2025 fuer insgesamt 80 Euro, 3 Stueck am 30.06.2025 fuer insgesamt 66 Euro und 3 Stueck am 15.09.2025 fuer insgesamt 90 Euro.",
         "chat_id":  "test_tc112",

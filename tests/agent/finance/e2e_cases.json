@@ -35,7 +35,7 @@
     {
         "id":  "e2e32",
         "name":  "create_recurring_transfer: interner Dauerauftrag (WS-2)",
-        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ Quelle' und '__E2E__ Ziel'. Richte danach einen monatlichen Dauerauftrag ein: 200 Euro vom __E2E__ Quelle auf das __E2E__ Ziel, erster Transfer am 01.07.2026, am 1. des Monats.",
+        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ Quelle' und '__E2E__ Ziel'. Richte danach einen monatlichen Dauerauftrag ein: 200 Euro vom __E2E__ Quelle auf das __E2E__ Ziel, erster Transfer am {{date:+1m@1}}, am 1. des Monats.",
         "chat_id":  "test_e2e_e2e32",
         "sentinel_accounts":  2,
         "verify_sql":  "SELECT count(*) FROM finance.recurring_payments rp JOIN finance.accounts a ON a.id = rp.account_id JOIN finance.accounts t ON t.id = rp.target_account_id WHERE a.name = '__E2E__ Quelle' AND t.name = '__E2E__ Ziel' AND rp.amount = -200;",
@@ -79,7 +79,7 @@
     {
         "id":  "e2e06",
         "name":  "create_savings_goal: Ziel + recurring_payment (atomarer Create)",
-        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ Spar Cash' und '__E2E__ Spar Topf'. Lege dann ein Sparziel '__E2E__ Urlaubskasse' an: Zielbetrag 2000 Euro, monatliche Sparrate 100 Euro vom __E2E__ Spar Cash, Reserve-Topf das __E2E__ Spar Topf, Abbuchungstag 5, erste Buchung am 2026-07-05.",
+        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ Spar Cash' und '__E2E__ Spar Topf'. Lege dann ein Sparziel '__E2E__ Urlaubskasse' an: Zielbetrag 2000 Euro, monatliche Sparrate 100 Euro vom __E2E__ Spar Cash, Reserve-Topf das __E2E__ Spar Topf, Abbuchungstag 5, erste Buchung am {{date:+1m@5}}.",
         "chat_id":  "test_e2e_e2e06",
         "verify_sql":  "SELECT count(*) FROM finance.savings_goals g JOIN finance.recurring_payments rp ON rp.id = g.recurring_payment_id WHERE g.name = '__E2E__ Urlaubskasse' AND g.target_amount = 2000 AND rp.amount = -100 AND rp.schedule_day_of_month = 5;",
         "expect":  1,
@@ -211,12 +211,12 @@
     {
         "id":  "e2e12",
         "name":  "set_recurring_payment: Betrags-Split (echter Write)",
-        "task":  "Lege ein neues Cash-Konto '__E2E__ RP Cash' an (Inhaber Erika, ohne Zinsen). Lege dann eine wiederkehrende Ausgabe '__E2E__ Abo' an: 10 Euro monatlich vom __E2E__ RP Cash, erste Zahlung 2026-01-01. Aendere danach den Betrag dieser Ausgabe auf 15 Euro ab dem 2026-06-01.",
+        "task":  "Lege ein neues Cash-Konto '__E2E__ RP Cash' an (Inhaber Erika, ohne Zinsen). Lege dann eine wiederkehrende Ausgabe '__E2E__ Abo' an: 10 Euro monatlich vom __E2E__ RP Cash, erste Zahlung {{date:-5m@1}}. Aendere danach den Betrag dieser Ausgabe auf 15 Euro ab dem {{date:-2m@1}}.",
         "chat_id":  "test_e2e_e2e12",
-        "verify_sql":  "SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Abo' AND ((amount = -10 AND valid_to = '2026-06-01') OR (amount = -15 AND valid_from = '2026-06-01' AND valid_to IS NULL));",
+        "verify_sql":  "SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Abo' AND ((amount = -10 AND valid_to = '{{date:-2m@1}}') OR (amount = -15 AND valid_from = '{{date:-2m@1}}' AND valid_to IS NULL));",
         "expect":  2,
         "is_negative":  false,
-        "notes":  "Schema-Fidelity set_recurring_payment Validity-Split: alte Zeile -10 zum Stichtag 2026-06-01 beendet, neue Zeile -15 ab 2026-06-01 (Vorzeichen erhalten). Beide Zeilen account-scoped (Sentinel-Konto) -> fn_clear_e2e_data raeumt sie."
+        "notes":  "Schema-Fidelity set_recurring_payment Validity-Split: alte Zeile -10 zum Stichtag {{date:-2m@1}} beendet, neue Zeile -15 ab {{date:-2m@1}} (Vorzeichen erhalten). Beide Zeilen account-scoped (Sentinel-Konto) -> fn_clear_e2e_data raeumt sie."
     },
     {
         "id":  "e2e13",
@@ -284,7 +284,7 @@
     {
         "id":  "e2e19",
         "name":  "close_savings_goal: Sparziel Hard-DELETE (create + close)",
-        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ CSG Cash' und '__E2E__ CSG Topf'. Lege dann ein Sparziel '__E2E__ CSG Ziel' an: Zielbetrag 3000 Euro, Zieldatum {{date:+13m@-1}}, monatliche Sparrate 100 Euro vom __E2E__ CSG Cash, Reserve-Topf das __E2E__ CSG Topf, Abbuchungstag 1, erste Buchung 2026-07-01. Schliesse dieses Sparziel danach.",
+        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ CSG Cash' und '__E2E__ CSG Topf'. Lege dann ein Sparziel '__E2E__ CSG Ziel' an: Zielbetrag 3000 Euro, Zieldatum {{date:+13m@-1}}, monatliche Sparrate 100 Euro vom __E2E__ CSG Cash, Reserve-Topf das __E2E__ CSG Topf, Abbuchungstag 1, erste Buchung {{date:+1m@1}}. Schliesse dieses Sparziel danach.",
         "chat_id":  "test_e2e_e2e19",
         "verify_sql":  "SELECT count(*) FROM finance.savings_goals WHERE name = '__E2E__ CSG Ziel';",
         "expect":  0,
@@ -396,7 +396,7 @@
     {
         "id":  "e2e31",
         "name":  "Bulk-Import: stage + atomarer Commit (echte Writes)",
-        "task":  "Datenimport: Importiere bitte das Konto \"__E2E__ Importgiro\" (Girokonto, Saldo heute 1000 Euro) und den Dauerauftrag \"__E2E__ Importmiete\" (Ausgabe, 900 Euro monatlich vom __E2E__ Importgiro, erste Zahlung 2026-07-01). Stage die Daten und committe den Batch direkt.",
+        "task":  "Datenimport: Importiere bitte das Konto \"__E2E__ Importgiro\" (Girokonto, Saldo heute 1000 Euro) und den Dauerauftrag \"__E2E__ Importmiete\" (Ausgabe, 900 Euro monatlich vom __E2E__ Importgiro, erste Zahlung {{date:+1m@1}}). Stage die Daten und committe den Batch direkt.",
         "chat_id":  "test_e2e_e2e31",
         "sentinel_accounts":  1,
         "verify_sql":  "SELECT count(*) FROM finance.accounts a JOIN finance.account_balances b ON b.account_id = a.id JOIN finance.recurring_payments rp ON rp.account_id = a.id WHERE a.name = '__E2E__ Importgiro' AND b.balance = 1000 AND rp.name = '__E2E__ Importmiete' AND rp.amount = -900;",
@@ -572,7 +572,7 @@
         "notes":  "Schema-Fidelity until_free_money (tc104 prueft nur Routing): das Ende kommt aus fn_transfer_free_end, nicht vom Modell. Rechnung deckt test_fn_transfer_free_end (db_test) ab. Datum bewusst relativ, damit der Fall nicht veraltet. Cleanup via fn_clear_e2e_data."
     },
     {
-        "id":  "e2e53",
+        "id":  "e2e53", "fixed_date_reason": "Einzelkaeufe mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute",
         "name":  "replace_holding_lots: Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen",
         "task":  "Meine Position VWCE im __E2E__ RL Depot war nur als Bestand uebernommen. Ersetze sie durch die echten Einzelkaeufe: 4 Stueck am 12.03.2025 fuer insgesamt 80 Euro, 3 Stueck am 30.06.2025 fuer insgesamt 66 Euro und 3 Stueck am 15.09.2025 fuer insgesamt 90 Euro.",
         "setup_sql":  "SELECT pg_temp.ok('__E2E__ RL Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ RL Cash','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',1000,'opening_balance_date','2025-01-01')));SELECT pg_temp.ok('__E2E__ RL Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ RL Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ RL Cash'))));SELECT pg_temp.ok('Bestand VWCE', finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ RL Depot'),'settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ RL Cash'),'isin','IE00BK5BQT80','symbol','VWCE','name','Vanguard FTSE All-World','shares',10,'price_per_share',25,'existing_position',true)));",

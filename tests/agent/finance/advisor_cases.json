@@ -169,7 +169,7 @@
     "notes": "Live-Fund 2026-11-04 (Eigenschaft): das Eingabefeld verlangte Markdown und nannte keine Sprache, der gespeicherte Text kam in anderer Sprache als das Gespraech. Prueft nur die Stichprobe, das System kann die Sprache nicht erzwingen. Einnahme per setup_sql wie ac06."
   },
   {
-    "id": "ac17",
+    "id": "ac17", "fixed_date_reason": "Stichtag 31.12.2028 liegt bewusst fest: die Erinnerungs-Mechanik des Beraters wird mit einem festen Datum geprueft, nicht mit dem Abstand zu heute",
     "name": "Frueherer englischer Speicher-Aufruf im Gedaechtnis -> section_content trotzdem deutsch",
     "task": "Speichere den Abschnitt Haushaltsbasis neu, der Dauerauftrag auf das Testkonto endet jetzt am 31.12.2028. Alles andere bleibt so, keine weitere Rueckfrage noetig.",
     "chat_history": {

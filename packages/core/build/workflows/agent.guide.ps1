@@ -24,8 +24,8 @@ function Build-AgentGuide {
     $nextOrderJs     = $nextOrder.OrderJs
     $nextPlanOrderJs = $nextOrder.PlanOrderJs
     $ID_LOAD_CFG  = $LoadConfigId
-    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+finance read-only), nicht
-    # finance_ro (auf das Schema `finance` skopiert).
+    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent/core nur Erlaubnisliste aus util_create_core_ro.sql,
+    # dazu jedes installierte Paket-Schema), nicht unter finance_ro (auf das Schema `finance` skopiert).
     $CRED_PG_RO   = $CRED_CORE_RO
     $CRED_CTX_RO  = $CRED_CONTEXT_RO
 
@@ -125,7 +125,7 @@ function Build-AgentGuide {
     }
 
     # --- Read-Tools ---
-    $descSelect = 'Run read-only SELECT queries (role core_ro: schemas `agent` + `core`, plus the schema of every ACTIVE package). Use it to check which package areas still need onboarding (SELECT core.fn_onboarding_pending_packages()) and to look up details before capturing (dedup). The household onboarding status and the stored household members are already in your system prompt (Household so far). Views are narrow: SELECT * if unsure of columns. On a query error you receive it back - correct and retry. No write access.'
+    $descSelect = 'Run read-only SELECT queries (role core_ro: in the schemas `agent` and `core` only an allowlist of tables is readable - a permission error means the table is not readable for you, do not retry it; the schema of every installed package is readable). Use it to check which package areas still need onboarding (SELECT core.fn_onboarding_pending_packages()) and to look up details before capturing (dedup). The household onboarding status and the stored household members are already in your system prompt (Household so far). Views are narrow: SELECT * if unsure of columns. On a query error you receive it back - correct and retry. No write access.'
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"

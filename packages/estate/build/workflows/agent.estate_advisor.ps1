@@ -95,7 +95,7 @@ function Build-AgentEstateAdvisor {
     }
 
     # --- Read-Tools ---
-    $descSelect = 'Run read-only SELECT queries (role estate_ro: schema `estate` only - the emergency-register tables directives, provider_contracts, digital_accounts, contacts, person_records, funeral_preferences, storage_places, special_assets, onboarding_state) for targeted lookups. For the FULL register picture prefer load_context with estate_overview - it is rendered fresh from these tables and includes the finance-owned registers. Resolve household members via SELECT person_id, full_name, role FROM core.fn_household_persons(). No finance data is reachable here (different role/schema). If a query fails you receive the database error back - read it and retry. You have NO write access.'
+    $descSelect = 'Run read-only SELECT queries (role estate_ro: schema `estate` only - the emergency-register tables directives, provider_contracts, digital_accounts, contacts, person_records, funeral_preferences, storage_places, special_assets, onboarding_state; the event-case tables cases, case_tasks, task_templates; the register views v_directive_gaps, v_register_gaps) for targeted lookups and the case/task ids the event tools need, e.g. SELECT id, case_type, status FROM cases WHERE status = ''open'' and SELECT id, title, status, due_date FROM case_tasks WHERE case_id = (id) ORDER BY due_date. For the FULL register picture prefer load_context with estate_overview - it is rendered fresh from these tables and includes the finance-owned registers. Resolve household members via SELECT person_id, full_name, role FROM core.fn_household_persons(). No finance data is reachable here (different role/schema). If a query fails you receive the database error back - read it and retry. You have NO write access.'
     # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
@@ -110,7 +110,7 @@ function Build-AgentEstateAdvisor {
     $nToolLoad = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
-            toolDescription = 'Fetch the full content of a lazy context document by name (see manifest in your system prompt). REGISTER-FIRST: load estate_overview (the full live household emergency register incl. the finance-owned insurance/account/liability registers) BEFORE answering any register or event question; load family to resolve household members.'
+            toolDescription = 'Fetch the full content of a lazy context document by name (see manifest in your system prompt). estate_overview = the full live household emergency register, rendered fresh at every fetch, incl. the finance-owned insurance/account/liability registers (when finance is installed) and the gap report (open documents/actions per adult); family = household members and their roles.'
             operation = 'executeQuery'
             query = $loadQuery
             options = [ordered]@{ queryReplacement = $loadParams }

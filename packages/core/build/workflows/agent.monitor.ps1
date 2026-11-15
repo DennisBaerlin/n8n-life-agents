@@ -18,7 +18,8 @@ function Build-AgentMonitor {
     # Infra-IDs (build-generierte Subs; per Name aus dem State aufgeloest in build.ps1 — kein ID-Literal)
     $ID_LOAD_CTX  = $LoadContextId
     $ID_LOAD_CFG  = $LoadConfigId
-    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+jedes installierte Paket read-only),
+    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent/core nur Erlaubnisliste aus util_create_core_ro.sql,
+    # dazu jedes installierte Paket-Schema read-only),
     # nicht unter einer engen <pkg>_ro (auf ihr Paket-Schema skopiert).
     $CRED_PG_RO   = $CRED_CORE_RO
     $CRED_CTX_RO  = $CRED_CONTEXT_RO
@@ -117,7 +118,7 @@ function Build-AgentMonitor {
     $pkgMethodsText = if ($MonitorAcquisitionMethodList.Count -gt 0) { ($MonitorAcquisitionMethodList | ForEach-Object { "$($_.Method) (package $($_.Package)) $($_.ParamsDescription)" }) -join '; ' } else { 'none in this build' }
 
     # --- Read-Tools ---
-    $descSelect = 'Run read-only SELECT queries (role core_ro: schemas `agent` + `core`, plus the schema of every ACTIVE package). Your home tables: agent.monitor_triggers (one row per trigger: domain, label, trigger_type, acquisition_method, acquisition_spec, comparator, threshold_value, drawdown_pct, reference_value, due_date, check_interval, next_check_at, status armed|fired|disabled, fail_streak, last_value, action_note) and agent.monitor_observations (audit log of EVERY value acquisition incl. failures with reason - read this FIRST when diagnosing or repairing a trigger). When designing a sql acquisition you may inspect the curated package views (preferred first stop, per package - ' + $viewsText + ') and ALWAYS dry-run the candidate SELECT here before putting it into a trigger. If unsure of column names, SELECT * or use information_schema.columns. A failed query returns the database error - read it and retry corrected. You have NO write access here.'
+    $descSelect = 'Run read-only SELECT queries (role core_ro: in the schemas `agent` and `core` only an allowlist of tables is readable - a permission error means the table is not readable for you, do not retry it; the schema of every installed package is readable). Your home tables: agent.monitor_triggers (one row per trigger: domain, label, trigger_type, acquisition_method, acquisition_spec, comparator, threshold_value, drawdown_pct, reference_value, due_date, check_interval, next_check_at, status armed|fired|disabled, fail_streak, last_value, action_note) and agent.monitor_observations (audit log of EVERY value acquisition incl. failures with reason - read this FIRST when diagnosing or repairing a trigger). When designing a sql acquisition you may inspect the curated package views (preferred first stop, per package - ' + $viewsText + ') and ALWAYS dry-run the candidate SELECT here before putting it into a trigger. If unsure of column names, SELECT * or use information_schema.columns. A failed query returns the database error - read it and retry corrected. You have NO write access here.'
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
     # fn_fetch_context = die gemeinsame Lazy-Fetch-Stelle (render-at-fetch: Kontexte mit einem Renderer in

@@ -59,9 +59,10 @@ Assert-That ($script:HitlCleared -eq 1) 'Karten-Sperre auch nach einem Fehler ge
 
 # --- 3. Statisch: jede bezahlte Suite traegt die Absicherung -----------------------------------------------------
 Write-Host "Bezahlte Suiten"
-$paid = @(Get-ChildItem (Join-Path $repo 'scripts') -Filter '*_test.ps1' | Where-Object {
-    [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) -match 'Assert-LlmGatewayUpstream[^\r\n]*-Expect real' })
-$expected = @('conversation_test.ps1', 'e2e_test.ps1', 'multiturn_test.ps1', 'n8n_test.ps1', 'orch_test.ps1')
+# Bezahlt = echtes Gateway (-Expect real) oder direkter Anthropic-Aufruf (judge_eval); alle scripts/*.ps1, nicht nur *_test.
+$paid = @(Get-ChildItem (Join-Path $repo 'scripts') -Filter '*.ps1' | Where-Object {
+    [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) -match 'Assert-LlmGatewayUpstream[^\r\n]*-Expect real|api\.anthropic\.com/v1/messages' })
+$expected = @('conversation_test.ps1', 'e2e_test.ps1', 'multiturn_test.ps1', 'n8n_test.ps1', 'orch_test.ps1', 'monitor_probe.ps1', 'judge_eval.ps1')
 foreach ($e in $expected) { Assert-That ($paid.Name -contains $e) "$e wird als bezahlte Suite erkannt" }
 foreach ($f in $paid) {
     $text = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
@@ -73,11 +74,15 @@ foreach ($f in $paid) {
     $needs = [ordered]@{
         'Kosten-Helfer geladen (lib/paid_guard.ps1)'    = 'lib\\paid_guard\.ps1'
         'Kostengrenze geprueft'                         = 'Test-RunCostExceeded|Test-CostLimitExceeded'
-        'Aufraeumen im finally'                         = 'finally\s*\{[\s\S]*Invoke-PaidRunCleanup'
         'Abbruch-Fall markiert (Test-ForceAbort)'       = 'Test-ForceAbort'
         'Abbruch-Pruefung am Ende (Assert-ForceAbortFired)' = 'Assert-ForceAbortFired'
     }
     foreach ($k in $needs.Keys) { Assert-That ($text -match $needs[$k]) "$($f.Name): $k" }
+    # finally per AST: der Block selbst muss das Aufraeumen enthalten (ein spaeterer Aufruf ausserhalb zaehlt nicht). Ohne Container
+    # (judge_eval spricht nur die API an) gibt es nichts aufzuraeumen: dort genuegt ein finally (Kostenbericht beim Abbruch).
+    $finals = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $n.Finally }, $true))
+    if ($text -match 'Get-TestN8nConnection') { Assert-That (@($finals | Where-Object { $_.Finally.Extent.Text -match 'Invoke-PaidRunCleanup' }).Count -gt 0) "$($f.Name): Aufraeumen im finally-Block" }
+    else { Assert-That ($finals.Count -gt 0) "$($f.Name): finally-Block (Kostenbericht beim Abbruch)" }
 }
 
 Write-Host ""

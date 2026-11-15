@@ -25,5 +25,9 @@
     { "today": "2026-11-15", "in": "von {{date:0d}} bis {{date:+4w}}", "expect": "von 2026-11-15 bis 2026-12-13" },
     { "today": "2026-11-15", "in": "kein Platzhalter {nicht} hier", "expect": "kein Platzhalter {nicht} hier" }
   ],
+  "lint": {
+    "ok": [ "kein Platzhalter", "{{date:+30d@2}} und {{date:0d}}", "{{date:+30d@-2}}" ],
+    "bad": [ "{{date:+30d@}}", "{{ date:+30d@2}}", "{{Date:+30d@2}}", "{date:+30d@2}", "{{date:+30d@2", "{{date:30@2}}", "{{date:+30x}}" ]
+  },
   "invalid": [ "{{date:foo}}", "{{date:+30d@0}}", "{{date:+30d@32}}", "{{date:+30d@-32}}", "{{date:+30d@-0}}", "{{date:30}}", "{{date:+3x}}" ]
 }

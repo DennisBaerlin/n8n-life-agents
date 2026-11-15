@@ -4,6 +4,8 @@
 # unter .claude/** und gitignorte .local/** sind nicht getrackt und damit ausgeschlossen).
 # Aufruf: .\scripts\layout_lint.ps1 [-Verbose] [-Baseline]   (-Baseline druckt das L4-Allowlist-Geruest)
 #         .\scripts\layout_lint.ps1 -MojibakeFile a.md,b.sql   (nur L8 auf diesen Dateien; Test: scripts/dev/layout_lint_test.ps1)
+#         .\scripts\layout_lint.ps1 -Staged                    (Commit-Hook: L4/L8 nur auf gestagten Dateien, Struktur L1-L3/L5-L7 baumweit;
+#                                                               ohne gestagte Dateien voller Lauf; -Files a.md,b.sql nennt die Dateien selbst)
 #
 # Acht Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
 # die Extraktion/Praedikat-Logik still, wird das Lint hart rot statt leise gruen):
@@ -43,7 +45,23 @@
 # Erweitern der L1/L2/L3-Allowlists oder des L4-Ban-Sets = bewusster reviewter Edit der In-Skript-Arrays
 # (+ Begruendung), nie ad-hoc -> docs/reference/packages.md *Struktur-Invariante*.
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
-param([switch]$Baseline, [string[]]$MojibakeFile, [switch]$Verbose)
+param([switch]$Baseline, [string[]]$MojibakeFile, [string[]]$Files, [switch]$Staged, [switch]$Verbose)
+
+# -Staged (Commit-Hook) bzw. -Files <rel,..>: die Inhaltsregeln je Datei (L4 Retired-Roots-Token, L8 Mojibake) laufen nur auf den
+# gestagten bzw. genannten Dateien; die Strukturregeln (L1-L3, L5-L7) bleiben baumweit. Ohne gestagte Dateien (CI-Checkout, prek --all-files
+# auf sauberem Baum), ohne Schalter und im pre-push-Hook laeuft alles. Wird die L4-Allowlist selbst gestagt, laeuft L4 voll (ihre Zaehler
+# lassen sich nur gegen den ganzen Baum pruefen).
+if ($Staged -and -not $Files) {
+    $RepoForStaged = git -C $PSScriptRoot rev-parse --show-toplevel
+    $Files = @(git -C $RepoForStaged -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR)
+}
+$script:FileScope = $null
+if ($Files) {
+    $script:FileScope = @{}
+    foreach ($f in @($Files | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) { $script:FileScope[($f -replace '\\', '/')] = $true }
+}
+function Test-InFileScope([string]$rel) { return ($null -eq $script:FileScope) -or $script:FileScope.ContainsKey($rel) }
+$script:L4Full = ($null -eq $script:FileScope) -or $script:FileScope.ContainsKey('scripts/build/retired_paths_allowlist.json')
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -224,6 +242,7 @@ $pkgNames = @($tracked | Where-Object { $_ -match '^packages/[^/]+/' } | ForEach
 $found = @{}
 foreach ($rel in $tracked) {
     if (Test-L4Skip $rel) { continue }
+    if (-not $script:L4Full -and -not (Test-InFileScope $rel)) { continue }
     $full = Join-Path $RepoRoot ($rel -replace '/', '\')
     if (-not (Test-Path $full)) { continue }
     foreach ($line in [System.IO.File]::ReadAllLines($full, $u8)) {
@@ -312,6 +331,8 @@ if (-not (Test-Path $alPath)) {
     foreach ($key in ($allow.Keys | Sort-Object)) {
         if (-not $found.ContainsKey($key)) {
             $p = $key -split '\|', 2
+            # Dateibegrenzter Lauf: Eintraege fremder, nicht uebergebener Dateien bleiben unberuehrt (der volle Lauf prueft sie).
+            if (-not $script:L4Full -and -not (Test-InFileScope $p[0]) -and (Test-Path -LiteralPath (Join-Path $RepoRoot ($p[0] -replace '/', '\')))) { continue }
             Fail "L4: allowlist-ORPHAN '$($p[1])' in $($p[0]) -- Token nicht (mehr) vorhanden, Eintrag entfernen (Ratchet schrumpft)."
         }
     }
@@ -380,6 +401,7 @@ foreach ($rel in ($tracked | Where-Object { $_ -match '^(packages/[^/]+/db|tests
 foreach ($e in @(git -C $RepoRoot -c core.quotepath=false ls-files --eol)) {
     if ($e -match '^i/-text') { continue }                                          # Binaerdatei laut git
     $rel = ($e -split "`t", 2)[1]
+    if (-not (Test-InFileScope $rel)) { continue }
     if ($L8Allow.ContainsKey($rel)) { continue }
     $full = Join-Path $RepoRoot ($rel -replace '/', '\')
     if (-not (Test-Path -LiteralPath $full)) { continue }

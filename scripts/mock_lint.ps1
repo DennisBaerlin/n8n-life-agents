@@ -16,6 +16,8 @@
 #      Call irgendeines Cases (Orchestrator-Route sanitisiert zu Call_agent_<route>_, sonst der
 #      Tool-Name). Faengt umbenannte/vertippte Tools im Szenario, bevor der Live-Lauf rot wird.
 #      Leere calls (NULL-Pfad-Szenarien wie "Wetter") sind ausgenommen.
+#   C4 (Datums-Platzhalter): jeder {{date:..}} in scenarios.json und den *_cases.json hat gueltige Grammatik; Beinahe-Schreibweisen
+#      ({{ date:..}}, {date:..}, fehlendes }}) sind Fehler statt stiller Nicht-Treffer (Grammatik + Selbsttest: scripts/lib/date_placeholder.ps1).
 #
 # tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
@@ -174,6 +176,17 @@ foreach ($s in $scenarios) {
             Write-Host "  [FAIL] C3 Szenario '$label': Call '$tool' ist kein erwarteter Call irgendeines Cases (Tool-Namens-Drift?)." -ForegroundColor Red
             $failed++
         }
+    }
+}
+
+# --- C4: Datums-Platzhalter ({{date:+30d@2}}, scripts/lib/date_placeholder.ps1) in scenarios.json und allen *_cases.json gueltig ---
+# Ein Tippfehler loest sonst nicht auf: der Harness sendet den Rohtext, der Mock matcht nicht, der Fall wird rot ohne erkennbaren Grund.
+. (Join-Path $RepoRoot 'scripts\lib\date_placeholder.ps1')
+$placeholderFiles = @('tests\mock_llm\scenarios.json') + @(Get-AgentCaseFile $RepoRoot | ForEach-Object { $_.Rel })
+foreach ($rel in ($placeholderFiles | Select-Object -Unique)) {
+    foreach ($e in @(Get-DatePlaceholderError ([System.IO.File]::ReadAllText((Join-Path $RepoRoot $rel), $Utf8NoBom)))) {
+        Write-Host "  [FAIL] C4 ${rel}: $e" -ForegroundColor Red
+        $failed++
     }
 }
 

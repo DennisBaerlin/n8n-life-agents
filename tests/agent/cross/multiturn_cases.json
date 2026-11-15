@@ -36,6 +36,7 @@
       "id":  "mt04",
       "name":  "Drei Kontoauszuege in drei Nachrichten: der Stapel waechst, nur Neues oder Geaendertes geht raus",
       "setup_sql":  "SELECT pg_temp.ok('__E2E__ RZ Birke', finance.fn_create_account(jsonb_build_object('name','__E2E__ RZ Birke','account_type','cash','currency','EUR','account_number','DE02120300000000202051','opening_balance',889.03,'opening_balance_date','2000-06-30'))); DELETE FROM finance.import_staging WHERE origin = 'recurring_suggestion';",
+      "precondition_sql": "(SELECT count(*) FROM finance.accounts WHERE name = '__E2E__ RZ Birke' AND account_type = 'cash'::finance.account_type AND currency = 'EUR' AND account_number = 'DE02120300000000202051') = 1 AND (SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ RZ Birke') = 889.03 AND (SELECT opening_balance_date FROM finance.accounts WHERE name = '__E2E__ RZ Birke') = DATE '2000-06-30' AND NOT EXISTS (SELECT 1 FROM finance.import_staging WHERE origin = 'recurring_suggestion')",
       "turns":  [
                     "Hier ist mein Auszug April von der Birkenbank [attachment file_id=mock_photo_136a type=document]",
                     "Und hier der Mai [attachment file_id=mock_photo_136b type=document]",

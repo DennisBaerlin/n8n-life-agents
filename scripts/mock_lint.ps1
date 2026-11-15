@@ -23,6 +23,8 @@
 #      im Ratchet tests/util/fixed_dates_allowlist.json (nur sinkend). notes/name/_comment/setup_sql bleiben frei.
 #   C6 (bekannter Absender): eine numerische chat_id eines Agent-Falls muss der Owner oder eine Person aus TestSenderUids (dev/test_n8n_state.ps1) sein,
 #      sonst laeuft der Fall als nicht erkannter Absender. Nicht numerische chat_ids bleiben der Owner.
+#   C7 (Vorbedingung): jeder Fall mit setup_sql traegt ein precondition_sql, das DB-Zustand liest (SELECT/EXISTS); Ausnahmen nur ueber das
+#      sinkende Ratchet tests/util/precondition_allowlist.json (Logik + Selbsttest: scripts/lib/precondition_check.ps1).
 #
 # tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
@@ -244,6 +246,19 @@ foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
         }
     }
 }
+
+# --- C7: Fall mit setup_sql braucht precondition_sql (scripts/lib/precondition_check.ps1) ---
+# Fail-closed: die Vorbedingung belegt gratis, dass die Vorbereitung den Zustand der Erwartung herstellt. Ausnahmen nur in
+# tests/util/precondition_allowlist.json (Ratchet, nur schrumpfend). Selbsttest: scripts/dev/precondition_lint_test.ps1.
+. (Join-Path $RepoRoot 'scripts\lib\precondition_check.ps1')
+$preAllow = @{}
+foreach ($p in (Read-Json 'tests/util/precondition_allowlist.json').entries.PSObject.Properties) { $preAllow[$p.Name] = "$($p.Value)" }
+$preEntries = @()
+foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
+    foreach ($e in @(Get-PreconditionFinding -Cases $f.Cases -File $f.Rel -Allow $preAllow)) { Write-Host "  [FAIL] C7 $e" -ForegroundColor Red; $failed++ }
+    foreach ($c in $f.Cases) { $preEntries += [pscustomobject]@{ File = $f.Rel; Case = $c } }
+}
+foreach ($e in @(Get-PreconditionAllowlistStale -Entries $preEntries -Allow $preAllow)) { Write-Host "  [FAIL] C7 $e" -ForegroundColor Red; $failed++ }
 
 Write-Host ("-" * 64)
 $color =if ($failed -eq 0) { 'Green' } else { 'Red' }

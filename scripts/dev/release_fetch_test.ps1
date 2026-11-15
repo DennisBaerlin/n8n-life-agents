@@ -21,13 +21,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 
-function Invoke-Native([string]$Exe, [string[]]$Arguments) {
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out | ForEach-Object { "$_" }) }
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
 
 Write-Host ""
 Write-Host "Release-Download (install.sh + lifeagents update) gegen Mock-GitHub — Container $Container"

@@ -1,0 +1,29 @@
+{
+  "_comment": "Gemeinsame Pruefwerte fuer {{date:<offset>[@<tag>]}} (scripts/lib/date_placeholder.ps1 und tests/mock_llm/server.js). today = UTC-Datum.",
+  "vectors": [
+    { "today": "2026-11-15", "expr": "+30d@2", "expect": "2027-01-02", "why": "30 Tage ab Mitte November landen am 15.12., naechster 2. liegt im Folgejahr" },
+    { "today": "2026-12-02", "expr": "0d@2",   "expect": "2026-12-02", "why": "derselbe Tag zaehlt" },
+    { "today": "2026-12-03", "expr": "0d@2",   "expect": "2027-01-02", "why": "Jahreswechsel" },
+    { "today": "2026-11-01", "expr": "0d@2",   "expect": "2026-11-02", "why": "noch im selben Monat" },
+    { "today": "2026-01-31", "expr": "+1m@2",  "expect": "2026-03-02", "why": "Monatsende klemmt auf 28.2., dann naechster 2. im Maerz" },
+    { "today": "2026-12-31", "expr": "+1d@2",  "expect": "2027-01-02", "why": "Silvester + 1 Tag = Neujahr, dann 2." },
+    { "today": "2026-11-15", "expr": "+4w",    "expect": "2026-12-13", "why": "Wochen ohne Tag" },
+    { "today": "2026-11-15", "expr": "-3d",    "expect": "2026-11-12", "why": "negativer Offset" },
+    { "today": "2028-02-27", "expr": "+2d@29", "expect": "2028-02-29", "why": "Schaltjahr hat einen 29." },
+    { "today": "2026-02-27", "expr": "+2d@29", "expect": "2026-03-29", "why": "Februar 2026 hat keinen 29., Monat wird uebersprungen" },
+    { "today": "2026-12-20", "expr": "+2m@9",  "expect": "2027-03-09", "why": "20.2.2027, naechster 9. im Maerz" },
+    { "today": "2026-11-15", "expr": "0d",     "expect": "2026-11-15", "why": "heute" },
+    { "today": "2027-02-10", "expr": "+30d@-2", "expect": "2027-03-30", "why": "vorletzter Tag: 12.3. -> 30.3. (31-Tage-Monat)" },
+    { "today": "2027-02-10", "expr": "0d@-2",  "expect": "2027-02-27", "why": "Februar hat 28 Tage, vorletzter = 27." },
+    { "today": "2028-02-10", "expr": "0d@-1",  "expect": "2028-02-29", "why": "Schaltjahr: letzter Tag 29." },
+    { "today": "2026-12-30", "expr": "0d@-2",  "expect": "2026-12-30", "why": "derselbe Tag zaehlt (vorletzter Dezembertag)" },
+    { "today": "2026-12-31", "expr": "0d@-2",  "expect": "2027-01-30", "why": "Jahreswechsel, vorletzter Januartag" },
+    { "today": "2026-04-30", "expr": "0d@-1",  "expect": "2026-04-30", "why": "30-Tage-Monat, letzter Tag" }
+  ],
+  "text": [
+    { "today": "2026-11-15", "in": "erste Ausfuehrung am {{date:+30d@2}}.", "expect": "erste Ausfuehrung am 2027-01-02." },
+    { "today": "2026-11-15", "in": "von {{date:0d}} bis {{date:+4w}}", "expect": "von 2026-11-15 bis 2026-12-13" },
+    { "today": "2026-11-15", "in": "kein Platzhalter {nicht} hier", "expect": "kein Platzhalter {nicht} hier" }
+  ],
+  "invalid": [ "{{date:foo}}", "{{date:+30d@0}}", "{{date:+30d@32}}", "{{date:+30d@-32}}", "{{date:+30d@-0}}", "{{date:30}}", "{{date:+3x}}" ]
+}

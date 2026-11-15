@@ -23,13 +23,7 @@ if (-not $Container) {
     $Container = (Get-TestN8nConnection).Container
 }
 
-function Invoke-Native([string]$Exe, [string[]]$Arguments) {
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @Arguments 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out | ForEach-Object { "$_" }) }
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
 
 Write-Host ""
 Write-Host "Bot-Profilbild (Installer-Schritt) gegen Mock-Telegram — Container $Container"

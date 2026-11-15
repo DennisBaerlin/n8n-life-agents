@@ -23,9 +23,12 @@
 #
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. Kostet LLM-Credits (owner-gegatet).
+# Abbruch-Absicherung wie n8n_test (-MaxCostUsd, -ForceAbortId, finally-Aufraeumen; lib/paid_guard.ps1).
 param(
     [string]$Id,
     [int]$Timeout = 90,
+    [double]$MaxCostUsd = 10.0,   # haelt den Lauf vor dem naechsten Fall an (lib/paid_guard.ps1); 0 = aus
+    [string]$ForceAbortId,        # wirft am Anfang dieses Falls: zeigt den Abbruch-Pfad, ohne dass ein Fall LLM-Kosten verursacht
     [switch]$Verbose
 )
 
@@ -48,8 +51,10 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 # tatsaechlichen Gateway-Upstream, nicht nur den State-Block. Dazu die Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
+. "$PSScriptRoot\lib\paid_guard.ps1"
+$llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
-$AgentNode   = 'Orchestrator agent'
+$AgentNode  = 'Orchestrator agent'
 # Route-Agenten aus den Manifesten (Verdikt-Logik geteilt mit mock_route_test).
 $routeAgents = Get-TestRouteAgent
 
@@ -149,14 +154,22 @@ Write-Host "  Orchestrator: id=$OrchWfId   Ingress: $($ingress.Url)"
 $tcFile = Join-Path $RepoRoot 'tests\agent\core\orch_cases.json'
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
+. "$PSScriptRoot\lib\date_placeholder.ps1"
+$cases = @($cases | ForEach-Object { Resolve-DatePlaceholderDeep -Obj $_ })   # {{date:+30d@2}} in task/Erwartung aufloesen
 if (-not $cases) { throw "Testfall '$Id' nicht gefunden." }
+if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
 Write-Host ""
 Write-Host "Orchestrator Routing Tests -- $($cases.Count) Testfall(e)  (echter Telegram-Ingress)"
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0; $judgeBundle = @()
+$completed = $false
 
+try {
 foreach ($tc in $cases) {
+    if (Test-RunCostExceeded -Container $Container -Cursor $llmCursor -Prices $llmPrices -MaxCostUsd $MaxCostUsd) { $failed++; break }
+    try {   # Ausnahme in einem Fall = roter Fall, der Lauf geht weiter (catch am Schleifenende, Muster: test_n8n_state.ps1 *Fall-Abbruch*)
+    Test-ForceAbort $tc.id $ForceAbortId
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)"
     Write-Host "    Task: '$($tc.task)'"
@@ -254,10 +267,21 @@ foreach ($tc in $cases) {
         $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
         Write-Host "    output: $(Get-SentOutput $runData)" -ForegroundColor Yellow
     }
+    } catch {
+        $failed++
+        Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Invoke-PaidRunCleanup -Container $Container -WorkflowId @($OrchWfId) }
+    }
 }
 
-try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
+$completed = $true
+} finally {
+    # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): wartende Karten-Executions stoppen, Karten-Sperre loesen.
+    Invoke-PaidRunCleanup -Container $Container -WorkflowId @($OrchWfId)
+    if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'orch_test (abgebrochen)' -RepoRoot $RepoRoot }
+}
 
+Write-AbortedCases
+$failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }

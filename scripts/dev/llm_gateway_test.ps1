@@ -48,14 +48,7 @@ $Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gw
 $Canary   = 'CANARY_7f3a9c_PROMPT'
 $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
 
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs, [string]$StdIn)
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    if ($PSBoundParameters.ContainsKey('StdIn')) { $out = $StdIn | & $Exe @CmdArgs 2>&1 } else { $out = & $Exe @CmdArgs 2>&1 }
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out | ForEach-Object { [string]$_ }) }
-}
+. "$PSScriptRoot\..\lib\test_common.ps1"
 function Invoke-InC([string[]]$CmdArgs) { Invoke-Native docker (@('exec', $Container) + $CmdArgs) }
 
 $passed = 0; $failed = 0; $skipped = 0

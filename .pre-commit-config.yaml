@@ -294,6 +294,20 @@ repos:
         pass_filenames: false
         files: ^scripts/dev/(case_abort_test|test_n8n_state|hitl_gate_test|mock_route_test|real_ingress_test)\.ps1$|^scripts/infra_test\.ps1$
 
+      - id: paid-guard-test
+        name: paid_guard_test (every paid suite keeps cost limit, abort handling and cleanup; no suite is started)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/paid_guard_test.ps1
+        pass_filenames: false
+        files: ^scripts/(dev/paid_guard_test|lib/paid_guard|n8n_test|orch_test|e2e_test|multiturn_test|conversation_test)\.ps1$
+
+      - id: date-placeholder-test
+        name: date_placeholder_test ({{date:+30d@2}} resolves identically in PowerShell and in the mock-LLM server)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/date_placeholder_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/util/date_placeholder_vectors\.json)$
+
       - id: tool-call-order-test
         name: tool_call_order_test (tool calls of an agent run in time order, also the ones the n8n action log drops; no Docker)
         language: system

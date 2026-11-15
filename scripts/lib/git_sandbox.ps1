@@ -17,3 +17,17 @@ function Initialize-GitSandbox([string]$Dir) {
     $want = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Dir).Path).TrimEnd('\', '/')
     if (-not $top -or [System.IO.Path]::GetFullPath($top).TrimEnd('\', '/') -ne $want) { throw "git arbeitet nicht im Wegwerf-Repo: $top" }
 }
+
+# Invoke-SandboxGit <args> [-Dir] -> git im Wegwerf-Repo (Standard: $sandbox des Aufrufers), wirft bei Exit-Code != 0.
+function Invoke-SandboxGit([string[]]$GitArgs, [string]$Dir = $sandbox) {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & git -C $Dir -c user.name=Test -c user.email=test@example.com -c core.autocrlf=false @GitArgs *> $null } finally { $ErrorActionPreference = $prev }
+    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') fehlgeschlagen" }
+}
+
+# Write-SandboxFile <relativer Pfad> <Text> -> schreibt UTF-8 ohne BOM nach $sandbox des Aufrufers (legt Ordner an).
+function Write-SandboxFile([string]$Rel, [string]$Text) {
+    $path = Join-Path $sandbox $Rel
+    New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
+    [System.IO.File]::WriteAllText($path, $Text, (New-Object System.Text.UTF8Encoding($false)))
+}

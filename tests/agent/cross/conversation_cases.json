@@ -89,7 +89,7 @@
         "forbid_texts": ["NEXT_STEP"],
         "stop_on_fail": true,
         "expect_sql": [ { "sql": "SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household';", "equals": "completed" } ],
-        "expected_behavior": "The household area is marked as done and the reply says so in a friendly short sentence. It points to the next step (the finance areas) at most once in the agent's own text, without a list of commands and without a topic list. Judge ONLY the agent's own text: the onboarding menu and its 'Weiter: <area>' button are added by the system after the reply (a deterministic next-step message) and do not count as a second pointer or as a topic list."
+        "expected_behavior": "The household area is marked as done and the reply says so in a friendly short sentence. It may name the next area once and ask once whether the user wants to continue with it now: a pointer plus that one question is fine. It must not name several areas, list commands or topics, or start the next area on its own. Judge ONLY the agent's own text: the onboarding menu and its 'Weiter: <area>' button are added by the system after the reply (a deterministic next-step message) and do not count as a second pointer or as a topic list."
       },
       {
         "tap": "onboarding:finance:accounts", "expect_node": "Run onboarding finance", "forbid_texts": ["NEXT_STEP"],

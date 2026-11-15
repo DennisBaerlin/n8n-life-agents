@@ -34,8 +34,8 @@
     "task": "Meine Konten: Ulmenbank Giro Neu (Girokonto, Saldo heute 3450 Euro) und Birkenbank Flexkonto Neu (Girokonto, Saldo 1200 Euro).",
     "chat_id": "test_gc04",
     "expected_tool": null,
-    "expected_behavior": "WS-B3 (O3): the guide no longer captures financial entities. It must NOT call a staging/create tool; instead it explains that accounts (and the other financial areas) are recorded by the bookkeeper (agent.finance) — the user just tells the bookkeeper, or sends a statement photo. A friendly hand-off without any write passes.",
-    "notes": "Bis WS-B3 stagte der Guide die Konten selbst (import_stage_rows). Mit der DRY-Onboarding-Aufteilung (O3) sind die 5 Finanz-Sektionen paket-besessen -> der Buchhalter erfasst sie (Self-Onboarding); der Guide verweist nur."
+    "expected_behavior": "WS-B3 (O3): the guide no longer captures financial entities. It must NOT call a staging/create tool. It says plainly that it does not record the accounts here and what really works: the user simply sends the accounts again as a new message, or sends a photo of the account statement. FAIL if the reply offers or announces to forward, pass on, connect or hand the user over (e.g. 'Soll ich dich dorthin weiterleiten?', 'ich leite dich weiter'): the guide cannot do that. Naming who records accounts is allowed but not required.",
+    "notes": "Bis WS-B3 stagte der Guide die Konten selbst (import_stage_rows). Mit der DRY-Onboarding-Aufteilung (O3) sind die 5 Finanz-Sektionen paket-besessen -> der Buchhalter erfasst sie (Self-Onboarding); der Guide verweist nur. 2026-11-15: bezahlter Lauf bot eine Weiterleitung an, die es nicht gibt, und die alte Rubrik liess sie durch (Owner: Angebot streichen); Rubrik macht das Weiterleitungs-Angebot rot."
   },
   {
     "id": "gc05",
@@ -51,8 +51,8 @@
     "task": "Wie geht es jetzt los? Ich habe gerade alles installiert.",
     "chat_id": "test_gc07",
     "expected_tool": null,
-    "expected_behavior": "Install-UX-Phase 6 (owner report): after the installation the owner already exists in the household (Household so far lists them with name and stored birth date). The guide names the concrete next step the system gives (next_step) in two or three sentences; /onboarding or the package-install command may be mentioned, but are not required. It must NOT ask again for the owner's first name, last name or birth date, must NOT mention a specialist whose package is not active (installed_packages), and must NOT call a write tool.",
-    "notes": "Kein Mock-Szenario noetig (expected_tool=null; kein scenarios.json-match ist Substring des Tasks)."
+    "expected_behavior": "Install-UX-Phase 6 (owner report): after the installation the owner already exists in the household (Household so far lists them with name and stored birth date). The guide names the concrete next step the system gives (next_step) in at most four short sentences; /onboarding or the package-install command may be mentioned, but are not required. It must NOT ask again for the owner's first name, last name or birth date, must NOT mention a specialist whose package is not active (installed_packages), and must NOT call a write tool.",
+    "notes": "Kein Mock-Szenario noetig (expected_tool=null; kein scenarios.json-match ist Substring des Tasks). 2026-11-15 Owner: bis zu vier kurze Saetze sind in Ordnung (vorher zwei oder drei; der bezahlte Lauf war nur an der Satzzahl rot)."
   },
   {
     "id": "gc06",

@@ -16,8 +16,8 @@
     "chat_id": "test_es02",
     "timeout_s": 240,
     "expected_tool": null,
-    "expected_behavior": "Event mode: the advisor must FIRST acknowledge the loss briefly and empathetically, THEN give exactly ONE concrete next step (typically the medical death certificate / checking urgent insurance claim deadlines) and offer to continue step by step - it must NOT dump a full checklist, must NOT invent register data or concrete policy deadlines it has not read, and must NOT call any write tool.",
-    "notes": "WS-1 estate: Ereignisfall-Kondolenz-Golden (judge-Rubric; die volle Trauer-Ton-Kalibrierung mit hand-gelabelten Faellen kommt mit WS-3 judge_labels). Kein Case-Tool in WS-1 - der Advisor begleitet manuell."
+    "expected_behavior": "Event mode: the advisor must FIRST acknowledge the loss briefly and empathetically, THEN give exactly ONE concrete next step (typically the medical death certificate / checking urgent insurance claim deadlines) and offer to continue step by step - it must NOT dump a full checklist, must NOT invent register data or concrete policy deadlines it has not read, and must NOT call any write tool. Count the steps: every action the reply asks the user to take counts, also a warning phrased as its own to-do (e.g. 'do not close the bank account yet') or a second errand named alongside the first (e.g. doctor AND undertaker). Two or more such steps = FAIL. One question back about the facts (who, Bundesland, special cases) is not a step.",
+    "notes": "WS-1 estate: Ereignisfall-Kondolenz-Golden (judge-Rubric; die volle Trauer-Ton-Kalibrierung mit hand-gelabelten Faellen kommt mit WS-3 judge_labels). Kein Case-Tool in WS-1 - der Advisor begleitet manuell. 2026-11-15: bezahlter Lauf nannte drei Schritte (Arzt, Bestatter, Konto-Warnung als eigener Punkt); Rubrik zaehlt Warnungen als Schritt, Ursache im Prompt (Pflicht-Warnungen ohne Bindung an ihren Schritt) behoben."
   },
   {
     "id": "es03",

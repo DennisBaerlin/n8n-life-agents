@@ -892,6 +892,32 @@ CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plp
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
 }
 
+# Teardown (optional je Case, Feld teardown_sql): raeumt, was agent.fn_clear_e2e_data() nicht kennt (Zustand ohne __E2E__-Sentinel, den ein
+# setup_sql setzt, z. B. Plan-Zahlen in core_contexts), damit er spaetere Faelle nicht erreicht. Gleiche Regeln wie setup_sql (einfache
+# Hochkommas). Ablauf aller Treiber mit setup_sql (n8n_test, mock_route_test, e2e_test, multiturn_test): Register-TestCaseTeardown merkt
+# das Feld VOR dem setup_sql (es laeuft also auch, wenn das setup_sql mittendrin scheitert); Complete-TestCaseTeardown fuehrt es aus, und zwar
+# nach dem fn_clear_e2e_data des Falls, vor dem naechsten Fall und im finally am Lauf-Ende (rot, abgebrochen, Vorbereitung gescheitert: egal).
+# Complete wirft nie (laeuft im finally) und liefert die Fehlermeldung oder $null; der Treiber zaehlt sie als roten Fall.
+$script:PendingTeardown = $null
+function Invoke-TestCaseTeardown {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql)
+    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', $Sql)
+    if ($res.Code -ne 0) { throw "teardown_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
+}
+function Register-TestCaseTeardown {
+    param([Parameter(Mandatory)][object]$Case)
+    $sql = if ($Case.PSObject.Properties['teardown_sql'] -and $Case.teardown_sql) { [string]$Case.teardown_sql } else { '' }
+    $script:PendingTeardown = if ($sql) { @{ id = "$($Case.id)"; sql = $sql } } else { $null }
+}
+function Complete-TestCaseTeardown {
+    param([Parameter(Mandatory)][string]$Container)
+    $p = $script:PendingTeardown
+    if ($null -eq $p) { return $null }
+    $script:PendingTeardown = $null
+    try { Invoke-TestCaseTeardown -Container $Container -Sql $p.sql; return $null }
+    catch { return "Aufraeumen nach [$($p.id)]: $($_.Exception.Message)" }
+}
+
 # Agent-Test-Vorbereitung (n8n_test + mock_route_test + e2e_test, eine Stelle): der Test-Absender ist immer der gepairte
 # Fixture-Owner (wie produktiv: der Owner schreibt dem Bot). Eine Zufalls-chat_id gehoerte keiner Person — dann
 # blieben per-Person-Gates zu, Haushalts-Schreibwege (adults_only, owner_only) lehnten ab und Agenten fragten

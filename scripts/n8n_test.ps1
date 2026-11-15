@@ -193,6 +193,9 @@ foreach ($tc in $cases) {
     # Optionale Voraussetzungen des Cases (setup_sql, __E2E__-Entitaeten, z. B. die Einnahme, ohne die fn_plan_readiness das
     # Plan-Interview sperrt): gelten nur fuer diesen Case, die Fixtures bleiben ohne Einnahme (real_ingress ri07e).
     if ($setupDirty) { Clear-TestCaseSetup; $setupDirty = $false }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
+    Register-TestCaseTeardown $tc
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         $setupDirty = $true
         try { Invoke-TestCaseSetup -Container $Container -Sql ([string]$tc.setup_sql) }
@@ -312,6 +315,8 @@ $completed = $true
 } finally {
     # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): __E2E__-Setup wegraeumen, wartende Karten-Executions stoppen, Karten-Sperre loesen.
     if ($setupDirty) { try { Clear-TestCaseSetup } catch { Write-Host "    [FAIL] Aufraeumen: $($_.Exception.Message)" -ForegroundColor Red; $failed++ } }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
     Invoke-PaidRunCleanup -Container $Container -WorkflowId @($TargetWfId)
     if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'n8n_test (abgebrochen)' -RepoRoot $RepoRoot }
 }

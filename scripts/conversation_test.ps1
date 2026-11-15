@@ -468,7 +468,7 @@ Write-Host "$($cases.Count) Fall/Faelle gespielt, $failed Fehler." -ForegroundCo
 Write-Host "Aufzeichnung: $base.md" -ForegroundColor Cyan
 Write-Host "              $base.json" -ForegroundColor Cyan
 # Ohne Rubric-Runde bleibt ein vorhandenes Bundle (z. B. von n8n_test) unangetastet; mit -Real ersetzt es dieser Lauf.
-if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot }
+if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite "conversation_test-$mode" }
 Write-LlmCostReport -Usage $allUsage -Label "conversation_test-$mode" -RepoRoot $RepoRoot
 $failed += Assert-ForceAbortFired $ForceAbortId
 Write-Host ""

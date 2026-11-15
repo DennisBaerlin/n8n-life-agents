@@ -286,7 +286,7 @@ Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count) Tests bestanden, $failed fehlgeschlagen." -ForegroundColor $color
-Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot
+Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite 'orch_test'
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'orch_test' -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

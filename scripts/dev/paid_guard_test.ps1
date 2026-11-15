@@ -4,6 +4,8 @@
 #  2. Invoke-PaidRunCleanup: stoppt wartende und laufende Executions je Workflow, loest die Karten-Sperre, schluckt Fehler.
 #  3. Statisch: jede scripts/*_test.ps1 mit echtem Gateway (-Expect real) parst fehlerfrei und traegt die Absicherung (Parameter -MaxCostUsd und
 #     -ForceAbortId, Kostenpruefung, finally-Aufraeumen, Abbruch-Fall-Helfer). Eine neue bezahlte Suite ohne sie macht diesen Test rot.
+#  4. Bewerter-Urteile (lib/judge_record.ps1): Schreibweg mit Attrappe in einem Temp-Ordner (Zeilenformat, Dateiname, Kalibrier-Zeile, Schreibfehler),
+#     Ablageort im Haupt-Checkout, Verdrahtung in judge_eval und den drei Bundle-Schreibern (Suite).
 # Usage:  .\scripts\dev\paid_guard_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -83,6 +85,55 @@ foreach ($f in $paid) {
     $finals = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $n.Finally }, $true))
     if ($text -match 'Get-TestN8nConnection') { Assert-That (@($finals | Where-Object { $_.Finally.Extent.Text -match 'Invoke-PaidRunCleanup' }).Count -gt 0) "$($f.Name): Aufraeumen im finally-Block" }
     else { Assert-That ($finals.Count -gt 0) "$($f.Name): finally-Block (Kostenbericht beim Abbruch)" }
+}
+
+# --- 4. Urteile des Bewerters bleiben erhalten (lib/judge_record.ps1) --------------------------------------------
+Write-Host "Bewerter-Urteile"
+. (Join-Path $PSScriptRoot '..\lib\judge_record.ps1')
+$tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("judge_record_test_" + [guid]::NewGuid().ToString('N'))
+try {
+    $file = Get-JudgeRunFile -RepoRoot $repo -Suite 'n8n_test:demo cases' -Now ([datetime]'2026-11-15T10:20:30') -LocalRoot $tmpRoot
+    Assert-That ($file -eq (Join-Path $tmpRoot '.local\judge_runs\20261115-102030-n8n_test-demo-cases.jsonl')) 'Dateiname: Zeit und Suite, Sonderzeichen ersetzt, unter .local/judge_runs'
+    $e1 = [pscustomobject]@{ id = 'tc01'; suite = 'n8n_test-demo_cases'; det_pass = $true }
+    $e2 = [pscustomobject]@{ id = 'tc02'; suite = 'n8n_test-demo_cases'; det_pass = $false }
+    Add-JudgeRunRecord -Path $file -Entry $e1 -Verdict 'PASS' -Reason 'nennt den Saldo, "mit Anfuehrung" und Umlaut ae' -Model 'm-test' -Overall 'PASS' -Commit 'abc1234' -Dirty $false
+    Add-JudgeRunRecord -Path $file -Entry $e2 -Verdict 'ERROR' -Reason '' -Model 'm-test' -Overall 'ERROR' -Commit 'abc1234' -Dirty $true
+    $lines = @([System.IO.File]::ReadAllLines($file, $Utf8NoBom))
+    Assert-That ($lines.Count -eq 2) 'eine Zeile je Fall, angehaengt'
+    $r1 = $lines[0] | ConvertFrom-Json; $r2 = $lines[1] | ConvertFrom-Json
+    Assert-That ($r1.case_id -eq 'tc01' -and $r1.suite -eq 'n8n_test-demo_cases' -and $r1.verdict -eq 'PASS' -and $r1.overall -eq 'PASS' -and $r1.det_pass -eq $true) 'Zeile 1: Fall-ID, Suite, Urteil, Gesamturteil, det_pass'
+    Assert-That ($r1.reason -eq 'nennt den Saldo, "mit Anfuehrung" und Umlaut ae' -and $r1.model -eq 'm-test' -and $r1.commit -eq 'abc1234' -and $r1.dirty -eq $false) 'Zeile 1: Begruendung unveraendert (auch mit Anfuehrungszeichen), Modell, Commit'
+    Assert-That ($r2.verdict -eq 'ERROR' -and $r2.det_pass -eq $false -and $r2.dirty -eq $true) 'Zeile 2: auch ein Judge-ERROR wird festgehalten'
+    Assert-That ($null -ne ($r1.ts -as [datetime])) 'Zeitstempel lesbar'
+    $fileC = Get-JudgeRunFile -RepoRoot $repo -Suite 'calibrate' -LocalRoot $tmpRoot
+    Add-JudgeRunRecord -Path $fileC -Entry ([pscustomobject]@{ id = 'jl1'; human_verdict = 'FAIL' }) -Verdict 'PASS' -Reason 'x' -Model 'm-test' -Mode 'calibrate'
+    $rc = ([System.IO.File]::ReadAllLines($fileC, $Utf8NoBom) | Select-Object -First 1) | ConvertFrom-Json
+    Assert-That ($rc.mode -eq 'calibrate' -and $rc.human_verdict -eq 'FAIL' -and $null -eq $rc.PSObject.Properties['det_pass']) 'Kalibrierung: human_verdict statt det_pass'
+    # Schreibfehler stoert den Lauf nicht: ein Ordner an der Stelle der Datei.
+    $blocked = Join-Path $tmpRoot 'blocked.jsonl'; New-Item -ItemType Directory -Path $blocked -Force | Out-Null
+    $threw = $false; try { Add-JudgeRunRecord -Path $blocked -Entry $e1 -Verdict 'PASS' -Reason 'x' -Model 'm' 3>$null } catch { $threw = $true }
+    Assert-That (-not $threw) 'Schreibfehler wirft nicht (nur Warnung)'
+    Assert-That ((Get-JudgeRunSuite @($e1, $e2)) -eq 'n8n_test-demo_cases' -and (Get-JudgeRunSuite @($e1, [pscustomobject]@{ id = 'x'; suite = 'orch_test' })) -eq 'gemischt' -and (Get-JudgeRunSuite @([pscustomobject]@{ id = 'x' })) -eq 'unbekannt') 'Suite des Laufs: gemeinsame, gemischt, unbekannt'
+} finally { Remove-Item -Recurse -Force $tmpRoot -ErrorAction SilentlyContinue }
+Assert-That ((Resolve-MainCheckoutRoot -RepoRoot 'C:\repo\wt' -CommonDir 'C:/repo/.git') -eq 'C:\repo') 'Worktree: Ort ist der Haupt-Checkout (absolutes git-common-dir)'
+Assert-That ((Resolve-MainCheckoutRoot -RepoRoot 'C:\repo' -CommonDir '.git') -eq 'C:\repo') 'Haupt-Checkout: relatives .git bleibt im Repo'
+Assert-That ((Resolve-MainCheckoutRoot -RepoRoot 'C:\repo' -CommonDir '') -eq 'C:\repo') 'ohne git-common-dir: Repo-Root'
+Assert-That ((Resolve-MainCheckoutRoot -RepoRoot 'C:\repo' -CommonDir 'C:/bare/repo.git') -eq 'C:\repo') 'ohne .git-Ordner (bare): Repo-Root'
+$realFile = Get-JudgeRunFile -RepoRoot $repo -Suite 'x'
+Assert-That ($realFile -match '\\\.local\\judge_runs\\' -and (Test-Path (Split-Path (Split-Path (Split-Path $realFile -Parent) -Parent) -Parent))) 'echtes Repo: Ablageort liegt unter einem vorhandenen Checkout'
+$tmpB = Join-Path ([System.IO.Path]::GetTempPath()) ("judge_bundle_test_" + [guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path (Join-Path $tmpB 'tests\agent') -Force | Out-Null
+    Write-JudgeBundle -Entries @([ordered]@{ id = 'a1' }, [ordered]@{ id = 'a2'; suite = 'eigene' }) -RepoRoot $tmpB -Suite 'orch_test' 6>$null
+    $bd = [System.IO.File]::ReadAllText((Join-Path $tmpB 'tests\agent\judge_bundle.json'), $Utf8NoBom) | ConvertFrom-Json
+    Assert-That ($bd[0].suite -eq 'orch_test' -and $bd[1].suite -eq 'eigene') 'Write-JudgeBundle stempelt die Suite, eine vorhandene bleibt'
+} finally { Remove-Item -Recurse -Force $tmpB -ErrorAction SilentlyContinue }
+# Verdrahtung: judge_eval speichert je Urteil, die Bundle-Schreiber stempeln die Suite.
+$je = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\judge_eval.ps1'), $Utf8NoBom)
+Assert-That ($je -match 'lib\\judge_record\.ps1' -and ([regex]::Matches($je, 'Save-JudgeVerdict \$e \$j')).Count -eq 2) 'judge_eval speichert in beiden Modi (Bundle und Kalibrierung) jedes Urteil'
+foreach ($s in 'n8n_test', 'orch_test', 'conversation_test') {
+    $st = [System.IO.File]::ReadAllText((Join-Path $repo "scripts\$s.ps1"), $Utf8NoBom)
+    Assert-That ($st -match 'Write-JudgeBundle [^\r\n]*-Suite ') "${s}: Write-JudgeBundle stempelt die Suite"
 }
 
 Write-Host ""

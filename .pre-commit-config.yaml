@@ -319,7 +319,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/paid_guard_test.ps1
         pass_filenames: false
-        files: ^scripts/(dev/paid_guard_test|lib/paid_guard|n8n_test|orch_test|e2e_test|multiturn_test|conversation_test)\.ps1$
+        files: ^scripts/(dev/paid_guard_test|dev/test_n8n_state|lib/paid_guard|lib/judge_record|n8n_test|orch_test|e2e_test|multiturn_test|conversation_test|monitor_probe|judge_eval)\.ps1$
 
       - id: date-placeholder-test
         name: date_placeholder_test ({{date:+30d@2}} resolves identically in PowerShell and in the mock-LLM server)

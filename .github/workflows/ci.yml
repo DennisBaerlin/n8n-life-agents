@@ -110,3 +110,22 @@ jobs:
 
       - name: Wizard tests (node --test)
         run: node --test --test-concurrency=1 tests/wizard/*.test.js
+
+  # Kommentar-Waechter auf den neuen Zeilen des PR bzw. Pushes (der prek-Hook prueft lokal den gestagten Diff, im prek-Job
+  # oben ist nichts gestagt). Volle Historie, damit die Basis erreichbar ist; ohne Basis (Handstart) gilt merge-base mit main.
+  comment-lint:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (full history for the diff base)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false   # linting only reads the tree
+
+      - name: comment_lint on the new lines
+        shell: powershell
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if ($env:BASE_SHA -and $env:BASE_SHA -notmatch '^0+$') { .\scripts\comment_lint.ps1 -Base $env:BASE_SHA } else { .\scripts\comment_lint.ps1 }
+          exit $LASTEXITCODE

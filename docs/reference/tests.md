@@ -79,4 +79,6 @@ Schließt die „Mock-Falle" des Routing-Tiers (der lehnt jeden Write ab). Das e
 
 ## Golden-Cases — Hintergrund
 
+**Werkzeug braucht Testfall:** `contract_lint` Check 36 verlangt für jedes Schreib-Werkzeug (Eintrag im `approval_matrix` des Manifests oder Aufruf einer fn mit `WRITE` im R__-Kopf-Tag) mindestens einen `expected_tool`-Fall in `tests/agent/<pkg|cross|core>/`. Altlasten stehen in `scripts/build/tool_case_allowlist.json` (Ratchet: neuer Eintrag = Fehler, Eintrag mit inzwischen vorhandenem Fall = Fehler; die Liste darf nur schrumpfen).
+
 Der Routing-Tier läuft nicht in einer Transaktion (kein Rollback, keine Wegwerf-Fixture) und der Agent löst Entitäten via `postgres_select` gegen die Live-DB auf → ein `set_*`/`close_*`/`delete_*`-Golden ohne dauerhafte Fixture-Entität FAILt als Fixture-Defekt, nicht als Tool-Defekt. Abdeckung stattdessen über DB-Test (`test_fn_*`, beide Zweige + Guards) und E2E (Entität im selben Case anlegen → close/delete → `verify_sql` → Cleanup). `chat_id` je Case: alle Tiers feuern als gepairter Fixture-Owner (numerisch; eine fremde chat_id gehört keiner Person, dann lehnen Haushalts-Schreibwege ab), die Isolation hält das Leeren des Chat-Gedächtnisses je Case; das `chat_id`-Feld in den `*_cases.json` ist für die Routing-Tiers nur Doku, E2E nutzt es; `infra_cases.json` feuert direkt am Harness ohne Sender-Gate.

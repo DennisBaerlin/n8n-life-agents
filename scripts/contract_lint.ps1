@@ -105,6 +105,7 @@
 #       dem eigenen Namensraum gesperrt, `admin off` in jeder Caddy-Konfiguration. Selbst-Asserts.
 #   (35) KNOPF-STUFE: ein Registry-Prefix, der per Knopf ohne HITL-Gate anlegt (rsug), bleibt an die Freigabe-Stufe
 #       (approval_matrix) der gekoppelten Einzel-Werkzeuge gebunden. Selbst-Asserts.
+#   (36) WERKZEUG BRAUCHT TESTFALL: jedes Schreib-Werkzeug (approval_matrix oder fn mit WRITE-Tag) hat einen expected_tool-Fall in tests/agent; Ausnahmeliste scripts/build/tool_case_allowlist.json (Ratchet). Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -2444,6 +2445,84 @@ foreach ($sa in @(
     @{ n = 'Stufe fehlt'; m = ('{"callback_handlers":{"rsug":{}},"approval_matrix":{}}' | ConvertFrom-Json); want = 2 })) {
     $got = (Get-ButtonTierIssues $sa.m 'x' $knopfKopplung).Count
     if ($got -ne $sa.want) { $errors.Add("KNOPF-STUFE SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 35 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
+# (36) WERKZEUG BRAUCHT TESTFALL (Regel "Neues Tool => Golden-Case", CLAUDE.md Testing): jedes Schreib-Werkzeug
+#      agent.<pkg>.tool_* (Nicht-Core) wird von mindestens einem Fall in tests/agent/<pkg|cross|core>/*_cases.json
+#      per expected_tool erwartet. Schreib-Werkzeug (maschinenlesbar, keine Namensliste) = Workflow, der im
+#      approval_matrix-Block des Manifests steht (HITL-Karte) ODER eine fn aufruft, deren R__-Kopf-Tag "WRITE"
+#      traegt (Karte-lose Writes: Fortschritts-Flag, Staging). Fail-closed mit Ausnahmeliste (Ratchet)
+#      scripts/build/tool_case_allowlist.json: ein Werkzeug ohne Fall und ohne Eintrag = Fehler; ein Eintrag,
+#      dessen Werkzeug einen Fall hat / kein Schreib-Werkzeug / nicht existiert = ebenfalls Fehler (Liste schrumpft nur).
+#      Selbst-Asserts. Cross-Check gegen docs/reference/packages.md *Write-Tools-Katalog* macht doc_lint.
+# ---------------------------------------------------------------
+function Get-ToolCaseIssues([string[]]$WriteTools, [string[]]$Covered, [string[]]$Allow, [string[]]$AllTools) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    foreach ($t in $WriteTools) {
+        if (($Covered -notcontains $t) -and ($Allow -notcontains $t)) {
+            $iss.Add("Schreib-Werkzeug '$t' hat keinen Fall (expected_tool in tests/agent/<pkg>/*_cases.json) und steht nicht in der Ausnahmeliste -- Fall bauen (neue Eintraege in die Liste sind verboten, sie darf nur schrumpfen).")
+        }
+    }
+    foreach ($a in $Allow) {
+        if ($AllTools -notcontains $a)         { $iss.Add("Ausnahmeliste: '$a' ist kein Werkzeug (mehr) -- Eintrag streichen.") }
+        elseif ($WriteTools -notcontains $a)   { $iss.Add("Ausnahmeliste: '$a' ist kein Schreib-Werkzeug -- Eintrag streichen.") }
+        elseif ($Covered -contains $a)         { $iss.Add("Ausnahmeliste: '$a' hat inzwischen einen Fall -- Eintrag streichen (Ratchet).") }
+    }
+    return , $iss
+}
+
+# fn-Kopf-Tags: "-- <schema>.fn_x (TAG ...)" in den ersten Zeilen jeder R__fn_*.sql
+$fnWrite = @{}
+foreach ($sf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_*.sql'))) {
+    $head = (([System.IO.File]::ReadAllLines($sf.FullName, $Utf8NoBom) | Select-Object -First 6) -join "`n")
+    $hm = [regex]::Match($head, '(?m)^--\s+(?:[a-z_]+\.)?(fn_[a-z0-9_]+)\s*\(([^\r\n]*)')
+    if ($hm.Success) { $fnWrite[$hm.Groups[1].Value] = ($hm.Groups[2].Value -match '(?i)write') }
+}
+$allToolsT = @(); $writeToolsT = @()
+foreach ($pd in (Get-ChildItem $pkgDir -Directory | Where-Object { $_.Name -ne 'core' })) {
+    $pk = $pd.Name
+    $mfT = [System.IO.File]::ReadAllText((Join-Path $pd.FullName 'manifest.json'), $Utf8NoBom) | ConvertFrom-Json
+    $matrixT = if ($mfT.PSObject.Properties['approval_matrix'] -and $mfT.approval_matrix) { @($mfT.approval_matrix.PSObject.Properties.Name) } else { @() }
+    foreach ($wf in (Get-ChildItem (Join-Path $pd.FullName 'workflows\*.json') -ErrorAction SilentlyContinue)) {
+        $raw = [System.IO.File]::ReadAllText($wf.FullName, $Utf8NoBom)
+        $wn = [string](($raw | ConvertFrom-Json).name)
+        $wm = [regex]::Match($wn, "^agent\.$pk\.(tool_[a-z0-9_]+)$")
+        if (-not $wm.Success) { continue }
+        $tn = "$pk.$($wm.Groups[1].Value)"
+        $allToolsT += $tn
+        $isWrite = ($matrixT -contains $wn)
+        if (-not $isWrite) {
+            foreach ($fm in [regex]::Matches($raw, 'fn_[a-z0-9_]+')) { if ($fnWrite[$fm.Value]) { $isWrite = $true; break } }
+        }
+        if ($isWrite) { $writeToolsT += $tn }
+    }
+}
+$coveredT = @()
+. (Join-Path $RepoRoot 'scripts\build\lib\agent_cases.ps1')
+foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
+    $cdir = ($cf.Rel -split '/')[2]
+    foreach ($c in $cf.Cases) {
+        if (-not $c.PSObject.Properties['expected_tool']) { continue }
+        foreach ($et in @($c.expected_tool)) {
+            if (-not $et) { continue }
+            if ($cdir -in @('cross', 'core')) { foreach ($pd in (Get-ChildItem $pkgDir -Directory)) { $coveredT += "$($pd.Name).$et" } }
+            else { $coveredT += "$cdir.$et" }
+        }
+    }
+}
+$allowT = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build\tool_case_allowlist.json'), $Utf8NoBom) | ConvertFrom-Json
+$allowList = @($allowT.allow | ForEach-Object { [string]$_.tool })
+foreach ($i in (Get-ToolCaseIssues ($writeToolsT | Sort-Object -Unique) ($coveredT | Sort-Object -Unique) $allowList ($allToolsT | Sort-Object -Unique))) { $errors.Add("TOOL-TESTFALL: $i") }
+foreach ($sa in @(
+    @{ n = 'alles gedeckt';      w = @('p.tool_a'); c = @('p.tool_a'); a = @();            all = @('p.tool_a'); want = 0 },
+    @{ n = 'ohne Fall';          w = @('p.tool_a'); c = @();           a = @();            all = @('p.tool_a'); want = 1 },
+    @{ n = 'Ausnahme gilt';      w = @('p.tool_a'); c = @();           a = @('p.tool_a');  all = @('p.tool_a'); want = 0 },
+    @{ n = 'Ausnahme ueberfl.';  w = @('p.tool_a'); c = @('p.tool_a'); a = @('p.tool_a');  all = @('p.tool_a'); want = 1 },
+    @{ n = 'Ausnahme Lesetool';  w = @();           c = @();           a = @('p.tool_r');  all = @('p.tool_r'); want = 1 },
+    @{ n = 'Ausnahme verwaist';  w = @();           c = @();           a = @('p.tool_x');  all = @();           want = 1 })) {
+    $got = (Get-ToolCaseIssues $sa.w $sa.c $sa.a $sa.all).Count
+    if ($got -ne $sa.want) { $errors.Add("TOOL-TESTFALL SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 36 ist defekt.") }
 }
 
 # ---------------------------------------------------------------

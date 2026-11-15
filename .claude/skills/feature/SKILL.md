@@ -37,6 +37,7 @@ Checkliste — was nicht zutrifft, kurz als „n/a" nennen:
 ## 4. Review & Ship
 
 - `/code-review high` auf den Diff; Findings einarbeiten (bei fn-Änderung zurück zu TDD).
+- **Kommentar-Prüfer:** Ändert der Diff Code-Kommentare, Skript- oder fn-Köpfe oder Stickies, liest ein frischer Subagent (`model: sonnet`, explizit gesetzt) nur die geänderten Dateien samt `git diff`. Maßstab: `.claude/rules/comments.md`, die Sticky-Regel (Root-`CLAUDE.md` *Arbeitsweise*) und das Vorbild-Muster (Köpfe und Stickies der gleichartigen Nachbardatei bzw. des Referenz-Analogs). Er bekommt Artefakt und Maßstab, nicht die Herleitung, und meldet mit Datei:Zeile, was `comment_lint` nicht erkennen kann: Kommentar widerspricht dem Code, erzählt ihn nach, kopiert eine Regel, Sticky passt nicht zum Graphen, Pflichtteil eines Kopfs fehlt inhaltlich. Findings einarbeiten.
 - Führt der Diff eine neue Paket-Oberfläche ein (neues Paket, neues `tool_*`-/`fn_*`-Analog, Core-Single-Paket-Naht)? → ein kurzer Sonnet-Pass mit der Paritäts-Checkliste aus `docs/package-contract.md` §8 gegen das Referenz-Analog.
 - Commit (Conventional Commits) → Push; die Lints laufen beim Commit, `db_test` beim Push (rot ⟹ fixen, nie `--no-verify`). Commit- und PR-Texte sind öffentlich: einen Befund nur mit seiner Eigenschaft beschreiben, ohne Person, Bank, Betrag und Haushaltsbezug (`tests/fixtures/README.md`), `privacy_lint` prüft Message und Push.
 - Phasen-Ende: Plan und privates Backlog aktualisieren, Substrate stoppen (`scripts/dev/stop_test_containers.ps1`), frische Session.

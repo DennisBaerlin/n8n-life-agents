@@ -1,0 +1,70 @@
+{
+    "_comment":  "Ratchet fuer contract_lint Check 40 (LESE-KNOTEN OHNE ZEILE): Werkzeug-Lese-Knoten mit WHERE ohne alwaysOutputData. Die Liste darf nur schrumpfen; ein Eintrag ohne Treffer ist ein Fehler.",
+    "allow":  [
+                  {
+                      "workflow":  "agent.guide.tool_invite_household_member",
+                      "node":  "Load bot username",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.estate.tool_set_case_task",
+                      "node":  "Read task",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_savings_goal",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_real_estate",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_insurance",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_pension",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_close_account",
+                      "node":  "Read Current Balance",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_create_savings_plan",
+                      "node":  "Read Settlement",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_loan",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_book_loan_payment",
+                      "node":  "Read Loan Overview",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_set_recurring_payment",
+                      "node":  "Read Current",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_book_dividend",
+                      "node":  "Get Settlement Account",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  },
+                  {
+                      "workflow":  "agent.finance.tool_book_stock_buy",
+                      "node":  "Get Settlement Account",
+                      "reason":  "Einzelpruefung offen: Lese-Knoten mit WHERE ohne alwaysOutputData; bei unbekannter Id endet die Antwort leer (Build-Gotcha SELECT ohne Treffer). Umbau auf New-RequiredRowGate je Werkzeug."
+                  }
+              ]
+}

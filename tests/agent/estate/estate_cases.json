@@ -152,13 +152,13 @@
   {
     "id": "es15",
     "name": "create_case: Todesfall anlegen (fakten-komplett, Ereignisfall)",
-    "task": "Meine Partnerin Lena ist am 15. Oktober 2026 in Bayern gestorben. Sie war angestellt und gesetzlich rentenversichert, keine Mieterin, hatte keine Firma, kein Fahrzeug, keine Waffen, keine Haustiere, ist nicht im Ausland und nicht durch einen Arbeitsunfall gestorben, und es gibt ein notarielles Testament. Bitte lege den Todesfall an und nenne mir die ersten Schritte.",
+    "task": "Meine Partnerin Lena ist gestern in Bayern gestorben. Sie war angestellt und gesetzlich rentenversichert, keine Mieterin, hatte keine Firma, kein Fahrzeug, keine Waffen, keine Haustiere, ist nicht im Ausland und nicht durch einen Arbeitsunfall gestorben, und es gibt ein notarielles Testament. Bitte lege den Todesfall an und nenne mir die ersten Schritte.",
     "chat_id": "test_es15",
     "timeout_s": 300,
     "expected_tool": "tool_create_case",
     "expected_tool_args": { "case_type": "death", "bundesland": "bayern" },
-    "expected_behavior": "Given complete facts AND an explicit instruction to open the case, the advisor opens the death case via tool_create_case (subject Lena, case_type death, event_date 2026-10-15, bundesland bayern, plus intake values only where the user stated them - the register supplies the rest). It acknowledges the loss empathetically alongside the action. The DATABASE computes every legal deadline - the advisor must NOT invent dates.",
-    "notes": "WS-3 estate: create_case routing golden (owner_info Break-Glass, new-entity verb). Fakten-komplett + explizite Anweisung -> kein Grief-UX-Konflikt (Anteilnahme begleitet den Tool-Call). Die anderen Fall-Tools (set_/cancel_case, set_/create_case_task) operieren auf BESTEHENDEM Fall-State -> kein Routing-Golden erzwungen (Tier-Wahl-Regel); Abdeckung = test_fn_* (DB) + e2e. Todesdatum bewusst nah am Lauf (2026-10-15): bei einem Jahre zurueckliegenden Datum sind alle Fristen laengst abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen -> spaetestens nach ~2 Monaten in task + expected_tool_args + scenarios.json (bzw. ee05) nachziehen."
+    "expected_behavior": "Given complete facts AND an explicit instruction to open the case, the advisor opens the death case via tool_create_case (subject Lena, case_type death, event_date passed raw and relative, e.g. yesterday - never a calendar date it computed itself, bundesland bayern, plus intake values only where the user stated them - the register supplies the rest). It acknowledges the loss empathetically alongside the action. The DATABASE computes every legal deadline - the advisor must NOT invent dates.",
+    "notes": "WS-3 estate: create_case routing golden (owner_info Break-Glass, new-entity verb). Fakten-komplett + explizite Anweisung -> kein Grief-UX-Konflikt (Anteilnahme begleitet den Tool-Call). Die anderen Fall-Tools (set_/cancel_case, set_/create_case_task) operieren auf BESTEHENDEM Fall-State -> kein Routing-Golden erzwungen (Tier-Wahl-Regel); Abdeckung = test_fn_* (DB) + e2e. Todesdatum relativ (gestern, wie es18/ee05): ein festes Datum altert, nach Monaten sind alle Fristen abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen; relativ altert nichts."
   },
   {
     "id": "es18",

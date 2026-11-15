@@ -13,10 +13,10 @@
   {
     "id": "me02",
     "name": "create + set: Termin-Trigger anlegen und deaktivieren (Lifecycle, echter Write)",
-    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ TUEV Termin' an, faellig am 2027-03-31, Vorwarnung 30 Tage, Pruefung woechentlich (7 days), Aktion 'E2E-Test'. 2) Deaktiviere danach sofort genau diesen Trigger '__E2E__ TUEV Termin' (Status disabled).",
+    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ TUEV Termin' an, faellig am {{date:+4m@-1}}, Vorwarnung 30 Tage, Pruefung woechentlich (7 days), Aktion 'E2E-Test'. 2) Deaktiviere danach sofort genau diesen Trigger '__E2E__ TUEV Termin' (Status disabled).",
     "chat_id": "test_e2e_me02",
     "sentinel_accounts": 0,
-    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ TUEV Termin') AND trigger_type = 'date' AND due_date = '2027-03-31' AND warn_days_before = 30 AND status = 'disabled';",
+    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ TUEV Termin') AND trigger_type = 'date' AND due_date = '{{date:+4m@-1}}' AND warn_days_before = 30 AND status = 'disabled';",
     "expect": 1,
     "is_negative": false,
     "notes": "Multi-Step in EINER Execution (jeder Write auto-approved): tool_create_monitor_trigger -> tool_set_monitor_trigger (Lifecycle disabled). Deckt set_* ohne dauerhafte Fixture (Tier-Wahl-Regel: E2E ist Primaerabdeckung)."
@@ -24,7 +24,7 @@
   {
     "id": "me03",
     "name": "create + delete: Fehlanlage hart loeschen (echter Write + CASCADE)",
-    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ Fehlanlage' an, faellig am 2027-06-30, Pruefung woechentlich (7 days). 2) Loesche danach sofort genau diesen Trigger '__E2E__ Fehlanlage' wieder komplett (endgueltig, inklusive Historie - bewusst bestaetigt).",
+    "task": "Zwei Schritte, beide bereits von mir bestaetigt - KEINE Rueckfrage, direkt ausfuehren: 1) Lege den Termin-Trigger '__E2E__ Fehlanlage' an, faellig am {{date:+7m@-1}}, Pruefung woechentlich (7 days). 2) Loesche danach sofort genau diesen Trigger '__E2E__ Fehlanlage' wieder komplett (endgueltig, inklusive Historie - bewusst bestaetigt).",
     "chat_id": "test_e2e_me03",
     "sentinel_accounts": 0,
     "verify_sql": "SELECT count(*) FROM agent.monitor_triggers WHERE domain = '__e2e_monitor__' AND lower(label) = lower('__E2E__ Fehlanlage');",

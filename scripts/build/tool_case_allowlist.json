@@ -1,16 +1,4 @@
 {
   "_comment": "contract_lint Check 36 (Werkzeug braucht Testfall), Ratchet-Ausnahmeliste: Schreib-Werkzeuge ohne Fall in tests/agent. Nur Streichen erlaubt (sobald ein Fall das Werkzeug erwartet, muss der Eintrag raus); ein neuer Eintrag ist verboten, ein ueberfluessiger ein Lint-Fehler.",
-  "allow": [
-    { "tool": "finance.tool_book_savings_reservation", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_cancel_handoff_task", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_close_pension", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_close_savings_goal", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_commit_import", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_account", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_holding", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_loan", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_delete_recurring_payment", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_set_pension", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" },
-    { "tool": "finance.tool_set_recurring_payment", "reason": "Anfangsstand 2026-11-15: kein expected_tool-Fall" }
-  ]
+  "allow": []
 }

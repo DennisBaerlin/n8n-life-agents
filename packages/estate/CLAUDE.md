@@ -1,6 +1,6 @@
 # Estate-Paket — Domänen-Regeln (lädt beim Arbeiten in `packages/estate/`)
 
-Nachlass-/Vorsorge-Agent (`agent.estate_advisor`): Vorsorge-Modus (geführtes Register-Erfassen, Gap-Nudges, Jahres-Review) und Ereignisfall (Tod/Vorsorgefall eines Mitglieds: DB-berechnete Fristen-Checkliste, „eine nächste Aufgabe"-UX, `/notfall`, Notfallmappe).; Paket-Gesetze → `packages/CLAUDE.md`; Schema-Semantik, Ereignisfall-/Review-/Binder-Mechanik → `docs/reference/estate.md` (on-demand).
+Nachlass-/Vorsorge-Agent (`agent.estate_advisor`): Vorsorge-Modus (geführtes Register-Erfassen, Gap-Nudges, Jahres-Review) und Ereignisfall (Tod/Vorsorgefall eines Mitglieds: DB-berechnete Fristen-Checkliste, „eine nächste Aufgabe"-UX, `/notfall`, Notfallmappe); Paket-Gesetze → `packages/CLAUDE.md`; Schema-Semantik, Ereignisfall-/Review-/Binder-Mechanik → `docs/reference/estate.md` (on-demand).
 
 ## Grenzregel & Privacy-Hard-Rules (gelten für jede estate-Oberfläche)
 

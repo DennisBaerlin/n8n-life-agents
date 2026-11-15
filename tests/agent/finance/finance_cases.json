@@ -226,6 +226,7 @@
     },
     {
         "id":  "tc19",
+        "fixed_date_reason":  "Die Daten in expected_behavior sind nur Verweise auf einen frueheren Lauf und den damals falschen Wert, keine Eingabedaten des Falls.",
         "name":  "Kontoabgleich (Saldo-Abgleich)",
         "task":  "Gleiche mein Lindenbank Giro ab: laut Banking-App beträgt der Saldo heute genau 1.234,56 Euro.",
         "chat_id":  "test_tc19",

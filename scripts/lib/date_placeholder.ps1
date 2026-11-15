@@ -52,6 +52,36 @@ function Get-DatePlaceholderError {
     return $errs
 }
 
+# Get-FixedDateFinding <Objekt> [-Today] -> Liste "<Pfad>: <Literal>" fuer jedes woertliche Kalenderdatum (ISO oder TT.MM.JJJJ) in
+# den pruefrelevanten Feldern eines Falls (task, turns, expected_tool_args, expected_behavior) bzw. Szenarios (match, calls), das heute in der
+# Zukunft liegt oder weniger als zwei Jahre zurueckliegt: so ein Datum kippt (Plan-Beginn vergangen, "letzte 12 Monate" verschiebt sich).
+# Ein Objekt mit nichtleerem fixed_date_reason ist ausgenommen; notes/name/_comment/setup_sql werden nicht gelesen. Fuer mock_lint (C5).
+$script:FixedDateKeys = @('task', 'turns', 'expected_tool_args', 'expected_behavior', 'match', 'calls')
+function Get-FixedDateFinding {
+    param($Obj, [datetime]$Today = $script:DatePlaceholderToday)
+    if ($null -eq $Obj -or -not ($Obj -is [System.Management.Automation.PSCustomObject])) { return @() }
+    if ($Obj.PSObject.Properties['fixed_date_reason'] -and -not [string]::IsNullOrWhiteSpace([string]$Obj.fixed_date_reason)) { return @() }
+    $out = New-Object System.Collections.Generic.List[string]
+    $limit = $Today.AddYears(-2)
+    $scan = {
+        param($Node, $Path)
+        if ($null -eq $Node) { return }
+        if ($Node -is [string]) {
+            $lits = @([regex]::Matches($Node, '\b(\d{4})-(\d{2})-(\d{2})\b') | ForEach-Object { , @($_.Value, $_.Groups[1].Value, $_.Groups[2].Value, $_.Groups[3].Value) }) +
+                    @([regex]::Matches($Node, '\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b') | ForEach-Object { , @($_.Value, $_.Groups[3].Value, $_.Groups[2].Value, $_.Groups[1].Value) })
+            foreach ($l in $lits) {
+                $y = [int]$l[1]; $mo = [int]$l[2]; $dd = [int]$l[3]
+                if ($y -lt 1 -or $mo -lt 1-or $mo -gt 12 -or $dd -lt 1 -or $dd -gt [datetime]::DaysInMonth($y, $mo)) { continue }
+                if ((New-Object datetime ($y, $mo, $dd)) -gt $limit) { $out.Add("${Path}: $($l[0])") }
+            }
+        }
+        elseif ($Node -is [System.Management.Automation.PSCustomObject]) { foreach ($p in $Node.PSObject.Properties) { & $scan $p.Value "$Path.$($p.Name)" } }
+        elseif ($Node -is [System.Collections.IEnumerable]) { $i = 0; foreach ($e in $Node) { & $scan $e "$Path[$i]"; $i++ } }
+    }
+    foreach ($k in $script:FixedDateKeys) { if ($Obj.PSObject.Properties[$k]) { & $scan $Obj.$k $k } }
+    return $out.ToArray()
+}
+
 # Resolve-DatePlaceholder <text> [-Today] -> Text mit aufgeloesten Platzhaltern (ohne Platzhalter unveraendert).
 function Resolve-DatePlaceholder {
     param([AllowNull()][AllowEmptyString()][string]$Text, [datetime]$Today = $script:DatePlaceholderToday)

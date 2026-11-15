@@ -319,7 +319,7 @@ $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 $qNote = if ($quarantined -gt 0) { " ($quarantined in Quarantaene, nicht gewertet)" } else { '' }
 Write-Host "Deterministisch (Tool-Routing): $passed/$($cases.Count) bestanden, $failed fehlgeschlagen$qNote." -ForegroundColor $color
 
-Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot
+Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite "n8n_test-$([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))"
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label "n8n_test $([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))" -RepoRoot $RepoRoot
 Write-Host ""
 exit $failed

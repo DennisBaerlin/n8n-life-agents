@@ -704,8 +704,10 @@ function Get-TestPersonaFact {
 # Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der letzte Lauf von n8n_test oder orch_test) —
 # die eine Adresse fuer Pfad + Format, die judge_eval.ps1 liest.
 function Write-JudgeBundle {
-    param([Parameter(Mandatory)][AllowEmptyCollection()][array]$Entries, [Parameter(Mandatory)][string]$RepoRoot)
+    param([Parameter(Mandatory)][AllowEmptyCollection()][array]$Entries, [Parameter(Mandatory)][string]$RepoRoot, [string]$Suite)
     $bundlePath = Join-Path $RepoRoot 'tests\agent\judge_bundle.json'
+    # Suite je Eintrag: judge_eval schreibt sie mit dem Urteil in .local/judge_runs (lib/judge_record.ps1), das Bundle selbst ist nach dem Lauf leer.
+    if ($Suite) { foreach ($e in $Entries) { if ($e -is [System.Collections.IDictionary]) { if (-not $e.Contains('suite')) { $e['suite'] = $Suite } } elseif (-not $e.PSObject.Properties['suite']) { $e | Add-Member -NotePropertyName suite -NotePropertyValue $Suite } } }
     # Lauf ohne Rubric-Faelle: Bundle leeren, sonst bewertet judge_eval den vorigen Lauf, als gehoere er zu diesem.
     if ($Entries.Count -eq 0) { [System.IO.File]::WriteAllText($bundlePath, '[]', (New-Object System.Text.UTF8Encoding($false))); return }
     [System.IO.File]::WriteAllText($bundlePath, (ConvertTo-Json -InputObject @($Entries) -Depth 6), (New-Object System.Text.UTF8Encoding($false)))

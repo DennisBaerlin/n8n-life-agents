@@ -28,6 +28,10 @@
 #   Ein API-Timeout/Parse-Fehler des Judges (verdict=ERROR) ist Infra-Flake, kein inhaltliches FAIL.
 #   ERROR wird einmal ge-retry-t und im Summary getrennt ausgewiesen (nicht als Rubric-FAIL).
 #
+# --- Urteile bleiben erhalten ---
+#   Je Lauf eine Datei .local/judge_runs/<zeit>-<suite>.jsonl im Haupt-Checkout (gitignored), eine Zeile je Fall: Suite, Fall-ID, Urteil,
+#   Begruendung, det_pass, Gesamturteil, Modell, Commit (+ dirty). Das Bundle ist nach dem Lauf leer; Format und Schreibweg: lib/judge_record.ps1.
+#
 # Exit-Code = Anzahl OVERALL FAILs + nicht-aufloesbare ERRORs (Gate bleibt ehrlich: unjudged != gruen).
 # Voraussetzungen: .env mit ANTHROPIC_API_KEY; der Lauf kostet LLM-Calls und braucht das Owner-Fenster.
 param(
@@ -84,6 +88,12 @@ function Write-JudgeCostReport([string]$Label) {
 }
 
 . "$PSScriptRoot\lib\judge_prompt.ps1"   # Get-JudgeSystemText, Format-JudgeUserText (Karten-Entscheid je Eintrag)
+. "$PSScriptRoot\lib\judge_record.ps1"   # Urteile je Fall dauerhaft nach .local/judge_runs (das Bundle ist nach dem Lauf leer)
+$script:RunStamp = Get-JudgeRunStamp -RepoRoot $RepoRoot
+$script:RunFile  = $null
+function Save-JudgeVerdict([object]$Entry, [hashtable]$Verdict, [string]$Mode, [string]$Overall) {
+    Add-JudgeRunRecord -Path $script:RunFile -Entry $Entry -Verdict $Verdict.verdict -Reason $Verdict.reason -Model $Model -Mode $Mode -Overall $Overall -Commit $script:RunStamp.commit -Dirty $script:RunStamp.dirty
+}
 # Structured Output: die API garantiert parsebares JSON mit genau diesen Feldern.
 $VerdictSchema = [ordered]@{
     type                 = 'object'
@@ -168,11 +178,13 @@ if ($Calibrate) {
     # Binaer: human/judge auf PASS vs. nicht-PASS (PARTIAL/FAIL = nicht-PASS) reduzieren, wie das OVERALL-Gate
     # (nur PASS zaehlt).
     $tp = 0; $tn = 0; $fp = 0; $fn = 0; $errc = 0
+    $script:RunFile = Get-JudgeRunFile -RepoRoot $RepoRoot -Suite 'calibrate'
     foreach ($e in $labels) {
         if (Test-JudgeBudget) { $errc++; break }
         $human = "$($e.human_verdict)".ToUpper()
         if ($human -notin @('PASS','FAIL','PARTIAL')) { throw "Case '$($e.id)': human_verdict fehlt/ungueltig ('$human')." }
         $j = Invoke-JudgeGuarded $e
+        Save-JudgeVerdict $e $j 'calibrate' ''
         if ($j.verdict -eq 'ERROR') {
             $errc++
             Write-Host ("  [{0}] human={1}  judge=ERROR  ({2})" -f $e.id, $human, $j.reason) -ForegroundColor Yellow
@@ -204,6 +216,7 @@ if ($Calibrate) {
     Write-Host ("Agreement (po): {0:P1}    Cohen's kappa: {1:N3}    Schwelle: {2:N2}" -f $po, $kappa, $KappaThreshold)
     if ($fp -gt 0) { Write-Host ("  WARNUNG: {0}x Judge zu NACHSICHTIG (FP) -- laesst echte Fehler durch." -f $fp) -ForegroundColor Yellow }
     $failedForce = Assert-ForceAbortFired $ForceAbortId
+    if ($script:RunFile -and (Test-Path $script:RunFile)) { Write-Host "Urteile gespeichert: $script:RunFile" -ForegroundColor Cyan }
     Write-AbortedCases
     Write-JudgeCostReport 'judge_eval -Calibrate'
     if ($failedForce -gt 0) { exit 1 }
@@ -231,6 +244,7 @@ Write-Host ("-" * 64)
 
 $overallFail = 0
 $errorCount  = 0
+$script:RunFile = Get-JudgeRunFile -RepoRoot $RepoRoot -Suite (Get-JudgeRunSuite $bundle)
 foreach ($e in $bundle) {
     if (Test-JudgeBudget) { $errorCount++; break }
     Write-Host ""
@@ -239,6 +253,8 @@ foreach ($e in $bundle) {
     Write-Host "    det_pass (Routing+Args): $detPass   (erwartet tool=$($e.expected_tool), tatsaechlich=$($e.actual_tool))"
 
     $j = Invoke-JudgeGuarded $e
+    $ov = if ($j.verdict -eq 'ERROR') { 'ERROR' } elseif ($detPass -and $j.verdict -eq 'PASS') { 'PASS' } else { 'FAIL' }
+    Save-JudgeVerdict $e $j 'bundle' $ov
     Write-Host "    Judge: $($j.verdict)"
     if ($Verbose -or $j.verdict -ne 'PASS') { Write-Host "      reason: $($j.reason)" -ForegroundColor DarkGray }
 
@@ -269,6 +285,7 @@ Write-Host ""
 
 # Gate bleibt ehrlich: unjudged (ERROR) zaehlt in den Exit-Code (gruen nur, wenn alles wirklich PASS),
 # wird im Summary aber von echten Rubric-FAILs getrennt.
+if (Test-Path $script:RunFile) { Write-Host "Urteile gespeichert: $script:RunFile" -ForegroundColor Cyan }
 Write-AbortedCases
 $errorCount += Assert-ForceAbortFired $ForceAbortId
 Write-JudgeCostReport 'judge_eval'

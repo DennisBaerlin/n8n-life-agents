@@ -251,6 +251,7 @@
     },
     {
         "id":  "e2e16",
+        "fixed_date_reason":  "Der erste Termin liegt bewusst in der Vergangenheit: das Offene-Vorkommen-Verhalten (notes) setzt ein vergangenes first_payment_date voraus.",
         "name":  "create_savings_plan + book_savings_plan_execution: Sparplan anlegen + Ausfuehrung buchen (Multi-Write)",
         "task":  "Lege einen Sparplan '__E2E__ VWCE Plan' an: Depot __E2E__ SP Depot, ISIN IE00BK5BQT80, Symbol VWCE, Wertpapier Vanguard FTSE All-World, 50 Euro monatlich, erste Ausfuehrung am 2026-06-01. Buche danach die Broker-Ausfuehrung fuer den __E2E__ VWCE Plan: 0,9 Anteile zu 55 Euro je Anteil, Ordergebuehr 0 Euro.",
         "setup_sql":  "SELECT pg_temp.ok('__E2E__ SP Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ SP Cash','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('Einlage __E2E__ SP Cash', finance.fn_book_transaction(jsonb_build_object('account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SP Cash'),'amount',1000,'direction','inflow','description','Einlage','transaction_date',CURRENT_DATE::text)));SELECT pg_temp.ok('__E2E__ SP Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ SP Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SP Cash'))));",

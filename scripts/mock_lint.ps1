@@ -18,6 +18,9 @@
 #      Leere calls (NULL-Pfad-Szenarien wie "Wetter") sind ausgenommen.
 #   C4 (Datums-Platzhalter): jeder {{date:..}} in scenarios.json und den *_cases.json hat gueltige Grammatik; Beinahe-Schreibweisen
 #      ({{ date:..}}, {date:..}, fehlendes }}) sind Fehler statt stiller Nicht-Treffer (Grammatik + Selbsttest: scripts/lib/date_placeholder.ps1).
+#   C5 (keine festen Zukunfts-Daten): woertliches Datum (ISO oder TT.MM.JJJJ) in task/turns/expected_tool_args/expected_behavior bzw. Szenario-match/calls,
+#      das in der Zukunft liegt oder weniger als zwei Jahre zurueckliegt, ist ein Fehler, ausser der Fall traegt fixed_date_reason oder steht
+#      im Ratchet tests/util/fixed_dates_allowlist.json (nur sinkend). notes/name/_comment/setup_sql bleiben frei.
 #
 # tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
@@ -190,8 +193,41 @@ foreach ($rel in ($placeholderFiles | Select-Object -Unique)) {
     }
 }
 
+# --- C5: keine festen Zukunfts-/Naehe-Daten (Get-FixedDateFinding in scripts/lib/date_placeholder.ps1) ---
+# Ein woertliches Datum, das heute in der Zukunft liegt oder weniger als zwei Jahre zurueckliegt, kippt mit der Zeit (Plan-Beginn vergangen,
+# Fenster verschoben). Ratchet: tests/util/fixed_dates_allowlist.json haelt den Bestand je Fall; er darf nur sinken. Neue Daten als
+# {{date:..}} schreiben oder (bewusst fest) mit fixed_date_reason im Fall begruenden. Weil das Heute eingeht, kann der Lint ohne Edit rot werden.
+$fixedAllow = @{}
+$allowObj = Read-Json 'tests/util/fixed_dates_allowlist.json'
+foreach ($p in $allowObj.entries.PSObject.Properties) { $fixedAllow[$p.Name] = [int]$p.Value }
+$fixedSeen = @{}
+foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
+    foreach ($c in $f.Cases) {
+        $n = @(Get-FixedDateFinding $c).Count
+        if ($n) { $k = "$($f.Rel)|$($c.id)"; $fixedSeen[$k] = [int]$fixedSeen[$k] + $n }
+    }
+}
+foreach ($s in @(Read-Json 'tests/mock_llm/scenarios.json')) {
+    $n = @(Get-FixedDateFinding $s).Count
+    if ($n) { $k = "tests/mock_llm/scenarios.json|$($s.match)"; $fixedSeen[$k] = [int]$fixedSeen[$k] + $n }
+}
+foreach ($k in ($fixedSeen.Keys | Sort-Object)) {
+    $allowed = if ($fixedAllow.ContainsKey($k)) { $fixedAllow[$k] } else { 0 }
+    if ($fixedSeen[$k] -gt $allowed) {
+        Write-Host "  [FAIL] C5 ${k}: $($fixedSeen[$k]) festes Datum (erlaubt $allowed). Als {{date:..}} schreiben oder fixed_date_reason setzen." -ForegroundColor Red
+        $failed++
+    }
+}
+foreach ($k in ($fixedAllow.Keys | Sort-Object)) {
+    $seen = if ($fixedSeen.ContainsKey($k)) { $fixedSeen[$k] } else { 0 }
+    if ($seen -lt $fixedAllow[$k]) {
+        Write-Host "  [FAIL] C5 ${k}: Allowlist erlaubt $($fixedAllow[$k]), gefunden $seen. Eintrag in tests/util/fixed_dates_allowlist.json senken oder entfernen (Ratchet)." -ForegroundColor Red
+        $failed++
+    }
+}
+
 Write-Host ("-" * 64)
-$color = if ($failed -eq 0) { 'Green' } else { 'Red' }
+$color =if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$failed Mock-Szenario-Check(s) fehlgeschlagen." -ForegroundColor $color
 Write-Host ""
 exit $failed

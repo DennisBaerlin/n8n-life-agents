@@ -89,7 +89,7 @@
     {
         "id":  "e2e43",
         "name":  "create_savings_goal: Ziel mit vorhandenem Geld auf P2P, ohne Rate (Zweckbindung)",
-        "task":  "Lege das Sparziel '__E2E__ Reise' an: 1500 Euro bis zum 31.12.2027. Das Geld liegt schon auf dem __E2E__ P2P, keine Sparrate.",
+        "task":  "Lege das Sparziel '__E2E__ Reise' an: 1500 Euro bis zum {{date:+13m@-1}}. Das Geld liegt schon auf dem __E2E__ P2P, keine Sparrate.",
         "setup_sql":  "SELECT pg_temp.ok('__E2E__ P2P', finance.fn_create_account(jsonb_build_object('name','__E2E__ P2P','account_type','p2p','account_holder','Erika','currency','EUR','opening_balance',2000)));",
         "chat_id":  "test_e2e_e2e43",
         "sentinel_accounts":  1,
@@ -222,9 +222,9 @@
         "id":  "e2e13",
         "name":  "set_savings_goal: Ziel + Raten-Neuberechnung (echter Write)",
         "task":  "Aendere beim Sparziel '__E2E__ Ziel' den Zielbetrag auf 2400 Euro.",
-        "setup_sql":  "SELECT pg_temp.ok('__E2E__ SG Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ SG Cash','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ SG Topf', finance.fn_create_account(jsonb_build_object('name','__E2E__ SG Topf','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ Ziel', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ Ziel','target_amount',1200,'target_date','2027-12-31','account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SG Cash'),'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SG Topf'),'schedule_day_of_month',1,'first_payment_date','2026-07-01')));",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ SG Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ SG Cash','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ SG Topf', finance.fn_create_account(jsonb_build_object('name','__E2E__ SG Topf','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ Ziel', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ Ziel','target_amount',1200,'target_date','{{date:+13m@-1}}','account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SG Cash'),'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ SG Topf'),'schedule_day_of_month',1,'first_payment_date','2026-07-01')));",
         "chat_id":  "test_e2e_e2e13",
-        "verify_sql":  "SELECT count(*) FROM finance.savings_goals g JOIN finance.recurring_payments rp ON rp.id = g.recurring_payment_id WHERE g.name = '__E2E__ Ziel' AND g.target_amount = 2400 AND rp.amount = -ROUND(2400.0 / GREATEST(1, CEIL(('2027-12-31'::date - CURRENT_DATE) / 30.4375)::int), 2);",
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goals g JOIN finance.recurring_payments rp ON rp.id = g.recurring_payment_id WHERE g.name = '__E2E__ Ziel' AND g.target_amount = 2400 AND rp.amount = -ROUND(2400.0 / GREATEST(1, CEIL(('{{date:+13m@-1}}'::date - CURRENT_DATE) / 30.4375)::int), 2);",
         "expect":  1,
         "is_negative":  false,
         "notes":  "Vorbereitung per setup_sql (finance.fn_*, 2026-10-23): der Agent macht nur den geprueften Schritt (vorher 4-5 Writes in einer Nachricht -> maxIterations). Schema-Fidelity set_savings_goal: target 1200->2400, Rate aus Rest-Betrag/Rest-Zeit neu (saved=0 -> 2400/Rest-Monate, gleiche Formel wie fn) -> verknuepfte Sparrate in-place. Cleanup via fn_clear_e2e_data (goal + recurring + account sentinel-scoped)."
@@ -283,7 +283,7 @@
     {
         "id":  "e2e19",
         "name":  "close_savings_goal: Sparziel Hard-DELETE (create + close)",
-        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ CSG Cash' und '__E2E__ CSG Topf'. Lege dann ein Sparziel '__E2E__ CSG Ziel' an: Zielbetrag 3000 Euro, Zieldatum 2027-12-31, monatliche Sparrate 100 Euro vom __E2E__ CSG Cash, Reserve-Topf das __E2E__ CSG Topf, Abbuchungstag 1, erste Buchung 2026-07-01. Schliesse dieses Sparziel danach.",
+        "task":  "Lege zwei neue Cash-Konten an (beide ohne Zinsen, Inhaber Erika): '__E2E__ CSG Cash' und '__E2E__ CSG Topf'. Lege dann ein Sparziel '__E2E__ CSG Ziel' an: Zielbetrag 3000 Euro, Zieldatum {{date:+13m@-1}}, monatliche Sparrate 100 Euro vom __E2E__ CSG Cash, Reserve-Topf das __E2E__ CSG Topf, Abbuchungstag 1, erste Buchung 2026-07-01. Schliesse dieses Sparziel danach.",
         "chat_id":  "test_e2e_e2e19",
         "verify_sql":  "SELECT count(*) FROM finance.savings_goals WHERE name = '__E2E__ CSG Ziel';",
         "expect":  0,

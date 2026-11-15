@@ -378,7 +378,7 @@
     "_comment": "tc71 laufender Kredit: nur Restschuld/Zins/Rate/naechste Faelligkeit, vorletzter Tag (-2); Ursprungswerte leer.",
     "match": "Trag meinen laufenden Hauskredit",
     "calls": [
-      { "tool": "tool_create_loan", "args": { "name": "Baufi Erlenkasse Alt", "lender": "Erlenkasse", "original_amount": "", "current_balance": "84000", "disbursement_date": "", "interest_rate": 1.1, "monthly_annuity": "520", "first_payment_date": "2027-03-30", "schedule_day_of_month": "-2", "debit_account_name": "Lindenbank Giro" } }
+      { "tool": "tool_create_loan", "args": { "name": "Baufi Erlenkasse Alt", "lender": "Erlenkasse", "original_amount": "", "current_balance": "84000", "disbursement_date": "", "interest_rate": 1.1, "monthly_annuity": "520", "first_payment_date": "{{date:+30d@-2}}", "schedule_day_of_month": "-2", "debit_account_name": "Lindenbank Giro" } }
     ],
     "final": "Kredit angelegt."
   },
@@ -479,7 +479,7 @@
   {
     "match": "Das Geld liegt schon komplett auf dem Tagesgeld Plus",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Sommerreise 2027", "target_amount": 3000, "target_date": "2027-07-31", "reserve_account_name": "Tagesgeld Plus", "already_saved": "3000" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Sommerreise 2027", "target_amount": 3000, "target_date": "{{date:+8m@-1}}", "reserve_account_name": "Tagesgeld Plus", "already_saved": "3000" } }
     ],
     "final": "Sparziel angelegt, keine Sparrate noetig."
   },
@@ -493,7 +493,7 @@
   {
     "match": "Zielbetrag 10000 Euro, bis Ende 2027",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "2027-12-31", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "{{date:+13m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }
     ],
     "final": "Sparziel angelegt."
   },
@@ -1665,7 +1665,7 @@
     ],
     "final": "Die Position wurde nicht ersetzt, es wurde nichts gespeichert."
   },
-  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Notgroschen", "section_key": "goals_triggers", "section_content": "Notgroschen 6000 Euro bis Ende 2027 als Sparziel.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"2027-12-31\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]"}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Notgroschen", "section_key": "goals_triggers", "section_content": "Notgroschen 6000 Euro bis Ende 2027 als Sparziel.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"{{date:+13m@-1}}\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]"}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "ADVISOR ac23 Uebergabe: Nutzer will gleich eintragen -> Uebersicht mit Knopf Durchgehen.", "match": "Lass uns das Vereinbarte gleich eintragen", "calls": [{"tool": "tool_send_handoff_overview", "args": {}}], "final": "Die Liste kommt gleich, tippe dort auf Durchgehen."},
   {"_comment": "ADVISOR ac24 Uebergabe-Negativfall: abgelehnte Idee -> Abschnitt ohne handoff_tasks.", "match": "Speichere den Abschnitt retirement_pension ohne neuen Sparplan", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Vorsorge", "section_key": "retirement_pension", "section_content": "Gesetzliche Rente und bestehende Vorsorge bleiben die Basis, kein zusaetzlicher Sparplan."}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "tc120 Uebergabe: Durchgehen-Auftrag -> erster Punkt mit handoff_task_id.", "match": "Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro", "calls": [{"tool": "tool_create_recurring_payment", "args": {"name": "__E2E__ HO Miete", "account_name": "__E2E__ HO Giro", "direction": "expense", "amount": 900, "schedule_unit": "month", "schedule_day_of_month": "3", "first_payment_date": "in 4 weeks", "handoff_task_id": "990001"}}], "final": "Die Miete ist nicht bestaetigt. Anders eintragen oder ueberspringen?"},
@@ -1675,9 +1675,9 @@
   {"_comment": "tc127 Konto-Zeichen nicht in der Liste.", "match": "Gib dem Lindenbank Giro ein Einhorn als Zeichen.", "calls": [{"tool": "tool_set_account", "args": {"account_name": "Lindenbank Giro", "emoji": "🦄"}}], "final": "Dieses Zeichen gibt es nicht."},
   {"_comment": "tc128 Konto-Zeichen ohne Nennung.", "match": "Ich möchte dem Lindenbank Giro ein anderes Zeichen geben.", "calls": [{"tool": "tool_send_account_emoji_picker", "args": {"account_name": "Lindenbank Giro"}}], "final": "Ich habe dir die Auswahl geschickt."},
   {"_comment": "tc124 Bank-Zettel auf Nachfrage.", "match": "Was muss ich bei der Bank noch einstellen?", "calls": [{"tool": "tool_send_bank_todos", "args": {}}], "final": "Ich habe dir die Liste je Bank geschickt."},
-  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Erstfassung mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"2027-03-15\",\"deadline\":true}]","change_summary":"Erstfassung","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
-  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"2027-06-01\"}]","change_summary":"Termine","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
-  {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"Versicherung pruefen\",\"remind_on\":\"2027-07-01\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
+  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Erstfassung mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"{{date:+4m@15}}\",\"deadline\":true}]","change_summary":"Erstfassung","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"{{date:+7m@1}}\"}]","change_summary":"Termine","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"Versicherung pruefen\",\"remind_on\":\"{{date:+8m@1}}\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
   {"_comment": "tc130 Ersteinrichtung offen: kurze Antwort gehoert zum Lauf.", "match": "Der Stand ist gerade 1234,56 Euro", "calls": [{"tool": "tool_import_setup", "args": {"question_key": "current_balance", "answer": "1234,56"}}], "final": "Danke, ich mache weiter."},
   {"_comment": "tc131 Ersteinrichtung abbrechen.", "match": "Lass die Einrichtung, ich mag gerade nicht mehr.", "calls": [{"tool": "tool_import_setup", "args": {"action": "cancel"}}], "final": "Ich habe die Einrichtung beendet; Bestaetigtes bleibt bestehen."}
   ,{"_comment": "tc140 Immobilie verkauft.", "match": "Wir haben die Musterimmobilie verkauft", "calls": [{"tool": "tool_sell_real_estate", "args": {"real_estate_name": "Musterimmobilie", "proceeds_account_name": "Lindenbank Giro", "sale_price": 320000}}], "final": "Verkauf gebucht."}

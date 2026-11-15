@@ -189,25 +189,25 @@
         "expected_tool":  "tool_create_savings_goal",
         "expected_tool_args":  {
                                    "target_amount":  10000,
-                                   "target_date":  "2027-12-31",
+                                   "target_date":  "{{date:+13m@-1}}",
                                    "reserve_account_name":  "Tagesgeld Plus"
                                },
-        "expected_behavior":  "Ruft tool_create_savings_goal ZIEL-getrieben auf (die Dubletten-Pruefung macht das Tool selbst): goal_name=\u0027Notfallfonds\u0027, target_amount=10000, target_date=\u00272027-12-31\u0027, account_name=\u0027Lindenbank Giro\u0027, schedule_day_of_month=1, first_payment_date=\u00272026-07-01\u0027. Der Nutzer nannte KEINE Sparrate -\u003e der Agent darf KEINE monthly_savings_rate selbst ausrechnen/erfinden; das Tool berechnet sie aus Ziel/Zeit.",
-        "notes":  "Neues tool_create_savings_goal, ziel-getrieben. Testet die Regel \u0027LLM rechnet nicht\u0027: nur target_date gegeben, die Rate berechnet die DB. Judge: actual_tool_input enthaelt target_amount=10000 + target_date=\u00272027-12-31\u0027, KEINE selbst-errechnete monthly_savings_rate."
+        "expected_behavior":  "Ruft tool_create_savings_goal ZIEL-getrieben auf (die Dubletten-Pruefung macht das Tool selbst): goal_name=\u0027Notfallfonds\u0027, target_amount=10000, target_date=\u0027{{date:+13m@-1}}\u0027, account_name=\u0027Lindenbank Giro\u0027, schedule_day_of_month=1, first_payment_date=\u00272026-07-01\u0027. Der Nutzer nannte KEINE Sparrate -\u003e der Agent darf KEINE monthly_savings_rate selbst ausrechnen/erfinden; das Tool berechnet sie aus Ziel/Zeit.",
+        "notes":  "Neues tool_create_savings_goal, ziel-getrieben. Testet die Regel \u0027LLM rechnet nicht\u0027: nur target_date gegeben, die Rate berechnet die DB. Judge: actual_tool_input enthaelt target_amount=10000 + target_date=\u0027{{date:+13m@-1}}\u0027, KEINE selbst-errechnete monthly_savings_rate."
     },
     {
         "id":  "tc80",
         "name":  "Sparziel mit vorhandenem Geld, ohne Sparrate",
-        "task":  "Neues Sparziel 'Sommerreise 2027': 3000 Euro bis 31.07.2027. Das Geld liegt schon komplett auf dem Tagesgeld Plus, also keine Sparrate.",
+        "task":  "Neues Sparziel 'Sommerreise 2027': 3000 Euro bis {{date:+8m@-1}}. Das Geld liegt schon komplett auf dem Tagesgeld Plus, also keine Sparrate.",
         "chat_id":  "test_tc80",
         "expected_tool":  "tool_create_savings_goal",
         "expected_tool_args":  {
                                    "target_amount":  3000,
-                                   "target_date":  "2027-07-31",
+                                   "target_date":  "{{date:+8m@-1}}",
                                    "reserve_account_name":  "Tagesgeld Plus",
                                    "already_saved":  3000
                                },
-        "expected_behavior":  "Ruft tool_create_savings_goal sofort auf: goal_name='Sommerreise 2027', target_amount=3000, target_date='2027-07-31', reserve_account_name='Tagesgeld Plus', already_saved=3000. KEIN account_name und KEINE monthly_savings_rate; der Agent fragt NICHT nach einem Abbuchungskonto oder einer Rate (das Ziel ist mit dem vorhandenen Geld gedeckt, Rate 0).",
+        "expected_behavior":  "Ruft tool_create_savings_goal sofort auf: goal_name='Sommerreise 2027', target_amount=3000, target_date='{{date:+8m@-1}}', reserve_account_name='Tagesgeld Plus', already_saved=3000. KEIN account_name und KEINE monthly_savings_rate; der Agent fragt NICHT nach einem Abbuchungskonto oder einer Rate (das Ziel ist mit dem vorhandenen Geld gedeckt, Rate 0).",
         "notes":  "Sparziel-Zweckbindung 2026-10-27, nachgebaut aus einem Befund mit erfundenen Werten: das Geld liegt schon auf dem Topf, der Nutzer will keine Rate. Vorher fragte der Agent nach einer Rate und lehnte ein P2P-Konto ab. Judge: actual_tool_input enthaelt already_saved=3000 und kein account_name."
     },
     {
@@ -835,12 +835,12 @@
     {
         "id":  "tc71",
         "name":  "Laufender Kredit nur mit Restschuld/Zins/Rate + vorletzter Tag: keine Rueckfrage nach Ursprungswerten",
-        "task":  "Trag meinen laufenden Hauskredit 'Baufi Erlenkasse Alt' bei der Erlenkasse ein: Restschuld heute 84000 Euro, 1,1 Prozent Zins, Rate 520 Euro, immer am vorletzten Tag des Monats vom Lindenbank Giro, naechste Rate am 30.03.2027.",
+        "task":  "Trag meinen laufenden Hauskredit 'Baufi Erlenkasse Alt' bei der Erlenkasse ein: Restschuld heute 84000 Euro, 1,1 Prozent Zins, Rate 520 Euro, immer am vorletzten Tag des Monats vom Lindenbank Giro, naechste Rate am {{date:+30d@-2}}.",
         "chat_id":  "test_tc71",
         "expected_tool":  "tool_create_loan",
-        "expected_tool_args":  { "schedule_day_of_month": "-2", "first_payment_date": "2027-03-30" },
+        "expected_tool_args":  { "schedule_day_of_month": "-2", "first_payment_date": "{{date:+30d@-2}}" },
         "expected_behavior":  "Ruft tool_create_loan direkt auf mit current_balance 84000 (Restschuld heute), Zins, Rate und naechster Faelligkeit, schedule_day_of_month -2 (vorletzter Tag). Fragt NICHT nach Ursprungsbetrag, Auszahlungsdatum oder anfaenglicher Tilgung und wertet die Rate nicht gegen solche Angebotswerte. Laesst disbursement_account_name leer. Rechnet Zins/Tilgung nicht selbst (die Karte zeigt die Aufteilung der 1. Rate aus der DB).",
-        "notes":  "Befund 2026-10-24 (Werte erfunden): laufender Kredit = Restschuld + Zins + Rate + naechste Faelligkeit, Ursprungswerte optional; neuer Abbuchungstag -2. Mock-Tier: Szenario 'Trag meinen laufenden Hauskredit'. Ueberarbeitet 2026-11-02: der 30.11. war der letzte Tag des Novembers, der Agent fragte zu Recht nach. Der 30. ist nur in Monaten mit 31 Tagen der vorletzte; sobald der 30.03.2027 naeher als ~1 Monat rueckt, auf einen solchen Monat nachziehen (task, expected_tool_args, scenarios.json)."
+        "notes":  "Befund 2026-10-24 (Werte erfunden): laufender Kredit = Restschuld + Zins + Rate + naechste Faelligkeit, Ursprungswerte optional; neuer Abbuchungstag -2. Mock-Tier: Szenario 'Trag meinen laufenden Hauskredit'. Ueberarbeitet 2026-11-02: der 30.11. war der letzte Tag des Novembers, der Agent fragte zu Recht nach. Der 30. ist nur in Monaten mit 31 Tagen der vorletzte; darum Platzhalter {{date:+30d@-2}} (vorletzter Tag des Monats, Harness loest auf)."
     },
     {
         "id":  "tc72",

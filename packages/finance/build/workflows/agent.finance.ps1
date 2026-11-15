@@ -862,7 +862,7 @@ $nToolSellRealEstate = New-ToolWorkflowNode 'tool_sell_real_estate' `
 # Key-Liste aus onboarding/sections.json (Get-OnboardingSectionKeys), nie abgetippt.
 $financeSectionKeys = (Get-OnboardingSectionKeys $RepoRoot 'finance') -join ', '
 $nToolSetOnboarding = New-ToolWorkflowNode 'tool_set_onboarding_section' `
-    "Mark a finance onboarding section as captured or deliberately skipped - a PROGRESS MARKER ONLY (no financial write, no confirmation). Call this only after the user confirmed nothing is missing in that area (completed), or when the user explicitly wants to leave it out (skipped). section_key is one of: $financeSectionKeys. status is ""completed"" or ""skipped""." `
+    "Mark a finance onboarding section as captured or deliberately skipped - a PROGRESS MARKER ONLY (no financial write, no confirmation). Call this only after the user confirmed nothing is missing in that area (completed), or when the user explicitly wants to leave it out (skipped). After skipping, say in ONE short sentence that skipped areas can be captured later at any time (no command name, no extra paragraph). section_key is one of: $financeSectionKeys. status is ""completed"" or ""skipped""." `
     @(
         ,@('section_key', "One of: $financeSectionKeys", 'string')
         ,@('status', 'completed (area captured) or skipped (user deliberately omits it)', 'string')

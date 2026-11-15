@@ -108,7 +108,7 @@
         "text": "Das waren alle Konten.",
         "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"],
         "expect_sql": [ { "sql": "SELECT status FROM finance.onboarding_state WHERE section_key = 'accounts';", "equals": "completed" } ],
-        "expected_behavior": "The accounts area is marked as done and the reply says so briefly. It may name the next area once; it does not pressure the user to continue and does not start asking about investments in detail."
+        "expected_behavior": "The accounts area is marked as done and the reply says so briefly. It may name the next area once and ask once whether the user wants to continue with it now: a proposal with a question is NOT pressure. Pressure would be starting the next area without the user's consent (asking about investment details, booking or reading anything for it) or asking again and again in the same reply."
       },
       {
         "text": "Buche bitte am 17.03.2000 eine Ausgabe von 37,40 Euro für Buchladen Test auf das __E2E__ Erlenbank Giro.",

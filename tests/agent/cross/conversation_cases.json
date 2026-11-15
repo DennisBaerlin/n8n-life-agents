@@ -136,7 +136,7 @@
       },
       {
         "text": "kannst du mich beraten?", "expect_agent": "finance_advisor", "forbid_texts": ["NEXT_STEP", "Buchhalter", "bookkeeper"],
-        "expected_behavior": "The advisor starts the planning conversation without asking for a topic first. It asks only ONE thing at a time in plain language, does not ask for the account or balance it already sees in the data, and does not book anything."
+        "expected_behavior": "The advisor starts the planning conversation without asking for a topic first. It asks only ONE thing at a time in plain language, does not ask for the account or balance it already sees in the data, and does not book anything. It names only the ONE missing item it asks about now (e.g. the regular net income): announcing further missing items in the same message (e.g. 'two basics are still missing: income and the largest expense') is a FAIL, even when only one question follows."
       },
       {
         "text": "Das Gehalt sind 2.400 netto, das kommt am Monatsletzten aufs Erlenbank Giro.",

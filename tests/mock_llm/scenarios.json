@@ -347,11 +347,12 @@
     "final": "Versicherung angelegt."
   },
   {
+    "_comment": "tc12 Depot mit neuem Verrechnungskonto: zuerst nur das Girokonto (Einzelkarte); die Routing-Suite lehnt ab, darum kein zweiter Aufruf fuer das Depot.",
     "match": "neues Birkenbank Girokonto an",
     "calls": [
-      { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"account\",\"name\":\"Birkenbank Girokonto\",\"account_type\":\"cash\"},{\"entity_type\":\"account\",\"name\":\"Birkenbank Depot\",\"account_type\":\"stocks_depot\",\"settlement_account\":\"Birkenbank Girokonto\"}]" } }
+      { "tool": "tool_create_account", "args": { "name": "Birkenbank Girokonto", "account_type": "cash", "owner_person": "Erika", "bank": "Birkenbank" } }
     ],
-    "final": "Beide Konten gestaged, die Sammelkarte folgt."
+    "final": "Abgebrochen, das Girokonto ist nicht angelegt. Das Depot lege ich darum auch nicht an."
   },
   {
     "_comment": "tc55 Kauf ohne Gebuehr: Gebuehr + Datum leer (DB-Default), keine Rueckfrage.",

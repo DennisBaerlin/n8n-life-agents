@@ -1479,27 +1479,6 @@ function New-TelegramSendNode {
     $node
 }
 
-# Markdown-Robustheit: ein LLM-Relay-Send, der bei einem Markdown-Parse-Fehler (ungepaartes _*[` in freier
-# LLM-Antwort -> Telegram HTTP 400 "can't parse entities") nicht crasht, sondern denselben Text plain nachsendet.
-# Gibt zwei Nodes zurueck: Primary (parse_mode='Markdown', onError=continueErrorOutput, maxTries=1 — Retry ist bei
-# einem deterministischen Parse-Fehler nutzlos + interagiert defekt mit onError=Continue, GH #10763) und
-# PlainFallback (parse_mode='HTML' + Text mit & < > als Entities, voller retryOnFail — transiente Fehler des
-# Fallbacks bleiben ungefangen -> regulaerer errorWorkflow -> ein echter Zustellausfall wird nicht maskiert).
-# Warum HTML statt parse_mode='': n8n setzt leeres parse_mode still auf 'Markdown' (der Fallback crashte sonst
-# an derselben Entity wie der Primary); im HTML-Modus sind laut Bot-API nur < > & Steuerzeichen -> escapt kommt
-# der Text 1:1 an. Der Aufrufer verdrahtet: <input> -> Primary; Primary[main,0] (Erfolg) terminiert;
-# Primary[error] -> PlainFallback. -TextExpr = genau EIN ={{ ... }}-Ausdruck (wird fuer den Fallback umhuellt).
-function New-TelegramSendWithPlainFallback {
-    param([string]$Name, [int[]]$Pos, [string]$TextExpr, [string]$ChatIdExpr = '__OWNER_CHAT_ID__')
-    if ($TextExpr -notmatch '(?s)^=\{\{(.+)\}\}\s*$') { throw "New-TelegramSendWithPlainFallback '$Name': -TextExpr muss genau ein ={{ ... }}-Ausdruck sein" }
-    $plainExpr = '={{ String(' + $Matches[1].Trim() + ").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}"
-    $primary = New-TelegramSendNode $Name $Pos $TextExpr -ChatIdExpr $ChatIdExpr -NoEscape `
-                   -ParseMode 'Markdown' -OnError 'continueErrorOutput' -MaxTries 1
-    $fallback = New-TelegramSendNode "$Name (plain fallback)" @(($Pos[0] + 220), ($Pos[1] + 200)) $plainExpr `
-                   -ChatIdExpr $ChatIdExpr -NoEscape -ParseMode 'HTML'
-    @{ Primary = $primary; Fallback = $fallback }
-}
-
 # New-TelegramRelayChain — ein Weg fuer jede Agent-Antwort an den Chat (Orchestrator-Relay, Paket-Befehle, Onboarding-
 # Knoepfe): '<Name> split' (Code) teilt den Text an Absatzgrenzen in Teile
 # <= 3500 Zeichen (vor dem Escapen; Telegram-Limit 4096) und escapt & < > -> '<Name> loop' (splitInBatches, 1 Teil je
@@ -1704,7 +1683,7 @@ function New-TelegramInlineKeyboardSendNode {
     $node
 }
 
-# Vorschlag mit einem Knopf (naechster Schritt, core.fn_get_next_step) — Gegenstueck zu New-TelegramSendWithPlainFallback:
+# Vorschlag mit einem Knopf (naechster Schritt, core.fn_get_next_step) — Gegenstueck zu New-TelegramRelayChain:
 # Text als HTML-Plain (& < > escapt wie die Relay-Kette; parse_mode HTML, weil n8n ein leeres parse_mode still zu Markdown
 # macht), Primary retryOnFail:true + maxTries:1 + onError continueErrorOutput (Retry x onError=Continue ist defekt, GH #10763).
 # Der Fehler-Ausgang [1] gehoert dem Aufrufer: dort die normale Relay-Kette ohne Knopf, damit der Text immer ankommt.

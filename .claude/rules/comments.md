@@ -4,7 +4,7 @@ paths:
   - "**/*.ps1"
   - "**/*.sh"
   - "**/*.js"
-  - "provisioning/lifeagents*"
+  - "provisioning/templates/lifeagents.tpl"
 ---
 
 # Kommentare (lädt beim Öffnen von Code)

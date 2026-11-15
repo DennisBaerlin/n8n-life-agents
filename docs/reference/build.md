@@ -9,7 +9,7 @@ Die Bau-Engine (`scripts/build/`) ist kein Paket — sie baut Pakete (analog `pr
 ```
 scripts/build/                    # ENGINE (Toolchain, kein Paket)
   build.ps1                       # Orchestrator: env+creds, dot-source lib + packages/*/build, Builder-Discovery, Build->Save-Loop, -Only
-  lib/                            # build_helpers.ps1 (Build-*/E/Build-Workflow/New-Id), workflow_lifecycle.ps1 (ID-Stelle,
+  lib/                            # build_helpers.ps1 (Build-*/E/Build-Workflow/New-Id), umlaut.ps1, workflow_lifecycle.ps1 (ID-Stelle,
                                   #   Get-RequiredWorkflowId, Get-WorkflowPackage), builder_discovery.ps1 (Builder per AST + Cred-Token-Assert),
                                   #   credentials.ps1 (Paket-Cred-Deskriptoren aus den Manifesten), approval_matrix.ps1 (Maker-Checker-Stufen;
                                   #   auch von approval_lint dot-gesourct), agent_cases.ps1 (Test-Case-Dateien per Glob; auch mock_lint),

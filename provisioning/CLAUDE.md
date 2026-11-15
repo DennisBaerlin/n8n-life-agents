@@ -11,7 +11,7 @@ Der Auslieferungs-Kern läuft byte-identisch im Test-Substrat (systemd-Docker-Co
 
 ## Harte Regeln (bash-Kern)
 
-- **`set -euo pipefail` nur im Top-Script** (`install.sh`/`provision.sh`/`doctor.sh`/`lifeagents`); `lib/*.sh` erben den Error-Mode, setzen ihn nie selbst.
+- **`set -euo pipefail` nur im Top-Script** (`install.sh`/`provision.sh`/`doctor.sh`/`lifeagents.tpl`); `lib/*.sh` erben den Error-Mode, setzen ihn nie selbst.
 - **Idempotenz, Zweitlauf = no-op:** jeder Schritt guarded (`add_apt_key`/`add_apt_source`/`write_if_changed`, `dpkg -s`, `pg_roles`/`pg_database`-EXISTS); systemd-Reload/Restart nur bei echter Datei-Änderung (`write_if_changed` rc0 → `enable_start_unit … 0`).
 - **`N8N_ENCRYPTION_KEY` wird einmal erzeugt und nie überschrieben** (`prepare_n8n_env` liest die bestehende Env zuerst); analog DB-Passwort. Secrets = `rand_hex`. `core.backup_key` nie rotieren.
 - **Secrets nie im argv:** nur `/etc/n8n/n8n.env` (640 root:n8n) bzw. `/etc/lifeagents/<pkg>.env`; First-Init-Overrides aus Prozess-Env. HTTP mit Secrets nur über `curl_secret` (`curl -K -`) bzw. `n8n_api_curl`/`tg_api_curl` (`/proc/<pid>/cmdline` ist für jeden lesbar).

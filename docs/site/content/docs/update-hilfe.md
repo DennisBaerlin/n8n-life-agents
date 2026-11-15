@@ -6,7 +6,7 @@ Tippst du in der Update-Karte im Chat auf **Jetzt aktualisieren**, zeigt eine Na
 
 Zwei Dinge gelten immer:
 
-- **Vor jedem Update wird gesichert.** Die ganze Datenbank liegt verschlüsselt unter `/var/backups/lifeagents/`, die letzten zwei Sicherungen bleiben liegen.
+- **Vor jedem Update, das die Version wechselt, wird gesichert.** Die ganze Datenbank liegt verschlüsselt unter `/var/backups/lifeagents/`, die letzten zwei Sicherungen bleiben liegen.
 - **Das vollständige Protokoll** eines Updates aus dem Chat steht unter `/var/log/lifeagents/update-<zeit>.log`. Den genauen Pfad nennt die Nachricht.
 
 Alle Befehle auf dieser Seite führst du auf dem Server als root aus (meist mit `sudo` davor).
@@ -20,6 +20,8 @@ Das Update ist abgebrochen, **bevor** es etwas am System geändert hat. Dein Sys
 | GitHub war nicht erreichbar | Internet-Verbindung des Servers prüfen, dann **Erneut versuchen** tippen. |
 | GitHub hat zu viele Anfragen gemeldet | Etwa eine Stunde warten, dann **Erneut versuchen**. |
 | Nicht genug Speicherplatz | Platz schaffen (`df -h` zeigt, wie voll der Server ist; alte Dateien in `/tmp` oder Container-Abbilder sind typische Platzfresser), dann **Erneut versuchen**. Das Update braucht mindestens 2 GB frei, bei einer neuen n8n-Version deutlich mehr (rund 5 GB). |
+| Diese Version gibt es bei GitHub nicht | Den Versions-Namen prüfen (er steht in der Release-Liste des Projekts), dann das Update mit der richtigen Version neu anstoßen. |
+| Das wäre eine ältere Version als die installierte | Ein Update spielt nie von selbst eine ältere Version ein. Brauchst du die ältere bewusst, geht das nur im Terminal mit `lifeagents update --version <Version> --allow-downgrade`. |
 | Ein anderes Update läuft schon | Warten, bis es fertig ist, dann **Erneut versuchen**. |
 | Die Datenbank war nicht erreichbar | `lifeagents doctor` zeigt, was mit der Datenbank los ist. |
 | Die Sicherung ist fehlgeschlagen | Meist fehlt Speicherplatz unter `/var/backups/lifeagents/`. Ohne Sicherung wird bewusst nicht aktualisiert. |
@@ -48,7 +50,7 @@ Die neue Version läuft, aber ein Teil davon (zum Beispiel ein Paket wie Finanze
 
 ## Mittendrin abgebrochen {#midway}
 
-Das Update hat schon angefangen, das System umzubauen, und ist dann in einem Schritt abgebrochen. Die Nachricht nennt den Schritt. Dein System läuft, aber vielleicht nicht vollständig.
+Das Update hat schon angefangen, das System umzubauen, und ist dann in einem Schritt abgebrochen (zum Beispiel, weil n8n nach dem Update nicht wieder gestartet ist). Die Nachricht nennt den Schritt. Dein System läuft, aber vielleicht nicht vollständig.
 
 1. **Erneut versuchen** tippen. Das Update setzt an der Abbruchstelle fort und nutzt dieselbe Sicherung.
 2. Klappt das nicht, kannst du zur vorherigen Version zurück, siehe [Zurück zur vorherigen Version](#rollback).

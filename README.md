@@ -92,11 +92,11 @@ Step-by-step guide including reverse proxy, router and Telegram bot setup: **[In
 ```bash
 lifeagents                           # no command (terminal): interactive menu — arrow keys + Enter
 lifeagents update                    # self-update: latest release + DB migration (core + installed packages)
-lifeagents package list|install|reconfigure …  # install/uninstall packages individually
+lifeagents package catalog|list|install|uninstall …  # install/uninstall packages individually
 lifeagents reconfigure [core|<pkg>]  # change or add settings (address, bot token, keys) and re-apply
 lifeagents config list|set|reset …   # central runtime config
 lifeagents proxy show|set …          # reverse proxy status + configuration
-lifeagents household …               # invite/pair/remove/block members
+lifeagents household …               # list/add/remove/pair-owner/block members
 lifeagents backup export|restore|key # encrypted backup of your user data; key = emergency sheet
 lifeagents rollback                  # after a failed update: back to the previous version (asks first)
 lifeagents doctor                    # read-only health check
@@ -171,7 +171,7 @@ flowchart TD
 
 - The orchestrator's routing is **generated at build time from the package manifests** — a new agent needs no orchestrator edit.
 - Every domain package owns exactly one database schema and its own isolated read/write roles; cross-access only via deliberately published read windows.
-- Memory has four layers (always-loaded instructions · lazily loaded knowledge docs · chat history per agent · structured domain tables) — details in [CLAUDE.md](CLAUDE.md).
+- Memory has four layers (always-loaded instructions · lazily loaded knowledge docs · chat history per agent · structured domain tables) — details in [the docs](https://dennisbaerlin.github.io/n8n-life-agents/docs/so-funktionierts.html) (German).
 
 </details>
 

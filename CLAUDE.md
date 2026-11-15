@@ -60,7 +60,7 @@ n8n 2.45.7 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine I
 
 ## Entwicklungszyklus
 
-Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Tabelle unten) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate` (eine Leitung zur Zeit, Stand-Datei `.claude/plans/leitung-stand.md`), „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues Thema nach fertiger Arbeit → `/clear` oder neue Session vorschlagen (Offenes ins Memory), nicht mitten im Sprint.
+Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Liste im Skill) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate` (eine Leitung zur Zeit, Stand-Datei `.claude/plans/leitung-stand.md`), „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues Thema nach fertiger Arbeit → `/clear` oder neue Session vorschlagen (Offenes ins Memory), nicht mitten im Sprint.
 
 ## Compact Instructions
 

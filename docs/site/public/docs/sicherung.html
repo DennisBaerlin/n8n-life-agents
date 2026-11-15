@@ -251,7 +251,7 @@
 <p>Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, und <code>lifeagents doctor</code> zeigt „Letzte Sicherung“ rot. Kopiere die Dateien zusätzlich regelmäßig vom Server weg, sonst liegt die Sicherung auf demselben Rechner wie die Daten. Eine Sicherung von Hand startest du mit <code>lifeagents backup auto</code>, den Verlauf zeigt <code>journalctl -u lifeagents-backup</code>.</p>
 <h2 id="neuer-rechner">Neuer Rechner: Schritt für Schritt</h2>
 <ol>
-<li><strong>Die Version aus dem Dateinamen installieren.</strong> Eine Sicherung lässt sich nur in genau die Version zurückspielen, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. <code>v0.44.0</code>).
+<li><strong>Die Version aus dem Dateinamen installieren.</strong> Eine Sicherung spielst du am sichersten in genau der Version zurück, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. <code>v0.44.0</code>).
 <ul>
 <li>Start-App: Lade die App dieser Version, <code>https://github.com/DennisBaerlin/n8n-life-agents/releases/download/v0.44.0/lifeagents.dmg</code> (Mac) bzw. <code>…/lifeagents-setup.exe</code> (Windows), Version im Link anpassen. Richte sie ein wie beim ersten Mal und wähle im Fragebogen bei „Wohin sichern?“ den Ordner mit deinen alten Sicherungen.</li>
 <li>Server: <code>curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh &amp;&amp; bash install.sh --version v0.44.0</code>, dann die Sicherungsdatei auf den Server kopieren.</li>

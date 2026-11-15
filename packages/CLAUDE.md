@@ -2,7 +2,7 @@
 
 Geteilte Gesetze für alle Pakete; Domänen-Deltas → `packages/<pkg>/CLAUDE.md`. Vertrag `docs/package-contract.md`, fn-Kontrakte `docs/fn_catalog.md`, Mechanik und Begründungen → `docs/reference/packages.md`.
 
-- **Schema-SoT** = die idempotenten `packages/<pkg>/db/*.sql` + `R__fn_*.sql` (eine Function je Datei); Init und R__ synchron halten, per-fn-Verhalten steht im Katalog. DB-Gesetze → `.claude/rules/sql.md`.
+- **Schema-SoT** = die idempotenten `packages/<pkg>/db/*.sql` + `R__fn_*.sql` (ein Thema je Datei, Hilfs-fns dürfen mit); Init und R__ synchron halten, per-fn-Verhalten steht im Katalog. DB-Gesetze → `.claude/rules/sql.md`.
 - **Struktur-Invariante** (`layout_lint.ps1`): Allow-Sets nur per begründetem Edit der In-Skript-Arrays bzw. `scripts/build/retired_paths_allowlist.json`; das rote Gate ist der Kontrollpunkt, kein Fehler.
 
 ## Workflow-Bau
@@ -16,7 +16,7 @@ Autoren-Regeln für jeden Workflow/Def; Engine-Mechanik → `scripts/build/CLAUD
 - **Neues Tool / neuer Route-Agent:** Platzhalter `packages/<pkg>/workflows/<id>-<name>.json` mit `{}` VORAB anlegen (eigene 16-Zeichen-nanoid; die Agent-Def wird bei jedem Build ausgewertet und verlangt die ID schon im ersten Lauf, auch mit `-Only`) → `tools/<neu>.ps1` mit genau einer `Build-<Neu>`; Trigger-Inputs in `Build-Trigger` und `$fromAI`-Mapping in der Agent-Def → `build.ps1` → `-Reset`.
 - **Agent-Eingang:** jeder Agent-Workflow (nicht Tool, nicht Orchestrator) trägt das Depth-Gate (`call_depth >= 2 → max_call_depth`; `call_depth` = Tiefe des Empfängers: Root 0, Sub-Agent `caller_depth + 1`, Tools keines). Paket-Agenten zusätzlich über `New-AdvisorGateChain`: Depth → Package-Active (`core.fn_package_active`, fail-open) → Core-first (`core.fn_onboarding_status('core')`, Antwort = `Build-Set`-Redirect, nicht `Build-ToolError`). Geteilt sind nur diese drei Gates; Onboarding-Pflicht-Gates sind paket-lokal NACH `Load Config`. Core-Agenten (monitor/guide) brauchen beides nicht. Paket-Crons gaten fail-closed (`fn_package_active AND cron_enable`).
 - **Write-Tool** nur via `New-FnWriteGate` (→ `docs/reference/packages.md` *Tool-Bau*).
-- **Falle `Build-Pg`:** Default ist die WRITE-Cred → bei RO-Reads post-construction `.credentials = <pkg>_ro` + `.onError='continueRegularOutput'` setzen, sonst still ignoriert. `New-AdvisorToolNode -StartNode` ist Pflicht (kein Default-Erben der chat_id-Quelle).
+- **Falle `Build-Pg`:** Default ist die WRITE-Cred → bei RO-Reads `-Cred <pkg>_ro` + `-ContinueOnError` an `Build-Pg` übergeben (sonst still ignoriert). `New-AdvisorToolNode -StartNode` ist Pflicht (kein Default-Erben der chat_id-Quelle).
 - **Capabilities-Manifest:** jedes nutzer-facing Tool gibt `Build-Workflow` `@{ Category = '<id>' }` oder `@{ Internal = $true }`; Texte + Beispiele im Katalog (`<pkg>.help.<id>.*`, deutsche Beispiele = Routing-Case-`task`s, `-VerifyCatalog`). Danach `build.ps1 -CatalogOnly` + committen.
 - **Feste Nutzertexte nie als Literal:** Katalog-Key + `t`-Map (`Get-UiTextExpr`) bzw. `core.fn_ui_text` mit der Empfänger-Sprache; `ui_literal_lint` (Ratchet, §3.11).
 - **Command-Registry:** Slash-Befehle leben im `commands`-Block des Manifests; `dispatch:{agent,task}` = Code-Pfad-Command (Build-Zeit-Switch), reiner Text-/Callback-Prefix = Laufzeit-`core.callback_handlers`. Switch-Fallback zuletzt dynamisch verdrahten (sonst bleibt Chat-Text still).
@@ -33,13 +33,13 @@ Symptom → Fix; Fallgeschichten → `docs/reference/packages.md` *Build-Gotchas
 
 - **IF `rightValue` typgerecht** (`true`/`1`, kein String; `Build-If` konvertiert). Operatoren nur kanonisch `gt/gte/lt/lte` — unbekannte Strings (`largerEqual`) publishen, routen aber still immer false; `Build-If`-Aliase nutzen, nie raten.
 - **Jeder Postgres-Node = ein `jsonb`-Parameter** (`Build-Pg` mit `[ordered]@{…}` → `($1::jsonb)->>'feld'`): n8n droppt leere Werte in komma-getrennter `queryReplacement` (Parameter-Shift). Positionale `$1,$2` und `'__none__'`-Sentinel sind Altlast.
-- **`$fromAI`:** keine Apostrophe in Descriptions (bricht den Parser); 3-arg = Pflichtfeld, 4. Argument `''` = optional; vom LLM aufgelöste IDs als `'string'` (es quotet gelegentlich), die fn castet.
+- **`$fromAI`:** keine Apostrophe in Descriptions (bricht den Parser); 3-arg = Pflichtfeld, 4. Argument = Default (Zahlenfelder: Zahl, `''` nur bei `string`); vom LLM aufgelöste IDs als `'string'` (es quotet gelegentlich), die fn castet.
 - **Neuer Tool-Input an zwei Stellen:** `Build-Trigger` (Sub-Workflow-Start) und InputSpec des Agent-Bindings (`New-AdvisorToolNode`; im Buchhalter `New-ToolWorkflowNode`) — sonst kommt er als `undefined` an.
 - **Deploy:** Sub-Workflows vor Aufrufern publishen; `POST /publish` braucht `Content-Type: application/json` + Body `{}` (415 in 1 s ist nicht der keepAlive-Hang); `deploy_workflows.sh` erledigt beides.
 - **Ausdrücke:** bedingten Textteil klammern `Text + ((Bed) ? a : b)`; **nie `}}`** in einem Ausdruck, auch nicht im Text einer `$fromAI`-Beschreibung (JSON-Beispiele mit Leerzeichen `} }`); `workflow_lint` prüft JS-Syntax, die Rangfolge nicht.
 - **Export-JSON:** Single-Quotes stehen als `'`; das Edit-Tool matcht sie nicht → PowerShell-Replace.
 - **Telegram nur über die Helper** (`New-TelegramSendNode`/`New-TelegramSendAndWaitNode`, Alert-Formatter in `core.sub_error_notify.ps1`): sie setzen Attribution, Retry und das Escaping der Legacy-Markdown-Entities (`sendAndWait` ist hart `Markdown`); `workflow_lint` prüft jeden Send.
-- **LLM-Relay = `New-TelegramSendWithPlainFallback`:** Primary `retryOnFail:true`+`maxTries:1` nicht „aufräumen" (`retryOnFail`×`onError=Continue` ist in n8n defekt, GH #10763); der Fehler-Ausgang gatet bewusst nicht auf 400.
+- **LLM-Relay = `New-TelegramRelayChain`** (HTML = echtes Plain, Retry nur je Teil; Details im Helper-Kommentar); `retryOnFail`×`onError=Continue` ist in n8n defekt (GH #10763).
 - **KNOWN ISSUE Telegram-Send hängt 3–5 Min:** Node.js-keepAlive-Socket, Upstream-Problem — nicht im Workflow debuggen.
 - **Free-SQL `postgres_select`:** `onError='continueRegularOutput'` + Description „`SELECT *`, `information_schema`", keine Spaltenliste im Prompt außer `view_hints.ps1`. Nie auf deterministische `tool_*`-Nodes anwenden (dort ist ein DB-Fehler ein echter Defekt).
 - **Bestätigen im Chat:** `New-TelegramSendAndWaitNode` setzt `chatApproval` und `approverIds` (Ausdruck-Ziel → `-ApproverIdsExpr` mit `.first()`, leer hieße „jeder darf"). n8n bindet einen Tipp an die Execution, nicht an die Nachricht → mehrere Fragen nacheinander in einer Execution brauchen `New-StaleTapGuard` (Muster `cron.remind_interest`).

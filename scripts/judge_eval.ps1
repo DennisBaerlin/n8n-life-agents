@@ -88,6 +88,7 @@ function Write-JudgeCostReport([string]$Label) {
 }
 
 . "$PSScriptRoot\lib\judge_prompt.ps1"   # Get-JudgeSystemText, Format-JudgeUserText (Karten-Entscheid je Eintrag)
+. "$PSScriptRoot\lib\http_json.ps1"      # Invoke-JsonPostUtf8: API-Antwort als UTF-8 (sonst Mojibake in der Begruendung)
 . "$PSScriptRoot\lib\judge_record.ps1"   # Urteile je Fall dauerhaft nach .local/judge_runs (das Bundle ist nach dem Lauf leer)
 $script:RunStamp = Get-JudgeRunStamp -RepoRoot $RepoRoot
 $script:RunFile  = $null
@@ -117,10 +118,8 @@ function Invoke-JudgeOnce([object]$Entry) {
             messages      = @(@{ role = 'user'; content = $userText })
             output_config = [ordered]@{ effort = 'low'; format = [ordered]@{ type = 'json_schema'; schema = $VerdictSchema } }
         } | ConvertTo-Json -Depth 12
-        $resp = Invoke-RestMethod -Uri $Endpoint -Method Post `
-            -Headers @{ 'x-api-key' = $script:ApiKey; 'anthropic-version' = '2023-06-01' } `
-            -ContentType 'application/json; charset=utf-8' `
-            -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+        $resp = Invoke-JsonPostUtf8 -Uri $Endpoint -Body $body `
+            -Headers @{ 'x-api-key' = $script:ApiKey; 'anthropic-version' = '2023-06-01' }
         if ($resp.usage) {
             [void]$script:JudgeUsage.Add([pscustomobject]@{ model = $Model; input_tokens = $resp.usage.input_tokens
                 cache_creation_input_tokens = $resp.usage.cache_creation_input_tokens; cache_read_input_tokens = $resp.usage.cache_read_input_tokens

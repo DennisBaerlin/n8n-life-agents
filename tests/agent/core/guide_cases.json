@@ -15,7 +15,7 @@
     "task": "Zum Haushalt: ich bin Erika Mustermann, geboren am 20.05.1980, Rolle Owner, angestellt. Bitte so speichern.",
     "chat_id": "test_gc02",
     "expected_tool": "tool_set_household_facts",
-    "expected_behavior": "Erika Mustermann is already stored as owner (Household so far). The guide calls tool_set_household_facts for her via her person_id from the household list with the new facts (employed; birth_date 1980-05-20 if not stored yet), directly, without playback, because the user gave an explicit save instruction. It must not create a second Erika or invent an id. Saying that name and birth date are already stored is correct when Household so far lists them. Under the gate bypass the tool returns cancelled and the reply says it was not saved.",
+    "expected_behavior": "Erika Mustermann is already stored as owner (Household so far). The guide calls tool_set_household_facts for her via her person_id (owner in the household list of the fixture) with the new facts (employed; birth_date 1980-05-20 if not stored yet), directly, without playback, because the user gave an explicit save instruction. It must not create a second Erika or invent an id. Saying that name and birth date are already stored is correct when Household so far lists them. Under the gate bypass the tool returns cancelled and the reply says it was not saved.",
     "notes": "Rubrik korrigiert 2026-11-15 (Owner-Entscheid): Erika ist im Fixture schon Owner; Guide-Prompt Regel 1b verlangt bei ausdruecklichem Speicherauftrag den direkten Aufruf mit person_id statt Playback. Die alte Rubrik verlangte Playback und Vor-/Nachname."
   },
   {

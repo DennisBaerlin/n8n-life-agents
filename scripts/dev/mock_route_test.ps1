@@ -300,8 +300,19 @@ foreach ($tc in $cases) {
                     }
                 }
             } else {
-                $pass = ($hitWrite.Count -eq 0)
-                if (-not $pass) { Write-Host "    FEHLER: kein Tool erwartet, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
+                # tolerated_tools wie in n8n_test: ein erlaubter Aufruf muss aber durchlaufen, sonst waere ein stilles
+                # Ende oder ein Absturz des Tool-Workflows hier unsichtbar.
+                $notTolerated = @($hitWrite | Where-Object { @($tc.tolerated_tools) -notcontains $_ })
+                $pass = ($notTolerated.Count -eq 0)
+                if (-not $pass) { Write-Host "    FEHLER: kein Tool erwartet, got [$($notTolerated -join ', ')]" -ForegroundColor Red }
+                foreach ($tt in @($hitWrite | Where-Object { @($tc.tolerated_tools) -contains $_ })) {
+                    if ($runData.PSObject.Properties.Name -notcontains $tt) { continue }
+                    $toolErr = @($runData.$tt | Where-Object { $_.error -or $_.executionStatus -eq 'error' })
+                    if ($toolErr.Count -gt 0) {
+                        $pass = $false
+                        Write-Host "    FEHLER: Aufruf von $tt scheiterte (Tool-Workflow lief nicht)." -ForegroundColor Red
+                    }
+                }
             }
         } else {
             Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red

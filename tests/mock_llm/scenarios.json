@@ -137,7 +137,7 @@
     "match": "20 Euro fuer Kaffee mit dem Lindenbank Giro",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "20 Euro fuer Kaffee mit dem Lindenbank Giro als Ausgabe buchen" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 20, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Kaffee" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 20, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Kaffee" } }
     ],
     "final": "Ausgabe von 20 EUR auf Lindenbank Giro gebucht."
   },
@@ -146,8 +146,8 @@
     "match": "33 Euro Wiederholprobe mit dem Lindenbank Giro",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "33 Euro Wiederholprobe mit dem Lindenbank Giro buchen" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Wiederholprobe" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Wiederholprobe" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Wiederholprobe" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 33, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Wiederholprobe" } }
     ],
     "final": "Die Buchung wurde nicht bestaetigt, es wurde nichts gespeichert."
   },
@@ -272,7 +272,7 @@
   {
     "match": "Kauf im Testbroker Depot 10 Anteile",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 10, "price_per_share": 110, "order_fee": "1", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BK5BQT80", "symbol": "VWCE", "shares": 10, "price_per_share": 110, "order_fee": "1", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Kauf gebucht."
   },
@@ -280,7 +280,7 @@
     "_comment": "tc123 Fremdwaehrungs-Kauf mit abgebuchtem Betrag: Rohwert, den Stueckpreis rechnet die DB.",
     "match": "abgebucht wurden 1254,30 Euro",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 0, "cost_basis_total": "1254.30", "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 0, "cost_basis_total": "1254.30", "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Kauf gebucht."
   },
@@ -288,7 +288,7 @@
     "_comment": "tc125 Verkauf mit Fremdwaehrungs-Kurs: die DB lehnt nach dem Aufruf ab.",
     "match": "5 Anteile VWCE zu 150 US-Dollar",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "symbol": "VWCE", "shares": 5, "price_per_share": 150, "quote_currency": "USD", "order_fee": "0", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "symbol": "VWCE", "shares": 5, "price_per_share": 150, "quote_currency": "USD", "order_fee": "0", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Wie viel Euro wurden gutgeschrieben?"
   },
@@ -296,7 +296,7 @@
     "_comment": "tc48 Bestandsuebernahme: bestehende Position, Verrechnungskonto bleibt unberuehrt (existing_position).",
     "match": "liegen schon 10 Anteile iShares Core MSCI EM IMI",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BKM4GZ66", "symbol": "EIMI", "shares": 10, "price_per_share": 30, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16", "existing_position": "true" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "IE00BKM4GZ66", "symbol": "EIMI", "shares": 10, "price_per_share": 30, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}", "existing_position": "true" } }
     ],
     "final": "Position übernommen."
   },
@@ -319,28 +319,28 @@
   {
     "match": "5 Anteile Apple",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 293, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16", "quote_currency": "USD" } }
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 293, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}", "quote_currency": "USD" } }
     ],
     "final": "Kauf gebucht."
   },
   {
     "match": "Buche eine Dividende von 12,50 Euro",
     "calls": [
-      { "tool": "tool_book_dividend", "args": { "symbol": "VWCE", "depot_name": "Testbroker Depot", "amount": 12.5, "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_dividend", "args": { "symbol": "VWCE", "depot_name": "Testbroker Depot", "amount": 12.5, "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Dividende gebucht."
   },
   {
     "match": "Überweise 500 Euro vom Lindenbank Giro",
     "calls": [
-      { "tool": "tool_book_transfer", "args": { "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_transfer", "args": { "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Transfer gebucht."
   },
   {
     "match": "neue Haftpflichtversicherung bei der Lindenversicherung",
     "calls": [
-      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung Lindenversicherung", "policyholder_person": "Lena Beispiel", "annual_premium": "89", "schedule_unit": "year", "valid_from": "2026-01-01", "first_payment_date": "2026-01-15", "debit_account_name": "Lindenbank Giro", "policy_number": "Lindenversicherung-9876" } }
+      { "tool": "tool_create_insurance", "args": { "name": "Haftpflichtversicherung Lindenversicherung", "policyholder_person": "Lena Beispiel", "annual_premium": "89", "schedule_unit": "year", "valid_from": "{{date:-3m@1}}", "first_payment_date": "{{date:+1m@15}}", "debit_account_name": "Lindenbank Giro", "policy_number": "Lindenversicherung-9876" } }
     ],
     "final": "Versicherung angelegt."
   },
@@ -371,7 +371,7 @@
     "_comment": "tc57 Kredit: Abbuchungstag leer = Tag der ersten Rate.",
     "match": "Lege einen Kredit 'Autokredit VW Bank' an",
     "calls": [
-      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": "18000", "disbursement_date": "2026-09-01", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "2026-10-15", "schedule_day_of_month": "", "debit_account_name": "Lindenbank Giro" } }
+      { "tool": "tool_create_loan", "args": { "name": "Autokredit VW Bank", "lender": "VW Bank", "original_amount": "18000", "disbursement_date": "{{date:-2m@1}}", "interest_rate": 4.9, "monthly_annuity": "350", "first_payment_date": "{{date:+1m@15}}", "schedule_day_of_month": "", "debit_account_name": "Lindenbank Giro" } }
     ],
     "final": "Kredit angelegt."
   },
@@ -443,7 +443,7 @@
     "_comment": "tc54 Oversell: der Probelauf lehnt VOR der Karte ab (kein sendAndWait).",
     "match": "Verkaufe 5000 Anteile Vanguard FTSE All-World",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5000, "price_per_share": 115, "order_fee": "0", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5000, "price_per_share": 115, "order_fee": "0", "transaction_date": "{{date:0d}}", "symbol": "VWCE" } }
     ],
     "final": "So viele Anteile liegen nicht im Depot."
   },
@@ -459,21 +459,21 @@
     "_comment": "tc15 Krypto auf Aktien-Depot: der Probelauf lehnt den Depot-Typ ab (kein sendAndWait).",
     "match": "Kauf im Testbroker Depot 0,01 Bitcoin",
     "calls": [
-      { "tool": "tool_book_stock_buy", "args": { "symbol": "BTC", "shares": 0.01, "price_per_share": 65000, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+      { "tool": "tool_book_stock_buy", "args": { "symbol": "BTC", "shares": 0.01, "price_per_share": 65000, "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "{{date:0d}}" } }
     ],
     "final": "Bitcoin braucht ein Krypto-Depot."
   },
   {
     "match": "Verkaufe 5 Anteile Vanguard FTSE All-World",
     "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5, "price_per_share": 115, "order_fee": "2", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 5, "price_per_share": 115, "order_fee": "2", "transaction_date": "{{date:0d}}", "symbol": "VWCE" } }
     ],
     "final": "Verkauf gebucht."
   },
   {
     "match": "monatliche Kreditrate für meinen Baufinanzierungs-Kredit",
     "calls": [
-      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung Buchenbank", "payment_amount": "1200", "payment_date": "2026-06-16" } }
+      { "tool": "tool_book_loan_payment", "args": { "loan_name": "Baufinanzierung Buchenbank", "payment_amount": "1200", "payment_date": "{{date:0d}}" } }
     ],
     "final": "Kreditrate gebucht."
   },
@@ -494,14 +494,14 @@
   {
     "match": "Zielbetrag 10000 Euro, bis Ende 2027",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "{{date:+13m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-07-01" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Notfallfonds", "target_amount": 10000, "target_date": "{{date:+13m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Sparziel angelegt."
   },
   {
     "match": "Gleiche mein Lindenbank Giro ab",
     "calls": [
-      { "tool": "tool_reconcile_account", "args": { "account_name": "Lindenbank Giro", "confirmed_balance": 1234.56, "reconciliation_date": "2026-06-16" } }
+      { "tool": "tool_reconcile_account", "args": { "account_name": "Lindenbank Giro", "confirmed_balance": 1234.56, "reconciliation_date": "{{date:0d}}" } }
     ],
     "final": "Konto abgeglichen."
   },
@@ -516,21 +516,21 @@
     "_comment": "tc20 + tc23: beide schliessen das Testbroker Cash Girokonto -> EIN Szenario deckt beide (Substring in beiden Tasks).",
     "match": "Schliesse das Testbroker Cash Girokonto",
     "calls": [
-      { "tool": "tool_close_account", "args": { "account_name": "Testbroker Cash Girokonto", "closure_date": "2026-06-16" } }
+      { "tool": "tool_close_account", "args": { "account_name": "Testbroker Cash Girokonto", "closure_date": "{{date:0d}}" } }
     ],
     "final": "Konto geschlossen."
   },
   {
     "match": "wiederkehrende Ausgabe an: Netflix-Abo",
     "calls": [
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Netflix", "account_name": "Lindenbank Giro", "direction": "expense", "amount": 13.99, "schedule_unit": "month", "first_payment_date": "2026-07-05" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Netflix", "account_name": "Lindenbank Giro", "direction": "expense", "amount": 13.99, "schedule_unit": "month", "first_payment_date": "{{date:+1m@5}}" } }
     ],
     "final": "Dauerauftrag angelegt."
   },
   {
     "match": "monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "2026-07-01" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Wiederkehrender Transfer eingerichtet."
   },
@@ -690,7 +690,7 @@
   },
   {
     "_comment": "tc79 Befund 2026-10-26 (Werte erfunden): eingefuegter Betriebsrenten-Stand -> pension + datierte pension_statement-Zeile ueber den Import, nie guaranteed_monthly_pension.",
-    "match": "meiner Betriebsrente Testversorgung Mock",
+    "fixed_date_reason": "Stichtag der Standmitteilung ist feste Historie (Vertragsdokument), kein Abstand zu heute", "match": "meiner Betriebsrente Testversorgung Mock",
     "calls": [
       { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"pension\",\"name\":\"Testversorgung Mock\",\"pension_type\":\"occupational\",\"provider\":\"Testversorgungskasse\",\"contract_number\":\"TV-4711-K\"},{\"entity_type\":\"pension_statement\",\"pension\":\"Testversorgung Mock\",\"statement_date\":\"2025-12-31\",\"reached_claim\":74,\"notes\":\"18,50 Versorgungspunkte\"}]" } }
     ],
@@ -725,7 +725,7 @@
   {
     "match": "85 Euro für Lebensmittel mit dem Lindenbank Giro",
     "calls": [
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 85, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Lebensmittel" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 85, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Lebensmittel" } }
     ],
     "final": "Ausgabe von 85 EUR auf Lindenbank Giro gebucht."
   },
@@ -734,8 +734,8 @@
     "match": "18 Euro für Parkgebühren und 32 Euro für Blumen",
     "parallel": true,
     "calls": [
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 18, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Parkgebuehren" } },
-      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 32, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Blumen" } }
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 18, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Parkgebuehren" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 32, "direction": "outflow", "transaction_date": "{{date:0d}}", "category": "other", "description": "Blumen" } }
     ],
     "final": "Zwei Ausgaben (18 EUR und 32 EUR) auf Lindenbank Giro vorgemerkt, noch nicht bestaetigt."
   },
@@ -751,7 +751,7 @@
     "_comment": "WS-4 beneficiary_person (tc41): person name resolves to lena in the family fixture.",
     "match": "Ausbildung Lena",
     "calls": [
-      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Ausbildung Lena", "target_amount": 10000, "target_date": "2035-12-31", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "2026-08-01", "beneficiary_person": "Lena Beispiel" } }
+      { "tool": "tool_create_savings_goal", "args": { "goal_name": "Ausbildung Lena", "target_amount": 10000, "target_date": "{{date:+109m@-1}}", "account_name": "Lindenbank Giro", "reserve_account_name": "Tagesgeld Plus", "schedule_day_of_month": "1", "first_payment_date": "{{date:+2m@1}}", "beneficiary_person": "Lena Beispiel" } }
     ],
     "final": "Sparziel Ausbildung Lena angelegt."
   },
@@ -830,7 +830,7 @@
   },
   {
     "_comment": "ADVISOR ac17: der Mock zaehlt das tool_use aus chat_history als schon erledigten Aufruf (anthropicPriorTurns), darum steht es hier zuerst und der gepruefte Aufruf danach. Die Sprache prueft nur der bezahlte Lauf (Judge), den deutschen Text hier liefert der Mock selbst.",
-    "match": "Speichere den Abschnitt Haushaltsbasis neu",
+    "fixed_date_reason": "Stichtag 31.12.2028 liegt bewusst fest (wie ac17)", "match": "Speichere den Abschnitt Haushaltsbasis neu",
     "calls": [
       { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Household basics: two adults, two children." } },
       { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Haushaltsbasis: 2 Erwachsene, 2 Kinder, der Dauerauftrag auf das Testkonto endet am 31.12.2028." } }
@@ -849,7 +849,7 @@
     "_comment": "ADVISOR ac08 (Phase A): risk_profile-Sektion -> tool_save_plan_section. Eigener Match-Substring (NICHT 'Speichere die Sektion jetzt ...' = ac06) -> keine Kollision. Pflicht-$fromAI section_key+section_content; section_data optional, hier mit dem risk_profile-Block.",
     "match": "Speichere die Sektion risk_profile",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Risikoprofil", "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"2026-06-24\"}}" } }
+      { "tool": "tool_save_plan_section", "args": { "topic": "Risikoprofil", "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"{{date:-1w}}\"}}" } }
     ],
     "final": "Sektion risk_profile gespeichert."
   },
@@ -1507,7 +1507,7 @@
   },
   {
     "_comment": "tc82 Kaufliste einer neuen Position -> drei datierte stock_buy-Zeilen in einem Batch (Tranchen-Import, Befund 2026-10-28).",
-    "match": "Bitte so mit echten Kaufkursen erfassen",
+    "fixed_date_reason": "Kaufliste mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute", "match": "Bitte so mit echten Kaufkursen erfassen",
     "calls": [
       { "tool": "tool_import_stage_rows", "args": { "rows": "[{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.5,\"price_per_share\":540.2,\"transaction_date\":\"2026-06-03\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.4,\"price_per_share\":552.8,\"transaction_date\":\"2026-06-10\"},{\"entity_type\":\"stock_buy\",\"depot\":\"Testbroker Depot\",\"isin\":\"IE00B5BMR087\",\"shares\":2.45,\"price_per_share\":548.1,\"transaction_date\":\"2026-06-17\"}]" } }
     ],
@@ -1764,7 +1764,7 @@
   },
   {
     "_comment": "tc112 Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen -> ein Aufruf, kein vorheriges Stornieren.",
-    "match": "Meine VWCE-Position im Testbroker Depot war nur als Bestand uebernommen",
+    "fixed_date_reason": "Einzelkaeufe mit festen Kaufdaten: Historie der Tranchen, kein Abstand zu heute", "match": "Meine VWCE-Position im Testbroker Depot war nur als Bestand uebernommen",
     "calls": [
       { "tool": "tool_replace_holding_lots", "args": { "depot_name": "Testbroker Depot", "position": "VWCE", "lots": "[{\"date\":\"2025-03-12\",\"shares\":4,\"cost_basis_total\":80},{\"date\":\"2025-06-30\",\"shares\":3,\"cost_basis_total\":66},{\"date\":\"2025-09-15\",\"shares\":3,\"cost_basis_total\":90}]" } }
     ],
@@ -1844,8 +1844,8 @@
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } },
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "{{date:+1m@1}}" } }
     ],
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"
@@ -2038,7 +2038,7 @@
     "driver": "scripts/conversation_test.ps1",
     "calls": [
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 2.400 netto am Monatsletzten aufs Erlenbank Giro" } },
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Erlenbank Giro", "direction": "income", "amount": 2400, "schedule_unit": "month", "first_payment_date": "2026-12-31" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Erlenbank Giro", "direction": "income", "amount": 2400, "schedule_unit": "month", "first_payment_date": "{{date:+1m@-1}}" } }
     ],
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"

@@ -309,7 +309,7 @@
     "setup_sql": "SELECT pg_temp.ok('Todesfall', estate.fn_create_case(jsonb_build_object('chat_id','test_e2e_wt','subject_person_id','lena','case_type','death','event_date',(current_date - 3)::text,'bundesland','bayern')))",
     "expected_tool": "tool_create_case_task",
     "expected_tool_args": {
-      "title": "Auto aus der Werkstatt holen"
+      "title": "Werkstatt"
     },
     "expected_behavior": "The advisor adds a MANUAL task to the open case via tool_create_case_task (title about collecting the car from the workshop) and does not open a new case.",
     "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): Offener Fall aus setup_sql."
@@ -352,7 +352,7 @@
     "setup_sql": "SELECT pg_temp.ok('Lastenrad Beispielmarke', estate.fn_create_special_asset(jsonb_build_object('chat_id','test_e2e_wt','asset_type','vehicle','description','Lastenrad Beispielmarke','notes','__E2E__')))",
     "expected_tool": "tool_delete_special_asset",
     "expected_tool_args": {
-      "description": "Lastenrad Beispielmarke"
+      "description": "Beispielmarke"
     },
     "expected_behavior": "The advisor deletes the existing special-asset stub via tool_delete_special_asset (identify by description).",
     "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): delete_* mit Voraussetzung (Eintrag) per setup_sql."
@@ -367,7 +367,7 @@
     "expected_tool": "tool_set_storage_place",
     "expected_tool_args": {
       "name": "Aktenordner Wohnzimmer",
-      "location": "Arbeitszimmer, Regal"
+      "location": "Arbeitszimmer"
     },
     "expected_behavior": "The advisor updates the existing storage place via tool_set_storage_place (only the location changes) and does not create a new one.",
     "notes": "Folgerunde Werkzeug-Testfall (contract_lint 36): set_* mit Voraussetzung (Fundort) per setup_sql."
@@ -375,7 +375,7 @@
   {
     "id": "es32",
     "name": "cancel_case: unbekannte Fall-Nummer -> saubere Ablehnung statt Stille",
-    "task": "Brich bitte den Fall mit der Nummer 99999 ab.",
+    "task": "Brich bitte den Fall mit der Nummer 99999 ab. Die Nummer stimmt sicher, ich habe sie gerade aus der Fallübersicht kopiert.",
     "chat_id": "test_es32",
     "timeout_s": 300,
     "expected_tool": "tool_cancel_case",

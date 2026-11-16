@@ -506,7 +506,7 @@ _ur_swap_continue() {
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
-BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # nach einem Fehlschlag am selben Tag erneut
+BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # Abstand der Sicherungs-Laeufe (stuendlich wie der Timer)
 # Zeitgrenzen je Schritt = TimeoutStartSec der drei Units (templates/lifeagents-update-run|update-check|backup.service.tpl).
 UPDATE_RUN_TIMEOUT_S="${UPDATE_RUN_TIMEOUT_S:-7200}"
 UPDATE_CHECK_TIMEOUT_S="${UPDATE_CHECK_TIMEOUT_S:-300}"
@@ -542,9 +542,9 @@ update_tick() {
   env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
   # Eigener Prozess: die Update-Sperre (fd 9) endet mit ihm.
   _ur_step "$UPDATE_RUN_TIMEOUT_S" update --run-requested
-  local tz today now last nowe
+  local tz now last nowe
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
-  today="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"; now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
+  now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
   last="$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK 2>/dev/null || true)"
   # LAST_CHECK = Epoch-Sekunden; ein Datum ("2026-11-08", Zustand aelterer Versionen) zaehlt als "lange her" (sonst bricht die Rechnung unter set -e ab)
   [[ $last =~ ^[0-9]+$ ]] || last=0
@@ -564,25 +564,17 @@ update_tick() {
       env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$((nowe - UPDATE_CHECK_EVERY_S + UPDATE_CHECK_RETRY_S))"
     fi
   fi
-  # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund; ohne gewaehlten Ordner still) als eigener Prozess —
-  # die backup-Arm-Bibliotheken laedt nur die CLI.
-  # Scheiterte der heutige Versuch (backup.state: LAST_FAIL nach LAST_OK), stuendlich neu versuchen — eine externe Platte, die
-  # nur tagsueber steckt, soll nicht bis morgen warten. Der Chat-Hinweis kommt aus
-  # `backup auto` nur tagsueber (backup_cli.sh).
-  last="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP 2>/dev/null || true)"
-  local try okb flb run_bk=0
+  # Taegliche Sicherung in den Ordner auf dem Rechner wie lifeagents-backup.timer: ab BACKUP_AUTO_AT (Haushalts-Zeitzone) jede
+  # Stunde `backup auto --scheduled`; ob seit BACKUP_AUTO_AT schon gesichert wurde, entscheidet backup.state (LAST_OK,
+  # backup_cli.sh _bkp_auto_due), ein Lauf danach kostet nichts. So holt der naechste Takt einen Fehlschlag, eine belegte
+  # Sperre oder einen Lauf ohne Vermerk (Zeitgrenze, Neustart) nach, und ohne gewaehlten Ordner erreicht der Hinweis das
+  # Meldefenster am Tag (er drosselt sich selbst, BACKUP_NOTIFY_*).
+  local try
   try="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TRY 2>/dev/null || true)"; [[ $try =~ ^[0-9]+$ ]] || try=0
-  if rt_is_compose && [ "$last" != "$today" ] && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ]; then
-    env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$today"; run_bk=1
-  elif rt_is_compose && [ "$last" = "$today" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
-    okb="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; [[ $okb =~ ^[0-9]+$ ]] || okb=0
-    flb="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL 2>/dev/null || true)"; [[ $flb =~ ^[0-9]+$ ]] || flb=0
-    # nofolder: ein neuer Versuch kann nicht gelingen; das Waehlen im Menuepunkt sichert selbst sofort.
-    [ "$flb" -gt "$okb" ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)" != nofolder ] && run_bk=1
-  fi
-  if [ "$run_bk" = 1 ]; then
+  [ "$try" -le "$nowe" ] || try=0   # Uhr zurueckgestellt
+  if rt_is_compose && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
-    _ur_step "$BACKUP_TIMEOUT_S" backup auto
+    _ur_step "$BACKUP_TIMEOUT_S" backup auto --scheduled
   fi
   return 0
 }

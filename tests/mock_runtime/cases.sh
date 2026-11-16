@@ -622,7 +622,7 @@ UPDATE_TICK_STATE="$W/tick.state"; rm -f "$W/VERSION_TICK" "$W/tick.log" "$UPDAT
 ( update_tick ); eq K.vor-installation-still '' "$(cat "$W/tick.log" 2>/dev/null)"
 echo v9.0.0 > "$W/VERSION_TICK"
 ( BACKUP_AUTO_AT=0000 update_tick )
-eq K.erster-tick-alles 'run check cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.erster-tick-alles 'run check cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 : > "$W/tick.log"; ( BACKUP_AUTO_AT=0000 update_tick )
 eq K.einmal-am-tag 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.lebenszeichen "LAST_TICK fehlt" ;; *) pass K.lebenszeichen ;; esac
@@ -634,27 +634,27 @@ eq K.frisch-geprueft-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) - 7300 ))"; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.intervall-abgelaufen-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
-# Sicherung heute gescheitert -> stuendlich neuer Versuch; danach gelungen -> keiner mehr.
+# Stuendlicher Takt ab BACKUP_AUTO_AT; ob heute noch gesichert werden muss, entscheidet `backup auto --scheduled` (KB-Faelle).
 _bst="$W/tickb.state"; rm -f "$_bst"
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 env_upsert "$_bst" LAST_OK 100; env_upsert "$_bst" LAST_FAIL 200
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.fehlschlag-neuer-versuch 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.fehlschlag-neuer-versuch 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
 eq K.neuer-versuch-erst-nach-einer-stunde 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$_bst" LAST_OK 300; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.nach-erfolg-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
-# Ohne gewaehlten Ordner hilft kein neuer Versuch (der Menuepunkt sichert beim Waehlen selbst) -> nicht stuendlich.
+eq K.nach-erfolg-entscheidet-die-sicherung 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Ohne gewaehlten Ordner ebenfalls stuendlich: nur so erreicht der Hinweis das Meldefenster am Tag.
 env_upsert "$_bst" LAST_FAIL 400; env_upsert "$_bst" LAST_FAIL_REASON nofolder
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.ohne-ordner-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.ohne-ordner-stuendlich-fuer-den-hinweis 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 # Sperre belegt (Wiederherstellung oder Update lief): Grund busy, kein Alarm, der naechste Takt holt die Sicherung nach.
 env_upsert "$_bst" LAST_FAIL 500; env_upsert "$_bst" LAST_FAIL_REASON busy
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.belegt-holt-nach 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.belegt-holt-nach 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
@@ -1017,4 +1017,34 @@ eq SV.pg-hauptversion-bricht-vorher-ab '1|nein|nein|pg_major' "$(sv_case 16 '')"
 eq SV.abbilder-nicht-ladbar-bricht-vorher-ab '1|nein|nein|net' "$(sv_case 17 '|pull|')"
 case "$(sv_case 17 '')" in 0\|ja\|ja\|*) pass SV.alles-da-wechsel-startet ;; *) fail SV.alles-da-wechsel-startet "$(sv_case 17 '')" ;; esac
 rm -rf "$SWAP_DIR"
+
+# ---------------------------------------------------------------------------- KB: Sicherung im Tick wie lifeagents-backup.timer
+# Ab BACKUP_AUTO_AT stuendlich `backup auto --scheduled`; ob heute schon gesichert ist, entscheidet backup.state (LAST_OK).
+# Ohne gewaehlten Ordner kommt so tagsueber der Hinweis an (der 03:30-Lauf liegt ausserhalb von 09-20 Uhr), und ein Lauf, der
+# ohne Fehler-Vermerk endete (Zeitgrenze, Neustart des master), wird nachgeholt statt erst morgen.
+kb_tick() (   # kb_tick <LAST_OK> <LAST_FAIL> <LAST_FAIL_REASON> -> CLI-Aufrufe der Sicherung
+  rt_is_compose() { return 0; }; _ur_cli() { printf '%s' "$W/bin/lifeagents"; }; require_root() { :; }
+  local d="$W/kb"; rm -rf "$d"; mkdir -p "$d"
+  lifeagents_version_marker() { printf '%s' "$W/kb/V"; }; echo v9.0.0 > "$d/V"
+  lifeagents_env_file() { printf '%s' "$W/kb/core.env"; }; printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$d/core.env"
+  UPDATE_TICK_STATE="$d/tick.state"; BACKUP_STATE_FILE="$d/b.state"; BACKUP_AUTO_AT=0000
+  env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(date -u +%s)"
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$1"; [ -z "$2" ] || env_upsert "$BACKUP_STATE_FILE" LAST_FAIL "$2"
+  [ -z "$3" ] || env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON "$3"
+  : > "$TICK_LOG"; update_tick >/dev/null 2>&1; grep '^cli backup' "$TICK_LOG" | tr '\n' ';'
+)
+eq KB.ohne-ordner-stuendlich-mit-hinweis 'cli backup auto --scheduled;' "$(kb_tick 100 200 nofolder)"
+eq KB.lauf-ohne-vermerk-wird-nachgeholt 'cli backup auto --scheduled;' "$(kb_tick 100 '' '')"
+# Die Entscheidung "heute schon gesichert?" trifft --scheduled auch im Verbund; faellig ohne Ordner -> Vermerk + Hinweis-Pruefung.
+kb_auto() (   # kb_auto <faellig 0|1> -> "<grund>|<hinweis-aufrufe>"
+  rt_is_compose() { return 0; }; local d="$W/kba"; rm -rf "$d"; mkdir -p "$d"; BACKUP_STATE_FILE="$d/b.state"
+  _bkp_auto_due() { [ "$KB_DUE" = 1 ]; }; _bkp_host_dir() { :; }; _bkp_resolve_db() { :; }
+  _bkp_stale_notify() { echo n >> "$d/n"; }; KB_DUE="$1"
+  backup_cmd_auto --scheduled >/dev/null 2>&1
+  printf '%s|%s' "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null)" "$(cat "$d/n" 2>/dev/null | wc -l | tr -d ' ')"
+)
+eq KB.geplant-nicht-faellig-tut-nichts '|0' "$(kb_auto 0)"
+eq KB.geplant-faellig-ohne-ordner 'nofolder|1' "$(kb_auto 1)"
 exit "$fails"

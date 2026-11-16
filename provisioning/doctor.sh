@@ -75,10 +75,31 @@ _doctor_app_check() {
   elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
+# _doctor_tick_step — laeuft gerade ein Tick-Schritt (update_runner.sh update_tick)? Ausgabe "<Name>\t<Sekunden seit Start>\t<Zeitgrenze s>"
+#   oder nichts. Ein Schritt ist ein eigener Prozess (`lifeagents update --run-requested | update --check | backup auto`,
+#   Start = mtime von /proc/<pid>); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
+#   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen wie update_runner.sh.
+_doctor_tick_step() {
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim now; now="$(date -u +%s)"
+  for p in "$root"/[0-9]*; do
+    cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *"lifeagents update --run-requested"*) name=Update; lim="${UPDATE_RUN_TIMEOUT_S:-7200}" ;;
+      *"lifeagents update --check"*)         name=Release-Check; lim="${UPDATE_CHECK_TIMEOUT_S:-300}" ;;
+      *"lifeagents backup auto"*)            name=Sicherung; lim="${BACKUP_TIMEOUT_S:-1800}" ;;
+      *) continue ;;
+    esac
+    printf '%s\t%s\t%s' "$name" "$(( now - $(stat -c %Y "$p" 2>/dev/null || echo "$now") ))" "$lim"; return 0
+  done
+  # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
+  if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "${UPDATE_RUN_TIMEOUT_S:-7200}"; fi
+  return 0
+}
+
 # _doctor_compose_tick — Docker-Verbund: lebt die Tick-Schleife des master (Ersatz der Update-Timer)? Ein offener
 #   master-Wechsel ohne laufenden Helfer, der aelter als 30 Minuten ist, haengt (lib/master_swap.sh).
 _doctor_compose_tick() {
-  local st=/var/lib/lifeagents/update-tick.state last age swap=/var/lib/lifeagents/master-swap/state
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last age swap=/var/lib/lifeagents/master-swap/state
   if [ "$(id -u)" -ne 0 ]; then _skip "Update-Schleife im master (braucht root)"; return 0; fi
   last="$(read_env_value "$st" LAST_TICK 2>/dev/null || true)"
   case "$last" in
@@ -89,11 +110,103 @@ _doctor_compose_tick() {
       else _red "Update-Schleife im master lief noch nie — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
     *) age=$(( $(date -u +%s) - last ))
        if [ "$age" -le 300 ]; then _pass "Update-Schleife im master läuft (letzter Durchlauf vor ${age} s)"
-       else _red "Update-Schleife im master steht seit $((age / 60)) min — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+       else
+         local step sname ssec slim
+         step="$(_doctor_tick_step "$age")"; IFS=$'	' read -r sname ssec slim <<<"$step"
+         if [ -n "$sname" ] && [ "$ssec" -le "$((slim + 60))" ]; then
+           _warn "Update-Schleife im master: läuft gerade: ${sname}, seit $((ssec / 60)) min (Zeitgrenze $((slim / 60)) min)"
+         else _red "Update-Schleife im master steht seit $((age / 60)) min — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi
+       fi ;;
   esac
   if [ -f "$swap" ] && ! rt_swap_helper_running && [ -n "$(find "$swap" -mmin +30 2>/dev/null)" ]; then
     _red "Ein master-Wechsel (Update) ist seit über 30 min offen — Verlauf: docker logs ${LA_PROJECT}-master"
   fi
+}
+
+# _doctor_compose_fresh — 0, wenn die Installation juenger als 10 min ist (die Schleife hat noch keinen Durchlauf geschrieben).
+_doctor_compose_fresh() { [ -n "$(find "$(lifeagents_version_marker)" -mmin -10 2>/dev/null)" ]; }
+
+# _doctor_compose_check — Docker-Verbund: wann lief der Release-Check zuletzt (LAST_CHECK im Tick-Zustand)? Normal hoechstens
+#   UPDATE_CHECK_EVERY_S (2 h) + eine Tick-Minute alt; ein Check ohne Entscheidung (Netz, ausserhalb 10-20 Uhr) setzt den
+#   Zeitstempel so zurueck, dass er nach UPDATE_CHECK_RETRY_S (15 min) neu laeuft, das Alter bleibt also unter 2 h + 1 min.
+#   ROT erst ab dem Doppelten: dann ist die Schleife an dieser Stelle haengengeblieben, obwohl LAST_TICK noch frisch sein kann.
+_doctor_compose_check() {
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last age every="${UPDATE_CHECK_EVERY_S:-7200}"
+  [ "$(id -u)" -eq 0 ] || return 0   # die Tick-Pruefung hat das schon als SKIP gemeldet
+  last="$(read_env_value "$st" LAST_CHECK 2>/dev/null || true)"
+  case "$last" in
+    ''|*[!0-9]*)
+      if _doctor_compose_fresh; then _warn "Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)"
+      else _red "Release-Check lief noch nie — Update-Hinweise im Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+    *) age=$(( $(date -u +%s) - last ))
+       if [ "$age" -le $((2 * every)) ]; then _pass "Release-Check läuft (letzter Versuch vor $((age / 60 > 0 ? age / 60 : 0)) min)"
+       else _red "Release-Check lief seit $((age / 3600)) h nicht mehr — Update-Hinweise im Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+  esac
+}
+
+# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP ist das Datum
+#   (Haushalts-Zeitzone) des letzten Versuchs; vor BACKUP_AUTO_AT steht noch gestern darin. WARN (kein ROT): ob die Sicherung
+#   gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar nicht versucht".
+_doctor_compose_backup_tick() {
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz yday
+  [ "$(id -u)" -eq 0 ] || return 0
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"; tz="${tz:-${HOUSEHOLD_TIMEZONE:-Europe/Berlin}}"
+  yday="$(TZ="$tz" date -d yesterday +%Y-%m-%d)"
+  last="$(read_env_value "$st" LAST_BACKUP 2>/dev/null || true)"
+  if ! [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    # Der Tick schreibt LAST_BACKUP erst ab BACKUP_AUTO_AT; davor ist ein leerer Zustand normal.
+    if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
+      _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+    fi
+  elif [[ $last < $yday ]]; then
+    _warn "Tägliche Sicherung wurde seit ${last} nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+  else _pass "Tägliche Sicherung wird angestoßen (zuletzt ${last})"; fi
+}
+
+# _doctor_compose_tunnel — Docker-Verbund, Weg Tunnel: laeuft tailscale, ist es angemeldet, laeuft die Anmeldung bald ab?
+#   Gleiche Einordnung (reach_ts_eval) und gleiche Texte wie der klassische Weg (reach_cli_doctor), nur ueber den Container.
+_doctor_compose_tunnel() {
+  [ "$(reach_mode)" = tunnel ] || return 0
+  if ! rt_edge_active tailscale; then
+    _red "Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; $(rt_edge_logs_hint tailscale))"
+    return 0
+  fi
+  reach_ts_eval "$(_reach_ts_status)"
+  case "$REACH_TS_STATE" in
+    running)
+      if reach_funnel_configured "$REACH_TS_DNS" "$(rt_edge_exec tailscale tailscale funnel status --json 2>/dev/null || true)"; then
+        _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})"
+      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
+    needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
+    *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
+  esac
+  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
+    _warn "Tailscale-Anmeldung läuft in ${REACH_TS_KEY_DAYS} Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → "'„Disable key expiry“'
+  fi
+}
+
+# _doctor_node_stale — LXC, root: laeuft n8n oder der LLM-Gateway noch mit einem Node, dessen Datei apt ersetzt hat? Der
+#   Prozess haelt dann die alte Binary ("…/node (deleted)" in /proc/<pid>/exe); der Neustart nach dem Tausch blieb aus.
+#   Nur WARN (Betrieb laeuft). DOCTOR_PROC_ROOT ersetzt /proc im Test.
+_doctor_node_stale() {
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p exe cmd names='' units='' n u
+  rt_is_compose && return 0
+  [ "$(id -u)" -eq 0 ] || return 0
+  for p in "$root"/[0-9]*; do
+    exe="$(readlink "$p/exe" 2>/dev/null || true)"
+    case "$exe" in */node' (deleted)') ;; *) continue ;; esac
+    cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *n8n*)     n=n8n; u=n8n ;;
+      *gateway*) n=LLM-Gateway; u=lifeagents-llm-gateway ;;
+      *) continue ;;
+    esac
+    case ", $names," in *", $n,"*) continue ;; esac
+    names="${names:+$names, }$n"; units="${units:+$units }$u"
+  done
+  [ -n "$names" ] || return 0
+  local verb=läuft; case "$names" in *,*) verb=laufen ;; esac
+  _warn "Node.js: ${names} ${verb} noch mit der alten Version — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart ${units}')"
 }
 
 # _doctor_release_version — Docker-Verbund, Release-Profil: traegt VERSION kein Tag (dev), schickt der Release-Check nie eine
@@ -211,6 +324,7 @@ main() {
       _warn "PostgreSQL läuft noch in Version ${_pgrun}, installiert ist ${_pginst} — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart postgresql')"
     fi
   fi
+  _doctor_node_stale
   # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage
   # LANG="C"). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
   if [ "$(id -u)" -eq 0 ]; then
@@ -262,6 +376,8 @@ main() {
   if rt_is_compose; then
     # Verbund: statt der Timer laeuft die Tick-Schleife im master (compose.yml, update_runner.sh update_tick).
     _doctor_compose_tick
+    _doctor_compose_check
+    _doctor_compose_backup_tick
     _doctor_release_version
   else
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
@@ -449,7 +565,9 @@ main() {
   # keinen oeffentlichen Eingang (dev/Substrat — die Tiers feuern ueber die Harness-Webhooks, nicht ueber
   # Telegram), ein inaktiver Orchestrator ist dort der Normalfall -> SKIP statt Fehl-ROT.
   # CLI-Tunnel (lib/reach_cli.sh): steht der Tailscale-Weg selbst? Auch ohne Domain (die kommt erst mit der Anmeldung).
-  if ! rt_is_compose && [ "$(reach_cli_mode)" = tunnel ]; then
+  if rt_is_compose; then
+    _doctor_compose_tunnel
+  elif [ "$(reach_cli_mode)" = tunnel ]; then
     local _lvl _txt
     while IFS=$'\t' read -r _lvl _txt; do
       case "$_lvl" in pass) _pass "$_txt" ;; warn) _warn "$_txt" ;; red) _red "$_txt" ;; esac

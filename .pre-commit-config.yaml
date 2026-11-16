@@ -460,11 +460,11 @@ repos:
         stages: [post-commit]
 
       - id: release-images-test
-        name: release_images_test (master image pin forms, image provenance in git, SHA256SUMS check; no Docker, no network)
+        name: release_images_test (master image pin forms, image provenance in git, SHA256SUMS check, release tag baked into the image; no Docker, no network)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_images_test.ps1
         pass_filenames: false
-        files: ^(scripts/(lib/release_images|build_master_image|sign_release|dev/release_images_test)\.ps1|provisioning/compose/compose\.yml)$
+        files: ^(scripts/(lib/release_images|build_master_image|sign_release|dev/release_images_test)\.ps1|provisioning/compose/(compose\.yml|master\.Dockerfile)|\.github/workflows/genericity\.yml)$
 
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)

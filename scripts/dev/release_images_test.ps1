@@ -173,5 +173,17 @@ if ($Registry) {
     } finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+Write-Host 'D: Release-Version im master-Image (ohne sie bleibt VERSION = dev, der Release-Check schickt nie eine Karte)' -ForegroundColor Cyan
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$dockerfile = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'provisioning\compose\master.Dockerfile'), $u8)
+$buildPs1 = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'scripts\build_master_image.ps1'), $u8)
+$genericity = [System.IO.File]::ReadAllText((Join-Path $repoRoot '.github\workflows\genericity.yml'), $u8)
+Check 'Dockerfile: ARG RELEASE_TAG=dev, dann ENV RELEASE_TAG=$RELEASE_TAG' ($dockerfile -match '(?ms)^ARG RELEASE_TAG=dev\s*$.*^ENV RELEASE_TAG=\$RELEASE_TAG\s*$')
+Check 'build_master_image.ps1 gibt RELEASE_TAG=$Version als Build-Argument mit' ($buildPs1 -match "'--build-arg',\s*`"RELEASE_TAG=\`$Version`"")
+Check 'CI: kein von Hand eingespritztes RELEASE_TAG beim Installieren' ($genericity -notmatch 'docker exec -e RELEASE_TAG=')
+$ciBuilds = [regex]::Matches($genericity, 'docker build -q -f provisioning/compose/master\.Dockerfile[^\r\n]*')
+Check 'CI: beide master-Bauten (Installations- und Update-Lauf) tragen das Build-Argument' ($ciBuilds.Count -eq 2 -and @($ciBuilds | Where-Object { $_.Value -match '--build-arg RELEASE_TAG=v\d+\.\d+\.\d+' }).Count -eq 2) "($($ciBuilds.Count) Bauten)"
+Check 'CI: Installations-Lauf prueft die VERSION nach stack.sh install' ($genericity -match '(?s)name: Assert the stack.*?lifeagents version.*?= v9\.0\.0.*?name: Second run')
+
 Write-Host ("{0} ok, {1} Fehler" -f $passed, $failed) -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
 exit $failed

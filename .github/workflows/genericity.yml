@@ -258,7 +258,7 @@ jobs:
           set -euo pipefail
           img=127.0.0.1:5000/ci/master
           git archive --format=tar HEAD provisioning packages .gitattributes \
-            | docker build -q -f provisioning/compose/master.Dockerfile -t "$img:ci" -
+            | docker build -q -f provisioning/compose/master.Dockerfile --build-arg RELEASE_TAG=v9.0.0 -t "$img:ci" -
           # CRLF-Fund aus dem Probelauf: ein CR in einem Installer-Skript bricht bash mit pipefail ab.
           crlf="$(docker run --rm --entrypoint sh "$img:ci" -c "grep -rlI \"\$(printf '\r')\" /opt/lifeagents/provisioning || true")"
           [ -z "$crlf" ] || { echo "FAIL CRLF im master-Image:"; echo "$crlf"; exit 1; }
@@ -316,6 +316,8 @@ jobs:
         run: |
           set -euo pipefail
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+          # Die Version kommt aus dem Image (Build-Argument), nicht aus einem Handgriff beim Installieren.
+          test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
           q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
           test "$(q "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='n8n'")" = UTF8
           total="$(q 'SELECT count(*) FROM public.workflow_entity')"
@@ -511,7 +513,7 @@ jobs:
         run: |
           set -euo pipefail
           git archive --format=tar HEAD provisioning packages .gitattributes \
-            | docker build -q -f provisioning/compose/master.Dockerfile -t ci-ops-master:a -
+            | docker build -q -f provisioning/compose/master.Dockerfile --build-arg RELEASE_TAG=v9.0.0 -t ci-ops-master:a -
           printf 'FROM ci-ops-master:a\nLABEL io.lifeagents.ci=b\n' | docker build -q -t ci-ops-master:b -
           printf 'FROM ci-ops-master:a\nRUN rm /usr/bin/jq\n' | docker build -q -t ci-ops-master:c -
           printf '%s\n' 'FROM ci-ops-master:b' \
@@ -545,7 +547,7 @@ jobs:
           printf "%s\n" "N8N_OWNER_EMAIL='ci@example.com'" "N8N_OWNER_PASSWORD='CiRunner1'" "OWNER_FIRST_NAME='CI'" \
             "OWNER_LAST_NAME='Runner'" "OWNER_BIRTH_DATE='1990-01-01'" "OWNER_LANGUAGE='de'" "LLM_GATEWAY_KEEPALIVE_HOURS=0" \
             | docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /root/answers.env'
-          docker exec -e RELEASE_TAG=v9.0.0 "$LA_PROJECT-master" \
+          docker exec "$LA_PROJECT-master" \
             bash /opt/lifeagents/provisioning/provision.sh --unattended /root/answers.env --profile dev --packages none
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
           docker exec "$LA_PROJECT-master" test -L /usr/local/bin/lifeagents

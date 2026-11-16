@@ -79,7 +79,7 @@ try {
     $meta = Join-Path $work 'meta.json'
     $plat = $MasterPlatforms -join ','
     $args2 = @('buildx', 'build', '--platform', $plat, '-f', 'provisioning/compose/master.Dockerfile',
-        '--provenance=false', '--sbom=false', '--build-arg', "SOURCE_DATE_EPOCH=$epoch",
+        '--provenance=false', '--sbom=false', '--build-arg', "SOURCE_DATE_EPOCH=$epoch", '--build-arg', "RELEASE_TAG=$Version",
         '--label', "org.opencontainers.image.revision=$rev",
         '--label', "org.opencontainers.image.version=$Version",
         '--label', "org.opencontainers.image.source=https://github.com/$slug",

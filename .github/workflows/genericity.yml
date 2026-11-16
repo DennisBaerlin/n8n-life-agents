@@ -318,6 +318,8 @@ jobs:
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
           # Die Version kommt aus dem Image (Build-Argument), nicht aus einem Handgriff beim Installieren.
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
+          # Arbeitsordner der Sicherung: /dev/shm im master ist 256m gross (Docker-Standard waere 64m).
+          test "$(docker exec "$LA_PROJECT-master" df -Pm /dev/shm | awk 'NR==2 {print $2}')" -ge 256
           q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
           test "$(q "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='n8n'")" = UTF8
           total="$(q 'SELECT count(*) FROM public.workflow_entity')"

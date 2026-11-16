@@ -184,6 +184,9 @@ Check 'CI: kein von Hand eingespritztes RELEASE_TAG beim Installieren' ($generic
 $ciBuilds = [regex]::Matches($genericity, 'docker build -q -f provisioning/compose/master\.Dockerfile[^\r\n]*')
 Check 'CI: beide master-Bauten (Installations- und Update-Lauf) tragen das Build-Argument' ($ciBuilds.Count -eq 2 -and @($ciBuilds | Where-Object { $_.Value -match '--build-arg RELEASE_TAG=v\d+\.\d+\.\d+' }).Count -eq 2) "($($ciBuilds.Count) Bauten)"
 Check 'CI: Installations-Lauf prueft die VERSION nach stack.sh install' ($genericity -match '(?s)name: Assert the stack.*?lifeagents version.*?= v9\.0\.0.*?name: Second run')
+$masterBlock = [regex]::Match($real, '(?ms)^  master:\r?\n(.*?)(?=^  \S|^\S)').Groups[1].Value
+$shm = [regex]::Match($masterBlock, '(?m)^    shm_size:\s*(\d+)m\s*$')
+Check 'compose.yml: master hat shm_size 256m..512m (die Sicherung legt Dump + Tarball in /dev/shm, Docker-Standard 64m)' ($shm.Success -and [int]$shm.Groups[1].Value -ge 256 -and [int]$shm.Groups[1].Value -le 512)
 
 Write-Host ("{0} ok, {1} Fehler" -f $passed, $failed) -ForegroundColor $(if ($failed) { 'Red' } else { 'Green' })
 exit $failed

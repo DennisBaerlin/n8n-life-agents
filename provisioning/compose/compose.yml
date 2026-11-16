@@ -157,6 +157,9 @@ services:
     image: *img_master
     container_name: ${LA_PROJECT:-lifeagents}-master
     mem_limit: 512m
+    # /dev/shm = Arbeitsordner der Sicherung (Dump + Tarball, backup_cli.sh _bkp_tmpdir; kein Rueckfall bei vollem Ordner).
+    # Docker-Standard 64m reicht nur fuer einen Dump bis ~30 MB. tmpfs zaehlt zu mem_limit, daher darunter bleiben.
+    shm_size: 256m
     init: true   # raeumt die Kindprozesse der docker-exec-Aufrufe ab (tini)
     # Fluechtige Uebergabe an den Wizard, nur im Arbeitsspeicher (nie auf einer Platte, weg bei jedem Neustart/Neuanlage):
     # Antwort-Datei und die privaten Hinweise der Start-App (hints.env, per `docker exec -i … cat >`), nie als Umgebung —

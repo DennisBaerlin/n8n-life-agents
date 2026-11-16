@@ -1087,4 +1087,22 @@ ku_case() (   # ku_case <merkzettel 0|1> <recovered-json> -> gestartete Dienste
 eq KU.unterbrochen-mit-merkzettel-n8n-an n8n "$(ku_case 1 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
 eq KU.ohne-merkzettel-nichts '' "$(ku_case 0 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
 eq KU.nichts-erholt-nichts '' "$(ku_case 1 '[]')"
+
+# ---------------------------------------------------------------------------- SH: Frist fuer den Wechsel-Helfer
+# Haengt der Helfer (laeuft, schreibt aber 30 min nichts mehr; Frist wie doctor), haelt er sonst jeden Tick auf "wait" und
+# jeden neuen Auftrag dahinter. Nach der Frist: Helfer anhalten, nach dem eigenen Image entscheiden (wie bei einem
+# gestorbenen Helfer): Ausgang -> zurueckgerollt (Meldung, n8n an), Ziel -> fortsetzen.
+# real-path-test: none (haengender Helfer im echten Verbund nicht nachgestellt; Bericht ob)
+sh_case() (   # sh_case <minuten-seit-letztem-schritt> <eigenes-image> -> "<resolve>|<angehalten>"
+  rm -rf "$SWAP_DIR"; mkdir -p "$SWAP_DIR"
+  printf 'PHASE=swapping\nFROM=%s\nTO=%s\n' "$LA_MASTER_IMAGE" "$NEW" > "$SWAP_STATE"
+  if [ "$1" -gt 0 ]; then touch -d "-$1 minutes" "$SWAP_STATE"; fi
+  : > "$STUB_LOG"
+  local r; r="$(STUB_RUNNING=lifeagents-swap LA_MASTER_IMAGE="$2" master_swap_resolve)"
+  printf '%s|%s' "$r" "$(grep -c '^docker|stop|lifeagents-swap' "$STUB_LOG")"
+)
+eq SH.helfer-frisch-wartet 'wait|0' "$(sh_case 0 "$LA_MASTER_IMAGE")"
+eq SH.helfer-haengt-alter-master 'rolled_back|1' "$(sh_case 31 "$LA_MASTER_IMAGE")"
+eq SH.helfer-haengt-neuer-master 'apply|1' "$(sh_case 31 "$NEW")"
+rm -rf "$SWAP_DIR"
 exit "$fails"

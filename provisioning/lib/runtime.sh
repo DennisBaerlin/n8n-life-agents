@@ -9,6 +9,7 @@
 #
 # Docker-Positivliste (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
+#   docker stop "${LA_PROJECT}-swap" (nur rt_swap_helper_stop) ·
 #   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
 #   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
 # Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
@@ -512,3 +513,7 @@ rt_target_precheck() {
   ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; rt_stack_pull "${svcs[@]}" ) \
     || die_because net "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
 }
+
+# rt_swap_helper_stop — den Helfer des master-Wechsels anhalten (fester Name, `--rm`: Anhalten entfernt ihn); nur fuer einen
+#   haengenden Helfer (lib/master_swap.sh master_swap_resolve).
+rt_swap_helper_stop() { docker stop "${LA_PROJECT}-swap" >/dev/null 2>&1; }

@@ -2,7 +2,7 @@
 // (provisioning/wizard/flow.js: steps/answerLines/renderAnswers) und den Fragen der echten CLI-Quelle (bridge.sh questions),
 // nicht von Hand nachgebaut. Läuft im master-Image (dort liegen flow.js und bridge.sh in der Form, die ein Nutzer bekommt):
 //   docker cp tests/wizard/render_ci_answers.js <master>:/tmp/ && docker exec <master> node /tmp/render_ci_answers.js --reach tunnel|fritzbox --backup <eltern-ordner> > answers.env
-// --print packages gibt stattdessen das Argument für `provision.sh --packages` aus (flow.packagesArg).
+// --packages none|all wählt die Module (Standard all). --print packages gibt stattdessen das Argument für `provision.sh --packages` aus (flow.packagesArg).
 // Optionen: --wizard-dir <ordner> (Standard /opt/lifeagents/provisioning/wizard), --questions-file <json> (statt bridge.sh).
 // Nur erfundene Werte (öffentliches Repo). Eine Pflichtfrage ohne erfundenen Wert bricht ab: eine neue Frage zwingt dazu, hier
 // einen Wert zu ergänzen, statt dass der Lauf sie still leer lässt.
@@ -28,12 +28,12 @@ function arg(name, dflt) {
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 }
 
-function render({ flow, Q, reach, backup, what }) {
+function render({ flow, Q, reach, backup, what, packages = 'all' }) {
   if (!['tunnel', 'fritzbox'].includes(reach)) throw new Error('--reach tunnel|fritzbox');
   if (!backup) throw new Error('--backup <eltern-ordner>');
   const A = {
     __tg_have: 'both', __voice: 'no', __backup_choice: 'other', __backup_dir: backup,
-    __packages: Q.packages.map((p) => p.id), __reach: reach,
+    __packages: packages === 'none' ? [] : Q.packages.map((p) => p.id), __reach: reach,
   };
   if (reach === 'fritzbox') { A.__dslite = 'no'; A.__dslite_auto = 'yes'; A.__ports = 'free'; A.__fb_guide = 'seen'; }
   for (const id of flow.steps(Q, A)) {
@@ -59,6 +59,6 @@ if (require.main === module) {
   const flow = require(path.join(wiz, 'flow.js'));
   const qf = arg('questions-file', '');
   const Q = JSON.parse(qf ? fs.readFileSync(qf, 'utf8') : execFileSync('bash', [path.join(wiz, 'bridge.sh'), 'questions'], { encoding: 'utf8' }).trim().split('\n').pop());
-  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers') }));
+  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers'), packages: arg('packages', 'all') }));
 }
 module.exports = { render };

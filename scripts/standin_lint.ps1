@@ -68,6 +68,74 @@ foreach ($f in $scan) {
     }
 }
 
-if ($fails -eq 0) { Write-Host "standin_lint: OK ($($fakes.Count) Attrappe(n) markiert, $hits begruendete Hand-Wert(e))" -ForegroundColor Green }
+# --- (C) Stubs ohne den Namen fake_: Attrappen in tests/mock_runtime, tests/mock_reach und PATH-Attrappen ---
+# --- (D) `export NAME=<fester Wert>`: ein von Hand mitgegebener Wert vor dem geprueften Aufruf ---
+# Fail-closed mit Ausnahmeliste tests/util/standin_allowlist.json (Schluessel <Datei>|stub bzw. <Datei>|<NAME>, Wert = welcher
+# echte Test fehlt). Die Liste darf nur schrumpfen: ein Eintrag ohne Fund ist ein Fehler. Here-Doc-Rumpf zaehlt nicht.
+$alPath = Join-Path $Root 'tests\util\standin_allowlist.json'
+$allow = @{}
+if (Test-Path $alPath) {
+    $al = [System.IO.File]::ReadAllText($alPath, $u8) | ConvertFrom-Json
+    if ($al.entries) { foreach ($p in $al.entries.PSObject.Properties) { $allow[$p.Name] = [string]$p.Value } }
+}
+$used = @{}
+$plumbing = @('LANG', 'LC_ALL', 'GUM_DISABLE', 'PATH')
+$rxHere = [regex]'(?<!<)<<-?\s*[''"]?([A-Za-z_][A-Za-z0-9_]*)[''"]?'
+$rxPathStub = [regex]'(?:^|[\s;(])(?:export\s+)?PATH="[^"]*\$[^"]*:\$\{?PATH\}?"'
+$rxChmodStub = [regex]'chmod\s+\+x\s+"?\$\{?\w+\}?/(?:bin|shim)\b'
+$rxExport = [regex]'^\s*export\s+(.*)$'
+$rxAssign = [regex]'([A-Za-z_][A-Za-z0-9_]*)=("(?:[^"\\]|\\.)*"|''[^'']*''|[^\s;]*)'
+$shFiles = @($testFiles | Where-Object { $_.Extension -eq '.sh' -and $_.Name -notlike 'fake_*' })
+foreach ($f in $shFiles) {
+    $rel = Rel $f.FullName
+    $lines = [System.IO.File]::ReadAllLines($f.FullName, $u8)
+    $inDir = $rel -match '^tests/(mock_runtime|mock_reach)/'
+    $stub = $inDir
+    $exports = New-Object System.Collections.Generic.List[object]
+    $tag = $null
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if ($tag) { if ($line.Trim() -eq $tag) { $tag = $null }; continue }
+        $hm = $rxHere.Match($line); if ($hm.Success) { $tag = $hm.Groups[1].Value }
+        if ($line -match '^\s*#') { continue }
+        if ($rxPathStub.IsMatch($line) -or $rxChmodStub.IsMatch($line)) { $stub = $true }
+        $em = $rxExport.Match($line)
+        if (-not $em.Success) { continue }
+        foreach ($am in $rxAssign.Matches($em.Groups[1].Value)) {
+            $name = $am.Groups[1].Value; $val = $am.Groups[2].Value
+            if ($plumbing -contains $name -or $val -match '[$`]') { continue }
+            $exports.Add(@{ Name = $name; Line = $i })
+        }
+    }
+    if ($stub) {
+        $head = @($lines | Select-Object -First 15)
+        $m = $null
+        foreach ($l in $head) { $m = [regex]::Match($l, 'real-path-test:\s*(.*)$'); if ($m.Success) { break } }
+        $key = "$rel|stub"
+        if ($m -and $m.Success) {
+            $val = $m.Groups[1].Value.Trim()
+            if ($val -match '^none\b') {
+                if ($val -notmatch '^none\s*\(\s*\S[^)]*\)') { Fail "${rel}: 'real-path-test: none' braucht einen Grund in Klammern" }
+            } else {
+                $target = ($val -split '\s+')[0]
+                if (-not $target -or -not (Test-Path (Join-Path $Root $target) -PathType Leaf)) { Fail "${rel}: real-path-test zeigt auf '$target', die Datei gibt es nicht" }
+            }
+        } elseif ($allow.ContainsKey($key)) { $used[$key] = $true }
+        else { Fail "${rel}: PATH-Attrappe/Stub ohne Kopfzeile '# real-path-test: <Repo-Pfad des Tests gegen das echte Gegenstueck>' (oder 'none (<Grund>)'), nicht in tests/util/standin_allowlist.json" }
+    }
+    foreach ($e in $exports) {
+        $key = "$rel|$($e.Name)"
+        $prev = if ($e.Line -gt 0) { $lines[$e.Line - 1] } else { '' }
+        if ($rxReason.IsMatch($lines[$e.Line]) -or $rxReason.IsMatch($prev)) { $hits++; continue }
+        if ($allow.ContainsKey($key)) { $used[$key] = $true; continue }
+        Fail "${rel}:$($e.Line + 1): export $($e.Name)= gibt dem geprueften Aufruf einen festen Wert von Hand mit; '# hand-injected: <Grund>' in derselben oder der Zeile davor fehlt (oder Eintrag in tests/util/standin_allowlist.json)"
+    }
+}
+foreach ($k in $allow.Keys) {
+    if (-not $allow[$k].Trim()) { Fail "standin_allowlist: Eintrag '$k' ohne Grund (welcher echte Test fehlt?)" }
+    if (-not $used.ContainsKey($k)) { Fail "standin_allowlist: Eintrag '$k' ist veraltet (kein Fund mehr) -> entfernen; die Liste darf nur schrumpfen" }
+}
+
+if ($fails -eq 0) { Write-Host "standin_lint: OK ($($fakes.Count) Attrappe(n) markiert, $hits begruendete Hand-Wert(e), $($allow.Count) Ausnahme(n))" -ForegroundColor Green }
 else { Write-Host "standin_lint: $fails Fehler" -ForegroundColor Red }
 exit $fails

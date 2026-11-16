@@ -60,7 +60,8 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\paid_guard.ps1"
-$conn      = Get-TestN8nConnection
+. "$PSScriptRoot\lib\judge_card_text.ps1"
+$conn     = Get-TestN8nConnection
 $N8nUrl    = $conn.Url
 $ApiKey    = $conn.ApiKey
 $Container = $conn.Container
@@ -241,10 +242,6 @@ function ConvertTo-BotOutputs($Reqs) {
     return [pscustomobject]@{ outputs = $outs; other = $other }
 }
 
-function Get-OutputText($Outs) {
-    (@(foreach ($o in $Outs) { $o.text; foreach ($b in $o.buttons) { $b.label } }) | Where-Object { $_ }) -join "`n"
-}
-
 # Ein Dokument (message.document + Bildunterschrift) an den echten Eingang, wie Telegram es bei einem angehaengten Auszug schickt.
 function Send-TelegramDocIngress([long]$ChatId, [long]$FromUid, [string]$FileId, [string]$Caption, [string]$FileName, [string]$MimeType) {
     $msg = @{
@@ -392,12 +389,13 @@ foreach ($tc in $cases) {
         # Rubric der Runde -> Judge-Bundle (nur das echte Modell; die gescripteten Mock-Antworten sagen nichts ueber echte Texte).
         if ($Real -and $rd.rubric) {
             $agentShown = if ($rd.agents.Count) { $rd.agents -join '+' } else { '(kein)' }
+            $split = Split-JudgeCardOutput $rd.outputs
             $judgeBundle += [ordered]@{
                 id = ("{0}-r{1:D2}" -f $tc.id, $rd.n); name = "$($tc.name) / Runde $($rd.n)"; task = "$($rd.input)"
                 expected_behavior = $rd.rubric; expected_tool = ''
                 card_decision = $(if ($rd.card_decision -eq 'angenommen') { 'approved' } else { 'declined' })
                 det_pass = ($rd.failures.Count -eq 0); actual_tool = $agentShown; actual_tool_input = ''
-                read_tools = ''; specialist_output = ''; actual_output = (Get-OutputText $rd.outputs)
+                read_tools = ''; specialist_output = ''; card_text = $split.card; actual_output = $split.reply
             }
         }
         if ($abortCase) { break }

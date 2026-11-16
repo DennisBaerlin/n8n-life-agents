@@ -927,17 +927,21 @@ eq D.check-nie-gelaufen-rot 'fail=1' "$(printf '%s' "$out" | tail -n1)"
 dd_state - - 3; out="$(dd_run _doctor_compose_check)"
 eq D.check-frische-installation-warn '  [WARN] Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)
 fail=0' "$out"
-dd_state 600 "$dd_today" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-heute-angestossen-gruen '  [ OK ] Tägliche Sicherung wird angestoßen (zuletzt '"$dd_today"')
+# Sicherungs-Versuch: den Zustand schreibt der echte Tick (update_tick, Marker LAST_BACKUP_TRY), kein von Hand gesetzter Schluessel.
+dd_tick() {   # dd_tick <BACKUP_AUTO_AT des Ticks> <VERSION-Alter-Min>
+  rm -f "$W/dd.state" "$W/dd.bst"; : > "$W/dd.VERSION"; touch -d "$2 minutes ago" "$W/dd.VERSION"
+  ( export LIFEAGENTS_RUNTIME=compose; UPDATE_TICK_STATE="$W/dd.state"; BACKUP_STATE_FILE="$W/dd.bst"; BACKUP_AUTO_AT="$1"; UPDATE_CHECK_EVERY_S=99999999
+    lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }; update_tick ) >/dev/null 2>&1
+}
+dd_tick 0000 600; out="$(dd_run _doctor_compose_backup_tick)"
+printf '%s' "$out" | grep -q '^  \[ OK \] Tägliche Sicherung wird angestoßen (letzter Versuch vor [01] min)$' && eq D.sicherung-vom-echten-tick-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.sicherung-vom-echten-tick-gruen "$out"
+env_upsert "$W/dd.state" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3 * 86400 ))"; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit 72 h nicht mehr angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 "$dd_yday" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
-dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-nie-angestossen-warn '  [WARN] Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
-dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 3; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-frische-installation-still 'fail=0' "$out"
 # Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
 dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
@@ -992,7 +996,7 @@ eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:
 # Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
 eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
 fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
 
 # Laufender Tick-Schritt: LAST_TICK wird nur am Tick-Anfang geschrieben, ein Schritt darf lange laufen (Update 2 h,

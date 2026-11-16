@@ -144,23 +144,26 @@ _doctor_compose_check() {
   esac
 }
 
-# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP ist das Datum
-#   (Haushalts-Zeitzone) des letzten Versuchs; vor BACKUP_AUTO_AT steht noch gestern darin. WARN (kein ROT): ob die Sicherung
-#   gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar nicht versucht".
+# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP_TRY (Epoche) ist
+#   der letzte Versuch des Ticks (update_runner.sh: ab BACKUP_AUTO_AT stuendlich, auch ohne Erfolg); er ist hoechstens eine
+#   Stunde alt, vor BACKUP_AUTO_AT noch vom Vortag. WARN erst ab 26 h (ein ganzer Tag ohne Versuch) und kein ROT: ob die
+#   Sicherung gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar
+#   nicht versucht". Vor BACKUP_AUTO_AT ist ein leerer Zustand normal.
 _doctor_compose_backup_tick() {
-  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz yday
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz age
   [ "$(id -u)" -eq 0 ] || return 0
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"; tz="${tz:-${HOUSEHOLD_TIMEZONE:-Europe/Berlin}}"
-  yday="$(TZ="$tz" date -d yesterday +%Y-%m-%d)"
-  last="$(read_env_value "$st" LAST_BACKUP 2>/dev/null || true)"
-  if ! [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    # Der Tick schreibt LAST_BACKUP erst ab BACKUP_AUTO_AT; davor ist ein leerer Zustand normal.
-    if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
-      _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
-    fi
-  elif [[ $last < $yday ]]; then
-    _warn "Tägliche Sicherung wurde seit ${last} nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
-  else _pass "Tägliche Sicherung wird angestoßen (zuletzt ${last})"; fi
+  last="$(read_env_value "$st" LAST_BACKUP_TRY 2>/dev/null || true)"
+  case "$last" in
+    ''|*[!0-9]*)
+      if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
+        _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+      fi ;;
+    *) age=$(( $(date -u +%s) - last ))
+       if [ "$age" -gt 93600 ]; then _warn "Tägliche Sicherung wurde seit $((age / 3600)) h nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+       elif [ "$age" -ge 7200 ]; then _pass "Tägliche Sicherung wird angestoßen (letzter Versuch vor $((age / 3600)) h)"
+       else _pass "Tägliche Sicherung wird angestoßen (letzter Versuch vor $((age / 60 > 0 ? age / 60 : 0)) min)"; fi ;;
+  esac
 }
 
 # _doctor_compose_tunnel — Docker-Verbund, Weg Tunnel: laeuft tailscale, ist es angemeldet, laeuft die Anmeldung bald ab?

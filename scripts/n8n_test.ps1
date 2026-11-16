@@ -126,7 +126,8 @@ if (-not $harnessWf.active) { Write-Host "  [WARN] Harness ist INAKTIV -> Webhoo
 
 $wfDef = Invoke-N8nGet "workflows/$TargetWfId"
 $AgentNodeName = $null
-foreach ($node in $wfDef.nodes) { if ($node.type -match 'langchain.agent') { $AgentNodeName = $node.name; break } }
+$AgentNodeNames = @($wfDef.nodes | Where-Object { $_.type -match 'langchain.agent' } | ForEach-Object { $_.name })
+if ($AgentNodeNames.Count) { $AgentNodeName = $AgentNodeNames[0] }
 if (-not $AgentNodeName) { throw "Kein AI-Agent-Node (langchain.agent) in '$TargetWorkflow' gefunden." }
 Write-Host "  AI-Agent-Node: '$AgentNodeName'"
 $script:AgentToolNames = @($wfDef.nodes | Where-Object { $_.name -like 'tool_*' } | ForEach-Object { $_.name })
@@ -222,6 +223,7 @@ foreach ($tc in $cases) {
     if (-not $ex) { Write-Host "    [FAIL] Keine $TargetWorkflow-Execution gefunden (Timeout $caseTimeout s)." -ForegroundColor Red; $failed++; continue }
 
     $runData = $ex.data.resultData.runData
+    $AgentNodeName = Resolve-AgentNodeName $runData $AgentNodeNames
     $calledTool = Get-CalledTool $runData $AgentNodeName
     # Alle Schreib-Werkzeuge dieses Laufs: Action-Log und Werkzeug-Executions (der Log allein ist unvollstaendig).
     $loggedWrite = @(Get-ToolCall $runData $AgentNodeName | Where-Object { Test-IsWriteTool $_.tool })

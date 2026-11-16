@@ -1268,6 +1268,12 @@ function Format-AgentRunData([object]$RunData, [string]$AgentNodeName) {
     if ($lines.Count -eq 0) { return '(keine Tool-Calls/Output im runData)' }
     return ($lines -join "`n             ")
 }
+# Ein Workflow kann mehrere AI-Agent-Knoten haben, von denen je Fall nur einer laeuft (Guide: 'Guide Agent' fuer Absender mit Haushalts-
+# sicht, 'Guide Agent (personal)' fuer Kinder). Der Knoten, der lief, traegt Antwort und Werkzeug-Aufrufe; sonst der erste Kandidat.
+function Resolve-AgentNodeName([object]$RunData, [string[]]$Candidates) {
+    foreach ($c in @($Candidates)) { if ($RunData -and $RunData.PSObject.Properties.Name -contains $c) { return $c } }
+    return @($Candidates)[0]
+}
 function Get-AgentOutput([object]$RunData, [string]$AgentNodeName) {
     $txt = ''
     if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $txt }

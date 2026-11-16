@@ -34,6 +34,18 @@ Write-Host "Verdrahtung"
 $drv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\n8n_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Assert-That ($drv -match 'Resolve-TestCaseChatId \$tc' -and $drv -match 'Set-TestSenderPairing') 'n8n_test loest die chat_id des Falls auf und paart den Absender'
 Assert-That ($drv -notmatch '\[long\]\$chatId\s*=\s*\$TestOwnerTelegramUid') 'n8n_test setzt die chat_id nicht mehr fest auf den Owner'
+Write-Host "Agent-Knoten, der lief (Guide: Kind laeuft ueber 'Guide Agent (personal)')"
+$names = @('Guide Agent', 'Guide Agent (personal)')
+$rdChild = '{ "Household status read": [ {} ], "Guide Agent (personal)": [ { "data": { "main": [ [ { "json": { "output": "Du kannst mich fragen: wie es funktioniert." } } ] ] } } ] }' | ConvertFrom-Json
+$rdOwner = '{ "Guide Agent": [ { "data": { "main": [ [ { "json": { "output": "Antwort Owner" } } ] ] } } ] }' | ConvertFrom-Json
+$nodeChild = Resolve-AgentNodeName $rdChild $names
+Assert-That ($nodeChild -eq 'Guide Agent (personal)') 'Kind: der Knoten, der lief, wird gewaehlt'
+Assert-That ((Get-AgentOutput $rdChild $nodeChild) -eq 'Du kannst mich fragen: wie es funktioniert.') 'Kind: die Antwort kommt im Buendel an (war leer, weil der erste Agent-Knoten gelesen wurde)'
+Assert-That ((Get-AgentOutput $rdChild $names[0]) -eq '') 'Gegenprobe: der erste Knoten allein liefert fuer das Kind nichts'
+Assert-That ((Resolve-AgentNodeName $rdOwner $names) -eq 'Guide Agent') 'Owner: erster Knoten'
+Assert-That ((Resolve-AgentNodeName ('{}' | ConvertFrom-Json) $names) -eq 'Guide Agent') 'kein Knoten gelaufen: erster Kandidat'
+$drv2 = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\n8n_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
+Assert-That ($drv2 -match 'Resolve-AgentNodeName \$runData \$AgentNodeNames') 'n8n_test waehlt den Agent-Knoten je Fall'
 $mrt = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\mock_route_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Assert-That ($mrt -match "Get-TestSenderRole" -and $mrt -match "Household status read") 'mock_route_test belegt im Agenten die Rolle des Absenders (Knoten Household status read)'
 Assert-That ($lisa -match "880055201" -and $script:TestSenderUids['880055201'] -eq 'lisa') 'gc13: die id des Kind-Falls gehoert der Fixture-Person lisa'

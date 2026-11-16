@@ -154,8 +154,8 @@ $TargetWfId = $targetWf.id
 # Agent-Node auto-erkennen (erster langchain.agent-Node) — robuster als der -AgentNode-Default.
 try {
     $wfDetail = Invoke-N8nGet "workflows/$TargetWfId"
-    $agentNodeFound = ($wfDetail.nodes | Where-Object { $_.type -match 'langchain\.agent' } | Select-Object -First 1)
-    if ($agentNodeFound) { $AgentNode = $agentNodeFound.name }
+    $AgentNodeNames = @($wfDetail.nodes | Where-Object { $_.type -match 'langchain\.agent' } | ForEach-Object { $_.name })
+    if ($AgentNodeNames.Count) { $AgentNode = $AgentNodeNames[0] }
 } catch { }
 Write-Host "  Ziel: $TargetWorkflow  Agent-Node: '$AgentNode'"
 
@@ -258,6 +258,7 @@ foreach ($tc in $cases) {
         }
 
         $runData = $ex.data.resultData.runData
+        if ($AgentNodeNames.Count -gt 1) { $AgentNode = Resolve-AgentNodeName $runData $AgentNodeNames }
         $tools = @(Get-ToolCall $runData $AgentNode | ForEach-Object { $_.tool })
         Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  tools=[$($tools -join ', ')]"
 

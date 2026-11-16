@@ -91,10 +91,6 @@ if ($missing.Count) { throw "Fall nicht gefunden: $($missing -join ', ')." }
 if (-not $cases) { throw "Keine Faelle in $CasesFile." }
 if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
-# Sichtbare Telegram-Aufrufe; alles andere (Tipp-Anzeige, Menue-Setup ...) wird nur gezaehlt.
-$VisibleMethods = @('sendMessage', 'sendSticker', 'sendAnimation', 'sendPhoto', 'sendDocument', 'setMessageReaction',
-                    'answerCallbackQuery', 'editMessageText', 'editMessageReplyMarkup', 'deleteMessage')
-
 # Start no_cash_account: schliesst die aktiven Fixture-Geldkonten voruebergehend. Die Merkdatei haelt id+Name der
 # geschlossenen Konten; sie wird VOR dem Schliessen geschrieben und heilt jeden Abbruch (Ctrl-C, Absturz, Kill) beim
 # naechsten Lauf. Wiederoeffnet wird nur, wenn id UND Name noch passen und das Konto geschlossen ist (ein neu
@@ -202,44 +198,6 @@ WHERE name = 'family';
     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.advisor_plans;')
     if ($p.Code -ne 0) { throw "Berater-Plaene leeren fehlgeschlagen: $($p.Output -join ' ')" }
     if ("$($Tc.start)" -eq 'no_cash_account') { Close-CashAccounts }
-}
-
-# n8n schickt reply_markup teils als JSON-String.
-function Get-ButtonList($Markup) {
-    if ($Markup -is [string]) { try { $Markup = $Markup | ConvertFrom-Json } catch { return @() } }
-    $out = @()
-    foreach ($row in @($Markup.inline_keyboard)) {
-        foreach ($b in @($row)) {
-            $target = if ($b.callback_data) { "cb:$($b.callback_data)" } elseif ($b.url) { "url:$($b.url)" } elseif ($b.web_app) { 'web_app' } else { '' }
-            $out += [pscustomobject]@{ label = "$($b.text)"; target = $target }
-        }
-    }
-    return $out
-}
-
-function ConvertTo-BotOutputs($Reqs) {
-    $outs = @(); $other = 0
-    foreach ($r in @($Reqs)) {
-        $m = "$($r.method)"
-        if ($m -eq '__start' -or $m -eq '') { continue }
-        if ($VisibleMethods -notcontains $m) { $other++; continue }
-        $b = $r.body
-        $o = [ordered]@{ method = $m; chat = "$($b.chat_id)"; text = ''; buttons = @(); sticker = ''; reaction = ''; card = $false }
-        $t = if ($b.text) { "$($b.text)" } elseif ($b.caption) { "$($b.caption)" } else { '' }
-        # Die Send-Knoten escapen & < > einmal und senden mit parse_mode HTML; Telegram zeigt den Klartext. Der Judge
-        # soll lesen, was die Person sieht, nicht "Depot &amp; Sparplaene" (&amp; zuletzt, sonst doppelt entschluesselt).
-        if ("$($b.parse_mode)" -eq 'HTML') { $t = $t.Replace('&lt;', '<').Replace('&gt;', '>').Replace('&amp;', '&') }
-        $o.text = $t
-        if ($b.reply_markup) { $o.buttons = @(Get-ButtonList $b.reply_markup) }
-        # Persona-Sticker kommen als Upload (body.sticker_file = Dateiname) oder per file_id (body.sticker).
-        if ($b.sticker_file) { $o.sticker = "$($b.sticker_file)" } elseif ($b.sticker) { $o.sticker = "$($b.sticker)" }
-        if ($m -eq 'setMessageReaction') { $o.reaction = (@($b.reaction | ForEach-Object { "$($_.emoji)" }) -join ' ') }
-        if ($m -eq 'answerCallbackQuery') { $o.text = "$($b.text)" }
-        # HITL-Karte: Knoepfe mit Freigabe-Callback (Bestaetigen im Chat) oder Resume-Link
-        $o.card = [bool](@($o.buttons | Where-Object { $_.target -match '^cb:nhitl1\|' -or $_.target -match 'webhook-waiting' }).Count)
-        $outs += [pscustomobject]$o
-    }
-    return [pscustomobject]@{ outputs = $outs; other = $other }
 }
 
 # Ein Dokument (message.document + Bildunterschrift) an den echten Eingang, wie Telegram es bei einem angehaengten Auszug schickt.

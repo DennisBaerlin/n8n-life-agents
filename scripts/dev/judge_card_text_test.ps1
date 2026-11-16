@@ -35,6 +35,31 @@ Check ($sp.card -notmatch 'angelegt') 'Karte enthaelt nichts von der Antwort'
 $none = Split-JudgeCardOutput @($reply)
 Check ($none.card -eq '' -and $none.reply -match 'angelegt') 'ohne Karte: card leer, Antwort vollstaendig'
 
+Write-Host 'Aufgezeichnete Telegram-Anfragen einer Karten-Runde (Durchspiel s6 Runde 6, Gratis-Modus, Mock-Telegram-Log)'
+# Wortlaut der Log-Zeilen (Get-MockTelegramRequests), Werte aus den erfundenen Test-Fixtures; Karte im Link-Modus (Resume-URL).
+$recorded = @'
+{"t":"2026-11-16T21:44:00.024Z","method":"sendMessageDraft","query":"","body":{"chat_id":"880055071","draft_id":1,"text":""}}
+{"t":"2026-11-16T21:44:01.320Z","method":"sendMessage","query":"","body":{"chat_id":"880055001","text":"Neues Konto anlegen – bitte prüfen:\n\n• Name: \\_\\_E2E\\_\\_ Erlenbank Giro\n• Typ: Girokonto / Tagesgeld\n• Zeichen: 🏦\n• Bank: Erlenbank\n• IBAN / Kontonummer: DE89 3704 0044 0532 0130 00\n• Inhaber: Haushalt/gemeinsam\n• Saldo: 500,00 €\n• Stichtag: 29.02.2000\n• Zinsen: keine\n• Währung: EUR (Standard)\n\nAnderes Zeichen? Sag es mir einfach.\n\nZum Ändern abbrechen und neu schreiben.","disable_web_page_preview":true,"parse_mode":"Markdown","reply_markup":{"inline_keyboard":[[{"text":"❌ Abbrechen","url":"https://example.com/webhook-waiting/46/af3cd5d6-9a7e-5217-a8e3-7b21ce4cbf83?approved=false&signature=0369bf5beb21c12af5ef33ba1eaaa7ee69c569f0cd69cc6da55648e3550ab3bc"},{"text":"✅ Bestätigen","url":"https://example.com/webhook-waiting/46/af3cd5d6-9a7e-5217-a8e3-7b21ce4cbf83?approved=true&signature=06cb703056dbd3937ec40812de01cb83cd169bccf44354617ad05bf30c9eeaad"}]]}},"result_message_id":1007}
+{"t":"2026-11-16T21:44:04.234Z","method":"sendMessage","query":"","body":{"chat_id":880055071,"text":"Das Konto __E2E__ Erlenbank Giro ist angelegt, Saldo 500,00 EUR.","disable_web_page_preview":true,"parse_mode":"HTML"},"result_message_id":1008}
+'@
+$reqs = @(foreach ($l in ($recorded -split "`n")) { if ($l.Trim()) { $l | ConvertFrom-Json } })
+$conv = ConvertTo-BotOutputs $reqs
+Check (@($conv.outputs).Count -eq 2 -and $conv.other -eq 1) 'zwei sichtbare Ausgaben, der Entwurf zaehlt nur als technischer Aufruf'
+Check ((@($conv.outputs | Where-Object { $_.card })).Count -eq 1) 'Erkennung: genau eine Ausgabe ist die Karte (Resume-Link)'
+$rs = Split-JudgeCardOutput $conv.outputs
+Check ($rs.card -match 'Inhaber: Haushalt/gemeinsam' -and $rs.card -match 'Sag es mir einfach' -and $rs.card -match 'Abbrechen' -and $rs.card -match 'Bestätigen') 'aufgezeichnet: Karte (Felder, Hinweis, Knoepfe) in card'
+Check ($rs.reply -eq 'Das Konto __E2E__ Erlenbank Giro ist angelegt, Saldo 500,00 EUR.') 'aufgezeichnet: nur die Antwort des Agenten in reply'
+# Gegenprobe: dieselben Anfragen ohne Karten-Knoepfe -> keine Karte, alles ist Antwort.
+$plain = @(foreach ($l in ($recorded -split "`n")) { if ($l.Trim()) { $o = $l | ConvertFrom-Json; $o.body.PSObject.Properties.Remove('reply_markup'); $o } })
+$ps = Split-JudgeCardOutput (ConvertTo-BotOutputs $plain).outputs
+Check ($ps.card -eq '' -and $ps.reply -match 'Inhaber: Haushalt/gemeinsam' -and $ps.reply -match 'angelegt') 'Gegenprobe ohne Karten-Knoepfe: card leer, alles in reply'
+# Bestaetigen im Chat: Knoepfe mit callback_data nhitl1|<execId>|<a|d>|... (Form in test_n8n_state.ps1) statt Resume-Link.
+$chat = @(foreach ($l in ($recorded -split "`n")) { if ($l.Trim()) { $o = $l | ConvertFrom-Json; if ($o.body.reply_markup) { $o.body.reply_markup = [pscustomobject]@{ inline_keyboard = @(,@([pscustomobject]@{ text = 'Abbrechen'; callback_data = 'nhitl1|46|d|x|ab12' }, [pscustomobject]@{ text = 'Bestaetigen'; callback_data = 'nhitl1|46|a|x|cd34' })) } }; $o } })
+$cs = Split-JudgeCardOutput (ConvertTo-BotOutputs $chat).outputs
+Check ($cs.card -match 'Inhaber: Haushalt/gemeinsam' -and $cs.reply -notmatch 'Inhaber') 'Karte mit Chat-Freigabe (nhitl1-Callback) wird ebenso erkannt'
+$other = [pscustomobject]@{ method = 'sendMessage'; body = [pscustomobject]@{ chat_id = 1; text = 'Weiter?'; reply_markup = '{"inline_keyboard":[[{"text":"Ja","callback_data":"onboarding:finance:accounts"}]]}' } }
+Check (-not (ConvertTo-BotOutputs @($other)).outputs[0].card) 'anderer Knopf (auch als JSON-String) ist keine Karte'
+
 Write-Host 'Judge-Prompt'
 $entry = [pscustomobject]@{ task = 'x'; expected_behavior = 'y'; card_decision = 'approved'; card_text = $sp.card; actual_output = $sp.reply }
 $ut = Format-JudgeUserText $entry
@@ -51,7 +76,7 @@ Write-Host 'Verdrahtung im Durchspiel'
 $conv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\conversation_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Check ($conv -match 'lib\\judge_card_text\.ps1') 'Durchspiel laedt den Baustein'
 Check ($conv -match 'card_text = \$split\.card' -and $conv -match 'actual_output = \$split\.reply') 'Buendel-Eintrag: card_text und actual_output getrennt'
-Check ($conv -notmatch 'function Get-OutputText') 'Get-OutputText lebt nur im Baustein (keine Kopie)'
+Check ($conv -notmatch 'function (Get-OutputText|ConvertTo-BotOutputs|Get-ButtonList)\b' -and $conv -notmatch '\$VisibleMethods') 'Ausgabe-Umwandlung und Karten-Erkennung leben nur im Baustein (keine Kopie)'
 
 if ($fail -eq 0) { Write-Host 'judge_card_text_test: alle Pruefungen bestanden.' -ForegroundColor Green }
 else { Write-Host "judge_card_text_test: $fail Pruefung(en) fehlgeschlagen." -ForegroundColor Red }

@@ -178,6 +178,11 @@ _doctor_compose_tunnel() {
         _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})"
       else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
     needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
+    needs_login|starting)
+      # Ohne Tunnel-Namen in core.env (DOMAIN) lief der Tunnel nie: die Einrichtung steht noch aus (Installer ohne Wizard,
+      # Anmeldung aufgeschoben) und der Installer laeuft regulaer so durch. Danach ist es ein Ausfall.
+      if [ -z "${DOMAIN:-}" ]; then _warn "Tunnel: Einrichtung steht noch aus — $(reach_cli_state_text "$REACH_TS_STATE")"
+      else _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")"; fi ;;
     *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
   esac
   if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then

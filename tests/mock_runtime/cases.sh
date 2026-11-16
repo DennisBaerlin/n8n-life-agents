@@ -943,7 +943,7 @@ eq D.sicherung-frische-installation-still 'fail=0' "$out"
 dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
 dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> [funnel-json] -> Ausgabe
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
-    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"; DOMAIN="${5-}"
     rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }; rt_edge_exec() { printf "%s" "$_fn"; }
     _doctor_compose_tunnel; echo "fail=$_fail" )
 }
@@ -958,8 +958,17 @@ dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
 out="$(dd_ts tunnel 0 "$dd_soon")"
 printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
 dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
-out="$(dd_ts tunnel 0 "$dd_login")"
-printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
+# Noch nie eingerichtet (kein Tunnel-Name als DOMAIN in core.env): Einrichtung steht aus = Hinweis. Lief der Tunnel schon
+# (DOMAIN gesetzt) und ist jetzt abgemeldet oder abgelaufen: der Bot ist nicht erreichbar = ROT.
+out="$(dd_ts tunnel 0 "$dd_login" "$dd_fun" bot.tail-fantasy.ts.net)"
+printf "%s" "$out" | grep -qF "  [FAIL] Tunnel: bei Tailscale anmelden" && eq D.tunnel-abgemeldet-nach-betrieb-rot fail=1 "$(printf "%s" "$out" | tail -n1)" || fail D.tunnel-abgemeldet-nach-betrieb-rot "$out"
+eq D.tunnel-nie-angemeldet-nur-hinweis '  [WARN] Tunnel: Einrichtung steht noch aus — bei Tailscale anmelden: lifeagents reconfigure core → „Unverändert neu anwenden“
+fail=0' "$(dd_ts tunnel 0 "$dd_login")"
+eq D.tunnel-startet-ohne-betrieb-nur-hinweis "  [WARN] Tunnel: Einrichtung steht noch aus — startet …
+fail=0" "$(dd_ts tunnel 0 "{\"BackendState\":\"NoState\"}")"
+dd_expired="${dd_ok/\"Expired\":false/\"Expired\":true}"
+eq D.tunnel-abgelaufen-rot "  [FAIL] Tunnel: Tailscale-Anmeldung abgelaufen — neu anmelden: lifeagents reconfigure core
+fail=1" "$(dd_ts tunnel 0 "$dd_expired")"
 
 # G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
 #    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer

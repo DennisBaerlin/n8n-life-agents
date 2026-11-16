@@ -1,4 +1,4 @@
-﻿-- tests/db/cross/test_role_catalog_exec.sql
+-- tests/db/cross/test_role_catalog_exec.sql
 -- Katalog-Rechtepruefung: jede fn, die ein gebauter Workflow unter einer engen Rolle aufruft, ist fuer genau diese Rolle
 -- ausfuehrbar (Schema-USAGE + EXECUTE), samt aller Helfer, die sie als INVOKER weiter aufruft (schema.fn_x( und
 -- unqualifiziertes fn_x( im eigenen Schema; eine DEFINER-fn laeuft mit Eigentuemer-Rechten und beendet die Kette).

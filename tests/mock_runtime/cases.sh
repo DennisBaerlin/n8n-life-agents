@@ -959,4 +959,42 @@ kz_intr() (   # kz_intr <mode> -> gestartete Dienste
 )
 eq KZ.unterbrochen-update-n8n-wieder-an n8n "$(kz_intr update)"
 eq KZ.unterbrochen-rueckweg-n8n-wieder-an n8n "$(kz_intr rollback)"
+
+# ---------------------------------------------------------------------------- KR: Hilfs-Container mit jedem Lauf erneuern
+# Rand, Gateway und laufende Profil-Dienste kommen auf den Stand der compose.yml dieses Laufs (neuer Pin = Neuanlage durch
+# Compose); anchor nie. Wird edge neu angelegt, muss tailscale (in seinem Namensraum) mit. Attrappe: docker (STUB_LOG).
+# real-path-test: none (Neuanlage im echten Verbund: Runde 8 im Bericht ob)
+kr_case() (   # kr_case <laufend> <edge-id-vorher> <edge-id-nachher> -> Compose-up-Aufrufe
+  rt_is_compose() { return 0; }; export STUB_RUNNING="$1"
+  rt_container_id() { if [ -s "$W/kr.after" ]; then cat "$W/kr.after"; else printf '%s' "$KR_BEFORE"; fi; }
+  KR_BEFORE="$2"; rm -f "$W/kr.after"; : > "$STUB_LOG"
+  _rt_compose() { echo "$*" >> "$W/kr.calls"; printf '%s' "$KR_AFTER" > "$W/kr.after"; }
+  KR_AFTER="$3"; rm -f "$W/kr.calls"
+  rt_stack_refresh >/dev/null 2>&1; tr '\n' ';' < "$W/kr.calls"
+)
+eq KR.rand-und-gateway 'up -d --no-deps edge gateway;' "$(kr_case '' e1 e1)"
+eq KR.wan-laeuft-mit 'up -d --no-deps edge gateway wan;' "$(kr_case 'lifeagents-wan' e1 e1)"
+eq KR.tailscale-neuer-pin 'up -d --no-deps edge gateway;up -d --no-deps tailscale;' "$(kr_case 'lifeagents-tailscale' e1 e1)"
+eq KR.edge-neu-tailscale-neu 'up -d --no-deps edge gateway;up -d --no-deps --force-recreate tailscale;' "$(kr_case 'lifeagents-tailscale' e1 e2)"
+eq KR.ohne-tailscale-kein-tailscale 'up -d --no-deps edge gateway;' "$(kr_case '' e1 e2)"
+# Der spaete Installer-Haken ruft die Erneuerung bei jedem Weg nach aussen (auch ohne FritzBox).
+kr_conv() ( rt_stack_refresh() { echo refresh; }; reach_edge_public_write() { return 1; }; reach_mode() { printf tunnel; }; reach_converge 2>/dev/null )
+eq KR.converge-erneuert refresh "$(kr_conv)"
+
+# ---------------------------------------------------------------------------- KL: Update-Protokolle aufraeumen
+# Die neuesten 10 bleiben immer, aelter als 30 Tage und darueber hinaus gehen; fremde Dateien im Ordner nie.
+kl_case() (
+  local d="$W/kl" i; rm -rf "$d"; mkdir -p "$d"; UPDATE_LOG_DIR="$d"
+  for i in $(seq -w 1 14); do : > "$d/update-202610${i}T030000Z.log"; touch -d "-$((60 - 10#$i)) days" "$d/update-202610${i}T030000Z.log"; done
+  : > "$d/update-20261115T030000Z.log"; : > "$d/fremd.txt"; touch -d '-90 days' "$d/fremd.txt"
+  _ur_logs_prune >/dev/null 2>&1
+  find "$d" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' '
+)
+eq KL.neueste-zehn-und-fremde-bleiben 'fremd.txt update-20261006T030000Z.log update-20261007T030000Z.log update-20261008T030000Z.log update-20261009T030000Z.log update-20261010T030000Z.log update-20261011T030000Z.log update-20261012T030000Z.log update-20261013T030000Z.log update-20261014T030000Z.log update-20261115T030000Z.log ' "$(kl_case)"
+kl_young() (
+  local d="$W/kl" i; rm -rf "$d"; mkdir -p "$d"; UPDATE_LOG_DIR="$d"
+  for i in $(seq -w 1 14); do : > "$d/update-202611${i}T030000Z.log"; done
+  _ur_logs_prune >/dev/null 2>&1; find "$d" -mindepth 1 | wc -l | tr -d " "
+)
+eq KL.junge-bleiben-alle 14 "$(kl_young)"
 exit "$fails"

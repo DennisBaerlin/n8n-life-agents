@@ -279,6 +279,20 @@ _ur_free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
 # _ur_result <file> <key> — Wert aus der Ergebnis-Datei von provision.sh (KEY=VALUE, env_upsert-Format).
 _ur_result() { read_env_value "$1" "$2" 2>/dev/null || true; }
 
+# _ur_logs_prune — alte Update-Protokolle raeumen: die neuesten UPDATE_LOG_KEEP bleiben immer (die letzten Meldungen nennen
+#   ihren Pfad), darueber hinaus geht nur, was aelter als UPDATE_LOG_MAX_DAYS Tage ist. Nur update-*.log. Immer rc 0.
+UPDATE_LOG_KEEP="${UPDATE_LOG_KEEP:-10}"
+UPDATE_LOG_MAX_DAYS="${UPDATE_LOG_MAX_DAYS:-30}"
+_ur_logs_prune() {
+  local f
+  find "$UPDATE_LOG_DIR" -maxdepth 1 -type f -name 'update-*.log' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -rn | tail -n +$((UPDATE_LOG_KEEP + 1)) | cut -f2- \
+    | while IFS= read -r f; do
+        if [ -n "$(find "$f" -maxdepth 0 -mtime +"$UPDATE_LOG_MAX_DAYS" 2>/dev/null)" ]; then rm -f -- "$f"; fi
+      done
+  return 0
+}
+
 # _ur_last_error <log> -> die letzte Fehlerzeile ([x] …) aus dem Lauf-Log, ohne Farbcodes, gekuerzt.
 _ur_last_error() {
   sed 's/\x1b\[[0-9;]*m//g' "$1" 2>/dev/null | grep -E '^\[x\]' | tail -n1 | sed 's/^\[x\] *//' | cut -c1-300 || true
@@ -320,7 +334,7 @@ _ur_run_one() {
     _ur_reports_flush; return 0
   fi
 
-  mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
+  mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"; _ur_logs_prune
   log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
   rf="$(mktemp /run/lifeagents-update-result.XXXXXX)"
   _ur_notice "Update-Auftrag ${id}: ${installed} -> ${tag} (${kind}), Protokoll ${log}"
@@ -442,7 +456,7 @@ _ur_swap_continue() {
     none|wait) return 0 ;;
     apply)
       _swap_set PHASE applying
-      mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
+      mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"; _ur_logs_prune
       log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
       rf="$(mktemp /tmp/lifeagents-update-result.XXXXXX)"
       _ur_notice "master-Wechsel auf ${tag} steht — Einrichtung läuft weiter (${mode:-update}), Protokoll ${log}"

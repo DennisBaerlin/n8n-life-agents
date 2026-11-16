@@ -468,3 +468,28 @@ rt_host_gateway() {
   docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").Gateway}}" "${LA_PROJECT}-wan" 2>/dev/null \
     | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1
 }
+
+# --- Erneuern der Dienste ausserhalb des Installer-Schritts (Rand, Gateway) --------------------------------------------
+# rt_container_id <container> -> Kennung (leer = es gibt ihn nicht).
+rt_container_id() { docker inspect -f '{{.Id}}' "$1" 2>/dev/null; }
+# rt_stack_refresh — edge, gateway und die laufenden Profil-Dienste (wan, tailscale) auf den Stand dieser compose.yml bringen:
+#   `up -d --no-deps` legt nur neu an, was sich geaendert hat (z. B. ein neuer Pin nach einem Update), sonst no-op. Das Gateway
+#   startet der Installer nur per `docker restart` neu (enable_start_unit), ein neuer Pin kaeme so nie an. anchor nie: seine
+#   Neuanlage risse den Pod ab. tailscale haengt im Namensraum von edge; die Compose-Pruefsumme sieht nur `service:edge`, nicht
+#   die Kennung -> nach einer Neuanlage von edge tailscale gezielt neu anlegen. rc 1 = mindestens ein Aufruf scheiterte.
+rt_stack_refresh() {
+  local before after ts=0 rc=0 svcs=(edge gateway)
+  before="$(rt_container_id "${LA_PROJECT}-edge")"
+  rt_container_running "${LA_PROJECT}-tailscale" && ts=1
+  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  _rt_compose up -d --no-deps "${svcs[@]}" >&2 || rc=1
+  if [ "$ts" -eq 1 ]; then
+    after="$(rt_container_id "${LA_PROJECT}-edge")"
+    if [ -n "$before" ] && [ "$before" != "$after" ]; then
+      _rt_compose up -d --no-deps --force-recreate tailscale >&2 || rc=1
+    else
+      _rt_compose up -d --no-deps tailscale >&2 || rc=1
+    fi
+  fi
+  return "$rc"
+}

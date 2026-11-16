@@ -448,9 +448,12 @@ reach_prepare() {
   fi
 }
 
-# reach_converge — spaet im Lauf (nach dem Deploy): FritzBox-Weg anwerfen. Adresse fuer wan schreiben; laeuft wan noch
+# reach_converge — spaet im Lauf (nach dem Deploy): Rand und Gateway erneuern, FritzBox-Weg anwerfen. Adresse fuer wan schreiben; laeuft wan noch
 #   nicht, vorher 80/443 pruefen (belegt -> nichts starten, Hinweis auf den Tunnel); geaenderte Adresse -> wan neu starten.
 reach_converge() {
+  # Jeder Installer-Lauf (Einrichtung, Update mit und ohne master-Wechsel, reconfigure, Rueckweg) bringt Rand, Gateway und
+  # laufende Profil-Dienste auf die Pins dieser compose.yml (lib/runtime.sh rt_stack_refresh).
+  rt_stack_refresh || warn "Rand/Gateway ließen sich nicht auf den neuen Stand bringen — es läuft der vorherige ($(rt_edge_logs_hint edge))."
   # Beide Wege enden auf edge:8088: die Liste der oeffentlichen Pfade erst jetzt freigeben (n8n ist eingerichtet).
   if reach_edge_public_write; then log "Rand: Liste der öffentlichen Pfade aktualisiert (edge lädt sie binnen 5 s)."; fi
   [ "$(reach_mode)" = fritzbox ] || return 0

@@ -418,6 +418,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(standin_lint|dev/standin_lint_test)\.ps1$
 
+      - id: ci-wait-test
+        name: ci_wait_test (check_ci_status -Wait verdict - green, red, pending, no run, rerun after red; no network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ci_wait_test.ps1
+        pass_filenames: false
+        files: ^scripts/(check_ci_status|lib/ci_wait|dev/ci_wait_test)\.ps1$
+
       - id: cron-toggle-lint-test
         name: cron_toggle_lint_test (a sending cron without budget path turns rule k red; no Docker)
         language: system

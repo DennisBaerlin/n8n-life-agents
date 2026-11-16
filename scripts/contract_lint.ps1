@@ -2157,7 +2157,8 @@ $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
 # damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
 # Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+# `stop` nur fuer den eigenen Wechsel-Helfer mit festem Namen (rt_swap_helper_stop, haengender Helfer).
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+stop\s+"\$\{LA_PROJECT\}-swap"\s|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
@@ -2207,7 +2208,9 @@ foreach ($sa in @(
     @{ n = 'runtime: volume rm frei';r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
     @{ n = 'runtime: volume prune';  r = $rtRel; t = "  docker volume prune -f`n";                                 want = 2 },
     @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
-    @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 })) {
+    @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 },
+    @{ n = 'runtime: stop Helfer ok'; r = $rtRel; t = "  docker stop `"`${LA_PROJECT}-swap`" >/dev/null`n";       want = 0 },
+    @{ n = 'runtime: stop frei';     r = $rtRel; t = "  docker stop `"`$c`"`n";                                    want = 1 })) {
     $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count
     if ($got -ne $sa.want) { $errors.Add("BETRIEBSART-WRAPPER SELBST-ASSERT '$($sa.n)': erwartet $($sa.want) Treffer, gefunden $got -- Check 32 ist defekt.") }
 }

@@ -1,0 +1,33 @@
+{
+  "_comment": "Ratchet fuer scripts/standin_lint.ps1 (C: Stubs/PATH-Attrappen, D: export NAME=<fester Wert>). Schluessel = <Datei>|stub bzw. <Datei>|<NAME>, Wert = welcher echte Test fehlt. Nur schrumpfen, nie wachsen: ein Eintrag ohne Fund macht den Lint rot. Neue Faelle bekommen im Test '# real-path-test:' bzw. '# hand-injected:' (tests/CLAUDE.md).",
+  "entries": {
+    "tests/backup/cases.sh|stub": "Der curl-Stub haelt die Off-Site-Kopie vom Netz fern; ein Lauf von `backup auto` gegen ein echtes Fremdziel fehlt.",
+    "tests/mock_reach/cases.sh|stub": "Der Mock-Server ersetzt Fritzbox, n8n und Zertifikat-Gegenstellen; ein Lauf gegen eine echte Fritzbox und eine echte Domain fehlt (nur Besuch beim Anwender).",
+    "tests/mock_reach/cli_cases.sh|stub": "Die tailscale-Attrappe ersetzt den Daemon; ein Lauf gegen ein echtes Tailscale-Konto fehlt.",
+    "tests/mock_reach/cli_cases.sh|LIFEAGENTS_RUNTIME": "Der Installer setzt die Betriebsart selbst; ein Lauf der Reach-CLI nach einem echten Installer-Durchlauf (klassisch) fehlt.",
+    "tests/mock_reach/cli_cases.sh|N8N_PORT": "Der Wert kommt im echten Weg aus der Installer-Env-Datei; ein Lauf nach echtem Install fehlt.",
+    "tests/mock_reach/cli_cases.sh|PROFILE": "Der Installer reicht PROFILE selbst durch; Lauf nach echtem Install fehlt.",
+    "tests/mock_reach/cli_cases.sh|UNATTENDED": "Der Installer reicht UNATTENDED selbst durch; Lauf nach echtem Install fehlt.",
+    "tests/mock_reach/cli_cases.sh|N8N_USER": "Der Installer reicht N8N_USER selbst durch; Lauf nach echtem Install fehlt.",
+    "tests/mock_reach/compose_cases.sh|stub": "Die Attrappen ersetzen die Docker-/Telegram-Wrapper und tailscale; ein Lauf im echten Docker-Verbund mit Tailscale-Konto fehlt.",
+    "tests/mock_reach/compose_cases.sh|LIFEAGENTS_RUNTIME": "Der Docker-Installer setzt die Betriebsart selbst; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_reach/compose_cases.sh|LA_PROJECT": "Compose-Projektname kommt im echten Weg vom Docker-Installer; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|stub": "docker, systemctl und runuser sind Stubs; der echte Docker-Weg wird erst durch den kalten Lauf im Docker-Verbund (genericity) bewiesen, nicht hier.",
+    "tests/mock_runtime/cases.sh|LIFEAGENTS_RUNTIME": "Die Betriebsart setzt im echten Weg der Installer; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|STUB_STDIN": "Steuert nur den Stub; kein echter Gegenpart, Test des echten `docker exec -i` fehlt.",
+    "tests/mock_runtime/cases.sh|TELEGRAM_BOT_TOKEN": "Der Wert kommt im echten Weg aus der Antwort-Datei bzw. Env-Datei; ein Lauf mit echter Antwort-Datei fehlt (erfundener Wert, kein echtes Telegram).",
+    "tests/mock_runtime/cases.sh|UNATTENDED": "Der echte Weg setzt UNATTENDED aus der Kommandozeile; ein Lauf `provision.sh --unattended` fehlt hier.",
+    "tests/mock_runtime/cases.sh|LA_PROJECT": "Der Compose-Projektname kommt im echten Weg vom Docker-Installer; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|LA_EDGE_PORT": "Der Port kommt im echten Weg aus der Installer-Env; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|LA_WIZARD_PORT": "Der Port kommt im echten Weg aus der Installer-Env; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|LA_PG_SUPERPW": "Das Passwort erzeugt im echten Weg der Installer; Lauf nach echtem Docker-Install fehlt.",
+    "tests/mock_runtime/cases.sh|LA_N8N_IMAGE": "Das Image-Pin kommt im echten Weg aus dem Release; ein Update-Lauf aus echtem Release fehlt.",
+    "tests/mock_runtime/cases.sh|LA_PG_IMAGE": "Das Image-Pin kommt im echten Weg aus dem Release; ein Update-Lauf aus echtem Release fehlt.",
+    "tests/mock_runtime/cases.sh|PG_VERSION": "Die Version liest der echte Weg aus dem laufenden Postgres; Lauf gegen echten Container fehlt.",
+    "tests/mock_telegram/app_intro_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
+    "tests/mock_telegram/backup_notify_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
+    "tests/mock_telegram/bot_username_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
+    "tests/mock_telegram/menu_once_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
+    "tests/mock_telegram/profile_photo_cases.sh|stub": "Der curl-Stub reicht an echtes curl durch und protokolliert nur; der Telegram-Dienst ist der Mock-Server, ein Lauf gegen echtes Telegram fehlt (Live-Dienst)."
+  }
+}

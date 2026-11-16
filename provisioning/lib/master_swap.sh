@@ -52,6 +52,7 @@ master_swap_begin() {
   log "Neues Programm-Paket für ${tag} bereitlegen (${target}) ..."
   rt_image_ensure "$cf" "$target" \
     || die_because net "Das Programm-Paket ${target} ließ sich nicht laden — Update abgebrochen, es wurde nichts geändert."
+  if [ "$mode" = update ]; then rt_target_precheck "$cf" "$target"; fi   # Rueckweg: der vorherige Stand lief schon hier
   mkdir -p "$SWAP_DIR"; chmod 0700 "$SWAP_DIR"
   rm -f "$SWAP_DIR"/compose.new.yml "$SWAP_DIR"/stack.env
   # Teilschale mit EXIT-Trap: scheitert ein Schritt vor der Uebergabe, verschwinden stack.env (traegt das Superuser-
@@ -106,7 +107,13 @@ master_swap_resolve() {
   master_swap_pending || { printf 'none'; return 0; }
   local phase from to me
   phase="$(_swap_get PHASE)"; from="$(_swap_get FROM)"; to="$(_swap_get TO)"; me="${LA_MASTER_IMAGE:-}"
-  if rt_swap_helper_running; then printf 'wait'; return 0; fi
+  # Haengender Helfer: laeuft, schrieb aber SWAP_HELPER_MAX_MIN lang keinen Schritt (Frist wie doctor; ein Wechsel braucht
+  # Minuten) -> anhalten und wie bei einem gestorbenen Helfer nach dem eigenen Image entscheiden, sonst stuende jeder Tick
+  # und jeder neue Auftrag dauerhaft auf "wait".
+  if rt_swap_helper_running; then
+    if [ -z "$(find "$SWAP_STATE" -mmin +"${SWAP_HELPER_MAX_MIN:-30}" 2>/dev/null)" ]; then printf 'wait'; return 0; fi
+    rt_swap_helper_stop || true
+  fi
   case "$phase" in
     applying)   printf 'interrupted' ;;   # der neue master starb waehrend provision.sh -> nicht still wiederholen
     handoff)

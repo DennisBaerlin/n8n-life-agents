@@ -8,7 +8,8 @@
 --   prueft die Owner-Rolle zusaetzlich selbst (direkter Aufruf, Defense-in-Depth).
 --     * now   -> nur fuer ein Tag, dessen Karte wirklich ging (Latch release_update/<tag>, core.fn_release_card_sent);
 --     * retry -> nur, wenn core.fn_update_retry_allowed(<tag>) (die eine Wiederholungs-Regel);
---     * schon ein offener Auftrag -> Toast "laeuft schon" (Unique-Index ist das Gesetz, hier nur freundlich).
+--     * schon ein offener Auftrag -> Toast "laeuft schon" (Unique-Index ist das Gesetz, hier nur freundlich); ein seit
+--       ueber 4 h 30 min uebernommener gilt als haengend und wird vorher als interrupted geschlossen (Meldung faellig).
 --   Eingabe p: { data, chat_id (from.id), chat_type }
 --   Rueckgabe: {ok:true, toast, request_id} | {ok:false, reason:'owner_only'|'invalid'|'unknown_release'|
 --              'already_open'|'no_retry', toast}. Toasts in der Sprache des Tippenden (core.update.toast.*). Nie RAISE.
@@ -46,6 +47,13 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'invalid',
             'toast', core.fn_ui_text('core.update.toast.invalid', v_lang));
     END IF;
+    -- Frist: laenger als jeder Runner-Lauf uebernommen = der Runner haengt oder starb ohne Nachfolger (sonst schliesst ihn
+    -- fn_update_request_claim unter der Sperre). Grenze = zwei Laeufe zu je 2 h (Docker-Verbund: alter master laedt + uebergibt,
+    -- neuer master spielt ein; Zeitgrenze UPDATE_RUN_TIMEOUT_S in update_runner.sh, klassisch TimeoutStartSec) + Puffer fuer
+    -- den Wechsel-Helfer. Nie uebernommene bleiben offen: finish_claimed ist Gesetz.
+    UPDATE core.update_requests
+       SET finished_at = now(), outcome = 'interrupted', report_state = 'due'
+     WHERE finished_at IS NULL AND claimed_at < now() - interval '4 hours 30 minutes';
     IF EXISTS (SELECT 1 FROM core.update_requests WHERE finished_at IS NULL) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'already_open',
             'toast', core.fn_ui_text('core.update.toast.running', v_lang));

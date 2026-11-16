@@ -9,6 +9,7 @@
 #
 # Docker-Positivliste (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
+#   docker stop "${LA_PROJECT}-swap" (nur rt_swap_helper_stop) ·
 #   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
 #   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
 # Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
@@ -468,3 +469,51 @@ rt_host_gateway() {
   docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").Gateway}}" "${LA_PROJECT}-wan" 2>/dev/null \
     | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1
 }
+
+# --- Erneuern der Dienste ausserhalb des Installer-Schritts (Rand, Gateway) --------------------------------------------
+# rt_container_id <container> -> Kennung (leer = es gibt ihn nicht).
+rt_container_id() { docker inspect -f '{{.Id}}' "$1" 2>/dev/null; }
+# rt_stack_refresh — edge, gateway und die laufenden Profil-Dienste (wan, tailscale) auf den Stand dieser compose.yml bringen:
+#   `up -d --no-deps` legt nur neu an, was sich geaendert hat (z. B. ein neuer Pin nach einem Update), sonst no-op. Das Gateway
+#   startet der Installer nur per `docker restart` neu (enable_start_unit), ein neuer Pin kaeme so nie an. anchor nie: seine
+#   Neuanlage risse den Pod ab. tailscale haengt im Namensraum von edge; die Compose-Pruefsumme sieht nur `service:edge`, nicht
+#   die Kennung -> nach einer Neuanlage von edge tailscale gezielt neu anlegen. rc 1 = mindestens ein Aufruf scheiterte.
+rt_stack_refresh() {
+  local before after ts=0 rc=0 svcs=(edge gateway)
+  before="$(rt_container_id "${LA_PROJECT}-edge")"
+  rt_container_running "${LA_PROJECT}-tailscale" && ts=1
+  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  _rt_compose up -d --no-deps "${svcs[@]}" >&2 || rc=1
+  if [ "$ts" -eq 1 ]; then
+    after="$(rt_container_id "${LA_PROJECT}-edge")"
+    if [ -n "$before" ] && [ "$before" != "$after" ]; then
+      _rt_compose up -d --no-deps --force-recreate tailscale >&2 || rc=1
+    else
+      _rt_compose up -d --no-deps tailscale >&2 || rc=1
+    fi
+  fi
+  return "$rc"
+}
+
+# rt_target_precheck <compose-datei> <master-image> — was ein Update abbrechen kann, gegen die Datei des Ziel-Stands pruefen,
+#   bevor der master gewechselt wird (lib/master_swap.sh; danach stuende der neue master auf dem alten Verbund):
+#   PostgreSQL-Hauptversion des neuen Pins = die der Daten, Abbilder der Dienste ladbar (tailscale/wan nur, wenn sie laufen).
+#   Abbruch per die_because pg_major|net, nichts geaendert. Unlesbarer Pin oder Datenstand = keine Aussage (wie upgrade_detect).
+# shellcheck disable=SC2030,SC2031  # bewusst nur in der Teilschale: Ziel-Datei + Ziel-Image fuer genau diese Aufrufe
+rt_target_precheck() {
+  local cf="$1" img="$2" pin data svcs=(postgres n8n gateway edge)
+  pin="$( ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; _rt_compose config --format json postgres 2>/dev/null ) \
+          | jq -r '.services.postgres.image // empty' 2>/dev/null | sed -nE 's#^.*/##; s/^[^:@]+:([0-9]+).*/\1/p')"
+  data="$(pg_su_exec cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ -n "$pin" ] && [ -n "$data" ] && [ "$pin" != "$data" ]; then
+    die_because pg_major "Die Datenbank ist PostgreSQL ${data}, dieser Stand erwartet ${pin} — ein Wechsel der Hauptversion braucht eine Umwandlung der Daten; Update abgebrochen, es wurde nichts geändert."
+  fi
+  rt_container_running "${LA_PROJECT}-tailscale" && svcs+=(tailscale)
+  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; rt_stack_pull "${svcs[@]}" ) \
+    || die_because net "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
+}
+
+# rt_swap_helper_stop — den Helfer des master-Wechsels anhalten (fester Name, `--rm`: Anhalten entfernt ihn); nur fuer einen
+#   haengenden Helfer (lib/master_swap.sh master_swap_resolve).
+rt_swap_helper_stop() { docker stop "${LA_PROJECT}-swap" >/dev/null 2>&1; }

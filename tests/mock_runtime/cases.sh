@@ -12,10 +12,13 @@
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
 #   R  Netz-Wiederholung (rt_stack_up dreimal, add_apt_key curl --retry-all-errors).
 #   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
+#   D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch, Tunnel (Tailscale).
+#   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
+#   H  doctor-Warnung: ein Dienst laeuft noch mit dem alten Node (ersetzte Binary in /proc).
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
-# shellcheck disable=SC2016,SC2329,SC1003,SC2034  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
+# shellcheck disable=SC2016,SC2329,SC1003,SC2034,SC2015,SC2030,SC2031  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
 set -uo pipefail
 ROOT="$1"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
@@ -602,10 +605,19 @@ eq K.helfer-nie-rueckwaerts '' "$(cat "$W/up.calls")"
 eq K.helfer-unbekannter-schritt '' "$(cat "$W/up.calls")"
 
 export LIFEAGENTS_RUNTIME=compose
-update_run_requested() { echo run >> "$W/tick.log"; }
-update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; if [ -n "${STUB_OUTCOME:-}" ] && [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$STUB_OUTCOME" > "$UPDATE_CHECK_OUTCOME_FILE"; fi; }
-printf '#!/usr/bin/env bash\necho "cli $*" >> "$TICK_LOG"\n' > "$W/bin/lifeagents"
-chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log"
+# CLI-Attrappe: der Tick ruft jeden Schritt als eigenen CLI-Prozess (Zeitgrenze, _ur_step); Auftraege/Check melden sich wie
+# frueher die Funktions-Attrappen als "run"/"check" (Check-Argumente ohne "--", Ergebnis in UPDATE_CHECK_OUTCOME_FILE).
+cat > "$W/bin/lifeagents" <<'STUB'
+#!/usr/bin/env bash
+case "$1 ${2:-}" in
+  "update --run-requested") echo run >> "$TICK_LOG" ;;
+  "update --check")
+    echo check >> "$TICK_LOG"; echo "${3#--}" >> "$CHECK_ARGS"
+    if [ -n "${STUB_OUTCOME:-}" ] && [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$STUB_OUTCOME" > "$UPDATE_CHECK_OUTCOME_FILE"; fi ;;
+  *) echo "cli $*" >> "$TICK_LOG" ;;
+esac
+STUB
+chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log" CHECK_ARGS="$W/check.args"
 lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }
 lifeagents_env_file() { printf '%s' "$W/core.env"; }
 printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$W/core.env"
@@ -613,7 +625,7 @@ UPDATE_TICK_STATE="$W/tick.state"; rm -f "$W/VERSION_TICK" "$W/tick.log" "$UPDAT
 ( update_tick ); eq K.vor-installation-still '' "$(cat "$W/tick.log" 2>/dev/null)"
 echo v9.0.0 > "$W/VERSION_TICK"
 ( BACKUP_AUTO_AT=0000 update_tick )
-eq K.erster-tick-alles 'run check cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.erster-tick-alles 'run check cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 : > "$W/tick.log"; ( BACKUP_AUTO_AT=0000 update_tick )
 eq K.einmal-am-tag 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.lebenszeichen "LAST_TICK fehlt" ;; *) pass K.lebenszeichen ;; esac
@@ -625,27 +637,27 @@ eq K.frisch-geprueft-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) - 7300 ))"; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.intervall-abgelaufen-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
-# Sicherung heute gescheitert -> stuendlich neuer Versuch; danach gelungen -> keiner mehr.
+# Stuendlicher Takt ab BACKUP_AUTO_AT; ob heute noch gesichert werden muss, entscheidet `backup auto --scheduled` (KB-Faelle).
 _bst="$W/tickb.state"; rm -f "$_bst"
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 env_upsert "$_bst" LAST_OK 100; env_upsert "$_bst" LAST_FAIL 200
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.fehlschlag-neuer-versuch 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.fehlschlag-neuer-versuch 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
 eq K.neuer-versuch-erst-nach-einer-stunde 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$_bst" LAST_OK 300; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.nach-erfolg-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
-# Ohne gewaehlten Ordner hilft kein neuer Versuch (der Menuepunkt sichert beim Waehlen selbst) -> nicht stuendlich.
+eq K.nach-erfolg-entscheidet-die-sicherung 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Ohne gewaehlten Ordner ebenfalls stuendlich: nur so erreicht der Hinweis das Meldefenster am Tag.
 env_upsert "$_bst" LAST_FAIL 400; env_upsert "$_bst" LAST_FAIL_REASON nofolder
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.ohne-ordner-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.ohne-ordner-stuendlich-fuer-den-hinweis 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 # Sperre belegt (Wiederherstellung oder Update lief): Grund busy, kein Alarm, der naechste Takt holt die Sicherung nach.
 env_upsert "$_bst" LAST_FAIL 500; env_upsert "$_bst" LAST_FAIL_REASON busy
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
-eq K.belegt-holt-nach 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+eq K.belegt-holt-nach 'run cli backup auto --scheduled' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
@@ -887,4 +899,381 @@ chmod +x "$W/akbin/curl" "$W/akbin/gpg"
 ( PATH="$W/akbin:$PATH"; add_apt_key https://example.invalid/k.asc "$W/ak/key.gpg" ) >/dev/null 2>&1
 eq R.apt-key-curl-wiederholt-auch-curl18 1 "$(grep -c -e '--retry-all-errors' "$W/curl.args" 2>/dev/null)"
 eq R.apt-key-landet-vollstaendig-im-schluesselbund KEY "$(cat "$W/ak/key.gpg" 2>/dev/null)"
+
+# D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch (Tick-Zustand), Tunnel (Tailscale).
+#    Echter Code von doctor.sh in einer Teilschale; nur Docker-Wrapper und Zeit-Dateien sind Attrappen.
+dd_state() {   # dd_state <check-alter-s|-> <backup-datum|-> <VERSION-Alter-Min> -> Zustands-Datei + VERSION-Marker
+  rm -f "$W/dd.state"; : > "$W/dd.VERSION"; touch -d "$3 minutes ago" "$W/dd.VERSION"
+  [ "$1" = - ] || env_upsert "$W/dd.state" LAST_CHECK "$(( $(date -u +%s) - $1 ))"
+  [ "$2" = - ] || env_upsert "$W/dd.state" LAST_BACKUP "$2"
+}
+dd_run() {   # dd_run <funktion> -> Ausgabe + fail=<n>
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; UPDATE_TICK_STATE="$W/dd.state"; HOUSEHOLD_TIMEZONE=Europe/Berlin
+    id() { echo 0; }; lifeagents_version_marker() { printf '%s' "$W/dd.VERSION"; }
+    "$1"; echo "fail=$_fail" )
+}
+dd_today="$(TZ=Europe/Berlin date +%Y-%m-%d)"; dd_yday="$(TZ=Europe/Berlin date -d yesterday +%Y-%m-%d)"; dd_old="$(TZ=Europe/Berlin date -d '3 days ago' +%Y-%m-%d)"
+dd_state 600 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-frisch-gruen '  [ OK ] Release-Check läuft (letzter Versuch vor 10 min)
+fail=0' "$out"
+dd_state 7300 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-ueber-fenster-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
+dd_state 20000 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-steht-rot '  [FAIL] Release-Check lief seit 5 h nicht mehr — Update-Hinweise im Chat kommen nicht an (docker logs t-master)
+fail=1' "$out"
+dd_state - - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-nie-gelaufen-rot 'fail=1' "$(printf '%s' "$out" | tail -n1)"
+dd_state - - 3; out="$(dd_run _doctor_compose_check)"
+eq D.check-frische-installation-warn '  [WARN] Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)
+fail=0' "$out"
+dd_state 600 "$dd_today" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-heute-angestossen-gruen '  [ OK ] Tägliche Sicherung wird angestoßen (zuletzt '"$dd_today"')
+fail=0' "$out"
+dd_state 600 "$dd_yday" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
+dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
+fail=0' "$out"
+dd_state 600 - 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
+dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-frische-installation-still 'fail=0' "$out"
+# Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
+dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
+dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> [funnel-json] -> Ausgabe
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"
+    rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }; rt_edge_exec() { printf "%s" "$_fn"; }
+    _doctor_compose_tunnel; echo "fail=$_fail" )
+}
+dd_ok='{"BackendState":"Running","Self":{"DNSName":"bot.tail-fantasy.ts.net.","Expired":false,"CapMap":{"https":[],"funnel":[]}}}'
+eq D.tunnel-anderer-weg-still 'fail=0' "$(dd_ts fritzbox 0 "$dd_ok")"
+eq D.tunnel-container-aus-rot '  [FAIL] Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; docker logs --tail 100 t-tailscale)
+fail=1' "$(dd_ts tunnel 1 "$dd_ok")"
+eq D.tunnel-steht-gruen '  [ OK ] Tunnel steht (Tailscale angemeldet, bot.tail-fantasy.ts.net)
+fail=0' "$(dd_ts tunnel 0 "$dd_ok")"
+dd_exp="$(date -u -d '+5 days' +%Y-%m-%dT%H:%M:%SZ)"
+dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
+out="$(dd_ts tunnel 0 "$dd_soon")"
+printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
+dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
+out="$(dd_ts tunnel 0 "$dd_login")"
+printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
+
+# G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
+#    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer
+#    mit Pin, CLI ohne) zwei Fingerabdruecke und jeder CLI-Lauf spielte alle Workflows neu ein.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/deploy_workflows.sh"
+gx() {   # gx <N8N_VERSION|-> <Image des n8n-Containers|-> -> Kontext-Zeile
+  ( export LIFEAGENTS_RUNTIME=compose LA_PROJECT=t LA_N8N_CONTAINER=t-n8n; N8N_ENV_FILE="$W/gx.env"; : > "$N8N_ENV_FILE"
+    owner_tg_token() { printf 'tok'; }
+    if [ "$1" = - ]; then unset N8N_VERSION; else N8N_VERSION="$1"; fi
+    if [ "$2" = - ]; then unset STUB_IMG_t_n8n; else export STUB_IMG_t_n8n="$2"; fi
+    _wf_deploy_context )
+}
+gx_img='n8nio/n8n:2.45.7@sha256:9a8d8dcea75667496695d7810d7e1fe018a65efb36cc499d347f3931b3957b5d'
+eq G.cli-und-installer-gleicher-fingerabdruck "$(gx 2.45.7 "$gx_img")" "$(gx - "$gx_img")"
+eq G.version-kommt-aus-dem-container 'n8n=2.45.7|' "$(gx - "$gx_img" | cut -d'|' -f1-1 | sed 's/$/|/')"
+eq G.versionswechsel-aendert-den-fingerabdruck 1 "$([ "$(gx - "$gx_img")" != "$(gx - 'n8nio/n8n:2.46.0@sha256:aa')" ] && echo 1 || echo 0)"
+eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
+mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
+eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
+# Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
+eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
+fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
+dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
+
+# Laufender Tick-Schritt: LAST_TICK wird nur am Tick-Anfang geschrieben, ein Schritt darf lange laufen (Update 2 h,
+# Sicherung 30 min, Check 5 min). Solange er innerhalb seiner Zeitgrenze laeuft, ist das ein Hinweis, kein ROT.
+dt_run() {   # dt_run <tick-alter-s> <lock:frei|belegt> -> Ausgabe von _doctor_compose_tick + fail=<n>
+  rm -f "$W/dd.state"; : > "$W/dd.VERSION"; touch -d "600 minutes ago" "$W/dd.VERSION"
+  env_upsert "$W/dd.state" LAST_TICK "$(( $(date -u +%s) - $1 ))"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; UPDATE_TICK_STATE="$W/dd.state"; DOCTOR_PROC_ROOT="$W/dtproc"
+    id() { echo 0; }; lifeagents_version_marker() { printf '%s' "$W/dd.VERSION"; }
+    _lk="$2"; update_lock_free() { [ "$_lk" = frei ]; }
+    _doctor_compose_tick; echo "fail=$_fail" )
+}
+dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess
+  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"; touch -d "$2 minutes ago" "$W/dtproc/$1"
+}
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+dts 7 20 'bash /usr/local/bin/lifeagents update --run-requested'
+eq D.tick-update-laeuft-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update, seit 20 min (Zeitgrenze 120 min)
+fail=0' "$(dt_run 1200 belegt)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 8 20 'bash /usr/local/bin/lifeagents backup auto --scheduled'
+eq D.tick-sicherung-laeuft-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Sicherung, seit 20 min (Zeitgrenze 30 min)
+fail=0' "$(dt_run 1200 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 9 10 'bash /usr/local/bin/lifeagents update --check --scheduled'
+eq D.tick-check-ueber-zeitgrenze-rot '  [FAIL] Update-Schleife im master steht seit 10 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
+fail=1' "$(dt_run 600 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+eq D.tick-ohne-schritt-rot 'fail=1' "$(dt_run 900 frei | tail -n1)"
+eq D.tick-sperre-belegt-ohne-prozess-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update (Sperre belegt), seit 15 min (Zeitgrenze 120 min)
+fail=0' "$(dt_run 900 belegt)"
+eq D.tick-sperre-belegt-ueber-zeitgrenze-rot 'fail=1' "$(dt_run 8000 belegt | tail -n1)"
+
+
+# H  doctor: ein Dienst laeuft noch mit dem alten Node (apt hat die Datei ersetzt, der Neustart blieb aus). Erkennung ueber
+#    /proc/<pid>/exe = "…/node (deleted)"; die Probe-Wurzel ist ersetzbar, sonst echter Code von doctor.sh.
+hp() {   # hp <pid> <exe-ziel> <cmdline> -> Eintrag im Attrappen-/proc
+  local parts; read -ra parts <<<"$3"
+  mkdir -p "$W/hproc/$1"; ln -sfn "$2" "$W/hproc/$1/exe"; printf '%s\0' "${parts[@]}" > "$W/hproc/$1/cmdline"
+}
+hd() {   # hd <compose:0|1> -> Ausgabe von _doctor_node_stale + fail=<n>
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; DOCTOR_PROC_ROOT="$W/hproc"; id() { echo 0; }
+    if [ "$1" = 1 ]; then LIFEAGENTS_RUNTIME=compose; else unset LIFEAGENTS_RUNTIME; fi
+    _doctor_node_stale; echo "fail=$_fail" )
+}
+rm -rf "$W/hproc"; hp 101 /usr/bin/node 'node /usr/lib/node_modules/n8n/bin/n8n start'; hp 102 /usr/bin/node 'node /opt/lifeagents/llm_gateway/server.js'; hp 103 /usr/bin/bash 'bash'
+eq H.alles-aktuell-still 'fail=0' "$(hd 0)"
+hp 101 '/usr/bin/node (deleted)' 'node /usr/lib/node_modules/n8n/bin/n8n start'
+eq H.n8n-alter-node-warnt '  [WARN] Node.js: n8n läuft noch mit der alten Version — ein Neustart steht aus (Abhilfe: '"'lifeagents update'"' oder '"'systemctl restart n8n'"')
+fail=0' "$(hd 0)"
+hp 102 '/usr/bin/node (deleted)' 'node /opt/lifeagents/llm_gateway/server.js'
+eq H.beide-alt-nennt-beide '  [WARN] Node.js: n8n, LLM-Gateway laufen noch mit der alten Version — ein Neustart steht aus (Abhilfe: '"'lifeagents update'"' oder '"'systemctl restart n8n lifeagents-llm-gateway'"')
+fail=0' "$(hd 0)"
+eq H.verbund-still 'fail=0' "$(hd 1)"
+
+# ---------------------------------------------------------------------------- KZ: Zeitgrenzen im Tick (wie die drei Units)
+# Ein haengender Schritt (Auftraege, Check, Sicherung) wird nach seiner Grenze beendet, samt Kindprozessen; die anderen
+# Schritte laufen weiter. Attrappen auf beiden Ebenen (Shell-Funktion und CLI), damit der Fall vom Aufrufweg unabhaengig ist.
+# real-path-test: none (Zeitgrenze im echten Verbund: Runde 8 im Bericht ob)
+mkdir -p "$W/kzbin"
+{ printf '#!/usr/bin/env bash\nd=%q\n' "$W/kz"
+  cat <<'STUB'
+w=''
+case "$1 ${2:-}" in
+  "update --run-requested") w=run ;; "update --check") w=check ;; "backup auto") w=backup ;;
+esac
+if [ -n "$w" ] && [ "$(cat "$d/hang" 2>/dev/null)" = "$w" ]; then sleep 30 & echo $! > "$d/child.pid"; wait; fi
+echo "$w" >> "$d/log"
+STUB
+} > "$W/kzbin/lifeagents"
+chmod +x "$W/kzbin/lifeagents"
+kz_case() (   # kz_case <haengender-schritt> -> "<sekunden>|<log>|<kind-lebt?>"
+  local KZ_DIR="$W/kz" KZ_HANG="$1"; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
+  rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"; printf "%s" "$KZ_HANG" > "$KZ_DIR/hang"
+  _kz() { if [ "$KZ_HANG" = "$1" ]; then sleep 30 & echo $! > "$KZ_DIR/child.pid"; wait; fi; echo "$1" >> "$KZ_DIR/log"; }
+  update_run_requested() { _kz run; }; update_check() { _kz check; }
+  require_root() { :; }; _ur_alert() { :; }
+  lifeagents_version_marker() { printf '%s' "$KZ_DIR/V"; }; echo v9.0.0 > "$KZ_DIR/V"
+  lifeagents_env_file() { printf '%s' "$KZ_DIR/core.env"; }; printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$KZ_DIR/core.env"
+  UPDATE_TICK_STATE="$KZ_DIR/tick.state"; BACKUP_STATE_FILE="$KZ_DIR/b.state"; BACKUP_AUTO_AT=0000
+  UPDATE_RUN_TIMEOUT_S=2 UPDATE_CHECK_TIMEOUT_S=2 BACKUP_TIMEOUT_S=2 UPDATE_STEP_KILL_S=1
+  local t0 alive=nein; t0="$(date +%s)"
+  update_tick >/dev/null 2>&1
+  if [ -s "$KZ_DIR/child.pid" ] && kill -0 "$(cat "$KZ_DIR/child.pid")" 2>/dev/null; then alive=ja; kill "$(cat "$KZ_DIR/child.pid")"; fi
+  printf '%s|%s|%s' "$(( $(date +%s) - t0 < 15 ))" "$(tr '\n' ' ' < "$KZ_DIR/log" 2>/dev/null | sed 's/ $//')" "$alive"
+)
+eq KZ.auftrag-haengt-tick-geht-weiter '1|check backup|nein' "$(kz_case run)"
+eq KZ.check-haengt-tick-geht-weiter '1|run backup|nein' "$(kz_case check)"
+eq KZ.sicherung-haengt-tick-endet '1|run check|nein' "$(kz_case backup)"
+# SIGTERM (docker stop, Neuanlage durch den Helfer) erreicht den laufenden Schritt, nicht erst SIGKILL nach 10 s.
+kz_term() (
+  local KZ_DIR="$W/kz"; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
+  rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"; printf run > "$KZ_DIR/hang"
+  update_run_requested() { sleep 30 & echo $! > "$KZ_DIR/child.pid"; wait; }
+  require_root() { :; }; _ur_alert() { :; }
+  lifeagents_version_marker() { printf '%s' "$KZ_DIR/V"; }; echo v9.0.0 > "$KZ_DIR/V"
+  lifeagents_env_file() { printf '%s' "$KZ_DIR/core.env"; }; : > "$KZ_DIR/core.env"
+  UPDATE_TICK_STATE="$KZ_DIR/tick.state"; UPDATE_RUN_TIMEOUT_S=60
+  update_tick >/dev/null 2>&1 & local tp=$! i alive=nein
+  for i in $(seq 1 50); do [ -s "$KZ_DIR/child.pid" ] && break; sleep 0.1; done
+  kill -TERM "$tp"
+  for i in $(seq 1 50); do kill -0 "$tp" 2>/dev/null || break; sleep 0.1; done
+  sleep 0.3
+  if [ -s "$KZ_DIR/child.pid" ] && kill -0 "$(cat "$KZ_DIR/child.pid")" 2>/dev/null; then alive=ja; kill "$(cat "$KZ_DIR/child.pid")"; fi
+  kill -9 "$tp" 2>/dev/null; wait "$tp" 2>/dev/null
+  printf '%s' "$alive"
+)
+eq KZ.term-erreicht-den-schritt nein "$(kz_term)"
+# Ein abgebrochener Wechsel (Zeitgrenze mitten in provision.sh, n8n war fuer die Sicherung gestoppt) laesst den Bot nicht aus.
+kz_intr() (   # kz_intr <mode> -> gestartete Dienste
+  master_swap_resolve() { printf interrupted; }; master_swap_close() { :; }; _ur_alert() { :; }
+  _swap_get() { case "$1" in MODE) printf '%s' "$KZ_MODE" ;; TAG) printf v9.1.0 ;; *) : ;; esac; }
+  svc_start() { echo "$*" >> "$W/kzi.log"; }
+  rm -f "$W/kzi.log"; KZ_MODE="$1" _ur_swap_continue >/dev/null 2>&1; cat "$W/kzi.log" 2>/dev/null
+)
+eq KZ.unterbrochen-update-n8n-wieder-an n8n "$(kz_intr update)"
+eq KZ.unterbrochen-rueckweg-n8n-wieder-an n8n "$(kz_intr rollback)"
+
+# ---------------------------------------------------------------------------- KR: Hilfs-Container mit jedem Lauf erneuern
+# Rand, Gateway und laufende Profil-Dienste kommen auf den Stand der compose.yml dieses Laufs (neuer Pin = Neuanlage durch
+# Compose); anchor nie. Wird edge neu angelegt, muss tailscale (in seinem Namensraum) mit. Attrappe: docker (STUB_LOG).
+# real-path-test: none (Neuanlage im echten Verbund: Runde 8 im Bericht ob)
+kr_case() (   # kr_case <laufend> <edge-id-vorher> <edge-id-nachher> -> Compose-up-Aufrufe
+  rt_is_compose() { return 0; }; export STUB_RUNNING="$1"
+  rt_container_id() { if [ -s "$W/kr.after" ]; then cat "$W/kr.after"; else printf '%s' "$KR_BEFORE"; fi; }
+  KR_BEFORE="$2"; rm -f "$W/kr.after"; : > "$STUB_LOG"
+  _rt_compose() { echo "$*" >> "$W/kr.calls"; printf '%s' "$KR_AFTER" > "$W/kr.after"; }
+  KR_AFTER="$3"; rm -f "$W/kr.calls"
+  rt_stack_refresh >/dev/null 2>&1; tr '\n' ';' < "$W/kr.calls"
+)
+eq KR.rand-und-gateway 'up -d --no-deps edge gateway;' "$(kr_case '' e1 e1)"
+eq KR.wan-laeuft-mit 'up -d --no-deps edge gateway wan;' "$(kr_case 'lifeagents-wan' e1 e1)"
+eq KR.tailscale-neuer-pin 'up -d --no-deps edge gateway;up -d --no-deps tailscale;' "$(kr_case 'lifeagents-tailscale' e1 e1)"
+eq KR.edge-neu-tailscale-neu 'up -d --no-deps edge gateway;up -d --no-deps --force-recreate tailscale;' "$(kr_case 'lifeagents-tailscale' e1 e2)"
+eq KR.ohne-tailscale-kein-tailscale 'up -d --no-deps edge gateway;' "$(kr_case '' e1 e2)"
+# Der spaete Installer-Haken ruft die Erneuerung bei jedem Weg nach aussen (auch ohne FritzBox).
+kr_conv() ( rt_stack_refresh() { echo refresh; }; reach_edge_public_write() { return 1; }; reach_mode() { printf tunnel; }; reach_converge 2>/dev/null )
+eq KR.converge-erneuert refresh "$(kr_conv)"
+# Nach einer Neuanlage des Gateways wartet der Lauf auf dessen Antwort; antwortet es nicht, steht es als Warnung im Lauf.
+kr_gw() ( rt_stack_refresh() { :; }; reach_edge_public_write() { return 1; }; reach_mode() { printf tunnel; }
+          _wait_llm_gateway_health() { return "$KR_GW"; }; warn() { echo "warn $*"; }; KR_GW="$1"; reach_converge 2>/dev/null | cut -c1-25 )
+eq KR.gateway-antwortet-still '' "$(kr_gw 0)"
+eq KR.gateway-stumm-warnung 'warn KI-Gateway antwortet' "$(kr_gw 1)"
+
+# ---------------------------------------------------------------------------- KL: Update-Protokolle aufraeumen
+# Die neuesten 10 bleiben immer, aelter als 30 Tage und darueber hinaus gehen; fremde Dateien im Ordner nie.
+kl_case() (
+  local d="$W/kl" i; rm -rf "$d"; mkdir -p "$d"; UPDATE_LOG_DIR="$d"
+  for i in $(seq -w 1 14); do : > "$d/update-202610${i}T030000Z.log"; touch -d "-$((60 - 10#$i)) days" "$d/update-202610${i}T030000Z.log"; done
+  : > "$d/update-20261115T030000Z.log"; : > "$d/fremd.txt"; touch -d '-90 days' "$d/fremd.txt"
+  _ur_logs_prune >/dev/null 2>&1
+  find "$d" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' '
+)
+eq KL.neueste-zehn-und-fremde-bleiben 'fremd.txt update-20261006T030000Z.log update-20261007T030000Z.log update-20261008T030000Z.log update-20261009T030000Z.log update-20261010T030000Z.log update-20261011T030000Z.log update-20261012T030000Z.log update-20261013T030000Z.log update-20261014T030000Z.log update-20261115T030000Z.log ' "$(kl_case)"
+kl_young() (
+  local d="$W/kl" i; rm -rf "$d"; mkdir -p "$d"; UPDATE_LOG_DIR="$d"
+  for i in $(seq -w 1 14); do : > "$d/update-202611${i}T030000Z.log"; done
+  _ur_logs_prune >/dev/null 2>&1; find "$d" -mindepth 1 | wc -l | tr -d " "
+)
+eq KL.junge-bleiben-alle 14 "$(kl_young)"
+
+# ---------------------------------------------------------------------------- SV: Abbruch-Pruefungen VOR dem master-Wechsel
+# Was ein Update abbrechen kann (PostgreSQL-Hauptversion des neuen Pins passt nicht zu den Daten, Abbilder des neuen Stands
+# nicht ladbar), muss im alten master scheitern: kein Helfer, kein Zustand, der alte Stand laeuft unveraendert.
+# real-path-test: none (Wechsel im echten Verbund: Runde 8 im Bericht ob)
+sv_case() (   # sv_case <pg-major-der-daten> <stub-fail> -> "<rc>|<zustand?>|<helfer?>|<grund>"
+  rt_is_compose() { return 0; }; export STUB_PG_MAJOR="$1" STUB_FAIL="$2" STUB_IMAGE_PRESENT=0
+  # hand-injected: Antwort der docker-Attrappe auf 'compose config' (PostgreSQL-Pin des neuen Stands), kein Wert des geprueften Codes
+  export STUB_CONFIG_JSON='{"services":{"postgres":{"image":"postgres:17@sha256:cccc"}}}'
+  rt_image_ensure() { return 0; }; unset LIFEAGENTS_UPDATE_LOCK_HELD
+  result_set() { [ "$1" = reason_code ] && printf '%s' "$2" > "$W/sv.reason"; return 0; }
+  die_because() { printf '%s' "$1" > "$W/sv.reason"; exit 1; }
+  rm -rf "$SWAP_DIR" "$W/sv.reason"; : > "$STUB_LOG"; local rc=0
+  ( master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s|%s' "$rc" "$([ -e "$SWAP_STATE" ] && echo ja || echo nein)" \
+    "$(grep -q '^docker|run|--rm|-d|' "$STUB_LOG" && echo ja || echo nein)" "$(cat "$W/sv.reason" 2>/dev/null)"
+)
+eq SV.pg-hauptversion-bricht-vorher-ab '1|nein|nein|pg_major' "$(sv_case 16 '')"
+eq SV.abbilder-nicht-ladbar-bricht-vorher-ab '1|nein|nein|net' "$(sv_case 17 '|pull|')"
+case "$(sv_case 17 '')" in 0\|ja\|ja\|*) pass SV.alles-da-wechsel-startet ;; *) fail SV.alles-da-wechsel-startet "$(sv_case 17 '')" ;; esac
+rm -rf "$SWAP_DIR"
+
+# ---------------------------------------------------------------------------- KB: Sicherung im Tick wie lifeagents-backup.timer
+# Ab BACKUP_AUTO_AT stuendlich `backup auto --scheduled`; ob heute schon gesichert ist, entscheidet backup.state (LAST_OK).
+# Ohne gewaehlten Ordner kommt so tagsueber der Hinweis an (der 03:30-Lauf liegt ausserhalb von 09-20 Uhr), und ein Lauf, der
+# ohne Fehler-Vermerk endete (Zeitgrenze, Neustart des master), wird nachgeholt statt erst morgen.
+kb_tick() (   # kb_tick <LAST_OK> <LAST_FAIL> <LAST_FAIL_REASON> -> CLI-Aufrufe der Sicherung
+  rt_is_compose() { return 0; }; _ur_cli() { printf '%s' "$W/bin/lifeagents"; }; require_root() { :; }
+  local d="$W/kb"; rm -rf "$d"; mkdir -p "$d"
+  lifeagents_version_marker() { printf '%s' "$W/kb/V"; }; echo v9.0.0 > "$d/V"
+  lifeagents_env_file() { printf '%s' "$W/kb/core.env"; }; printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$d/core.env"
+  UPDATE_TICK_STATE="$d/tick.state"; BACKUP_STATE_FILE="$d/b.state"; BACKUP_AUTO_AT=0000
+  env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(date -u +%s)"
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$1"; [ -z "$2" ] || env_upsert "$BACKUP_STATE_FILE" LAST_FAIL "$2"
+  [ -z "$3" ] || env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON "$3"
+  : > "$TICK_LOG"; update_tick >/dev/null 2>&1; grep '^cli backup' "$TICK_LOG" | tr '\n' ';'
+)
+eq KB.ohne-ordner-stuendlich-mit-hinweis 'cli backup auto --scheduled;' "$(kb_tick 100 200 nofolder)"
+eq KB.lauf-ohne-vermerk-wird-nachgeholt 'cli backup auto --scheduled;' "$(kb_tick 100 '' '')"
+# Die Entscheidung "heute schon gesichert?" trifft --scheduled auch im Verbund; faellig ohne Ordner -> Vermerk + Hinweis-Pruefung.
+kb_auto() (   # kb_auto <faellig 0|1> -> "<grund>|<hinweis-aufrufe>"
+  rt_is_compose() { return 0; }; local d="$W/kba"; rm -rf "$d"; mkdir -p "$d"; BACKUP_STATE_FILE="$d/b.state"
+  _bkp_auto_due() { [ "$KB_DUE" = 1 ]; }; _bkp_host_dir() { :; }; _bkp_resolve_db() { :; }
+  _bkp_stale_notify() { echo n >> "$d/n"; }; KB_DUE="$1"
+  backup_cmd_auto --scheduled >/dev/null 2>&1
+  printf '%s|%s' "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null)" "$(cat "$d/n" 2>/dev/null | wc -l | tr -d ' ')"
+)
+eq KB.geplant-nicht-faellig-tut-nichts '|0' "$(kb_auto 0)"
+eq KB.geplant-faellig-ohne-ordner 'nofolder|1' "$(kb_auto 1)"
+
+# ---------------------------------------------------------------------------- RB: Rueckweg im Verbund aus einem Stand ohne Release-Tag
+# Im Verbund ist der vorherige Stand das vorherige master-Image samt compose.yml (Merkzettel), kein Download: ein Bestand mit
+# VERSION 'dev' (Image ohne -Version gebaut) kommt so zurueck. Klassisch bleibt ein Tag Pflicht (install.sh des Vorgaengers).
+rb_case() (   # rb_case <compose 0|1> <from_release> -> erreicht | abbruch:<meldung>
+  local d="$W/rb"; rm -rf "$d"; mkdir -p "$d"
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi
+  require_root() { :; }; lifeagents_db_name() { :; }; N8N_DB_NAME=n8n
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"; printf 'services: {}\n' > "$d/b.compose.yml"
+  printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\nFROM_MASTER_IMAGE=reg.example/master@sha256:dddd\nFROM_COMPOSE=%s\n' \
+    "$2" "$d/b.dump.gpg" "$d/b.compose.yml" > "$UPGRADE_MARKER"
+  update_lock_acquire() { echo erreicht > "$d/out"; return 1; }
+  die() { [ -s "$d/out" ] || printf 'abbruch:%s' "$*" > "$d/out"; exit 1; }; die_because() { shift; die "$@"; }
+  ( upgrade_rollback --yes ) >/dev/null 2>&1
+  [ "$1" = 1 ] || ( upgrade_rollback ) >/dev/null 2>&1 </dev/null
+  head -c 60 "$d/out"
+)
+eq RB.verbund-dev-kommt-zurueck erreicht "$(rb_case 1 dev)"
+case "$(rb_case 0 dev)" in abbruch:*) pass RB.klassisch-dev-ohne-rueckweg ;; *) fail RB.klassisch-dev-ohne-rueckweg "$(rb_case 0 dev)" ;; esac
+case "$(rb_case 1 '')" in abbruch:*) pass RB.verbund-ohne-version-abbruch ;; *) fail RB.verbund-ohne-version-abbruch "$(rb_case 1 '')" ;; esac
+
+# ---------------------------------------------------------------------------- KU: unterbrochenes Update ohne master-Wechsel
+# Starb der Lauf (Zeitgrenze, Neustart) nach upgrade_prepare, steht n8n; der naechste Runner schliesst den Auftrag als
+# interrupted und startet n8n wieder (der Merkzettel bleibt, das naechste Update setzt fort).
+ku_case() (   # ku_case <merkzettel 0|1> <recovered-json> -> gestartete Dienste
+  local d="$W/ku"; rm -rf "$d"; mkdir -p "$d"; UPGRADE_MARKER="$d/upgrade.pending"; [ "$1" = 1 ] && : > "$UPGRADE_MARKER"
+  require_root() { :; }; lifeagents_db_name() { :; }; update_lock_acquire() { return 0; }; rt_is_compose() { return 1; }
+  _ur_installed() { printf v9.0.0; }; _ur_reports_flush() { :; }; _ur_menu_refresh() { :; }; _ur_alert() { :; }
+  _ur_sql() { printf '{"recovered":%s,"claimed":null}' "$KU_REC"; }; KU_REC="$2"
+  svc_start() { echo "$*" >> "$d/s"; }
+  update_run_requested >/dev/null 2>&1; cat "$d/s" 2>/dev/null
+)
+eq KU.unterbrochen-mit-merkzettel-n8n-an n8n "$(ku_case 1 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
+eq KU.ohne-merkzettel-nichts '' "$(ku_case 0 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
+eq KU.nichts-erholt-nichts '' "$(ku_case 1 '[]')"
+
+# ---------------------------------------------------------------------------- SH: Frist fuer den Wechsel-Helfer
+# Haengt der Helfer (laeuft, schreibt aber 30 min nichts mehr; Frist wie doctor), haelt er sonst jeden Tick auf "wait" und
+# jeden neuen Auftrag dahinter. Nach der Frist: Helfer anhalten, nach dem eigenen Image entscheiden (wie bei einem
+# gestorbenen Helfer): Ausgang -> zurueckgerollt (Meldung, n8n an), Ziel -> fortsetzen.
+# real-path-test: none (haengender Helfer im echten Verbund nicht nachgestellt; Bericht ob)
+sh_case() (   # sh_case <minuten-seit-letztem-schritt> <eigenes-image> -> "<resolve>|<angehalten>"
+  rm -rf "$SWAP_DIR"; mkdir -p "$SWAP_DIR"
+  printf 'PHASE=swapping\nFROM=%s\nTO=%s\n' "$LA_MASTER_IMAGE" "$NEW" > "$SWAP_STATE"
+  if [ "$1" -gt 0 ]; then touch -d "-$1 minutes" "$SWAP_STATE"; fi
+  : > "$STUB_LOG"
+  local r; r="$(STUB_RUNNING=lifeagents-swap LA_MASTER_IMAGE="$2" master_swap_resolve)"
+  printf '%s|%s' "$r" "$(grep -c '^docker|stop|lifeagents-swap' "$STUB_LOG")"
+)
+eq SH.helfer-frisch-wartet 'wait|0' "$(sh_case 0 "$LA_MASTER_IMAGE")"
+eq SH.helfer-haengt-alter-master 'rolled_back|1' "$(sh_case 31 "$LA_MASTER_IMAGE")"
+eq SH.helfer-haengt-neuer-master 'apply|1' "$(sh_case 31 "$NEW")"
+rm -rf "$SWAP_DIR"
+
+# ---------------------------------------------------------------------------- UO: Optionen von `lifeagents update`/`rollback`
+# --help zeigt die Hilfe und aendert nichts; eine unbekannte Option bricht ab, bevor geladen, gesperrt oder gewechselt wird
+# (im Verbund startete `update --help` sonst den master-Wechsel, provision.sh sah die Option nie). Weitergereicht werden nur
+# Optionen, die provision.sh parse_args fuer einen normalen Lauf kennt.
+uo_case() (   # uo_case <args…> -> "<rc>|<fetch-aufruf>"
+  fetch_and_run_release() { printf '%s' "$*" > "$W/uo.fetch"; exit 0; }
+  die() { exit 1; }; rm -f "$W/uo.fetch"; local rc=0
+  ( update_cli "$@" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s' "$rc" "$(cat "$W/uo.fetch" 2>/dev/null)"
+)
+eq UO.help-laedt-nichts '0|' "$(uo_case --help)"
+eq UO.h-laedt-nichts '0|' "$(uo_case -h)"
+eq UO.unbekannt-bricht-vorher-ab '1|' "$(uo_case --bogus)"
+eq UO.deinstallieren-nicht-ueber-update '1|' "$(uo_case --uninstall)"
+eq UO.ohne-optionen 0\|latest "$(uo_case)"
+eq UO.version-und-weitergabe '0|v9.1.0 --profile release --verbose' "$(uo_case --version v9.1.0 --profile release --verbose)"
+eq UO.weitergabe-mit-wert '0|latest --packages=finance' "$(uo_case --packages=finance)"
+eq UO.weitergabe-wert-fehlt '1|' "$(uo_case --domain)"
+uo_rb() (   # uo_rb <args…> -> "<rc>|<weiter?>"
+  require_root() { :; }; lifeagents_db_name() { printf weiter > "$W/uo.rb"; exit 7; }
+  die() { exit 1; }; rt_is_compose() { return 0; }; rm -f "$W/uo.rb"; local rc=0
+  ( upgrade_rollback "$@" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s' "$rc" "$(cat "$W/uo.rb" 2>/dev/null)"
+)
+eq UO.rollback-help-aendert-nichts '0|' "$(uo_rb --help)"
+eq UO.rollback-unbekannt-bricht-ab '1|' "$(uo_rb --jes)"
+eq UO.rollback-yes-laeuft-weiter '7|weiter' "$(uo_rb --yes)"
 exit "$fails"

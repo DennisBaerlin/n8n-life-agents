@@ -14,6 +14,7 @@
 #   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
 #   D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch, Tunnel (Tailscale).
 #   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
+#   H  doctor-Warnung: ein Dienst laeuft noch mit dem alten Node (ersetzte Binary in /proc).
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
@@ -969,4 +970,26 @@ eq G.versionswechsel-aendert-den-fingerabdruck 1 "$([ "$(gx - "$gx_img")" != "$(
 eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
+
+# H  doctor: ein Dienst laeuft noch mit dem alten Node (apt hat die Datei ersetzt, der Neustart blieb aus). Erkennung ueber
+#    /proc/<pid>/exe = "…/node (deleted)"; die Probe-Wurzel ist ersetzbar, sonst echter Code von doctor.sh.
+hp() {   # hp <pid> <exe-ziel> <cmdline> -> Eintrag im Attrappen-/proc
+  local parts; read -ra parts <<<"$3"
+  mkdir -p "$W/hproc/$1"; ln -sfn "$2" "$W/hproc/$1/exe"; printf '%s\0' "${parts[@]}" > "$W/hproc/$1/cmdline"
+}
+hd() {   # hd <compose:0|1> -> Ausgabe von _doctor_node_stale + fail=<n>
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; DOCTOR_PROC_ROOT="$W/hproc"; id() { echo 0; }
+    if [ "$1" = 1 ]; then LIFEAGENTS_RUNTIME=compose; else unset LIFEAGENTS_RUNTIME; fi
+    _doctor_node_stale; echo "fail=$_fail" )
+}
+rm -rf "$W/hproc"; hp 101 /usr/bin/node 'node /usr/lib/node_modules/n8n/bin/n8n start'; hp 102 /usr/bin/node 'node /opt/lifeagents/llm_gateway/server.js'; hp 103 /usr/bin/bash 'bash'
+eq H.alles-aktuell-still 'fail=0' "$(hd 0)"
+hp 101 '/usr/bin/node (deleted)' 'node /usr/lib/node_modules/n8n/bin/n8n start'
+eq H.n8n-alter-node-warnt '  [WARN] Node.js: n8n läuft noch mit der alten Version — ein Neustart steht aus (Abhilfe: '"'lifeagents update'"' oder '"'systemctl restart n8n'"')
+fail=0' "$(hd 0)"
+hp 102 '/usr/bin/node (deleted)' 'node /opt/lifeagents/llm_gateway/server.js'
+eq H.beide-alt-nennt-beide '  [WARN] Node.js: n8n, LLM-Gateway laufen noch mit der alten Version — ein Neustart steht aus (Abhilfe: '"'lifeagents update'"' oder '"'systemctl restart n8n lifeagents-llm-gateway'"')
+fail=0' "$(hd 0)"
+eq H.verbund-still 'fail=0' "$(hd 1)"
 exit "$fails"

@@ -152,6 +152,30 @@ _doctor_compose_tunnel() {
   fi
 }
 
+# _doctor_node_stale — LXC, root: laeuft n8n oder der LLM-Gateway noch mit einem Node, dessen Datei apt ersetzt hat? Der
+#   Prozess haelt dann die alte Binary ("…/node (deleted)" in /proc/<pid>/exe); der Neustart nach dem Tausch blieb aus.
+#   Nur WARN (Betrieb laeuft). DOCTOR_PROC_ROOT ersetzt /proc im Test.
+_doctor_node_stale() {
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p exe cmd names='' units='' n u
+  rt_is_compose && return 0
+  [ "$(id -u)" -eq 0 ] || return 0
+  for p in "$root"/[0-9]*; do
+    exe="$(readlink "$p/exe" 2>/dev/null || true)"
+    case "$exe" in */node' (deleted)') ;; *) continue ;; esac
+    cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *n8n*)     n=n8n; u=n8n ;;
+      *gateway*) n=LLM-Gateway; u=lifeagents-llm-gateway ;;
+      *) continue ;;
+    esac
+    case ", $names," in *", $n,"*) continue ;; esac
+    names="${names:+$names, }$n"; units="${units:+$units }$u"
+  done
+  [ -n "$names" ] || return 0
+  local verb=läuft; case "$names" in *,*) verb=laufen ;; esac
+  _warn "Node.js: ${names} ${verb} noch mit der alten Version — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart ${units}')"
+}
+
 # _doctor_release_version — Docker-Verbund, Release-Profil: traegt VERSION kein Tag (dev), schickt der Release-Check nie eine
 #   Karte (update_runner.sh bricht bei Nicht-Tag still ab). WARN, kein ROT: Betrieb und Daten sind in Ordnung.
 _doctor_release_version() {
@@ -267,6 +291,7 @@ main() {
       _warn "PostgreSQL läuft noch in Version ${_pgrun}, installiert ist ${_pginst} — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart postgresql')"
     fi
   fi
+  _doctor_node_stale
   # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage
   # LANG="C"). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
   if [ "$(id -u)" -eq 0 ]; then

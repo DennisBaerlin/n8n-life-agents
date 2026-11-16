@@ -977,6 +977,36 @@ fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
 dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
 
+# Laufender Tick-Schritt: LAST_TICK wird nur am Tick-Anfang geschrieben, ein Schritt darf lange laufen (Update 2 h,
+# Sicherung 30 min, Check 5 min). Solange er innerhalb seiner Zeitgrenze laeuft, ist das ein Hinweis, kein ROT.
+dt_run() {   # dt_run <tick-alter-s> <lock:frei|belegt> -> Ausgabe von _doctor_compose_tick + fail=<n>
+  rm -f "$W/dd.state"; : > "$W/dd.VERSION"; touch -d "600 minutes ago" "$W/dd.VERSION"
+  env_upsert "$W/dd.state" LAST_TICK "$(( $(date -u +%s) - $1 ))"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; UPDATE_TICK_STATE="$W/dd.state"; DOCTOR_PROC_ROOT="$W/dtproc"
+    id() { echo 0; }; lifeagents_version_marker() { printf '%s' "$W/dd.VERSION"; }
+    _lk="$2"; update_lock_free() { [ "$_lk" = frei ]; }
+    _doctor_compose_tick; echo "fail=$_fail" )
+}
+dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess
+  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"; touch -d "$2 minutes ago" "$W/dtproc/$1"
+}
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+dts 7 20 'bash /usr/local/bin/lifeagents update --run-requested'
+eq D.tick-update-laeuft-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update, seit 20 min (Zeitgrenze 120 min)
+fail=0' "$(dt_run 1200 belegt)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 8 20 'bash /usr/local/bin/lifeagents backup auto --scheduled'
+eq D.tick-sicherung-laeuft-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Sicherung, seit 20 min (Zeitgrenze 30 min)
+fail=0' "$(dt_run 1200 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 9 10 'bash /usr/local/bin/lifeagents update --check --scheduled'
+eq D.tick-check-ueber-zeitgrenze-rot '  [FAIL] Update-Schleife im master steht seit 10 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
+fail=1' "$(dt_run 600 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+eq D.tick-ohne-schritt-rot 'fail=1' "$(dt_run 900 frei | tail -n1)"
+eq D.tick-sperre-belegt-ohne-prozess-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update (Sperre belegt), seit 15 min (Zeitgrenze 120 min)
+fail=0' "$(dt_run 900 belegt)"
+eq D.tick-sperre-belegt-ueber-zeitgrenze-rot 'fail=1' "$(dt_run 8000 belegt | tail -n1)"
+
 
 # H  doctor: ein Dienst laeuft noch mit dem alten Node (apt hat die Datei ersetzt, der Neustart blieb aus). Erkennung ueber
 #    /proc/<pid>/exe = "…/node (deleted)"; die Probe-Wurzel ist ersetzbar, sonst echter Code von doctor.sh.

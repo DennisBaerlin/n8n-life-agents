@@ -75,10 +75,31 @@ _doctor_app_check() {
   elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
+# _doctor_tick_step — laeuft gerade ein Tick-Schritt (update_runner.sh update_tick)? Ausgabe "<Name>\t<Sekunden seit Start>\t<Zeitgrenze s>"
+#   oder nichts. Ein Schritt ist ein eigener Prozess (`lifeagents update --run-requested | update --check | backup auto`,
+#   Start = mtime von /proc/<pid>); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
+#   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen wie update_runner.sh.
+_doctor_tick_step() {
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim now; now="$(date -u +%s)"
+  for p in "$root"/[0-9]*; do
+    cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    case "$cmd" in
+      *"lifeagents update --run-requested"*) name=Update; lim="${UPDATE_RUN_TIMEOUT_S:-7200}" ;;
+      *"lifeagents update --check"*)         name=Release-Check; lim="${UPDATE_CHECK_TIMEOUT_S:-300}" ;;
+      *"lifeagents backup auto"*)            name=Sicherung; lim="${BACKUP_TIMEOUT_S:-1800}" ;;
+      *) continue ;;
+    esac
+    printf '%s\t%s\t%s' "$name" "$(( now - $(stat -c %Y "$p" 2>/dev/null || echo "$now") ))" "$lim"; return 0
+  done
+  # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
+  if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "${UPDATE_RUN_TIMEOUT_S:-7200}"; fi
+  return 0
+}
+
 # _doctor_compose_tick — Docker-Verbund: lebt die Tick-Schleife des master (Ersatz der Update-Timer)? Ein offener
 #   master-Wechsel ohne laufenden Helfer, der aelter als 30 Minuten ist, haengt (lib/master_swap.sh).
 _doctor_compose_tick() {
-  local st=/var/lib/lifeagents/update-tick.state last age swap=/var/lib/lifeagents/master-swap/state
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last age swap=/var/lib/lifeagents/master-swap/state
   if [ "$(id -u)" -ne 0 ]; then _skip "Update-Schleife im master (braucht root)"; return 0; fi
   last="$(read_env_value "$st" LAST_TICK 2>/dev/null || true)"
   case "$last" in
@@ -89,7 +110,13 @@ _doctor_compose_tick() {
       else _red "Update-Schleife im master lief noch nie — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
     *) age=$(( $(date -u +%s) - last ))
        if [ "$age" -le 300 ]; then _pass "Update-Schleife im master läuft (letzter Durchlauf vor ${age} s)"
-       else _red "Update-Schleife im master steht seit $((age / 60)) min — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+       else
+         local step sname ssec slim
+         step="$(_doctor_tick_step "$age")"; IFS=$'	' read -r sname ssec slim <<<"$step"
+         if [ -n "$sname" ] && [ "$ssec" -le "$((slim + 60))" ]; then
+           _warn "Update-Schleife im master: läuft gerade: ${sname}, seit $((ssec / 60)) min (Zeitgrenze $((slim / 60)) min)"
+         else _red "Update-Schleife im master steht seit $((age / 60)) min — Updates aus dem Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi
+       fi ;;
   esac
   if [ -f "$swap" ] && ! rt_swap_helper_running && [ -n "$(find "$swap" -mmin +30 2>/dev/null)" ]; then
     _red "Ein master-Wechsel (Update) ist seit über 30 min offen — Verlauf: docker logs ${LA_PROJECT}-master"

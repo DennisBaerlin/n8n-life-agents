@@ -926,15 +926,16 @@ eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
 dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 - 600; out="$(dd_run _doctor_compose_backup_tick)"
+dd_state 600 - 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
 dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-frische-installation-still 'fail=0' "$out"
 # Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
-dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> -> Ausgabe
+dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
+dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> [funnel-json] -> Ausgabe
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
-    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"
-    rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"
+    rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }; rt_edge_exec() { printf "%s" "$_fn"; }
     _doctor_compose_tunnel; echo "fail=$_fail" )
 }
 dd_ok='{"BackendState":"Running","Self":{"DNSName":"bot.tail-fantasy.ts.net.","Expired":false,"CapMap":{"https":[],"funnel":[]}}}'
@@ -957,7 +958,7 @@ printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq 
 # shellcheck source=/dev/null
 . "$ROOT/provisioning/lib/deploy_workflows.sh"
 gx() {   # gx <N8N_VERSION|-> <Image des n8n-Containers|-> -> Kontext-Zeile
-  ( export LIFEAGENTS_RUNTIME=compose LA_PROJECT=t; N8N_ENV_FILE="$W/gx.env"; : > "$N8N_ENV_FILE"
+  ( export LIFEAGENTS_RUNTIME=compose LA_PROJECT=t LA_N8N_CONTAINER=t-n8n; N8N_ENV_FILE="$W/gx.env"; : > "$N8N_ENV_FILE"
     owner_tg_token() { printf 'tok'; }
     if [ "$1" = - ]; then unset N8N_VERSION; else N8N_VERSION="$1"; fi
     if [ "$2" = - ]; then unset STUB_IMG_t_n8n; else export STUB_IMG_t_n8n="$2"; fi
@@ -970,6 +971,12 @@ eq G.versionswechsel-aendert-den-fingerabdruck 1 "$([ "$(gx - "$gx_img")" != "$(
 eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
+# Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
+eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
+fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
+dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
+
 
 # H  doctor: ein Dienst laeuft noch mit dem alten Node (apt hat die Datei ersetzt, der Neustart blieb aus). Erkennung ueber
 #    /proc/<pid>/exe = "…/node (deleted)"; die Probe-Wurzel ist ersetzbar, sonst echter Code von doctor.sh.

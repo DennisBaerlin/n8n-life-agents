@@ -193,7 +193,7 @@ WF_DEPLOY_STATE_FILE="${WF_DEPLOY_STATE_FILE:-/var/lib/lifeagents/workflow_deplo
 _wf_n8n_version() {
   local ver='' img bin
   if rt_is_compose; then
-    img="$(rt_container_image "${LA_PROJECT}-n8n" || true)"; img="${img%%@*}"
+    img="$(rt_container_image "${LA_N8N_CONTAINER:-${LA_PROJECT}-n8n}" || true)"; img="${img%%@*}"
     case "$img" in *:*) ver="${img##*:}" ;; esac
   else
     bin="$(command -v n8n 2>/dev/null || true)"

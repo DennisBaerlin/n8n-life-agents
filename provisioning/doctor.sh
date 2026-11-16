@@ -127,7 +127,10 @@ _doctor_compose_backup_tick() {
   yday="$(TZ="$tz" date -d yesterday +%Y-%m-%d)"
   last="$(read_env_value "$st" LAST_BACKUP 2>/dev/null || true)"
   if ! [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    _doctor_compose_fresh || _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+    # Der Tick schreibt LAST_BACKUP erst ab BACKUP_AUTO_AT; davor ist ein leerer Zustand normal.
+    if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
+      _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+    fi
   elif [[ $last < $yday ]]; then
     _warn "Tägliche Sicherung wurde seit ${last} nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
   else _pass "Tägliche Sicherung wird angestoßen (zuletzt ${last})"; fi
@@ -143,7 +146,10 @@ _doctor_compose_tunnel() {
   fi
   reach_ts_eval "$(_reach_ts_status)"
   case "$REACH_TS_STATE" in
-    running) _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})" ;;
+    running)
+      if reach_funnel_configured "$REACH_TS_DNS" "$(rt_edge_exec tailscale tailscale funnel status --json 2>/dev/null || true)"; then
+        _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})"
+      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
     needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
     *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
   esac

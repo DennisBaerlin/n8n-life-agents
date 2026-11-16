@@ -96,6 +96,17 @@ _doctor_compose_tick() {
   fi
 }
 
+# _doctor_release_version — Docker-Verbund, Release-Profil: traegt VERSION kein Tag (dev), schickt der Release-Check nie eine
+#   Karte (update_runner.sh bricht bei Nicht-Tag still ab). WARN, kein ROT: Betrieb und Daten sind in Ordnung.
+_doctor_release_version() {
+  local ce v
+  ce="$(lifeagents_env_file core)"
+  [ -r "$ce" ] && [ "$(read_env_value "$ce" INSTALL_PROFILE 2>/dev/null || true)" = release ] || return 0
+  v="$(head -n1 "$(lifeagents_version_marker)" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ $v =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then _pass "Installierte Version: ${v}"
+  else _warn "Keine Release-Version eingetragen (VERSION: ${v:-fehlt}) — Update-Hinweise im Chat kommen nicht an. Abhilfe: einmal '$(rt_master_cli_hint) update'"; fi
+}
+
 # _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
 #   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: ebenso ROT (Timer lifeagents-backup).
 #   Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
@@ -251,6 +262,7 @@ main() {
   if rt_is_compose; then
     # Verbund: statt der Timer laeuft die Tick-Schleife im master (compose.yml, update_runner.sh update_tick).
     _doctor_compose_tick
+    _doctor_release_version
   else
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"

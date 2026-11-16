@@ -64,5 +64,61 @@ Test-Case 'leere Begruendung zaehlt nicht' @{
     "$T/y/cases.sh" = "#!/usr/bin/env bash`n# hand-injected:`ndocker exec --env FOO=1 la true`n"
 } $true 'FOO'
 
+# --- (C) Stubs ohne den Namen fake_: PATH-Attrappen und die Ordner tests/mock_runtime, tests/mock_reach ---
+$AL = 'tests/util/standin_allowlist.json'
+Test-Case 'PATH-Attrappe ohne Marker ist rot' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nW=/tmp/w`nexport PATH=`"`$W/bin:`$PATH`"`n"
+} $true 'PATH-Attrappe'
+Test-Case 'PATH-Attrappe mit Marker auf vorhandene Datei ist gruen' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`n# real-path-test: $T/y/real.sh`nW=/tmp/w`nexport PATH=`"`$W/bin:`$PATH`"`n"
+    "$T/y/real.sh"  = "echo real`n"
+} $false ''
+Test-Case 'PATH-Attrappe mit Marker none und Grund ist gruen' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`n# real-path-test: none (kein echtes Konto im Test)`nPATH=`"`$W/shim:`$PATH`"`n"
+} $false ''
+Test-Case 'Datei in mock_runtime ohne Marker ist rot' @{
+    "$T/mock_runtime/cases.sh" = "#!/usr/bin/env bash`necho hi`n"
+} $true 'mock_runtime'
+Test-Case 'Datei in mock_reach ohne Marker ist rot' @{
+    "$T/mock_reach/server.js" = "// js`n"
+    "$T/mock_reach/cli_cases.sh" = "#!/usr/bin/env bash`necho hi`n"
+} $true 'mock_reach'
+Test-Case 'PATH verengen ist keine Attrappe' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nPATH=`"/usr/bin:/bin`"`n"
+} $false ''
+Test-Case 'PATH-Zeile im Here-Doc ist kein Treffer' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`ncat > x <<'EOF'`nPATH=`"`$W/bin:`$PATH`"`nexport RELEASE_TAG=v9.0.0`nEOF`n"
+} $false ''
+
+Test-Case 'Here-Doc-Marke im Kommentar oder in Arithmetik verschluckt nichts' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`n# cat <<EOF zeigt nur den Aufruf`nx=`$((1<<2))`nexport RELEASE_TAG=v9.0.0`n"
+} $true 'RELEASE_TAG'
+
+# --- (D) export NAME=<fester Wert> vor dem geprueften Aufruf ---
+Test-Case 'export mit festem Wert ohne Begruendung ist rot' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport RELEASE_TAG=v9.0.0`n"
+} $true 'RELEASE_TAG'
+Test-Case 'export mit Begruendung in der Zeile davor ist gruen' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`n# hand-injected: der echte Weg liest den Wert aus der Antwort-Datei, dort getrennt geprueft`nexport RELEASE_TAG=v9.0.0`n"
+} $false ''
+Test-Case 'export mit Wert aus Variable oder Pfad ist gruen' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport LIFEAGENTS_DIR=`"`$W/etc`" X_FILE=`"`$ROOT/a`"`nexport LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1`n"
+} $false ''
+Test-Case 'zweiter fester Wert in einer export-Zeile ist rot' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport A_DIR=`"`$W/a`" PROFILE=release`n"
+} $true 'PROFILE'
+Test-Case 'Ausnahmeliste nimmt den Fund aus' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport PROFILE=release`n"
+    $AL = '{"entries":{"tests/y/cases.sh|PROFILE":"echter Test fehlt: Installer-Lauf mit Antwort-Datei"}}'
+} $false ''
+Test-Case 'veralteter Ausnahme-Eintrag ist rot (Liste darf nur schrumpfen)' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`necho hi`n"
+    $AL = '{"entries":{"tests/y/cases.sh|PROFILE":"alt"}}'
+} $true 'veraltet'
+Test-Case 'Ausnahme-Eintrag ohne Grund ist rot' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport PROFILE=release`n"
+    $AL = '{"entries":{"tests/y/cases.sh|PROFILE":""}}'
+} $true 'Grund'
+
 if ($fails -eq 0) { Write-Host 'PASS standin_lint_test' -ForegroundColor Green } else { Write-Host "standin_lint_test: $fails Fehler" -ForegroundColor Red }
 exit $fails

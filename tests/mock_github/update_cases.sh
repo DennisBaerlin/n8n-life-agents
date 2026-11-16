@@ -237,9 +237,11 @@ o="$(outcome "$id")"
 if [ "${o%%|*}" = failed ] && [ "$(echo "$o" | cut -d'|' -f3)" = signature ]; then pass sig_missing_refused; else fail sig_missing_refused "outcome=$o"; fi
 # 16 install.sh (Bootstrap) prueft gegen dasselbe Bund
 sign v9.9.10 'update-test project'
+# hand-injected: Test-Schluesselbund statt des installierten; den Standard-Pfad ohne Bund prueft Fall 17
 OUT="$(env "${RUNENV[@]}" LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg" bash "$LIB/provisioning/install.sh" --version v9.9.10 --profile dev 2>&1 </dev/null)"; RC=$?
 if [ "$RC" = 0 ] && printf '%s' "$OUT" | grep -q 'Unterschrift + SHA256 verifiziert'; then pass install_sig_valid; else fail install_sig_valid "rc=$RC $(show "$OUT")"; fi
 sign v9.9.10 'update-test evil'
+# hand-injected: Test-Schluesselbund statt des installierten; den Standard-Pfad ohne Bund prueft Fall 17
 OUT="$(env "${RUNENV[@]}" LIFEAGENTS_RELEASE_KEYRING="$W/kr.gpg" bash "$LIB/provisioning/install.sh" --version v9.9.10 --profile dev 2>&1 </dev/null)"; RC=$?
 if [ "$RC" != 0 ] && printf '%s' "$OUT" | grep -q 'Unterschrift von Release v9.9.10 ist ungültig'; then pass install_sig_foreign; else fail install_sig_foreign "rc=$RC $(show "$OUT")"; fi
 # 17 kein installierter Schluesselbund -> Abbruch vor dem Download-Entpacken (Security-Audit 2026-10: kein stiller

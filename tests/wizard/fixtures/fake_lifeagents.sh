@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Attrappe der lifeagents-CLI: nur `household pair-owner --machine <verb>` (owner_connect_machine). Verbunden ist der Owner,
 # sobald $WIZARD_FAKE_DIR/paired existiert; reach scheitert, solange $WIZARD_FAKE_DIR/unreachable existiert.
+# real-path-test: tests/wizard/pairing.test.js (echtes owner_connect_machine; der backup-Aufruf hat kein Gegenstück)
 set -euo pipefail
 D="${WIZARD_FAKE_DIR:?}"
 # Sicherungsordner ändern (server.js --backup-dir): Aufrufe protokollieren, $D/backup_fail = scheitert.

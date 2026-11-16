@@ -3,6 +3,7 @@
 # bridge.sh; nur Live-Dienste (Telegram, Anthropic, Google) und die Schnittstellen zu Paket 1/3 sind fest verdrahtet.
 # Steuerung über Dateien in $WIZARD_FAKE_DIR: reach (Tunnel-Zustand), ports (free|busy), tg_conflict (Host),
 # paperless_ports (JSON-Liste veröffentlichter Paperless-Ports wie rt_published_ports_json), public_ip (öffentliche IPv4).
+# real-path-test: tests/wizard/bridge.test.js (echte bridge.sh; die Live-Dienste haben kein Gegenstück)
 set -euo pipefail
 REAL="${WIZARD_FAKE_REAL_BRIDGE:?}"
 D="${WIZARD_FAKE_DIR:?}"

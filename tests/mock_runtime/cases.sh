@@ -1010,8 +1010,10 @@ dt_run() {   # dt_run <tick-alter-s> <lock:frei|belegt> -> Ausgabe von _doctor_c
     _lk="$2"; update_lock_free() { [ "$_lk" = frei ]; }
     _doctor_compose_tick; echo "fail=$_fail" )
 }
-dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess
-  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"; touch -d "$2 minutes ago" "$W/dtproc/$1"
+dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess; mtime von /proc/<pid> bleibt "jetzt" (wie im echten /proc), die Startzeit steht in stat Feld 22
+  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"
+  printf '100000.00 0.00\n' > "$W/dtproc/uptime"
+  printf '%s (lifeagents) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 %s 0 0\n' "$1" "$(( (100000 - $2 * 60) * 100 ))" > "$W/dtproc/$1/stat"
 }
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 dts 7 20 'bash /usr/local/bin/lifeagents update --run-requested'
@@ -1023,6 +1025,10 @@ fail=0' "$(dt_run 1200 frei)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 9 10 'bash /usr/local/bin/lifeagents update --check --scheduled'
 eq D.tick-check-ueber-zeitgrenze-rot '  [FAIL] Update-Schleife im master steht seit 10 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
 fail=1' "$(dt_run 600 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 10 200 'bash /usr/local/bin/lifeagents update --run-requested'
+eq D.tick-haengender-update-schritt-rot '  [FAIL] Update-Schleife im master steht seit 15 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
+fail=1' "$(dt_run 900 belegt)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 eq D.tick-ohne-schritt-rot 'fail=1' "$(dt_run 900 frei | tail -n1)"
 eq D.tick-sperre-belegt-ohne-prozess-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update (Sperre belegt), seit 15 min (Zeitgrenze 120 min)

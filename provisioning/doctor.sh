@@ -75,13 +75,26 @@ _doctor_app_check() {
   elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
+# _doctor_proc_age <proc-wurzel> <proc-pfad> -> Sekunden seit dem Start des Prozesses (stat Feld 22 in Ticks seit Boot, nach der
+#   letzten ")" des Namens; /proc/uptime in Sekunden). 0, wenn nicht lesbar.
+_doctor_proc_age() {
+  local s up tick hz proot="$1" ppath="$2"; hz="$(getconf CLK_TCK 2>/dev/null || echo 100)"
+  s="$(cat "$ppath/stat" 2>/dev/null || true)"; s="${s##*) }"
+  # shellcheck disable=SC2086  # bewusst Wort-Splitting: die Felder von stat
+  set -- $s; tick="${20:-}"
+  up="$(cut -d' ' -f1 "$proot/uptime" 2>/dev/null || true)"; up="${up%%.*}"
+  case "$tick$up" in ''|*[!0-9]*) echo 0; return 0 ;; esac
+  echo $(( up - tick / hz ))
+}
+
 # _doctor_tick_step — laeuft gerade ein Tick-Schritt (update_runner.sh update_tick)? Ausgabe "<Name>\t<Sekunden seit Start>\t<Zeitgrenze s>"
 #   oder nichts. Ein Schritt ist ein eigener Prozess (`lifeagents update --run-requested | update --check | backup auto`,
-#   Start = mtime von /proc/<pid>); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
+#   Start aus /proc/<pid>/stat Feld 22 + /proc/uptime; der mtime von /proc/<pid> ist nur der erste Zugriff); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
 #   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen wie update_runner.sh.
 _doctor_tick_step() {
-  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim now; now="$(date -u +%s)"
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim
   for p in "$root"/[0-9]*; do
+    [ -r "$p/cmdline" ] || continue   # ohne Treffer bleibt das Muster stehen; ein verschwundener Prozess ebenso
     cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
     case "$cmd" in
       *"lifeagents update --run-requested"*) name=Update; lim="${UPDATE_RUN_TIMEOUT_S:-7200}" ;;
@@ -89,7 +102,7 @@ _doctor_tick_step() {
       *"lifeagents backup auto"*)            name=Sicherung; lim="${BACKUP_TIMEOUT_S:-1800}" ;;
       *) continue ;;
     esac
-    printf '%s\t%s\t%s' "$name" "$(( now - $(stat -c %Y "$p" 2>/dev/null || echo "$now") ))" "$lim"; return 0
+    printf '%s\t%s\t%s' "$name" "$(_doctor_proc_age "$root" "$p")" "$lim"; return 0
   done
   # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
   if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "${UPDATE_RUN_TIMEOUT_S:-7200}"; fi
@@ -203,9 +216,10 @@ _doctor_node_stale() {
   for p in "$root"/[0-9]*; do
     exe="$(readlink "$p/exe" 2>/dev/null || true)"
     case "$exe" in */node' (deleted)') ;; *) continue ;; esac
+    [ -r "$p/cmdline" ] || continue
     cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *n8n*)     n=n8n; u=n8n ;;
+      *n8n*)    n=n8n; u=n8n ;;
       *gateway*) n=LLM-Gateway; u=lifeagents-llm-gateway ;;
       *) continue ;;
     esac

@@ -61,7 +61,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\paid_guard.ps1"
 . "$PSScriptRoot\lib\judge_card_text.ps1"
-$conn     = Get-TestN8nConnection
+$conn      = Get-TestN8nConnection
 $N8nUrl    = $conn.Url
 $ApiKey    = $conn.ApiKey
 $Container = $conn.Container

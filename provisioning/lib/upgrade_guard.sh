@@ -459,7 +459,8 @@ _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
   require_root
-  # --yes nur im Docker-Verbund: dort fragt die Start-App selbst nach (Rueckweg-Knopf) und hat kein Terminal.
+  # --yes nur im Docker-Verbund: Aufruf per `docker exec` ohne Terminal (heute nur CI genericity.yml; die Start-App ruft den
+  # Rueckweg nicht auf, ihr "rollback" nimmt das Journal der Einrichtung zurueck).
   local assume_yes=0
   if [ "${1:-}" = --yes ]; then
     rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."
@@ -481,10 +482,17 @@ upgrade_rollback() {
   if _release_is_gone "$from_rel"; then
     die "Der vorherige Stand ${from_rel} stammt aus der Zeit vor ${RELEASE_HISTORY_START} und ist im öffentlichen Repo nicht ladbar — kein Rückweg. Die Sicherung bleibt unter ${backup}."
   fi
-  case "$from_rel" in
-    v[0-9]*) [[ "$from_rel" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Vorherige Version '${from_rel}' ist kein stabiles Release — kein automatischer Rückweg." ;;
-    *) die "Vorherige Version unbekannt ('${from_rel:-?}') — kein automatischer Rückweg (Einzelschritte: docs/reference/provisioning.md *Versionswechsel*)." ;;
-  esac
+  # Verbund: der vorherige Stand ist das vorherige master-Image samt compose.yml (Merkzettel), es wird nichts geladen ->
+  # auch ein Stand ohne Release-Tag (VERSION 'dev', Image ohne -Version gebaut) kommt zurueck. Klassisch braucht der Rueckweg
+  # das install.sh eines Release.
+  if rt_is_compose && [ -n "$(read_env_value "$src" FROM_MASTER_IMAGE || true)" ] && [[ "$from_rel" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
+    :
+  else
+    case "$from_rel" in
+      v[0-9]*) [[ "$from_rel" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Vorherige Version '${from_rel}' ist kein stabiles Release — kein automatischer Rückweg." ;;
+      *) die "Vorherige Version unbekannt ('${from_rel:-?}') — kein automatischer Rückweg (Einzelschritte: docs/reference/provisioning.md *Versionswechsel*)." ;;
+    esac
+  fi
   when="$(date -r "$backup" '+%d.%m.%Y %H:%M' 2>/dev/null || printf '?')"
   printf '\n  Rückweg auf %s\n  Die Daten werden auf den Stand der Sicherung vom %s zurückgesetzt:\n    %s\n  Alles, was seitdem gespeichert wurde, geht dabei verloren.\n\n' \
     "$from_rel" "$when" "$backup" >&2

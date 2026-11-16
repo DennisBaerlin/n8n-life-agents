@@ -1047,4 +1047,24 @@ kb_auto() (   # kb_auto <faellig 0|1> -> "<grund>|<hinweis-aufrufe>"
 )
 eq KB.geplant-nicht-faellig-tut-nichts '|0' "$(kb_auto 0)"
 eq KB.geplant-faellig-ohne-ordner 'nofolder|1' "$(kb_auto 1)"
+
+# ---------------------------------------------------------------------------- RB: Rueckweg im Verbund aus einem Stand ohne Release-Tag
+# Im Verbund ist der vorherige Stand das vorherige master-Image samt compose.yml (Merkzettel), kein Download: ein Bestand mit
+# VERSION 'dev' (Image ohne -Version gebaut) kommt so zurueck. Klassisch bleibt ein Tag Pflicht (install.sh des Vorgaengers).
+rb_case() (   # rb_case <compose 0|1> <from_release> -> erreicht | abbruch:<meldung>
+  local d="$W/rb"; rm -rf "$d"; mkdir -p "$d"
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi
+  require_root() { :; }; lifeagents_db_name() { :; }; N8N_DB_NAME=n8n
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"; printf 'services: {}\n' > "$d/b.compose.yml"
+  printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\nFROM_MASTER_IMAGE=reg.example/master@sha256:dddd\nFROM_COMPOSE=%s\n' \
+    "$2" "$d/b.dump.gpg" "$d/b.compose.yml" > "$UPGRADE_MARKER"
+  update_lock_acquire() { echo erreicht > "$d/out"; return 1; }
+  die() { [ -s "$d/out" ] || printf 'abbruch:%s' "$*" > "$d/out"; exit 1; }; die_because() { shift; die "$@"; }
+  ( upgrade_rollback --yes ) >/dev/null 2>&1
+  [ "$1" = 1 ] || ( upgrade_rollback ) >/dev/null 2>&1 </dev/null
+  head -c 60 "$d/out"
+)
+eq RB.verbund-dev-kommt-zurueck erreicht "$(rb_case 1 dev)"
+case "$(rb_case 0 dev)" in abbruch:*) pass RB.klassisch-dev-ohne-rueckweg ;; *) fail RB.klassisch-dev-ohne-rueckweg "$(rb_case 0 dev)" ;; esac
+case "$(rb_case 1 '')" in abbruch:*) pass RB.verbund-ohne-version-abbruch ;; *) fail RB.verbund-ohne-version-abbruch "$(rb_case 1 '')" ;; esac
 exit "$fails"

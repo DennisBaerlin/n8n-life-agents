@@ -4,8 +4,8 @@
 --   access_path/twofa_hint/seed_backup_location sind Fundort-Verweise, nie das Geheimnis
 --   selbst (Inhalt haerten Tool-Description + Instructions; die DB kann ihn nicht pruefen).
 --   seed_backup_location nur fuer category='crypto' — der Tabellen-CHECK ist das Gesetz,
---   hier die freundliche {ok:false}-Spiegelung. Dubletten-Backstop (Anbieter+Nutzername)
---   faehrt das Tool vor dem Gate (fn_resolve_digital_account).
+--   hier die freundliche {ok:false}-Spiegelung. Dubletten-Backstop (Anbieter+Nutzername,
+--   fn_resolve_digital_account) in der fn und als Komfort im Tool vor dem Gate -> {ok:false, code:'duplicate', candidates}.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   desired_action NULL = bewusst offener Gap. is_key_account: tolerant geparster
 --   Wahrheitswert (true/false/yes/no/1/0/ja/nein), Default false.
@@ -18,6 +18,8 @@
 CREATE OR REPLACE FUNCTION estate.fn_create_digital_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_dup_hits INT;
+    v_dup_cand JSONB;
     v_perm     TEXT;
     v_provider TEXT := NULLIF(trim(COALESCE(p->>'provider', '')), '');
     v_category TEXT := lower(NULLIF(trim(COALESCE(p->>'category', '')), ''));
@@ -62,6 +64,13 @@ BEGIN
     IF v_key IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid is_key_account "' || v_key_raw || '" — use true or false.');
+    END IF;
+
+    -- Dubletten-Backstop in der fn (dieselbe Regel wie der Resolver des Werkzeugs; der Probelauf meldet ihn vor der Karte)
+    SELECT r.hit_count, r.candidates INTO v_dup_hits, v_dup_cand FROM estate.fn_resolve_digital_account(v_provider, NULLIF(trim(COALESCE(p->>'username', '')), '')) r;
+    IF v_dup_hits > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'duplicate', 'candidates', v_dup_cand,
+            'reason', 'A digital account at "' || v_provider || '" with this username already exists - change it with the update tool, or pass the exact username to tell two accounts apart.');
     END IF;
 
     INSERT INTO estate.digital_accounts (owner_person_id, category, provider, username,

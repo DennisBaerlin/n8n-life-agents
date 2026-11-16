@@ -19,8 +19,10 @@ BEGIN
     'name','__test_ins_dup__','annual_premium',120,'schedule_unit','month','valid_from','2026-01-01','first_payment_date','2026-01-01',
     'debit_account_id',v_acct,'recurring_amount',-10,'policyholder','Test')) INTO v_res;
   SELECT finance.fn_create_insurance(jsonb_build_object(
-    'name','__test_ins_dup__','annual_premium',240,'schedule_unit','month','valid_from','2026-01-01','first_payment_date','2026-01-01',
+    'name','__test_ins_dup_b__','annual_premium',240,'schedule_unit','month','valid_from','2026-01-01','first_payment_date','2026-01-01',
     'debit_account_id',v_acct,'recurring_amount',-20,'policyholder','Test')) INTO v_res;
+  -- Bestands-Dublette (sql.md: legitim, die create-fn lehnt eine neue ab) -> per UPDATE nachgestellt
+  UPDATE finance.insurances SET name = '__test_ins_dup__' WHERE name = '__test_ins_dup_b__';
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_ins_uniq__','annual_premium',360,'schedule_unit','month','valid_from','2026-01-01','first_payment_date','2026-01-01',
     'debit_account_id',v_acct,'recurring_amount',-30,'policyholder','Test')) INTO v_res;

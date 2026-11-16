@@ -3,7 +3,8 @@
 --   Legt einen neuen Sonderfall-Stub an (erkennen + ehrlich verweisen).
 --   Geschlossene asset_type-Liste ohne 'other' (jeder Typ mappt auf eine Ereignisfall-Checklisten-
 --   Condition — ein offener Typ loeste still nichts aus; Tabellen-CHECK ist das Gesetz).
---   Dubletten-Backstop (Beschreibung) faehrt das Tool vor dem Gate (fn_resolve_special_asset).
+--   Dubletten-Backstop (Beschreibung + Art, fn_resolve_special_asset) in der fn und als Komfort im Tool vor dem
+--   Gate -> {ok:false, code:'duplicate', candidates}.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt),
 --     asset_type (Pflicht: vehicle|business_interest|firearm|pet), description (Pflicht), notes.
@@ -13,6 +14,8 @@
 CREATE OR REPLACE FUNCTION estate.fn_create_special_asset(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_dup_hits INT;
+    v_dup_cand JSONB;
     v_perm TEXT;
     v_type TEXT := lower(NULLIF(trim(COALESCE(p->>'asset_type', '')), ''));
     v_desc TEXT := NULLIF(trim(COALESCE(p->>'description', '')), '');
@@ -30,6 +33,13 @@ BEGIN
     IF v_type IS NULL OR v_type NOT IN ('vehicle', 'business_interest', 'firearm', 'pet') THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid asset_type "' || COALESCE(v_type, '') || '" — valid: vehicle | business_interest | firearm | pet (deliberately no other: each type maps to an event-checklist condition).');
+    END IF;
+
+    -- Dubletten-Backstop in der fn (dieselbe Regel wie der Resolver des Werkzeugs; der Probelauf meldet ihn vor der Karte)
+    SELECT r.hit_count, r.candidates INTO v_dup_hits, v_dup_cand FROM estate.fn_resolve_special_asset(v_desc, v_type) r;
+    IF v_dup_hits > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'duplicate', 'candidates', v_dup_cand,
+            'reason', 'A special asset with exactly this description already exists - remove it with the delete tool if it no longer applies, or use a distinct description.');
     END IF;
 
     INSERT INTO estate.special_assets (owner_person_id, asset_type, description, notes)

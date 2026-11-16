@@ -36,6 +36,7 @@ DECLARE
     v_hits    INT;
     v_exist   TEXT;
     v_exist_id INT;
+    v_rep     JSONB;   -- fn_entity_name_report
 BEGIN
     IF jsonb_typeof(p->'rows') IS DISTINCT FROM 'array' OR jsonb_array_length(p->'rows') = 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'rows must be a non-empty array');
@@ -142,6 +143,29 @@ BEGIN
         v_staged := v_staged - 1;
     END LOOP;
 
+    -- Namens-Aufbau wie beim Geschwister (fn_entity_name_report.needs_person): hat ein anderes Haushaltsmitglied den
+    -- Eintrag derselben Art mit Personen-Zusatz, bekommt die neue Zeile denselben Aufbau, die Sammelkarte zeigt ihn.
+    -- Nach dem Folgebescheid-Schritt (eine dort geloeschte Zeile wird nicht umbenannt); die Renteninformation des
+    -- Batches zieht den Namen mit. Nur hier, nie in fn_import_update_row: eine Korrektur des Nutzers zurueck auf den
+    -- blossen Namen besteht die Zeilen-Pruefung, lehnt aber fn_create_* im Commit-Probelauf vor der Karte ab.
+    FOR v_srow IN SELECT s.id, s.entity_type, s.payload FROM finance.import_staging s
+                  WHERE s.batch_id = v_batch AND s.row_no >= v_first
+                    AND s.entity_type IN ('account','pension','insurance','loan','real_estate','savings_goal') LOOP
+        v_field := finance.fn_import_person_field(v_srow.entity_type);
+        CONTINUE WHEN NULLIF(trim(COALESCE(v_srow.payload->>'name', '')), '') IS NULL
+                   OR NULLIF(trim(COALESCE(v_srow.payload->>v_field, '')), '') IS NULL;
+        v_owner := finance.fn_import_resolve_persons(v_srow.entity_type, v_srow.payload)->'payload'->>(v_field || '_id');
+        CONTINUE WHEN v_owner IS NULL;
+        v_rep := finance.fn_entity_name_report(v_srow.entity_type, v_srow.payload->>'name', v_owner);
+        CONTINUE WHEN NOT COALESCE((v_rep->>'needs_person')::boolean, false);
+        UPDATE finance.import_staging SET payload = jsonb_set(payload, '{name}', to_jsonb(v_rep->>'suggested_name'))
+        WHERE id = v_srow.id;
+        IF v_srow.entity_type = 'pension' THEN
+            UPDATE finance.import_staging SET payload = jsonb_set(payload, '{pension}', to_jsonb(v_rep->>'suggested_name'))
+            WHERE batch_id = v_batch AND entity_type = 'pension_statement' AND row_no >= v_first
+              AND core.fn_name_key(payload->>'pension') = core.fn_name_key(v_srow.payload->>'name');
+        END IF;
+    END LOOP;
     v_summary := finance.fn_import_validate(v_batch);
 
     RETURN jsonb_build_object(

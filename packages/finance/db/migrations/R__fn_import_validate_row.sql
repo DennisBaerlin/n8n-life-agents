@@ -5,8 +5,8 @@
 --   werden zu 'invalid payload: ...').
 --   Prueft: Pflichtfelder je entity_type, Enum-/Zahlen-/Datums-Casts, Derived-Key-Denylist
 --   (Vision/LLM darf nie Abgeleitetes liefern), Feld-Allow-List (fn_import_allowed_keys = die Kartenfelder),
---   Dubletten-Backstop (fn_resolve_* gegen
---   Bestand + Namens-Dublette im Batch) und Konto-Referenzen (Bestand oder account-Row
+--   Dubletten-Backstop (fn_import_name_conflict = dieselbe Regel wie die fn_create_*, gegen den aktiven
+--   Bestand + Namens-Dublette im Batch in Normalform core.fn_name_key) und Konto-Referenzen (Bestand oder account-Row
 --   im selben Batch). Die tiefen Wert-Guards bleiben in den fn_create_*/fn_book_*.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_validate_row(
@@ -106,7 +106,7 @@ BEGIN
     IF v_name IS NOT NULL AND p_type <> 'stock_buy' THEN
         SELECT COUNT(*) INTO v_hits FROM finance.import_staging s
         WHERE s.batch_id = p_batch_id AND s.row_no <> p_row_no
-          AND s.entity_type = p_type AND lower(s.payload->>'name') = lower(v_name)
+          AND s.entity_type = p_type AND core.fn_name_key(s.payload->>'name') = core.fn_name_key(v_name)
           AND s.status <> 'committed';
         IF v_hits > 0 THEN
             RETURN format('duplicate name "%s" within this batch', v_name);
@@ -138,10 +138,9 @@ BEGIN
         END IF;
         -- Dublette = aktives Konto gleichen Namens, typ-uebergreifend: Import-Referenzen (depot/account/
         -- debit_account) loesen nur ueber den Namen auf, ein zweites Konto gleichen Namens machte sie mehrdeutig.
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_account(v_name, NULL, TRUE);
-        IF v_hits > 0 THEN
-            RETURN format('account "%s" already exists - to set its balance use reconcile_account, to change its details use set_account; remove this row', v_name);
-        END IF;
+        v_ref := finance.fn_import_name_conflict('account', p_type, p,
+                     format('account "%s" already exists - to set its balance use reconcile_account, to change its details use set_account; remove this row', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
         -- dieselbe Kontonummer/IBAN = dasselbe Konto, auch unter anderem Namen (Auszug druckt
         -- eine Kurzbezeichnung, das System kennt das Konto unter einem anderen Namen).
         SELECT a.name INTO v_ref FROM finance.accounts a
@@ -220,8 +219,8 @@ BEGIN
                 RETURN format('insurance premiums are kept in EUR - debit_account "%s" is in %s; use a EUR account', v_ref, finance.fn_import_ref_currency(p_batch_id, v_ref));
             END IF;
         END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_insurance(v_name, FALSE);
-        IF v_hits > 0 THEN RETURN format('insurance "%s" already exists', v_name); END IF;
+        v_ref := finance.fn_import_name_conflict('insurance', p_type, p, format('insurance "%s" already exists', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
 
     ELSIF p_type = 'pension' THEN
         BEGIN PERFORM (p->>'pension_type')::finance.pension_type;
@@ -252,8 +251,8 @@ BEGIN
             END IF;
             IF NULLIF(p->>'first_payment_date','') IS NULL THEN RETURN 'contribution_amount set — first_payment_date is required'; END IF;
         END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_pension(v_name, FALSE);
-        IF v_hits > 0 THEN RETURN format('pension "%s" already exists', v_name); END IF;
+        v_ref := finance.fn_import_name_conflict('pension', p_type, p, format('pension "%s" already exists', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
 
     ELSIF p_type = 'recurring_payment' THEN
         IF COALESCE(p->>'direction','') NOT IN ('income','expense') THEN
@@ -281,8 +280,8 @@ BEGIN
         -- Instandhaltungsruecklage: Wohnflaeche/Baujahr optional, dieselbe Pruefung wie die create-fn
         v_facts := finance.fn_real_estate_facts_reason(p);
         IF v_facts IS NOT NULL THEN RETURN v_facts; END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_real_estate(v_name, FALSE);
-        IF v_hits > 0 THEN RETURN format('real estate "%s" already exists', v_name); END IF;
+        v_ref := finance.fn_import_name_conflict('real_estate', p_type, p, format('real estate "%s" already exists', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
 
     ELSIF p_type = 'savings_goal' THEN
         v_num := NULLIF(p->>'target_amount','')::numeric;
@@ -344,8 +343,8 @@ BEGIN
                    CASE WHEN v_ref IS NOT NULL THEN (SELECT r.id FROM finance.fn_resolve_account(v_ref, NULL, TRUE) r) END)) > 0 THEN
             RETURN format('a standing transfer already pays into "%s" - set replace_transfer to true (the goal continues it) or false (the goal rate comes on top)', trim(p->>'reserve_account'));
         END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_savings_goal(v_name, FALSE);
-        IF v_hits > 0 THEN RETURN format('savings goal "%s" already exists', v_name); END IF;
+        v_ref := finance.fn_import_name_conflict('savings_goal', p_type, p, format('savings goal "%s" already exists', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
 
     ELSIF p_type = 'loan' THEN
         -- Spiegel fn_create_loan: laufend = current_balance gesetzt und (kein original_amount oder kleiner) -> keine
@@ -414,8 +413,8 @@ BEGIN
                 RETURN format('real_estate "%s" not found (neither existing nor in this batch)', v_ref);
             END IF;
         END IF;
-        SELECT hit_count INTO v_hits FROM finance.fn_resolve_loan(v_name, FALSE);
-        IF v_hits > 0 THEN RETURN format('loan "%s" already exists', v_name); END IF;
+        v_ref := finance.fn_import_name_conflict('loan', p_type, p, format('loan "%s" already exists', v_name));
+        IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
 
     ELSIF p_type = 'pension_statement' THEN
         -- datierter Standmitteilungs-Snapshot (Renteninformation/bAV/ausländische Rente) -> finance_pension_statements

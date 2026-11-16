@@ -180,26 +180,34 @@ _doctor_compose_backup_tick() {
 }
 
 # _doctor_compose_tunnel — Docker-Verbund, Weg Tunnel: laeuft tailscale, ist es angemeldet, laeuft die Anmeldung bald ab?
-#   Gleiche Einordnung (reach_ts_eval) und gleiche Texte wie der klassische Weg (reach_cli_doctor), nur ueber den Container.
+#   Gleiche Einordnung (reach_ts_eval) und gleiche Zustandssaetze wie der klassische Weg (reach_cli_doctor), nur ueber den
+#   Container; im Verbund steht der Befehl mit dem master-Aufruf (rt_master_cli_hint) davor. Kurz nach einem Update legt der
+#   Installer tailscale neu an: war der Tunnel schon in Betrieb (DOMAIN = sein Name), wartet doctor bis DOCTOR_TS_TRIES x 2 s
+#   auf "startet", bevor das ein Ausfall ist. Ohne Adresse (nie eingerichtet) ist "angemeldet fehlt noch" nur ein Hinweis:
+#   der Installer laeuft so regulaer durch (unattended, Anmeldung aufgeschoben); danach ist es ein Ausfall.
 _doctor_compose_tunnel() {
   [ "$(reach_mode)" = tunnel ] || return 0
+  local hint tries="${DOCTOR_TS_TRIES:-8}" txt
+  hint="$(rt_master_cli_hint)"
   if ! rt_edge_active tailscale; then
     _red "Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; $(rt_edge_logs_hint tailscale))"
     return 0
   fi
   reach_ts_eval "$(_reach_ts_status)"
+  while [ "$REACH_TS_STATE" = starting ] && [ -n "${DOMAIN:-}" ] && [ "$tries" -gt 1 ]; do
+    tries=$((tries - 1)); sleep 2; reach_ts_eval "$(_reach_ts_status)"
+  done
   case "$REACH_TS_STATE" in
     running)
       if reach_funnel_configured "$REACH_TS_DNS" "$(rt_edge_exec tailscale tailscale funnel status --json 2>/dev/null || true)"; then
         _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})"
-      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
-    needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
-    needs_login|starting)
-      # Ohne Tunnel-Namen in core.env (DOMAIN) lief der Tunnel nie: die Einrichtung steht noch aus (Installer ohne Wizard,
-      # Anmeldung aufgeschoben) und der Installer laeuft regulaer so durch. Danach ist es ein Ausfall.
-      if [ -z "${DOMAIN:-}" ]; then _warn "Tunnel: Einrichtung steht noch aus — $(reach_cli_state_text "$REACH_TS_STATE")"
-      else _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")"; fi ;;
-    *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
+      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (${hint} reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
+    *)
+      txt="$(reach_cli_state_text "$REACH_TS_STATE")"; txt="${txt//lifeagents reconfigure/${hint} reconfigure}"
+      case "$REACH_TS_STATE" in
+        needs_login|starting) if [ -z "${DOMAIN:-}" ]; then _warn "Tunnel: Einrichtung steht noch aus — ${txt}"; else _red "Tunnel: ${txt}"; fi ;;
+        *) _red "Tunnel: ${txt}" ;;
+      esac ;;
   esac
   if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
     _warn "Tailscale-Anmeldung läuft in ${REACH_TS_KEY_DAYS} Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → "'„Disable key expiry“'

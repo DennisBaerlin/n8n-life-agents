@@ -966,13 +966,27 @@ dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/
 # (DOMAIN gesetzt) und ist jetzt abgemeldet oder abgelaufen: der Bot ist nicht erreichbar = ROT.
 out="$(dd_ts tunnel 0 "$dd_login" "$dd_fun" bot.tail-fantasy.ts.net)"
 printf "%s" "$out" | grep -qF "  [FAIL] Tunnel: bei Tailscale anmelden" && eq D.tunnel-abgemeldet-nach-betrieb-rot fail=1 "$(printf "%s" "$out" | tail -n1)" || fail D.tunnel-abgemeldet-nach-betrieb-rot "$out"
-eq D.tunnel-nie-angemeldet-nur-hinweis '  [WARN] Tunnel: Einrichtung steht noch aus — bei Tailscale anmelden: lifeagents reconfigure core → „Unverändert neu anwenden“
+eq D.tunnel-nie-angemeldet-nur-hinweis '  [WARN] Tunnel: Einrichtung steht noch aus — bei Tailscale anmelden: docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“
 fail=0' "$(dd_ts tunnel 0 "$dd_login")"
 eq D.tunnel-startet-ohne-betrieb-nur-hinweis "  [WARN] Tunnel: Einrichtung steht noch aus — startet …
 fail=0" "$(dd_ts tunnel 0 "{\"BackendState\":\"NoState\"}")"
 dd_expired="${dd_ok/\"Expired\":false/\"Expired\":true}"
-eq D.tunnel-abgelaufen-rot "  [FAIL] Tunnel: Tailscale-Anmeldung abgelaufen — neu anmelden: lifeagents reconfigure core
+eq D.tunnel-abgelaufen-rot "  [FAIL] Tunnel: Tailscale-Anmeldung abgelaufen — neu anmelden: docker exec -i t-master lifeagents reconfigure core
 fail=1" "$(dd_ts tunnel 0 "$dd_expired")"
+# Nach einem Update legt der Installer tailscale neu an; die Abschlusspruefung kann die ersten Sekunden "startet" sehen. Mit
+# Tunnel-Adresse (lief schon) wartet doctor kurz (DOCTOR_TS_TRIES x 2 s), erst danach ist "startet" ein Ausfall.
+dd_tsw() {   # dd_tsw <Zahl "startet"-Antworten vor der echten> <Versuche> -> Ausgabe
+  rm -f "$W/ts.n"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE=tunnel; DOMAIN=bot.tail-fantasy.ts.net; DOCTOR_TS_TRIES="$2"; _k="$1"
+    rt_edge_active() { return 0; }; rt_edge_exec() { printf '%s' "$dd_fun"; }; sleep() { :; }
+    _reach_ts_status() { local c; c="$(cat "$W/ts.n" 2>/dev/null || echo 0)"; echo $((c + 1)) > "$W/ts.n"; if [ "$c" -lt "$_k" ]; then printf '{"BackendState":"NoState"}'; else printf '%s' "$dd_ok"; fi; }
+    _doctor_compose_tunnel; echo "fail=$_fail" )
+}
+eq D.tunnel-startet-kurz-dann-gruen '  [ OK ] Tunnel steht (Tailscale angemeldet, bot.tail-fantasy.ts.net)
+fail=0' "$(dd_tsw 2 5)"
+eq D.tunnel-startet-dauerhaft-rot '  [FAIL] Tunnel: startet …
+fail=1' "$(dd_tsw 99 3)"
 
 # G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
 #    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer
@@ -994,7 +1008,7 @@ eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
 # Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
-eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
+eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“)
 fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
 dd_tick 2400 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"

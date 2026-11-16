@@ -2,7 +2,7 @@
 -- fn_set_savings_goal (ATOMIC WRITE)
 --   Aendert ein Sparziel (Zielbetrag/Datum/Status/Stammdaten). Partielles Update.
 --   Raten-Neuberechnung: bei geaendertem target_amount oder
---   target_date wird die monatliche Sparrate ueber Rest-Betrag / Rest-Zeit neu gerechnet
+--   target_date (ein genannter Wert gleich dem gespeicherten aendert eine laufende Rate nicht) wird die monatliche Sparrate ueber Rest-Betrag / Rest-Zeit neu gerechnet
 --   (nicht Gesamt/Gesamt). Rest = effektiver Zielbetrag - bereits gespart
 --   (finance_savings_goal_progress.current_amount); Rest-Monate ab heute bis Zieldatum.
 --   Die neu berechnete Rate wird in die verknuepfte recurring_payment in place geschrieben; sie wird auf
@@ -308,7 +308,11 @@ BEGIN
         v_saved := COALESCE(v_saved, 0);
         IF v_eff_target - v_saved <= 0 THEN
             v_covered := true;   -- gedeckt: Datum/Betrag aendern ist ok, eine Rate gibt es nicht neu zu rechnen
-        ELSE
+        -- Laeuft schon eine Rate, rechnet nur ein abweichender Wert neu: dieselbe Eingabe darf eine vom Nutzer genannte
+        -- Rate nicht veraendern (ein mit Rate angelegtes Ziel hat bis zum Zieldatum einen Termin mehr, als die Rate braucht).
+        ELSIF v_row.recurring_payment_id IS NULL
+              OR (v_target IS NOT NULL AND v_target IS DISTINCT FROM v_row.target_amount)
+              OR (v_tdate  IS NOT NULL AND v_tdate  IS DISTINCT FROM v_row.target_date) THEN
             -- Rest / offene Termine bis einschliesslich Zieldatum: Raster der laufenden Rate ab ihrem Start, gebuchte zaehlen nicht.
             IF v_row.recurring_payment_id IS NOT NULL THEN
                 SELECT count(*) INTO v_months

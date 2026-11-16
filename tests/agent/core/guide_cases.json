@@ -114,7 +114,6 @@
     "chat_id": "880055201",
     "expected_tool": null,
     "expected_behavior": "The reply is for a child without household view: it contains no money or household-finance examples (no balances, accounts, payments or plans) and offers nothing only the owner may do. It stays short and friendly.",
-    "quarantined": true,
-    "notes": "Quarantaene bis zum naechsten bezahlten Lauf als Kind (Re-Evaluierung dann): n8n_test paart die id 880055201 jetzt vor dem Fall an der Fixture-Person lisa (TestSenderUids), der Mock-Lauf liefert den Absender 'Lisa (role child)'. Owner-Entscheid 2026-11-11 (Kinder sehen keine Haushaltsfinanzen)."
+    "notes": "n8n_test paart die id 880055201 vor dem Fall an der Fixture-Person lisa (TestSenderUids); kostenloser Beleg: der Mock-Lauf liefert den Absender 'Lisa (role child)'. 2026-11-16 Owner: aus der Quarantaene, faehrt mit; die bezahlte Bewertung als Kind steht noch aus. Owner-Entscheid 2026-11-11 (Kinder sehen keine Haushaltsfinanzen)."
   }
 ]

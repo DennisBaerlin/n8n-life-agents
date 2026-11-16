@@ -297,20 +297,38 @@ jobs:
           test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$MASTER_PIN"
           test "$(docker exec "$LA_PROJECT-master" printenv LA_MASTER_IMAGE)" = "$MASTER_PIN"
 
-      - name: Install everything inside the master (provision.sh, all packages, invented values)
+      - name: Telegram mock inside the master (the pod shares 127.0.0.1 with n8n)
         run: |
           set -euo pipefail
-          printf "%s\n" \
-            "N8N_OWNER_EMAIL='ci@example.com'" \
-            "N8N_OWNER_PASSWORD='CiRunner1'" \
-            "OWNER_FIRST_NAME='CI'" \
-            "OWNER_LAST_NAME='Runner'" \
-            "OWNER_BIRTH_DATE='1990-01-01'" \
-            "OWNER_LANGUAGE='de'" \
-            "REACH_MODE=${{ matrix.reach }}" \
-            "LLM_GATEWAY_KEEPALIVE_HOURS=0" > "$RUNNER_TEMP/answers.env"
+          # Der Mock liegt nicht im Release-Image (nur provisioning + packages); er laeuft im master, weil n8n und master
+          # sich den Netz-Namensraum teilen. Alle Bot-Aufrufe landen in /tmp/mock_telegram.jsonl.
+          docker cp tests/mock_telegram/server.js "$LA_PROJECT-master:/tmp/mock_tg.js"
+          # hand-injected: Port und Log-Datei sind die Einstellung des Mocks selbst, nicht des geprueften Installers
+          docker exec -d -e N8NTEST_MOCK_TG_PORT=8089 -e N8NTEST_MOCK_TG_LOG=/tmp/mock_telegram.jsonl "$LA_PROJECT-master" node /tmp/mock_tg.js
+          for _ in $(seq 1 25); do docker exec "$LA_PROJECT-master" curl -sf http://127.0.0.1:8089/__health >/dev/null && break; sleep 0.4; done
+          docker exec "$LA_PROJECT-master" curl -sf http://127.0.0.1:8089/__health >/dev/null
+
+      - name: Install like the setup wizard (its answer file, release profile, backup folder on the host)
+        run: |
+          set -euo pipefail
+          # Die Antwort-Datei schreibt derselbe Code wie im Einrichtungs-Assistenten (flow.js im master-Image, Fragen aus
+          # bridge.sh questions), nicht eine Handschrift in der CI. Aufruf von provision.sh wie provisioning/wizard/server.js.
+          mkdir -p "$RUNNER_TEMP/bk-wizard"
+          docker cp tests/wizard/render_ci_answers.js "$LA_PROJECT-master:/tmp/render_ci_answers.js"
+          render() { docker exec "$LA_PROJECT-master" node /tmp/render_ci_answers.js --reach ${{ matrix.reach }} --backup "$RUNNER_TEMP/bk-wizard" "$@"; }
+          render > "$RUNNER_TEMP/answers.env"
+          render --print packages > "$RUNNER_TEMP/packages.arg"
+          head -n1 "$RUNNER_TEMP/answers.env" | grep -qx '# lifeagents-answers v1'
+          grep -qx "BACKUP_PARENT_DIR=$RUNNER_TEMP/bk-wizard" "$RUNNER_TEMP/answers.env"
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.1"
-          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
+          docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
+          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt die Bot-Aufrufe auf den Mock (im Wizard erbt provision.sh sie aus der Umgebung des master, die compose.yml nicht setzt); LLM_GATEWAY_KEEPALIVE_HOURS=0 verhindert Aufrufe des Gateways mit dem erfundenen Schluessel
+          docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 -e LIFEAGENTS_RESULT_FILE=/run/lifeagents-wizard/result "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env --packages "$(cat "$RUNNER_TEMP/packages.arg")"
+          docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
+          # Der Sicherungsschritt ist eine Warnung, kein Abbruch: erst die Datei im Ordner auf dem Rechner beweist ihn.
+          sudo find "$RUNNER_TEMP/bk-wizard" -name 'lifeagents-backup-*.nla.enc' | grep -q . \
+            || { echo "FAIL keine erste Sicherung im Ordner des Assistenten"; sudo find "$RUNNER_TEMP/bk-wizard"; exit 1; }
+          docker exec "$LA_PROJECT-master" grep -q '^BACKUP_HOST_DIR=' /etc/lifeagents/core.env
 
       - name: Assert the stack (doctor, UTF-8, every workflow published, edge reaches only n8n)
         run: |
@@ -346,7 +364,10 @@ jobs:
           set -euo pipefail
           # Wie `lifeagents update`: ohne --packages -> Grundsystem + die INSTALLIERTEN Pakete (aus der Registry, also ueber
           # den Datenbank-Wrapper des master); keines darf verloren gehen.
-          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev
+          docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
+          # hand-injected: wie im Erstlauf (Bot-Aufrufe auf den Mock, Gateway ohne Aufwaermen); ein Lauf ohne sie wuerde die Credential-Adresse auf api.telegram.org zuruecksetzen
+          docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env
+          docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT count(*) FROM core.package_registry WHERE status='active'" | tr -d '[:space:]')" -ge 5
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
           # n8n, gateway und der Tunnel-Knoten entstehen erst im Erstlauf; wan startet erst im Rand-Schritt.
@@ -463,6 +484,43 @@ jobs:
           docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
           test "$(docker inspect -f '{{.State.StartedAt}}' "$LA_PROJECT-wan")" = "$s1"
 
+      - name: Pair the owner over the real ingress, then the finish step against the Telegram mock
+        if: matrix.reach == 'tunnel'
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          m="$LA_PROJECT-master"
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
+          # Wie der Assistent: der Rechner-Teil der Kopplung ueber die CLI (ein JSON je Aufruf). Die Bot-Aufrufe der CLI gehen an den Mock.
+          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt auf den Mock (im Wizard erbt die CLI die Variable aus der Umgebung des master)
+          pair() { docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 "$m" lifeagents household pair-owner --machine "$1"; }
+          arm="$(pair arm)"; echo "$arm" | sed -E 's/start=[A-Za-z0-9_-]+/start=<code>/'
+          test "$(jq -r .ok <<<"$arm")" = true
+          code="$(jq -r .link <<<"$arm" | sed -E 's/.*start=//')"
+          test "$(pair status | jq -r .connected)" = false
+          # /start <Code> als Telegram-Update an den ECHTEN Trigger-Webhook des Orchestrators (Weg und Kopfzeile wie bei Telegram).
+          row="$(q "SELECT w.id||'|'||(n->>'id')||'|'||(n->>'webhookId') FROM public.workflow_entity w, jsonb_array_elements(w.nodes::jsonb) n WHERE w.name='agent.orchestrator.main_route' AND n->>'type'='n8n-nodes-base.telegramTrigger'")"
+          IFS='|' read -r wf node hook <<<"$row"
+          secret="$(printf '%s_%s' "$wf" "$node" | tr -cd 'a-zA-Z0-9_-')"
+          body="$(jq -nc --arg t "/start $code" --argjson d "$(date +%s)" \
+            '{update_id:1, message:{message_id:1, from:{id:770000001, is_bot:false, first_name:"Ci", language_code:"de"}, chat:{id:770000001, type:"private"}, date:$d, text:$t, entities:[{offset:0, length:6, type:"bot_command"}]}}')"
+          test "$(docker exec "$m" curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Telegram-Bot-Api-Secret-Token: $secret" -H 'Content-Type: application/json' --data "$body" "http://127.0.0.1:5678/webhook/$hook/webhook")" = 200
+          ok=''
+          for _ in $(seq 1 30); do [ "$(pair status | jq -r .connected)" = true ] && { ok=1; break; }; sleep 3; done
+          [ -n "$ok" ] || { echo "FAIL Kopplung ueber den Eingang kam nicht an"; docker exec "$m" tail -n 30 /tmp/mock_telegram.jsonl; exit 1; }
+          # Der Abschluss nach dem Koppeln (Workflows mit der echten chat_id neu einspielen, Menues, Begruessung).
+          fin="$(pair finalize)"; echo "$fin"
+          test "$(jq -r .ok <<<"$fin")" = true
+          test "$(jq -r .welcome_sent <<<"$fin")" = true
+          docker exec "$m" grep '"method":"sendMessage"' /tmp/mock_telegram.jsonl | grep -q '"chat_id":770000001' \
+            || { echo "FAIL Begruessung kam nicht im Mock an"; exit 1; }
+          # Kein Telegram-Knoten traegt mehr die Platzhalter-chat_id 0 (die CLI prueft es selbst; hier die zweite Meinung der Datenbank).
+          tg() { q "SELECT count(*) FROM public.workflow_entity w, jsonb_array_elements(w.nodes::jsonb) n WHERE n->>'type'='n8n-nodes-base.telegram' AND n->'parameters'->>'chatId'='$1'"; }
+          test "$(tg 0)" = 0
+          [ "$(tg 770000001)" -gt 0 ]
+          test "$(q "SELECT count(*) FROM public.workflow_entity WHERE \"activeVersionId\" IS NULL")" = 0
+          docker exec "$m" bash /opt/lifeagents/provisioning/doctor.sh
+
       - name: Neighbour after (unchanged)
         run: |
           set -euo pipefail
@@ -479,6 +537,7 @@ jobs:
         if: failure()
         run: |
           for c in master n8n postgres gateway edge tailscale wan; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
+          docker exec "$LA_PROJECT-master" tail -n 40 /tmp/mock_telegram.jsonl 2>&1 || true
 
       - name: Teardown (only our project + the neighbour)
         if: always()

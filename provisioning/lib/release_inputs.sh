@@ -1346,6 +1346,10 @@ _ANSWER_DENY_EXACT=" PATH IFS HOME SHELL ENV CDPATH GLOBIGNORE SHELLOPTS BASHOPT
  LIFEAGENTS_UPDATE_LOCK LIFEAGENTS_UPDATE_LOCK_HELD PROVISION_GH_API PROVISION_REPO_SLUG N8N_USER N8N_HOME N8N_USER_FOLDER
  DB_SUPERUSER STATE_DIRECTORY "
 _answer_key_denied() {
+  # Ausnahme vor den Mustern: die Antwort des Wizards „Wohin sichern?“. Der Wert ist nur ein Pfad-Argument fuer
+  # `lifeagents backup host-dir "$BACKUP_PARENT_DIR" --create` (provision.sh, _setup_backup_folder: gequotet, nie
+  # ausgefuehrt/gesourct; host-dir prueft ihn selbst) und steuert den Installer sonst nicht.
+  case "$1" in BACKUP_PARENT_DIR) return 1 ;; esac
   case "$_ANSWER_DENY_EXACT" in *[[:space:]]"$1"[[:space:]]*) return 0 ;; esac
   case "$1" in
     BASH_*|LD_*|LC_*|DOCKER_*|COMPOSE_*|LA_*|NODE_*|NPM_*|GIT_*|SSL_*|CURL_*|GNUPG*|GPG_*|PYTHON*|PERL*|RUBY*|GUM_*) return 0 ;;

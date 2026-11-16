@@ -206,6 +206,11 @@ _ur_code_reason() {
   esac
 }
 
+# _ur_outcome <decided|undecided> — meldet dem Tick (UPDATE_CHECK_OUTCOME_FILE, nur dort gesetzt), ob der Check eine Entscheidung
+#   getroffen hat (Karte gesendet, aktuell, schon gemeldet, nicht zustaendig) oder nichts ausrichten konnte (Sperre, Netz, DB,
+#   Karte nicht gesendet, ausserhalb des Erinnerungs-Fensters). Nur im ersten Fall gilt das volle Pruefintervall.
+_ur_outcome() { if [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$1" > "$UPDATE_CHECK_OUTCOME_FILE" 2>/dev/null || true; fi; }
+
 # update_check [scheduled] — der Release-Check (`lifeagents update --check`). Immer rc 0 (ein Timer-Fehlschlag
 #   ist kein Alarm wert; der naechste Lauf versucht es erneut). `scheduled` (Timer/Tick, alle 2 h) laesst die DB die
 #   Karte auf das Erinnerungs-Fenster beschraenken; Handaufruf und Folge-Check nach einem Update schicken sofort.
@@ -218,11 +223,13 @@ update_check() {
   # nur pruefen, nie nehmen (der Check ist kein Update); ein Lauf, der sie selbst haelt (Folge-Check), prueft weiter.
   if [ "${LIFEAGENTS_UPDATE_LOCK_HELD:-0}" != 1 ] && ! update_lock_free; then
     log "Release-Check: Update-Sperre belegt (Update/Einrichtung läuft) — ausgelassen, nächster Lauf."
+    _ur_outcome undecided
     return 0
   fi
   installed="$(_ur_installed)"
   if ! _ur_is_tag "$installed"; then
     log "Release-Check: installiert ist keine Release-Version ('${installed:-keine}') — nichts zu tun."
+    _ur_outcome decided
     return 0
   fi
   work="$(mktemp -d)"
@@ -237,24 +244,29 @@ _ur_check_in() {
   code="$(_gh_http 'application/vnd.github+json' "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases?per_page=20" "$work/rel.json" 30)"
   case "$code" in
     2??) ;;
-    *) _ur_notice "Release-Check: GitHub antwortet ${code} ($(_ur_code_reason "$code" "$work/rel.json.hdr")) — nächster Versuch beim nächsten Lauf."; return 0 ;;
+    *) _ur_notice "Release-Check: GitHub antwortet ${code} ($(_ur_code_reason "$code" "$work/rel.json.hdr")) — nächster Versuch beim nächsten Lauf."; _ur_outcome undecided; return 0 ;;
   esac
   json="$(jq -c --arg inst "$installed" --argjson sig "$(_ur_require_signature && echo true || echo false)" \
     --argjson sched "$scheduled" \
     '{installed:$inst, require_signature:$sig, scheduled:$sched,
       releases:[.[]? | {tag:.tag_name, draft, prerelease, body:((.body // "")[0:4000]), html_url,
                         assets:[.assets[]?.name]}]}' "$work/rel.json")" \
-    || { log "Release-Check: Antwort nicht lesbar."; return 0; }
-  card="$(_ur_sql "$json" "SELECT core.fn_release_card(:'p'::jsonb);")" || { _ur_alert "Release-Check: DB nicht erreichbar."; return 0; }
+    || { log "Release-Check: Antwort nicht lesbar."; _ur_outcome undecided; return 0; }
+  card="$(_ur_sql "$json" "SELECT core.fn_release_card(:'p'::jsonb);")" || { _ur_alert "Release-Check: DB nicht erreichbar."; _ur_outcome undecided; return 0; }
   if [ "$(jq -r '.due' <<<"$card")" != true ]; then
-    log "Release-Check: keine Karte fällig ($(jq -r '.reason // "?"' <<<"$card"))."
+    local why; why="$(jq -r '.reason // "?"' <<<"$card")"
+    log "Release-Check: keine Karte fällig (${why})."
+    # Ausserhalb des Erinnerungs-Fensters ist nichts entschieden: die Karte steht noch aus.
+    if [ "$why" = outside_window ]; then _ur_outcome undecided; else _ur_outcome decided; fi
     return 0
   fi
   tag="$(jq -r '.tag' <<<"$card")"
   if _ur_send "$(jq -r '.text' <<<"$card")" "$(jq -c '.keyboard' <<<"$card")"; then
     _ur_sql "$(jq -nc --arg t "$tag" '{tag:$t}')" "SELECT core.fn_release_card_sent((:'p'::jsonb)->>'tag');" >/dev/null || true
     _ur_notice "Release-Check: Karte für ${tag} gesendet."
+    _ur_outcome decided
   else
+    _ur_outcome undecided
     _ur_alert "Release-Check: Karte für ${tag} nicht gesendet — der nächste Check versucht es erneut."
   fi
   return 0
@@ -477,6 +489,7 @@ _ur_swap_continue() {
 #   Vor der ersten Installation (keine VERSION) still. Zustand in UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
+UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
 BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # nach einem Fehlschlag am selben Tag erneut
 update_tick() {
   require_root
@@ -494,7 +507,15 @@ update_tick() {
   [ "$last" -le "$nowe" ] || last=0   # Uhr zurueckgestellt: LAST_CHECK in der Zukunft zaehlt als "lange her"
   if [ "$((nowe - last))" -ge "$UPDATE_CHECK_EVERY_S" ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$nowe"
-    ( update_check scheduled ) || true
+    # Nur ein Check, der entschieden hat, verbraucht das 2-h-Fenster; sonst (Sperre, Netz, DB, ausserhalb des
+    # Erinnerungs-Fensters) kommt der Neuversuch nach UPDATE_CHECK_RETRY_S. Ohne Meldung gilt er als entschieden.
+    local outf outcome
+    outf="$(mktemp)"
+    ( UPDATE_CHECK_OUTCOME_FILE="$outf" update_check scheduled ) || true
+    outcome="$(head -n1 "$outf" 2>/dev/null || true)"; rm -f -- "$outf"
+    if [ "$outcome" = undecided ]; then
+      env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$((nowe - UPDATE_CHECK_EVERY_S + UPDATE_CHECK_RETRY_S))"
+    fi
   fi
   # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund; ohne gewaehlten Ordner still) als eigener Prozess —
   # die backup-Arm-Bibliotheken laedt nur die CLI.

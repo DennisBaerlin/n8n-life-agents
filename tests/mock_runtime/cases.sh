@@ -602,7 +602,7 @@ eq K.helfer-unbekannter-schritt '' "$(cat "$W/up.calls")"
 
 export LIFEAGENTS_RUNTIME=compose
 update_run_requested() { echo run >> "$W/tick.log"; }
-update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; }
+update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; if [ -n "${STUB_OUTCOME:-}" ] && [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$STUB_OUTCOME" > "$UPDATE_CHECK_OUTCOME_FILE"; fi; }
 printf '#!/usr/bin/env bash\necho "cli $*" >> "$TICK_LOG"\n' > "$W/bin/lifeagents"
 chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log"
 lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }
@@ -611,9 +611,9 @@ printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$W/core.env"
 UPDATE_TICK_STATE="$W/tick.state"; rm -f "$W/VERSION_TICK" "$W/tick.log" "$UPDATE_TICK_STATE"
 ( update_tick ); eq K.vor-installation-still '' "$(cat "$W/tick.log" 2>/dev/null)"
 echo v9.0.0 > "$W/VERSION_TICK"
-( UPDATE_CHECK_AT=0000 BACKUP_AUTO_AT=0000 update_tick )
+( BACKUP_AUTO_AT=0000 update_tick )
 eq K.erster-tick-alles 'run check cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
-: > "$W/tick.log"; ( UPDATE_CHECK_AT=0000 BACKUP_AUTO_AT=0000 update_tick )
+: > "$W/tick.log"; ( BACKUP_AUTO_AT=0000 update_tick )
 eq K.einmal-am-tag 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.lebenszeichen "LAST_TICK fehlt" ;; *) pass K.lebenszeichen ;; esac
 # Vertragsaenderung: der Check laeuft im Intervall (UPDATE_CHECK_EVERY_S), nicht mehr ab einer Uhrzeit. BACKUP_AUTO_AT=2400
@@ -655,6 +655,23 @@ eq K.tick-prueft-geplant 'scheduled' "$(cat "$W/check.args")"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) + 99999 ))"; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.uhr-zurueck-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Das 2-h-Fenster gilt nur nach einem Check, der entschieden hat; sonst Neuversuch nach UPDATE_CHECK_RETRY_S (15 min).
+# gap = Sekunden, die nach dem Tick bis zum naechsten Check bleiben (Intervall - seit dem Check vergangen).
+_gap() { local l now; l="$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK)"; now="$(date -u +%s)"; echo $(( UPDATE_CHECK_EVERY_S - (now - l) )); }
+_rng() { if [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; then echo ok; else echo "gap=$1"; fi; }
+for _o in decided undecided; do
+  env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 0; : > "$W/tick.log"
+  ( STUB_OUTCOME=$_o BACKUP_AUTO_AT=2400 update_tick )
+  _g="$(_gap)"
+  if [ "$_o" = decided ]; then
+    eq K.entschieden-volles-fenster ok "$(_rng "$_g" 7190 7200)"
+  else
+    eq K.nicht-entschieden-15-minuten ok "$(_rng "$_g" 890 900)"
+  fi
+done
+# Ein Check ohne Meldung (alte Attrappe/Absturz) zaehlt wie bisher als entschieden.
+env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 0; ( BACKUP_AUTO_AT=2400 update_tick )
+_g="$(_gap)"; eq K.ohne-meldung-volles-fenster ok "$(_rng "$_g" 7190 7200)"
 unset LIFEAGENTS_RUNTIME
 
 # ---------------------------------------------------------------------------- O: veroeffentlichte Ports (Wizard, Paperless)

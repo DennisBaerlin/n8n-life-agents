@@ -186,14 +186,28 @@ _deactivate_live_triggers() {
 # Eine fehlende/kaputte Datei heisst nur "alles einspielen" (sicher).
 WF_DEPLOY_STATE_FILE="${WF_DEPLOY_STATE_FILE:-/var/lib/lifeagents/workflow_deploy.state}"
 
-# _wf_deploy_context — der Teil des Fingerabdrucks, der nicht in der Datei steht, aber eine Neu-Registrierung
-#   braucht: n8n-Version (package.json neben dem Binary, sonst der Pin N8N_VERSION; kein CLI-Start), WEBHOOK_URL,
-#   sha256 des Bot-Tokens (owner_tg_token = die eine Token-Quelle).
-_wf_deploy_context() {
-  local bin ver='' wh
-  bin="$(command -v n8n 2>/dev/null || true)"
-  [ -z "$bin" ] || ver="$(jq -r '.version // empty' "$(dirname "$(dirname "$(readlink -f "$bin")")")/package.json" 2>/dev/null || true)"
+# _wf_n8n_version — die n8n-Version des Fingerabdrucks, fuer jeden Einstieg dieselbe (Installer, `lifeagents update`,
+#   CLI-Befehle). Verbund: das Image des laufenden n8n-Containers (compose.yml haelt die eine Adresse; der Pin
+#   N8N_VERSION setzt nur provision.sh, ein CLI-Lauf im master kennt ihn nicht und rechnete mit leerer Version -> jeder
+#   CLI-Lauf spielte alle Workflows neu ein). LXC: package.json neben dem Binary. Zuletzt der Pin; kein CLI-Start.
+_wf_n8n_version() {
+  local ver='' img bin
+  if rt_is_compose; then
+    img="$(rt_container_image "${LA_PROJECT}-n8n" || true)"; img="${img%%@*}"
+    case "$img" in *:*) ver="${img##*:}" ;; esac
+  else
+    bin="$(command -v n8n 2>/dev/null || true)"
+    [ -z "$bin" ] || ver="$(jq -r '.version // empty' "$(dirname "$(dirname "$(readlink -f "$bin")")")/package.json" 2>/dev/null || true)"
+  fi
   [ -n "$ver" ] || ver="${N8N_VERSION:-}"
+  printf '%s' "$ver"
+}
+
+# _wf_deploy_context — der Teil des Fingerabdrucks, der nicht in der Datei steht, aber eine Neu-Registrierung
+#   braucht: n8n-Version (_wf_n8n_version), WEBHOOK_URL, sha256 des Bot-Tokens (owner_tg_token = die eine Token-Quelle).
+_wf_deploy_context() {
+  local ver wh
+  ver="$(_wf_n8n_version)"
   wh="$(read_env_value "$N8N_ENV_FILE" WEBHOOK_URL 2>/dev/null || true)"
   printf 'n8n=%s|webhook=%s|bot=%s' "$ver" "$wh" "$(owner_tg_token | sha256sum | cut -c1-64)"
 }

@@ -13,6 +13,7 @@
 #   R  Netz-Wiederholung (rt_stack_up dreimal, add_apt_key curl --retry-all-errors).
 #   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
 #   D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch, Tunnel (Tailscale).
+#   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
@@ -948,4 +949,24 @@ printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag
 dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
 out="$(dd_ts tunnel 0 "$dd_login")"
 printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
+
+# G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
+#    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer
+#    mit Pin, CLI ohne) zwei Fingerabdruecke und jeder CLI-Lauf spielte alle Workflows neu ein.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/deploy_workflows.sh"
+gx() {   # gx <N8N_VERSION|-> <Image des n8n-Containers|-> -> Kontext-Zeile
+  ( export LIFEAGENTS_RUNTIME=compose LA_PROJECT=t; N8N_ENV_FILE="$W/gx.env"; : > "$N8N_ENV_FILE"
+    owner_tg_token() { printf 'tok'; }
+    if [ "$1" = - ]; then unset N8N_VERSION; else N8N_VERSION="$1"; fi
+    if [ "$2" = - ]; then unset STUB_IMG_t_n8n; else export STUB_IMG_t_n8n="$2"; fi
+    _wf_deploy_context )
+}
+gx_img='n8nio/n8n:2.45.7@sha256:9a8d8dcea75667496695d7810d7e1fe018a65efb36cc499d347f3931b3957b5d'
+eq G.cli-und-installer-gleicher-fingerabdruck "$(gx 2.45.7 "$gx_img")" "$(gx - "$gx_img")"
+eq G.version-kommt-aus-dem-container 'n8n=2.45.7|' "$(gx - "$gx_img" | cut -d'|' -f1-1 | sed 's/$/|/')"
+eq G.versionswechsel-aendert-den-fingerabdruck 1 "$([ "$(gx - "$gx_img")" != "$(gx - 'n8nio/n8n:2.46.0@sha256:aa')" ] && echo 1 || echo 0)"
+eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
+mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
+eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
 exit "$fails"

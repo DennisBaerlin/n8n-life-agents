@@ -28,12 +28,17 @@
 # Gegenrichtung (C): jeder core./agent.-Aufruf eines gebauten Workflow-Knotens unter einer engen Rolle
 # muss fuer diese Rolle ausfuehrbar sein (PUBLIC-Default oder Grant), Details am Block unten.
 #
-# Aufruf: .\scripts\role_test_lint.ps1 [-Verbose]
+# Zweig (D): jede fn, die ein Workflow unter einer engen Rolle aufruft (auch _rw), hat einen SET-ROLE-Test in tests/db oder
+# steht in scripts/build/role_test_gap_allowlist.json (schrumpfend, Orphan = Fehler); die Rolle/fn-Paare stehen erzeugt in
+# tests/db/cross/test_role_catalog_exec.sql (Ausfuehrungsrechte samt Helfern), -WriteCatalog schreibt sie neu.
+#
+# Aufruf: .\scripts\role_test_lint.ps1 [-Verbose] [-WriteCatalog]
 # Kein LLM, kein Netz, kein Substrat. Exit-Code = Anzahl Fehler.
-param([switch]$Verbose)
+param([switch]$Verbose, [switch]$WriteCatalog)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
+. (Join-Path $PSScriptRoot 'lib\role_call_pairs.ps1')
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
@@ -257,6 +262,41 @@ foreach ($wfFile in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\workflows\*.
 }
 if ($nCalls -lt 1) { Fail "(C) keine core./agent.-Aufrufe unter engen Rollen gefunden -- Workflow-Parser kaputt? (erwartet >=1)" }
 if ($Verbose) { Write-Host "  (C) $nCalls Aufruf(e) unter engen Rollen geprueft" -ForegroundColor DarkGray }
+
+# --- (D) jede fn, die ein Workflow unter enger Rolle aufruft: Rollen-Test oder Eintrag in der schrumpfenden Liste ---
+# Stufe 1 der Rollen-Perspektiv-Pflicht (sql.md): die Liste scripts/build/role_test_gap_allowlist.json haelt die Bestands-
+# luecken ({entries: {schema.fn: Grund}}), jeder neue Rollen-Test streicht einen Eintrag (Orphan = Fehler). Die Paar-Liste
+# (Rolle, fn) steht erzeugt in tests/db/cross/test_role_catalog_exec.sql (Ausfuehrungsrechte, auch der Helfer); -WriteCatalog
+# schreibt sie neu, Drift ist ein Fehler. Grenze und Methode: scripts/lib/role_call_pairs.ps1.
+$gapPairs = @(Get-RoleCallPairs -Root $RepoRoot)
+if ($gapPairs.Count -lt 1) { Fail "(D) keine Workflow-Aufrufe unter engen Rollen gefunden -- Parser kaputt?" }
+$gapTested = @(Get-RoleTestedFns -Root $RepoRoot)
+if ($gapTested.Count -lt 1) { Fail "(D) keine fn in SET-ROLE-Segmenten von tests/db gefunden -- Segment-Parser kaputt?" }
+$gapAllow = @{}
+$gapPath = Join-Path $RepoRoot 'scripts\build\role_test_gap_allowlist.json'
+if (-not (Test-Path $gapPath)) { Fail "(D) Liste fehlt: scripts/build/role_test_gap_allowlist.json" }
+else {
+    $gal = [System.IO.File]::ReadAllText($gapPath, $u8) | ConvertFrom-Json
+    if ($gal.entries) { foreach ($p in $gal.entries.PSObject.Properties) { $gapAllow[$p.Name] = [string]$p.Value } }
+}
+foreach ($e in (Compare-RoleGap -Pairs $gapPairs -Tested $gapTested -Allow $gapAllow).Errors) { Fail "(D) $e" }
+$catPath = Join-Path $RepoRoot 'tests\db\cross\test_role_catalog_exec.sql'
+$catBlock = Get-RoleCatalogBlock -Pairs $gapPairs
+$catRx = [regex]'(?s)(-- BEGIN GENERATED PAIRS\r?\n)(.*?)(\r?\n?-- END GENERATED PAIRS)'
+if (-not (Test-Path $catPath)) { Fail "(D) Katalog-Test fehlt: tests/db/cross/test_role_catalog_exec.sql" }
+else {
+    $catText = [System.IO.File]::ReadAllText($catPath, $u8)
+    $cm = $catRx.Match($catText)
+    if (-not $cm.Success) { Fail "(D) Marker '-- BEGIN/END GENERATED PAIRS' fehlen in test_role_catalog_exec.sql" }
+    elseif ($WriteCatalog) {
+        $new = $catRx.Replace($catText, { param($m) $m.Groups[1].Value + $catBlock + "`n" + '-- END GENERATED PAIRS' }, 1)
+        [System.IO.File]::WriteAllText($catPath, $new, $u8)
+        Write-Host "  (D) Katalog neu geschrieben: $($gapPairs.Count) Paare" -ForegroundColor Cyan
+    }
+    elseif (($cm.Groups[2].Value.Trim() -replace '\r', '') -ne ($catBlock.Trim() -replace '\r', '')) {
+        Fail "(D) Paar-Liste in test_role_catalog_exec.sql ist nicht aktuell (Workflow-Aufrufe geaendert) -> .\scripts\role_test_lint.ps1 -WriteCatalog"
+    }
+}
 
 if ($fails -eq 0) {
     Write-Host "role_test_lint: OK ($($required.Count) DEFINER/_ro-Bruecken-fn(s) rollen-getestet, 0 Luecken; Workflow-Aufrufe unter engen Rollen freigegeben)" -ForegroundColor Green

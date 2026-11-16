@@ -265,11 +265,18 @@ repos:
         always_run: true
 
       - id: role-test-lint
-        name: role_test_lint (published DEFINER read-bridge fn with a _ro EXECUTE grant needs a SET-LOCAL-ROLE perspective test, fail-closed)
+        name: role_test_lint (published DEFINER read-bridge fn with a _ro EXECUTE grant needs a SET-LOCAL-ROLE perspective test; every fn a workflow calls under a narrow role has one or sits on the shrink-only gap list; fail-closed)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/role_test_lint.ps1
         pass_filenames: false
         always_run: true
+
+      - id: role-gap-lint-test
+        name: role_gap_lint_test (workflow call pairs, role-test segments and the shrink-only gap list; a stale or unexplained entry turns role_test_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/role_gap_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/role_call_pairs|dev/role_gap_lint_test|role_test_lint)\.ps1$
 
       - id: privacy-lint
         name: privacy_lint (no real owner data - private IPs/home hostnames/user paths everywhere, local denylist .local/privacy_denylist.txt)

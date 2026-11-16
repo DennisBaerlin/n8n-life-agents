@@ -96,6 +96,62 @@ _doctor_compose_tick() {
   fi
 }
 
+# _doctor_compose_fresh — 0, wenn die Installation juenger als 10 min ist (die Schleife hat noch keinen Durchlauf geschrieben).
+_doctor_compose_fresh() { [ -n "$(find "$(lifeagents_version_marker)" -mmin -10 2>/dev/null)" ]; }
+
+# _doctor_compose_check — Docker-Verbund: wann lief der Release-Check zuletzt (LAST_CHECK im Tick-Zustand)? Normal hoechstens
+#   UPDATE_CHECK_EVERY_S (2 h) + eine Tick-Minute alt; ein Check ohne Entscheidung (Netz, ausserhalb 10-20 Uhr) setzt den
+#   Zeitstempel so zurueck, dass er nach UPDATE_CHECK_RETRY_S (15 min) neu laeuft, das Alter bleibt also unter 2 h + 1 min.
+#   ROT erst ab dem Doppelten: dann ist die Schleife an dieser Stelle haengengeblieben, obwohl LAST_TICK noch frisch sein kann.
+_doctor_compose_check() {
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last age every="${UPDATE_CHECK_EVERY_S:-7200}"
+  [ "$(id -u)" -eq 0 ] || return 0   # die Tick-Pruefung hat das schon als SKIP gemeldet
+  last="$(read_env_value "$st" LAST_CHECK 2>/dev/null || true)"
+  case "$last" in
+    ''|*[!0-9]*)
+      if _doctor_compose_fresh; then _warn "Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)"
+      else _red "Release-Check lief noch nie — Update-Hinweise im Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+    *) age=$(( $(date -u +%s) - last ))
+       if [ "$age" -le $((2 * every)) ]; then _pass "Release-Check läuft (letzter Versuch vor $((age / 60 > 0 ? age / 60 : 0)) min)"
+       else _red "Release-Check lief seit $((age / 3600)) h nicht mehr — Update-Hinweise im Chat kommen nicht an (docker logs ${LA_PROJECT}-master)"; fi ;;
+  esac
+}
+
+# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP ist das Datum
+#   (Haushalts-Zeitzone) des letzten Versuchs; vor BACKUP_AUTO_AT steht noch gestern darin. WARN (kein ROT): ob die Sicherung
+#   gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar nicht versucht".
+_doctor_compose_backup_tick() {
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz yday
+  [ "$(id -u)" -eq 0 ] || return 0
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"; tz="${tz:-${HOUSEHOLD_TIMEZONE:-Europe/Berlin}}"
+  yday="$(TZ="$tz" date -d yesterday +%Y-%m-%d)"
+  last="$(read_env_value "$st" LAST_BACKUP 2>/dev/null || true)"
+  if ! [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    _doctor_compose_fresh || _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+  elif [[ $last < $yday ]]; then
+    _warn "Tägliche Sicherung wurde seit ${last} nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+  else _pass "Tägliche Sicherung wird angestoßen (zuletzt ${last})"; fi
+}
+
+# _doctor_compose_tunnel — Docker-Verbund, Weg Tunnel: laeuft tailscale, ist es angemeldet, laeuft die Anmeldung bald ab?
+#   Gleiche Einordnung (reach_ts_eval) und gleiche Texte wie der klassische Weg (reach_cli_doctor), nur ueber den Container.
+_doctor_compose_tunnel() {
+  [ "$(reach_mode)" = tunnel ] || return 0
+  if ! rt_edge_active tailscale; then
+    _red "Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; $(rt_edge_logs_hint tailscale))"
+    return 0
+  fi
+  reach_ts_eval "$(_reach_ts_status)"
+  case "$REACH_TS_STATE" in
+    running) _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})" ;;
+    needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
+    *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
+  esac
+  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
+    _warn "Tailscale-Anmeldung läuft in ${REACH_TS_KEY_DAYS} Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → "'„Disable key expiry“'
+  fi
+}
+
 # _doctor_release_version — Docker-Verbund, Release-Profil: traegt VERSION kein Tag (dev), schickt der Release-Check nie eine
 #   Karte (update_runner.sh bricht bei Nicht-Tag still ab). WARN, kein ROT: Betrieb und Daten sind in Ordnung.
 _doctor_release_version() {
@@ -262,6 +318,8 @@ main() {
   if rt_is_compose; then
     # Verbund: statt der Timer laeuft die Tick-Schleife im master (compose.yml, update_runner.sh update_tick).
     _doctor_compose_tick
+    _doctor_compose_check
+    _doctor_compose_backup_tick
     _doctor_release_version
   else
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
@@ -449,7 +507,9 @@ main() {
   # keinen oeffentlichen Eingang (dev/Substrat — die Tiers feuern ueber die Harness-Webhooks, nicht ueber
   # Telegram), ein inaktiver Orchestrator ist dort der Normalfall -> SKIP statt Fehl-ROT.
   # CLI-Tunnel (lib/reach_cli.sh): steht der Tailscale-Weg selbst? Auch ohne Domain (die kommt erst mit der Anmeldung).
-  if ! rt_is_compose && [ "$(reach_cli_mode)" = tunnel ]; then
+  if rt_is_compose; then
+    _doctor_compose_tunnel
+  elif [ "$(reach_cli_mode)" = tunnel ]; then
     local _lvl _txt
     while IFS=$'\t' read -r _lvl _txt; do
       case "$_lvl" in pass) _pass "$_txt" ;; warn) _warn "$_txt" ;; red) _red "$_txt" ;; esac

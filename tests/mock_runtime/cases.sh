@@ -12,10 +12,11 @@
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
 #   R  Netz-Wiederholung (rt_stack_up dreimal, add_apt_key curl --retry-all-errors).
 #   I  Sicherungs-Timer (install_backup_timer.sh): Units, Zweitlauf no-op, alte crontab-Zeile (nur diese), Abbau, "faellig"-Rechnung.
+#   D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch, Tunnel (Tailscale).
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
-# shellcheck disable=SC2016,SC2329,SC1003,SC2034  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
+# shellcheck disable=SC2016,SC2329,SC1003,SC2034,SC2015,SC2030,SC2031  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
 set -uo pipefail
 ROOT="$1"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
@@ -887,4 +888,64 @@ chmod +x "$W/akbin/curl" "$W/akbin/gpg"
 ( PATH="$W/akbin:$PATH"; add_apt_key https://example.invalid/k.asc "$W/ak/key.gpg" ) >/dev/null 2>&1
 eq R.apt-key-curl-wiederholt-auch-curl18 1 "$(grep -c -e '--retry-all-errors' "$W/curl.args" 2>/dev/null)"
 eq R.apt-key-landet-vollstaendig-im-schluesselbund KEY "$(cat "$W/ak/key.gpg" 2>/dev/null)"
+
+# D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch (Tick-Zustand), Tunnel (Tailscale).
+#    Echter Code von doctor.sh in einer Teilschale; nur Docker-Wrapper und Zeit-Dateien sind Attrappen.
+dd_state() {   # dd_state <check-alter-s|-> <backup-datum|-> <VERSION-Alter-Min> -> Zustands-Datei + VERSION-Marker
+  rm -f "$W/dd.state"; : > "$W/dd.VERSION"; touch -d "$3 minutes ago" "$W/dd.VERSION"
+  [ "$1" = - ] || env_upsert "$W/dd.state" LAST_CHECK "$(( $(date -u +%s) - $1 ))"
+  [ "$2" = - ] || env_upsert "$W/dd.state" LAST_BACKUP "$2"
+}
+dd_run() {   # dd_run <funktion> -> Ausgabe + fail=<n>
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; UPDATE_TICK_STATE="$W/dd.state"; HOUSEHOLD_TIMEZONE=Europe/Berlin
+    id() { echo 0; }; lifeagents_version_marker() { printf '%s' "$W/dd.VERSION"; }
+    "$1"; echo "fail=$_fail" )
+}
+dd_today="$(TZ=Europe/Berlin date +%Y-%m-%d)"; dd_yday="$(TZ=Europe/Berlin date -d yesterday +%Y-%m-%d)"; dd_old="$(TZ=Europe/Berlin date -d '3 days ago' +%Y-%m-%d)"
+dd_state 600 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-frisch-gruen '  [ OK ] Release-Check läuft (letzter Versuch vor 10 min)
+fail=0' "$out"
+dd_state 7300 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-ueber-fenster-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
+dd_state 20000 - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-steht-rot '  [FAIL] Release-Check lief seit 5 h nicht mehr — Update-Hinweise im Chat kommen nicht an (docker logs t-master)
+fail=1' "$out"
+dd_state - - 600; out="$(dd_run _doctor_compose_check)"
+eq D.check-nie-gelaufen-rot 'fail=1' "$(printf '%s' "$out" | tail -n1)"
+dd_state - - 3; out="$(dd_run _doctor_compose_check)"
+eq D.check-frische-installation-warn '  [WARN] Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)
+fail=0' "$out"
+dd_state 600 "$dd_today" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-heute-angestossen-gruen '  [ OK ] Tägliche Sicherung wird angestoßen (zuletzt '"$dd_today"')
+fail=0' "$out"
+dd_state 600 "$dd_yday" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
+dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
+fail=0' "$out"
+dd_state 600 - 600; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
+dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-frische-installation-still 'fail=0' "$out"
+# Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
+dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> -> Ausgabe
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"
+    rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }
+    _doctor_compose_tunnel; echo "fail=$_fail" )
+}
+dd_ok='{"BackendState":"Running","Self":{"DNSName":"bot.tail-fantasy.ts.net.","Expired":false,"CapMap":{"https":[],"funnel":[]}}}'
+eq D.tunnel-anderer-weg-still 'fail=0' "$(dd_ts fritzbox 0 "$dd_ok")"
+eq D.tunnel-container-aus-rot '  [FAIL] Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; docker logs --tail 100 t-tailscale)
+fail=1' "$(dd_ts tunnel 1 "$dd_ok")"
+eq D.tunnel-steht-gruen '  [ OK ] Tunnel steht (Tailscale angemeldet, bot.tail-fantasy.ts.net)
+fail=0' "$(dd_ts tunnel 0 "$dd_ok")"
+dd_exp="$(date -u -d '+5 days' +%Y-%m-%dT%H:%M:%SZ)"
+dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
+out="$(dd_ts tunnel 0 "$dd_soon")"
+printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
+dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
+out="$(dd_ts tunnel 0 "$dd_login")"
+printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
 exit "$fails"

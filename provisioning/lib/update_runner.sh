@@ -34,17 +34,38 @@ update_cli() {
     --run-requested) update_run_requested; return 0 ;;
     --tick)          update_tick; return 0 ;;
   esac
-  local tag=latest
+  # Alles wird vor dem Laden geprueft: eine unbekannte Option liefe sonst bis provision.sh durch, im Verbund startete sie
+  # vorher schon den master-Wechsel. Weitergereicht wird nur, was provision.sh parse_args fuer einen normalen Lauf kennt
+  # (nicht --uninstall/--purge-data/--unattended/--yes: dafuer gibt es eigene Befehle).
+  local tag=latest pass=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --help|-h)         _ur_update_usage; return 0 ;;
       --version)         [ -n "${2:-}" ] || die "--version braucht ein Tag (z. B. --version v0.14.0)."; tag="$2"; shift 2 ;;
       --version=*)       tag="${1#*=}"; shift ;;
       --allow-downgrade) export LIFEAGENTS_ALLOW_DOWNGRADE=1; shift ;;
-      *) break ;;
+      --profile|--domain|--trusted-proxies|--trusted-proxy|--packages)
+        case "${2:-}" in ''|-*) die "$1 braucht einen Wert (lifeagents update --help)." ;; esac
+        pass+=("$1" "$2"); shift 2 ;;
+      --profile=*|--domain=*|--trusted-proxies=*|--trusted-proxy=*|--packages=*|--apply-network|--core-only|--verbose)
+        pass+=("$1"); shift ;;
+      *) die "Unbekannte Option für update: $1 — es wurde nichts geändert (lifeagents update --help)." ;;
     esac
   done
   case "$tag" in *[!A-Za-z0-9._-]*|'') die "Ungültiges Tag '${tag}' (erwartet z. B. v0.14.0)." ;; esac
-  fetch_and_run_release "$tag" "$@"
+  fetch_and_run_release "$tag" "${pass[@]}"
+}
+
+# _ur_update_usage — Hilfe zu `lifeagents update` (stderr wie die Hilfe der CLI).
+_ur_update_usage() {
+  cat >&2 <<'EOF'
+Usage: lifeagents update [--version <tag>] [--allow-downgrade] [Einrichtungs-Optionen]
+  Neuestes Release (oder <tag>) laden, Echtheit prüfen und einspielen. Braucht root.
+  --version <tag>     genau dieses Release (z. B. v0.48.1)
+  --allow-downgrade   älter als installiert zulassen (besser: lifeagents rollback)
+  Weitergereicht an die Einrichtung: --profile, --domain, --trusted-proxies, --packages, --apply-network,
+  --core-only, --verbose
+EOF
 }
 UPDATE_MIN_FREE_KB="${UPDATE_MIN_FREE_KB:-2097152}"   # 2 GB frei auf / und /var (n8n-npm-Install + Sicherung + Tarball)
 
@@ -279,6 +300,20 @@ _ur_free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
 # _ur_result <file> <key> — Wert aus der Ergebnis-Datei von provision.sh (KEY=VALUE, env_upsert-Format).
 _ur_result() { read_env_value "$1" "$2" 2>/dev/null || true; }
 
+# _ur_logs_prune — alte Update-Protokolle raeumen: die neuesten UPDATE_LOG_KEEP bleiben immer (die letzten Meldungen nennen
+#   ihren Pfad), darueber hinaus geht nur, was aelter als UPDATE_LOG_MAX_DAYS Tage ist. Nur update-*.log. Immer rc 0.
+UPDATE_LOG_KEEP="${UPDATE_LOG_KEEP:-10}"
+UPDATE_LOG_MAX_DAYS="${UPDATE_LOG_MAX_DAYS:-30}"
+_ur_logs_prune() {
+  local f
+  find "$UPDATE_LOG_DIR" -maxdepth 1 -type f -name 'update-*.log' -printf '%T@\t%p\n' 2>/dev/null \
+    | sort -rn | tail -n +$((UPDATE_LOG_KEEP + 1)) | cut -f2- \
+    | while IFS= read -r f; do
+        if [ -n "$(find "$f" -maxdepth 0 -mtime +"$UPDATE_LOG_MAX_DAYS" 2>/dev/null)" ]; then rm -f -- "$f"; fi
+      done
+  return 0
+}
+
 # _ur_last_error <log> -> die letzte Fehlerzeile ([x] …) aus dem Lauf-Log, ohne Farbcodes, gekuerzt.
 _ur_last_error() {
   sed 's/\x1b\[[0-9;]*m//g' "$1" 2>/dev/null | grep -E '^\[x\]' | tail -n1 | sed 's/^\[x\] *//' | cut -c1-300 || true
@@ -320,7 +355,7 @@ _ur_run_one() {
     _ur_reports_flush; return 0
   fi
 
-  mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
+  mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"; _ur_logs_prune
   log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
   rf="$(mktemp /run/lifeagents-update-result.XXXXXX)"
   _ur_notice "Update-Auftrag ${id}: ${installed} -> ${tag} (${kind}), Protokoll ${log}"
@@ -392,6 +427,14 @@ update_run_requested() {
   installed="$(_ur_installed)"
   claim="$(_ur_sql "$(jq -nc --arg i "$installed" '{installed:$i, report:true}')" "SELECT core.fn_update_request_claim(:'p'::jsonb);")" \
     || { _ur_alert "Update-Runner: DB nicht erreichbar."; return 0; }
+  # Ein erholter, unterbrochener Lauf (Zeitgrenze, Neustart) kann nach upgrade_prepare gestorben sein: n8n steht dann, bis das
+  # naechste Update den Merkzettel fortsetzt -> wieder an (der Merkzettel bleibt). Pfad wie upgrade_guard.sh UPGRADE_MARKER,
+  # das die CLI im update-Arm nicht laedt.
+  if [ -f "${UPGRADE_MARKER:-/var/lib/lifeagents/upgrade.pending}" ] \
+     && [ "$(jq -r '[.recovered[]? | select(.outcome == "interrupted")] | length' <<<"$claim" 2>/dev/null || echo 0)" -gt 0 ]; then
+    _ur_alert "Update-Runner: ein Update wurde unterbrochen — n8n wird wieder gestartet; 'lifeagents update' setzt es fort."
+    svc_start n8n 2>/dev/null || true
+  fi
 
   if [ "$(jq -r '.claimed' <<<"$claim")" = null ]; then
     _ur_reports_flush
@@ -442,7 +485,7 @@ _ur_swap_continue() {
     none|wait) return 0 ;;
     apply)
       _swap_set PHASE applying
-      mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
+      mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"; _ur_logs_prune
       log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
       rf="$(mktemp /tmp/lifeagents-update-result.XXXXXX)"
       _ur_notice "master-Wechsel auf ${tag} steht — Einrichtung läuft weiter (${mode:-update}), Protokoll ${log}"
@@ -464,10 +507,11 @@ _ur_swap_continue() {
     rolled_back|interrupted)
       master_swap_close
       _ur_alert "master-Wechsel auf ${tag:-?} nicht abgeschlossen (${what}) — es läuft der vorherige Stand."
-      # Rueckweg (lifeagents rollback): die Daten sind schon zurueck, n8n wurde dafuer angehalten -> wieder an, sonst bliebe
-      # der Bot aus. Die beiseitegelegte DB bleibt als Sicherheitsnetz liegen.
+      # n8n kann gestoppt sein: der Rueckweg haelt es fuer das Zuruecksetzen an, ein Update fuer die Sicherung vor einem
+      # Versionswechsel (upgrade_prepare), und ein Abbruch durch die Zeitgrenze trifft mitten hinein -> wieder an, sonst
+      # bliebe der Bot aus (start auf einen laufenden Container aendert nichts). Die beiseitegelegte DB bleibt liegen.
+      svc_start n8n 2>/dev/null || true
       if [ "$mode" = rollback ]; then
-        svc_start n8n 2>/dev/null || true
         _ur_alert "Rückweg: die Daten sind zurückgesetzt, der vorherige Stand ${tag:-?} startete aber nicht — n8n wurde wieder gestartet. Diagnose: lifeagents doctor"
       fi
       if [ -n "$id" ]; then
@@ -491,16 +535,48 @@ _ur_swap_continue() {
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
-BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # nach einem Fehlschlag am selben Tag erneut
+BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # Abstand der Sicherungs-Laeufe (stuendlich wie der Timer)
+# Zeitgrenzen je Schritt = TimeoutStartSec der drei Units (templates/lifeagents-update-run|update-check|backup.service.tpl).
+UPDATE_RUN_TIMEOUT_S="${UPDATE_RUN_TIMEOUT_S:-7200}"
+UPDATE_CHECK_TIMEOUT_S="${UPDATE_CHECK_TIMEOUT_S:-300}"
+BACKUP_TIMEOUT_S="${BACKUP_TIMEOUT_S:-1800}"
+UPDATE_STEP_KILL_S="${UPDATE_STEP_KILL_S:-60}"          # nach TERM so lange warten, dann KILL (systemd: TimeoutStopSec 90 s)
+
+# _ur_cli -> Pfad der CLI (vor der ersten Installation zeigt der Link im master-Image ins Leere).
+_ur_cli() { command -v lifeagents || printf '/usr/local/bin/lifeagents'; }
+
+# _ur_step <sekunden> <cli-args…> — ein Tick-Schritt als eigener Prozess unter `timeout` (eigene Prozessgruppe: bei Ablauf
+#   endet die ganze Gruppe samt Fortschritts-Helfer und docker-Client; Prozesse, die per `docker exec` in einem anderen
+#   Container laufen, erreicht das nicht). Ein TERM an den Tick (docker stop, Neuanlage des master) geht an den Schritt
+#   weiter, sonst liefe er bis zum KILL nach 10 s ungeordnet weiter. Ablauf der Grenze = Alarm im Log. Immer rc 0.
+_UR_STEP_PID=''
+_ur_step() {
+  local secs="$1" rc=0 old_term old_int; shift
+  old_term="$(trap -p TERM)"; old_int="$(trap -p INT)"
+  timeout --kill-after="$UPDATE_STEP_KILL_S" "$secs" "$(_ur_cli)" "$@" </dev/null &
+  _UR_STEP_PID=$!
+  trap 'kill -TERM "$_UR_STEP_PID" 2>/dev/null; wait "$_UR_STEP_PID" 2>/dev/null; exit 143' TERM INT
+  wait "$_UR_STEP_PID" || rc=$?
+  trap - TERM INT
+  if [ -n "$old_term" ]; then eval "$old_term"; fi
+  if [ -n "$old_int" ]; then eval "$old_int"; fi
+  _UR_STEP_PID=''
+  case "$rc" in
+    124|137) _ur_alert "Tick: '$*' nach ${secs} s abgebrochen (Zeitgrenze) — der nächste Tick macht weiter." ;;
+  esac
+  return 0
+}
+
 update_tick() {
   require_root
   [ -r "$(lifeagents_version_marker)" ] || return 0
   mkdir -p "$(dirname "$UPDATE_TICK_STATE")"
   env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
-  ( update_run_requested ) || true   # Teilschale: die Update-Sperre (fd 9) endet mit ihr
-  local tz today now last nowe
+  # Eigener Prozess: die Update-Sperre (fd 9) endet mit ihm.
+  _ur_step "$UPDATE_RUN_TIMEOUT_S" update --run-requested
+  local tz now last nowe
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
-  today="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"; now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
+  now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
   last="$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK 2>/dev/null || true)"
   # LAST_CHECK = Epoch-Sekunden; ein Datum ("2026-11-08", Zustand aelterer Versionen) zaehlt als "lange her" (sonst bricht die Rechnung unter set -e ab)
   [[ $last =~ ^[0-9]+$ ]] || last=0
@@ -512,31 +588,25 @@ update_tick() {
     # Erinnerungs-Fensters) kommt der Neuversuch nach UPDATE_CHECK_RETRY_S. Ohne Meldung gilt er als entschieden.
     local outf outcome
     outf="$(mktemp)"
-    ( UPDATE_CHECK_OUTCOME_FILE="$outf" update_check scheduled ) || true
+    export UPDATE_CHECK_OUTCOME_FILE="$outf"
+    _ur_step "$UPDATE_CHECK_TIMEOUT_S" update --check --scheduled
+    unset UPDATE_CHECK_OUTCOME_FILE
     outcome="$(head -n1 "$outf" 2>/dev/null || true)"; rm -f -- "$outf"
     if [ "$outcome" = undecided ]; then
       env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$((nowe - UPDATE_CHECK_EVERY_S + UPDATE_CHECK_RETRY_S))"
     fi
   fi
-  # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund; ohne gewaehlten Ordner still) als eigener Prozess —
-  # die backup-Arm-Bibliotheken laedt nur die CLI.
-  # Scheiterte der heutige Versuch (backup.state: LAST_FAIL nach LAST_OK), stuendlich neu versuchen — eine externe Platte, die
-  # nur tagsueber steckt, soll nicht bis morgen warten. Der Chat-Hinweis kommt aus
-  # `backup auto` nur tagsueber (backup_cli.sh).
-  last="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP 2>/dev/null || true)"
-  local try okb flb run_bk=0
+  # Taegliche Sicherung in den Ordner auf dem Rechner wie lifeagents-backup.timer: ab BACKUP_AUTO_AT (Haushalts-Zeitzone) jede
+  # Stunde `backup auto --scheduled`; ob seit BACKUP_AUTO_AT schon gesichert wurde, entscheidet backup.state (LAST_OK,
+  # backup_cli.sh _bkp_auto_due), ein Lauf danach kostet nichts. So holt der naechste Takt einen Fehlschlag, eine belegte
+  # Sperre oder einen Lauf ohne Vermerk (Zeitgrenze, Neustart) nach, und ohne gewaehlten Ordner erreicht der Hinweis das
+  # Meldefenster am Tag (er drosselt sich selbst, BACKUP_NOTIFY_*).
+  local try
   try="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TRY 2>/dev/null || true)"; [[ $try =~ ^[0-9]+$ ]] || try=0
-  if rt_is_compose && [ "$last" != "$today" ] && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ]; then
-    env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$today"; run_bk=1
-  elif rt_is_compose && [ "$last" = "$today" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
-    okb="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; [[ $okb =~ ^[0-9]+$ ]] || okb=0
-    flb="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL 2>/dev/null || true)"; [[ $flb =~ ^[0-9]+$ ]] || flb=0
-    # nofolder: ein neuer Versuch kann nicht gelingen; das Waehlen im Menuepunkt sichert selbst sofort.
-    [ "$flb" -gt "$okb" ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)" != nofolder ] && run_bk=1
-  fi
-  if [ "$run_bk" = 1 ]; then
+  [ "$try" -le "$nowe" ] || try=0   # Uhr zurueckgestellt
+  if rt_is_compose && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
-    "$(command -v lifeagents || printf '/usr/local/bin/lifeagents')" backup auto </dev/null || true
+    _ur_step "$BACKUP_TIMEOUT_S" backup auto --scheduled
   fi
   return 0
 }

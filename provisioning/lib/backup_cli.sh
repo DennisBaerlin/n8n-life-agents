@@ -273,8 +273,8 @@ _bkp_key_ids() {
 
 # --- Ergebnis der Sicherungen (backup.state) ------------------------------------------------------------------------
 # LAST_OK / LAST_FAIL (Epoch) + LAST_FAIL_REASON (fester Code folder|key|dump|encrypt|write) — doctor und der Chat-Hinweis
-# lesen nur hier. Liegt im Verbund auf dem Volume var_la (uebersteht Neuanlage des master). Der Tick-Marker LAST_BACKUP
-# (update_runner.sh) ist etwas anderes: der Zeitplan ("heute schon versucht").
+# lesen nur hier. Liegt im Verbund auf dem Volume var_la (uebersteht Neuanlage des master). Der Tick-Marker LAST_BACKUP_TRY
+# (update_runner.sh) ist etwas anderes: nur der Stunden-Takt.
 _bkp_state_set() { { env_upsert "$BACKUP_STATE_FILE" "$1" "$2" && chmod 0600 "$BACKUP_STATE_FILE"; } 2>/dev/null || true; }
 # _bkp_fail <code> <meldung> — Fehlschlag einer Sicherung mit festem Grund festhalten, dann abbrechen.
 _bkp_fail() { _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON "$1"; shift; die "$@"; }
@@ -444,18 +444,20 @@ _bkp_auto_local() {
   return 0
 }
 # backup_cmd_auto [--scheduled] — taegliche Sicherung.
-#   Verbund: in den Rechner-Ordner (Tick im master, update_runner.sh: BACKUP_AUTO_AT, nach einem Fehlschlag stuendlich). Ohne
-#   gemerkten Ordner nur der Vermerk "nofolder" (doctor ROT + Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der
-#   Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+#   Verbund: in den Rechner-Ordner (Tick im master, update_runner.sh: stuendlich ab BACKUP_AUTO_AT). Ohne gemerkten Ordner nur
+#   der Vermerk "nofolder" (doctor ROT + Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft.
+#   Danach ggf. der Chat-Hinweis.
 #   Klassisch (systemd): nach BACKUP_LOCAL_DIR, dazu wie die fruehere crontab-Zeile die verschluesselte Kopie an den Owner-Chat
-#   (stille Kopie). `--scheduled` (Timer lifeagents-backup, stuendlich ab BACKUP_AUTO_AT) tut nichts, wenn seit BACKUP_AUTO_AT schon
-#   eine Sicherung gelang; ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler stehen in backup.state).
+#   (stille Kopie). `--scheduled` (Timer lifeagents-backup bzw. Tick, stuendlich ab BACKUP_AUTO_AT) tut in beiden Betriebsarten
+#   nichts, wenn seit BACKUP_AUTO_AT schon eine Sicherung gelang; ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler
+#   stehen in backup.state).
 backup_cmd_auto() {
   local scheduled=0 a
   for a in "$@"; do
     case "$a" in --scheduled) scheduled=1 ;; *) die "Unbekannte Option: $a" ;; esac
   done
   if ! rt_is_compose; then _bkp_auto_local "$scheduled"; return 0; fi
+  if [ "$scheduled" = 1 ] && ! _bkp_auto_due; then return 0; fi
   if [ -z "$(_bkp_host_dir)" ]; then
     _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
   else

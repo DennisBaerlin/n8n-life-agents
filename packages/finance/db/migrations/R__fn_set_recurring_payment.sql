@@ -8,6 +8,10 @@
 --   gemeinsamen Helfer fn_split_recurring_payment (Vorzeichen aus der alten Zeile; Ziel-Konto, Status, Ende,
 --   Rhythmus-Anker geerbt; Guards s. dort). Sonst (kein amount) in place: status (pause/resume),
 --   valid_to (beenden), name, schedule_day_of_month, notes.
+--   Neuer Buchungstag (Monats-Rhythmus): jeder Monat behaelt genau einen Termin (fn_recurring_day_shift). Ohne erledigte Termine
+--   dieser Zeile Neu-Anker in place (first_payment_date = neuer Tag im Startmonat, valid_from zieht bei frueherem Tag mit, Untergrenze
+--   Eroeffnungssaldo beider Konten und letzter Termin eines Vorgaengers, dessen Ende folgt; ein Ende wird so verschoben, dass der
+--   letzte Termin bleibt). Mit erledigten Terminen Split ab dem Tag nach dem letzten (split=true, previous_id).
 --   valid_to-Eingabe ist inklusiv (letzter gueltiger Tag, wie der Nutzer es sagt); gespeichert wird
 --   exklusiv (+1 Tag, Konvention [valid_from, valid_to)). Das LLM rechnet nicht.
 --   Eingabe jsonb: recurring_payment_id (im n8n aufgeloest), amount (positiver Betrag -> Split),
@@ -19,7 +23,9 @@
 --   selbst; leer = unveraendert). Wird auf alle noch laufenden Glieder der Kette geschrieben (Berater-Alarm liest den Kopf,
 --   die Uebersicht das gueltige Glied: beide muessen dasselbe zeigen) und mit amount zusaetzlich auf die neue Split-Zeile;
 --   nur an Uebertraegen (Zeile mit Ziel-Konto), sonst {ok:false}. Steuert nur Hinweise, nie die Buchung.
---   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id; bei einem Uebertrag zusaetzlich
+--   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id; mit amount oder
+--   schedule_day_of_month first_due (erster noch offener Termin mit den neuen Bedingungen, fn_recurring_first_due; eigenes Feld wie
+--   execution, Karte und Antwort lesen es); bei einem Uebertrag zusaetzlich
 --   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; eigenes Feld, nicht unter effective: das Gate mischt
 --   effective in den echten Write); effective (aufgeloeste relative Daten, bei until_free_money zusaetzlich das
 --   berechnete Ende aus fn_transfer_free_end); die Keys von fn_cashflow_coverage_fold; card_lines = Bank-Hinweis (fn_bank_setup_note: pausieren/valid_to -> bank_stop,
@@ -47,6 +53,10 @@ DECLARE
     v_free     BOOLEAN := COALESCE(NULLIF(p->>'until_free_money', '')::boolean, false);
     v_end      JSONB   := '{}'::jsonb;
     v_exec     TEXT    := NULLIF(p->>'executed_by', '');
+    v_shift    RECORD;
+    v_done     DATE;
+    v_vf       DATE;
+    v_prev_id  INT;
 BEGIN
     -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from', 'valid_to']);
@@ -111,6 +121,38 @@ BEGIN
         END IF;
         v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_new_id, 'split', true, 'previous_id', v_id);
     ELSE
+        -- Neuer Buchungstag: jeder Monat behaelt genau einen Termin (fn_recurring_day_shift). Regel wie fn_change_owned_recurring:
+        -- noch nichts erledigt und vor heute nichts faellig -> Neu-Anker in place (Start zieht auf den neuen Tag im Startmonat
+        -- mit, fn_recurring_reanchor_day). Sonst bleiben erledigte und ueberfaellige Termine am alten Tag -> Split ab
+        -- max(heute, letzter erledigter Termin + 1); die uebrigen Felder gelten dann fuer die neue Zeile.
+        SELECT * INTO v_shift FROM finance.fn_recurring_day_shift(v_id, v_row.valid_from, v_dom);
+        IF v_shift.start_date IS NOT NULL THEN
+            -- Ein Glied mit Nachfolger (geplante Aenderung schon angelegt): der Tag gehoert der ganzen Kette
+            SELECT s.valid_from INTO v_vf FROM finance.recurring_payments s WHERE s.predecessor_id = v_id ORDER BY s.valid_from LIMIT 1;
+            IF FOUND THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'has_successor',
+                    'reason', 'This entry is followed by a planned change from ' || v_vf || '. Change the debit day on that later '
+                           || 'entry (it is the current terms from then on), or first remove the planned change.',
+                    'successor_valid_from', v_vf);
+            END IF;
+            SELECT max(x.d) INTO v_done FROM (
+                SELECT max(recurring_due_date) AS d FROM finance.transactions WHERE recurring_payment_id = v_id
+                UNION ALL
+                SELECT max(due_date) FROM finance.recurring_payment_skips WHERE recurring_payment_id = v_id) x;
+            IF v_done IS NULL AND NOT EXISTS (SELECT 1 FROM finance.fn_schedule_occurrences(
+                   v_row.first_payment_date, v_row.schedule_interval, v_row.schedule_unit, v_row.schedule_day_of_month,
+                   v_row.schedule_days_of_month, v_row.valid_from, core.fn_today() - 1)) THEN
+                PERFORM finance.fn_recurring_reanchor_day(v_id, v_dom);
+            ELSE
+                v_core := finance.fn_split_recurring_payment(v_id, GREATEST(core.fn_today(), v_done + 1), NULL, NULL, NULL,
+                    v_dom, NULLIF(p->>'name', ''), NULLIF(p->>'notes', ''), v_to);
+                IF (v_core->>'ok')::boolean IS DISTINCT FROM true THEN
+                    RETURN v_core;
+                END IF;
+                v_prev_id := v_id;
+                v_id := (v_core->>'recurring_payment_id')::int;
+            END IF;
+        END IF;
         -- in place (kein Betrag); until_free_money: Ende aus der Projektion, Ablehnung rollt alles zurueck
         BEGIN
             UPDATE finance.recurring_payments SET
@@ -146,7 +188,13 @@ BEGIN
         EXCEPTION WHEN SQLSTATE 'LA002' THEN
             RETURN v_end;
         END;
-        v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_id, 'split', false);
+        v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_id, 'split', v_prev_id IS NOT NULL)
+               || CASE WHEN v_prev_id IS NOT NULL THEN jsonb_build_object('previous_id', v_prev_id) ELSE '{}'::jsonb END;
+    END IF;
+    -- Ab welchem Termin Betrag/Tag gelten: aus der DB, nie vom Modell abgeleitet (Karte + Antwort lesen es read-only)
+    IF v_amount IS NOT NULL OR v_dom IS NOT NULL THEN
+        v_core := v_core || jsonb_build_object('first_due',
+            finance.fn_recurring_first_due((v_core->>'recurring_payment_id')::int));
     END IF;
 
     -- Cashflow-Sofort-Hinweis (Event-Fold, geteilt von beiden Erfolgs-Zweigen). Post-State nach dem

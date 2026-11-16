@@ -50,13 +50,18 @@ So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
   sie aus seinem Probelauf in der Datenbank, nicht der Agent: Ihre Knoepfe und Hinweise (Abbrechen, Bestaetigen, "Sag es
   mir einfach") sind keine Rueckfrage des Agenten, und ein Wert, den die Datenbank aufgeloest hat (z. B. "ich" als voller
   Name des Absenders), ist nicht erfunden. Die Antwort des Agenten steht nur in ACTUAL_OUTPUT.
+- DB_CHECKS (kann fehlen) ist der Datenbank-Zustand nach der Runde, vom Test selbst gelesen (ok = erwarteter Wert gefunden).
+  Im Durchspiel (Eintrag mit CONFIRMATION_CARD) sind ACTUAL_TOOL_INPUT und ACTUAL_TOOL_OUTPUT immer leer, weil der Test
+  den Werkzeug-Aufruf nicht liest; Beleg fuer den Schreibvorgang sind dann die Karte mit CARD_DECISION und DB_CHECKS.
+  Leere Werkzeug-Felder sind dort kein Grund fuer PARTIAL/FAIL.
 - Zahlen, ids und Wahrheitswerte als Text ("1", "2.0", "true") sind gleichwertig zu Zahl/Boolean.
 - Optionale Felder mit Datenbank-Standard (Datum = heute, Ordergebuehr = 0, Gueltig-ab = heute) darf der
   Agent leer lassen; "heute" ergibt ein leeres Datum. Ein ERFUNDENES anderes Datum ist dagegen falsch.
 - Ein optionales Angebot ("wenn du magst, trage ich die IBAN nach") ist keine Rueckfrage; eine
   Rueckfrage, die den Vorgang blockiert, schon.
 - Kann-Punkte der Rubric ('darf', 'may', 'is correct', 'passes', 'optional') sind nie Pflicht: ihr Fehlen ist
-  kein Abzug. PARTIAL/FAIL nur fuer einen verletzten Muss- oder Verbots-Punkt.
+  kein Abzug. PARTIAL/FAIL nur fuer einen verletzten Muss- oder Verbots-Punkt. Was die Rubric weder verlangt noch
+  verbietet (z. B. eine Folgefrage zum naechsten Schritt), ist kein Abzug.
 
 Antworte AUSSCHLIESSLICH als JSON ohne Markdown-Fences in der Form:
 {"verdict":"PASS|FAIL|PARTIAL","reason":"kurze Begruendung"}.
@@ -82,6 +87,7 @@ $(if ($Entry.read_tool_outputs) { "READ_TOOL_OUTPUTS (what the agent read, oldes
 $(if ($Entry.other_write_tools) { "OTHER_WRITE_TOOLS (further write tools called in the same run, oldest first, tool: output):`n$($Entry.other_write_tools)`n" })
 $(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
 $(if ($Entry.card_text) { "CONFIRMATION_CARD (card the system showed before the write, built by the tool from its database dry run, not written by the agent):`n$($Entry.card_text)`n" })
+$(if ($Entry.db_checks) { "DB_CHECKS (database state the test read after the round, one check per line):`n$($Entry.db_checks)`n" })
 $(if ($Entry.next_step_button) { "NEXT_STEP_BUTTON (button the system adds under the reply; the suggested next step):`n$($Entry.next_step_button)`n" })
 ACTUAL_OUTPUT:
 $($Entry.actual_output)

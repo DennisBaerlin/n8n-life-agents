@@ -56,6 +56,15 @@ function Get-OutputText($Outs) {
     (@(foreach ($o in $Outs) { $o.text; foreach ($b in $o.buttons) { $b.label } }) | Where-Object { $_ }) -join "`n"
 }
 
+# DB-Pruefungen einer Runde (expect_sql, Form $rd.sql_checks) als Beleg fuers Bewerter-Buendel: Den Werkzeug-Aufruf liest das
+# Durchspiel nicht (er laeuft in einer Unter-Ausfuehrung des Agenten), den Zustand danach schon. Eine Zeile je Pruefung.
+function Format-JudgeDbChecks($Checks) {
+    (@(foreach ($c in @($Checks)) {
+        if (-not $c) { continue }
+        if ($c.ok) { "ok: $($c.sql) = $($c.got)" } else { "FAIL: $($c.sql) = $($c.got) (erwartet $($c.equals))" }
+    }) -join "`n")
+}
+
 # Rueckgabe @{ reply; card }: reply = Ausgaben ohne Karte (die Antwort des Agenten), card = nur die Karten (Feld card = true).
 function Split-JudgeCardOutput($Outs) {
     $cards = @($Outs | Where-Object { $_.card }); $rest = @($Outs | Where-Object { -not $_.card })

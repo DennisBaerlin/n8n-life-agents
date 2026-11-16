@@ -72,10 +72,29 @@ foreach ($d in 'declined', 'approved') {
     Check ($st -match 'CONFIRMATION_CARD' -and $st -match 'keine Rueckfrage des Agenten' -and $st -match 'aufgeloest') "System-Text ($d) erklaert die Karte: Knoepfe keine Rueckfrage, aufgeloeste Werte nicht erfunden"
 }
 
+Write-Host 'Beleg des Schreibvorgangs im Durchspiel (DB-Pruefungen der Runde statt Werkzeug-Aufruf)'
+# Form von $rd.sql_checks aus Invoke-Round (expect_sql nach der Runde).
+$checks = @([pscustomobject]@{ sql = "SELECT count(*) FROM finance.accounts WHERE name = 'Beispielgiro';"; equals = '1'; got = '1'; ok = $true },
+            [pscustomobject]@{ sql = 'SELECT balance FROM x;'; equals = '500.00'; got = '480.00'; ok = $false })
+$dc = Format-JudgeDbChecks $checks
+$dcl = @($dc -split "`n")
+Check ($dcl.Count -eq 2 -and $dcl[0] -match '^ok: ' -and $dcl[0] -match "Beispielgiro" -and $dcl[0] -match '= 1$') 'DB-Pruefung erfuellt: eine Zeile mit ok, Abfrage und Wert'
+Check ($dcl[1] -match '^FAIL: ' -and $dcl[1] -match '480\.00' -and $dcl[1] -match '500\.00') 'DB-Pruefung verfehlt: FAIL mit gefundenem und erwartetem Wert'
+Check ((Format-JudgeDbChecks @()) -eq '') 'ohne DB-Pruefung leer'
+$we = [pscustomobject]@{ task = 'x'; card_decision = 'approved'; card_text = 'Karte'; db_checks = $dc; actual_output = 'angelegt' }
+$wut = Format-JudgeUserText $we
+Check ($wut -match 'DB_CHECKS[^\n]*\nok: SELECT count') 'User-Text traegt DB_CHECKS'
+Check ((Format-JudgeUserText ([pscustomobject]@{ task = 'x'; actual_output = 'a' })) -notmatch 'DB_CHECKS') 'ohne DB-Pruefungen kein Abschnitt'
+$sa = Get-JudgeSystemText 'approved'
+Check ($sa -match 'DB_CHECKS' -and $sa -match 'ACTUAL_TOOL_INPUT[^.]*leer') 'System-Text (approved): im Durchspiel darf ACTUAL_TOOL_INPUT leer sein, Beleg sind Karte und DB_CHECKS'
+Check ((Get-JudgeSystemText 'declined') -match 'DB_CHECKS') 'System-Text (declined) erklaert DB_CHECKS ebenso'
+Check ($sa -match 'weder verlangt noch\s+verbietet') 'System-Text: was die Rubric weder verlangt noch verbietet, ist kein Abzug'
+
 Write-Host 'Verdrahtung im Durchspiel'
 $conv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\conversation_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Check ($conv -match 'lib\\judge_card_text\.ps1') 'Durchspiel laedt den Baustein'
 Check ($conv -match 'card_text = \$split\.card' -and $conv -match 'actual_output = \$split\.reply') 'Buendel-Eintrag: card_text und actual_output getrennt'
+Check ($conv -match 'db_checks = \(Format-JudgeDbChecks \$rd\.sql_checks\)') 'Buendel-Eintrag: db_checks aus den DB-Pruefungen der Runde'
 Check ($conv -notmatch 'function (Get-OutputText|ConvertTo-BotOutputs|Get-ButtonList)\b' -and $conv -notmatch '\$VisibleMethods') 'Ausgabe-Umwandlung und Karten-Erkennung leben nur im Baustein (keine Kopie)'
 
 if ($fail -eq 0) { Write-Host 'judge_card_text_test: alle Pruefungen bestanden.' -ForegroundColor Green }

@@ -353,7 +353,7 @@ foreach ($tc in $cases) {
                 expected_behavior = $rd.rubric; expected_tool = ''
                 card_decision = $(if ($rd.card_decision -eq 'angenommen') { 'approved' } else { 'declined' })
                 det_pass = ($rd.failures.Count -eq 0); actual_tool = $agentShown; actual_tool_input = ''
-                read_tools = ''; specialist_output = ''; card_text = $split.card; actual_output = $split.reply
+                read_tools = ''; specialist_output = ''; card_text = $split.card; db_checks = (Format-JudgeDbChecks $rd.sql_checks); actual_output = $split.reply
             }
         }
         if ($abortCase) { break }

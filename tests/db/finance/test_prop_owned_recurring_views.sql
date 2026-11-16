@@ -1,0 +1,163 @@
+-- tests/db/finance/test_prop_owned_recurring_views.sql
+-- Eigenschafts-Test: Beitraege/Raten, die einem Vertrag gehoeren (Versicherung, Vorsorge, Sparplan), in allen lesenden
+-- Sichten und nach einer Aenderung.
+--   V1 Monats-Normalisierung: derselbe Vertrag zeigt in Vertrags-View (active_insurances, pension_overview,
+--      savings_plan_overview), Monatsrechnung (monthly_cashflow_overview) und Konto-Sicht (fn_account_flows) denselben
+--      Monatswert, mit gleichem Vorzeichen (Ausgabe negativ); der Jahresbeitrag ist Betrag x Termine eines Jahres
+--   V2 Post-State: die Rueckgabe der Write-fn nennt dieselben Zahlen wie die View danach
+--   V3 Beitrags-Wechsel zu einem Stichtag: Termine der Kette unveraendert, Betrag wechselt genau am Stichtag
+--   V4 Vertragsende: kein Termin nach dem genannten letzten Tag; die View nennt diesen Tag
+--   V5 Sparplan: naechste Ausfuehrung der Uebersicht = fruehester offener Termin der Kette, vor und nach einer
+--      geplanten Betrags-Aenderung
+-- Start der Zahlungen 40 Tage vor heute (die Views lesen current_date; ein laufender Vertrag hat ein heute gueltiges
+-- Glied); jeder Fall in einem eigenen Savepoint.
+BEGIN;
+
+DO $$
+DECLARE
+  v_t DATE := current_date;
+  v_first DATE := current_date - 40;   -- laufender Vertrag: bei jedem Monatstag liegt mindestens ein Termin vor heute
+  v_res JSONB; v_giro INT; v_depot INT; v_ins INT; v_rp INT; v_pen INT; v_plan INT;
+  r RECORD; v_ai RECORD; v_cf RECORD; v_po RECORD; v_so RECORD;
+  v_occ INT; v_flow NUMERIC; v_dates0 DATE[]; v_dates1 DATE[]; v_eff DATE; v_last DATE; v_next DATE;
+  v_n_ins INT := 0; v_n_pen INT := 0; v_n_plan INT := 0;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__prop_orv_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__prop_orv_depot__','account_type','stocks_depot','currency','EUR',
+            'settlement_id',v_giro))->>'account_id')::int INTO v_depot;
+
+  -- Versicherung
+  FOR r IN SELECT * FROM (VALUES
+      (30.00,  'month', 1,  1::int),   (89.90, 'month', 3, NULL),  (240.00, 'month', 6, NULL),  (512.37, 'month', 12, NULL),
+      (480.00, 'year',  1,  NULL), (12.50, 'month', 1, -2), (33.33, 'month', 1, NULL)) x(premium, unit, intv, dom) LOOP
+    BEGIN
+      v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_ins__','premium_amount',r.premium,
+        'schedule_unit',r.unit,'schedule_interval',r.intv,'first_payment_date',v_first,'debit_account_id',v_giro)
+        || CASE WHEN r.dom IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('schedule_day_of_month', r.dom) END);
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V setup insurance %: %', r, v_res; END IF;
+      v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+      SELECT * INTO v_ai FROM finance.active_insurances WHERE id = v_ins;
+      SELECT * INTO v_cf FROM finance.monthly_cashflow_overview WHERE id = v_rp;
+      SELECT f.monthly INTO v_flow FROM finance.fn_account_flows(v_giro) f WHERE f.rp_id = v_rp;
+      SELECT min(d) INTO v_next FROM finance.fn_schedule_occurrences((SELECT first_payment_date FROM finance.recurring_payments WHERE id = v_rp),
+          r.intv, r.unit::finance.schedule_unit, r.dom::smallint, NULL, v_t, v_t + 800) d;
+      SELECT count(*) INTO v_occ FROM finance.fn_upcoming_payments(v_next, (v_next + interval '1 year')::date - 1) u WHERE u.recurring_payment_id = v_rp;
+      -- V1
+      IF v_ai.premium_amount IS DISTINCT FROM r.premium OR v_ai.annual_premium IS DISTINCT FROM r.premium * v_occ THEN
+        RAISE EXCEPTION 'FAIL V1 insurance %: Beitrag % Jahresbeitrag %, Termine im Jahr % x Beitrag = %', r, v_ai.premium_amount, v_ai.annual_premium, v_occ, r.premium * v_occ; END IF;
+      IF abs(v_ai.monthly_equivalent - v_ai.annual_premium / 12) > 0.005 THEN
+        RAISE EXCEPTION 'FAIL V1 insurance %: Monatswert % <> Jahresbeitrag/12 %', r, v_ai.monthly_equivalent, v_ai.annual_premium / 12; END IF;
+      IF v_cf.monthly_equivalent IS DISTINCT FROM -v_ai.monthly_equivalent OR v_cf.consumption_eur IS DISTINCT FROM -v_ai.monthly_equivalent
+         OR v_flow IS DISTINCT FROM -v_ai.monthly_equivalent OR v_cf.cashflow_class <> 'consumption' THEN
+        RAISE EXCEPTION 'FAIL V1 insurance %: Vertrag % Monatsrechnung %/% (%) Konto-Sicht %', r, v_ai.monthly_equivalent, v_cf.monthly_equivalent, v_cf.consumption_eur, v_cf.cashflow_class, v_flow; END IF;
+      -- V2
+      IF (v_res->>'premium_amount')::numeric IS DISTINCT FROM v_ai.premium_amount OR (v_res->>'annual_premium')::numeric IS DISTINCT FROM v_ai.annual_premium
+         OR (v_res->>'monthly_equivalent')::numeric IS DISTINCT FROM v_ai.monthly_equivalent THEN
+        RAISE EXCEPTION 'FAIL V2 insurance %: Rueckgabe % gegen View %/%/%', r, v_res - 'card_lines', v_ai.premium_amount, v_ai.annual_premium, v_ai.monthly_equivalent; END IF;
+      -- V3: Beitrag + 10 ab einem Stichtag mitten im Raster (erster Termin + 100 Tage)
+      SELECT array_agg(u.due_date ORDER BY u.due_date) INTO v_dates0 FROM finance.fn_upcoming_payments(v_t, v_t + 1200) u WHERE u.recurring_payment_id = v_rp;
+      v_eff := v_next + 100;
+      v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',r.premium + 10,'effective_from',v_eff));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V3 insurance %: %', r, v_res; END IF;
+      SELECT array_agg(u.due_date ORDER BY u.due_date) INTO v_dates1 FROM finance.fn_upcoming_payments(v_t, v_t + 1200) u
+        WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+      IF v_dates1 IS DISTINCT FROM v_dates0 THEN
+        RAISE EXCEPTION 'FAIL V3 insurance % stichtag %: Termine vorher % nachher %', r, v_eff, v_dates0, v_dates1; END IF;
+      IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 1200) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                   AND u.amount IS DISTINCT FROM CASE WHEN u.due_date < v_eff THEN -r.premium ELSE -(r.premium + 10) END) THEN
+        RAISE EXCEPTION 'FAIL V3 insurance % stichtag %: Betrag wechselt nicht am Stichtag', r, v_eff; END IF;
+      IF (v_res->>'premium_amount')::numeric IS DISTINCT FROM r.premium + 10 THEN
+        RAISE EXCEPTION 'FAIL V2 insurance %: Rueckgabe nennt nicht den neuen Beitrag: %', r, v_res; END IF;
+      -- heute gilt noch der alte Beitrag
+      IF (SELECT premium_amount FROM finance.active_insurances WHERE id = v_ins) IS DISTINCT FROM r.premium THEN
+        RAISE EXCEPTION 'FAIL V3 insurance %: View zeigt vor dem Stichtag schon den neuen Beitrag', r; END IF;
+      -- V4: Vertragsende 400 Tage nach dem ersten Termin
+      v_last := v_next + 400;
+      v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'valid_to',v_last));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V4 insurance %: %', r, v_res; END IF;
+      IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 1200) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp)) AND u.due_date > v_last) THEN
+        RAISE EXCEPTION 'FAIL V4 insurance %: Termin nach dem Vertragsende %', r, v_last; END IF;
+      IF (SELECT array_agg(u.due_date ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 1200) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp)))
+         IS DISTINCT FROM ARRAY(SELECT d FROM unnest(v_dates0) d WHERE d <= v_last ORDER BY d) THEN
+        RAISE EXCEPTION 'FAIL V4 insurance %: Termine bis zum Ende weichen ab', r; END IF;
+      IF (SELECT last_valid_day FROM finance.active_insurances WHERE id = v_ins) IS DISTINCT FROM v_last THEN
+        RAISE EXCEPTION 'FAIL V4 insurance %: View nennt als letzten Tag %, gesetzt %', r, (SELECT last_valid_day FROM finance.active_insurances WHERE id = v_ins), v_last; END IF;
+      v_n_ins := v_n_ins + 1;
+      RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+    EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+    END;
+  END LOOP;
+
+  -- Vorsorge-Beitrag
+  FOR r IN SELECT * FROM (VALUES (80.00, 'month', 1), (250.00, 'month', 3), (1200.00, 'year', 1), (25.00, 'week', 1)) x(amt, unit, intv) LOOP
+    BEGIN
+      v_res := finance.fn_create_pension(jsonb_build_object('name','__prop_orv_pen__','pension_type','private','contribution_amount',r.amt,
+        'schedule_unit',r.unit,'schedule_interval',r.intv,'debit_account_id',v_giro,'first_payment_date',v_first));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V setup pension %: %', r, v_res; END IF;
+      v_pen := (v_res->>'pension_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+      SELECT * INTO v_po FROM finance.pension_overview WHERE id = v_pen;
+      SELECT * INTO v_cf FROM finance.monthly_cashflow_overview WHERE id = v_rp;
+      SELECT f.monthly INTO v_flow FROM finance.fn_account_flows(v_giro) f WHERE f.rp_id = v_rp;
+      IF v_po.contribution_amount IS DISTINCT FROM r.amt OR v_po.monthly_contribution IS DISTINCT FROM -finance.fn_monthly_equivalent(r.amt, r.intv, r.unit::finance.schedule_unit)
+         OR v_po.monthly_contribution >= 0 THEN
+        RAISE EXCEPTION 'FAIL V1 pension %: Beitrag % Monatswert %', r, v_po.contribution_amount, v_po.monthly_contribution; END IF;
+      IF v_cf.monthly_equivalent IS DISTINCT FROM v_po.monthly_contribution OR v_cf.saving_eur IS DISTINCT FROM v_po.monthly_contribution
+         OR v_flow IS DISTINCT FROM v_po.monthly_contribution OR v_cf.cashflow_class <> 'saving' THEN
+        RAISE EXCEPTION 'FAIL V1 pension %: Vertrag % Monatsrechnung %/% (%) Konto-Sicht %', r, v_po.monthly_contribution, v_cf.monthly_equivalent, v_cf.saving_eur, v_cf.cashflow_class, v_flow; END IF;
+      v_n_pen := v_n_pen + 1;
+      RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+    EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+    END;
+  END LOOP;
+
+  -- Sparplan (Monatsrhythmus, kein Depot-Kalender noetig)
+  FOR r IN SELECT * FROM (VALUES (150.00, 1, 1::int), (75.00, 1, 15), (300.00, 3, NULL), (50.00, 1, -1)) x(amt, intv, dom) LOOP
+    BEGIN
+      v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_plan__','depot_name','__prop_orv_depot__',
+        'isin','IE00B3RBWM25','symbol','VWCE','security_name','Testfonds Welt','amount',r.amt,'schedule_interval',r.intv,
+        'schedule_unit','month','schedule_day_of_month',r.dom,'first_payment_date',v_first));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V setup plan %: %', r, v_res; END IF;
+      v_plan := (v_res->>'savings_plan_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+      -- ueberfaellige Ausfuehrungen erledigen (fn_set_savings_plan verlangt das vor einem Stichtag)
+      PERFORM finance.fn_skip_recurring_occurrence(jsonb_build_object('recurring_payment_id', o.recurring_payment_id, 'due_date', o.due_date))
+        FROM finance.fn_recurring_due_open(v_t - 1) o WHERE o.recurring_payment_id = v_rp;
+      SELECT * INTO v_so FROM finance.savings_plan_overview WHERE id = v_plan;
+      SELECT * INTO v_cf FROM finance.monthly_cashflow_overview WHERE id = v_rp;
+      SELECT f.monthly INTO v_flow FROM finance.fn_account_flows(v_giro) f WHERE f.rp_id = v_rp;
+      SELECT min(u.due_date) INTO v_next FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id = v_rp;
+      IF v_so.amount_per_execution IS DISTINCT FROM r.amt OR v_so.monthly_amount IS DISTINCT FROM (v_res->>'monthly_amount')::numeric
+         OR v_cf.monthly_equivalent IS DISTINCT FROM -v_so.monthly_amount OR v_flow IS DISTINCT FROM -v_so.monthly_amount
+         OR v_cf.saving_eur IS DISTINCT FROM -v_so.monthly_amount THEN
+        RAISE EXCEPTION 'FAIL V1/V2 plan %: Uebersicht %/% Rueckgabe % Monatsrechnung %/% Konto-Sicht %', r, v_so.amount_per_execution, v_so.monthly_amount,
+          v_res->>'monthly_amount', v_cf.monthly_equivalent, v_cf.saving_eur, v_flow; END IF;
+      IF v_so.next_execution IS DISTINCT FROM v_next THEN
+        RAISE EXCEPTION 'FAIL V5 plan %: Uebersicht naechste Ausfuehrung %, frueheste offene %', r, v_so.next_execution, v_next; END IF;
+      -- geplante Betrags-Aenderung ab erstem Termin + 45 Tage
+      SELECT array_agg(u.due_date ORDER BY u.due_date) INTO v_dates0 FROM finance.fn_upcoming_payments(v_t, v_t + 800) u WHERE u.recurring_payment_id = v_rp;
+      v_eff := v_next + 45;
+      v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_plan__','new_amount',r.amt + 25,'valid_from',v_eff));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'split')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V3 plan %: %', r, v_res; END IF;
+      SELECT * INTO v_so FROM finance.savings_plan_overview WHERE id = v_plan;
+      SELECT array_agg(u.due_date ORDER BY u.due_date) INTO v_dates1 FROM finance.fn_upcoming_payments(v_t, v_t + 800) u
+        WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+      IF v_dates1 IS DISTINCT FROM v_dates0 THEN
+        RAISE EXCEPTION 'FAIL V3 plan % stichtag %: Termine vorher % nachher %', r, v_eff, v_dates0, v_dates1; END IF;
+      IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 800) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                   AND u.amount IS DISTINCT FROM CASE WHEN u.due_date < v_eff THEN -r.amt ELSE -(r.amt + 25) END) THEN
+        RAISE EXCEPTION 'FAIL V3 plan % stichtag %: Betrag wechselt nicht am Stichtag', r, v_eff; END IF;
+      IF v_so.amount_per_execution IS DISTINCT FROM r.amt OR v_so.change_from IS DISTINCT FROM v_eff
+         OR v_so.new_amount_per_execution IS DISTINCT FROM r.amt + 25 OR v_so.next_execution IS DISTINCT FROM v_next THEN
+        RAISE EXCEPTION 'FAIL V5 plan %: nach geplanter Aenderung zeigt die Uebersicht Betrag % ab % neu % naechste % (erwartet % / % / % / %)', r,
+          v_so.amount_per_execution, v_so.change_from, v_so.new_amount_per_execution, v_so.next_execution, r.amt, v_eff, r.amt + 25, v_next; END IF;
+      IF (v_res->>'monthly_amount')::numeric IS DISTINCT FROM (SELECT abs(monthly_equivalent) FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int) THEN
+        RAISE EXCEPTION 'FAIL V2 plan %: Rueckgabe monthly_amount', r; END IF;
+      v_n_plan := v_n_plan + 1;
+      RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+    EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+    END;
+  END LOOP;
+
+  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5)]', v_n_ins, v_n_pen, v_n_plan;
+END $$;
+
+ROLLBACK;

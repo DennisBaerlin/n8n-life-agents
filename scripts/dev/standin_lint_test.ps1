@@ -90,6 +90,10 @@ Test-Case 'PATH-Zeile im Here-Doc ist kein Treffer' @{
     "$T/y/cases.sh" = "#!/usr/bin/env bash`ncat > x <<'EOF'`nPATH=`"`$W/bin:`$PATH`"`nexport RELEASE_TAG=v9.0.0`nEOF`n"
 } $false ''
 
+Test-Case 'Here-Doc-Marke im Kommentar oder in Arithmetik verschluckt nichts' @{
+    "$T/y/cases.sh" = "#!/usr/bin/env bash`n# cat <<EOF zeigt nur den Aufruf`nx=`$((1<<2))`nexport RELEASE_TAG=v9.0.0`n"
+} $true 'RELEASE_TAG'
+
 # --- (D) export NAME=<fester Wert> vor dem geprueften Aufruf ---
 Test-Case 'export mit festem Wert ohne Begruendung ist rot' @{
     "$T/y/cases.sh" = "#!/usr/bin/env bash`nexport RELEASE_TAG=v9.0.0`n"

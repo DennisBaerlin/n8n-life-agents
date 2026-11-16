@@ -96,8 +96,8 @@ foreach ($f in $shFiles) {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         if ($tag) { if ($line.Trim() -eq $tag) { $tag = $null }; continue }
-        $hm = $rxHere.Match($line); if ($hm.Success) { $tag = $hm.Groups[1].Value }
         if ($line -match '^\s*#') { continue }
+        $hm = $rxHere.Match($line); if ($hm.Success) { $tag = $hm.Groups[1].Value }
         if ($rxPathStub.IsMatch($line) -or $rxChmodStub.IsMatch($line)) { $stub = $true }
         $em = $rxExport.Match($line)
         if (-not $em.Success) { continue }

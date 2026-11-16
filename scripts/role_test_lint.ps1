@@ -288,6 +288,7 @@ else {
     $catText = [System.IO.File]::ReadAllText($catPath, $u8)
     $cm = $catRx.Match($catText)
     if (-not $cm.Success) { Fail "(D) Marker '-- BEGIN/END GENERATED PAIRS' fehlen in test_role_catalog_exec.sql" }
+    elseif ($WriteCatalog -and $fails -gt 0) { Write-Host "  (D) Katalog nicht geschrieben: erst die $fails Fehler oben beheben" -ForegroundColor Yellow }
     elseif ($WriteCatalog) {
         $new = $catRx.Replace($catText, { param($m) $m.Groups[1].Value + $catBlock + "`n" + '-- END GENERATED PAIRS' }, 1)
         [System.IO.File]::WriteAllText($catPath, $new, $u8)

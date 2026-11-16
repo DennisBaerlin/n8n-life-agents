@@ -539,7 +539,8 @@ _chk_case() ( require_root() { :; }; lifeagents_db_name() { :; }; _ur_installed(
 ( unset LIFEAGENTS_UPDATE_LOCK_HELD; _chk_case scheduled ) >/dev/null 2>&1
 eq K.check-sperre-frei-prueft "check v9.0.0 true" "$(cat "$W/chk.log")"
 : > "$W/chk.log"; _hold "$W/chk.lock"; chk_holder=$!; sleep 1
-( unset LIFEAGENTS_UPDATE_LOCK_HELD; _chk_case scheduled ) >/dev/null 2>&1
+# Der Check wartet UPDATE_CHECK_LOCK_WAIT_S auf die Sperre (Minuten-Runner); der Halter hier haelt sie laenger = Update.
+( unset LIFEAGENTS_UPDATE_LOCK_HELD; UPDATE_CHECK_LOCK_WAIT_S=1; _chk_case scheduled ) >/dev/null 2>&1
 case "$(cat "$W/chk.log")" in "log "*Update-Sperre*) pass K.check-sperre-belegt-ausgelassen ;; *) fail K.check-sperre-belegt-ausgelassen "$(cat "$W/chk.log")" ;; esac
 : > "$W/chk.log"
 ( LIFEAGENTS_UPDATE_LOCK_HELD=1 _chk_case scheduled ) >/dev/null 2>&1

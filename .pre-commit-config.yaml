@@ -418,6 +418,20 @@ repos:
         pass_filenames: false
         files: ^scripts/(standin_lint|dev/standin_lint_test)\.ps1$
 
+      - id: timer-lock-lint
+        name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/timer_lock_lint.ps1
+        pass_filenames: false
+        files: ^(provisioning/.*\.(sh|tpl)|scripts/timer_lock_lint\.ps1)$
+
+      - id: timer-lock-lint-test
+        name: timer_lock_lint_test (lock probe or take without a wait outside the allowed file and an unregistered timer turn timer_lock_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/timer_lock_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
+
       - id: ci-wait-test
         name: ci_wait_test (check_ci_status -Wait verdict - green, red, pending, no run, rerun after red; no network)
         language: system

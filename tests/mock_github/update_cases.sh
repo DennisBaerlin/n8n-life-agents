@@ -204,6 +204,22 @@ claimed="$(sql "SELECT claimed_at IS NOT NULL FROM core.update_requests WHERE id
 wait "$LOCKER" 2>/dev/null
 if [ "$claimed" = f ] && [ "$(tg_n)" = 0 ]; then pass run_lock_busy; else fail run_lock_busy "claimed=$claimed sends=$(tg_n)"; fi
 
+# 10b Release-Check gegen die Sperre. Der Minuten-Runner haelt sie zur vollen Minute kurz, genau dann feuert auch der
+#     Check-Timer: der Check wartet und entscheidet. Ein echtes Update haelt sie laenger als die Wartezeit: ausgelassen.
+installed v9.9.8; reset_db; latch_clear; tg_clear; rm -f "$LKMARK"
+flock /run/lifeagents-update.lock sh -c "touch '$LKMARK'; sleep 2" & LOCKER=$!
+for _ in $(seq 1 100); do [ -e "$LKMARK" ] && break; sleep 0.1; done
+cli --check
+wait "$LOCKER" 2>/dev/null; rm -f "$LKMARK"
+if [ "$(tg_n)" = 1 ] && tg_has 'upd:now:v9.9.10'; then pass check_waits_short_lock; else fail check_waits_short_lock "sends=$(tg_n) $(show "$OUT")"; fi
+latch_clear; tg_clear
+flock /run/lifeagents-update.lock sh -c "touch '$LKMARK'; sleep 5" & LOCKER=$!
+for _ in $(seq 1 100); do [ -e "$LKMARK" ] && break; sleep 0.1; done
+EXTRA_ENV="UPDATE_CHECK_LOCK_WAIT_S=1"; cli --check; EXTRA_ENV=
+wait "$LOCKER" 2>/dev/null; rm -f "$LKMARK"
+if [ "$(tg_n)" = 0 ] && printf '%s' "$OUT" | grep -q 'ausgelassen'; then pass check_skips_long_lock; else fail check_skips_long_lock "sends=$(tg_n) $(show "$OUT")"; fi
+latch_clear
+
 # 11 Runner starb mittendrin (uebernommen, nie abgeschlossen) -> interrupted + Meldung
 reset_db; tg_clear
 id="$(sql "INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v9.9.10', now(), 'v9.9.8') RETURNING id;")"

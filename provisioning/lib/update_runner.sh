@@ -221,7 +221,8 @@ update_check() {
   [ "${1:-}" = scheduled ] && scheduled=true
   # Mitten in einem Update liest der Check noch die alte VERSION und schickt eine ueberfluessige Karte. Die Sperre
   # nur pruefen, nie nehmen (der Check ist kein Update); ein Lauf, der sie selbst haelt (Folge-Check), prueft weiter.
-  if [ "${LIFEAGENTS_UPDATE_LOCK_HELD:-0}" != 1 ] && ! update_lock_free; then
+  # Mit Wartezeit: der Minuten-Runner haelt die Sperre zu jeder vollen Minute kurz; ein Update haelt sie Minuten.
+  if [ "${LIFEAGENTS_UPDATE_LOCK_HELD:-0}" != 1 ] && ! update_lock_free "${UPDATE_CHECK_LOCK_WAIT_S:-20}"; then
     log "Release-Check: Update-Sperre belegt (Update/Einrichtung läuft) — ausgelassen, nächster Lauf."
     _ur_outcome undecided
     return 0

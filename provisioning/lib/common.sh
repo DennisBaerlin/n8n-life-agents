@@ -50,6 +50,8 @@ result_set() {
 # Runner nie wartend (-n, naechste Minute), Terminal-Laeufe bis 30 s: der minuetliche Runner haelt die Sperre zur
 # vollen Minute fuer Sekundenbruchteile auch ohne Auftrag (ein Update zur Minute :00 brach sonst ab).
 # Ein Kind-Lauf erbt die Sperre ueber den offenen fd und LIFEAGENTS_UPDATE_LOCK_HELD=1 (exec-fest).
+# Regel: nur der Minuten-Runner nimmt oder probt die Sperre ohne Wartezeit; jeder andere Zeitgeber wartet. Startzeiten
+# zu staffeln ersetzt das Warten nicht. Waechter samt Zeitgeber-Liste: scripts/timer_lock_lint.ps1.
 LIFEAGENTS_UPDATE_LOCK="${LIFEAGENTS_UPDATE_LOCK:-/run/lifeagents-update.lock}"
 # update_lock_acquire [wait_s] — 0 = Sperre gehalten (oder geerbt), 1 = belegt (ohne wait_s sofort, sonst nach wait_s).
 update_lock_acquire() {
@@ -59,11 +61,14 @@ update_lock_acquire() {
   if [ -n "${1:-}" ]; then flock -w "$1" 9 || return 1; else flock -n 9 || return 1; fi
   export LIFEAGENTS_UPDATE_LOCK_HELD=1
 }
-# update_lock_free — 0, wenn gerade niemand die Sperre haelt (read-only Probe fuer doctor).
+# update_lock_free [wait_s] — 0, wenn niemand die Sperre haelt (read-only Probe, nimmt sie nie). Ohne wait_s sofort
+#   (doctor); mit wait_s wartet die Probe so lange auf das Freiwerden. Jeder zeitgesteuerte Aufrufer gibt wait_s an:
+#   der Minuten-Runner haelt die Sperre zu jeder vollen Minute kurz, eine Sofort-Probe zur selben Sekunde faellt aus.
 update_lock_free() {
   need_cmd flock || return 0
   [ -e "$LIFEAGENTS_UPDATE_LOCK" ] || return 0
-  flock -n "$LIFEAGENTS_UPDATE_LOCK" true 2>/dev/null
+  if [ -n "${1:-}" ]; then flock -w "$1" "$LIFEAGENTS_UPDATE_LOCK" true 2>/dev/null
+  else flock -n "$LIFEAGENTS_UPDATE_LOCK" true 2>/dev/null; fi
 }
 
 # --- guards ------------------------------------------------------------------

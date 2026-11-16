@@ -275,6 +275,7 @@ main() {
     # Haengender Auftrag: offen seit > 60 min und die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
     _stuck="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM core.update_requests WHERE finished_at IS NULL AND requested_at < now() - interval '60 minutes' LIMIT 1" 2>/dev/null || true)"
+    # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
     if [ -n "$_stuck" ] && update_lock_free; then
       _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (${_runner_log})"
     fi

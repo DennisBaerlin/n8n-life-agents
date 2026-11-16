@@ -927,23 +927,27 @@ eq D.check-nie-gelaufen-rot 'fail=1' "$(printf '%s' "$out" | tail -n1)"
 dd_state - - 3; out="$(dd_run _doctor_compose_check)"
 eq D.check-frische-installation-warn '  [WARN] Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)
 fail=0' "$out"
-dd_state 600 "$dd_today" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-heute-angestossen-gruen '  [ OK ] Tägliche Sicherung wird angestoßen (zuletzt '"$dd_today"')
+# Sicherungs-Versuch: den Zustand schreibt der echte Tick (update_tick, Marker LAST_BACKUP_TRY), kein von Hand gesetzter Schluessel.
+dd_tick() {   # dd_tick <BACKUP_AUTO_AT des Ticks> <VERSION-Alter-Min>
+  rm -f "$W/dd.state" "$W/dd.bst"; : > "$W/dd.VERSION"; touch -d "$2 minutes ago" "$W/dd.VERSION"
+  ( export LIFEAGENTS_RUNTIME=compose; UPDATE_TICK_STATE="$W/dd.state"; BACKUP_STATE_FILE="$W/dd.bst"; BACKUP_AUTO_AT="$1"; UPDATE_CHECK_EVERY_S=99999999
+    lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }; update_tick ) >/dev/null 2>&1
+}
+dd_tick 0000 600; out="$(dd_run _doctor_compose_backup_tick)"
+printf '%s' "$out" | grep -q '^  \[ OK \] Tägliche Sicherung wird angestoßen (letzter Versuch vor [01] min)$' && eq D.sicherung-vom-echten-tick-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.sicherung-vom-echten-tick-gruen "$out"
+env_upsert "$W/dd.state" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3 * 86400 ))"; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit 72 h nicht mehr angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 "$dd_yday" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
-dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-nie-angestossen-warn '  [WARN] Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
-dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 3; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-frische-installation-still 'fail=0' "$out"
 # Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
 dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
 dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> [funnel-json] -> Ausgabe
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
-    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"; DOMAIN="${5-}"
     rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }; rt_edge_exec() { printf "%s" "$_fn"; }
     _doctor_compose_tunnel; echo "fail=$_fail" )
 }
@@ -958,8 +962,31 @@ dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
 out="$(dd_ts tunnel 0 "$dd_soon")"
 printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
 dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
-out="$(dd_ts tunnel 0 "$dd_login")"
-printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
+# Noch nie eingerichtet (kein Tunnel-Name als DOMAIN in core.env): Einrichtung steht aus = Hinweis. Lief der Tunnel schon
+# (DOMAIN gesetzt) und ist jetzt abgemeldet oder abgelaufen: der Bot ist nicht erreichbar = ROT.
+out="$(dd_ts tunnel 0 "$dd_login" "$dd_fun" bot.tail-fantasy.ts.net)"
+printf "%s" "$out" | grep -qF "  [FAIL] Tunnel: bei Tailscale anmelden" && eq D.tunnel-abgemeldet-nach-betrieb-rot fail=1 "$(printf "%s" "$out" | tail -n1)" || fail D.tunnel-abgemeldet-nach-betrieb-rot "$out"
+eq D.tunnel-nie-angemeldet-nur-hinweis '  [WARN] Tunnel: Einrichtung steht noch aus — bei Tailscale anmelden: docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“
+fail=0' "$(dd_ts tunnel 0 "$dd_login")"
+eq D.tunnel-startet-ohne-betrieb-nur-hinweis "  [WARN] Tunnel: Einrichtung steht noch aus — startet …
+fail=0" "$(dd_ts tunnel 0 "{\"BackendState\":\"NoState\"}")"
+dd_expired="${dd_ok/\"Expired\":false/\"Expired\":true}"
+eq D.tunnel-abgelaufen-rot "  [FAIL] Tunnel: Tailscale-Anmeldung abgelaufen — neu anmelden: docker exec -i t-master lifeagents reconfigure core
+fail=1" "$(dd_ts tunnel 0 "$dd_expired")"
+# Nach einem Update legt der Installer tailscale neu an; die Abschlusspruefung kann die ersten Sekunden "startet" sehen. Mit
+# Tunnel-Adresse (lief schon) wartet doctor kurz (DOCTOR_TS_TRIES x 2 s), erst danach ist "startet" ein Ausfall.
+dd_tsw() {   # dd_tsw <Zahl "startet"-Antworten vor der echten> <Versuche> -> Ausgabe
+  rm -f "$W/ts.n"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE=tunnel; DOMAIN=bot.tail-fantasy.ts.net; DOCTOR_TS_TRIES="$2"; _k="$1"
+    rt_edge_active() { return 0; }; rt_edge_exec() { printf '%s' "$dd_fun"; }; sleep() { :; }
+    _reach_ts_status() { local c; c="$(cat "$W/ts.n" 2>/dev/null || echo 0)"; echo $((c + 1)) > "$W/ts.n"; if [ "$c" -lt "$_k" ]; then printf '{"BackendState":"NoState"}'; else printf '%s' "$dd_ok"; fi; }
+    _doctor_compose_tunnel; echo "fail=$_fail" )
+}
+eq D.tunnel-startet-kurz-dann-gruen '  [ OK ] Tunnel steht (Tailscale angemeldet, bot.tail-fantasy.ts.net)
+fail=0' "$(dd_tsw 2 5)"
+eq D.tunnel-startet-dauerhaft-rot '  [FAIL] Tunnel: startet …
+fail=1' "$(dd_tsw 99 3)"
 
 # G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
 #    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer
@@ -981,9 +1008,9 @@ eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
 # Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
-eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
+eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“)
 fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
 
 # Laufender Tick-Schritt: LAST_TICK wird nur am Tick-Anfang geschrieben, ein Schritt darf lange laufen (Update 2 h,
@@ -997,8 +1024,10 @@ dt_run() {   # dt_run <tick-alter-s> <lock:frei|belegt> -> Ausgabe von _doctor_c
     _lk="$2"; update_lock_free() { [ "$_lk" = frei ]; }
     _doctor_compose_tick; echo "fail=$_fail" )
 }
-dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess
-  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"; touch -d "$2 minutes ago" "$W/dtproc/$1"
+dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess; mtime von /proc/<pid> bleibt "jetzt" (wie im echten /proc), die Startzeit steht in stat Feld 22
+  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"
+  printf '100000.00 0.00\n' > "$W/dtproc/uptime"
+  printf '%s (lifeagents) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 %s 0 0\n' "$1" "$(( (100000 - $2 * 60) * 100 ))" > "$W/dtproc/$1/stat"
 }
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 dts 7 20 'bash /usr/local/bin/lifeagents update --run-requested'
@@ -1010,6 +1039,10 @@ fail=0' "$(dt_run 1200 frei)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 9 10 'bash /usr/local/bin/lifeagents update --check --scheduled'
 eq D.tick-check-ueber-zeitgrenze-rot '  [FAIL] Update-Schleife im master steht seit 10 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
 fail=1' "$(dt_run 600 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 10 200 'bash /usr/local/bin/lifeagents update --run-requested'
+eq D.tick-haengender-update-schritt-rot '  [FAIL] Update-Schleife im master steht seit 15 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
+fail=1' "$(dt_run 900 belegt)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 eq D.tick-ohne-schritt-rot 'fail=1' "$(dt_run 900 frei | tail -n1)"
 eq D.tick-sperre-belegt-ohne-prozess-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update (Sperre belegt), seit 15 min (Zeitgrenze 120 min)

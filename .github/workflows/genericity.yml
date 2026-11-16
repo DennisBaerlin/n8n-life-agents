@@ -684,7 +684,11 @@ jobs:
           q "DELETE FROM core.notification_state WHERE source='release_update'; DELETE FROM core.update_requests" >/dev/null
           : > "$log"
           upd --check
-          grep -q 'upd%3Anow%3Av9.1.0' "$log" || { echo "FAIL aus 'dev' kommt keine Update-Karte fuer v9.1.0"; exit 1; }
+          if ! grep -q 'upd%3Anow%3Av9.1.0' "$log"; then
+            echo "::warning title=Bekannte Luecke::Installation ohne Versionsnummer (dev) bekommt keine Update-Karte - Konzept B der Docker-Betriebs-Arbeit noch nicht gebaut"
+            echo "FAIL aus 'dev' kommt keine Update-Karte fuer v9.1.0"; exit 1
+          fi
+          echo "::notice title=Luecke geschlossen::der dev-Fall bekommt eine Karte - continue-on-error an diesem Schritt entfernen"
 
       - name: Update by a real order (card -> tap -> order -> tick -> swap -> version + report), not by calling the helper
         run: |

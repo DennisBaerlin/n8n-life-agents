@@ -152,7 +152,7 @@ _cred_stage() {
 _cred_import_and_test() {
   local n; n="$(jq 'length' <<<"$_CRED_ITEMS" 2>/dev/null || echo 0)"
   if [ "$n" -le 0 ]; then warn "Keine Credentials zu importieren (alle Secrets fehlten)."; return 0; fi
-  local f; f="$(mktemp "${TMPDIR:-/tmp}/n8n_creds.XXXXXX.json")"
+  local f; f="$(mktemp "$(n8n_input_dir)/n8n_creds.XXXXXX.json")"
   printf '%s' "$_CRED_ITEMS" > "$f"; chmod 600 "$f"; chown "$N8N_USER" "$f" 2>/dev/null || true
   if ! n8n_cli_env "$N8N_ENV_FILE" import:credentials --input="$f"; then
     rm -f "$f"; die "n8n import:credentials fehlgeschlagen ($n Credential(s))."

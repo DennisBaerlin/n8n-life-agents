@@ -467,7 +467,7 @@ deploy_workflows() {
   local hitl_chat; _hitl_chat_approval "$scope" >/dev/null; hitl_chat="$_HITL_CHAT_APPROVAL_VAL"   # Cache im Eltern-Prozess setzen
   local app_path; app_path="$(_app_path)"
 
-  local staging; staging="$(mktemp -d "${TMPDIR:-/tmp}/n8n_wf_deploy.XXXXXX")"; chmod 0755 "$staging"
+  local staging; staging="$(mktemp -d "$(n8n_input_dir)/n8n_wf_deploy.XXXXXX")"; chmod 0755 "$staging"
   log "Workflows patchen (Scope '$scope': Credential-Remap + Zeitplaene + Owner-chat_id) -> $staging ..."
   local f base name count=0
   for d in "${wf_dirs[@]}"; do

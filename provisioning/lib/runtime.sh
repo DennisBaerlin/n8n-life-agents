@@ -91,8 +91,11 @@ pg_wait_ready() {
 # --- n8n ----------------------------------------------------------------------------------------------------------------
 # n8n_bin_path — Pfad/Name des n8n-Programms (compose: Name im n8n-Container; im master nie installiert).
 n8n_bin_path() { if rt_is_compose; then printf 'n8n'; else command -v n8n 2>/dev/null || true; fi; }
+# n8n_input_dir -> Ordner fuer Dateien, die `n8n import:*` liest. compose: immer das Volume /shared (der n8n-Container sieht
+#   vom master nur dieses); nicht aus $TMPDIR ableiten, denn Kindprozesse mit schmaler Umgebung (Wizard: childEnv) haben es nicht.
+n8n_input_dir() { if rt_is_compose; then printf '/shared'; else printf '%s' "${TMPDIR:-/tmp}"; fi; }
 # n8n_cli_env <env-datei> <n8n-args…> — n8n-CLI (import:workflow/credentials) mit geladener n8n.env, als n8n-Nutzer.
-# compose: im n8n-Container; Eingabe-Dateien muessen dort unter demselben Pfad liegen (Volume `shared` = TMPDIR des
+# compose: im n8n-Container; Eingabe-Dateien muessen dort unter demselben Pfad liegen (Volume `shared`, n8n_input_dir; TMPDIR des
 # master). Lader wie im Container-Entrypoint: KEY=wert roh (systemd-EnvironmentFile-Semantik), kein Shell-Quoting.
 n8n_cli_env() {
   local envf="$1"; shift

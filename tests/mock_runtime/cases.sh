@@ -674,6 +674,14 @@ env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 0; ( BACKUP_AUTO_AT=2400 update_tick 
 _g="$(_gap)"; eq K.ohne-meldung-volles-fenster ok "$(_rng "$_g" 7190 7200)"
 unset LIFEAGENTS_RUNTIME
 
+# ---------------------------------------------------------------------------- E: Ort fuer n8n-Eingabe-Dateien
+# n8n liest `import:*` im n8n-Container und sieht vom master nur das Volume /shared; ein Kindprozess ohne TMPDIR in der Umgebung
+# (Wizard-Abschluss nach dem Pairing) darf nie nach /tmp ausweichen.
+eq E.verbund-ohne-tmpdir '/shared' "$(unset TMPDIR; LIFEAGENTS_RUNTIME=compose n8n_input_dir)"
+eq E.verbund-mit-fremdem-tmpdir '/shared' "$(TMPDIR=/var/tmp LIFEAGENTS_RUNTIME=compose n8n_input_dir)"
+eq E.klassisch-ohne-tmpdir '/tmp' "$(unset TMPDIR; LIFEAGENTS_RUNTIME=systemd n8n_input_dir)"
+eq E.klassisch-mit-tmpdir '/var/tmp' "$(TMPDIR=/var/tmp LIFEAGENTS_RUNTIME=systemd n8n_input_dir)"
+
 # ---------------------------------------------------------------------------- O: veroeffentlichte Ports (Wizard, Paperless)
 _ps_rows='{"image":"ghcr.io/paperless-ngx/paperless-ngx:2","ports":"0.0.0.0:8010->8000/tcp, [::]:8010->8000/tcp"}
 {"image":"postgres:17","ports":"0.0.0.0:8000->8000/tcp"}

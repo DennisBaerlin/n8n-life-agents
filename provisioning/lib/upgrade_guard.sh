@@ -203,8 +203,7 @@ _upg_snapshot() {
     local hd
     hd="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
     if rt_is_compose && [ -n "$hd" ]; then
-      # shellcheck disable=SC2094  # liest die fertige Sicherung, der Name ist nur das Ziel im Rechner-Ordner
-      rt_host_put "$hd" "$(basename "$out")" < "$out" \
+      rt_host_put "$hd" "$(basename "$out")" "$out" \
         || warn "Kopie der Update-Sicherung in den Rechner-Ordner '${hd}' fehlgeschlagen — sie liegt nur in ${out}."
     fi
     return 0

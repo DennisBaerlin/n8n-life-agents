@@ -365,9 +365,17 @@ _rt_host_run() {
   docker run --rm "${i[@]}" --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
 }
-# rt_host_put <rechner-ordner> <dateiname> — stdin als Datei dorthin schreiben; erst .part, dann umbenennen.
-# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
-rt_host_put() { _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; cat > "/out/.$1.part" && mv -f "/out/.$1.part" "/out/$1"' _ "$2"; }
+# rt_host_put <rechner-ordner> <dateiname> <lokale-datei> — die Datei dorthin schreiben: erst .part, umbenannt nur bei
+#   gleicher SHA-256. Endet der docker-Client mitten im Hochladen (Zeitgrenze, Neuanlage des master), schliesst Docker die
+#   Eingabe des Helfers und `cat` endet ohne Fehler -> ohne Pruefung bekaeme die halbe Datei den gueltigen Namen und zaehlte
+#   beim Aufraeumen als Sicherung. rc 1 = nicht vollstaendig angekommen (.part ist dann weg).
+# shellcheck disable=SC2016  # $1/$2 werden erst in der Container-Shell ausgewertet
+rt_host_put() {
+  local sum
+  sum="$(sha256sum < "$3" | cut -d' ' -f1)" && [ -n "$sum" ] || return 1
+  _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; p="/out/.$1.part"; if cat > "$p" && [ "$(sha256sum < "$p" | cut -d" " -f1)" = "$2" ]; then mv -f "$p" "/out/$1"; else rm -f "$p"; exit 1; fi' \
+    _ "$2" "$sum" < "$3"
+}
 # rt_host_get <rechner-ordner> <dateiname> — eine Datei von dort nach stdout (nur lesend gemountet).
 rt_host_get() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" cat "/in/$2"; }
 # rt_host_ls <rechner-ordner> -> Dateinamen der Sicherungen (*.nla.enc) im Ordner, eine je Zeile.

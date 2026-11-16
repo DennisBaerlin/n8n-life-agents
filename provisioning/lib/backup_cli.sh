@@ -589,7 +589,7 @@ backup_cmd_export() {
   fi
   chmod 0600 "$out"
   if [ "$want_host" -eq 1 ]; then
-    rt_host_put "$(_bkp_hd "$host")" "$name" < "$out" || _bkp_fail write "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
+    rt_host_put "$(_bkp_hd "$host")" "$name" "$out" || _bkp_fail write "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
     _bkp_host_rotate "$host" "$kid"
     ok "Backup geschrieben: $(_bkp_join "$host" "$name") (Ordner auf dem Rechner)"
   else

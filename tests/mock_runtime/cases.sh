@@ -332,9 +332,9 @@ for d in relativ/pfad '/a,b' "$(printf '/a\nb')" ''; do
   n="$(printf '%s' "${d:-leer}" | tr '\n' '~')"
   if _bkp_host_dir_valid "$d"; then fail "R.ordner-ungueltig:$n" "angenommen"; else pass "R.ordner-ungueltig:$n"; fi
 done
-: > "$STUB_LOG"; printf 'chiffrat' | rt_host_put /Users/erika/Sicherung lifeagents-backup-1.nla.enc
+: > "$STUB_LOG"; printf 'chiffrat' > "$W/hp.src"; rt_host_put /Users/erika/Sicherung lifeagents-backup-1.nla.enc "$W/hp.src"
 case "$(last)" in
-  "docker|run|--rm|-i|--label|io.lifeagents.install=lifeagents|--network|none|--mount|type=bind,src=/Users/erika/Sicherung,dst=/out|busybox:test|sh|-c|"*"|_|lifeagents-backup-1.nla.enc|stdin=") pass R.schreiben-nur-dieser-ordner ;;
+  "docker|run|--rm|-i|--label|io.lifeagents.install=lifeagents|--network|none|--mount|type=bind,src=/Users/erika/Sicherung,dst=/out|busybox:test|sh|-c|"*"|_|lifeagents-backup-1.nla.enc|"[0-9a-f]*"|stdin=") pass R.schreiben-nur-dieser-ordner ;;
   *) fail R.schreiben-nur-dieser-ordner "$(last)" ;;
 esac
 : > "$STUB_LOG"; rt_host_get /Users/erika/Sicherung x.nla.enc >/dev/null
@@ -1276,4 +1276,26 @@ uo_rb() (   # uo_rb <args…> -> "<rc>|<weiter?>"
 eq UO.rollback-help-aendert-nichts '0|' "$(uo_rb --help)"
 eq UO.rollback-unbekannt-bricht-ab '1|' "$(uo_rb --jes)"
 eq UO.rollback-yes-laeuft-weiter '7|weiter' "$(uo_rb --yes)"
+
+# ---------------------------------------------------------------------------- HP: Datei in den Rechner-Ordner, nur vollstaendig
+# Bricht der docker-Client mitten im Hochladen ab (Zeitgrenze, Neuanlage des master), endet `cat` im Helfer mit EOF und die
+# halbe Datei bekam bisher den endgueltigen Namen (am echten Docker belegt: Bericht ob Runde 12). Der Helfer benennt nur um,
+# wenn die Pruefsumme stimmt; sonst verschwindet .part. Die Attrappe ersetzt nur Docker: das Helfer-Skript laeuft echt.
+hp_case() (   # hp_case <bytes-die-ankommen> <bytes-der-datei> -> "<rc>|<endgueltig>|<part>"
+  local d="$W/hp" rc=0; rm -rf "$d"; mkdir -p "$d/out"
+  _rt_host_run() {
+    [ "$1" = -i ] && shift
+    local src="${1#type=bind,src=}"; src="${src%%,*}"; shift
+    local a=("$@"); a[2]="${a[2]//\/out/$src}"
+    head -c "$HP_CUT" | "${a[@]}"
+  }
+  head -c "$2" /dev/urandom > "$d/full"; HP_CUT="$1"
+  rt_host_put "$d/out" b.nla.enc "$d/full" >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s' "$([ "$rc" -eq 0 ] && echo 0 || echo fehler)" \
+    "$(if [ -e "$d/out/b.nla.enc" ]; then cmp -s "$d/out/b.nla.enc" "$d/full" && echo ganz || echo halb; else echo fehlt; fi)" \
+    "$([ -e "$d/out/.b.nla.enc.part" ] && echo ja || echo nein)"
+)
+eq HP.abgebrochen-kein-gueltiger-name 'fehler|fehlt|nein' "$(hp_case 1000 4000)"
+eq HP.vollstaendig-wie-bisher '0|ganz|nein' "$(hp_case 4000 4000)"
+eq HP.leere-datei-vollstaendig '0|ganz|nein' "$(hp_case 0 0)"
 exit "$fails"

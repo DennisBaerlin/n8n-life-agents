@@ -535,6 +535,24 @@ repos:
         always_run: true
         stages: [pre-push]
 
+      # shellcheck ueber ALLE Shell-Skripte vor dem Push: der Commit-Hook sieht nur die geaenderten Dateien, ein unveraenderter
+      # Aufrufer einer geaenderten Funktion (SC2119/SC2120) faellt sonst erst in CI auf. Geschachteltes prek nutzt die
+      # Hook-Umgebung des Hooks `shellcheck` oben (eine Versions-Quelle). Test: scripts/dev/shellcheck_full_test.ps1.
+      - id: shellcheck-full
+        name: shellcheck (all tracked shell scripts before push)
+        language: system
+        entry: prek run shellcheck --all-files
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: shellcheck-full-test
+        name: shellcheck_full_test (a caller untouched by the commit but broken by a changed function is caught by the full run; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/shellcheck_full_test.ps1
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|scripts/dev/shellcheck_full_test\.ps1|config/shellcheckrc)$
+
       # Postgres-migration safety lint over packages/*/db/migrations/V*.sql (Flyway versioned).
       # Catches unsafe ALTER/lock patterns that APPLY cleanly yet would block or fail at runtime on a
       # real DB (e.g. CREATE INDEX CONCURRENTLY inside our transaction-wrapped migrations, a stray

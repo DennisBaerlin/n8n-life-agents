@@ -459,8 +459,8 @@ _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
   require_root
-  # --yes nur im Docker-Verbund: Aufruf per `docker exec` ohne Terminal (heute nur CI genericity.yml; die Start-App ruft den
-  # Rueckweg nicht auf, ihr "rollback" nimmt das Journal der Einrichtung zurueck).
+  # --yes nur im Docker-Verbund: fuer einen Aufruf per `docker exec` ohne Terminal (Aufrufer: CI genericity.yml). Das
+  # "rollback" der Start-App ist etwas anderes (nimmt das Journal der Einrichtung zurueck) und ruft dies nicht auf.
   local assume_yes=0
   if [ "${1:-}" = --yes ]; then
     rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."

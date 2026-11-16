@@ -406,6 +406,14 @@ update_run_requested() {
   installed="$(_ur_installed)"
   claim="$(_ur_sql "$(jq -nc --arg i "$installed" '{installed:$i, report:true}')" "SELECT core.fn_update_request_claim(:'p'::jsonb);")" \
     || { _ur_alert "Update-Runner: DB nicht erreichbar."; return 0; }
+  # Ein erholter, unterbrochener Lauf (Zeitgrenze, Neustart) kann nach upgrade_prepare gestorben sein: n8n steht dann, bis das
+  # naechste Update den Merkzettel fortsetzt -> wieder an (der Merkzettel bleibt). Pfad wie upgrade_guard.sh UPGRADE_MARKER,
+  # das die CLI im update-Arm nicht laedt.
+  if [ -f "${UPGRADE_MARKER:-/var/lib/lifeagents/upgrade.pending}" ] \
+     && [ "$(jq -r '[.recovered[]? | select(.outcome == "interrupted")] | length' <<<"$claim" 2>/dev/null || echo 0)" -gt 0 ]; then
+    _ur_alert "Update-Runner: ein Update wurde unterbrochen — n8n wird wieder gestartet; 'lifeagents update' setzt es fort."
+    svc_start n8n 2>/dev/null || true
+  fi
 
   if [ "$(jq -r '.claimed' <<<"$claim")" = null ]; then
     _ur_reports_flush
@@ -522,12 +530,15 @@ _ur_cli() { command -v lifeagents || printf '/usr/local/bin/lifeagents'; }
 #   weiter, sonst liefe er bis zum KILL nach 10 s ungeordnet weiter. Ablauf der Grenze = Alarm im Log. Immer rc 0.
 _UR_STEP_PID=''
 _ur_step() {
-  local secs="$1" rc=0; shift
+  local secs="$1" rc=0 old_term old_int; shift
+  old_term="$(trap -p TERM)"; old_int="$(trap -p INT)"
   timeout --kill-after="$UPDATE_STEP_KILL_S" "$secs" "$(_ur_cli)" "$@" </dev/null &
   _UR_STEP_PID=$!
   trap 'kill -TERM "$_UR_STEP_PID" 2>/dev/null; wait "$_UR_STEP_PID" 2>/dev/null; exit 143' TERM INT
   wait "$_UR_STEP_PID" || rc=$?
   trap - TERM INT
+  if [ -n "$old_term" ]; then eval "$old_term"; fi
+  if [ -n "$old_int" ]; then eval "$old_int"; fi
   _UR_STEP_PID=''
   case "$rc" in
     124|137) _ur_alert "Tick: '$*' nach ${secs} s abgebrochen (Zeitgrenze) — der nächste Tick macht weiter." ;;

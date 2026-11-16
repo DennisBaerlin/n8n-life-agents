@@ -980,6 +980,11 @@ eq KR.ohne-tailscale-kein-tailscale 'up -d --no-deps edge gateway;' "$(kr_case '
 # Der spaete Installer-Haken ruft die Erneuerung bei jedem Weg nach aussen (auch ohne FritzBox).
 kr_conv() ( rt_stack_refresh() { echo refresh; }; reach_edge_public_write() { return 1; }; reach_mode() { printf tunnel; }; reach_converge 2>/dev/null )
 eq KR.converge-erneuert refresh "$(kr_conv)"
+# Nach einer Neuanlage des Gateways wartet der Lauf auf dessen Antwort; antwortet es nicht, steht es als Warnung im Lauf.
+kr_gw() ( rt_stack_refresh() { :; }; reach_edge_public_write() { return 1; }; reach_mode() { printf tunnel; }
+          _wait_llm_gateway_health() { return "$KR_GW"; }; warn() { echo "warn $*"; }; KR_GW="$1"; reach_converge 2>/dev/null | cut -c1-25 )
+eq KR.gateway-antwortet-still '' "$(kr_gw 0)"
+eq KR.gateway-stumm-warnung 'warn KI-Gateway antwortet' "$(kr_gw 1)"
 
 # ---------------------------------------------------------------------------- KL: Update-Protokolle aufraeumen
 # Die neuesten 10 bleiben immer, aelter als 30 Tage und darueber hinaus gehen; fremde Dateien im Ordner nie.
@@ -1067,4 +1072,19 @@ rb_case() (   # rb_case <compose 0|1> <from_release> -> erreicht | abbruch:<meld
 eq RB.verbund-dev-kommt-zurueck erreicht "$(rb_case 1 dev)"
 case "$(rb_case 0 dev)" in abbruch:*) pass RB.klassisch-dev-ohne-rueckweg ;; *) fail RB.klassisch-dev-ohne-rueckweg "$(rb_case 0 dev)" ;; esac
 case "$(rb_case 1 '')" in abbruch:*) pass RB.verbund-ohne-version-abbruch ;; *) fail RB.verbund-ohne-version-abbruch "$(rb_case 1 '')" ;; esac
+
+# ---------------------------------------------------------------------------- KU: unterbrochenes Update ohne master-Wechsel
+# Starb der Lauf (Zeitgrenze, Neustart) nach upgrade_prepare, steht n8n; der naechste Runner schliesst den Auftrag als
+# interrupted und startet n8n wieder (der Merkzettel bleibt, das naechste Update setzt fort).
+ku_case() (   # ku_case <merkzettel 0|1> <recovered-json> -> gestartete Dienste
+  local d="$W/ku"; rm -rf "$d"; mkdir -p "$d"; UPGRADE_MARKER="$d/upgrade.pending"; [ "$1" = 1 ] && : > "$UPGRADE_MARKER"
+  require_root() { :; }; lifeagents_db_name() { :; }; update_lock_acquire() { return 0; }; rt_is_compose() { return 1; }
+  _ur_installed() { printf v9.0.0; }; _ur_reports_flush() { :; }; _ur_menu_refresh() { :; }; _ur_alert() { :; }
+  _ur_sql() { printf '{"recovered":%s,"claimed":null}' "$KU_REC"; }; KU_REC="$2"
+  svc_start() { echo "$*" >> "$d/s"; }
+  update_run_requested >/dev/null 2>&1; cat "$d/s" 2>/dev/null
+)
+eq KU.unterbrochen-mit-merkzettel-n8n-an n8n "$(ku_case 1 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
+eq KU.ohne-merkzettel-nichts '' "$(ku_case 0 '[{"id":3,"tag":"v9.1.0","kind":"update","outcome":"interrupted"}]')"
+eq KU.nichts-erholt-nichts '' "$(ku_case 1 '[]')"
 exit "$fails"

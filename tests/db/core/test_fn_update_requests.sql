@@ -287,6 +287,36 @@ BEGIN
   PERFORM core.fn_update_request_claim('{"installed":"v0.14.0","report":true}');
   IF (SELECT report_state FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'due' THEN RAISE EXCEPTION 'FAIL [12b erholt -> due]'; END IF;
 
+  -- ---------- 13) Frist: ein uebernommener Auftrag, der laenger haengt als jeder Runner-Lauf, blockiert den Knopf nicht ----------
+  -- Grenze = zwei Runner-Laeufe (alter + neuer master im Docker-Verbund, je 2 h) + Puffer: 4 h 30 min ab Uebernahme.
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now() - interval '4 hours 20 minutes', 'v0.14.0')
+    RETURNING id INTO v_id;
+  r := core.fn_handle_update_cb('{"data":"upd:now:v0.15.0","chat_id":"8201"}');
+  IF r->>'reason' IS DISTINCT FROM 'already_open' THEN RAISE EXCEPTION 'FAIL [13a innerhalb der Frist laeuft schon]: %', r; END IF;
+  UPDATE core.update_requests SET claimed_at = now() - interval '4 hours 31 minutes' WHERE id = v_id;
+  r := core.fn_handle_update_cb('{"data":"upd:now:v0.15.0","chat_id":"8201"}');
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [13b nach der Frist neuer Auftrag]: %', r; END IF;
+  IF (SELECT outcome FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'interrupted'
+     OR (SELECT report_state FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'due'
+     OR (SELECT finished_at FROM core.update_requests WHERE id = v_id) IS NULL THEN
+    RAISE EXCEPTION 'FAIL [13c alter Auftrag interrupted + Meldung faellig]: %', (SELECT row_to_json(u) FROM core.update_requests u WHERE id = v_id);
+  END IF;
+  SELECT count(*) INTO v_cnt FROM core.update_requests WHERE finished_at IS NULL;
+  IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [13d genau ein offener Auftrag, ist %]', v_cnt; END IF;
+  -- Ein spaet endender Lauf trifft den geschlossenen Auftrag nicht mehr (kein RAISE, nichts ueberschrieben).
+  r := core.fn_update_request_finish(jsonb_build_object('id', v_id, 'outcome', 'succeeded'));
+  IF r->>'reason' IS DISTINCT FROM 'not_open' THEN RAISE EXCEPTION 'FAIL [13e spaetes finish]: %', r; END IF;
+  -- Nie uebernommen (Runner laeuft nicht): bleibt offen, Frist gilt nur fuer uebernommene (finish_claimed ist Gesetz).
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, requested_at) VALUES ('v0.15.0', now() - interval '9 hours') RETURNING id INTO v_id;
+  r := core.fn_handle_update_cb('{"data":"upd:now:v0.15.0","chat_id":"8201"}');
+  IF r->>'reason' IS DISTINCT FROM 'already_open' THEN RAISE EXCEPTION 'FAIL [13f nie uebernommen bleibt offen]: %', r; END IF;
+  -- Mitglied loest das Schliessen nicht aus (Owner-Gate vor der Frist).
+  UPDATE core.update_requests SET claimed_at = now() - interval '5 hours' WHERE id = v_id;
+  r := core.fn_handle_update_cb('{"data":"upd:now:v0.15.0","chat_id":"8202"}');
+  IF (SELECT finished_at FROM core.update_requests WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [13g Mitglied schliesst nicht]'; END IF;
+
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;
 

@@ -34,17 +34,38 @@ update_cli() {
     --run-requested) update_run_requested; return 0 ;;
     --tick)          update_tick; return 0 ;;
   esac
-  local tag=latest
+  # Alles wird vor dem Laden geprueft: eine unbekannte Option liefe sonst bis provision.sh durch, im Verbund startete sie
+  # vorher schon den master-Wechsel. Weitergereicht wird nur, was provision.sh parse_args fuer einen normalen Lauf kennt
+  # (nicht --uninstall/--purge-data/--unattended/--yes: dafuer gibt es eigene Befehle).
+  local tag=latest pass=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --help|-h)         _ur_update_usage; return 0 ;;
       --version)         [ -n "${2:-}" ] || die "--version braucht ein Tag (z. B. --version v0.14.0)."; tag="$2"; shift 2 ;;
       --version=*)       tag="${1#*=}"; shift ;;
       --allow-downgrade) export LIFEAGENTS_ALLOW_DOWNGRADE=1; shift ;;
-      *) break ;;
+      --profile|--domain|--trusted-proxies|--trusted-proxy|--packages)
+        case "${2:-}" in ''|-*) die "$1 braucht einen Wert (lifeagents update --help)." ;; esac
+        pass+=("$1" "$2"); shift 2 ;;
+      --profile=*|--domain=*|--trusted-proxies=*|--trusted-proxy=*|--packages=*|--apply-network|--core-only|--verbose)
+        pass+=("$1"); shift ;;
+      *) die "Unbekannte Option für update: $1 — es wurde nichts geändert (lifeagents update --help)." ;;
     esac
   done
   case "$tag" in *[!A-Za-z0-9._-]*|'') die "Ungültiges Tag '${tag}' (erwartet z. B. v0.14.0)." ;; esac
-  fetch_and_run_release "$tag" "$@"
+  fetch_and_run_release "$tag" "${pass[@]}"
+}
+
+# _ur_update_usage — Hilfe zu `lifeagents update` (stderr wie die Hilfe der CLI).
+_ur_update_usage() {
+  cat >&2 <<'EOF'
+Usage: lifeagents update [--version <tag>] [--allow-downgrade] [Einrichtungs-Optionen]
+  Neuestes Release (oder <tag>) laden, Echtheit prüfen und einspielen. Braucht root.
+  --version <tag>     genau dieses Release (z. B. v0.48.1)
+  --allow-downgrade   älter als installiert zulassen (besser: lifeagents rollback)
+  Weitergereicht an die Einrichtung: --profile, --domain, --trusted-proxies, --packages, --apply-network,
+  --core-only, --verbose
+EOF
 }
 UPDATE_MIN_FREE_KB="${UPDATE_MIN_FREE_KB:-2097152}"   # 2 GB frei auf / und /var (n8n-npm-Install + Sicherung + Tarball)
 

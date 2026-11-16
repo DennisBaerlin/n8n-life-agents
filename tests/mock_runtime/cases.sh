@@ -1105,4 +1105,32 @@ eq SH.helfer-frisch-wartet 'wait|0' "$(sh_case 0 "$LA_MASTER_IMAGE")"
 eq SH.helfer-haengt-alter-master 'rolled_back|1' "$(sh_case 31 "$LA_MASTER_IMAGE")"
 eq SH.helfer-haengt-neuer-master 'apply|1' "$(sh_case 31 "$NEW")"
 rm -rf "$SWAP_DIR"
+
+# ---------------------------------------------------------------------------- UO: Optionen von `lifeagents update`/`rollback`
+# --help zeigt die Hilfe und aendert nichts; eine unbekannte Option bricht ab, bevor geladen, gesperrt oder gewechselt wird
+# (im Verbund startete `update --help` sonst den master-Wechsel, provision.sh sah die Option nie). Weitergereicht werden nur
+# Optionen, die provision.sh parse_args fuer einen normalen Lauf kennt.
+uo_case() (   # uo_case <args…> -> "<rc>|<fetch-aufruf>"
+  fetch_and_run_release() { printf '%s' "$*" > "$W/uo.fetch"; exit 0; }
+  die() { exit 1; }; rm -f "$W/uo.fetch"; local rc=0
+  ( update_cli "$@" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s' "$rc" "$(cat "$W/uo.fetch" 2>/dev/null)"
+)
+eq UO.help-laedt-nichts '0|' "$(uo_case --help)"
+eq UO.h-laedt-nichts '0|' "$(uo_case -h)"
+eq UO.unbekannt-bricht-vorher-ab '1|' "$(uo_case --bogus)"
+eq UO.deinstallieren-nicht-ueber-update '1|' "$(uo_case --uninstall)"
+eq UO.ohne-optionen 0\|latest "$(uo_case)"
+eq UO.version-und-weitergabe '0|v9.1.0 --profile release --verbose' "$(uo_case --version v9.1.0 --profile release --verbose)"
+eq UO.weitergabe-mit-wert '0|latest --packages=finance' "$(uo_case --packages=finance)"
+eq UO.weitergabe-wert-fehlt '1|' "$(uo_case --domain)"
+uo_rb() (   # uo_rb <args…> -> "<rc>|<weiter?>"
+  require_root() { :; }; lifeagents_db_name() { printf weiter > "$W/uo.rb"; exit 7; }
+  die() { exit 1; }; rt_is_compose() { return 0; }; rm -f "$W/uo.rb"; local rc=0
+  ( upgrade_rollback "$@" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s' "$rc" "$(cat "$W/uo.rb" 2>/dev/null)"
+)
+eq UO.rollback-help-aendert-nichts '0|' "$(uo_rb --help)"
+eq UO.rollback-unbekannt-bricht-ab '1|' "$(uo_rb --jes)"
+eq UO.rollback-yes-laeuft-weiter '7|weiter' "$(uo_rb --yes)"
 exit "$fails"

@@ -458,14 +458,25 @@ _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check
 
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
-  require_root
   # --yes nur im Docker-Verbund: fuer einen Aufruf per `docker exec` ohne Terminal (Aufrufer: CI genericity.yml). Das
   # "rollback" der Start-App ist etwas anderes (nimmt das Journal der Einrichtung zurueck) und ruft dies nicht auf.
   local assume_yes=0
-  if [ "${1:-}" = --yes ]; then
-    rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."
-    assume_yes=1
-  fi
+  # Optionen vor allem anderen pruefen: eine vertippte Option darf den Rueckweg nie starten.
+  case "${1:-}" in
+    '') ;;
+    --help|-h)
+      printf '%s\n' 'Usage: lifeagents rollback [--yes]' \
+        '  Nach einem gescheiterten Update: Daten von vor dem Update herstellen und den vorherigen Stand einspielen.' \
+        '  Was seit der Sicherung gespeichert wurde, geht verloren; fragt vorher nach. Braucht root.' \
+        '  --yes  ohne Rückfrage (nur im Docker-Verbund, Aufruf ohne Terminal)' >&2
+      return 0 ;;
+    --yes)
+      rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."
+      assume_yes=1 ;;
+    *) die "Unbekannte Option für rollback: $1 — es wurde nichts geändert (lifeagents rollback --help)." ;;
+  esac
+  [ "$#" -le 1 ] || die "Zu viele Angaben für rollback — es wurde nichts geändert (lifeagents rollback --help)."
+  require_root
   lifeagents_db_name >/dev/null
   local src backup from_rel ktab key choice when work url kr profile rc=0 keep="${N8N_DB_NAME}_before_rollback" from_img="" from_compose=""
   if [ -f "$UPGRADE_MARKER" ]; then

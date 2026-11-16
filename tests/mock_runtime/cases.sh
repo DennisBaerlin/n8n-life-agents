@@ -602,10 +602,19 @@ eq K.helfer-nie-rueckwaerts '' "$(cat "$W/up.calls")"
 eq K.helfer-unbekannter-schritt '' "$(cat "$W/up.calls")"
 
 export LIFEAGENTS_RUNTIME=compose
-update_run_requested() { echo run >> "$W/tick.log"; }
-update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; if [ -n "${STUB_OUTCOME:-}" ] && [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$STUB_OUTCOME" > "$UPDATE_CHECK_OUTCOME_FILE"; fi; }
-printf '#!/usr/bin/env bash\necho "cli $*" >> "$TICK_LOG"\n' > "$W/bin/lifeagents"
-chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log"
+# CLI-Attrappe: der Tick ruft jeden Schritt als eigenen CLI-Prozess (Zeitgrenze, _ur_step); Auftraege/Check melden sich wie
+# frueher die Funktions-Attrappen als "run"/"check" (Check-Argumente ohne "--", Ergebnis in UPDATE_CHECK_OUTCOME_FILE).
+cat > "$W/bin/lifeagents" <<'STUB'
+#!/usr/bin/env bash
+case "$1 ${2:-}" in
+  "update --run-requested") echo run >> "$TICK_LOG" ;;
+  "update --check")
+    echo check >> "$TICK_LOG"; echo "${3#--}" >> "$CHECK_ARGS"
+    if [ -n "${STUB_OUTCOME:-}" ] && [ -n "${UPDATE_CHECK_OUTCOME_FILE:-}" ]; then echo "$STUB_OUTCOME" > "$UPDATE_CHECK_OUTCOME_FILE"; fi ;;
+  *) echo "cli $*" >> "$TICK_LOG" ;;
+esac
+STUB
+chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log" CHECK_ARGS="$W/check.args"
 lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }
 lifeagents_env_file() { printf '%s' "$W/core.env"; }
 printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$W/core.env"
@@ -887,4 +896,67 @@ chmod +x "$W/akbin/curl" "$W/akbin/gpg"
 ( PATH="$W/akbin:$PATH"; add_apt_key https://example.invalid/k.asc "$W/ak/key.gpg" ) >/dev/null 2>&1
 eq R.apt-key-curl-wiederholt-auch-curl18 1 "$(grep -c -e '--retry-all-errors' "$W/curl.args" 2>/dev/null)"
 eq R.apt-key-landet-vollstaendig-im-schluesselbund KEY "$(cat "$W/ak/key.gpg" 2>/dev/null)"
+
+# ---------------------------------------------------------------------------- KZ: Zeitgrenzen im Tick (wie die drei Units)
+# Ein haengender Schritt (Auftraege, Check, Sicherung) wird nach seiner Grenze beendet, samt Kindprozessen; die anderen
+# Schritte laufen weiter. Attrappen auf beiden Ebenen (Shell-Funktion und CLI), damit der Fall vom Aufrufweg unabhaengig ist.
+# real-path-test: none (Zeitgrenze im echten Verbund: Runde 8 im Bericht ob)
+mkdir -p "$W/kzbin"
+{ printf '#!/usr/bin/env bash\nd=%q\n' "$W/kz"
+  cat <<'STUB'
+w=''
+case "$1 ${2:-}" in
+  "update --run-requested") w=run ;; "update --check") w=check ;; "backup auto") w=backup ;;
+esac
+if [ -n "$w" ] && [ "$(cat "$d/hang" 2>/dev/null)" = "$w" ]; then sleep 30 & echo $! > "$d/child.pid"; wait; fi
+echo "$w" >> "$d/log"
+STUB
+} > "$W/kzbin/lifeagents"
+chmod +x "$W/kzbin/lifeagents"
+kz_case() (   # kz_case <haengender-schritt> -> "<sekunden>|<log>|<kind-lebt?>"
+  local KZ_DIR="$W/kz" KZ_HANG="$1"; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
+  rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"; printf "%s" "$KZ_HANG" > "$KZ_DIR/hang"
+  _kz() { if [ "$KZ_HANG" = "$1" ]; then sleep 30 & echo $! > "$KZ_DIR/child.pid"; wait; fi; echo "$1" >> "$KZ_DIR/log"; }
+  update_run_requested() { _kz run; }; update_check() { _kz check; }
+  require_root() { :; }; _ur_alert() { :; }
+  lifeagents_version_marker() { printf '%s' "$KZ_DIR/V"; }; echo v9.0.0 > "$KZ_DIR/V"
+  lifeagents_env_file() { printf '%s' "$KZ_DIR/core.env"; }; printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$KZ_DIR/core.env"
+  UPDATE_TICK_STATE="$KZ_DIR/tick.state"; BACKUP_STATE_FILE="$KZ_DIR/b.state"; BACKUP_AUTO_AT=0000
+  UPDATE_RUN_TIMEOUT_S=2 UPDATE_CHECK_TIMEOUT_S=2 BACKUP_TIMEOUT_S=2 UPDATE_STEP_KILL_S=1
+  local t0 alive=nein; t0="$(date +%s)"
+  update_tick >/dev/null 2>&1
+  if [ -s "$KZ_DIR/child.pid" ] && kill -0 "$(cat "$KZ_DIR/child.pid")" 2>/dev/null; then alive=ja; kill "$(cat "$KZ_DIR/child.pid")"; fi
+  printf '%s|%s|%s' "$(( $(date +%s) - t0 < 15 ))" "$(tr '\n' ' ' < "$KZ_DIR/log" 2>/dev/null | sed 's/ $//')" "$alive"
+)
+eq KZ.auftrag-haengt-tick-geht-weiter '1|check backup|nein' "$(kz_case run)"
+eq KZ.check-haengt-tick-geht-weiter '1|run backup|nein' "$(kz_case check)"
+eq KZ.sicherung-haengt-tick-endet '1|run check|nein' "$(kz_case backup)"
+# SIGTERM (docker stop, Neuanlage durch den Helfer) erreicht den laufenden Schritt, nicht erst SIGKILL nach 10 s.
+kz_term() (
+  local KZ_DIR="$W/kz"; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
+  rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"; printf run > "$KZ_DIR/hang"
+  update_run_requested() { sleep 30 & echo $! > "$KZ_DIR/child.pid"; wait; }
+  require_root() { :; }; _ur_alert() { :; }
+  lifeagents_version_marker() { printf '%s' "$KZ_DIR/V"; }; echo v9.0.0 > "$KZ_DIR/V"
+  lifeagents_env_file() { printf '%s' "$KZ_DIR/core.env"; }; : > "$KZ_DIR/core.env"
+  UPDATE_TICK_STATE="$KZ_DIR/tick.state"; UPDATE_RUN_TIMEOUT_S=60
+  update_tick >/dev/null 2>&1 & local tp=$! i alive=nein
+  for i in $(seq 1 50); do [ -s "$KZ_DIR/child.pid" ] && break; sleep 0.1; done
+  kill -TERM "$tp"
+  for i in $(seq 1 50); do kill -0 "$tp" 2>/dev/null || break; sleep 0.1; done
+  sleep 0.3
+  if [ -s "$KZ_DIR/child.pid" ] && kill -0 "$(cat "$KZ_DIR/child.pid")" 2>/dev/null; then alive=ja; kill "$(cat "$KZ_DIR/child.pid")"; fi
+  kill -9 "$tp" 2>/dev/null; wait "$tp" 2>/dev/null
+  printf '%s' "$alive"
+)
+eq KZ.term-erreicht-den-schritt nein "$(kz_term)"
+# Ein abgebrochener Wechsel (Zeitgrenze mitten in provision.sh, n8n war fuer die Sicherung gestoppt) laesst den Bot nicht aus.
+kz_intr() (   # kz_intr <mode> -> gestartete Dienste
+  master_swap_resolve() { printf interrupted; }; master_swap_close() { :; }; _ur_alert() { :; }
+  _swap_get() { case "$1" in MODE) printf '%s' "$KZ_MODE" ;; TAG) printf v9.1.0 ;; *) : ;; esac; }
+  svc_start() { echo "$*" >> "$W/kzi.log"; }
+  rm -f "$W/kzi.log"; KZ_MODE="$1" _ur_swap_continue >/dev/null 2>&1; cat "$W/kzi.log" 2>/dev/null
+)
+eq KZ.unterbrochen-update-n8n-wieder-an n8n "$(kz_intr update)"
+eq KZ.unterbrochen-rueckweg-n8n-wieder-an n8n "$(kz_intr rollback)"
 exit "$fails"

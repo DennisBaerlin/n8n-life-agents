@@ -464,10 +464,11 @@ _ur_swap_continue() {
     rolled_back|interrupted)
       master_swap_close
       _ur_alert "master-Wechsel auf ${tag:-?} nicht abgeschlossen (${what}) — es läuft der vorherige Stand."
-      # Rueckweg (lifeagents rollback): die Daten sind schon zurueck, n8n wurde dafuer angehalten -> wieder an, sonst bliebe
-      # der Bot aus. Die beiseitegelegte DB bleibt als Sicherheitsnetz liegen.
+      # n8n kann gestoppt sein: der Rueckweg haelt es fuer das Zuruecksetzen an, ein Update fuer die Sicherung vor einem
+      # Versionswechsel (upgrade_prepare), und ein Abbruch durch die Zeitgrenze trifft mitten hinein -> wieder an, sonst
+      # bliebe der Bot aus (start auf einen laufenden Container aendert nichts). Die beiseitegelegte DB bleibt liegen.
+      svc_start n8n 2>/dev/null || true
       if [ "$mode" = rollback ]; then
-        svc_start n8n 2>/dev/null || true
         _ur_alert "Rückweg: die Daten sind zurückgesetzt, der vorherige Stand ${tag:-?} startete aber nicht — n8n wurde wieder gestartet. Diagnose: lifeagents doctor"
       fi
       if [ -n "$id" ]; then
@@ -492,12 +493,41 @@ UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
 BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # nach einem Fehlschlag am selben Tag erneut
+# Zeitgrenzen je Schritt = TimeoutStartSec der drei Units (templates/lifeagents-update-run|update-check|backup.service.tpl).
+UPDATE_RUN_TIMEOUT_S="${UPDATE_RUN_TIMEOUT_S:-7200}"
+UPDATE_CHECK_TIMEOUT_S="${UPDATE_CHECK_TIMEOUT_S:-300}"
+BACKUP_TIMEOUT_S="${BACKUP_TIMEOUT_S:-1800}"
+UPDATE_STEP_KILL_S="${UPDATE_STEP_KILL_S:-60}"          # nach TERM so lange warten, dann KILL (systemd: TimeoutStopSec 90 s)
+
+# _ur_cli -> Pfad der CLI (vor der ersten Installation zeigt der Link im master-Image ins Leere).
+_ur_cli() { command -v lifeagents || printf '/usr/local/bin/lifeagents'; }
+
+# _ur_step <sekunden> <cli-args…> — ein Tick-Schritt als eigener Prozess unter `timeout` (eigene Prozessgruppe: bei Ablauf
+#   endet die ganze Gruppe samt Fortschritts-Helfer und docker-Client; Prozesse, die per `docker exec` in einem anderen
+#   Container laufen, erreicht das nicht). Ein TERM an den Tick (docker stop, Neuanlage des master) geht an den Schritt
+#   weiter, sonst liefe er bis zum KILL nach 10 s ungeordnet weiter. Ablauf der Grenze = Alarm im Log. Immer rc 0.
+_UR_STEP_PID=''
+_ur_step() {
+  local secs="$1" rc=0; shift
+  timeout --kill-after="$UPDATE_STEP_KILL_S" "$secs" "$(_ur_cli)" "$@" </dev/null &
+  _UR_STEP_PID=$!
+  trap 'kill -TERM "$_UR_STEP_PID" 2>/dev/null; wait "$_UR_STEP_PID" 2>/dev/null; exit 143' TERM INT
+  wait "$_UR_STEP_PID" || rc=$?
+  trap - TERM INT
+  _UR_STEP_PID=''
+  case "$rc" in
+    124|137) _ur_alert "Tick: '$*' nach ${secs} s abgebrochen (Zeitgrenze) — der nächste Tick macht weiter." ;;
+  esac
+  return 0
+}
+
 update_tick() {
   require_root
   [ -r "$(lifeagents_version_marker)" ] || return 0
   mkdir -p "$(dirname "$UPDATE_TICK_STATE")"
   env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
-  ( update_run_requested ) || true   # Teilschale: die Update-Sperre (fd 9) endet mit ihr
+  # Eigener Prozess: die Update-Sperre (fd 9) endet mit ihm.
+  _ur_step "$UPDATE_RUN_TIMEOUT_S" update --run-requested
   local tz today now last nowe
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
   today="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"; now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
@@ -512,7 +542,9 @@ update_tick() {
     # Erinnerungs-Fensters) kommt der Neuversuch nach UPDATE_CHECK_RETRY_S. Ohne Meldung gilt er als entschieden.
     local outf outcome
     outf="$(mktemp)"
-    ( UPDATE_CHECK_OUTCOME_FILE="$outf" update_check scheduled ) || true
+    export UPDATE_CHECK_OUTCOME_FILE="$outf"
+    _ur_step "$UPDATE_CHECK_TIMEOUT_S" update --check --scheduled
+    unset UPDATE_CHECK_OUTCOME_FILE
     outcome="$(head -n1 "$outf" 2>/dev/null || true)"; rm -f -- "$outf"
     if [ "$outcome" = undecided ]; then
       env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$((nowe - UPDATE_CHECK_EVERY_S + UPDATE_CHECK_RETRY_S))"
@@ -536,7 +568,7 @@ update_tick() {
   fi
   if [ "$run_bk" = 1 ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
-    "$(command -v lifeagents || printf '/usr/local/bin/lifeagents')" backup auto </dev/null || true
+    _ur_step "$BACKUP_TIMEOUT_S" backup auto
   fi
   return 0
 }

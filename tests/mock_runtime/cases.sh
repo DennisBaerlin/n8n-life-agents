@@ -997,4 +997,24 @@ kl_young() (
   _ur_logs_prune >/dev/null 2>&1; find "$d" -mindepth 1 | wc -l | tr -d " "
 )
 eq KL.junge-bleiben-alle 14 "$(kl_young)"
+
+# ---------------------------------------------------------------------------- SV: Abbruch-Pruefungen VOR dem master-Wechsel
+# Was ein Update abbrechen kann (PostgreSQL-Hauptversion des neuen Pins passt nicht zu den Daten, Abbilder des neuen Stands
+# nicht ladbar), muss im alten master scheitern: kein Helfer, kein Zustand, der alte Stand laeuft unveraendert.
+# real-path-test: none (Wechsel im echten Verbund: Runde 8 im Bericht ob)
+sv_case() (   # sv_case <pg-major-der-daten> <stub-fail> -> "<rc>|<zustand?>|<helfer?>|<grund>"
+  rt_is_compose() { return 0; }; export STUB_PG_MAJOR="$1" STUB_FAIL="$2" STUB_IMAGE_PRESENT=0
+  export STUB_CONFIG_JSON='{"services":{"postgres":{"image":"postgres:17@sha256:cccc"}}}'
+  rt_image_ensure() { return 0; }; unset LIFEAGENTS_UPDATE_LOCK_HELD
+  result_set() { [ "$1" = reason_code ] && printf '%s' "$2" > "$W/sv.reason"; return 0; }
+  die_because() { printf '%s' "$1" > "$W/sv.reason"; exit 1; }
+  rm -rf "$SWAP_DIR" "$W/sv.reason"; : > "$STUB_LOG"; local rc=0
+  ( master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s|%s' "$rc" "$([ -e "$SWAP_STATE" ] && echo ja || echo nein)" \
+    "$(grep -q '^docker|run|--rm|-d|' "$STUB_LOG" && echo ja || echo nein)" "$(cat "$W/sv.reason" 2>/dev/null)"
+)
+eq SV.pg-hauptversion-bricht-vorher-ab '1|nein|nein|pg_major' "$(sv_case 16 '')"
+eq SV.abbilder-nicht-ladbar-bricht-vorher-ab '1|nein|nein|net' "$(sv_case 17 '|pull|')"
+case "$(sv_case 17 '')" in 0\|ja\|ja\|*) pass SV.alles-da-wechsel-startet ;; *) fail SV.alles-da-wechsel-startet "$(sv_case 17 '')" ;; esac
+rm -rf "$SWAP_DIR"
 exit "$fails"

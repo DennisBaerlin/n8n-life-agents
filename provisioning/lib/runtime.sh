@@ -493,3 +493,22 @@ rt_stack_refresh() {
   fi
   return "$rc"
 }
+
+# rt_target_precheck <compose-datei> <master-image> — was ein Update abbrechen kann, gegen die Datei des Ziel-Stands pruefen,
+#   bevor der master gewechselt wird (lib/master_swap.sh; danach stuende der neue master auf dem alten Verbund):
+#   PostgreSQL-Hauptversion des neuen Pins = die der Daten, Abbilder der Dienste ladbar (tailscale/wan nur, wenn sie laufen).
+#   Abbruch per die_because pg_major|net, nichts geaendert. Unlesbarer Pin oder Datenstand = keine Aussage (wie upgrade_detect).
+# shellcheck disable=SC2030,SC2031  # bewusst nur in der Teilschale: Ziel-Datei + Ziel-Image fuer genau diese Aufrufe
+rt_target_precheck() {
+  local cf="$1" img="$2" pin data svcs=(postgres n8n gateway edge)
+  pin="$( ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; _rt_compose config --format json postgres 2>/dev/null ) \
+          | jq -r '.services.postgres.image // empty' 2>/dev/null | sed -nE 's#^.*/##; s/^[^:@]+:([0-9]+).*/\1/p')"
+  data="$(pg_su_exec cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ -n "$pin" ] && [ -n "$data" ] && [ "$pin" != "$data" ]; then
+    die_because pg_major "Die Datenbank ist PostgreSQL ${data}, dieser Stand erwartet ${pin} — ein Wechsel der Hauptversion braucht eine Umwandlung der Daten; Update abgebrochen, es wurde nichts geändert."
+  fi
+  rt_container_running "${LA_PROJECT}-tailscale" && svcs+=(tailscale)
+  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; rt_stack_pull "${svcs[@]}" ) \
+    || die_because net "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
+}

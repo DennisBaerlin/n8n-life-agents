@@ -52,6 +52,7 @@ master_swap_begin() {
   log "Neues Programm-Paket für ${tag} bereitlegen (${target}) ..."
   rt_image_ensure "$cf" "$target" \
     || die_because net "Das Programm-Paket ${target} ließ sich nicht laden — Update abgebrochen, es wurde nichts geändert."
+  if [ "$mode" = update ]; then rt_target_precheck "$cf" "$target"; fi   # Rueckweg: der vorherige Stand lief schon hier
   mkdir -p "$SWAP_DIR"; chmod 0700 "$SWAP_DIR"
   rm -f "$SWAP_DIR"/compose.new.yml "$SWAP_DIR"/stack.env
   # Teilschale mit EXIT-Trap: scheitert ein Schritt vor der Uebergabe, verschwinden stack.env (traegt das Superuser-

@@ -1,5 +1,7 @@
 [
   { "fn": "finance.fn_split_recurring_payment", "reason": "Interner Helfer, nur ueber fn_set_recurring_payment / fn_set_savings_plan / fn_change_owned_recurring erreichbar; gedeckt in test_prop_recurring_change_vs_preview.sql (P1) und test_prop_owned_recurring_views.sql (V3)." },
+  { "fn": "finance.fn_recurring_reanchor_day", "reason": "Interner Helfer der Tag-Verschiebung in place, nur ueber fn_set_recurring_payment / fn_change_owned_recurring erreichbar; gedeckt in test_prop_recurring_change_vs_preview.sql (P6)." },
+  { "fn": "finance.fn_recurring_day_shift", "reason": "Lese-Helfer in der Datei des Splits (der Lint ordnet je Datei zu, die fn selbst schreibt nicht); gedeckt in test_prop_recurring_change_vs_preview.sql (P6, P7)." },
   { "fn": "finance.fn_reopen_recurring_payment", "reason": "Interner Helfer, nur ueber fn_set_pension / fn_set_savings_plan / fn_set_savings_goal erreichbar; gedeckt in test_prop_reactivate_vs_preview.sql (A2) und test_prop_stop_funders_chain.sql (T3)." },
   { "fn": "finance.fn_repoint_recurring_owners", "reason": "Interner Helfer von Split und Reopen (Besitzer zeigen auf den Kopf); gedeckt ueber die Vertrags-Sichten nach einem Wechsel in test_prop_owned_recurring_views.sql (V3, V6)." },
   { "fn": "finance.fn_mark_loan_paid_off", "reason": "Interner Helfer der letzten Kreditrate; gedeckt in test_prop_loan_projection_vs_booking.sql (jeder Kredit wird bis zur Abloesung durchgebucht, K2)." },

@@ -1223,12 +1223,14 @@ RETURNS int LANGUAGE sql STABLE AS $$
         finance.fn_recurring_lineage_head(p_rp_id));
 $$;
 
--- fn_recurring_first_due (READ, STABLE): der erste Termin eines Glieds = kleinster Rasterpunkt in [valid_from, valid_to).
+-- fn_recurring_starts_on (READ, STABLE): der erste Termin eines Glieds = kleinster Rasterpunkt in [valid_from, valid_to).
 --   Die eine Adresse fuer "startet am" (starts_on der Views): valid_from ist der Geltungsbeginn und muss kein Termin sein
 --   (genannter Vertragsbeginn, reaktivierte Zahlung). Suchfenster zwei Perioden + ein Monat wie fn_recurring_next_due;
 --   liegt darin kein Termin (leeres oder zu kurzes Glied), valid_from. Unbekannte id -> NULL. Init, weil Views sie lesen.
---   Tests: tests/db/finance/test_prop_recurring_change_vs_preview.sql
-CREATE OR REPLACE FUNCTION finance.fn_recurring_first_due(p_rp_id int)
+--   Andere Frage als fn_recurring_first_due (R__fn_split_recurring_payment.sql: erster noch offene Termin nach dem juengsten
+--   erledigten, NULL bei pausierter Zeile = Post-State einer Aenderung): hier zaehlen weder Status noch Erledigtes.
+--   Tests: tests/db/finance/test_prop_recurring_change_vs_preview.sql (P5), test_prop_owned_recurring_views.sql (V8)
+CREATE OR REPLACE FUNCTION finance.fn_recurring_starts_on(p_rp_id int)
 RETURNS date LANGUAGE sql STABLE AS $$
     SELECT COALESCE(
         (SELECT min(o.d)

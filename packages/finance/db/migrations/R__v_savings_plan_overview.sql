@@ -48,7 +48,7 @@ SELECT sp.id,
        finance.fn_schedule_label(c.schedule_unit, c.schedule_interval, c.schedule_day_of_month,
                                  c.schedule_days_of_month) AS rhythm,
        abs(c.monthly_equivalent)                AS monthly_amount,
-       CASE WHEN c.valid_from > current_date THEN finance.fn_recurring_first_due(c.id) END AS starts_on,
+       CASE WHEN c.valid_from > current_date THEN finance.fn_recurring_starts_on(c.id) END AS starts_on,
        CASE WHEN sp.status = 'active' THEN coalesce(
            (SELECT min(o.d)
               FROM finance.fn_schedule_occurrences(c.first_payment_date, c.schedule_interval, c.schedule_unit,

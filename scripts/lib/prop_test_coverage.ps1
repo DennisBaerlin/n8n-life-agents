@@ -35,6 +35,34 @@ function Get-PropWatchedFns([string]$Root) {
     return $out
 }
 
+function Get-FnDefinitionDuplicates([string]$Root) {
+    # Derselbe Funktionsname in zwei SQL-Dateien: Init laeuft bei jedem Einspielen, eine R__ nur bei geaendertem Inhalt.
+    # Zwei Dateien mit derselben Signatur ueberschreiben sich deshalb je nach Reihenfolge still. Ueberladungen in einer
+    # Datei sind erlaubt (ein Name, eine Datei).
+    $u8 = New-Object System.Text.UTF8Encoding($false)
+    $byName = @{}
+    $pkgRoot = Join-Path $Root 'packages'
+    if (-not (Test-Path $pkgRoot)) { return @() }
+    foreach ($f in (Get-ChildItem -Path $pkgRoot -Recurse -File -Filter '*.sql' | Where-Object { $_.FullName -match '[\\/]db[\\/]' })) {
+        $code = Get-PropCodeText ([System.IO.File]::ReadAllText($f.FullName, $u8))
+        foreach ($m in [regex]::Matches($code, '(?i)CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+([a-z_]+\.[a-z0-9_]+)\s*\(')) {
+            $name = $m.Groups[2].Value.ToLowerInvariant()
+            if (-not $byName.ContainsKey($name)) { $byName[$name] = @{} }
+            $byName[$name][$f.Name] = $true
+        }
+    }
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($name in ($byName.Keys | Sort-Object)) {
+        # Mehrere Init-Dateien laufen immer alle und in fester Reihenfolge (gleicher Trigger-Helfer je Init): kein Fehler.
+        $files = @($byName[$name].Keys | Sort-Object)
+        $rep = @($files | Where-Object { $_ -like 'R__*' }).Count
+        if ($rep -ge 2 -or ($rep -ge 1 -and $files.Count -gt $rep)) {
+            $out.Add("$name ist in mehreren Dateien definiert, die nicht immer zusammen laufen: $($files -join ', ') (ein Name, eine Datei)")
+        }
+    }
+    return @($out)
+}
+
 function Get-PropTestedFns([string]$Root) {
     $u8 = New-Object System.Text.UTF8Encoding($false)
     $set = @{}

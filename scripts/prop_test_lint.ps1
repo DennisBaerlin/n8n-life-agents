@@ -6,6 +6,10 @@
 # der Vorschau). Der Eigenschafts-Test aendert den Datensatz und fragt danach die lesende Seite, ueber mehrere
 # Kombinationen.
 #
+# Zweite Regel, gleiche Fehlerklasse: ein Funktionsname steht in genau einer Datei. Init-Dateien laufen bei jedem Einspielen,
+# eine R__ nur bei geaendertem Inhalt; derselbe Name in einer Init und einer R__ (oder in zwei R__) ueberschreibt sich je
+# nach Reihenfolge still, und eine der lesenden Sichten rechnet dann mit der falschen Definition.
+#
 # Geprueft wird der Aufruf, nicht die Guete des Tests: ob der Test wirklich vorher/nachher vergleicht, liest das Review.
 # Ausnahmeliste tests/util/prop_test_allowlist.json [{fn, reason}]: nur schrumpfend. Ein Eintrag ohne Grund, fuer eine fn
 # mit Test oder fuer eine fn ohne beobachtetes UPDATE ist ein Fehler.
@@ -28,7 +32,8 @@ if (Test-Path $allowPath) {
         if ($e.fn) { $allow[([string]$e.fn).ToLowerInvariant()] = [string]$e.reason }
     }
 }
-$r = Compare-PropGap -Watched $watched -Tested $tested -Allow $allow
+$gap = Compare-PropGap -Watched $watched -Tested $tested -Allow $allow
+$r = [pscustomobject]@{ Errors = @(@($gap.Errors) + @(Get-FnDefinitionDuplicates -Root $Root)) }
 foreach ($m in $r.Errors) { Write-Host "  [FAIL] $m" -ForegroundColor Red }
 $covered = @($watched.Keys | Where-Object { $tested -contains $_ }).Count
 if ($Verbose) {

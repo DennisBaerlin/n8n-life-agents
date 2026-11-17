@@ -218,6 +218,49 @@ BEGIN
           WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)))); END IF;
   END;
 
+  -- V8: zwei Fragen, zwei Adressen. "Startet am" (fn_recurring_starts_on: erster Termin des Glieds, gleich welcher
+  -- Status, gleich was erledigt ist) und "erster offener Termin" (fn_recurring_first_due: nach dem juengsten erledigten,
+  -- NULL bei pausierter Zeile) gegen dieselbe Zahlung in vier Lagen.
+  DECLARE v_start DATE := current_date + 10; v_first DATE; v_second DATE;
+  BEGIN
+    -- Lage 1: Sparplan vor dem Start, pausiert -> die Uebersicht nennt weiter den Start, offen ist nichts
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v8_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B4L5Y983','symbol','IUSQ','security_name','Testfonds Zwei','amount',60,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_start));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v8_plan__','status','paused'));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V8 setup pause: %', v_res; END IF;
+    IF (SELECT starts_on FROM finance.savings_plan_overview WHERE name = '__prop_orv_v8_plan__') IS DISTINCT FROM v_start
+       OR finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_start OR finance.fn_recurring_first_due(v_rp) IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL V8 [pausiert, vor dem Start]: Uebersicht startet %, starts_on %, first_due % (erwartet % / % / NULL)',
+        (SELECT starts_on FROM finance.savings_plan_overview WHERE name = '__prop_orv_v8_plan__'), finance.fn_recurring_starts_on(v_rp),
+        finance.fn_recurring_first_due(v_rp), v_start, v_start; END IF;
+    -- Lage 2: vor dem Start, aktiv -> beide nennen den ersten Termin
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v8_plan__','status','active'));
+    IF finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_start OR finance.fn_recurring_first_due(v_rp) IS DISTINCT FROM v_start THEN
+      RAISE EXCEPTION 'FAIL V8 [aktiv, vor dem Start]: starts_on % first_due % (erwartet beide %)', finance.fn_recurring_starts_on(v_rp), finance.fn_recurring_first_due(v_rp), v_start; END IF;
+    -- Lage 3: laufende Zahlung mit gebuchtem ersten Termin -> starts_on bleibt der erste Termin, first_due ist der naechste
+    v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_orv_v8_rp__','account_id',v_giro,'direction','income','amount',10,
+      'schedule_unit','month','first_payment_date',v_t - 40));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    SELECT min(d), max(d) INTO v_first, v_second FROM (SELECT o.due_date AS d FROM finance.fn_recurring_due_open(v_t - 60, v_t + 60) o
+                                                       WHERE o.recurring_payment_id = v_rp ORDER BY 1 LIMIT 2) q;
+    PERFORM finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id',v_rp,'due_date',v_first));
+    IF finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_first OR finance.fn_recurring_first_due(v_rp) IS DISTINCT FROM v_second THEN
+      RAISE EXCEPTION 'FAIL V8 [gebuchter erster Termin]: starts_on % (erwartet %), first_due % (erwartet %)', finance.fn_recurring_starts_on(v_rp), v_first,
+        finance.fn_recurring_first_due(v_rp), v_second; END IF;
+    -- Lage 4: Enddatum vor dem ersten Termin -> kein offener Termin; starts_on faellt auf den Geltungsbeginn
+    v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_orv_v8_end__','account_id',v_giro,'direction','income','amount',10,
+      'schedule_unit','year','first_payment_date',v_t + 200,'valid_from',v_t + 20,'valid_to',v_t + 50));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    IF finance.fn_recurring_first_due(v_rp) IS NOT NULL OR finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_t + 20 THEN
+      RAISE EXCEPTION 'FAIL V8 [Ende vor dem ersten Termin]: starts_on % first_due %', finance.fn_recurring_starts_on(v_rp), finance.fn_recurring_first_due(v_rp); END IF;
+  END;
+  -- eine Definition je Frage: der Name kommt im Katalog genau einmal vor (zwei Dateien mit derselben Signatur wuerden sich
+  -- je nach Einspiel-Reihenfolge still ueberschreiben)
+  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_first_due') <> 1
+     OR (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_starts_on') <> 1 THEN
+    RAISE EXCEPTION 'FAIL V8: fn_recurring_first_due / fn_recurring_starts_on nicht je genau einmal definiert'; END IF;
+
   RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6, V7)]', v_n_ins, v_n_pen, v_n_plan;
 END $$;
 

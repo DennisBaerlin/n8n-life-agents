@@ -64,6 +64,16 @@ try {
 
     [System.IO.File]::WriteAllText((New-Item -ItemType File -Force -Path (Join-Path $tree $AL)).FullName, '[{"fn":"finance.fn_set_b","reason":"Grund"}]', $u8)
     Check 'Lint liest die Ausnahmeliste: gruen' ((Invoke-Lint $tree) -eq 0)
+
+    Check 'ein Name je Datei: ohne Doppel kein Fund' (@(Get-FnDefinitionDuplicates -Root $tree).Count -eq 0)
+    $D = 'packages/finance/db'
+    [System.IO.File]::WriteAllText((New-Item -ItemType File -Force -Path (Join-Path $tree "$D/finance.a_init.sql")).FullName, (Fn 'finance.touch_x' 'NULL;'), $u8)
+    [System.IO.File]::WriteAllText((New-Item -ItemType File -Force -Path (Join-Path $tree "$D/finance.b_init.sql")).FullName, (Fn 'finance.touch_x' 'NULL;'), $u8)
+    Check 'derselbe Name in zwei Init-Dateien ist erlaubt (laufen immer beide)' (@(Get-FnDefinitionDuplicates -Root $tree).Count -eq 0)
+    [System.IO.File]::WriteAllText((New-Item -ItemType File -Force -Path (Join-Path $tree "$D/finance.c_init.sql")).FullName, (Fn 'finance.fn_read_c' 'NULL;'), $u8)
+    $dup = @(Get-FnDefinitionDuplicates -Root $tree)
+    Check 'derselbe Name in Init und R__ ist ein Fehler' (($dup.Count -eq 1) -and ($dup[0] -match 'finance\.fn_read_c')) ($dup -join '|')
+    Check 'Lint gegen den Baum mit Doppel-Definition: rot' ((Invoke-Lint $tree) -eq 1)
 } finally { Remove-Item -Recurse -Force $tree -ErrorAction SilentlyContinue }
 
 if ($fails -eq 0) { Write-Host 'PASS prop_test_lint_test' -ForegroundColor Green } else { Write-Host "prop_test_lint_test: $fails Fehler" -ForegroundColor Red }

@@ -231,7 +231,7 @@ jobs:
   # belegtem Port 80 vorher (nichts wird ueberschrieben). Beide pruefen die Pfad-Liste des Rands und die Tailnet-Sperre.
   compose-stack-cold:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -297,20 +297,30 @@ jobs:
           test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$MASTER_PIN"
           test "$(docker exec "$LA_PROJECT-master" printenv LA_MASTER_IMAGE)" = "$MASTER_PIN"
 
-      - name: Install everything inside the master (provision.sh, all packages, invented values)
+      - name: Telegram mock in the pod (own container on the anchor, shares 127.0.0.1 with n8n and the master)
+        run: bash tests/mock_telegram/start_in_pod.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
+
+      - name: Install like the setup wizard (its answer file, release profile, backup folder on the host)
         run: |
           set -euo pipefail
-          printf "%s\n" \
-            "N8N_OWNER_EMAIL='ci@example.com'" \
-            "N8N_OWNER_PASSWORD='CiRunner1'" \
-            "OWNER_FIRST_NAME='CI'" \
-            "OWNER_LAST_NAME='Runner'" \
-            "OWNER_BIRTH_DATE='1990-01-01'" \
-            "OWNER_LANGUAGE='de'" \
-            "REACH_MODE=${{ matrix.reach }}" \
-            "LLM_GATEWAY_KEEPALIVE_HOURS=0" > "$RUNNER_TEMP/answers.env"
+          # Die Antwort-Datei schreibt derselbe Code wie im Einrichtungs-Assistenten (flow.js im master-Image, Fragen aus
+          # bridge.sh questions), nicht eine Handschrift in der CI. Aufruf von provision.sh wie provisioning/wizard/server.js.
+          mkdir -p "$RUNNER_TEMP/bk-wizard"
+          docker cp tests/wizard/render_ci_answers.js "$LA_PROJECT-master:/tmp/render_ci_answers.js"
+          render() { docker exec "$LA_PROJECT-master" node /tmp/render_ci_answers.js --reach ${{ matrix.reach }} --backup "$RUNNER_TEMP/bk-wizard" "$@"; }
+          render > "$RUNNER_TEMP/answers.env"
+          render --print packages > "$RUNNER_TEMP/packages.arg"
+          head -n1 "$RUNNER_TEMP/answers.env" | grep -qx '# lifeagents-answers v1'
+          grep -qx "BACKUP_PARENT_DIR=$RUNNER_TEMP/bk-wizard" "$RUNNER_TEMP/answers.env"
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.1"
-          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
+          docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
+          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt die Bot-Aufrufe auf den Mock (im Wizard erbt provision.sh sie aus der Umgebung des master, die compose.yml nicht setzt); LLM_GATEWAY_KEEPALIVE_HOURS=0 verhindert Aufrufe des Gateways mit dem erfundenen Schluessel
+          docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 -e LIFEAGENTS_RESULT_FILE=/run/lifeagents-wizard/result "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env --packages "$(cat "$RUNNER_TEMP/packages.arg")"
+          docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
+          # Der Sicherungsschritt ist eine Warnung, kein Abbruch: erst die Datei im Ordner auf dem Rechner beweist ihn.
+          sudo find "$RUNNER_TEMP/bk-wizard" -name 'lifeagents-backup-*.nla.enc' | grep -q . \
+            || { echo "FAIL keine erste Sicherung im Ordner des Assistenten"; sudo find "$RUNNER_TEMP/bk-wizard"; exit 1; }
+          docker exec "$LA_PROJECT-master" grep -q '^BACKUP_HOST_DIR=' /etc/lifeagents/core.env
 
       - name: Assert the stack (doctor, UTF-8, every workflow published, edge reaches only n8n)
         run: |
@@ -346,23 +356,29 @@ jobs:
           set -euo pipefail
           # Wie `lifeagents update`: ohne --packages -> Grundsystem + die INSTALLIERTEN Pakete (aus der Registry, also ueber
           # den Datenbank-Wrapper des master); keines darf verloren gehen.
-          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev
+          docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
+          # hand-injected: wie im Erstlauf (Bot-Aufrufe auf den Mock, Gateway ohne Aufwaermen); ein Lauf ohne sie wuerde die Credential-Adresse auf api.telegram.org zuruecksetzen
+          docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env
+          docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT count(*) FROM core.package_registry WHERE status='active'" | tr -d '[:space:]')" -ge 5
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
           # n8n, gateway und der Tunnel-Knoten entstehen erst im Erstlauf; wan startet erst im Rand-Schritt.
           grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"
           grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"
           diff "$RUNNER_TEMP/ids.1.base" "$RUNNER_TEMP/ids.2.base"
+          # Die Anthropic-Pruefung der Credential-Einspielung (erfundener Schluessel) steht als AxiosError 401 im n8n-Log; die
+          # Grenze fuer die Pruefung unten ist darum der Neustart, nicht "die letzten 5 Minuten".
+          restarted="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           docker restart "$LA_PROJECT-n8n" >/dev/null
           ready=""
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 180); do
             if curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness"; then ready=1; break; fi
             sleep 2
           done
           [ -n "$ready" ] || { docker logs --tail 80 "$LA_PROJECT-n8n"; exit 1; }
-          # Ohne Telegram-Token darf nach dem Neustart kein Auth-Fehler auftauchen (AxiosError 401 = Telegram-Trigger
-          # mit erfundenem Token, Probelauf-Fund).
-          if docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
+          # Nach dem Neustart darf kein Auth-Fehler auftauchen (AxiosError 401 = ein Telegram-Aufruf ging an die echte Adresse
+          # statt an den Mock, Probelauf-Fund).
+          if docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
       - name: Edge paths (one public list, editor and wizard closed to the tailnet, proxy hops)
@@ -463,6 +479,11 @@ jobs:
           docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
           test "$(docker inspect -f '{{.State.StartedAt}}' "$LA_PROJECT-wan")" = "$s1"
 
+      - name: Pair the owner over the real ingress, then the finish step against the Telegram mock
+        if: matrix.reach == 'tunnel'
+        timeout-minutes: 15
+        run: bash tests/mock_telegram/pair_and_finalize.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
+
       - name: Neighbour after (unchanged)
         run: |
           set -euo pipefail
@@ -479,12 +500,14 @@ jobs:
         if: failure()
         run: |
           for c in master n8n postgres gateway edge tailscale wan; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
+          tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
 
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
+          docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true   # der Mock haengt am anchor: zuerst weg
           docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down -v --remove-orphans || true
-          docker rm -fv ci-port80 >/dev/null 2>&1 || true
+          docker rm -fv ci-port80 "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
           docker rm -fv ci-neighbour >/dev/null 2>&1 || true
@@ -499,7 +522,14 @@ jobs:
   # (--packages none) haelt den Lauf kurz; alle Pakete prueft compose-stack-cold.
   compose-stack-ops:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
+    # Das neue master-Image kommt wie im Release aus einem Register (Digest in der compose.yml des Release-Baums); die Auftrags-
+    # Schritte laden es von hier.
+    services:
+      registry:
+        image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+        ports:
+          - 127.0.0.1:5000:5000
     env:
       LA_PROJECT: ci-ops
       LA_EDGE_PORT: '5890'
@@ -522,6 +552,12 @@ jobs:
             "RUN printf '\\nupgrade_finish() { die \"CI: Fehler nach der Sicherung\"; }\\n' >> /opt/lifeagents/provisioning/lib/upgrade_guard.sh" \
             | docker build -q -t ci-ops-master:d -
           docker run --rm --entrypoint tail ci-ops-master:d -n 2 /opt/lifeagents/provisioning/lib/upgrade_guard.sh
+          # b ist das Ziel des Update-Auftrags: per Digest aus dem Register (so nennt es die compose.yml des Release-Baums).
+          docker tag ci-ops-master:b 127.0.0.1:5000/ci/ops-master:b
+          docker push -q 127.0.0.1:5000/ci/ops-master:b >/dev/null
+          b_ref="$(docker inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' 127.0.0.1:5000/ci/ops-master:b | grep -m1 '^127.0.0.1:5000/ci/ops-master@sha256:')"
+          echo "B_REF=$b_ref" >> "$GITHUB_ENV"
+          docker image rm 127.0.0.1:5000/ci/ops-master:b >/dev/null
 
       - name: Neighbour before (foreign container, volume, network + a decoy volume with our prefix but no label)
         run: |
@@ -546,11 +582,15 @@ jobs:
           echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
           export LA_PG_SUPERPW="$pw"
           bash provisioning/compose/stack.sh up
-          printf "%s\n" "N8N_OWNER_EMAIL='ci@example.com'" "N8N_OWNER_PASSWORD='CiRunner1'" "OWNER_FIRST_NAME='CI'" \
-            "OWNER_LAST_NAME='Runner'" "OWNER_BIRTH_DATE='1990-01-01'" "OWNER_LANGUAGE='de'" "LLM_GATEWAY_KEEPALIVE_HOURS=0" \
-            | docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /root/answers.env'
-          docker exec "$LA_PROJECT-master" \
-            bash /opt/lifeagents/provisioning/provision.sh --unattended /root/answers.env --profile dev --packages none
+          # Antwort-Datei wie im Assistenten; Telegram-Mock im Pod (Karte, Tipp und Meldung des Updates laufen ueber ihn).
+          bash tests/mock_telegram/start_in_pod.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
+          mkdir -p "$RUNNER_TEMP/bk-wizard"
+          docker cp tests/wizard/render_ci_answers.js "$LA_PROJECT-master:/tmp/render_ci_answers.js"
+          docker exec "$LA_PROJECT-master" node /tmp/render_ci_answers.js --reach tunnel --packages none --backup "$RUNNER_TEMP/bk-wizard" \
+            | docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env'
+          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt die Bot-Aufrufe auf den Mock (compose.yml setzt sie nicht); LLM_GATEWAY_KEEPALIVE_HOURS=0 verhindert Aufrufe mit dem erfundenen Schluessel
+          docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 -e LIFEAGENTS_RESULT_FILE=/run/lifeagents-wizard/result "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env --packages none
+          docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
           docker exec "$LA_PROJECT-master" test -L /usr/local/bin/lifeagents
           # Die Tick-Schleife laeuft neben dem Wizard (der hier nie "Fertig" bekommt) und schreibt binnen einer Minute.
@@ -558,6 +598,10 @@ jobs:
           docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/update-tick.state \
             || { echo "FAIL tick loop wrote no update-tick.state within 150 s"; docker top "$LA_PROJECT-master"; exit 1; }
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Pair the owner (real ingress, Telegram mock) — the update card and its tap need a paired owner
+        timeout-minutes: 15
+        run: bash tests/mock_telegram/pair_and_finalize.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
 
       - name: Backup to a folder on the host + restore (Fund 7)
         run: |
@@ -599,22 +643,105 @@ jobs:
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
-      - name: Version jump a -> b (helper swaps, the new master sets up v9.1.0 after a backup)
+      - name: Release v9.1.0 on a GitHub mock (signed; its compose.yml pins the digest of image b, as a release does)
         run: |
           set -euo pipefail
-          docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:b'
+          tag=v9.1.0; w="$RUNNER_TEMP/gh"; rel="$w/releases/$tag"
+          mkdir -p "$rel" "$w/bodies" "$w/src" "$w/gnupg"; chmod 700 "$w/gnupg"
+          git archive --format=tar --prefix="n8n-life-agents-$tag/" HEAD provisioning packages .gitattributes | tar -x -C "$w/src"
+          cf="$w/src/n8n-life-agents-$tag/provisioning/compose/compose.yml"
+          sed -i "s|^  master: &img_master .*|  master: \&img_master \${LA_MASTER_IMAGE:-$B_REF}|" "$cf"
+          grep -n 'img_master' "$cf" | head -n1
+          tar -czf "$rel/n8n-life-agents-$tag.tar.gz" -C "$w/src" "n8n-life-agents-$tag"
+          printf 'echo fake-install\n' > "$rel/install.sh"
+          ( cd "$rel" && sha256sum "n8n-life-agents-$tag.tar.gz" install.sh > SHA256SUMS )
+          export GNUPGHOME="$w/gnupg"
+          gpg --batch --passphrase '' --quick-generate-key 'ci-update-test' ed25519 sign never >/dev/null 2>&1
+          gpg --batch --export 'ci-update-test' > "$w/kr.gpg"
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user ci-update-test --detach-sign -o "$rel/SHA256SUMS.sig" "$rel/SHA256SUMS"
+          printf 'Kurz neun.\n' > "$w/bodies/$tag.md"
+          m="$LA_PROJECT-master"
+          # Der Schluesselbund der Installation (Volume etc_la) nimmt den Test-Schluessel: ein Release des Projekts ist unsigniert nicht zu erzeugen.
+          docker cp "$w/kr.gpg" "$m:/etc/lifeagents/release-signing.gpg"
+          docker exec "$m" mkdir -p /tmp/mock_github
+          docker cp "$w/releases" "$m:/tmp/mock_github/releases"; docker cp "$w/bodies" "$m:/tmp/mock_github/bodies"
+          docker cp tests/mock_github/server.js "$m:/tmp/mock_github/server.js"
+          # hand-injected: Port, Ordner und neuestes Tag sind die Einstellung des GitHub-Mocks selbst, nicht des geprueften Installers
+          docker exec -d -e MOCK_GH_PORT=8093 -e MOCK_GH_SLUG=owner/repo -e MOCK_GH_RELEASE_DIR=/tmp/mock_github/releases -e MOCK_GH_BODY_DIR=/tmp/mock_github/bodies -e MOCK_GH_LATEST=$tag "$m" node /tmp/mock_github/server.js
+          for _ in $(seq 1 25); do docker exec "$m" curl -sf http://127.0.0.1:8093/repos/owner/repo/releases/latest >/dev/null && break; sleep 0.4; done
+          docker exec "$m" curl -sf http://127.0.0.1:8093/repos/owner/repo/releases/latest | jq -e '.tag_name == "v9.1.0"'
+
+      - name: Update from an install without a version number (dev) — the release must be offered and the update must run
+        # Bekannte Luecke, rot auf main (Befund Nacht 2026-11-16): ohne Versionsnummer meldet der Release-Check "nichts zu tun",
+        # es kommt keine Karte, ein alter Knopf lehnt ab (unknown_release). Der Schritt blockiert den Lauf nicht; sobald der
+        # Update-Weg solche Installationen mitnimmt, continue-on-error entfernen.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          m="$LA_PROJECT-master"; log="$RUNNER_TEMP/tgmock/mock_telegram.jsonl"
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
+          # hand-injected: Release-Quelle und Bot-Adresse zeigen auf die Mocks; die Tick-Schleife des master hat diese Umgebung nicht
+          upd() { docker exec -e PROVISION_GH_API=http://127.0.0.1:8093 -e PROVISION_REPO_SLUG=owner/repo -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 "$m" lifeagents update "$@"; }
+          trap 'docker exec "$m" sh -c "echo v9.0.0 > /usr/local/lib/lifeagents/VERSION"' EXIT
+          docker exec "$m" sh -c 'echo dev > /usr/local/lib/lifeagents/VERSION'
+          q "DELETE FROM core.notification_state WHERE source='release_update'; DELETE FROM core.update_requests" >/dev/null
+          : > "$log"
+          upd --check
+          if ! grep -q 'upd%3Anow%3Av9.1.0' "$log"; then
+            echo "::warning title=Bekannte Luecke::Installation ohne Versionsnummer (dev) bekommt keine Update-Karte - Konzept B der Docker-Betriebs-Arbeit noch nicht gebaut"
+            echo "FAIL aus 'dev' kommt keine Update-Karte fuer v9.1.0"; exit 1
+          fi
+          echo "::notice title=Luecke geschlossen::der dev-Fall bekommt eine Karte - continue-on-error an diesem Schritt entfernen"
+
+      - name: Update by a real order (card -> tap -> order -> tick -> swap -> version + report), not by calling the helper
+        run: |
+          set -euo pipefail
+          m="$LA_PROJECT-master"; log="$RUNNER_TEMP/tgmock/mock_telegram.jsonl"
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
+          # hand-injected: Release-Quelle und Bot-Adresse zeigen auf die Mocks; die Tick-Schleife des master hat diese Umgebung nicht
+          upd() { docker exec -e PROVISION_GH_API=http://127.0.0.1:8093 -e PROVISION_REPO_SLUG=owner/repo -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 "$m" lifeagents update "$@"; }
+          test "$(docker exec "$m" lifeagents version)" = v9.0.0
+          q "DELETE FROM core.notification_state WHERE source='release_update'; DELETE FROM core.update_requests" >/dev/null
+          : > "$log"
+          # 1. Der Release-Check schickt die Karte mit dem Knopf (Eingang: die Karte, nicht der Helfer).
+          upd --check
+          grep -q 'upd%3Anow%3Av9.1.0' "$log" || { echo "FAIL keine Update-Karte fuer v9.1.0"; tail -n 5 "$log"; exit 1; }
+          # 2. Der Tipp des Owners ueber den echten Dispatcher legt genau einen Auftrag an.
+          owner="$(q "SELECT pp->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) pp WHERE c.name='family' AND pp->>'role'='owner' LIMIT 1")"
+          [[ "$owner" =~ ^[0-9]+$ ]]
+          # Die Tick-Schleife des master hat die Mock-Umgebung nicht: ein Tick von ihr bearbeitete den Auftrag gegen das echte
+          # GitHub. Darum erst nach ihrem Tick tippen und den eigenen Tick sofort fahren (die naechsten 60 s gehoeren uns).
+          tick() { docker exec "$m" sh -c "sed -n 's/^LAST_TICK=//p' /var/lib/lifeagents/update-tick.state" 2>/dev/null || true; }
+          t0="$(tick)"; for _ in $(seq 1 40); do [ "$(tick)" != "$t0" ] && break; sleep 2; done
+          test "$(q "SELECT core.fn_dispatch_callback(jsonb_build_object('data','upd:now:v9.1.0','chat_id','$owner','chat_type','private'))->>'ok'")" = true
+          test "$(q "SELECT count(*) FROM core.update_requests WHERE finished_at IS NULL AND tag = 'v9.1.0'")" = 1
+          # 3. Der Runner uebernimmt den Auftrag: der minuetliche Tick des master, hier von Hand mit der Mock-Umgebung gefahren.
+          upd --tick
+          # 4. Der neue master schliesst den Auftrag ab: Image aus dem Register, Version, Auftrag erledigt.
           done=""
-          for _ in $(seq 1 180); do
-            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = ci-ops-master:b ] \
-               && [ "$(docker exec "$LA_PROJECT-master" lifeagents version 2>/dev/null)" = v9.1.0 ] \
-               && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null; then done=1; break; fi
+          for _ in $(seq 1 240); do
+            if [ "$(docker inspect -f '{{.Config.Image}}' "$m" 2>/dev/null)" = "$B_REF" ] \
+               && [ "$(docker exec "$m" lifeagents version 2>/dev/null)" = v9.1.0 ] \
+               && docker exec "$m" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null \
+               && [ -n "$(q "SELECT outcome FROM core.update_requests WHERE tag = 'v9.1.0' AND outcome IS NOT NULL")" ]; then done=1; break; fi
             sleep 5
           done
-          [ -n "$done" ] || { docker logs --tail 60 "$LA_PROJECT-master"; exit 1; }
-          docker exec "$LA_PROJECT-master" sh -c 'ls -l /var/lib/lifeagents/backups/pre-upgrade-*.dump.gpg'
+          [ -n "$done" ] || { docker logs --tail 60 "$m"; q "SELECT id, outcome, stage, reason_code FROM core.update_requests" || true; exit 1; }
+          test "$(q "SELECT outcome FROM core.update_requests WHERE tag = 'v9.1.0'")" = succeeded
+          docker exec "$m" sh -c 'ls -l /var/lib/lifeagents/backups/pre-upgrade-*.dump.gpg'
           sudo find "$RUNNER_TEMP/bk" -maxdepth 1 -name 'pre-upgrade-*.dump.gpg' | grep -q .
-          docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/upgrade.pending
-          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+          docker exec "$m" test ! -e /var/lib/lifeagents/upgrade.pending
+          # Die Tick-Schleife traegt die Einrichtung des neuen master selbst und tickt erst danach wieder; doctor meldet sie
+          # waehrenddessen als stehend. Erst wenn sie nach dem Abschluss wieder schreibt, ist der Zustand ein Befund.
+          fin="$(q "SELECT extract(epoch FROM finished_at)::bigint FROM core.update_requests WHERE tag = 'v9.1.0'")"
+          ticked=""
+          for _ in $(seq 1 180); do
+            last="$(docker exec "$m" sh -c "sed -n 's/^LAST_TICK=//p' /var/lib/lifeagents/update-tick.state" 2>/dev/null || true)"
+            if [[ "$last" =~ ^[0-9]+$ ]] && [ "$last" -gt "$fin" ]; then ticked=1; break; fi
+            sleep 5
+          done
+          [ -n "$ticked" ] || { echo "FAIL die Tick-Schleife tickt nach dem Update nicht wieder (15 min)"; exit 1; }
+          docker exec "$m" bash /opt/lifeagents/provisioning/doctor.sh
 
       - name: Version jump, abort 3 — setup fails after the backup, then lifeagents rollback --yes (data + master back)
         run: |
@@ -630,11 +757,11 @@ jobs:
           [ -n "$done" ] || { docker logs --tail 60 "$LA_PROJECT-master"; exit 1; }
           docker exec "$LA_PROJECT-master" test -e /var/lib/lifeagents/upgrade.pending   # gescheitert NACH der Sicherung
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.1.0
-          grep -q '^FROM_MASTER_IMAGE=ci-ops-master:b$' <(docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/upgrade.pending)
+          grep -qxF "FROM_MASTER_IMAGE=$B_REF" <(docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/upgrade.pending)
           docker exec "$LA_PROJECT-master" lifeagents rollback --yes
           done=""
           for _ in $(seq 1 180); do
-            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = ci-ops-master:b ] \
+            if [ "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master" 2>/dev/null)" = "$B_REF" ] \
                && docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state 2>/dev/null \
                && [ -z "$(q "SELECT 1 FROM pg_database WHERE datname = 'n8n_before_rollback'")" ]; then done=1; break; fi
             sleep 5
@@ -644,9 +771,44 @@ jobs:
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'" | tr -d '[:space:]')" = vorher
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
+      - name: Sleep and restart of the host — frozen containers (docker pause), then every container stopped and started at once
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          m="$LA_PROJECT-master"
+          ours() { docker ps -aq --filter "label=io.lifeagents.install=$LA_PROJECT"; }
+          running() { docker ps -q --filter "label=io.lifeagents.install=$LA_PROJECT"; }
+          tick() { docker exec "$m" sh -c "sed -n 's/^LAST_TICK=//p' /var/lib/lifeagents/update-tick.state" 2>/dev/null || true; }
+          ready() { for _ in $(seq 1 120); do curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness" && return 0; sleep 3; done; return 1; }
+          # Schlaf: der Rechner friert alle Prozesse ein, die Uhr springt danach um die Schlafzeit weiter (hier: docker pause).
+          before="$(tick)"; [[ "$before" =~ ^[0-9]+$ ]]
+          running | xargs docker pause >/dev/null
+          sleep 150
+          running | xargs docker unpause >/dev/null
+          ready || { docker logs --tail 60 "$LA_PROJECT-n8n"; exit 1; }
+          woke=""
+          for _ in $(seq 1 60); do now="$(tick)"; if [[ "$now" =~ ^[0-9]+$ ]] && [ "$now" -gt "$before" ]; then woke=1; break; fi; sleep 3; done
+          [ -n "$woke" ] || { echo "FAIL die Tick-Schleife tickt nach dem Schlaf nicht wieder"; exit 1; }
+          # Neustart von Docker oder Rechner: alle Container sind aus und starten gleichzeitig wieder (Reihenfolge nicht bestimmt).
+          running | xargs docker stop >/dev/null
+          # Wie die Neustart-Regel von Docker: wer nicht hochkommt (ein Mitglied vor dem anchor), wird erneut versucht.
+          for _ in $(seq 1 10); do
+            ours | xargs docker start >/dev/null 2>&1 || true
+            [ -z "$(docker ps -aq --filter "label=io.lifeagents.install=$LA_PROJECT" --filter status=exited --filter status=created)" ] && break
+            sleep 3
+          done
+          ready || { docker logs --tail 60 "$LA_PROJECT-n8n"; exit 1; }
+          before="$(tick)"; woke=""
+          for _ in $(seq 1 60); do now="$(tick)"; if [[ "$now" =~ ^[0-9]+$ ]] && [ "$now" -gt "$before" ]; then woke=1; break; fi; sleep 3; done
+          [ -n "$woke" ] || { echo "FAIL die Tick-Schleife tickt nach dem Neustart nicht wieder"; exit 1; }
+          test "$(docker exec "$m" lifeagents version)" = v9.1.0
+          docker exec "$m" bash /opt/lifeagents/provisioning/doctor.sh
+
       - name: doctor sees a separated namespace after a lone anchor restart (Einwand 17)
         run: |
           set -euo pipefail
+          # Der Mock haengt am Namensraum des anchor und wird vor dessen Neustart entfernt.
+          docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true
           docker restart "$LA_PROJECT-anchor" >/dev/null
           out="$(docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh || true)"
           printf '%s\n' "$out" | grep 'Netz-Namensraum getrennt'
@@ -678,14 +840,16 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: |
+          tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
           for c in master n8n postgres gateway edge swap; do echo "=== $c"; docker logs --tail 80 "$LA_PROJECT-$c" 2>&1 || true; done
           docker exec "$LA_PROJECT-master" sh -c 'cat /var/lib/lifeagents/master-swap/state; tail -n 60 /var/lib/lifeagents/log/*.log' 2>&1 || true
 
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
+          docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true   # der Mock haengt am anchor: zuerst weg
           docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down -v --remove-orphans || true
-          docker rm -fv "$LA_PROJECT-swap" >/dev/null 2>&1 || true
+          docker rm -fv "$LA_PROJECT-swap" "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true
           docker volume rm "${LA_PROJECT}_fremd" "${LA_PROJECT}_shared" "${LA_PROJECT}_gw_code" "${LA_PROJECT}_n8n_patches" >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done

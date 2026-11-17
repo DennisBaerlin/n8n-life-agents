@@ -94,8 +94,8 @@ Planende Unter-Sessions melden die Plan-Datei statt einer Plan-Karte (`/feature`
 
 Reihenfolge nach dem Tag, erst danach startet die nächste Leitung:
 
-1. `archive_session` je Unter-Session (stoppt sie, räumt ihren Worktree ab, wiederherstellbar); vorher muss alles aus ihr gemerged und ihr Nachlauf erledigt sein. Im Auto-Modus braucht es zwei Aufrufe: Der erste wird um das Feld `session` ergänzt und abgelehnt, der zweite mit genau diesem Feld geht durch. Meldet die App „still has live work“, bleiben Session, Worktree und Branch stehen, bis der Owner sie in der Seitenleiste archiviert. `delete_session` nur auf ausdrücklichen Wunsch des Owners.
-2. Worktrees (`git worktree prune`) und gemergte Branches lokal und auf GitHub entfernen; Branches auf GitHub nur auf Owner-Wort.
+1. `archive_session` je Unter-Session (stoppt sie, wiederherstellbar; Worktree-Ordner und Branch räumt sie nicht verlässlich ab → Schritt 2); vorher muss alles aus ihr gemerged und ihr Nachlauf erledigt sein. Im Auto-Modus braucht es zwei Aufrufe: Der erste wird um das Feld `session` ergänzt und abgelehnt, der zweite mit genau diesem Feld geht durch. Meldet die App „still has live work“, bleiben Session, Worktree und Branch stehen, bis der Owner sie in der Seitenleiste archiviert. `delete_session` nur auf ausdrücklichen Wunsch des Owners.
+2. Stehen gebliebene Worktrees und gemergte Branches entfernen. Je Branch zuerst `git cherry main <branch>`: Jede Zeile mit `-` steckt inhaltsgleich in `main` (auch nach neu geschriebener Historie), eine Zeile mit `+` klärt die Leitung vor dem Löschen. Dann `git worktree remove <pfad>`, `git branch -D <branch>`, zuletzt `git worktree prune`. Branches auf GitHub nur auf Owner-Wort.
 3. Container: `.\scripts\dev\docker_cleanup.ps1` (Liste), dann `-Apply`; `db_test`-Container bleiben nach dem Session-Ende stehen und sind mit dabei.
 4. `.\scripts\register_sub_session.ps1 -Clear` (trägt auch die Leitung aus; wer danach weiterleitet, fährt `-Lead` neu).
 5. Prozess-Session zur Arbeitsweise vorschlagen (`/leitung` §4); Verbesserungs-Zeilen bleiben stehen, bis sie dort erledigt sind.

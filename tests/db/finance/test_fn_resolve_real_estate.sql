@@ -12,7 +12,9 @@ BEGIN
 
   -- Setup: zwei Immobilien gleichen Namens + eine eindeutige
   SELECT finance.fn_create_real_estate('{"name":"__test_re_dup__","current_value":100000}'::jsonb) INTO v_res;
-  SELECT finance.fn_create_real_estate('{"name":"__test_re_dup__","current_value":200000}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_real_estate('{"name":"__test_re_dup_b__","current_value":200000}'::jsonb) INTO v_res;
+  -- Bestands-Dublette (sql.md: legitim, die create-fn lehnt eine neue ab) -> per UPDATE nachgestellt
+  UPDATE finance.real_estate SET name = '__test_re_dup__' WHERE name = '__test_re_dup_b__';
   SELECT finance.fn_create_real_estate('{"name":"__test_re_uniq__","current_value":300000}'::jsonb) INTO v_res;
   v_id1 := (v_res->>'real_estate_id')::int;
 

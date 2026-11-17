@@ -245,6 +245,54 @@ lifeagents_db_name() {
 }
 lifeagents_version_marker() { printf '%s/VERSION' "$(lifeagents_runtime_dir)"; }
 
+# --- Versionsnummer der Installation (Gesetz: im Release-Profil traegt VERSION immer eine) ----------------------------
+# Versionsnummer = Release-Tag vX.Y.Z oder ein benannter Entwickler-Stand dev-<rev> (/reset-dev installiert ihn bewusst im
+# Release-Profil). Keine Versionsnummer = leer oder genau 'dev' (ein Lauf ohne Tag): daran haengt der Release-Check still
+# fest (update_runner.sh vergleicht nur vX.Y.Z), und der Rueckweg kennt das Ziel nicht. Quelle zum Nachtragen ist allein das
+# laufende master-Abbild (rt_master_release_tag); klassisch gibt es keine, dann bleibt es beim klaren Abbruch bzw. doctor ROT.
+is_release_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+version_is_named() { is_release_tag "${1:-}" || [[ "${1:-}" =~ ^dev-[A-Za-z0-9._-]+$ ]]; }
+_install_profile() { read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true; }
+
+# lifeagents_version_heal — eine Adresse fuer alle Einstiege (update_cli: Tick, Release-Check, Auftrag, Hand-Update):
+#   Release-Profil, VERSION vorhanden, ohne Versionsnummer -> die des laufenden Abbilds atomar eintragen. Nicht heilbar ->
+#   rc 1, nichts geschrieben (kein Raten). Sonst rc 0. Nie waehrend eines Umbaus (Sperre), master-Wechsels oder
+#   unvollendeten Updates: dann laeuft womoeglich schon das Ziel-Abbild, und dessen Nummer als "installiert" verschluckte den
+#   Release-Wechsel (keine Sicherung, FROM_RELEASE falsch); den Stand schreibt dort install_cli des Laufs.
+lifeagents_version_heal() {
+  local m v tag
+  m="$(lifeagents_version_marker)"
+  [ -e "$m" ] && [ "$(_install_profile)" = release ] || return 0
+  v="$(head -n1 "$m" 2>/dev/null | tr -d '[:space:]' || true)"
+  version_is_named "$v" && return 0
+  if declare -F master_swap_pending >/dev/null && master_swap_pending; then return 0; fi
+  [ -e "${UPGRADE_MARKER:-/var/lib/lifeagents/upgrade.pending}" ] && return 0
+  update_lock_free 5 || return 0   # ein laufender Umbau schreibt VERSION selbst (install_cli)
+  tag="$(rt_master_release_tag)" || return 1
+  if ! { printf '%s\n' "$tag" > "$m.heal.$$" && chmod 0644 "$m.heal.$$" && mv -f "$m.heal.$$" "$m"; }; then
+    rm -f "$m.heal.$$"; return 1
+  fi
+  log "Versionsnummer nachgetragen: ${tag} (vorher '${v:-leer}', Quelle: laufendes Programm-Paket)."
+}
+
+# release_tag_resolve <profil> — in provision.sh vor jeder Systemaenderung: ein Release-Lauf ohne Versionsnummer
+#   (reconfigure aus einem dev-Stand, Rueckweg mit FROM_RELEASE=dev, Start ohne Tag) uebernimmt die des laufenden Abbilds,
+#   bewusst nicht die aus VERSION (beim Rueckweg ist das die neuere); gibt es keine, Abbruch mit festem Grund. Setzt
+#   RELEASE_TAG (install_cli schreibt es in VERSION).
+release_tag_resolve() {
+  [ "${1:-}" = release ] || return 0
+  version_is_named "${RELEASE_TAG:-}" && return 0
+  local tag fix
+  fix="'$(rt_cli_hint) update' holt das neueste Release samt Nummer."
+  if tag="$(rt_master_release_tag)"; then
+    log "Versionsnummer aus dem laufenden Programm-Paket: ${tag} (übergeben: '${RELEASE_TAG:-leer}')."
+    export RELEASE_TAG="$tag"; return 0
+  fi
+  [ -e "$(lifeagents_version_marker)" ] \
+    || fix="ein Release installieren (install.sh oder Start-App); ein selbst gebautes master-Abbild braucht --build-arg RELEASE_TAG=<vX.Y.Z oder dev-<rev>>."
+  die_because no_version "Für diesen Stand ist keine Versionsnummer bekannt (übergeben: '${RELEASE_TAG:-leer}') — abgebrochen, bevor etwas installiert wurde. Abhilfe: ${fix}"
+}
+
 # ensure_lifeagents_dir  -> /etc/lifeagents 750 root:<n8n-Gruppe> (idempotent).
 ensure_lifeagents_dir() {
   mkdir -p "$LIFEAGENTS_DIR"

@@ -428,12 +428,6 @@
                       "reason":  "data:vergleichswort (Erkennungsmuster fuer eine Verneinung in einer Modell-Eingabe, nie ein Nutzertext)"
                   },
                   {
-                      "where":  "provisioning/lib/release_inputs.sh",
-                      "literal":  "Update wartet: Für die neue Version fehlt eine Pflichtangabe ({}). Es wurde nichts geändert, dein Bot läuft wie bisher. Bitte auf dem Server eintragen: sudo lifeagents reconfigure — danach läuft das nächste Update normal durch.",
-                      "count":  1,
-                      "reason":  "debt:Hinweis Update angehalten an den Owner, fest deutsch statt pkg_text in der Owner-Sprache"
-                  },
-                  {
                       "where":  "provisioning/lib/upgrade_guard.sh",
                       "literal":  "Rückweg fertig: dein System läuft wieder auf {}, mit den Daten vom {}.",
                       "count":  2,

@@ -8,7 +8,8 @@
 --   Klassen (aus outcome, reason_code, changed, bot_up):
 --     done | already_current | superseded | held | partial
 --     done_not_ready = installiert, aber der Bot antwortet nicht (kein Knopf, der Text nennt `lifeagents doctor`)
---     unchanged  = failed, changed=false (Netz, Limit, Platz, Sperre, ...): System unveraendert
+--     unchanged  = failed, changed=false (Netz, Limit, Platz, Sperre, ...): System unveraendert; master_image/pg_major
+--                  immer (Abbruch vor jedem Tausch), ohne Wiederholen und ohne "spaeter" (todo.no_retry)
 --     security   = failed mit signature/checksum: nicht installiert, nie wiederholen, melden
 --     midway     = failed, changed=true/unbekannt, Bot laeuft: Wiederholen setzt fort, sonst Rueckweg
 --     interrupted= Runner starb mittendrin (Neustart), Bot laeuft
@@ -19,8 +20,13 @@
 --     (private Meldung, Issues sind aus; ohne vorausgefuellten Text, also nie detail/Log im Link).
 --   phase progress_plan: alle Texte der Fortschritts-Nachricht samt Balken, fertig gerendert. Der Runner liest sie einmal vor
 --   dem Update, denn danach ist die DB zeitweise weg. Prozent = Beginn des Schritts, fest geschaetzt; der Helfer rechnet nichts.
+--   Befehle im Text: cli/cli_tty liefert der Runner (rt_cli_hint: klassisch `sudo lifeagents`, Verbund `docker exec -i|-it
+--   <projekt>-master lifeagents`; -it fuer Befehle mit Rueckfrage). Nur diese Muster gelten, sonst (alter Runner beim Umstieg)
+--   klassisch; Docker ja/nein folgt aus cli und waehlt den Ort ({where}) und den Platz-Schritt. Der Rueckweg-Schritt erscheint
+--   nur, wenn `lifeagents rollback` dort laufen kann (Vorbedingung von upgrade_rollback: klassisch nur mit Release-Tag als
+--   Ausgang, im Verbund mit irgendeiner Versionsangabe).
 --   p: {request_id, phase:'start'|'result'|'progress_plan', bot_up?(Default true), help_url?, repo_slug?, backup?, log?,
---       missing?, failed?, latest?}
+--       missing?, failed?, latest?, cli?, cli_tty?}
 --   Rueckgabe: {text, keyboard:[[...]], class} — unbekannter Auftrag -> {text:'', keyboard:[]}. Nie RAISE.
 --     progress_plan: {start:{pct,text,stopped}, stages:{<code>:{pct,text,stopped}}, done:{pct,text}}
 --   INVOKER (root ueber runuser postgres). Tests: tests/db/core/test_fn_update_requests.sql
@@ -51,6 +57,11 @@ DECLARE
     v_empty   text;
     v_help    text := CASE WHEN COALESCE(p->>'help_url', '') ~ '^https://[^\s#]+$' THEN p->>'help_url' END;
     v_slug    text := CASE WHEN COALESCE(p->>'repo_slug', '') ~ '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' THEN p->>'repo_slug' END;
+    v_cli_rx  constant text := '^(sudo lifeagents|docker exec -it? [A-Za-z0-9][A-Za-z0-9_.-]{0,62}-master lifeagents)$';
+    v_cli     text := CASE WHEN COALESCE(p->>'cli', '') ~ v_cli_rx THEN p->>'cli' ELSE 'sudo lifeagents' END;
+    v_cli_tty text;
+    v_docker  boolean;
+    v_can_rb  boolean;
     -- Die eine Adresse fuer Schritt-Code -> Prozent + Text. Neuer ui_step-Code: hier eintragen und Key anlegen.
     v_stages  jsonb := '[
         {"code":"download",  "pct":3,  "key":"core.update.stage.download"},
@@ -79,6 +90,11 @@ BEGIN
     END IF;
 
     v_lang := agent.fn_person_lang(NULL)->>'lang';   -- NULL = Owner
+    v_docker  := v_cli LIKE 'docker exec %';
+    -- ohne gueltiges cli_tty: aus cli ableiten (klassisch gleich, Verbund -i -> -it), nie den -i-Befehl fuer eine Rueckfrage
+    v_cli_tty := CASE WHEN COALESCE(p->>'cli_tty', '') ~ v_cli_rx AND (p->>'cli_tty' LIKE 'docker exec %') = v_docker
+                      THEN p->>'cli_tty' ELSE regexp_replace(v_cli, '^docker exec -i ', 'docker exec -it ') END;
+    v_can_rb  := COALESCE(v_r.from_version ~ '^v[0-9]+\.[0-9]+\.[0-9]+$', false) OR (v_docker AND v_r.from_version IS NOT NULL);
     -- Codes -> ganze Katalog-Keys (locale_lint 8: SQL nennt Keys nur vollstaendig); Unbekanntes -> .unknown
     v_stage_key := COALESCE((SELECT s->>'key' FROM jsonb_array_elements(v_stages) s WHERE s->>'code' = v_r.stage),
                             'core.update.stage.unknown');
@@ -89,6 +105,7 @@ BEGIN
         WHEN 'backup'    THEN 'core.update.reason.backup'     WHEN 'db'         THEN 'core.update.reason.db'
         WHEN 'n8n_start' THEN 'core.update.reason.n8n_start'  WHEN 'package'    THEN 'core.update.reason.package'
         WHEN 'locked'    THEN 'core.update.reason.locked'     WHEN 'downgrade'  THEN 'core.update.reason.downgrade'
+        WHEN 'master_image' THEN 'core.update.reason.master_image' WHEN 'pg_major' THEN 'core.update.reason.pg_major'
         ELSE 'core.update.reason.unknown' END;
     v_params := jsonb_build_object(
         'tag',     v_r.tag,
@@ -100,7 +117,14 @@ BEGIN
         'missing', COALESCE(p->>'missing', ''),
         'failed',  COALESCE(p->>'failed', ''),
         'detail',  COALESCE(v_r.detail, ''),
-        'log',     COALESCE(p->>'log', ''));
+        'log',     COALESCE(p->>'log', ''),
+        'cli',     v_cli,
+        'cli_tty', v_cli_tty,
+        'where',   core.fn_ui_text(CASE WHEN v_docker THEN 'core.update.where.docker' ELSE 'core.update.where.server' END, v_lang));
+    -- "laeuft weiter (Version …)" nur mit Release-Tag: ohne VERSION stuende sonst "?", bei einem Entwicklungsstand "dev"
+    v_params := v_params || jsonb_build_object('from_note',
+        CASE WHEN COALESCE(v_r.from_version ~ '^v[0-9]+\.[0-9]+\.[0-9]+$', false)
+             THEN core.fn_ui_text('core.update.from_note', v_lang, v_params) ELSE '' END);
 
     IF p->>'phase' = 'progress_plan' THEN
         v_filled := core.fn_ui_text('core.update.bar.filled', v_lang);
@@ -144,6 +168,8 @@ BEGIN
         WHEN v_r.outcome = 'held'            THEN 'held'
         WHEN v_r.outcome = 'partial'         THEN 'partial'
         WHEN v_r.outcome = 'failed' AND COALESCE(v_r.reason_code, '') IN ('signature', 'checksum') THEN 'security'
+        -- beide brechen vor jedem Tausch ab (vor master_swap_begin bzw. upgrade_prepare); pg_major kann nach changed=true kommen
+        WHEN v_r.outcome = 'failed' AND v_r.reason_code IN ('master_image', 'pg_major') THEN 'unchanged'
         WHEN v_r.outcome = 'failed' AND v_r.changed IS FALSE THEN 'unchanged'
         WHEN NOT v_bot_up                    THEN 'bot_down'
         WHEN v_r.outcome = 'interrupted'     THEN 'interrupted'
@@ -171,19 +197,22 @@ BEGIN
                AND core.fn_update_retry_allowed(v_r.tag);
 
     v_todo := CASE v_class
-        WHEN 'unchanged'   THEN CASE WHEN v_r.reason_code = 'disk' THEN ARRAY['core.update.todo.disk'] ELSE '{}'::text[] END
-                                || CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.later' END::text
+        WHEN 'unchanged'   THEN CASE WHEN v_r.reason_code = 'disk' AND v_docker THEN ARRAY['core.update.todo.disk_docker']
+                                     WHEN v_r.reason_code = 'disk' THEN ARRAY['core.update.todo.disk'] ELSE '{}'::text[] END
+                                || CASE WHEN v_r.reason_code IN ('master_image', 'pg_major') THEN 'core.update.todo.no_retry'
+                                        WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.later' END::text
         WHEN 'security'    THEN ARRAY['core.update.todo.security']
         WHEN 'held'        THEN ARRAY['core.update.todo.held']
         WHEN 'partial'     THEN CASE WHEN v_retry THEN ARRAY['core.update.todo.retry'] ELSE '{}'::text[] END
                                 || 'core.update.todo.doctor'::text
-        WHEN 'midway'      THEN ARRAY[CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.terminal_update' END,
-                                      'core.update.todo.rollback']
-        WHEN 'interrupted' THEN ARRAY[CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.terminal_update' END,
-                                      'core.update.todo.rollback']
-        WHEN 'bot_down'    THEN ARRAY['core.update.todo.terminal_update', 'core.update.todo.rollback']
+        WHEN 'midway'      THEN ARRAY[CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.terminal_update' END]
+        WHEN 'interrupted' THEN ARRAY[CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.terminal_update' END]
+        WHEN 'bot_down'    THEN ARRAY['core.update.todo.terminal_update']
         ELSE '{}'::text[]
     END;
+    IF v_class IN ('midway', 'interrupted', 'bot_down') AND v_can_rb THEN
+        v_todo := v_todo || 'core.update.todo.rollback'::text;
+    END IF;
 
     v_text := core.fn_ui_text(v_head, v_lang, v_params);
     IF cardinality(v_todo) > 0 THEN

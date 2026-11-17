@@ -29,6 +29,7 @@ UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/log/lifeagents}"
 # update_cli [args] — der `lifeagents update`-Arm: --check | --run-requested (Timer, kehren zurueck) oder ein normales
 #   Update (optional --version <tag>, --allow-downgrade; Rest geht an provision.sh) — fetch_and_run_release kehrt nie zurueck.
 update_cli() {
+  case "${1:-}" in --help|-h) ;; *) lifeagents_version_heal || true ;; esac   # vor dem Lesen von VERSION (common.sh)
   case "${1:-}" in
     --check)         update_check "$([ "${2:-}" = --scheduled ] && printf scheduled)"; return 0 ;;
     --run-requested) update_run_requested; return 0 ;;
@@ -151,12 +152,14 @@ _ur_bot_up() {
 
 # _ur_report <request_id> <phase> [key=value ...] — Meldung zum Auftrag bauen (core.fn_update_report) und senden; erst nach
 #   2xx gilt sie als zugestellt. Zusatz-Felder (bot_up, backup, log, missing, failed, latest) als key=value; Texte/Knoepfe
-#   kommen aus der DB. Immer rc 0: unter set -e darf eine Meldung nie den Runner beenden.
+#   kommen aus der DB, die Befehle darin (cli, cli_tty) aus rt_cli_hint. Immer rc 0: unter set -e darf eine Meldung nie den
+#   Runner beenden.
 _ur_report() {
   local id="$1" phase="$2"; shift 2
   local p kv out
   p="$(jq -nc --argjson id "$id" --arg ph "$phase" --arg h "$(_ur_help_url)" --arg s "$PROVISION_REPO_SLUG" \
-         '{request_id:$id, phase:$ph, help_url:$h, repo_slug:$s}')"
+         --arg c "$(rt_cli_hint)" --arg ct "$(rt_cli_hint tty)" \
+         '{request_id:$id, phase:$ph, help_url:$h, repo_slug:$s, cli:$c, cli_tty:$ct}')"
   for kv in "$@"; do
     case "${kv%%=*}" in
       bot_up) p="$(jq -c --argjson v "${kv#*=}" '. + {bot_up:$v}' <<<"$p")" ;;

@@ -66,6 +66,8 @@ Usage: lifeagents <befehl> [optionen]
               `lifeagents backup help` für Details. Braucht root.
   telegram    Telegram-Bot warten: release-webhook (Webhook loesen; ruft die Start-App beim Abbau).
               Exit 0 = geloest oder nichts zu loesen. `lifeagents telegram help` für Details.
+  images      Docker-Verbund: keep = Abbilder, die Betrieb und Rückweg noch brauchen (JSON für die Start-App;
+              nur lesen, löscht nichts). `lifeagents images help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
   uninstall   Instanz abbauen (Schema DROP, Dienste stop; im Docker-Verbund entfernt die Start-App); --purge-data für den Voll-Wipe,
               --yes für ohne Rückfrage durchreichen: `lifeagents uninstall --purge-data --yes`. Braucht root.
@@ -255,6 +257,16 @@ case "$cmd" in
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
     telegram_cli "$@"
+    ;;
+  images)
+    # Lesende Liste fuer die Start-App (lib/images_cli.sh); Pfade von Sicherungen und master-Wechsel kommen aus
+    # upgrade_guard.sh bzw. master_swap.sh (ueber fetch_release.sh).
+    for f in common.sh fetch_release.sh deploy_workflows.sh upgrade_guard.sh images_cli.sh; do
+      [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
+      # shellcheck source=/dev/null
+      . "${LIFEAGENTS_PROV}/lib/$f"
+    done
+    images_cli "$@"
     ;;
   doctor)
     [ -f "$LIFEAGENTS_DOCTOR" ] || { printf 'lifeagents: doctor.sh fehlt (%s).\n' "$LIFEAGENTS_DOCTOR" >&2; exit 1; }

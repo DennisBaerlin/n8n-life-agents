@@ -203,8 +203,7 @@ _upg_snapshot() {
     local hd
     hd="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
     if rt_is_compose && [ -n "$hd" ]; then
-      # shellcheck disable=SC2094  # liest die fertige Sicherung, der Name ist nur das Ziel im Rechner-Ordner
-      rt_host_put "$hd" "$(basename "$out")" < "$out" \
+      rt_host_put "$hd" "$(basename "$out")" "$out" \
         || warn "Kopie der Update-Sicherung in den Rechner-Ordner '${hd}' fehlgeschlagen — sie liegt nur in ${out}."
     fi
     return 0
@@ -361,10 +360,18 @@ upgrade_finish() {
   ok "Update abgeschlossen${backup:+ — Sicherung von vorher: ${backup}}."
 }
 
+# _upg_compose_can_rollback <merkzettel> — kann `lifeagents rollback` im Verbund aus diesem Merkzettel zurueck? Vorheriges
+#   master-Image eingetragen und irgendeine Versionsangabe (auch 'dev'). Die eine Regel fuer Rueckweg und Hinweis.
+_upg_compose_can_rollback() {
+  [ -n "$(read_env_value "$1" FROM_MASTER_IMAGE 2>/dev/null || true)" ] \
+    && [[ "$(read_env_value "$1" FROM_RELEASE 2>/dev/null || true)" =~ ^[A-Za-z0-9._-]{1,64}$ ]]
+}
+
 # upgrade_rollback_hint — der manuelle Rueckweg (nur wenn n8n nach dem Update nicht bereit wird). Druckt die
 # Kommandos mit eingesetzten Pfaden; Ablauf: n8n stoppen -> DB aus der Sicherung neu anlegen -> alte Version
 # installieren. Die DB wird komplett neu angelegt (dropdb + pg_restore --create), damit keine Tabellen der neuen
-# n8n-Version liegen bleiben, an denen ein spaeteres Update erneut scheitern wuerde.
+# n8n-Version liegen bleiben, an denen ein spaeteres Update erneut scheitern wuerde. Im Verbund nur der Befehl
+# `lifeagents rollback` ueber docker exec -it (Tests: tests/mock_runtime/cases.sh RH).
 upgrade_rollback_hint() {
   local backup from_n8n from_node from_rel ktab reinstall txt
   backup="$(read_env_value "$UPGRADE_MARKER" BACKUP 2>/dev/null || true)"
@@ -384,8 +391,36 @@ upgrade_rollback_hint() {
     txt="
   KEIN RÜCKWEG über das öffentliche Repo: der vorherige Stand ${from_rel} stammt aus der Zeit vor ${RELEASE_HISTORY_START} und ist dort
   nicht mehr ladbar. Die Daten NICHT zurückspielen. Die Sicherung von vor dem Update liegt unverändert unter
-  ${backup:-?}; die Diagnose (journalctl -u n8n -n 100) bitte an den Entwickler geben.
+  ${backup:-?}; die Diagnose ($(svc_logs_hint n8n)) bitte an den Entwickler geben.
 "
+    printf '%s\n' "$txt" >&2
+    if [ "$(ui_fd)" = 3 ]; then { printf '%s\n' "$txt" >&3; } 2>/dev/null || true; fi
+    return 0
+  fi
+  # Verbund: kein systemctl/runuser/dropdb/install.sh auf dem Rechner; der Rueckweg ist `lifeagents rollback` im master
+  # (vorheriges master-Image + compose.yml aus dem Merkzettel). Versprochen nur, wenn er dort laufen kann.
+  if rt_is_compose; then
+    if [ -z "$backup" ]; then
+      txt='
+  Es gibt keine Sicherung von vor dem Update (die Erstinstallation war nie abgeschlossen) — ein Rückweg ist nicht möglich.
+'
+    elif _upg_compose_can_rollback "$UPGRADE_MARKER"; then
+      txt="
+  Zurück zur vorigen Version — nur nötig, wenn dein Assistent nach dem Update dauerhaft nicht startet.
+  Gib im Terminal (Mac) oder in der PowerShell (Windows) ein:
+
+    $(rt_master_cli_hint tty) rollback
+
+  Der Befehl fragt vorher nach. Er holt die Daten von vor dem Update zurück (Sicherung ${backup}) und startet wieder den
+  vorherigen Stand (${from_rel}); alles, was seitdem gespeichert wurde, geht dabei verloren.
+  Was los war, zeigt: $(svc_logs_hint n8n)
+"
+    else
+      txt="
+  Ein Rückweg per Befehl geht hier nicht: der Merkzettel nennt kein vorheriges Programm-Paket oder keine Version.
+  Die Daten von vor dem Update liegen unverändert unter ${backup}. Was los war, zeigt: $(svc_logs_hint n8n)
+"
+    fi
     printf '%s\n' "$txt" >&2
     if [ "$(ui_fd)" = 3 ]; then { printf '%s\n' "$txt" >&3; } 2>/dev/null || true; fi
     return 0
@@ -494,9 +529,9 @@ upgrade_rollback() {
     die "Der vorherige Stand ${from_rel} stammt aus der Zeit vor ${RELEASE_HISTORY_START} und ist im öffentlichen Repo nicht ladbar — kein Rückweg. Die Sicherung bleibt unter ${backup}."
   fi
   # Verbund: der vorherige Stand ist das vorherige master-Image samt compose.yml (Merkzettel), es wird nichts geladen ->
-  # auch ein Stand ohne Release-Tag (VERSION 'dev', Image ohne -Version gebaut) kommt zurueck. Klassisch braucht der Rueckweg
-  # das install.sh eines Release.
-  if rt_is_compose && [ -n "$(read_env_value "$src" FROM_MASTER_IMAGE || true)" ] && [[ "$from_rel" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
+  # auch ein Stand mit FROM_RELEASE=dev kommt zurueck (die Nummer liefert dann sein Abbild, siehe unten). Klassisch braucht der
+  # Rueckweg das install.sh eines Release.
+  if rt_is_compose && _upg_compose_can_rollback "$src"; then
     :
   else
     case "$from_rel" in
@@ -533,6 +568,12 @@ upgrade_rollback() {
       || die "Der Merkzettel nennt kein vorheriges Programm-Paket (FROM_MASTER_IMAGE/FROM_COMPOSE) — kein automatischer Rückweg, es wurde nichts geändert."
     rt_image_ensure "$from_compose" "$from_img" \
       || die "Das vorherige Programm-Paket ${from_img} ist nicht ladbar — Rückweg abgebrochen, es wurde nichts geändert."
+    # Gesetz Versionsnummer (common.sh): ein Ziel ohne Nummer (Merkzettel aus einem dev-Stand) nimmt die seines Abbilds; sonst
+    # braeche release_tag_resolve das Einspielen erst ab, nachdem die Daten schon zurueckgesetzt sind.
+    if [ "$(_install_profile)" = release ] && ! version_is_named "$from_rel"; then
+      from_rel="$(rt_image_release_tag "$from_img")" \
+        || die_because no_version "Der vorherige Stand trägt keine Versionsnummer, auch sein Programm-Paket nicht — Rückweg abgebrochen, es wurde nichts geändert."
+    fi
   else
   work="$(mktemp -d)"
   _gh_release_json "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases/tags/${from_rel}" "$work/rel.json"

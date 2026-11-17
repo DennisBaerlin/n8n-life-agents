@@ -278,6 +278,20 @@ repos:
         pass_filenames: false
         files: ^scripts/(lib/role_call_pairs|dev/role_gap_lint_test|role_test_lint)\.ps1$
 
+      - id: prop-test-lint
+        name: prop_test_lint (every fn that UPDATEs a table dates, deadlines or amounts are derived from is called in a tests/db test_prop_ file or sits on the shrink-only list; fail-closed)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prop_test_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: prop-test-lint-test
+        name: prop_test_lint_test (changing fn, call in a property test and the shrink-only list; a missing test or a stale entry turns prop_test_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/prop_test_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/prop_test_coverage|dev/prop_test_lint_test|prop_test_lint)\.ps1$
+
       - id: privacy-lint
         name: privacy_lint (no real owner data - private IPs/home hostnames/user paths everywhere, local denylist .local/privacy_denylist.txt)
         language: system

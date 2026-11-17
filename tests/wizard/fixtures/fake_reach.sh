@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Attrappe von provisioning/compose/reach_ctl.sh (Paket 3): nur `activate` — der Installer-Nachlauf nach der Tunnel-Anmeldung.
 # Danach meldet die Attrappe der Brücke den Zustand ready. Fehlschlag auf Wunsch: Datei $WIZARD_FAKE_DIR/activate_fail.
-# real-path-test: none (activate läuft in keinem Test gegen den echten Verbund; status und relogin prüft genericity.yml)
+# real-path-test: none (activate braucht eine Tailscale-Anmeldung, die kein Test hat; der kalte Docker-Lauf prueft status und relogin ohne Konto, genericity.yml compose-stack-cold, fuehrt activate aber nie aus)
 set -euo pipefail
 D="${WIZARD_FAKE_DIR:?}"
 [ "${1:-}" = activate ] || exit 64

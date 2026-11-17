@@ -6,7 +6,7 @@
 --   Stichtag in der Zukunft laeuft die alte rp bis zum Stichtag weiter; wer nur den Kopf beendet, laesst sie weiter
 --   faellig werden (Erinnerung fuer einen geschlossenen Plan).
 --   Eingabe: p_rp_id (ein beliebiges Glied der Kette), p_end (date).
---   Gerufen von fn_close_savings_plan und fn_close_savings_goal.
+--   Gerufen von fn_close_savings_plan, fn_close_savings_goal, fn_close_insurance und fn_close_pension.
 --   Rueckgabe: Anzahl beendeter Glieder.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_end_recurring_chain(p_rp_id int, p_end date)

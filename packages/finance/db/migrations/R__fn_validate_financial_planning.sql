@@ -7,9 +7,10 @@
 --   Jeder target_allocation.blocks[]-Eintrag traegt einen stabilen Maschinen-`key`
 --   (lowercase snake, == depot_holdings.asset_class-Format) neben dem Anzeige-`name` — Pflicht je Block,
 --   Format-geprueft + eindeutig (der stabile Drift-Join-Key, ueberlebt name-Renames; Praezedenz Nautobot key/label).
---   Vom Core-Trigger agent.trg_core_contexts_validate_facts_fn generisch ueber die Registry
---   core.context_validators dispatcht (NEW.name='financial_planning' -> diese fn); fehlt die
---   Registry-Zeile (Paket nicht installiert), entfaellt die Plan-Strukturpruefung still.
+--   Laeuft nur, wenn core.context_validators sie an 'financial_planning' bindet (Core-Trigger und
+--   Vorpruefung in agent.fn_advisor_publish_plan dispatchen dorthin). Das finance-Manifest bindet sie noch
+--   nicht: eine context_validators-Zeile machte den Plan zugleich zum Fakten-Kontext (Reset, Lern-Ziel,
+--   Frische-Waechter). Offene Luecke: scripts/build/validator_registry_allowlist.json (contract_lint 41).
 --   Eingabe: p_facts jsonb (kein Objekt oder NULL -> gueltig).
 --
 --   Partial-tolerant: jeder Top-Block ist optional — innere Konsistenz wird nur geprueft,

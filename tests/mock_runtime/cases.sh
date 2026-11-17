@@ -46,7 +46,10 @@ case "$(printf '|%s' "$@")" in *'|down|'*) printf '%s\n' "${COMPOSE_PROFILES:-}"
 if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
 case "$me $1 ${2:-}" in
   "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
-  "docker image inspect")  [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
+  "docker image inspect")  # mit -f: Umgebung + Versions-Etikett des Abbilds wie unten bei inspect -f
+    if [ "${3:-}" = -f ]; then printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+}" "${STUB_REL_LABEL:-}"; exit 0; fi
+    [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
   "docker ps --format")    printf '%s' "${STUB_PS:-}"; exit 0 ;;   # STUB_PS = Zeilen wie aus dem festen JSON-Format
   "docker inspect -f")
     # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
@@ -54,6 +57,9 @@ case "$me $1 ${2:-}" in
     case "$3" in
       *State.Running*) case " ${STUB_RUNNING:-} " in *" $n "*) echo true ;; *) echo false ;; esac ;;
       *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
+      # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett).
+      *Config.Env*)    printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+}" "${STUB_REL_LABEL:-}" ;;
     esac
     exit 0 ;;
 esac
@@ -332,9 +338,9 @@ for d in relativ/pfad '/a,b' "$(printf '/a\nb')" ''; do
   n="$(printf '%s' "${d:-leer}" | tr '\n' '~')"
   if _bkp_host_dir_valid "$d"; then fail "R.ordner-ungueltig:$n" "angenommen"; else pass "R.ordner-ungueltig:$n"; fi
 done
-: > "$STUB_LOG"; printf 'chiffrat' | rt_host_put /Users/erika/Sicherung lifeagents-backup-1.nla.enc
+: > "$STUB_LOG"; printf 'chiffrat' > "$W/hp.src"; rt_host_put /Users/erika/Sicherung lifeagents-backup-1.nla.enc "$W/hp.src"
 case "$(last)" in
-  "docker|run|--rm|-i|--label|io.lifeagents.install=lifeagents|--network|none|--mount|type=bind,src=/Users/erika/Sicherung,dst=/out|busybox:test|sh|-c|"*"|_|lifeagents-backup-1.nla.enc|stdin=") pass R.schreiben-nur-dieser-ordner ;;
+  "docker|run|--rm|-i|--label|io.lifeagents.install=lifeagents|--network|none|--mount|type=bind,src=/Users/erika/Sicherung,dst=/out|busybox:test|sh|-c|"*"|_|lifeagents-backup-1.nla.enc|"[0-9a-f]*"|stdin=") pass R.schreiben-nur-dieser-ordner ;;
   *) fail R.schreiben-nur-dieser-ordner "$(last)" ;;
 esac
 : > "$STUB_LOG"; rt_host_get /Users/erika/Sicherung x.nla.enc >/dev/null
@@ -927,23 +933,27 @@ eq D.check-nie-gelaufen-rot 'fail=1' "$(printf '%s' "$out" | tail -n1)"
 dd_state - - 3; out="$(dd_run _doctor_compose_check)"
 eq D.check-frische-installation-warn '  [WARN] Release-Check startet mit dem nächsten Durchlauf (höchstens 1 min)
 fail=0' "$out"
-dd_state 600 "$dd_today" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-heute-angestossen-gruen '  [ OK ] Tägliche Sicherung wird angestoßen (zuletzt '"$dd_today"')
+# Sicherungs-Versuch: den Zustand schreibt der echte Tick (update_tick, Marker LAST_BACKUP_TRY), kein von Hand gesetzter Schluessel.
+dd_tick() {   # dd_tick <BACKUP_AUTO_AT des Ticks> <VERSION-Alter-Min>
+  rm -f "$W/dd.state" "$W/dd.bst"; : > "$W/dd.VERSION"; touch -d "$2 minutes ago" "$W/dd.VERSION"
+  ( export LIFEAGENTS_RUNTIME=compose; UPDATE_TICK_STATE="$W/dd.state"; BACKUP_STATE_FILE="$W/dd.bst"; BACKUP_AUTO_AT="$1"; UPDATE_CHECK_EVERY_S=99999999
+    lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }; update_tick ) >/dev/null 2>&1
+}
+dd_tick 0000 600; out="$(dd_run _doctor_compose_backup_tick)"
+printf '%s' "$out" | grep -q '^  \[ OK \] Tägliche Sicherung wird angestoßen (letzter Versuch vor [01] min)$' && eq D.sicherung-vom-echten-tick-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.sicherung-vom-echten-tick-gruen "$out"
+env_upsert "$W/dd.state" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3 * 86400 ))"; out="$(dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit 72 h nicht mehr angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 "$dd_yday" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-gestern-noch-gruen 'fail=0' "$(printf '%s' "$out" | tail -n1)"
-dd_state 600 "$dd_old" 600; out="$(dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-alter-versuch-warn '  [WARN] Tägliche Sicherung wurde seit '"$dd_old"' nicht mehr angestoßen — Verlauf: docker logs t-master
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
+eq D.sicherung-nie-angestossen-warn '  [WARN] Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs t-master
 fail=0' "$out"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
-eq D.sicherung-nie-angestossen-warn 'fail=0' "$(printf '%s' "$out" | tail -n1)"; printf '%s' "$out" | grep -q '^  \[WARN\] Tägliche Sicherung' || fail D.sicherung-nie-angestossen-warn-zeile "$out"
-dd_state 600 - 3; out="$(dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 3; out="$(BACKUP_AUTO_AT=0000 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-frische-installation-still 'fail=0' "$out"
 # Tunnel: nur im Tunnel-Weg; tailscale-Container und Status laut Attrappe.
 dd_fun='{"AllowFunnel":{"bot.tail-fantasy.ts.net:443":true},"Web":{"bot.tail-fantasy.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8088"}}}}}'
 dd_ts() {   # dd_ts <REACH_MODE> <laeuft:0|1> <status-json> [funnel-json] -> Ausgabe
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
-    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE="$1"; _up="$2"; _js="$3"; _fn="${4-$dd_fun}"; DOMAIN="${5-}"
     rt_edge_active() { [ "$_up" = 0 ]; }; _reach_ts_status() { printf "%s" "$_js"; }; rt_edge_exec() { printf "%s" "$_fn"; }
     _doctor_compose_tunnel; echo "fail=$_fail" )
 }
@@ -958,8 +968,31 @@ dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
 out="$(dd_ts tunnel 0 "$dd_soon")"
 printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
 dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
-out="$(dd_ts tunnel 0 "$dd_login")"
-printf '%s' "$out" | grep -q '^  \[FAIL\] Tunnel: bei Tailscale anmelden' && eq D.tunnel-abgemeldet-rot fail=1 "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-abgemeldet-rot "$out"
+# Noch nie eingerichtet (kein Tunnel-Name als DOMAIN in core.env): Einrichtung steht aus = Hinweis. Lief der Tunnel schon
+# (DOMAIN gesetzt) und ist jetzt abgemeldet oder abgelaufen: der Bot ist nicht erreichbar = ROT.
+out="$(dd_ts tunnel 0 "$dd_login" "$dd_fun" bot.tail-fantasy.ts.net)"
+printf "%s" "$out" | grep -qF "  [FAIL] Tunnel: bei Tailscale anmelden" && eq D.tunnel-abgemeldet-nach-betrieb-rot fail=1 "$(printf "%s" "$out" | tail -n1)" || fail D.tunnel-abgemeldet-nach-betrieb-rot "$out"
+eq D.tunnel-nie-angemeldet-nur-hinweis '  [WARN] Tunnel: Einrichtung steht noch aus — bei Tailscale anmelden: docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“
+fail=0' "$(dd_ts tunnel 0 "$dd_login")"
+eq D.tunnel-startet-ohne-betrieb-nur-hinweis "  [WARN] Tunnel: Einrichtung steht noch aus — startet …
+fail=0" "$(dd_ts tunnel 0 "{\"BackendState\":\"NoState\"}")"
+dd_expired="${dd_ok/\"Expired\":false/\"Expired\":true}"
+eq D.tunnel-abgelaufen-rot "  [FAIL] Tunnel: Tailscale-Anmeldung abgelaufen — neu anmelden: docker exec -i t-master lifeagents reconfigure core
+fail=1" "$(dd_ts tunnel 0 "$dd_expired")"
+# Nach einem Update legt der Installer tailscale neu an; die Abschlusspruefung kann die ersten Sekunden "startet" sehen. Mit
+# Tunnel-Adresse (lief schon) wartet doctor kurz (DOCTOR_TS_TRIES x 2 s), erst danach ist "startet" ein Ausfall.
+dd_tsw() {   # dd_tsw <Zahl "startet"-Antworten vor der echten> <Versuche> -> Ausgabe
+  rm -f "$W/ts.n"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; LIFEAGENTS_RUNTIME=compose; LA_PROJECT=t; REACH_MODE=tunnel; DOMAIN=bot.tail-fantasy.ts.net; DOCTOR_TS_TRIES="$2"; _k="$1"
+    rt_edge_active() { return 0; }; rt_edge_exec() { printf '%s' "$dd_fun"; }; sleep() { :; }
+    _reach_ts_status() { local c; c="$(cat "$W/ts.n" 2>/dev/null || echo 0)"; echo $((c + 1)) > "$W/ts.n"; if [ "$c" -lt "$_k" ]; then printf '{"BackendState":"NoState"}'; else printf '%s' "$dd_ok"; fi; }
+    _doctor_compose_tunnel; echo "fail=$_fail" )
+}
+eq D.tunnel-startet-kurz-dann-gruen '  [ OK ] Tunnel steht (Tailscale angemeldet, bot.tail-fantasy.ts.net)
+fail=0' "$(dd_tsw 2 5)"
+eq D.tunnel-startet-dauerhaft-rot '  [FAIL] Tunnel: startet …
+fail=1' "$(dd_tsw 99 3)"
 
 # G  Fingerabdruck des Workflow-Deploys (deploy_workflows.sh): die n8n-Version kommt im Docker-Verbund aus dem Image des
 #    laufenden n8n-Containers, nicht aus dem Pin von provision.sh. Sonst ergaebe dieselbe Instanz je Einstieg (Installer
@@ -981,9 +1014,9 @@ eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
 # Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
-eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → „Unverändert neu anwenden“)
+eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“)
 fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
-dd_state 600 - 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
+dd_tick 2400 600; out="$(BACKUP_AUTO_AT=2359 dd_run _doctor_compose_backup_tick)"
 eq D.sicherung-vor-der-backup-uhrzeit-still 'fail=0' "$out"
 
 # Laufender Tick-Schritt: LAST_TICK wird nur am Tick-Anfang geschrieben, ein Schritt darf lange laufen (Update 2 h,
@@ -997,8 +1030,10 @@ dt_run() {   # dt_run <tick-alter-s> <lock:frei|belegt> -> Ausgabe von _doctor_c
     _lk="$2"; update_lock_free() { [ "$_lk" = frei ]; }
     _doctor_compose_tick; echo "fail=$_fail" )
 }
-dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess
-  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"; touch -d "$2 minutes ago" "$W/dtproc/$1"
+dts() {   # dts <pid> <minuten-seit-start> <cmdline> -> Attrappen-Prozess; mtime von /proc/<pid> bleibt "jetzt" (wie im echten /proc), die Startzeit steht in stat Feld 22
+  local parts; read -ra parts <<<"$3"; mkdir -p "$W/dtproc/$1"; printf '%s\0' "${parts[@]}" > "$W/dtproc/$1/cmdline"
+  printf '100000.00 0.00\n' > "$W/dtproc/uptime"
+  printf '%s (lifeagents) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 %s 0 0\n' "$1" "$(( (100000 - $2 * 60) * 100 ))" > "$W/dtproc/$1/stat"
 }
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 dts 7 20 'bash /usr/local/bin/lifeagents update --run-requested'
@@ -1010,6 +1045,10 @@ fail=0' "$(dt_run 1200 frei)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 9 10 'bash /usr/local/bin/lifeagents update --check --scheduled'
 eq D.tick-check-ueber-zeitgrenze-rot '  [FAIL] Update-Schleife im master steht seit 10 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
 fail=1' "$(dt_run 600 frei)"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
+rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"; dts 10 200 'bash /usr/local/bin/lifeagents update --run-requested'
+eq D.tick-haengender-update-schritt-rot '  [FAIL] Update-Schleife im master steht seit 15 min — Updates aus dem Chat kommen nicht an (docker logs t-master)
+fail=1' "$(dt_run 900 belegt)"
 rm -rf "$W/dtproc"; mkdir -p "$W/dtproc"
 eq D.tick-ohne-schritt-rot 'fail=1' "$(dt_run 900 frei | tail -n1)"
 eq D.tick-sperre-belegt-ohne-prozess-hinweis '  [WARN] Update-Schleife im master: läuft gerade: Update (Sperre belegt), seit 15 min (Zeitgrenze 120 min)
@@ -1276,4 +1315,278 @@ uo_rb() (   # uo_rb <args…> -> "<rc>|<weiter?>"
 eq UO.rollback-help-aendert-nichts '0|' "$(uo_rb --help)"
 eq UO.rollback-unbekannt-bricht-ab '1|' "$(uo_rb --jes)"
 eq UO.rollback-yes-laeuft-weiter '7|weiter' "$(uo_rb --yes)"
+
+# ---------------------------------------------------------------------------- HP: Datei in den Rechner-Ordner, nur vollstaendig
+# Bricht der docker-Client mitten im Hochladen ab (Zeitgrenze, Neuanlage des master), endet `cat` im Helfer mit EOF und die
+# halbe Datei bekam bisher den endgueltigen Namen (am echten Docker belegt: Bericht ob Runde 12). Der Helfer benennt nur um,
+# wenn die Pruefsumme stimmt; sonst verschwindet .part. Die Attrappe ersetzt nur Docker: das Helfer-Skript laeuft echt.
+hp_case() (   # hp_case <bytes-die-ankommen> <bytes-der-datei> -> "<rc>|<endgueltig>|<part>"
+  local d="$W/hp" rc=0; rm -rf "$d"; mkdir -p "$d/out"
+  _rt_host_run() {
+    [ "$1" = -i ] && shift
+    local src="${1#type=bind,src=}"; src="${src%%,*}"; shift
+    local a=("$@"); a[2]="${a[2]//\/out/$src}"
+    head -c "$HP_CUT" | "${a[@]}"
+  }
+  head -c "$2" /dev/urandom > "$d/full"; HP_CUT="$1"
+  rt_host_put "$d/out" b.nla.enc "$d/full" >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s' "$([ "$rc" -eq 0 ] && echo 0 || echo fehler)" \
+    "$(if [ -e "$d/out/b.nla.enc" ]; then cmp -s "$d/out/b.nla.enc" "$d/full" && echo ganz || echo halb; else echo fehlt; fi)" \
+    "$([ -e "$d/out/.b.nla.enc.part" ] && echo ja || echo nein)"
+)
+eq HP.abgebrochen-kein-gueltiger-name 'fehler|fehlt|nein' "$(hp_case 1000 4000)"
+eq HP.vollstaendig-wie-bisher '0|ganz|nein' "$(hp_case 4000 4000)"
+eq HP.leere-datei-vollstaendig '0|ganz|nein' "$(hp_case 0 0)"
+
+# ---------------------------------------------------------------------------- VH: Versionsnummer als Gesetz (Release-Profil)
+# Echter Code (common.sh, runtime.sh, update_runner.sh update_cli, doctor.sh); Attrappe ist nur docker (Umgebung und Etikett
+# des master-Containers). Der echte Weg mit Abbild, Tick und Release-Check: genericity.yml compose-stack-ops, Schritt
+# "Update aus dev".
+vh_env() {   # vh_env <profil|-> <VERSION|-fehlt|-leer> -> core.env + VERSION unter $W/vh
+  rm -rf "$W/vh"; mkdir -p "$W/vh/etc" "$W/vh/lib"
+  [ "$1" = - ] || printf 'INSTALL_PROFILE=%s\n' "$1" > "$W/vh/etc/core.env"
+  case "$2" in -fehlt) ;; -leer) : > "$W/vh/lib/VERSION" ;; *) printf '%s\n' "$2" > "$W/vh/lib/VERSION" ;; esac
+}
+vh_ver() { if [ -e "$W/vh/lib/VERSION" ]; then head -n1 "$W/vh/lib/VERSION"; else echo fehlt; fi; }
+vh_case() (   # vh_case <profil> <VERSION> <env-tag> <etikett> [systemd] -> "<rc>|<VERSION danach>|<docker-aufrufe>"
+  vh_env "$1" "$2"; : > "$STUB_LOG"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME="${5:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL="$4"
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  local rc=0; lifeagents_version_heal >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s' "$rc" "$(vh_ver)" "$(grep -c '^docker' "$STUB_LOG")"
+)
+eq VH.dev-aus-umgebung-des-abbilds '0|v9.0.0|1' "$(vh_case release dev v9.0.0 '')"
+eq VH.dev-aus-etikett-altes-abbild '0|v0.43.1|1' "$(vh_case release dev '' v0.43.1)"
+eq VH.umgebung-dev-etikett-gilt '0|v0.43.1|1' "$(vh_case release dev dev v0.43.1)"
+eq VH.leer-wird-nachgetragen '0|v9.0.0|1' "$(vh_case release -leer v9.0.0 '')"
+eq VH.keine-quelle-nichts-geschrieben '1|dev|1' "$(vh_case release dev dev '')"
+eq VH.etikett-kein-release-nicht-uebernommen '1|dev|1' "$(vh_case release dev '' latest)"
+eq VH.entwickler-stand-bleibt '0|dev-0123abc|0' "$(vh_case release dev-0123abc v9.0.0 '')"
+eq VH.release-bleibt '0|v1.2.3|0' "$(vh_case release v1.2.3 v9.0.0 '')"
+eq VH.dev-profil-unberuehrt '0|dev|0' "$(vh_case dev dev v9.0.0 '')"
+eq VH.ohne-installation-nichts '0|fehlt|0' "$(vh_case release -fehlt v9.0.0 '')"
+eq VH.klassisch-keine-quelle '1|dev|0' "$(vh_case release dev v9.0.0 '' systemd)"
+# Kein Nachtragen mitten in einem Umbau: dann liefe womoeglich schon das Ziel-Abbild (Release-Wechsel ginge verloren).
+vh_busy() (   # vh_busy <sperre|wechsel|merkzettel> -> VERSION danach
+  vh_env release dev; export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME=compose STUB_REL_ENV=v9.0.0 STUB_REL_LABEL=''
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  LIFEAGENTS_UPDATE_LOCK="$W/vh/lock"; UPGRADE_MARKER="$W/vh/upgrade.pending"; SWAP_STATE="$W/vh/swap.state"
+  case "$1" in
+    sperre) flock "$LIFEAGENTS_UPDATE_LOCK" sleep 8 & sleep 0.5 ;;   # laenger als die 5 s, die die Heilung wartet
+    wechsel) : > "$SWAP_STATE" ;;
+    merkzettel) : > "$UPGRADE_MARKER" ;;
+  esac
+  lifeagents_version_heal >/dev/null 2>&1; vh_ver; wait
+)
+eq VH.sperre-belegt-nichts-nachgetragen dev "$(vh_busy sperre)"
+eq VH.master-wechsel-nichts-nachgetragen dev "$(vh_busy wechsel)"
+eq VH.unvollendetes-update-nichts-nachgetragen dev "$(vh_busy merkzettel)"
+
+# Einstieg: jeder Timer-Modus von `lifeagents update` heilt zuerst (Tick, Release-Check, Auftrag); die Hilfe aendert nichts.
+vh_cli() (   # vh_cli <args...> -> "<VERSION danach>|<aufgerufen>"
+  vh_env release dev; : > "$STUB_LOG"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME=compose STUB_REL_ENV=v9.0.0 STUB_REL_LABEL=''
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  update_check() { echo check >> "$W/vh/called"; }; update_run_requested() { echo run >> "$W/vh/called"; }
+  update_tick() { echo tick >> "$W/vh/called"; }
+  update_cli "$@" >/dev/null 2>&1 || true
+  printf '%s|%s' "$(vh_ver)" "$(tr '\n' ' ' < "$W/vh/called" 2>/dev/null)"
+)
+eq VH.cli-release-check-heilt-vorher 'v9.0.0|check ' "$(vh_cli --check --scheduled)"
+eq VH.cli-tick-heilt-vorher 'v9.0.0|tick ' "$(vh_cli --tick)"
+eq VH.cli-auftrag-heilt-vorher 'v9.0.0|run ' "$(vh_cli --run-requested)"
+eq VH.cli-hilfe-aendert-nichts 'dev|' "$(vh_cli --help)"
+
+# provision.sh: ein Release-Lauf ohne Versionsnummer nimmt die des Abbilds oder bricht vor jeder Aenderung ab.
+vh_resolve() (   # vh_resolve <profil> <RELEASE_TAG|-> <env-tag> [systemd] -> "<rc>|<RELEASE_TAG>|<reason_code>"
+  # Eigener bash-Prozess: die_because schreibt den Grund nur in der Haupt-Shell (wie in provision.sh main).
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_RUNTIME="${4:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL='' LIFEAGENTS_RESULT_FILE="$W/vh.result"
+  rm -f "$W/vh.result"; if [ "$2" = - ]; then unset RELEASE_TAG; else export RELEASE_TAG="$2"; fi
+  local rc=0 tag
+  tag="$(bash -c '. "$1/provisioning/lib/common.sh"; release_tag_resolve "$2" 2>/dev/null; printf "%s" "${RELEASE_TAG:-}"' _ "$ROOT" "$1")" || rc=$?
+  printf '%s|%s|%s' "$rc" "$tag" "$(read_env_value "$W/vh.result" reason_code 2>/dev/null)"
+)
+eq VH.lauf-dev-nimmt-abbild-tag '0|v9.0.0|' "$(vh_resolve release dev v9.0.0)"
+eq VH.lauf-ohne-tag-nimmt-abbild-tag '0|v9.0.0|' "$(vh_resolve release - v9.0.0)"
+eq VH.lauf-ohne-quelle-bricht-ab '1||no_version' "$(vh_resolve release dev dev)"
+eq VH.lauf-klassisch-ohne-tag-bricht-ab '1||no_version' "$(vh_resolve release dev v9.0.0 systemd)"
+eq VH.lauf-entwickler-stand-bleibt '0|dev-0123abc|' "$(vh_resolve release dev-0123abc v9.0.0)"
+eq VH.lauf-dev-profil-unberuehrt '0|dev|' "$(vh_resolve dev dev v9.0.0)"
+
+# doctor: im Release-Profil ist eine fehlende Versionsnummer ROT, mit dem Weg, wie sie wiederkommt; dev-<rev> ist in Ordnung.
+vh_doc() (   # vh_doc <profil> <VERSION> <env-tag> [systemd] -> Ausgabe + fail=<n>
+  vh_env "$1" "$2"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME="${4:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL=''; LA_PROJECT=t
+    lifeagents_runtime_dir() { printf '%s' "$W/vh/lib"; }
+    _doctor_release_version; echo "fail=$_fail" )
+)
+eq VH.doctor-release-gruen '  [ OK ] Installierte Version: v1.2.3
+fail=0' "$(vh_doc release v1.2.3 v9.0.0)"
+eq VH.doctor-dev-rot-heilt-selbst '  [FAIL] Keine Versionsnummer eingetragen (VERSION: dev) — Update-Hinweise im Chat kommen so nicht an. Behebt sich selbst: der nächste Durchlauf (höchstens 1 min) trägt v9.0.0 aus dem laufenden Programm-Paket ein.
+fail=1' "$(vh_doc release dev v9.0.0)"
+eq VH.doctor-dev-rot-ohne-quelle "  [FAIL] Keine Versionsnummer eingetragen (VERSION: dev) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal '$(LA_PROJECT=t rt_master_cli_hint) update'
+fail=1" "$(vh_doc release dev dev)"
+eq VH.doctor-klassisch-rot "  [FAIL] Keine Versionsnummer eingetragen (VERSION: leer) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal '$(LIFEAGENTS_RUNTIME=systemd rt_cli_hint) update'
+fail=1" "$(vh_doc release -leer v9.0.0 systemd)"
+eq VH.doctor-entwickler-stand '  [ OK ] Installierte Version: dev-0123abc (Entwickler-Stand)
+fail=0' "$(vh_doc release dev-0123abc v9.0.0)"
+eq VH.doctor-dev-profil-still 'fail=0' "$(vh_doc dev dev v9.0.0)"
+eq VH.doctor-ohne-installation-still 'fail=0' "$(vh_doc release -fehlt v9.0.0)"
+
+# Rueckweg im Verbund auf einen Stand mit FROM_RELEASE=dev: die Nummer kommt aus dem Ziel-Abbild, bevor Daten angefasst werden;
+# fehlt sie auch dort, Abbruch vorher (sonst braeche release_tag_resolve erst nach dem Zuruecksetzen ab).
+vh_rb() (   # vh_rb <FROM_RELEASE> <env-tag des Ziel-Abbilds> -> "daten:<ziel>" | "<grund>|abbruch:<meldung>"
+  local d="$W/vhrb"; rm -rf "$d"; mkdir -p "$d/etc"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_RUNTIME=compose STUB_REL_ENV="$2" STUB_REL_LABEL='' STUB_IMAGE_PRESENT=1
+  printf 'INSTALL_PROFILE=release\n' > "$d/etc/core.env"; lifeagents_env_file() { printf '%s/%s.env' "$d/etc" "$1"; }
+  require_root() { :; }; N8N_DB_NAME=n8n
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"; printf 'services: {}\n' > "$d/b.compose.yml"
+  printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\nFROM_MASTER_IMAGE=reg.example/master@sha256:dddd\nFROM_COMPOSE=%s\n' \
+    "$1" "$d/b.dump.gpg" "$d/b.compose.yml" > "$UPGRADE_MARKER"
+  update_lock_acquire() { return 0; }; backup_key_read() { echo k; }; gpg_sym_decrypt_any() { _BK_HIT_KEY=k; return 0; }
+  # shellcheck disable=SC2154  # from_rel ist eine lokale Variable von upgrade_rollback (dynamischer Geltungsbereich)
+  pg_su_exec() { [ -s "$d/out" ] || printf 'daten:%s' "$from_rel" > "$d/out"; exit 0; }
+  pg_su_psql() { pg_su_exec "$@"; }
+  die() { [ -s "$d/out" ] || printf 'abbruch:%s' "$*" > "$d/out"; exit 1; }; die_because() { printf '%s|' "$1" > "$d/why"; shift; die "$@"; }
+  ( upgrade_rollback --yes ) >/dev/null 2>&1
+  printf '%s%s' "$(cat "$d/why" 2>/dev/null)" "$(head -c 40 "$d/out")"
+)
+eq VH.rueckweg-dev-nimmt-nummer-des-ziels 'daten:v0.43.1' "$(vh_rb dev v0.43.1)"
+eq VH.rueckweg-mit-nummer-unveraendert 'daten:v1.2.3' "$(vh_rb v1.2.3 v0.43.1)"
+case "$(vh_rb dev '')" in 'no_version|abbruch:'*) pass VH.rueckweg-ohne-nummer-vor-den-daten ;; *) fail VH.rueckweg-ohne-nummer-vor-den-daten "$(vh_rb dev '')" ;; esac
+
+# ---------------------------------------------------------------------------- IK: lifeagents images keep (Liste "wird noch gebraucht")
+# Echter Code (images_cli.sh) gegen erfundene Dateien in der Form, die upgrade_guard.sh und master_swap.sh schreiben. Der echte
+# Weg (Update ueber zwei Staende, jedes gelistete Abbild vorhanden, Rueckweg nur mit diesen): Bericht ob Runde 15.
+[ -f "$ROOT/provisioning/lib/images_cli.sh" ] && . "$ROOT/provisioning/lib/images_cli.sh"
+ik_compose() {   # ik_compose <datei> <master-zeile> <postgres-digest>
+  printf '%s\n' 'name: lifeagents' '' 'x-images:' \
+    '  busybox: &img_busybox busybox:1.37@sha256:b1' "  postgres: &img_postgres postgres:17@sha256:$3" \
+    '  n8n: &img_n8n n8nio/n8n:2.45.7@sha256:n1' '  # Kommentarzeile im Block' "  master: &img_master $2" '' 'services:' '  anchor:' '    image: *img_busybox' > "$1"
+}
+ik_case() (   # ik_case [--plain] -> Ausgabe von images keep
+  local d="$W/ik"; rm -rf "$d"; mkdir -p "$d/bk" "$d/swap" "$d/state"
+  # hand-injected: im master setzt compose.yml LA_MASTER_IMAGE (laufendes Abbild); der Fall gibt es wie dort vor
+  export LIFEAGENTS_RUNTIME=compose LA_MASTER_IMAGE='reg.example/master@sha256:cccc'
+  require_root() { :; }
+  LA_COMPOSE_FILE="$d/compose.yml"; UPGRADE_BACKUP_DIR="$d/bk"; UPGRADE_STATE_DIR="$d/state"; UPGRADE_MARKER="$d/state/upgrade.pending"
+  SWAP_DIR="$d/swap"; SWAP_STATE="$d/swap/state"
+  ik_compose "$LA_COMPOSE_FILE" '${LA_MASTER_IMAGE:-reg.example/master@sha256:cccc}' p3
+  # Zwei aufbewahrte Sicherungen (Stand a -> b, Stand b -> c) samt Merkzettel-Kopie.
+  ik_compose "$d/bk/pre-upgrade-1.dump.gpg.compose.yml" '${LA_MASTER_IMAGE:-reg.example/master@sha256:aaaa}' p1
+  printf 'FROM_RELEASE=v9.0.0\nFROM_MASTER_IMAGE=reg.example/master@sha256:aaaa\n' > "$d/bk/pre-upgrade-1.dump.gpg.meta"
+  ik_compose "$d/bk/pre-upgrade-2.dump.gpg.compose.yml" '${LA_MASTER_IMAGE:?neutral}' p2
+  printf 'FROM_RELEASE=v9.1.0\nFROM_MASTER_IMAGE=ci-ops-master:b\n' > "$d/bk/pre-upgrade-2.dump.gpg.meta"
+  : > "$d/bk/pre-upgrade-1.dump.gpg"; : > "$d/bk/pre-upgrade-2.dump.gpg"
+  ik_compose "$d/swap/compose.prev.yml" '${LA_MASTER_IMAGE:-reg.example/master@sha256:bbbb}' p2
+  images_cli keep "$@" 2>/dev/null
+)
+ik_out="$(ik_case)"
+eq IK.json-ok true "$(printf '%s' "$ik_out" | jq -r .ok 2>/dev/null)"
+eq IK.alle-abbilder 'busybox:1.37@sha256:b1 ci-ops-master:b n8nio/n8n:2.45.7@sha256:n1 postgres:17@sha256:p1 postgres:17@sha256:p2 postgres:17@sha256:p3 reg.example/master@sha256:aaaa reg.example/master@sha256:bbbb reg.example/master@sha256:cccc' \
+  "$(printf '%s' "$ik_out" | jq -r '[.images[].ref] | join(" ")' 2>/dev/null)"
+eq IK.laufender-master-ist-helfer-abbild 'current running swap_helper' \
+  "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "reg.example/master@sha256:cccc") | .sources | join(" ")' 2>/dev/null)"
+eq IK.rueckweg-ziel-aus-merkzettel 'backup:pre-upgrade-2.dump.gpg' \
+  "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "ci-ops-master:b") | .sources | join(" ")' 2>/dev/null)"
+eq IK.neutrale-zeile-keine-referenz 0 "$(printf '%s' "$ik_out" | jq '[.images[].ref | select(test("LA_MASTER"))] | length' 2>/dev/null)"
+eq IK.plain-eine-je-zeile 9 "$(ik_case --plain | grep -c .)"
+eq IK.klassisch-abgelehnt '{"ok":false,"reason":"not_compose"}|1' \
+  "$( ( LIFEAGENTS_RUNTIME=systemd; rc=0; out="$(images_cli keep 2>/dev/null)" || rc=$?; printf '%s|%s' "$out" "$rc" ) )"
+# Offener Wechsel und unvollendetes Update ohne Sicherung: Ziel und vorheriger Stand bleiben gelistet.
+ik_open() (
+  local d="$W/ik2"; rm -rf "$d"; mkdir -p "$d/bk" "$d/swap" "$d/state"
+  # hand-injected: im master setzt compose.yml LA_MASTER_IMAGE (laufendes Abbild); der Fall gibt es wie dort vor
+  export LIFEAGENTS_RUNTIME=compose LA_MASTER_IMAGE='m:old'; require_root() { :; }
+  LA_COMPOSE_FILE="$d/compose.yml"; UPGRADE_BACKUP_DIR="$d/bk"; UPGRADE_STATE_DIR="$d/state"; UPGRADE_MARKER="$d/state/upgrade.pending"
+  SWAP_DIR="$d/swap"; SWAP_STATE="$d/swap/state"
+  ik_compose "$LA_COMPOSE_FILE" '${LA_MASTER_IMAGE:-m:old}' p3
+  ik_compose "$d/swap/compose.new.yml" '${LA_MASTER_IMAGE:-m:new}' p4
+  printf 'PHASE=handoff\nFROM=m:old\nTO=m:new\n' > "$SWAP_STATE"
+  ik_compose "$d/state/upgrade.pending.compose.yml" '${LA_MASTER_IMAGE:-m:older}' p5
+  printf 'FROM_MASTER_IMAGE=m:older\nFROM_COMPOSE=%s\n' "$d/state/upgrade.pending.compose.yml" > "$UPGRADE_MARKER"
+  images_cli keep --plain 2>/dev/null | tr '\n' ' '
+)
+eq IK.offener-wechsel-und-merkzettel 'busybox:1.37@sha256:b1 m:new m:old m:older n8nio/n8n:2.45.7@sha256:n1 postgres:17@sha256:p3 postgres:17@sha256:p4 postgres:17@sha256:p5 ' "$(ik_open)"
+# ---------------------------------------------------------------------------- CL: Befehl in Meldungen je Betriebsart
+# Eine Adresse (rt_cli_hint): klassisch `sudo lifeagents`, Verbund `docker exec -i <projekt>-master lifeagents`; -it fuer Befehle
+# mit Rueckfrage (rollback/reconfigure brechen mit nur -i ab). Der Runner gibt beide Formen an core.fn_update_report mit.
+cl_hint() ( if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x; rt_cli_hint "${2:-}" )
+eq CL.klassisch 'sudo lifeagents' "$(cl_hint 0)"
+eq CL.klassisch-tty 'sudo lifeagents' "$(cl_hint 0 tty)"
+eq CL.verbund 'docker exec -i la-x-master lifeagents' "$(cl_hint 1)"
+eq CL.verbund-tty 'docker exec -it la-x-master lifeagents' "$(cl_hint 1 tty)"
+eq CL.master-hint-unveraendert 'docker exec -i la-x-master lifeagents' "$(LA_PROJECT=la-x rt_master_cli_hint)"
+cl_report() (   # cl_report <compose 0|1> -> das p, das _ur_report an die DB gibt (cli|cli_tty)
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _ur_sql() { case "$2" in *'fn_update_report('*) printf '%s' "$1" > "$W/cl.p"; printf '{}' ;; esac; }
+  _ur_send() { return 1; }; _up_close() { :; }; rm -f "$W/cl.p"
+  _ur_report 7 result bot_up=false >/dev/null 2>&1
+  jq -r '"\(.cli)|\(.cli_tty)"' "$W/cl.p" 2>/dev/null
+)
+eq CL.runner-klassisch 'sudo lifeagents|sudo lifeagents' "$(cl_report 0)"
+eq CL.runner-verbund 'docker exec -i la-x-master lifeagents|docker exec -it la-x-master lifeagents' "$(cl_report 1)"
+# ---------------------------------------------------------------------------- HL: Halt-Nachricht, wenn eine Pflichtangabe fehlt
+# Unbeaufsichtigtes Update haelt an: Telegram-Text aus dem Katalog in der Owner-Sprache, Befehl je Betriebsart aus rt_cli_hint
+# (reconfigure fragt nach -> -it), "an deinen Daten", kein "Server" im Verbund.
+hl_case() (   # hl_case <compose 0|1> <lang> -> der Telegram-Text
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _pkg_dir() { printf '%s' "$ROOT/packages"; }
+  backup_kit_lang() { printf '%s' "$HL_LANG"; }; HL_LANG="$2"   # Owner-Sprache aus der DB: eigene Faelle in tests/backup
+  LIFEAGENTS_DIR="$W/hl"; rm -rf "$LIFEAGENTS_DIR"; mkdir -p "$LIFEAGENTS_DIR"; LIFEAGENTS_UPDATE_REQUESTED=0
+  notify_owner_telegram() { printf '%s' "$1" > "$W/hl.msg"; return 0; }; rm -f "$W/hl.msg"
+  ( _hold_update_for_missing_keys ANTHROPIC_API_KEY 'Anthropic-Schlüssel' ) >/dev/null 2>&1
+  cat "$W/hl.msg" 2>/dev/null
+)
+hl_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+hl_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+HLC="$(hl_case 0 de)"; HLD="$(hl_case 1 de)"; HLE="$(hl_case 1 en)"
+hl_has HL.klassisch-befehl "$HLC" $'\nsudo lifeagents reconfigure\n'
+hl_has HL.klassisch-server "$HLC" 'Server'
+hl_has HL.klassisch-daten "$HLC" 'An deinen Daten wurde nichts geändert'
+hl_has HL.klassisch-angabe "$HLC" 'Anthropic-Schlüssel'
+hl_has HL.verbund-befehl "$HLD" $'\ndocker exec -it la-x-master lifeagents reconfigure\n'
+hl_not HL.verbund-kein-server "$HLD" 'Server'
+hl_not HL.verbund-kein-sudo "$HLD" 'sudo'
+hl_has HL.verbund-ort "$HLD" 'PowerShell'
+hl_has HL.verbund-englisch "$HLE" 'docker exec -it la-x-master lifeagents reconfigure'
+hl_not HL.verbund-englisch-kein-deutsch "$HLE" 'wartet'
+
+# ---------------------------------------------------------------------------- RH: Rueckweg-Hinweis im Verbund
+# Scheitert n8n nach einem Versionswechsel, druckt upgrade_rollback_hint den Rueckweg. Im Verbund gibt es kein systemctl,
+# runuser, dropdb oder install.sh: dort nur der Befehl, der hier laeuft (rollback mit -it, fragt nach), und wo das Protokoll
+# steht. Geht `lifeagents rollback` nicht (kein vorheriges Programm-Paket im Merkzettel), wird er nicht versprochen.
+rh_case() (   # rh_case <compose 0|1> <from_release> <master-image|-> -> Ausgabe des Hinweises
+  local d="$W/rh"; rm -rf "$d"; mkdir -p "$d"
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"
+  { printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\n' "$2" "$d/b.dump.gpg"
+    [ "$3" = - ] || printf 'FROM_MASTER_IMAGE=%s\nFROM_COMPOSE=%s\n' "$3" "$d/b.compose.yml"; } > "$UPGRADE_MARKER"
+  ui_fd() { echo 2; }; RELEASE_TAG=v9.9.9; N8N_DB_NAME=n8n
+  upgrade_rollback_hint 2>&1
+)
+rh_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+rh_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+RHV="$(rh_case 1 v0.40.0 reg.example/master@sha256:dddd)"
+rh_has RH.verbund-befehl "$RHV" 'docker exec -it la-x-master lifeagents rollback'
+rh_has RH.verbund-ort "$RHV" 'PowerShell'
+rh_has RH.verbund-protokoll "$RHV" 'docker logs'
+for w in systemctl runuser dropdb install.sh journalctl; do rh_not "RH.verbund-ohne-$w" "$RHV" "$w"; done
+RHD="$(rh_case 1 dev reg.example/master@sha256:dddd)"
+rh_has RH.verbund-dev-befehl "$RHD" 'lifeagents rollback'
+RHN="$(rh_case 1 v0.40.0 -)"
+rh_not RH.verbund-ohne-merkzettel-kein-befehl "$RHN" 'lifeagents rollback'
+rh_has RH.verbund-ohne-merkzettel-sicherung "$RHN" "$W/rh/b.dump.gpg"
+for w in systemctl dropdb install.sh; do rh_not "RH.verbund-ohne-merkzettel-ohne-$w" "$RHN" "$w"; done
+RHG="$(rh_case 1 v0.9.0 reg.example/master@sha256:dddd)"
+rh_not RH.verbund-alt-ohne-journalctl "$RHG" 'journalctl'
+rh_has RH.verbund-alt-kein-rueckweg "$RHG" 'KEIN RÜCKWEG'
+RHK="$(rh_case 0 v0.40.0 -)"
+rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
+
 exit "$fails"

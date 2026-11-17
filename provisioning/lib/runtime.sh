@@ -365,9 +365,17 @@ _rt_host_run() {
   docker run --rm "${i[@]}" --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
 }
-# rt_host_put <rechner-ordner> <dateiname> — stdin als Datei dorthin schreiben; erst .part, dann umbenennen.
-# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
-rt_host_put() { _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; cat > "/out/.$1.part" && mv -f "/out/.$1.part" "/out/$1"' _ "$2"; }
+# rt_host_put <rechner-ordner> <dateiname> <lokale-datei> — die Datei dorthin schreiben: erst .part, umbenannt nur bei
+#   gleicher SHA-256. Endet der docker-Client mitten im Hochladen (Zeitgrenze, Neuanlage des master), schliesst Docker die
+#   Eingabe des Helfers und `cat` endet ohne Fehler -> ohne Pruefung bekaeme die halbe Datei den gueltigen Namen und zaehlte
+#   beim Aufraeumen als Sicherung. rc 1 = nicht vollstaendig angekommen (.part ist dann weg).
+# shellcheck disable=SC2016  # $1/$2 werden erst in der Container-Shell ausgewertet
+rt_host_put() {
+  local sum
+  sum="$(sha256sum < "$3" | cut -d' ' -f1)" && [ -n "$sum" ] || return 1
+  _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; p="/out/.$1.part"; if cat > "$p" && [ "$(sha256sum < "$p" | cut -d" " -f1)" = "$2" ]; then mv -f "$p" "/out/$1"; else rm -f "$p"; exit 1; fi' \
+    _ "$2" "$sum" < "$3"
+}
 # rt_host_get <rechner-ordner> <dateiname> — eine Datei von dort nach stdout (nur lesend gemountet).
 rt_host_get() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" cat "/in/$2"; }
 # rt_host_ls <rechner-ordner> -> Dateinamen der Sicherungen (*.nla.enc) im Ordner, eine je Zeile.
@@ -376,8 +384,16 @@ rt_host_ls() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" sh -c 'cd /in &&
 # rt_host_check <rechner-ordner> — gibt es den Ordner und ist er beschreibbar? (Probe anlegen + loeschen)
 # shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
 rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1; }
-# rt_master_cli_hint -> Befehlsanfang, mit dem man auf dem Rechner die CLI im master aufruft (fuer Meldungen mit Beispiel).
-rt_master_cli_hint() { printf 'docker exec -i %s-master lifeagents' "${LA_PROJECT:-lifeagents}"; }
+# rt_master_cli_hint [tty] -> Befehlsanfang, mit dem man auf dem Rechner die CLI im master aufruft (fuer Meldungen mit Beispiel).
+#   tty = fuer Befehle mit Rueckfrage (rollback, reconfigure): mit nur -i bricht rollback ab ("braucht ein Terminal") und
+#   reconfigure zeigt nur die Hilfe (im echten Verbund belegt); update/doctor/backup lesen hoechstens stdin -> -i.
+rt_master_cli_hint() {
+  local f=-i; [ "${1:-}" = tty ] && f=-it
+  printf 'docker exec %s %s-master lifeagents' "$f" "${LA_PROJECT:-lifeagents}"
+}
+# rt_cli_hint [tty] -> derselbe Befehlsanfang fuer beide Betriebsarten: Verbund wie oben, klassisch `sudo lifeagents` (die CLI
+#   verlangt root). Die eine Adresse fuer Befehle in Meldungen an den Owner (Chat-Hilfe core.fn_update_report, Halt-Nachricht).
+rt_cli_hint() { if rt_is_compose; then rt_master_cli_hint "${1:-}"; else printf 'sudo lifeagents'; fi; }
 # rt_host_exists <rechner-ordner> — laesst Docker den Ordner einbinden? (fehlt er oder darf Docker nicht hinein, scheitert der
 #   Mount; Docker Desktop unterscheidet beides nicht verlaesslich). rt_host_readable: zusaetzlich auflistbar (macOS-
 #   Datenschutz kann den Mount erlauben und das Lesen verbieten).
@@ -517,3 +533,29 @@ rt_target_precheck() {
 # rt_swap_helper_stop — den Helfer des master-Wechsels anhalten (fester Name, `--rm`: Anhalten entfernt ihn); nur fuer einen
 #   haengenden Helfer (lib/master_swap.sh master_swap_resolve).
 rt_swap_helper_stop() { docker stop "${LA_PROJECT}-swap" >/dev/null 2>&1; }
+
+# rt_master_release_tag / rt_image_release_tag <abbild> — Release-Tag des laufenden master bzw. eines master-Abbilds (Ziel
+#   eines Rueckwegs) auf stdout; Quelle von lifeagents_version_heal und release_tag_resolve. Zuerst RELEASE_TAG aus der
+#   Umgebung des Abbilds (ENV ab v0.48.0; die Prozess-Umgebung taugt nicht, Aufrufer ueberschreiben RELEASE_TAG mit 'dev'),
+#   sonst das Etikett org.opencontainers.image.version (Release-Bau, build_master_image.ps1). Nur vX.Y.Z, sonst rc 1.
+#   Klassisch rc 1: dort gibt es kein Abbild und keine andere verlaessliche Quelle.
+_RT_REL_FMT='{{range .Config.Env}}{{println .}}{{end}}{{index .Config.Labels "org.opencontainers.image.version"}}'
+_rt_release_tag_pick() {   # stdin = Ausgabe von _RT_REL_FMT
+  local out env lab
+  out="$(cat)"
+  env="$(printf '%s\n' "$out" | sed -n 's/^RELEASE_TAG=//p' | head -n1)"
+  lab="$(printf '%s\n' "$out" | tail -n1)"
+  if is_release_tag "$env"; then printf '%s\n' "$env"; elif is_release_tag "$lab"; then printf '%s\n' "$lab"; else return 1; fi
+}
+rt_master_release_tag() {
+  rt_is_compose || return 1
+  local out
+  out="$(docker inspect -f "$_RT_REL_FMT" "$(rt_master_container)" 2>/dev/null)" || return 1
+  _rt_release_tag_pick <<<"$out"
+}
+rt_image_release_tag() {
+  rt_is_compose || return 1
+  local out
+  out="$(docker image inspect -f "$_RT_REL_FMT" "$1" 2>/dev/null)" || return 1
+  _rt_release_tag_pick <<<"$out"
+}

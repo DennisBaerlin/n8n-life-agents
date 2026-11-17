@@ -23,8 +23,9 @@ COPY packages /opt/lifeagents/packages
 # ersten Installation zeigt der Link ins Leere (die Tick-Schleife in compose.yml wartet so still).
 RUN ln -s /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents
 LABEL io.lifeagents.install.image="master"
-# Release-Tag dieses Images (build_master_image.ps1 -Version). provision.sh schreibt ihn in VERSION, sonst steht dort 'dev'
-# und update_runner.sh bricht den Release-Check still ab. Explizite Setzer (update_runner, upgrade_guard-Rueckweg) gehen vor.
+# Release-Tag dieses Images (build_master_image.ps1 -Version). provision.sh schreibt ihn in VERSION; ein Lauf ohne Nummer liest
+# ihn ueber docker inspect nach (common.sh release_tag_resolve). Ohne -Version gebaut (dev) bricht ein Release-Lauf darum ab:
+# lokale Baue mit --build-arg RELEASE_TAG=dev-<rev>. Explizite Setzer (update_runner, upgrade_guard-Rueckweg) gehen vor.
 ARG RELEASE_TAG=dev
 ENV RELEASE_TAG=$RELEASE_TAG
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 LIFEAGENTS_RUNTIME=compose

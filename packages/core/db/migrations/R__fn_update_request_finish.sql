@@ -2,8 +2,8 @@
 -- fn_update_request_finish (ATOMIC WRITE) — Ergebnis eines Update-Auftrags festhalten
 --   Der root-Runner haelt das Ergebnis eines uebernommenen Auftrags fest (aus der Ergebnis-Datei von provision.sh
 --   bzw. aus seinen eigenen Vor-Pruefungen). Nur ein uebernommener, offener Auftrag laesst sich abschliessen.
---   stage/reason_code nur als feste Codes ([a-z_]), sonst NULL; detail auf 500 Zeichen gekuerzt (nur Anzeige im
---   Owner-Chat, nie in Links).
+--   stage/reason_code nur als feste Codes ([a-z][a-z0-9_], z. B. n8n_start), sonst NULL; detail auf 500 Zeichen
+--   gekuerzt (nur Anzeige im Owner-Chat, nie in Links).
 --   report (Objekt) markiert die Meldung als faellig (report_state='due', core.fn_update_report_due); ohne den Key bleibt
 --   report_state NULL, damit ein Runner ohne Merker, der selbst meldet, nicht zusaetzlich nachgesendet wird.
 --   p: {id, outcome, stage?, reason_code?, changed?, detail?, report?:{log?, backup?, missing?, failed?, latest?}}
@@ -36,8 +36,8 @@ BEGIN
     UPDATE core.update_requests
        SET finished_at = now(),
            outcome     = v_outcome,
-           stage       = CASE WHEN COALESCE(p->>'stage', '') ~ '^[a-z_]{1,40}$' THEN p->>'stage' END,
-           reason_code = CASE WHEN COALESCE(p->>'reason_code', '') ~ '^[a-z_]{1,40}$' THEN p->>'reason_code' END,
+           stage       = CASE WHEN COALESCE(p->>'stage', '') ~ '^[a-z][a-z0-9_]{0,39}$' THEN p->>'stage' END,
+           reason_code = CASE WHEN COALESCE(p->>'reason_code', '') ~ '^[a-z][a-z0-9_]{0,39}$' THEN p->>'reason_code' END,
            changed     = CASE p->'changed' WHEN 'true'::jsonb THEN true WHEN 'false'::jsonb THEN false END,
            detail      = NULLIF(left(btrim(COALESCE(p->>'detail', '')), 500), ''),
            report_state  = CASE WHEN jsonb_typeof(p->'report') = 'object' THEN 'due' END,

@@ -30,6 +30,14 @@ BEGIN
   v_expected := CEIL(6000.0 / v_months * 100) / 100;
   IF (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM v_expected THEN
     RAISE EXCEPTION 'FAIL set_savings_goal [recompute]: rate=% (erwartet % bei % Monaten)', v_res->>'new_monthly_rate', v_expected, v_months; END IF;
+  -- Die Rate laeuft seit 2026-07-01 mit faelligen offenen Terminen: die neue Rate ist ein neues Glied ab dem naechsten
+  -- Termin (fn_change_owned_recurring), die alte Zeile behaelt ihren Betrag als Historie; das Ziel zeigt auf den Kopf.
+  IF (v_res->>'recurring_payment_id')::int IS DISTINCT FROM (SELECT recurring_payment_id FROM finance.savings_goals WHERE id = v_goal)
+     OR (v_res->>'recurring_payment_id')::int = v_rp
+     OR (SELECT amount = -v_expected OR valid_to IS NULL FROM finance.recurring_payments WHERE id = v_rp) THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [Historie]: Rueckgabe rp % (alt %), alte Zeile Betrag % Ende %', v_res->>'recurring_payment_id', v_rp,
+      (SELECT amount FROM finance.recurring_payments WHERE id = v_rp), (SELECT valid_to FROM finance.recurring_payments WHERE id = v_rp); END IF;
+  v_rp := (v_res->>'recurring_payment_id')::int;
   SELECT amount INTO v_rpamt FROM finance.recurring_payments WHERE id = v_rp;
   IF v_rpamt IS DISTINCT FROM -v_expected THEN
     RAISE EXCEPTION 'FAIL set_savings_goal [recurring-sync]: rp.amount=% (erwartet %)', v_rpamt, -v_expected; END IF;

@@ -67,13 +67,13 @@ WHERE status = 'active'
 -- VIEW: Erfasste Zahlungen, die noch nicht gestartet sind
 -- Je Kette hoechstens eine Zeile: das massgebliche Glied (fn_recurring_effective), wenn es erst kommt. Eine geplante
 -- Betragsaenderung einer laufenden Kette steht deshalb nicht hier. Inkl. interner Transfers, wie active_recurring_payments.
--- counted_in_cashflow = zaehlt schon in der Monatsrechnung (fn_recurring_starts_within_cycle, dort mit starts_on); false =
+-- counted_in_cashflow = zaehlt schon in der Monatsrechnung (fn_recurring_starts_within_cycle, gemessen am Geltungsbeginn valid_from; starts_on nennt den ersten Termin); false =
 -- startet spaeter, zaehlt noch nicht, ist aber erfasst. Zusammen mit active_recurring_payments die Antwort auf „gibt es das
 -- schon?" (fn_recurring_name_check, Buchhalter, Berater).
 -- ============================================================
 CREATE VIEW finance.upcoming_recurring_payments AS
 SELECT *,
-       valid_from AS starts_on,
+       finance.fn_recurring_starts_on(id) AS starts_on,   -- erster Termin, nicht der Geltungsbeginn
        finance.fn_recurring_last_valid_day(id) AS last_valid_day,
        finance.fn_schedule_label(schedule_unit, schedule_interval, schedule_day_of_month, schedule_days_of_month) AS rhythm,
        finance.fn_recurring_starts_within_cycle(valid_from, schedule_interval, schedule_unit, current_date) AS counted_in_cashflow
@@ -155,7 +155,7 @@ LEFT JOIN core.fn_household_persons() bp ON bp.person_id = l.borrower_person_id;
 -- Je regulaer laufender Kette genau ein Glied + Klasse + EUR-Anteile: das massgebliche Glied
 -- (fn_recurring_effective), aktiv, nicht beendet, nicht leer, gestartet oder innerhalb fn_recurring_starts_within_cycle
 -- startend (nicht nur „heute gueltig": sonst fehlten frisch erfasste Zahlungen bis zu ihrem ersten Termin in Summen,
--- Alarmen, Notreserve und Runway). starts_on = erster Termin, solange er aussteht, sonst NULL. „Laeuft heute" bleibt
+-- Alarmen, Notreserve und Runway). starts_on = erster Termin (fn_recurring_starts_on), nur vor dem Geltungsbeginn, sonst NULL. „Laeuft heute" bleibt
 -- active_recurring_payments, spaeter Startendes steht in upcoming_recurring_payments.
 -- Grenze (Test [15]): eine Abloesung als zwei getrennte Ketten (altes Gehalt endet, neues ab dem Folgetag, ohne predecessor_id)
 -- zaehlt bis zum Wechsel doppelt, last_valid_day + starts_on zeigen das Paar.
@@ -275,7 +275,7 @@ SELECT c.id,
             THEN round(c.monthly_equivalent_eur * (1 - c.internal_share), 2) ELSE 0 END    AS saving_eur,
        ((c.monthly_equivalent <> 0 AND c.monthly_equivalent_eur IS NULL)
         OR (c.cashflow_class = 'loan' AND c.loan_interest_native > 0 AND c.loan_interest_eur IS NULL)) AS fx_gap,
-       CASE WHEN c.valid_from > current_date THEN c.valid_from END AS starts_on
+       CASE WHEN c.valid_from > current_date THEN finance.fn_recurring_starts_on(c.id) END AS starts_on
 FROM classed c;
 
 -- ============================================================

@@ -454,12 +454,14 @@ _update_held_marker() { printf '%s/.update_held' "$LIFEAGENTS_DIR"; }
 #   Dedup per Merk-Datei in /etc/lifeagents (core.notification_state ginge erst nach apply_schema); collect_release_inputs
 #   loescht sie, sobald nichts mehr fehlt. Alles fail-open: ein gescheiterter Versand aendert nichts am Halt.
 _hold_update_for_missing_keys() {
-  local keys="$1" labels="$2" marker keyset prev=''
+  local keys="$1" labels="$2" marker keyset prev='' lang msg cli
   marker="$(_update_held_marker)"
   # shellcheck disable=SC2086  # bewusst ungequotet: die Key-Liste (Bezeichner ohne Leerzeichen) je Zeile sortieren
   keyset="$(printf '%s\n' $keys | sort | tr '\n' ' ')"
   prev="$(cat "$marker" 2>/dev/null || true)"
-  warn "Update wartet: Pflichtangaben fehlen (${labels}). Es wurde nichts geändert — die installierte Version läuft weiter. Nachtragen: sudo lifeagents reconfigure (danach läuft das nächste Update normal)."
+  cli="$(rt_cli_hint tty)"   # reconfigure fragt nach -> im Verbund -it
+  # Im Verbund ist der master schon der neue (Tausch vor provision.sh); unveraendert sind Daten und installierte Version.
+  warn "Update wartet: Pflichtangaben fehlen (${labels}). An den Daten wurde nichts geändert, die installierte Version läuft weiter. Nachtragen: ${cli} reconfigure (danach läuft das nächste Update normal)."
   result_set missing_keys "$labels"
   result_set changed false
   result_set status held
@@ -467,7 +469,12 @@ _hold_update_for_missing_keys() {
   # die des Runners (core.fn_update_report, mit Hilfe-Schritten), auch beim Wiederholungs-Halt mit gleichem Key-Satz.
   if [ "${LIFEAGENTS_UPDATE_REQUESTED:-0}" = 1 ]; then exit 0; fi
   if [ "$keyset" != "$prev" ]; then
-    if notify_owner_telegram "Update wartet: Für die neue Version fehlt eine Pflichtangabe (${labels}). Es wurde nichts geändert, dein Bot läuft wie bisher. Bitte auf dem Server eintragen: sudo lifeagents reconfigure — danach läuft das nächste Update normal durch."; then
+    # Katalog-Text in der Owner-Sprache; Ersatzwerte in Quotes (bash 5.2 setzt sonst fuer '&' den Treffer ein).
+    lang="$(backup_kit_lang)"
+    msg="$(pkg_text core update.held_notice "$lang")"
+    msg="${msg//"{labels}"/"$labels"}"; msg="${msg//"{cli}"/"$cli"}"
+    msg="${msg//"{where}"/"$(pkg_text core "update.where.$(if rt_is_compose; then echo docker; else echo server; fi)" "$lang")"}"
+    if [ -n "$msg" ] && notify_owner_telegram "$msg"; then
       { printf '%s' "$keyset" > "$marker"; chmod 600 "$marker"; } 2>/dev/null || true
       log "Owner per Telegram informiert."
     else

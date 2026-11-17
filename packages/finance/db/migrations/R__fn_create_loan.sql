@@ -39,7 +39,8 @@
 --   Auszahlungsdatum in der Zukunft, Auszahlungskonto ohne Betrag/Datum oder bei laufendem Kredit, Laufzeitende vor
 --   Auszahlung oder vor dem Zinsbindungsende, Rate <= 0, Rate ohne first_payment_date, Rate unter dem Monatszins der
 --   Restschuld ({interest, payment}; jede Buchung scheiterte sonst an fn_get_loan_payment_split), Konto nicht EUR,
---   Abbuchungs-/Auszahlungskonto nicht buchbar (Depot/Kredit).
+--   Abbuchungs-/Auszahlungskonto nicht buchbar (Depot/Kredit). Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name.
+--   ok:true traegt existing_names, similar_names.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -66,6 +67,8 @@ DECLARE
     v_from      DATE;
     v_reason    TEXT;
     v_sim       TEXT;
+    v_names     JSONB;   -- fn_entity_name_report
+    v_reject    JSONB;
     v_ov        RECORD;
     v_dates     JSONB;
 BEGIN
@@ -157,6 +160,10 @@ BEGIN
             'interest', v_interest, 'payment', v_annuity);
     END IF;
 
+    v_names := finance.fn_entity_name_report('loan', p->>'name', p->>'borrower_person_id');
+    v_reject := finance.fn_entity_name_reject(v_names, 'loan');
+    IF v_reject IS NOT NULL THEN RETURN v_reject; END IF;
+
     -- 1. Loan-Konto (negativer Saldo = Restschuld; balance-Zeile via Trigger). Eroeffnung zu heute: Stichtag.
     INSERT INTO finance.accounts (name, account_type, bank, status, opening_balance_date)
     VALUES (left('Kredit ' || (p->>'name'), 100), 'loan', NULLIF(p->>'lender', ''), 'active', v_open_date)
@@ -216,7 +223,8 @@ BEGIN
     RETURN jsonb_build_object(
         'ok', true,
         'loan_id', v_loan_id,
-        'card_lines', finance.fn_similar_note(v_sim),
+        'card_lines', finance.fn_similar_note(COALESCE(v_sim, v_names->'similar'->>0)),
+        'existing_names', v_names->'existing_names', 'similar_names', v_names->'similar',
         'loan_account_id', v_loan_acc,
         'debit_account_id', v_debit,
         'recurring_payment_id', v_rp_id,

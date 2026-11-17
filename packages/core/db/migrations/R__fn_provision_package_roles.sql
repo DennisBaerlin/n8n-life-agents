@@ -185,6 +185,10 @@ BEGIN
     IF to_regprocedure('core.fn_handoff_tasks_read(integer[])') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_tasks_read(integer[]) TO %I, %I', v_rw, v_ro);
     END IF;
+    -- Der Berater-Snapshot (INVOKER unter finance_ro) liest die offenen Vormerkungen nur ueber dieses Fenster.
+    IF to_regprocedure('core.fn_advisor_open_handoffs(text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_open_handoffs(text) TO %I, %I', v_rw, v_ro);
+    END IF;
     IF to_regprocedure('core.fn_handoff_task_check(jsonb)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_task_check(jsonb) TO %I', v_rw);
     END IF;

@@ -78,7 +78,7 @@ BEGIN
     SELECT * INTO v_acc FROM finance.accounts WHERE id = v_loan.loan_account_id;
     v_rp := v_loan.recurring_payment_id;
     SELECT abs(amount) INTO v_cur_amount FROM finance.recurring_payments
-     WHERE id = finance.fn_recurring_current(v_rp, v_today);
+     WHERE id = finance.fn_recurring_current(v_rp, COALESCE(v_eff_from, v_today));
 
     -- Korrigierbare Guards
     -- "abbezahlt" mit offener Restschuld nur ueber fn_settle_loan: nur dort entsteht die Abloese-Buchung, die die
@@ -182,7 +182,7 @@ BEGIN
          OR COALESCE(NULLIF(p->>'notes', ''), v_loan.notes) IS DISTINCT FROM v_loan.notes
          OR (v_annuity IS NOT NULL AND v_annuity IS DISTINCT FROM v_cur_amount)
          OR (v_dom IS NOT NULL AND v_dom IS DISTINCT FROM (SELECT schedule_day_of_month FROM finance.recurring_payments
-                                                            WHERE id = finance.fn_recurring_current(v_rp, v_today)))) THEN
+                                                            WHERE id = finance.fn_recurring_current(v_rp, COALESCE(v_eff_from, v_today))))) THEN
         RETURN jsonb_build_object('ok', false, 'no_change', true,
             'reason', 'Nothing to change: the loan already has exactly these values - the earlier change is saved. '
                    || 'Do not call tool_set_loan again for it.');

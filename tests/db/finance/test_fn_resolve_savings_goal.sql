@@ -12,7 +12,9 @@ BEGIN
   v_acct := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_sg_dup__','target_amount',5000,'target_date','2027-12-31','monthly_savings_rate',100,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'schedule_day_of_month',1,'first_payment_date','2026-07-01')) INTO v_res;
-  SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_sg_dup__','target_amount',6000,'target_date','2027-12-31','monthly_savings_rate',120,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'schedule_day_of_month',1,'first_payment_date','2026-07-01')) INTO v_res;
+  SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_sg_dup_b__','target_amount',6000,'target_date','2027-12-31','monthly_savings_rate',120,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'schedule_day_of_month',1,'first_payment_date','2026-07-01')) INTO v_res;
+  -- Bestands-Dublette (sql.md: legitim, die create-fn lehnt eine neue ab) -> per UPDATE nachgestellt
+  UPDATE finance.savings_goals SET name = '__test_sg_dup__' WHERE name = '__test_sg_dup_b__';
   SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_sg_uniq__','target_amount',8000,'target_date','2027-12-31','monthly_savings_rate',150,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'schedule_day_of_month',1,'first_payment_date','2026-07-01')) INTO v_res;
   v_id1 := (v_res->>'goal_id')::int;
 

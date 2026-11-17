@@ -366,6 +366,9 @@ jobs:
           grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"
           grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"
           diff "$RUNNER_TEMP/ids.1.base" "$RUNNER_TEMP/ids.2.base"
+          # Die Anthropic-Pruefung der Credential-Einspielung (erfundener Schluessel) steht als AxiosError 401 im n8n-Log; die
+          # Grenze fuer die Pruefung unten ist darum der Neustart, nicht "die letzten 5 Minuten".
+          restarted="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           docker restart "$LA_PROJECT-n8n" >/dev/null
           ready=""
           for _ in $(seq 1 180); do
@@ -373,9 +376,9 @@ jobs:
             sleep 2
           done
           [ -n "$ready" ] || { docker logs --tail 80 "$LA_PROJECT-n8n"; exit 1; }
-          # Ohne Telegram-Token darf nach dem Neustart kein Auth-Fehler auftauchen (AxiosError 401 = Telegram-Trigger
-          # mit erfundenem Token, Probelauf-Fund).
-          if docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
+          # Nach dem Neustart darf kein Auth-Fehler auftauchen (AxiosError 401 = ein Telegram-Aufruf ging an die echte Adresse
+          # statt an den Mock, Probelauf-Fund).
+          if docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
       - name: Edge paths (one public list, editor and wizard closed to the tailnet, proxy hops)

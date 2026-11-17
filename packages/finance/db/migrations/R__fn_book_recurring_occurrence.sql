@@ -121,7 +121,7 @@ BEGIN
         (account_id, amount, transaction_date, category, recurring_payment_id, recurring_due_date, description)
     VALUES (v_acct, v_book_amt, v_date, 'other', v_rp_id, v_due,
             v_name || ' (Recurring ' || v_due
-                   || CASE WHEN v_override IS NOT NULL
+                   || CASE WHEN v_override IS NOT NULL AND abs(v_override) <> abs(v_amount)
                            THEN ', angepasst: ' || abs(v_override) || ' statt ' || abs(v_amount)
                            ELSE '' END
                    || ')')

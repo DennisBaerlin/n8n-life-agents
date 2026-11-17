@@ -179,4 +179,31 @@ BEGIN
   RAISE NOTICE 'PASS [Kreditrate doppelt -> ok:false]';
 END $$;
 
+-- Buchungstext: "angepasst: X statt Y" nur bei abweichendem Betrag. Der Auszugs-Abgleich gibt den Ist-Betrag immer mit,
+-- auch wenn er dem Plan-Betrag gleicht.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_acct INT;
+  v_rp   INT;
+  v_desc TEXT;
+BEGIN
+  v_acct := (finance.fn_create_account(
+    '{"name":"__test_bookrec_text__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_rp := finance.fn_add_recurring_payment(v_acct, -40, 'Verein', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
+                                           '2026-05-01', '2026-05-01', NULL, NULL, NULL);
+
+  SELECT finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', v_rp, 'due_date', '2026-05-01', 'amount', '40.00')) INTO v_res;
+  SELECT description INTO v_desc FROM finance.transactions WHERE id = (v_res->>'transaction_id')::int;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_desc IS NULL OR v_desc LIKE '%angepasst%' THEN
+    RAISE EXCEPTION 'FAIL [Text gleicher Betrag]: erwartet ohne "angepasst", got % / %', v_res, v_desc; END IF;
+  RAISE NOTICE 'PASS [Text gleicher Betrag ohne "angepasst"]';
+
+  SELECT finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', v_rp, 'due_date', '2026-06-01', 'amount', '45')) INTO v_res;
+  SELECT description INTO v_desc FROM finance.transactions WHERE id = (v_res->>'transaction_id')::int;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_desc NOT LIKE '%angepasst: 45 statt 40%' THEN
+    RAISE EXCEPTION 'FAIL [Text anderer Betrag]: erwartet "angepasst: 45 statt 40…", got % / %', v_res, v_desc; END IF;
+  RAISE NOTICE 'PASS [Text anderer Betrag nennt beide Werte]';
+END $$;
+
 ROLLBACK;

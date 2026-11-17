@@ -24,7 +24,7 @@
 --     reminders, declined, retire, watch_candidates (Plan-Durchlauf core.fn_plan_sync vor Schritt 1, alles eine Transaktion; Pflicht reminders
 --       bei <paket>.advisor.plan_sync_required = 'true', code plan_sync_missing; dessen ok:false geht unveraendert zurueck, kein Write).
 --   Naht-Backstop: vor jedem Write komponiert die fn die section_data block-weise und prueft
---     deterministisch, dass jeder Top-Block (goal/risk_profile/target_allocation/glidepath/emergency_reserve)
+--     deterministisch, dass jeder Top-Block (goal/risk_profile/target_allocation/glidepath)
 --     von genau einer Sektion kommt (der jsonb_each-Merge ist storage-order/nicht-deterministisch -> zwei
 --     Sektionen mit demselben Block verloeren still eine Haelfte). Doppelung -> {ok:false, reason}.
 --   "## Gelernt" = system-verwalteter Block (core.fn_split_learned_block): owner-bestaetigte
@@ -197,8 +197,8 @@ BEGIN
     END IF;
 
     -- Naht-Backstop (vor jedem Write): Compose-on-Publish + deterministischer Block-Kollisions-Guard.
-    -- Eine section_data ist ein partielles facts-Objekt (Top-Block wie goal/target_allocation/glidepath/
-    -- emergency_reserve); `||` merged auf Block-Ebene. Der jsonb_each-Merge laeuft in Storage-/Hash-Reihenfolge
+    -- Eine section_data ist ein partielles facts-Objekt (Top-Block wie goal/target_allocation/glidepath);
+    -- `||` merged auf Block-Ebene. Der jsonb_each-Merge laeuft in Storage-/Hash-Reihenfolge
     -- (nicht deterministisch) -> emittieren zwei verschiedene Sektionen denselben Top-Block, verloere `||` still
     -- eine Haelfte. Darum: jeden bereits belegten Top-Block-Key tracken; Doppelung -> {ok:false, reason} ohne
     -- Write (korrigierbar, kein RAISE). Eine Sektion mit mehreren Bloecken (wealth_building ->
@@ -209,7 +209,7 @@ BEGIN
                 IF v_blk_key = ANY (v_seen_blocks) THEN
                     RETURN jsonb_build_object('ok', false,
                         'reason', format('facts block "%s" emitted by multiple sections — '
-                          || 'each plan figure block (goal/risk_profile/target_allocation/glidepath/emergency_reserve) '
+                          || 'each plan figure block (goal/risk_profile/target_allocation/glidepath) '
                           || 'must come from exactly one section', v_blk_key));
                 END IF;
                 v_seen_blocks := v_seen_blocks || v_blk_key;

@@ -121,6 +121,10 @@ BEGIN
         'cli',     v_cli,
         'cli_tty', v_cli_tty,
         'where',   core.fn_ui_text(CASE WHEN v_docker THEN 'core.update.where.docker' ELSE 'core.update.where.server' END, v_lang));
+    -- "laeuft weiter (Version …)" nur mit Release-Tag: ohne VERSION stuende sonst "?", bei einem Entwicklungsstand "dev"
+    v_params := v_params || jsonb_build_object('from_note',
+        CASE WHEN COALESCE(v_r.from_version ~ '^v[0-9]+\.[0-9]+\.[0-9]+$', false)
+             THEN core.fn_ui_text('core.update.from_note', v_lang, v_params) ELSE '' END);
 
     IF p->>'phase' = 'progress_plan' THEN
         v_filled := core.fn_ui_text('core.update.bar.filled', v_lang);

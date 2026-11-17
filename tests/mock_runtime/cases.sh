@@ -1350,4 +1350,30 @@ cl_report() (   # cl_report <compose 0|1> -> das p, das _ur_report an die DB gib
 )
 eq CL.runner-klassisch 'sudo lifeagents|sudo lifeagents' "$(cl_report 0)"
 eq CL.runner-verbund 'docker exec -i la-x-master lifeagents|docker exec -it la-x-master lifeagents' "$(cl_report 1)"
+# ---------------------------------------------------------------------------- HL: Halt-Nachricht, wenn eine Pflichtangabe fehlt
+# Unbeaufsichtigtes Update haelt an: Telegram-Text aus dem Katalog in der Owner-Sprache, Befehl je Betriebsart aus rt_cli_hint
+# (reconfigure fragt nach -> -it), "an deinen Daten", kein "Server" im Verbund.
+hl_case() (   # hl_case <compose 0|1> <lang> -> der Telegram-Text
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _pkg_dir() { printf '%s' "$ROOT/packages"; }
+  backup_kit_lang() { printf '%s' "$HL_LANG"; }; HL_LANG="$2"   # Owner-Sprache aus der DB: eigene Faelle in tests/backup
+  LIFEAGENTS_DIR="$W/hl"; rm -rf "$LIFEAGENTS_DIR"; mkdir -p "$LIFEAGENTS_DIR"; LIFEAGENTS_UPDATE_REQUESTED=0
+  notify_owner_telegram() { printf '%s' "$1" > "$W/hl.msg"; return 0; }; rm -f "$W/hl.msg"
+  ( _hold_update_for_missing_keys ANTHROPIC_API_KEY 'Anthropic-Schlüssel' ) >/dev/null 2>&1
+  cat "$W/hl.msg" 2>/dev/null
+)
+hl_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+hl_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+HLC="$(hl_case 0 de)"; HLD="$(hl_case 1 de)"; HLE="$(hl_case 1 en)"
+hl_has HL.klassisch-befehl "$HLC" $'\nsudo lifeagents reconfigure\n'
+hl_has HL.klassisch-server "$HLC" 'Server'
+hl_has HL.klassisch-daten "$HLC" 'An deinen Daten wurde nichts geändert'
+hl_has HL.klassisch-angabe "$HLC" 'Anthropic-Schlüssel'
+hl_has HL.verbund-befehl "$HLD" $'\ndocker exec -it la-x-master lifeagents reconfigure\n'
+hl_not HL.verbund-kein-server "$HLD" 'Server'
+hl_not HL.verbund-kein-sudo "$HLD" 'sudo'
+hl_has HL.verbund-ort "$HLD" 'PowerShell'
+hl_has HL.verbund-englisch "$HLE" 'docker exec -it la-x-master lifeagents reconfigure'
+hl_not HL.verbund-englisch-kein-deutsch "$HLE" 'wartet'
+
 exit "$fails"

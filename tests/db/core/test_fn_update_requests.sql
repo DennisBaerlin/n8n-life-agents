@@ -412,6 +412,31 @@ BEGIN
   IF r->>'class' IS DISTINCT FROM 'unchanged' OR position('core.update.reason.pg_major' IN r->>'text') = 0
      OR position('RB ' IN r->>'text') > 0 THEN RAISE EXCEPTION 'FAIL [15e pg_major nach changed=true]: %', r; END IF;
 
+  -- ---------- 16) "Laeuft weiter auf ...": Versionsangabe nur mit Release-Tag, nie "?" oder "dev" ----------
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('core.update.from_note', 'de', ' (V {from})', 'core'),
+    ('core.update.held', 'de', 'HELD{from_note}.', 'core'),
+    ('core.update.fail.unchanged', 'de', 'UNCH{from_note}.', 'core'),
+    ('core.update.fail.security', 'de', 'SEC{from_note}.', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
+  DECLARE
+    v_t text; v_case text[];
+  BEGIN
+    FOREACH v_case SLICE 1 IN ARRAY ARRAY[['held', '', 'HELD'], ['failed', 'net', 'UNCH'], ['failed', 'signature', 'SEC']] LOOP
+      DELETE FROM core.update_requests;
+      INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+      VALUES ('v0.16.0', now(), 'v0.15.0', now(), v_case[1], 'download', NULLIF(v_case[2], ''), false) RETURNING id INTO v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || ' (V v0.15.0).' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [16a % mit Version]: %', v_case[3], v_t; END IF;
+      UPDATE core.update_requests SET from_version = NULL WHERE id = v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || '.' IN v_t) = 0 OR position('?' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [16b % ohne Version]: %', v_case[3], v_t; END IF;
+      UPDATE core.update_requests SET from_version = 'dev' WHERE id = v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || '.' IN v_t) = 0 OR position('dev' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [16c % dev]: %', v_case[3], v_t; END IF;
+    END LOOP;
+  END;
+
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;
 

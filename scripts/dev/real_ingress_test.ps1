@@ -19,6 +19,8 @@
 #
 # Routing-Asserts sind deterministisch aus dem Execution-Log (kein LLM-Judge fuers Routing).
 #
+# Mehrere Zuege (node_ran): before = fruehere Nachrichten, die vorher ohne Gedaechtnis-Leeren durch den echten Eingang gehen;
+# expect_task_contains = Teiltexte, die in der JSON-Ausgabe von expected_node (Sub-Zweig) stehen muessen.
 # Fall-Felder fuer den naechsten Schritt (node_ran): expect_next_button = genau eine Tastatur an chat_id mit dem callback des
 # aktuellen Schritts (core.fn_get_next_step, Reihenfolge Get-NextStepOrder); forbid_keyboard = keine Tastatur an chat_id;
 # as_child = die Fixture-Person lisa (child) traegt nur fuer diesen Fall die Telegram-id 880055201; fail_tg {method, markup}
@@ -942,6 +944,23 @@ foreach ($tc in $cases) {
                 if ($ps.Code -ne 0) { Write-Host "    [FAIL] pre_sql fehlgeschlagen: $($ps.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
             }
 
+            # before (optional): fruehere Zuege {text, chat_id?, from_uid?} durch den echten Eingang, je bis zum Ende abgewartet; das
+            # Gedaechtnis bleibt stehen (Agenten-Wechsel: der Folgezug liest den vorigen Zug aus dem Router-Gedaechtnis). Ein Zug aus
+            # einem anderen Chat leert vorher dessen Gedaechtnis. Die Sub-Basis unten zaehlt erst danach.
+            $beforeOk = $true
+            foreach ($bt in @($tc.before)) {
+                if (-not $bt) { continue }
+                [long]$btChat = if ($bt.chat_id) { [long]$bt.chat_id } else { $chatId }
+                [long]$btFrom = if ($bt.from_uid) { [long]$bt.from_uid } else { $fromUid }
+                if ($btChat -ne $chatId) { Clear-ChatSessionMemory -Container $Container -SessionId "$btChat" }
+                $btBase = Get-MaxExecId $OrchWfId
+                Send-TelegramUpdate $btChat $btFrom "$($bt.text)" | Out-Null
+                $btExec = Wait-NewExecTerminal $OrchWfId $btBase $Timeout
+                if (-not $btExec -or $btExec.status -ne 'success') { $beforeOk = $false; break }
+            }
+            if (-not $beforeOk) { Write-Host "    [FAIL] Vorzug (before) lief nicht erfolgreich durch" -ForegroundColor Red; $failed++; continue }
+            if ($tc.before) { Clear-MockTelegramRequests -Container $Container }
+
             # Optionale Sub-Execution-Assertion. Der Core-first-Gate-Redirect ('Core onboarding required')
             # bzw. der durchgelassene 'Finance Agent' laufen in der finance/advisor-Sub, nicht im Orchestrator-
             # runData (Get-RunNodes prueft Top-Level-Orchestrator-Knoten). expected_sub = Sub-Workflow-Name ->
@@ -1007,6 +1026,15 @@ foreach ($tc in $cases) {
                     $outText = Get-NodeOutputText $sub "$($tc.expected_node)"
                     if ($tc.expected_output_contains)     { $outOk = $outOk -and $outText.Contains("$($tc.expected_output_contains)") }
                     if ($tc.expected_output_not_contains) { $outOk = $outOk -and $outText -ne '' -and -not $outText.Contains("$($tc.expected_output_not_contains)") }
+                }
+                # expect_task_contains: jeder Teiltext muss in der kompakten JSON-Ausgabe des Knotens stehen (z. B. '"task":"<Satz>"' =
+                # task endet direkt nach dem Satz; ohne schliessendes Anfuehrungszeichen = task beginnt mit dem Satz).
+                if ($tc.expect_task_contains) {
+                    $taskText = Get-NodeOutputText $sub "$($tc.expected_node)"
+                    foreach ($frag in @($tc.expect_task_contains)) {
+                        if (-not $taskText.Contains("$frag")) { $outOk = $false; Write-Host "    Ausgabe von '$($tc.expected_node)' ohne: $frag" -ForegroundColor Red }
+                    }
+                    if ($Verbose -or -not $outOk) { Write-Host "    Ausgabe: $taskText" }
                 }
                 $txtOk = Test-CaseTexts $tc
                 Write-Host "    Orchestrator: id=$($orch.id) status=$($orch.status); Sub ($($tc.expected_sub)): id=$($sub.id) status=$($sub.status) ranNode($($tc.expected_node))=$ranNode outputOk=$outOk texts=$txtOk"

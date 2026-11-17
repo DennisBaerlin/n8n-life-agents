@@ -614,5 +614,19 @@
     "expected_route": null,
     "expected_behavior": "The reply is the orchestrator's own, one short German sentence. When the system flag offer is no it must not end with NEXT_STEP; it invites the user to write, with one quoted example question.",
     "notes": "Laeuft sinnvoll direkt nach oc59 im selben Lauf (Tagesgrenze schon verbraucht); allein entspricht er oc62."
+  },
+  {
+    "id": "oc72",
+    "name": "Agenten-Wechsel mit Bezug: nach einem Berater-Vorschlag soll der Buchhalter ihn direkt umsetzen -> agent.finance kennt den Vorschlag",
+    "task": "Nein, schreib das nicht in den Plan, das soll der Buchhalter direkt beim Dauerauftrag anpassen.",
+    "chat_id": "test_orc72",
+    "router_history": {
+      "human": "Mein Stromabschlag reicht wohl nicht, was meinst du?",
+      "agent": "agent.finance_advisor",
+      "output": "Bei deinem Verbrauch wuerde ich den Dauerauftrag Stromabschlag Stadtwerke auf 95 Euro im Monat erhoehen. Soll ich das in deinen Finanzplan aufnehmen?"
+    },
+    "expected_route": "finance",
+    "expected_behavior": "The bookkeeper reply is about raising the standing order Stromabschlag Stadtwerke to 95 euro (it proposes or confirms exactly that change, or says the confirmation card was declined). It does not talk about an unrelated topic and does not ask what the user means by that.",
+    "notes": "Live-Eigenschaft: nach dem Wechsel Berater -> Buchhalter verstand der Buchhalter einen Satz ohne eigenen Bezug nicht. Der Block aus 'Previous specialist' traegt die Berater-Antwort aus router_history. Mock: Szenario mit gleichem match (mr_orch prueft nur das Routing)."
   }
 ]

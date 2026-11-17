@@ -71,6 +71,7 @@ foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
     $fileCases = @()
     foreach ($c in $cf.Cases) {
         if ($c.PSObject.Properties['text'] -and $c.text) { $sentTexts += [string]$c.text }
+        if ($c.PSObject.Properties['before']) { foreach ($b in @($c.before)) { if ($b.PSObject.Properties['text'] -and $b.text) { $sentTexts += [string]$b.text } } }
         # Ablauf-Faelle (kind sequence): jede Bildunterschrift eines Schritts ist eine gesendete Nachricht
         if ($c.PSObject.Properties['steps']) { foreach ($s in @($c.steps)) { if ($s.PSObject.Properties['caption'] -and $s.caption) { $sentTexts += [string]$s.caption } } }
         if (-not $c.task -or $c.PSObject.Properties['kind']) { continue }

@@ -69,6 +69,49 @@
     "final": "Ueblich sind drei bis sechs Monatsausgaben."
   },
   {
+    "_comment": "Agenten-Wechsel (ri110): Zug 2 nach dem Berater-Zug (oc52) -> agent.finance. Der Mock zaehlt die Tool-Runde aus Zug 1 im Router-Verlauf mit (k=1), darum steht der Call zweimal; gerufen wird er einmal.",
+    "match": "Das soll bitte der Buchhalter direkt so im Konto vormerken",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Das soll bitte der Buchhalter direkt so im Konto vormerken" } },
+      { "tool": "Call_agent_finance_", "args": { "task": "Das soll bitte der Buchhalter direkt so im Konto vormerken" } }
+    ],
+    "final": "Alles klar, ich lege die Vormerkung an."
+  },
+  {
+    "_comment": "Agenten-Wechsel Gegenfall (ri111): Zug 2 bleibt beim Berater; doppelter Call wie bei ri110 (Tool-Runde aus Zug 1 im Verlauf).",
+    "match": "Und wie viel davon sollte ich als Notgroschen aufs Tagesgeld legen",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Und wie viel davon sollte ich als Notgroschen aufs Tagesgeld legen" } },
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Und wie viel davon sollte ich als Notgroschen aufs Tagesgeld legen" } }
+    ],
+    "final": "Ein Teil davon gehoert aufs Tagesgeld."
+  },
+  {
+    "_comment": "Agenten-Wechsel Gegenfall (ri112): Lena im eigenen Chat -> agent.finance; ihr Router-Verlauf ist leer, darum ein Call.",
+    "match": "Lena-Test wie steht mein Tagesgeld bei der Lindenbank",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Lena-Test wie steht mein Tagesgeld bei der Lindenbank" } }
+    ],
+    "final": "Dein Tagesgeld steht bei 500,00 EUR."
+  },
+  {
+    "_comment": "Agenten-Wechsel mit Bezug (oc72, bezahlt im orch-Tier): Satz ohne eigenen Bezug -> agent.finance; mr_orch prueft ohne Vorgeschichte nur das Routing.",
+    "match": "schreib das nicht in den Plan, das soll der Buchhalter direkt beim Dauerauftrag anpassen",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Nein, schreib das nicht in den Plan, das soll der Buchhalter direkt beim Dauerauftrag anpassen." } }
+    ],
+    "final": "Ich passe den Dauerauftrag an."
+  },
+  {
+    "_comment": "Agenten-Wechsel Gegenfall (ri113): die proaktive Nachricht steht als Tool-Runde im Router-Verlauf, darum doppelter Call wie bei ri110.",
+    "match": "Proaktiv-Test wie steht mein Tagesgeld bei der Lindenbank",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Proaktiv-Test wie steht mein Tagesgeld bei der Lindenbank" } },
+      { "tool": "Call_agent_finance_", "args": { "task": "Proaktiv-Test wie steht mein Tagesgeld bei der Lindenbank" } }
+    ],
+    "final": "Dein Tagesgeld steht bei 500,00 EUR."
+  },
+  {
     "_comment": "Bot mit Gesicht (oc55): Erkrankung + Finanzfrage -> Call_agent_finance_advisor_ (ernst: NOFRAME, keine Stimmung prueft der bezahlte Tier).",
     "match": "schwer krank geworden",
     "calls": [

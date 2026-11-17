@@ -40,6 +40,21 @@
                                                                                    "name":  "notes"
                                                                                },
                                                                                {
+                                                                                   "name":  "contribution_amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "effective_from"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_interval"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "schedule_unit"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "debit_account_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -145,7 +160,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT current_value, status::text AS status FROM finance.pension WHERE id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
+                                         "query":  "=SELECT p.current_value, p.status::text AS status, rc.schedule_interval, rc.schedule_unit::text AS schedule_unit FROM finance.pension p LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(p.recurring_payment_id, current_date) WHERE p.id = (($1::jsonb)-\u003e\u003e\u0027id\u0027)::int;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ id: $(\u0027Resolve Pension\u0027).item.json.id }) }}"
                                                      }
@@ -256,9 +271,97 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027debit_account_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ debit_account_name: $(\u0027Start\u0027).item.json.debit_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       600
+                                   ],
+                      "id":  "5fa12707-add6-53d2-a8bb-ee5e58b73607",
+                      "name":  "Resolve Debit Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c80411da-87dd-5aff-a85d-7bd082b27d65",
+                                                                                   "leftValue":  "={{ $json.hit_count === 1 || !$(\u0027Start\u0027).item.json.debit_account_name }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       600
+                                   ],
+                      "id":  "8fac1acd-49bc-55ae-9936-96009085918a",
+                      "name":  "Debit ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "d0f5973a-6f05-51ea-8723-28570c146901",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "35e2b34f-7373-5256-9028-b1fcb7e88bc7",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Debit account \u0027{{ $(\u0027Start\u0027).item.json.debit_account_name }}\u0027 resolves to {{ $(\u0027Resolve Debit Account\u0027).item.json.hit_count }} matches. Ask the user which exact account to use.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       720
+                                   ],
+                      "id":  "15a134bc-a879-584b-94f6-7ec9abeb1cc5",
+                      "name":  "Debit ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_pension(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ pension_id: $(\u0027Resolve Pension\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ pension_id: $(\u0027Resolve Pension\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -362,9 +465,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id FROM finance.fn_set_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027contribution_amount\u0027)::numeric AS contribution_amount, (r-\u003e\u003e\u0027monthly_contribution\u0027)::numeric AS monthly_contribution, r-\u003e\u003e\u0027first_due\u0027 AS first_due FROM finance.fn_set_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ pension_id: $(\u0027Resolve Pension\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ pension_id: $(\u0027Resolve Pension\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -389,7 +492,7 @@
                                                                                  {
                                                                                      "id":  "2c0412f4-27b0-5ba5-94ab-f35d7e21967a",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_pension\u0027, lines: [ { label: \u0027finance.label.provision\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.pension_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Start\u0027).item.json.current_value) ? { label: \u0027finance.label.value\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.current_value), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.current_value), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.value_updated_at) ? { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).value_updated_at || $(\u0027Start\u0027).item.json.value_updated_at)) } : null), (($(\u0027Start\u0027).item.json.guaranteed_monthly_pension) ? { label: \u0027finance.label.guaranteed_monthly_pension\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.guaranteed_monthly_pension), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.retirement_start_date) ? { label: \u0027finance.label.retirement_start\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).retirement_start_date || $(\u0027Start\u0027).item.json.retirement_start_date)) } : null), (($(\u0027Start\u0027).item.json.provider) ? { label: \u0027finance.label.provider\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.provider) } : null), (($(\u0027Start\u0027).item.json.contract_number) ? { label: \u0027finance.label.contract_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.contract_number) } : null), (($(\u0027Start\u0027).item.json.owner_person) ? { label: \u0027finance.label.owner_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.owner_person)) } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_pension\u0027, lines: [ { label: \u0027finance.label.provision\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.pension_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), (($(\u0027Dry run\u0027).item.json.r.previous_contribution_amount) ? { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.previous_contribution_amount), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.contribution_amount), currency: (\u0027EUR\u0027) }) } } : null), ((($(\u0027Dry run\u0027).item.json.r.contribution_amount \u0026\u0026 !$(\u0027Dry run\u0027).item.json.r.previous_contribution_amount)) ? { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.contribution_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.schedule_unit) ? { label: \u0027finance.label.payment_mode\u0027, kind: \u0027tpl\u0027, value: (((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 || (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 [3, 6, 12].includes(Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)))) ? \u0027finance.tpl.plain\u0027 : \u0027finance.tpl.every_unit\u0027)), params: { interval: (Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)), unit: ({ kind: \u0027enum\u0027, value: (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }), value: ({ kind: \u0027enum\u0027, value: ((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 ? String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 3 ? \u0027quarter\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 6 ? \u0027half_year\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 12 ? \u0027year\u0027 : String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)))))), enum: \u0027finance.enum.credit_rhythm\u0027 }) } } : null), ((($(\u0027Dry run\u0027).item.json.r.monthly_contribution \u0026\u0026 $(\u0027Dry run\u0027).item.json.r.monthly_contribution != $(\u0027Dry run\u0027).item.json.r.contribution_amount)) ? { label: \u0027finance.label.monthly_equivalent\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.monthly_contribution), currency: (\u0027EUR\u0027) } : null), ((($(\u0027Dry run\u0027).item.json.r.contribution_amount) \u0026\u0026 (!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.first_due))) ? { label: \u0027finance.label.effective_from\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.first_due) } : null), (($(\u0027Start\u0027).item.json.debit_account_name) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.debit_account_name) } : null), (($(\u0027Start\u0027).item.json.current_value) ? { label: \u0027finance.label.value\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.current_value), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.current_value), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.value_updated_at) ? { label: \u0027finance.label.valuation_date\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).value_updated_at || $(\u0027Start\u0027).item.json.value_updated_at)) } : null), (($(\u0027Start\u0027).item.json.guaranteed_monthly_pension) ? { label: \u0027finance.label.guaranteed_monthly_pension\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.guaranteed_monthly_pension), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.retirement_start_date) ? { label: \u0027finance.label.retirement_start\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).retirement_start_date || $(\u0027Start\u0027).item.json.retirement_start_date)) } : null), (($(\u0027Start\u0027).item.json.provider) ? { label: \u0027finance.label.provider\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.provider) } : null), (($(\u0027Start\u0027).item.json.contract_number) ? { label: \u0027finance.label.contract_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.contract_number) } : null), (($(\u0027Start\u0027).item.json.owner_person) ? { label: \u0027finance.label.owner_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.owner_person)) } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -597,6 +700,30 @@
                                                                                      "name":  "pension_id",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.pension_id }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "574e9e9f-85d3-5728-8dab-ba245626a01b",
+                                                                                     "name":  "recurring_payment_id",
+                                                                                     "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.recurring_payment_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6eb0c9f0-ec05-5b53-bbe4-5cb8fac55f77",
+                                                                                     "name":  "contribution_amount",
+                                                                                     "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.contribution_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3490c503-ee37-5c6f-8afc-c8522444354d",
+                                                                                     "name":  "monthly_contribution",
+                                                                                     "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.monthly_contribution }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d55e9ab3-4023-59a2-99b4-973726014c10",
+                                                                                     "name":  "first_due",
+                                                                                     "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.first_due }}",
+                                                                                     "type":  "string"
                                                                                  }
                                                                              ]
                                                          },
@@ -615,7 +742,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_pension mit denselben Werten, immer zurückgerollt. ok:false (z. B. current_value \u003c 0) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_pension mit denselben Werten, immer zurückgerollt. Liefert für die Karte den bisherigen und den neuen Beitrag je Abbuchung, den Monatswert und den ersten Termin mit dem neuen Beitrag. ok:false (z. B. current_value \u003c 0, Beitrag 0, erster Beitrag ohne Datum oder Konto) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4
@@ -631,9 +758,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_set_pension: partielles UPDATE + Status-Kaskade**\n\nWert/Status/Stammdaten. current_value ohne Datum -\u003e heute. Beitrags-BETRAG wird hier NICHT geändert. STATUS-KASKADE: paused/paid_out -\u003e verknüpfte recurring_payment paused; active -\u003e wieder active. {ok:false} bei current_value\u003c0.",
+                                         "content":  "## DB-Automatik\n**fn_set_pension: partielles UPDATE + Beitrags-Kette + Status-Kaskade**\n\nWert/Status/Stammdaten. current_value ohne Datum -\u003e heute. BEITRAG steht nur an der Beitrags-Kette: neuer Beitrag -\u003e fn_change_owned_recurring (Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from, Default nächster offener Termin; der alte Beitrag bleibt Historie). Vorsorge ohne Beitrag: der erste Beitrag legt die Kette an (effective_from = erste Abbuchung, Konto aus Resolve Debit Account). Beitrag 0 gibt es nicht (beitragsfrei = status paused). STATUS-KASKADE über alle Glieder: paused/paid_out -\u003e paused; active -\u003e wieder active bzw. Folge-Zeile ab heute, wenn der Beitrag beendet war.",
                                          "height":  220,
-                                         "width":  400,
+                                         "width":  480,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -721,12 +848,41 @@
                                                              [
                                                                  {
                                                                      "index":  0,
-                                                                     "node":  "Dry run",
+                                                                     "node":  "Resolve Debit Account",
                                                                      "type":  "main"
                                                                  }
                                                              ]
                                                          ]
                                             },
+                        "Resolve Debit Account":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Debit ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Debit ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Dry run",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Debit ambiguous",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Dry run":  {
                                         "main":  [
                                                      [

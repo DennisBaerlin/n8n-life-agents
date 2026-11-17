@@ -4217,7 +4217,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_pension",
-                                         "description":  "Update an EXISTING retirement provision (Altersvorsorge): update its accumulated value (current_value = Rückkaufswert/Deckungskapital; date auto-stamped today if omitted), guaranteed monthly pension, retirement start date, provider/contract, assign/retag the owner (owner_person), rename, set status (active/paused/paid_out), or notes. Setting status to paused or paid_out also pauses the linked monthly contribution so it leaves the cashflow; active re-activates it. This tool does NOT change the contribution AMOUNT. A NEW STATEMENT of ANY pension type (Renteninformation, bAV/VBL Standmitteilung, also pasted as text: Anwartschaft/erreichter Anspruch as of a reference date, Hochrechnung, Erwerbsminderungsrente) is never an update here - it is kept with its date: PDF/photo -\u003e tool_extract_finance_document; pasted text -\u003e tool_import_stage_rows with one pension_statement row (pension = the existing name, statement_date = the printed reference date). guaranteed_monthly_pension is ONLY a payout the contract guarantees at retirement, never an Anwartschaft earned so far. STATUTORY pension: no current_value and no guaranteed_monthly_pension (ok:false). Only passed fields change (you cannot clear the owner back to household here). Resolve by exact name (ambiguity -\u003e candidates). Required: pension_name. Optional: new_name, current_value, value_updated_at, guaranteed_monthly_pension, retirement_start_date, provider, contract_number, owner_person, status, notes. Returns ok:false if current_value is negative.",
+                                         "description":  "Update an EXISTING retirement provision (Altersvorsorge): update its accumulated value (current_value = Rückkaufswert/Deckungskapital; date auto-stamped today if omitted), guaranteed monthly pension, retirement start date, provider/contract, assign/retag the owner (owner_person), rename, set status (active/paused/paid_out), or notes. Setting status to paused or paid_out also pauses the linked contribution so it leaves the cashflow; active re-activates it. Change the CONTRIBUTION as the user states it: contribution_amount per debit, never convert it; it takes effect from effective_from (only if the user names a date) or else from the next due debit, the old contribution stays in the history, and the result names first_due and the monthly value - state those, never calculate them. Change the rhythm (schedule_unit/schedule_interval) only together with the new amount per debit. Contributions stop (Beitragsfreistellung, the user no longer pays in) -\u003e status paused, never contribution_amount 0. A provision recorded WITHOUT a contribution: pass contribution_amount plus effective_from (date of its first debit) and debit_account_name - ask for whatever is missing. A NEW STATEMENT of ANY pension type (Renteninformation, bAV/VBL Standmitteilung, also pasted as text: Anwartschaft/erreichter Anspruch as of a reference date, Hochrechnung, Erwerbsminderungsrente) is never an update here - it is kept with its date: PDF/photo -\u003e tool_extract_finance_document; pasted text -\u003e tool_import_stage_rows with one pension_statement row (pension = the existing name, statement_date = the printed reference date). guaranteed_monthly_pension is ONLY a payout the contract guarantees at retirement, never an Anwartschaft earned so far. STATUTORY pension: no current_value and no guaranteed_monthly_pension (ok:false). Only passed fields change (you cannot clear the owner back to household here). Resolve by exact name (ambiguity -\u003e candidates). Required: pension_name. Optional: new_name, current_value, value_updated_at, guaranteed_monthly_pension, retirement_start_date, provider, contract_number, owner_person, status, notes, contribution_amount, effective_from, schedule_interval, schedule_unit, debit_account_name. Returns ok:false if current_value is negative or the contribution is not positive.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "eYZQ9XxEgw8zyjWV",
@@ -4239,6 +4239,11 @@
                                                                               "owner_person":  "={{ $fromAI(\u0027owner_person\u0027, \u0027Assign the single household member this provision belongs to (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "status":  "={{ $fromAI(\u0027status\u0027, \u0027active, paused or paid_out\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "notes":  "={{ $fromAI(\u0027notes\u0027, \u0027New free-text notes\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "contribution_amount":  "={{ $fromAI(\u0027contribution_amount\u0027, \u0027New contribution PER DEBIT in EUR exactly as the user states it (positive; never 0)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "effective_from":  "={{ $fromAI(\u0027effective_from\u0027, \u0027First debit with the new contribution (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself) - only if the user names it (empty = next due debit); for a provision without a contribution yet: the date of its first debit (required then)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "schedule_interval":  "={{ $fromAI(\u0027schedule_interval\u0027, \u0027Every N units (optional; only together with contribution_amount)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "schedule_unit":  "={{ $fromAI(\u0027schedule_unit\u0027, \u0027day, week, month or year (only together with contribution_amount)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "debit_account_name":  "={{ $fromAI(\u0027debit_account_name\u0027, \u0027Exact name of the debit account - ONLY when adding the first contribution to a provision that has none yet\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -4348,6 +4353,56 @@
                                                                                {
                                                                                    "id":  "notes",
                                                                                    "displayName":  "notes",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "contribution_amount",
+                                                                                   "displayName":  "contribution_amount",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "effective_from",
+                                                                                   "displayName":  "effective_from",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "schedule_interval",
+                                                                                   "displayName":  "schedule_interval",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "schedule_unit",
+                                                                                   "displayName":  "schedule_unit",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "debit_account_name",
+                                                                                   "displayName":  "debit_account_name",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,

@@ -1,10 +1,13 @@
 -- ============================================================
 -- fn_change_owned_recurring (INTERNAL HELPER — not tool-facing)
---   Die eine Aenderung von Betrag/Rhythmus/Abbuchungstag einer entitaets-besessenen Raten-Kette (Kredit, Versicherung;
---   Konsumenten fn_set_loan, fn_set_insurance, fn_set_savings_goal). Ein In-place-Ueberschreiben verloere die Historie, und ein neuer
+--   Die eine Aenderung von Betrag/Rhythmus/Abbuchungstag einer entitaets-besessenen Raten-Kette (Kredit, Versicherung, Vorsorge;
+--   Konsumenten fn_set_loan, fn_set_insurance, fn_set_pension, fn_set_savings_goal). Ein In-place-Ueberschreiben verloere die Historie, und ein neuer
 --   Abbuchungstag verschoebe das Raster schon gebuchter Termine (alte Termine erschienen wieder offen).
 --   * Korrektur (in place, keine Historie zu bewahren): der Kopf hat noch keinen gebuchten/uebersprungenen Termin, vor
 --     heute war noch keiner faellig, und kein spaeterer Stichtag ist genannt (p_eff_from leer oder <= valid_from).
+--     Gleiches gilt fuer einen Kopf, der selbst noch unberuehrt ist, waehrend fruehere Glieder Historie tragen (geplante
+--     Aenderung, frisch reaktivierte Zahlung): leer oder genau sein Start -> der Kopf wird ersetzt, die Glieder davor
+--     bleiben; ein Split am eigenen Start waere unmoeglich. Ein Stichtag vor seinem Start geht in den Split-Guard.
 --   * Sonst Split ueber fn_split_recurring_payment (Historie, Kopf-Repoint, Guards dort) zum Stichtag p_eff_from, Default
 --     = naechster noch nicht erledigter Termin ab heute (fn_recurring_next_due).
 --   Positionale Args: p_amount signed (NULL = unveraendert), p_interval/p_unit/p_dom (NULL = unveraendert; ein neuer
@@ -27,6 +30,7 @@ DECLARE
     v_today DATE := core.fn_today();
     v_eff   DATE;
     v_res   JSONB;
+    v_done  DATE;
 BEGIN
     SELECT * INTO v_head FROM finance.recurring_payments
      WHERE id = finance.fn_recurring_lineage_head(p_rp_id) FOR UPDATE;
@@ -34,8 +38,9 @@ BEGIN
         RAISE EXCEPTION 'Recurring payment % not found.', p_rp_id;
     END IF;
 
-    IF finance.fn_recurring_last_done(v_head.id) IS NULL
-       AND (p_eff_from IS NULL OR p_eff_from <= v_head.valid_from)
+    v_done := finance.fn_recurring_last_done(v_head.id);
+    IF ((v_done IS NULL AND (p_eff_from IS NULL OR p_eff_from <= v_head.valid_from))
+        OR (v_done < v_head.valid_from AND (p_eff_from IS NULL OR p_eff_from = v_head.valid_from)))
        AND NOT EXISTS (SELECT 1 FROM finance.fn_schedule_occurrences(
                v_head.first_payment_date, v_head.schedule_interval, v_head.schedule_unit, v_head.schedule_day_of_month,
                v_head.schedule_days_of_month, v_head.valid_from, v_today - 1)) THEN

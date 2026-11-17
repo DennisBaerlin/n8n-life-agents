@@ -7,8 +7,8 @@
 --   Neue Zeile: alle Felder geerbt (Konto, Ziel-Konto, Betrag, Kadenz, Abbuchungstag, Anker first_payment_date ->
 --   gleiches Raster), status='active', valid_from = p_from (fruehestens der Tag nach dem letzten gebuchten/
 --   uebersprungenen Vorkommen der Kette -> nie doppelt faellig), valid_to = NULL, predecessor_id = alte Zeile;
---   Besitzer zeigen danach auf die neue Zeile (fn_repoint_recurring_owners). Gerufen von fn_set_savings_plan und
---   fn_set_savings_goal (Status -> active).
+--   Besitzer zeigen danach auf die neue Zeile (fn_repoint_recurring_owners). Gerufen von fn_set_savings_plan,
+--   fn_set_savings_goal und fn_set_pension (Status -> active).
 --   Eingabe: p_rp_id (beendete Zeile), p_from (Start der neuen Zeile). Unbekannte p_rp_id -> RAISE.
 --   Korrigierbar (kein Write) -> {ok:false, reason}: Zeile noch nicht beendet (valid_to NULL oder nach p_from);
 --   Zeile hat schon einen Nachfolger (nur der Kopf der Kette ist reaktivierbar).

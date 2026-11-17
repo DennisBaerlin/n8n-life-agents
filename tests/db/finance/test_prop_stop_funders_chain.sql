@@ -5,6 +5,7 @@
 --      Sparplan-Kette (auch nicht fuer das alte Glied, das bis zu einer geplanten Aenderung weiterliefe)
 --   T2 das Ziel und der Sparplan fuehren danach keinen Monatswert mehr in der Monatsrechnung
 --   T3 den Sparplan wieder aktivieren bringt wieder Termine in die Vorschau
+--   T4 das Ziel wieder aktivieren rechnet die gestoppte Rate neu, auch wenn derselbe Zielbetrag genannt wird
 BEGIN;
 
 DO $$
@@ -55,12 +56,19 @@ BEGIN
       IF NOT EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u
                       WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.savings_plans WHERE name = '__prop_sfc_plan__')))) THEN
         RAISE EXCEPTION 'FAIL T3 [geplante Aenderung=%]: reaktivierter Sparplan hat keine Termine in der Vorschau (%)', v_planned, v_res - 'card_lines'; END IF;
+      -- T4: das Ziel wieder aktivieren und dabei denselben Zielbetrag nennen rechnet die gestoppte Rate neu (sie lief
+      --     nicht) und bringt ihre Termine zurueck
+      v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id',v_goal,'status','active','target_amount',6000));
+      IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'new_monthly_rate') IS NULL
+         OR NOT EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 100) u
+                         WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.savings_goals WHERE id = v_goal)))) THEN
+        RAISE EXCEPTION 'FAIL T4 [geplante Aenderung=%]: Ziel reaktiviert, Rate nicht neu gerechnet oder ohne Termine: %', v_planned, v_res - 'card_lines'; END IF;
       v_n := v_n + 1;
       RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
     EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
     END;
   END LOOP;
-  RAISE NOTICE 'PASS prop stop funders chain [% Faelle, T1-T3]', v_n;
+  RAISE NOTICE 'PASS prop stop funders chain [% Faelle, T1-T4]', v_n;
 END $$;
 
 ROLLBACK;

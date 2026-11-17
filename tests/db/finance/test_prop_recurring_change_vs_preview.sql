@@ -234,6 +234,18 @@ BEGIN
     END LOOP;
   END LOOP;
 
+  -- P5, Geltungsbeginn Monate vor der ersten Abbuchung (Vertragsbeginn im Januar, erste Abbuchung im August)
+  BEGIN
+    v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_cvp_p5b__','account_id',v_giro,
+      'direction','expense','amount',100,'schedule_unit','month','first_payment_date','2031-08-15','valid_from','2031-01-01'));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    IF (SELECT starts_on FROM finance.upcoming_recurring_payments WHERE id = v_rp) IS DISTINCT FROM DATE '2031-08-15' THEN
+      RAISE EXCEPTION 'FAIL P5 [Geltung ab 2031-01-01, erste Abbuchung 2031-08-15]: starts_on %', (SELECT starts_on FROM finance.upcoming_recurring_payments WHERE id = v_rp); END IF;
+    v_n_start := v_n_start + 1;
+    RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+  EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+  END;
+
   RAISE NOTICE 'PASS prop recurring change vs preview [P1 Split: % Faelle (je 2 Wechsel), P2 Sichten: %, P3 Buchen/Storno/Skip: %, P4 Pause/Fortsetzen: %, P5 startet am: %]',
     v_n_split, v_n_read, v_n_book, v_n_pause, v_n_start;
 END $$;

@@ -1234,7 +1234,9 @@ RETURNS date LANGUAGE sql STABLE AS $$
         (SELECT min(o.d)
            FROM finance.fn_schedule_occurrences(r.first_payment_date, r.schedule_interval, r.schedule_unit,
                     r.schedule_day_of_month, r.schedule_days_of_month, r.valid_from,
-                    r.valid_from + (ceil(finance.fn_period_months(r.schedule_interval, r.schedule_unit) * 2 * 31)::int + 31)) AS o(d)
+                    -- Fenster ab dem spaeteren von Geltungsbeginn und Anker: vor dem Anker liegt nie ein Termin
+                    GREATEST(r.valid_from, r.first_payment_date)
+                    + (ceil(finance.fn_period_months(r.schedule_interval, r.schedule_unit) * 2 * 31)::int + 31)) AS o(d)
           WHERE r.valid_to IS NULL OR o.d < r.valid_to),
         r.valid_from)
     FROM finance.recurring_payments r WHERE r.id = p_rp_id;

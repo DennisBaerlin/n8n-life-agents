@@ -10,6 +10,7 @@
 --   V5 Sparplan: naechste Ausfuehrung der Uebersicht = fruehester offener Termin der Kette, vor und nach einer
 --      geplanten Betrags-Aenderung
 --   V6 Vertrag vor dem Start mit geplanter Aenderung: alle Sichten zeigen den Start-Betrag (fn_recurring_current)
+--   V7 eine Aenderung zum Stichtag der geplanten Aenderung vergleicht mit dem Glied, das an dem Stichtag gilt
 -- Start der Zahlungen 40 Tage vor heute (die Views lesen current_date; ein laufender Vertrag hat ein heute gueltiges
 -- Glied); jeder Fall in einem eigenen Savepoint.
 BEGIN;
@@ -200,9 +201,24 @@ BEGIN
        OR finance.fn_recurring_current(v_rp, v_chg) IS DISTINCT FROM v_head OR finance.fn_recurring_current(v_rp, v_chg + 4000) IS DISTINCT FROM v_head THEN
       RAISE EXCEPTION 'FAIL V6 fn_recurring_current: heute % (erwartet %), am Stichtag % (erwartet %)', finance.fn_recurring_current(v_head, v_t), v_rp,
         finance.fn_recurring_current(v_rp, v_chg), v_head; END IF;
+    -- V7: eine Aenderung zum Stichtag der geplanten Aenderung vergleicht mit dem Glied, das an dem Stichtag gilt.
+    -- Derselbe Betrag wie geplant aendert die Termine nicht; der Start-Betrag zum selben Stichtag nimmt die Erhoehung zurueck.
+    v_rp := (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins);
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',40,'effective_from',v_chg));
+    IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                 AND u.amount IS DISTINCT FROM CASE WHEN u.due_date < v_chg THEN -30 ELSE -40 END) THEN
+      RAISE EXCEPTION 'FAIL V7 Versicherung: gleicher geplanter Beitrag veraendert die Vorschau (%)', v_res - 'card_lines'; END IF;
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',30,'effective_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u
+                   WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)))
+                     AND u.amount IS DISTINCT FROM -30) THEN
+      RAISE EXCEPTION 'FAIL V7 Versicherung: Erhoehung zum Stichtag zuruecknehmen (30) wirkt nicht: % | Vorschau %', v_res - 'card_lines',
+        (SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 200) u
+          WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)))); END IF;
   END;
 
-  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6)]', v_n_ins, v_n_pen, v_n_plan;
+  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6, V7)]', v_n_ins, v_n_pen, v_n_plan;
 END $$;
 
 ROLLBACK;

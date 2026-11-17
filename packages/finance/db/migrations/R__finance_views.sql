@@ -155,7 +155,7 @@ LEFT JOIN core.fn_household_persons() bp ON bp.person_id = l.borrower_person_id;
 -- Je regulaer laufender Kette genau ein Glied + Klasse + EUR-Anteile: das massgebliche Glied
 -- (fn_recurring_effective), aktiv, nicht beendet, nicht leer, gestartet oder innerhalb fn_recurring_starts_within_cycle
 -- startend (nicht nur „heute gueltig": sonst fehlten frisch erfasste Zahlungen bis zu ihrem ersten Termin in Summen,
--- Alarmen, Notreserve und Runway). starts_on = erster Termin, solange er aussteht, sonst NULL. „Laeuft heute" bleibt
+-- Alarmen, Notreserve und Runway). starts_on = erster Termin (fn_recurring_first_due), nur vor dem Geltungsbeginn, sonst NULL. „Laeuft heute" bleibt
 -- active_recurring_payments, spaeter Startendes steht in upcoming_recurring_payments.
 -- Grenze (Test [15]): eine Abloesung als zwei getrennte Ketten (altes Gehalt endet, neues ab dem Folgetag, ohne predecessor_id)
 -- zaehlt bis zum Wechsel doppelt, last_valid_day + starts_on zeigen das Paar.

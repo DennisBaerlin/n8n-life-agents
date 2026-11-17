@@ -11,7 +11,7 @@
 --   Eingabe jsonb: pension_id (im n8n via fn_resolve_pension aufgeloest), name, provider,
 --   contract_number, owner_person_id (Slug; leer=unveraendert), current_value, value_updated_at, guaranteed_monthly_pension,
 --   retirement_start_date, status ('active'|'paused'|'paid_out'), notes.
---   RUECKGABE: {ok:true, pension_id, recurring_payment_id, effective}. Korrigierbar (nicht aufloesbares Datum -> code
+--   RUECKGABE: {ok:true, pension_id, recurring_payment_id (Kopf der Beitrags-Kette, nach einem Reaktivieren die Folge-Zeile), effective}. Korrigierbar (nicht aufloesbares Datum -> code
 --   invalid_date, current_value<0, unbekannter status,
 --   gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person) -> {ok:false}.
 -- ============================================================

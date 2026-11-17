@@ -310,7 +310,11 @@ BEGIN
             v_covered := true;   -- gedeckt: Datum/Betrag aendern ist ok, eine Rate gibt es nicht neu zu rechnen
         -- Laeuft schon eine Rate, rechnet nur ein abweichender Wert neu: dieselbe Eingabe darf eine vom Nutzer genannte
         -- Rate nicht veraendern (ein mit Rate angelegtes Ziel hat bis zum Zieldatum einen Termin mehr, als die Rate braucht).
+        -- Eine gestoppte oder beendete Rate laeuft nicht: beim Reaktivieren wird ueber die Rest-Termine neu gerechnet.
         ELSIF v_row.recurring_payment_id IS NULL
+              OR NOT EXISTS (SELECT 1 FROM finance.recurring_payments r
+                              WHERE r.id = v_row.recurring_payment_id AND r.status = 'active'
+                                AND (r.valid_to IS NULL OR r.valid_to > CURRENT_DATE))
               OR (v_target IS NOT NULL AND v_target IS DISTINCT FROM v_row.target_amount)
               OR (v_tdate  IS NOT NULL AND v_tdate  IS DISTINCT FROM v_row.target_date) THEN
             -- Rest / offene Termine bis einschliesslich Zieldatum: Raster der laufenden Rate ab ihrem Start, gebuchte zaehlen nicht.

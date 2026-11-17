@@ -49,7 +49,9 @@ BEGIN
 
     -- (c) fruehere, noch laufende Glieder derselben Ketten beenden: nach einer geplanten Aenderung laeuft das alte Glied
     --     bis zum Stichtag weiter und bliebe sonst faellig. Der Kopf behaelt valid_to = heute (daran erkennt das
-    --     Reaktivieren die beendete Kette); ein Vorgaenger endet fruehestens an seinem Start.
+    --     Reaktivieren die beendete Kette); ein Vorgaenger endet fruehestens an seinem Start. Grenze: startet der Kopf
+    --     erst kuenftig (geplante Aenderung), setzt das Reaktivieren mit seinen Bedingungen fort, also sofort mit dem
+    --     geplanten Betrag.
     UPDATE finance.recurring_payments rp
     SET status = 'paused', valid_to = GREATEST(rp.valid_from, CURRENT_DATE)
     WHERE (rp.valid_to IS NULL OR rp.valid_to > CURRENT_DATE)

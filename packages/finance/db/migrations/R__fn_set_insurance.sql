@@ -74,7 +74,7 @@ BEGIN
     END IF;
     v_head := finance.fn_recurring_lineage_head(v_ins.recurring_payment_id);
     SELECT * INTO v_cur FROM finance.recurring_payments
-     WHERE id = finance.fn_recurring_current(v_ins.recurring_payment_id, v_today);
+     WHERE id = finance.fn_recurring_current(v_ins.recurring_payment_id, COALESCE(NULLIF(p->>'effective_from', '')::date, v_today));
 
     -- Rohwerte lesen + pruefen: eine Adresse mit fn_create_insurance und der Karten-Vorschau; ohne neuen Rhythmus gilt
     -- der bisherige (ein reiner Beitrag "jetzt 15" ist je Abbuchung im bisherigen Rhythmus gemeint).

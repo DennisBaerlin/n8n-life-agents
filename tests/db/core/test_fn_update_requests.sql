@@ -437,6 +437,30 @@ BEGIN
     END LOOP;
   END;
 
+  -- ---------- 17) Codes mit Ziffer (Schritt "n8n", Grund "n8n_start"): gespeichert und im Bericht benannt ----------
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.16.0', now(), 'v0.15.0') RETURNING id INTO v_id;
+  r := core.fn_update_request_finish(jsonb_build_object('id', v_id, 'outcome', 'failed', 'stage', 'n8n',
+         'reason_code', 'n8n_start', 'changed', true));
+  IF (SELECT stage FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'n8n'
+     OR (SELECT reason_code FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'n8n_start'
+  THEN RAISE EXCEPTION 'FAIL [17a Code mit Ziffer verworfen]: %', (SELECT row_to_json(u) FROM core.update_requests u WHERE id = v_id); END IF;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'cli', 'sudo lifeagents'));
+  IF position(core.fn_ui_text('core.update.stage.unknown', 'de') IN r->>'text') > 0
+     OR position(core.fn_ui_text('core.update.reason.unknown', 'de') IN r->>'text') > 0
+  THEN RAISE EXCEPTION 'FAIL [17b Bericht nennt Schritt/Grund nicht]: %', r->>'text'; END IF;
+  -- Die Form bleibt eng: Ziffer vorn, Grossbuchstabe, Leerzeichen -> NULL (finish) bzw. abgelehnt (CHECK)
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.16.0', now(), 'v0.15.0') RETURNING id INTO v_id;
+  r := core.fn_update_request_finish(jsonb_build_object('id', v_id, 'outcome', 'failed', 'stage', '8n', 'reason_code', 'N8n start'));
+  IF (SELECT stage IS NOT NULL OR reason_code IS NOT NULL FROM core.update_requests WHERE id = v_id)
+  THEN RAISE EXCEPTION 'FAIL [17c ungueltige Form uebernommen]'; END IF;
+  BEGIN
+    UPDATE core.update_requests SET stage = 'X-1' WHERE id = v_id;
+    RAISE EXCEPTION 'FAIL [17d CHECK nimmt X-1]';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;
 

@@ -250,7 +250,7 @@ install_n8n_unit() {
       ok "n8n ${N8N_VERSION} bereit (Datenbank umgestellt)."
     else
       upgrade_rollback_hint
-      die "n8n wurde nach dem Update nicht bereit (/healthz/readiness) — Diagnose: $(svc_logs_hint n8n)"
+      die_because n8n_start "n8n wurde nach dem Update nicht bereit (/healthz/readiness) — Diagnose: $(svc_logs_hint n8n)"
     fi
   elif wait_n8n_health; then
     ok "n8n bereit (http://127.0.0.1:${N8N_PORT}/healthz/readiness)."

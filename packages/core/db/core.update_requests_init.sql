@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS core.update_requests (
     finished_at   timestamptz,
     outcome       text CHECK (outcome IN ('succeeded', 'partial', 'held', 'failed', 'interrupted',
                                           'already_current', 'superseded')),
-    stage         text CHECK (stage IS NULL OR stage ~ '^[a-z_]{1,40}$'),        -- Schritt beim Abbruch (Ergebnis-Datei)
-    reason_code   text CHECK (reason_code IS NULL OR reason_code ~ '^[a-z_]{1,40}$'),
+    stage         text CHECK (stage IS NULL OR stage ~ '^[a-z][a-z0-9_]{0,39}$'),        -- Schritt beim Abbruch (Ergebnis-Datei)
+    reason_code   text CHECK (reason_code IS NULL OR reason_code ~ '^[a-z][a-z0-9_]{0,39}$'),
     changed       boolean,                                           -- hat der Lauf schon etwas am System geaendert?
     detail        text CHECK (detail IS NULL OR length(detail) <= 500),  -- gekuerzte letzte die-Zeile (nur Anzeige, nie in Links)
     CONSTRAINT update_requests_finish_pair CHECK ((finished_at IS NULL) = (outcome IS NULL)),

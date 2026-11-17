@@ -465,7 +465,14 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ci_wait_test.ps1
         pass_filenames: false
-        files: ^scripts/(check_ci_status|lib/ci_wait|dev/ci_wait_test)\.ps1$
+        files: ^scripts/(check_ci_status|lib/ci_wait|lib/github_runs|dev/ci_wait_test)\.ps1$
+
+      - id: main-push-guard-test
+        name: main_push_guard_test (push to main blocked without green GitHub runs of the workflows it would trigger; throwaway repo, no network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/main_push_guard_test.ps1
+        pass_filenames: false
+        files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/main_push_guard_test|scripts/main_push_guard|scripts/lib/(main_push|ci_wait|github_runs|owner_machine|git_sandbox))\.ps1$
 
       - id: cron-toggle-lint-test
         name: cron_toggle_lint_test (a sending cron without budget path turns rule k red; no Docker)

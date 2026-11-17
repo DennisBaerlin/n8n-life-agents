@@ -16,6 +16,8 @@
 # (3) Release-Tags (v*.*.*): 'git tag v..' (Anlegen; git kennt keinen Hook dafuer) und jeder 'git push', der einen solchen Tag
 #     mitnimmt -> scripts/release_pin_guard.ps1 (Pin des master-Images passt zum Release-Baum, ohne Netz). Rot = 'deny'.
 #     Branch-Pushes und andere Tags laufen nie hinein. Test: scripts/dev/release_pin_guard_test.ps1.
+# (4) 'git push' mit Ziel main -> scripts/main_push_guard.ps1: der Stand braucht gruene GitHub-Laeufe der Workflows, die der
+#     Push ausloesen wuerde (Weg: zuerst der Integrations-Branch). Rot oder nicht pruefbar = 'deny'. Test: scripts/dev/main_push_guard_test.ps1.
 # Kein jq -> native ConvertFrom-Json. ASCII-only + Compact-JSON (kein BOM in stdout-JSON).
 $ErrorActionPreference = 'Stop'
 $raw = [Console]::In.ReadToEnd()
@@ -38,6 +40,16 @@ function Get-PinProblem([string[]]$ExtraArgs = @()) {
   $why = (@($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join '; ')
   if ($why) { return $why }
   return "[FAIL] Release-Pin nicht pruefbar (Exit $LASTEXITCODE)"
+}
+$mainGuard = Join-Path $PSScriptRoot '..\..\scripts\main_push_guard.ps1'
+# GitHub-Laeufe fuer einen main-Push laut PRE_COMMIT_*-Umgebung; '' = frei oder kein main-Push. Jeder andere Ausgang sperrt.
+function Get-MainPushProblem {
+  if (-not (Test-Path -LiteralPath $mainGuard)) { return '[FAIL] scripts/main_push_guard.ps1 fehlt' }
+  $res = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $mainGuard)
+  if ($LASTEXITCODE -eq 0) { return '' }
+  $why = Get-FailLines $res
+  if ($why) { return $why }
+  return "[FAIL] GitHub-Laeufe nicht pruefbar (Exit $LASTEXITCODE)"
 }
 $pinDeny = 'RELEASE-TAG GESPERRT (master-Image-Pin, Ablauf docs/reference/provisioning.md *Docker-Verbund*): {0}. Nicht umgehen.'
 function Get-FailLines($res) { (@($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join '; ') }
@@ -152,6 +164,7 @@ if ($push.Success) {
   $fails = @()
   $stampFails = @()
   $pinFails = @()
+  $mainFails = @()
   try {
     foreach ($spec in $specs) {
       $src = ($spec -split ':')[0].TrimStart('+')
@@ -167,6 +180,8 @@ if ($push.Success) {
       $lintArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Outgoing') + $(if ($allTags) { @('-AllTags') } else { @() })
       $res = @(& powershell $lintArgs)
       if ($LASTEXITCODE -ne 0) { $fails += @($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }); continue }
+      $why = Get-MainPushProblem
+      if ($why) { $mainFails += $why }
       $why = Get-StampProblem $(if ($allTags) { @('-AllTags') } else { @() })
       if ($why) { $stampFails += $why }
     }
@@ -175,6 +190,9 @@ if ($push.Success) {
   if ($fails.Count -gt 0) {
     $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
     Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
+  }
+  if ($mainFails.Count -gt 0) {
+    Out-Decision 'deny' "MAIN-PUSH GESPERRT (Skill /coordinate Abschnitt 3 *Push-Regeln*): $(@($mainFails | Sort-Object -Unique) -join '; '). Nicht umgehen; ist GitHub nicht abrufbar, pusht nur der Owner im Terminal."
   }
   if ($stampFails.Count -gt 0) {
     Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$remote'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."

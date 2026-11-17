@@ -1,0 +1,9 @@
+{
+    "_comment": "Ratchet fuer contract_lint Check 41 (PRUEF-FN OHNE REGISTRY): eine Paket-fn <pkg>.fn_validate_<x>(p_facts jsonb), die kein manifest-context_validators-Eintrag ihres Pakets bindet, laeuft im Betrieb nie (der Core-Trigger dispatcht nur ueber core.context_validators). Jeder Eintrag nennt den Grund und die offene Entscheidung. Die Liste darf nur schrumpfen; ein Eintrag fuer eine gebundene oder nicht mehr vorhandene fn ist ein Fehler.",
+    "allow": [
+        {
+            "fn": "finance.fn_validate_financial_planning",
+            "reason": "Plan-Kontext financial_planning: eine context_validators-Zeile wuerde ihn zugleich zum Fakten-Kontext machen (Reset loescht ihn nicht mehr, Lern-Ziel, Frische-Waechter, Skelett-Pflicht). Bindung offen bis zur Owner-Entscheidung (bericht-rf, Zusatz Plan-Pruefung)."
+        }
+    ]
+}

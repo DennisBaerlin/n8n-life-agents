@@ -29,7 +29,7 @@ DECLARE
     'depot_reserve_status',            -- Deckungs-Alarm-Detail je Depot
     'maintenance_reserve_status'];     -- Instandhaltungs-Detail
   v_lists text[] := ARRAY['persons', 'recurring', 'planned_recurring', 'accounts', 'networth', 'savings_plans', 'standing_orders', 'loans', 'insurances',
-    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_risk', 'depot_holdings', 'depot_performance', 'warnings'];
+    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_risk', 'depot_holdings', 'depot_performance', 'warnings', 'open_handoffs'];
   v_objects text[] := ARRAY['cashflow_summary', 'parent_cashflow_summary', 'loan_summary', 'emergency_reserve'];
   v_giro INT; v_tg INT; v_closed INT; v_depot INT; v_kind INT;
   v_loan_open INT; v_loan_paid INT; v_pen INT; v_g_ok INT; v_g_done INT;

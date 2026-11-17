@@ -389,6 +389,28 @@ BEGIN
     IF position('DNR WS|sudo lifeagents doctor' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14f done_not_ready klassisch]: %', v_t; END IF;
   END;
 
+  -- ---------- 15) Abbruch-Gruende ohne Sinn fuer eine Wiederholung: eigener Satz, kein Knopf, kein "spaeter" ----------
+  -- master_image (Release ohne master-Image) und pg_major (Daten in anderer PostgreSQL-Hauptversion) kaemen beim selben Tag wieder.
+  FOR v_txt IN SELECT unnest(ARRAY['master_image', 'pg_major']) LOOP
+    DELETE FROM core.update_requests;
+    INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+    VALUES ('v0.16.0', now(), 'v0.15.0', now(), 'failed', 'preflight', v_txt, false) RETURNING id INTO v_id;
+    IF core.fn_update_retry_allowed('v0.16.0') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [15a % -> kein retry]', v_txt; END IF;
+    r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true,
+           'help_url', 'https://example.org/hilfe', 'cli', 'sudo lifeagents'));
+    IF position('core.update.reason.' || v_txt IN r->>'text') = 0 OR position('core.update.reason.unknown' IN r->>'text') > 0
+    THEN RAISE EXCEPTION 'FAIL [15b % eigener Satz]: %', v_txt, r->>'text'; END IF;
+    IF position('core.update.todo.no_retry' IN r->>'text') = 0 OR position('TL ' IN r->>'text') > 0
+       OR position('core.update.todo.retry' IN r->>'text') > 0 THEN RAISE EXCEPTION 'FAIL [15c % Folgezeile]: %', v_txt, r->>'text'; END IF;
+    IF position('callback_data' IN r->>'keyboard') > 0 OR position('https://example.org/hilfe#unchanged' IN r->>'keyboard') = 0
+    THEN RAISE EXCEPTION 'FAIL [15d % Knoepfe]: %', v_txt, r->'keyboard'; END IF;
+  END LOOP;
+  -- pg_major aus upgrade_detect kommt nach `result_set changed true` (Schritt base), aber vor jedem Tausch -> trotzdem
+  -- "nichts geaendert" mit Grund, nie "mittendrin" (dessen Kopf nennt keinen Grund) und kein Rueckweg.
+  UPDATE core.update_requests SET changed = true, stage = 'base' WHERE id = v_id;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'cli', 'docker exec -i la-x-master lifeagents'));
+  IF r->>'class' IS DISTINCT FROM 'unchanged' OR position('core.update.reason.pg_major' IN r->>'text') = 0
+     OR position('RB ' IN r->>'text') > 0 THEN RAISE EXCEPTION 'FAIL [15e pg_major nach changed=true]: %', r; END IF;
 
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;

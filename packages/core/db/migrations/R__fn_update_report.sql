@@ -8,7 +8,8 @@
 --   Klassen (aus outcome, reason_code, changed, bot_up):
 --     done | already_current | superseded | held | partial
 --     done_not_ready = installiert, aber der Bot antwortet nicht (kein Knopf, der Text nennt `lifeagents doctor`)
---     unchanged  = failed, changed=false (Netz, Limit, Platz, Sperre, ...): System unveraendert
+--     unchanged  = failed, changed=false (Netz, Limit, Platz, Sperre, ...): System unveraendert; master_image/pg_major
+--                  immer (Abbruch vor jedem Tausch), ohne Wiederholen und ohne "spaeter" (todo.no_retry)
 --     security   = failed mit signature/checksum: nicht installiert, nie wiederholen, melden
 --     midway     = failed, changed=true/unbekannt, Bot laeuft: Wiederholen setzt fort, sonst Rueckweg
 --     interrupted= Runner starb mittendrin (Neustart), Bot laeuft
@@ -104,6 +105,7 @@ BEGIN
         WHEN 'backup'    THEN 'core.update.reason.backup'     WHEN 'db'         THEN 'core.update.reason.db'
         WHEN 'n8n_start' THEN 'core.update.reason.n8n_start'  WHEN 'package'    THEN 'core.update.reason.package'
         WHEN 'locked'    THEN 'core.update.reason.locked'     WHEN 'downgrade'  THEN 'core.update.reason.downgrade'
+        WHEN 'master_image' THEN 'core.update.reason.master_image' WHEN 'pg_major' THEN 'core.update.reason.pg_major'
         ELSE 'core.update.reason.unknown' END;
     v_params := jsonb_build_object(
         'tag',     v_r.tag,
@@ -162,6 +164,8 @@ BEGIN
         WHEN v_r.outcome = 'held'            THEN 'held'
         WHEN v_r.outcome = 'partial'         THEN 'partial'
         WHEN v_r.outcome = 'failed' AND COALESCE(v_r.reason_code, '') IN ('signature', 'checksum') THEN 'security'
+        -- beide brechen vor jedem Tausch ab (vor master_swap_begin bzw. upgrade_prepare); pg_major kann nach changed=true kommen
+        WHEN v_r.outcome = 'failed' AND v_r.reason_code IN ('master_image', 'pg_major') THEN 'unchanged'
         WHEN v_r.outcome = 'failed' AND v_r.changed IS FALSE THEN 'unchanged'
         WHEN NOT v_bot_up                    THEN 'bot_down'
         WHEN v_r.outcome = 'interrupted'     THEN 'interrupted'
@@ -191,7 +195,8 @@ BEGIN
     v_todo := CASE v_class
         WHEN 'unchanged'   THEN CASE WHEN v_r.reason_code = 'disk' AND v_docker THEN ARRAY['core.update.todo.disk_docker']
                                      WHEN v_r.reason_code = 'disk' THEN ARRAY['core.update.todo.disk'] ELSE '{}'::text[] END
-                                || CASE WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.later' END::text
+                                || CASE WHEN v_r.reason_code IN ('master_image', 'pg_major') THEN 'core.update.todo.no_retry'
+                                        WHEN v_retry THEN 'core.update.todo.retry' ELSE 'core.update.todo.later' END::text
         WHEN 'security'    THEN ARRAY['core.update.todo.security']
         WHEN 'held'        THEN ARRAY['core.update.todo.held']
         WHEN 'partial'     THEN CASE WHEN v_retry THEN ARRAY['core.update.todo.retry'] ELSE '{}'::text[] END

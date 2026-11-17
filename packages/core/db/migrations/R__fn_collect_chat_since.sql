@@ -17,6 +17,9 @@
 --   Filter (DB entscheidet, nicht das LLM):
 --     * m.id > last_seen_id
 --     * message->>'type' = 'human'  (KI-Antworten sind kein Lernstoff)
+--     * Owner-Text endet vor dem Wechsel-Block des Orchestrators (Kennung v_switch, Gegenstueck in
+--       packages/core/build/workflows/agent.orchestrator.ps1 New-AgentCall): die angehaengte Antwort des
+--       vorigen Agenten ist kein Owner-Text; content = nur der Satz davor, ohne Satz faellt die Zeile weg
 --     * nicht-leerer message->'data'->>'content'
 --     * session_id = Owner-Chat (schliesst auch Harness-/Test-Sessions 'test%' aus)
 --   Tests: tests/db/core/test_fn_collect_chat_since.sql
@@ -32,6 +35,9 @@ DECLARE
     v_tbl     text;
     v_a       text;
     v_wm      bigint;
+    -- Gegenstueck: Block-Anfang in agent.orchestrator.ps1 (New-AgentCall). Beide Seiten pruefen denselben Text:
+    -- real_ingress ri110 (expect_task_contains) und test_fn_collect_chat_since.
+    v_switch  text := E'\n\n[System context, not written by the user';
 BEGIN
     IF v_owner IS NULL THEN
         RETURN;   -- Owner nicht gepairt -> keine Owner-Nachrichten identifizierbar (fail-closed)
@@ -49,14 +55,14 @@ BEGIN
         RETURN QUERY EXECUTE format($q$
             SELECT %L::text AS agent_name,
                    m.id::bigint AS source_id,
-                   m.message->'data'->>'content' AS content
+                   split_part(m.message->'data'->>'content', %L, 1) AS content
             FROM agent.%I m
             WHERE m.id > %s
               AND m.session_id = %L
               AND m.message->>'type' = 'human'
-              AND COALESCE(m.message->'data'->>'content', '') <> ''
+              AND split_part(COALESCE(m.message->'data'->>'content', ''), %L, 1) <> ''
             ORDER BY m.id
-        $q$, v_a, v_tbl, COALESCE(v_wm, 0), v_owner);
+        $q$, v_a, v_switch, v_tbl, COALESCE(v_wm, 0), v_owner, v_switch);
     END LOOP;
 END;
 $$;

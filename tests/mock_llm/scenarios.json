@@ -114,6 +114,15 @@
     "final": "Dein Tagesgeld steht bei 500,00 EUR."
   },
   {
+    "_comment": "Agenten-Wechsel Gegenfall (ri114): Zug 3 nach Berater-Zug und reiner Router-Antwort; die Tool-Runde aus Zug 1 steht noch im Verlauf, darum doppelter Call wie bei ri110.",
+    "match": "Router-Test das soll der Buchhalter jetzt bitte direkt vormerken",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Router-Test das soll der Buchhalter jetzt bitte direkt vormerken" } },
+      { "tool": "Call_agent_finance_", "args": { "task": "Router-Test das soll der Buchhalter jetzt bitte direkt vormerken" } }
+    ],
+    "final": "Alles klar, ich lege die Vormerkung an."
+  },
+  {
     "_comment": "Bot mit Gesicht (oc55): Erkrankung + Finanzfrage -> Call_agent_finance_advisor_ (ernst: NOFRAME, keine Stimmung prueft der bezahlte Tier).",
     "match": "schwer krank geworden",
     "calls": [

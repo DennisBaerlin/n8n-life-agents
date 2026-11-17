@@ -1376,4 +1376,36 @@ hl_has HL.verbund-ort "$HLD" 'PowerShell'
 hl_has HL.verbund-englisch "$HLE" 'docker exec -it la-x-master lifeagents reconfigure'
 hl_not HL.verbund-englisch-kein-deutsch "$HLE" 'wartet'
 
+# ---------------------------------------------------------------------------- RH: Rueckweg-Hinweis im Verbund
+# Scheitert n8n nach einem Versionswechsel, druckt upgrade_rollback_hint den Rueckweg. Im Verbund gibt es kein systemctl,
+# runuser, dropdb oder install.sh: dort nur der Befehl, der hier laeuft (rollback mit -it, fragt nach), und wo das Protokoll
+# steht. Geht `lifeagents rollback` nicht (kein vorheriges Programm-Paket im Merkzettel), wird er nicht versprochen.
+rh_case() (   # rh_case <compose 0|1> <from_release> <master-image|-> -> Ausgabe des Hinweises
+  local d="$W/rh"; rm -rf "$d"; mkdir -p "$d"
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"
+  { printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\n' "$2" "$d/b.dump.gpg"
+    [ "$3" = - ] || printf 'FROM_MASTER_IMAGE=%s\nFROM_COMPOSE=%s\n' "$3" "$d/b.compose.yml"; } > "$UPGRADE_MARKER"
+  ui_fd() { echo 2; }; RELEASE_TAG=v9.9.9; N8N_DB_NAME=n8n
+  upgrade_rollback_hint 2>&1
+)
+rh_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+rh_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+RHV="$(rh_case 1 v0.40.0 reg.example/master@sha256:dddd)"
+rh_has RH.verbund-befehl "$RHV" 'docker exec -it la-x-master lifeagents rollback'
+rh_has RH.verbund-ort "$RHV" 'PowerShell'
+rh_has RH.verbund-protokoll "$RHV" 'docker logs'
+for w in systemctl runuser dropdb install.sh journalctl; do rh_not "RH.verbund-ohne-$w" "$RHV" "$w"; done
+RHD="$(rh_case 1 dev reg.example/master@sha256:dddd)"
+rh_has RH.verbund-dev-befehl "$RHD" 'lifeagents rollback'
+RHN="$(rh_case 1 v0.40.0 -)"
+rh_not RH.verbund-ohne-merkzettel-kein-befehl "$RHN" 'lifeagents rollback'
+rh_has RH.verbund-ohne-merkzettel-sicherung "$RHN" "$W/rh/b.dump.gpg"
+for w in systemctl dropdb install.sh; do rh_not "RH.verbund-ohne-merkzettel-ohne-$w" "$RHN" "$w"; done
+RHG="$(rh_case 1 v0.9.0 reg.example/master@sha256:dddd)"
+rh_not RH.verbund-alt-ohne-journalctl "$RHG" 'journalctl'
+rh_has RH.verbund-alt-kein-rueckweg "$RHG" 'KEIN RÜCKWEG'
+RHK="$(rh_case 0 v0.40.0 -)"
+rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
+
 exit "$fails"

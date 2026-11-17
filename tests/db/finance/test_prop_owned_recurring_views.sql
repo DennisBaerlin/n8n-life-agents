@@ -9,6 +9,7 @@
 --   V4 Vertragsende: kein Termin nach dem genannten letzten Tag; die View nennt diesen Tag
 --   V5 Sparplan: naechste Ausfuehrung der Uebersicht = fruehester offener Termin der Kette, vor und nach einer
 --      geplanten Betrags-Aenderung
+--   V6 Vertrag vor dem Start mit geplanter Aenderung: alle Sichten zeigen den Start-Betrag (fn_recurring_current)
 -- Start der Zahlungen 40 Tage vor heute (die Views lesen current_date; ein laufender Vertrag hat ein heute gueltiges
 -- Glied); jeder Fall in einem eigenen Savepoint.
 BEGIN;
@@ -157,7 +158,51 @@ BEGIN
     END;
   END LOOP;
 
-  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5)]', v_n_ins, v_n_pen, v_n_plan;
+  -- V6: Vertrag startet erst in 6 Tagen und hat schon eine geplante Aenderung (ab in 106 Tagen)
+  DECLARE v_start DATE := current_date + 6; v_chg DATE := current_date + 106; v_head INT;
+  BEGIN
+    -- Versicherung 30 -> 40
+    v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v6_ins__','premium_amount',30,'schedule_unit','month',
+      'first_payment_date',v_start,'debit_account_id',v_giro));
+    v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',40,'effective_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup insurance: %', v_res; END IF;
+    IF (SELECT premium_amount FROM finance.active_insurances WHERE id = v_ins) IS DISTINCT FROM 30
+       OR (SELECT -sum(monthly_equivalent) FROM finance.monthly_cashflow_overview WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))) IS DISTINCT FROM 30 THEN
+      RAISE EXCEPTION 'FAIL V6 Versicherung vor dem Start: Vertrags-Sicht %, Monatsrechnung % (Start-Beitrag 30)',
+        (SELECT premium_amount FROM finance.active_insurances WHERE id = v_ins),
+        (SELECT -sum(monthly_equivalent) FROM finance.monthly_cashflow_overview WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+    -- Sparplan 150 -> 200
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v6_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B3RBWM25','symbol','VWCE','security_name','Testfonds Welt','amount',150,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_start));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v6_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup plan: %', v_res; END IF;
+    SELECT * INTO v_so FROM finance.savings_plan_overview WHERE name = '__prop_orv_v6_plan__';
+    SELECT min(u.due_date) INTO v_next FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+    IF v_so.amount_per_execution IS DISTINCT FROM 150 OR v_so.next_execution IS DISTINCT FROM v_next OR v_so.starts_on IS DISTINCT FROM v_next
+       OR v_so.change_from IS DISTINCT FROM v_chg OR v_so.new_amount_per_execution IS DISTINCT FROM 200 THEN
+      RAISE EXCEPTION 'FAIL V6 Sparplan vor dem Start: Uebersicht Betrag % startet % naechste % Aenderung ab % neu % (erwartet 150 / % / % / % / 200)',
+        v_so.amount_per_execution, v_so.starts_on, v_so.next_execution, v_so.change_from, v_so.new_amount_per_execution, v_next, v_next, v_chg; END IF;
+    -- Vorsorge 80 -> 90 (Aenderung ueber den gemeinsamen Helfer der Vertrags-Ketten)
+    v_res := finance.fn_create_pension(jsonb_build_object('name','__prop_orv_v6_pen__','pension_type','private','contribution_amount',80,
+      'debit_account_id',v_giro,'first_payment_date',v_start));
+    v_pen := (v_res->>'pension_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_change_owned_recurring(v_rp, v_chg, -90, NULL, NULL, NULL);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'split')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup pension: %', v_res; END IF;
+    IF (SELECT contribution_amount FROM finance.pension_overview WHERE id = v_pen) IS DISTINCT FROM 80
+       OR (SELECT monthly_contribution FROM finance.pension_overview WHERE id = v_pen) IS DISTINCT FROM -80 THEN
+      RAISE EXCEPTION 'FAIL V6 Vorsorge vor dem Start: Sicht Beitrag % / Monat % (Start-Beitrag 80)',
+        (SELECT contribution_amount FROM finance.pension_overview WHERE id = v_pen), (SELECT monthly_contribution FROM finance.pension_overview WHERE id = v_pen); END IF;
+    -- die Regel selbst: vor dem Start das naechste startende Glied, am Stichtag der Aenderung und danach der Kopf
+    v_head := finance.fn_recurring_lineage_head(v_rp);
+    IF finance.fn_recurring_current(v_head, v_t) IS DISTINCT FROM v_rp OR finance.fn_recurring_current(v_rp, v_chg - 1) IS DISTINCT FROM v_rp
+       OR finance.fn_recurring_current(v_rp, v_chg) IS DISTINCT FROM v_head OR finance.fn_recurring_current(v_rp, v_chg + 4000) IS DISTINCT FROM v_head THEN
+      RAISE EXCEPTION 'FAIL V6 fn_recurring_current: heute % (erwartet %), am Stichtag % (erwartet %)', finance.fn_recurring_current(v_head, v_t), v_rp,
+        finance.fn_recurring_current(v_rp, v_chg), v_head; END IF;
+  END;
+
+  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6)]', v_n_ins, v_n_pen, v_n_plan;
 END $$;
 
 ROLLBACK;

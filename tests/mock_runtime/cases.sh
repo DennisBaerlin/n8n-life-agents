@@ -1467,7 +1467,7 @@ case "$(vh_rb dev '')" in 'no_version|abbruch:'*) pass VH.rueckweg-ohne-nummer-v
 ik_compose() {   # ik_compose <datei> <master-zeile> <postgres-digest>
   printf '%s\n' 'name: lifeagents' '' 'x-images:' \
     '  busybox: &img_busybox busybox:1.37@sha256:b1' "  postgres: &img_postgres postgres:17@sha256:$3" \
-    '  # Kommentarzeile im Block' "  master: &img_master $2" '' 'services:' '  anchor:' '    image: *img_busybox' > "$1"
+    '  n8n: &img_n8n n8nio/n8n:2.45.7@sha256:n1' '  # Kommentarzeile im Block' "  master: &img_master $2" '' 'services:' '  anchor:' '    image: *img_busybox' > "$1"
 }
 ik_case() (   # ik_case [--plain] -> Ausgabe von images keep
   local d="$W/ik"; rm -rf "$d"; mkdir -p "$d/bk" "$d/swap" "$d/state"
@@ -1488,14 +1488,14 @@ ik_case() (   # ik_case [--plain] -> Ausgabe von images keep
 )
 ik_out="$(ik_case)"
 eq IK.json-ok true "$(printf '%s' "$ik_out" | jq -r .ok 2>/dev/null)"
-eq IK.alle-abbilder 'busybox:1.37@sha256:b1 ci-ops-master:b postgres:17@sha256:p1 postgres:17@sha256:p2 postgres:17@sha256:p3 reg.example/master@sha256:aaaa reg.example/master@sha256:bbbb reg.example/master@sha256:cccc' \
+eq IK.alle-abbilder 'busybox:1.37@sha256:b1 ci-ops-master:b n8nio/n8n:2.45.7@sha256:n1 postgres:17@sha256:p1 postgres:17@sha256:p2 postgres:17@sha256:p3 reg.example/master@sha256:aaaa reg.example/master@sha256:bbbb reg.example/master@sha256:cccc' \
   "$(printf '%s' "$ik_out" | jq -r '[.images[].ref] | join(" ")' 2>/dev/null)"
 eq IK.laufender-master-ist-helfer-abbild 'current running swap_helper' \
   "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "reg.example/master@sha256:cccc") | .sources | join(" ")' 2>/dev/null)"
 eq IK.rueckweg-ziel-aus-merkzettel 'backup:pre-upgrade-2.dump.gpg' \
   "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "ci-ops-master:b") | .sources | join(" ")' 2>/dev/null)"
 eq IK.neutrale-zeile-keine-referenz 0 "$(printf '%s' "$ik_out" | jq '[.images[].ref | select(test("LA_MASTER"))] | length' 2>/dev/null)"
-eq IK.plain-eine-je-zeile 8 "$(ik_case --plain | grep -c .)"
+eq IK.plain-eine-je-zeile 9 "$(ik_case --plain | grep -c .)"
 eq IK.klassisch-abgelehnt '{"ok":false,"reason":"not_compose"}|1' \
   "$( ( LIFEAGENTS_RUNTIME=systemd; rc=0; out="$(images_cli keep 2>/dev/null)" || rc=$?; printf '%s|%s' "$out" "$rc" ) )"
 # Offener Wechsel und unvollendetes Update ohne Sicherung: Ziel und vorheriger Stand bleiben gelistet.
@@ -1512,7 +1512,7 @@ ik_open() (
   printf 'FROM_MASTER_IMAGE=m:older\nFROM_COMPOSE=%s\n' "$d/state/upgrade.pending.compose.yml" > "$UPGRADE_MARKER"
   images_cli keep --plain 2>/dev/null | tr '\n' ' '
 )
-eq IK.offener-wechsel-und-merkzettel 'busybox:1.37@sha256:b1 m:new m:old m:older postgres:17@sha256:p3 postgres:17@sha256:p4 postgres:17@sha256:p5 ' "$(ik_open)"
+eq IK.offener-wechsel-und-merkzettel 'busybox:1.37@sha256:b1 m:new m:old m:older n8nio/n8n:2.45.7@sha256:n1 postgres:17@sha256:p3 postgres:17@sha256:p4 postgres:17@sha256:p5 ' "$(ik_open)"
 # ---------------------------------------------------------------------------- CL: Befehl in Meldungen je Betriebsart
 # Eine Adresse (rt_cli_hint): klassisch `sudo lifeagents`, Verbund `docker exec -i <projekt>-master lifeagents`; -it fuer Befehle
 # mit Rueckfrage (rollback/reconfigure brechen mit nur -i ab). Der Runner gibt beide Formen an core.fn_update_report mit.

@@ -16,8 +16,8 @@ _img_compose_refs() {
   awk '
     /^x-images:/ { inb = 1; next }
     inb && /^[^ #]/ { inb = 0 }
-    inb && /^  [a-z_]+: &img_[a-z_]+ / {
-      v = $0; sub(/^  [a-z_]+: &img_[a-z_]+ +/, "", v); sub(/ +#.*$/, "", v)
+    inb && /^  [a-z0-9_]+: &img_[a-z0-9_]+ / {
+      v = $0; sub(/^  [a-z0-9_]+: &img_[a-z0-9_]+ +/, "", v); sub(/ +#.*$/, "", v)
       if (v ~ /^\$\{LA_MASTER_IMAGE:-/) { sub(/^\$\{LA_MASTER_IMAGE:-/, "", v); sub(/\}$/, "", v) }
       else if (v ~ /^\$\{/) next
       if (v != "") print v

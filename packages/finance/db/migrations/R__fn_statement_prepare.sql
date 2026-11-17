@@ -43,7 +43,8 @@
 --   account_unknown (Nummern-Pfad) traegt zusaetzlich balance_verified und - nur wenn die Saldo-Probe stimmt und der
 --   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein neues Konto
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
---   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
+--   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch
+--   (Bank-Export: nur Zeilen, die gebucht wuerden oder nach period_end liegen; aeltere fremde Zeilen sperren nicht),
 --   period_in_future, already_covered, already_imported, balance_check_failed (+difference), unreadable (IBAN-foermige
 --   Kopf-Nummer mit falscher Pruefziffer: verlesen, nie ein neues Konto). already_covered und
 --   already_imported tragen account_id und balance_verified (Saldo-Probe Anfang + Zeilen = Ende; Bank-Export: false):
@@ -223,6 +224,7 @@ DECLARE
     v_explained NUMERIC;                -- Teil des Rests, den gesperrte Posten und Steuer-/Kapitalmassnahmen-Zeilen erklaeren
     v_rest_label TEXT;                  -- Bezeichnung des Rests auf der Karte
     v_real_date DATE;                   -- echter Buchungstag der Zeile (spaete Export-Zeile: vor dem verschobenen Zeilendatum)
+    v_cur_date DATE;                    -- frueheste zaehlende Export-Zeile in fremder Waehrung
 BEGIN
     -- ---------- 1a. Broker-CSV: Export normieren, Zeitraum = nach dem bestaetigten Tag bis gestern ----------
     --   Kein gedruckter Saldo: der Owner nennt den Kontostand aus der App (Pflicht, nie ein errechneter Saldo als
@@ -319,10 +321,20 @@ BEGIN
         SELECT COALESCE(jsonb_agg(u ORDER BY (u->>'row_no')::int), '[]'::jsonb) INTO v_file_unk
         FROM jsonb_array_elements(v_norm->'unknown_rows') u
         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l WHERE (l->>'row_no')::int = (u->>'row_no')::int);
-        IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_norm->'currencies') c WHERE c <> v_acct.currency) THEN
+        -- Fremde Waehrung sperrt nur, wo sie zaehlt: Zeilen, die gebucht wuerden (v_lines samt spaeten Zeilen), und Zeilen
+        -- nach period_end (v_after rechnet sie in den Stand). Eine Zeile vor dem bestaetigten Tag aendert nichts. Leser
+        -- ohne Waehrung je Zeile: die Liste der Datei entscheidet.
+        SELECT min((r->>'date')::date) INTO v_cur_date
+        FROM jsonb_array_elements(v_norm->'rows') r
+        WHERE r->>'currency' IS NOT NULL AND r->>'currency' <> v_acct.currency
+          AND ((r->>'date')::date > v_pe
+               OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lines) l WHERE (l->>'row_no')::int = (r->>'row_no')::int));
+        IF v_cur_date IS NOT NULL
+           OR (NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_norm->'rows') r WHERE r->>'currency' IS NOT NULL)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_norm->'currencies') c WHERE c <> v_acct.currency)) THEN
             RETURN jsonb_build_object('ok', false, 'code', 'currency_mismatch',
                 'reason', 'The export contains amounts in another currency than the account "' || v_acct.name
-                       || '" (' || v_acct.currency || ').');
+                       || '" (' || v_acct.currency || ')' || COALESCE(', first on ' || v_cur_date, '') || '.');
         END IF;
     ELSE
     -- ---------- 1. Rohwerte + Konto (gedruckter Auszug) ----------

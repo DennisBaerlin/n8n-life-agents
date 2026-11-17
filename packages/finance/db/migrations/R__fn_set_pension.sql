@@ -85,8 +85,7 @@ BEGIN
 
     -- Status-Kaskade auf den verknuepften Beitrag (recurring_payment).
     IF v_status IS NOT NULL AND v_rp IS NOT NULL THEN
-        IF v_status = 'active' AND EXISTS (SELECT 1 FROM finance.recurring_payments
-                                           WHERE id = v_rp AND valid_to IS NOT NULL AND valid_to <= core.fn_today()) THEN
+        IF v_status = 'active' AND finance.fn_recurring_chain_ended(v_rp, core.fn_today()) THEN
             -- beendeter Beitrag (fn_close_pension): nur 'active' zu setzen ergaebe "aktiv", aber nie wieder faellig ->
             -- Folge-Zeile ab heute; der Helfer setzt die Vorsorge auf sie (fn_repoint_recurring_owners).
             v_reopen := finance.fn_reopen_recurring_payment(v_rp, core.fn_today());

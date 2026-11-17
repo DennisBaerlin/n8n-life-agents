@@ -85,7 +85,49 @@ BEGIN
   EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
   END;
 
-  RAISE NOTICE 'PASS prop reactivate vs preview [% Faelle, A1-A2]', v_n;
+  -- A3: Sparplan mit Buchungs-Historie schliessen und wieder aktivieren, ohne und mit geplanter Betrags-Aenderung.
+  --     Mit geplanter Aenderung ist der Kopf der Kette ein leeres Glied in der Zukunft; "beendet" gilt fuer die ganze Kette.
+  DECLARE v_planned BOOLEAN;
+  BEGIN
+    FOREACH v_planned IN ARRAY ARRAY[false, true] LOOP
+      BEGIN
+        v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_rvp_plan3__','depot_name','__prop_rvp_depot__',
+          'isin','IE00B4L5Y983','symbol','IUSQ','security_name','Testfonds Zwei','amount',150,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_t - 40));
+        v_rp := (v_res->>'recurring_payment_id')::int;
+        v_res := finance.fn_book_savings_plan_execution(jsonb_build_object('savings_plan_name','__prop_rvp_plan3__','shares',1.5,'price_per_share',100));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL A3 setup book: %', v_res; END IF;
+        PERFORM finance.fn_skip_recurring_occurrence(jsonb_build_object('recurring_payment_id',o.recurring_payment_id,'due_date',o.due_date))
+          FROM finance.fn_recurring_due_open(v_t - 1) o WHERE o.recurring_payment_id = v_rp;
+        IF v_planned THEN
+          v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_rvp_plan3__','new_amount',200,'valid_from',v_t + 100));
+          IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL A3 setup planned change: %', v_res; END IF;
+        END IF;
+        v_res := finance.fn_close_savings_plan(jsonb_build_object('savings_plan_name','__prop_rvp_plan3__'));
+        IF (v_res->>'action') IS DISTINCT FROM 'closed' THEN RAISE EXCEPTION 'FAIL A3 setup close: %', v_res; END IF;
+        IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))) THEN
+          RAISE EXCEPTION 'FAIL A1 Sparplan geschlossen [geplante Aenderung=%]: noch Termine in der Vorschau', v_planned; END IF;
+        v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_rvp_plan3__','status','active'));
+        v_head := (SELECT recurring_payment_id FROM finance.savings_plans WHERE name = '__prop_rvp_plan3__');
+        SELECT count(*) INTO v_cnt FROM finance.fn_upcoming_payments(v_t, v_t + 100) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_cnt < 2
+           OR NOT EXISTS (SELECT 1 FROM finance.monthly_cashflow_overview m WHERE m.id IN (SELECT finance.fn_recurring_lineage(v_head)))
+           OR (SELECT next_execution FROM finance.savings_plan_overview WHERE name = '__prop_rvp_plan3__') IS DISTINCT FROM
+              (SELECT min(u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 100) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head))) THEN
+          RAISE EXCEPTION 'FAIL A2 Sparplan [geplante Aenderung=%]: reaktiviert ok=%, % Termine in 100 Tagen, Uebersicht naechste %, Glieder %', v_planned, v_res->>'ok', v_cnt,
+            (SELECT next_execution FROM finance.savings_plan_overview WHERE name = '__prop_rvp_plan3__'),
+            (SELECT string_agg(amount || ' ' || status || ' [' || valid_from || '..' || coalesce(valid_to::text, '-') || ')', ' | ' ORDER BY valid_from, id)
+               FROM finance.recurring_payments WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+        IF EXISTS (SELECT 1 FROM finance.fn_recurring_due_open(v_t - 400, v_t + 400) o
+                    WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head)) AND o.due_date < v_t) THEN
+          RAISE EXCEPTION 'FAIL A2 Sparplan [geplante Aenderung=%]: erledigter Termin wieder offen', v_planned; END IF;
+        v_n := v_n + 1;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+    END LOOP;
+  END;
+
+  RAISE NOTICE 'PASS prop reactivate vs preview [% Faelle, A1-A3]', v_n;
 END $$;
 
 ROLLBACK;

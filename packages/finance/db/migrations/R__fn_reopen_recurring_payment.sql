@@ -26,7 +26,8 @@ BEGIN
         RAISE EXCEPTION 'Recurring payment % not found.', p_rp_id;
     END IF;
 
-    IF v_old.valid_to IS NULL OR v_old.valid_to > p_from THEN
+    -- ein leeres Glied [d,d) mit d in der Zukunft ist beendet (geschlossene Kette mit geplanter Aenderung)
+    IF v_old.valid_to IS NULL OR (v_old.valid_to > p_from AND v_old.valid_to > v_old.valid_from) THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'This payment has not ended on ' || p_from || '; resume it instead of reopening it.');
     END IF;

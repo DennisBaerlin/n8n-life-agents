@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 579 fn-Dateien.
+Umfang: 580 fn-Dateien.
 
 ## finance.fn_account_emoji_page (READ, STABLE) -- eine Seite der Knopf-Liste fuer das Konto-Zeichen
 - `finance.fn_account_emoji_page(p_account_id int, p_page int, p_lang text) -> jsonb`
@@ -1933,6 +1933,11 @@ Umfang: 579 fn-Dateien.
 - `finance.fn_record_recurring_suggestions_sent(p jsonb) -> jsonb`
 - jsonb-Keys: chat_id, id, reason, rejected, sent, version
 - Laeuft nach dem Senden in tool_send_recurring_suggestions: sent[] = erfolgreich gesendete {id, version} -> sent_version = version (nur, wenn die Fassung noch dieselbe ist und die Zeile dem Chat gehoert); rejected[] = Zeilen, deren Probelauf ablehnte -> declined mit Grund (validation_error). Eine nicht gesendete Zeile (z. B. Telegram 429) bleibt ungestempelt und geht beim naechsten Aufruf erneut. Eingabe p: {chat_id*, sent:[{id, version}], rejected:[{id, reason}]}. RUECKGABE: {ok:true, stamped, declined}.
+
+## finance.fn_recurring_chain_ended (READ HELPER, STABLE) -- ist eine Raten-Kette am Tag p_on beendet?
+- `finance.fn_recurring_chain_ended(p_rp_id int, p_on date) -> boolean`
+- jsonb-Keys: --
+- Die eine Adresse fuer "beendet, also beim Reaktivieren fortsetzen" (fn_set_savings_plan, fn_set_savings_goal, fn_set_pension, fn_reopen_recurring_payment). Beendet = kein Glied der Kette laeuft am Tag p_on oder kommt noch: jedes Glied hat ein Ende, das erreicht ist (valid_to <= p_on) oder leer ist (valid_to <= valid_from). Am valid_to des Kopfs allein laesst sich das nicht ablesen: beim Schliessen einer Kette mit geplanter Aenderung (fn_end_recurring_chain) wird der kuenftige Kopf ein leeres Glied mit einem Datum in der Zukunft. Eingabe: p_rp_id (beliebiges Glied), p_on. Rueckgabe: boolean; unbekannte id -> false. Tests: tests/db/finance/test_prop_reactivate_vs_preview.sql
 
 ## finance.fn_recurring_clean_name (IMMUTABLE) -- Name aus einem Kontoauszug fuer Vorschlag, Nachricht und Agent bereinigen
 - `finance.fn_recurring_clean_name(p_name text) -> text`

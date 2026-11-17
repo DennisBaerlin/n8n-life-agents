@@ -432,8 +432,7 @@ BEGIN
     IF v_rate_change IS NOT NULL THEN
         -- gestoppte/beendete Rate (stop_funders, Close) -> erst ab heute als Folge-Zeile reaktivieren, dann den Betrag
         -- setzen (sonst aenderte sich nur der Betrag einer pausierten Zeile und nichts flosse mehr ein)
-        IF EXISTS (SELECT 1 FROM finance.recurring_payments
-                   WHERE id = v_row.recurring_payment_id AND valid_to IS NOT NULL AND valid_to <= CURRENT_DATE) THEN
+        IF finance.fn_recurring_chain_ended(v_row.recurring_payment_id, CURRENT_DATE) THEN
             v_reopen := finance.fn_reopen_recurring_payment(v_row.recurring_payment_id, CURRENT_DATE);
             IF (v_reopen->>'ok')::boolean IS DISTINCT FROM true THEN
                 RETURN v_reopen;
@@ -476,8 +475,7 @@ BEGIN
             UPDATE finance.recurring_payments SET amount = -v_rate WHERE id = v_row.recurring_payment_id;
         END IF;
         IF v_status = 'active' THEN
-            IF EXISTS (SELECT 1 FROM finance.recurring_payments
-                       WHERE id = v_row.recurring_payment_id AND valid_to IS NOT NULL AND valid_to <= CURRENT_DATE) THEN
+            IF finance.fn_recurring_chain_ended(v_row.recurring_payment_id, CURRENT_DATE) THEN
                 -- beendete Rate (nach close_savings_goal) -> Folge-rp ab heute; der Helfer setzt das Ziel auf sie.
                 v_reopen := finance.fn_reopen_recurring_payment(v_row.recurring_payment_id, CURRENT_DATE);
                 IF (v_reopen->>'ok')::boolean IS DISTINCT FROM true THEN

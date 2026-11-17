@@ -255,6 +255,28 @@ BEGIN
     IF finance.fn_recurring_first_due(v_rp) IS NOT NULL OR finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_t + 20 THEN
       RAISE EXCEPTION 'FAIL V8 [Ende vor dem ersten Termin]: starts_on % first_due %', finance.fn_recurring_starts_on(v_rp), finance.fn_recurring_first_due(v_rp); END IF;
   END;
+  -- V9: "laeuft schon so" vergleicht mit dem Glied, das am Stichtag gilt. Sparplan vor dem Start mit geplanter Aenderung
+  -- (150, ab in 106 Tagen 200): 150 ab heute und 200 ab dem Stichtag der Aenderung sind beide keine Aenderung.
+  DECLARE v_chg DATE := current_date + 106; v_sig TEXT;
+  BEGIN
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v9_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B5BMR087','symbol','CSPX','security_name','Testfonds Drei','amount',150,'schedule_interval',1,'schedule_unit','month','first_payment_date',current_date + 6));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V9 setup: %', v_res; END IF;
+    SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) INTO v_sig FROM finance.fn_upcoming_payments(v_t, v_t + 300) u
+     WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',150));
+    IF (v_res->>'code') IS DISTINCT FROM 'no_change' OR (v_res->>'amount_per_execution')::numeric IS DISTINCT FROM 150 THEN
+      RAISE EXCEPTION 'FAIL V9 [150 ab heute, es laeuft 150]: erwartet no_change mit 150, got %', v_res; END IF;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'code') IS DISTINCT FROM 'no_change' OR (v_res->>'amount_per_execution')::numeric IS DISTINCT FROM 200 THEN
+      RAISE EXCEPTION 'FAIL V9 [200 ab dem Stichtag, geplant ist 200]: erwartet no_change mit 200, got %', v_res; END IF;
+    IF (SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 300) u
+         WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))) IS DISTINCT FROM v_sig THEN
+      RAISE EXCEPTION 'FAIL V9: eine Wiederholung hat die Vorschau veraendert'; END IF;
+  END;
+
   -- eine Definition je Frage: der Name kommt im Katalog genau einmal vor (zwei Dateien mit derselben Signatur wuerden sich
   -- je nach Einspiel-Reihenfolge still ueberschreiben)
   IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_first_due') <> 1

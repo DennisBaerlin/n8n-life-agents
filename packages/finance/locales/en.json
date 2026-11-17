@@ -1140,6 +1140,7 @@
   "finance.note.lots_mismatch": "{name}: the purchases in the file differ from the takeover by {difference} units; nothing changes here.",
   "finance.tpl.statement_trade_tax_row": "Tax {name}: {amount} on {date}",
   "finance.note.lots_not_bookable": "{name}: one purchase in the file is too small to book; nothing changes here.",
+  "finance.note.lots_takeover_day_added": "{name}: the purchase of {shares} units on {date} was not yet in the takeover and is added.",
   "finance.wf.finance_tool_import_bank_export": "Bank export (file)",
   "finance.dialog.monthly_check_line_file": "• {name} (balance confirmed up to: {date}) – via file: create the transaction export (this year) in the app and send the file here; if the file shows no closing balance, also tell me the balance the app shows right now",
   "finance.cron.reconcile_accounts.label": "Monthly check (bank statements)",

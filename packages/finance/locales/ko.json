@@ -1140,6 +1140,7 @@
   "finance.note.lots_mismatch": "{name}: 파일의 매수가 이관과 {difference}주 차이가 나요. 여기서는 아무것도 바뀌지 않아요.",
   "finance.tpl.statement_trade_tax_row": "세금 {name}: {date} {amount}",
   "finance.note.lots_not_bookable": "{name}: 파일의 매수 1건이 너무 작아 기록할 수 없어요. 여기서는 아무것도 바뀌지 않아요.",
+  "finance.note.lots_takeover_day_added": "{name}: {date}의 {shares}주 매수가 이관에 아직 없어서 추가돼요.",
   "finance.wf.finance_tool_import_bank_export": "은행 내보내기 (파일)",
   "finance.dialog.monthly_check_line_file": "• {name} (잔액 확인일: {date}) – 파일로: 앱에서 거래 내보내기(올해)를 만들어 파일을 여기로 보내 주세요. 파일에 기말 잔액이 없으면 앱에 지금 표시된 잔액도 알려 주세요",
   "finance.cron.reconcile_accounts.label": "월간 점검 (계좌 명세서)",

@@ -216,4 +216,45 @@ BEGIN
         RAISE EXCEPTION 'FAIL [L13 Kauf vor dem letzten Abgleich bewegt kein Geld]: %', v_res; END IF;
     RAISE NOTICE 'PASS [L11-L13 FIFO ueber Lots, komplett verkauft, Stichtag = spaeterer Termin]';
 END $$;
+
+-- L14 Kauf am Uebernahme-Tag, den die Uebernahme noch nicht enthielt (Sparplan mittags, Bestand abends ohne ihn):
+--   Uebernahme 2 Stueck am heute-10; Export Kauf 2 (heute-30, 50) + Kauf 0.5 (heute-10, 10). Vor dem Tag = 2 = Uebernahme
+--   -> ersetzen mit beiden Lots, Bestand 2.5, same_day_shares 0.5, Stichtag (Abgleich heute-3) enthaelt den Kauf -> cash-neutral.
+--   Gegenprobe: Kauf am Tag + Abweichung davor (Uebernahme 1.5) bleibt lots_mismatch.
+DO $$
+DECLARE
+    T DATE := core.fn_today();
+    v_acc INT; v_dep INT; v_h INT; v_res JSONB; v_p JSONB;
+BEGIN
+    v_acc := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_day__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 10)::text))->>'account_id')::int;
+    UPDATE finance.accounts SET last_reconciled_at = T - 3 WHERE id = v_acc;
+    v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_day_dep__', 'account_type', 'stocks_depot',
+                 'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc,
+                 'isin', 'IE00LOTSDAY1', 'symbol', 'DAY', 'name', 'Day ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
+                 'transaction_date', (T - 10)::text, 'existing_position', true))->>'holding_id')::int;
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc,
+                 'isin', 'IE00LOTSDAZ1', 'symbol', 'DAZ', 'name', 'Daz ETF', 'shares', 1.5, 'price_per_share', 25, 'order_fee', 0,
+                 'transaction_date', (T - 10)::text, 'existing_position', true));
+    v_p := jsonb_build_object('account_name', '__t_lots_day__', 'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.tr_hdr()) || jsonb_build_array(
+            pg_temp.tr_row(T - 30, 'BUY', 'IE00LOTSDAY1', '2.0000000000', '-50.00', '', 'd-01'),
+            pg_temp.tr_row(T - 10, 'BUY', 'IE00LOTSDAY1', '0.5000000000', '-10.00', '', 'd-02'),
+            pg_temp.tr_row(T - 30, 'BUY', 'IE00LOTSDAZ1', '2.0000000000', '-50.00', '', 'd-03'),
+            pg_temp.tr_row(T - 10, 'BUY', 'IE00LOTSDAZ1', '0.5000000000', '-10.00', '', 'd-04'))));
+    v_res := finance.fn_replace_takeover_with_lots(v_p);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'replaced') <> 1
+       OR (v_res->'replaced'->0->>'holding_id')::int <> v_h
+       OR (v_res->'replaced'->0->>'lots_count')::int <> 2 OR (v_res->'replaced'->0->>'shares')::numeric <> 2.5
+       OR (v_res->'replaced'->0->>'same_day_shares')::numeric IS DISTINCT FROM 0.5
+       OR (v_res->'replaced'->0->>'take_date')::date IS DISTINCT FROM T - 10
+       OR (v_res->'replaced'->0->>'avg_purchase_price')::numeric <> 24
+       OR (v_res->>'settlement_change')::numeric <> 0 OR finance.fn_get_balance(v_acc) <> 1000
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'card_lines') l WHERE l->>'value' = 'finance.note.lots_takeover_day_added') THEN
+        RAISE EXCEPTION 'FAIL [L14 Kauf am Uebernahme-Tag]: %', v_res; END IF;
+    IF jsonb_array_length(v_res->'mismatched') <> 1 OR v_res->'mismatched'->0->>'name' <> 'Daz ETF'
+       OR (v_res->'mismatched'->0->>'difference')::numeric <> -1 THEN
+        RAISE EXCEPTION 'FAIL [L14b Abweichung vor dem Tag bleibt lots_mismatch]: %', v_res->'mismatched'; END IF;
+    RAISE NOTICE 'PASS [L14 Kauf am Uebernahme-Tag kommt dazu, Abweichung davor bleibt]';
+END $$;
 ROLLBACK;

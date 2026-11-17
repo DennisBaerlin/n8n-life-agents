@@ -9,6 +9,8 @@
 --     = naechster noch nicht erledigter Termin ab heute (fn_recurring_next_due).
 --   Positionale Args: p_amount signed (NULL = unveraendert), p_interval/p_unit/p_dom (NULL = unveraendert; ein neuer
 --     Einzeltag ersetzt feste Monatstage).
+--   Neuer Abbuchungstag bei gleicher Kadenz: jeder Monat behaelt genau einen Termin (in place fn_recurring_reanchor_day, im Split
+--     fn_recurring_day_shift); effective_from ist der gespeicherte Start der Zeile mit den neuen Bedingungen.
 --   Rueckgabe: {ok:true, recurring_payment_id (Kopf danach), split, previous_id (nur Split), effective_from}
 --   | {ok:false, reason, ...} aus den Split-Guards bzw. ohne kommenden Termin.
 -- ============================================================
@@ -37,6 +39,12 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM finance.fn_schedule_occurrences(
                v_head.first_payment_date, v_head.schedule_interval, v_head.schedule_unit, v_head.schedule_day_of_month,
                v_head.schedule_days_of_month, v_head.valid_from, v_today - 1)) THEN
+        -- Nur ein neuer Tag (gleiche Kadenz): Start und Anker ziehen auf den neuen Tag im Startmonat mit, sonst fiele der
+        -- erste Termin weg (fn_recurring_reanchor_day; ein Kadenzwechsel behaelt den alten Weg)
+        IF COALESCE(p_unit, v_head.schedule_unit) = v_head.schedule_unit
+           AND COALESCE(p_interval, v_head.schedule_interval) = v_head.schedule_interval THEN
+            PERFORM finance.fn_recurring_reanchor_day(v_head.id, p_dom);
+        END IF;
         UPDATE finance.recurring_payments SET
             amount                 = COALESCE(p_amount, amount),
             schedule_interval      = COALESCE(p_interval, schedule_interval),
@@ -46,7 +54,7 @@ BEGIN
                                           THEN NULL ELSE schedule_days_of_month END
         WHERE id = v_head.id;
         RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_head.id, 'split', false,
-                                  'effective_from', v_head.valid_from);
+                                  'effective_from', (SELECT r.valid_from FROM finance.recurring_payments r WHERE r.id = v_head.id));
     END IF;
 
     v_eff := COALESCE(p_eff_from, finance.fn_recurring_next_due(v_head.id, v_today));
@@ -59,6 +67,9 @@ BEGIN
         RETURN v_res;
     END IF;
     RETURN jsonb_build_object('ok', true, 'recurring_payment_id', (v_res->>'recurring_payment_id')::int, 'split', true,
-                              'previous_id', v_head.id, 'effective_from', v_eff);
+                              'previous_id', v_head.id,
+                              -- der echte Stichtag: ein neuer Tag kann ihn verschieben (fn_recurring_day_shift im Split)
+                              'effective_from', (SELECT r.valid_from FROM finance.recurring_payments r
+                                                  WHERE r.id = (v_res->>'recurring_payment_id')::int));
 END;
 $$;

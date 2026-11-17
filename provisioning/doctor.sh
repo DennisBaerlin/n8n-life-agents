@@ -75,13 +75,26 @@ _doctor_app_check() {
   elif [ "$r4" = ok ] || [ "$r6" = ok ]; then _pass "Übersicht (Mini-App) lädt über ${base}/webhook/… (${fams})"; fi
 }
 
+# _doctor_proc_age <proc-wurzel> <proc-pfad> -> Sekunden seit dem Start des Prozesses (stat Feld 22 in Ticks seit Boot, nach der
+#   letzten ")" des Namens; /proc/uptime in Sekunden). 0, wenn nicht lesbar.
+_doctor_proc_age() {
+  local s up tick hz proot="$1" ppath="$2"; hz="$(getconf CLK_TCK 2>/dev/null || echo 100)"
+  s="$(cat "$ppath/stat" 2>/dev/null || true)"; s="${s##*) }"
+  # shellcheck disable=SC2086  # bewusst Wort-Splitting: die Felder von stat
+  set -- $s; tick="${20:-}"
+  up="$(cut -d' ' -f1 "$proot/uptime" 2>/dev/null || true)"; up="${up%%.*}"
+  case "$tick$up" in ''|*[!0-9]*) echo 0; return 0 ;; esac
+  echo $(( up - tick / hz ))
+}
+
 # _doctor_tick_step — laeuft gerade ein Tick-Schritt (update_runner.sh update_tick)? Ausgabe "<Name>\t<Sekunden seit Start>\t<Zeitgrenze s>"
 #   oder nichts. Ein Schritt ist ein eigener Prozess (`lifeagents update --run-requested | update --check | backup auto`,
-#   Start = mtime von /proc/<pid>); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
+#   Start aus /proc/<pid>/stat Feld 22 + /proc/uptime; der mtime von /proc/<pid> ist nur der erste Zugriff); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
 #   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen wie update_runner.sh.
 _doctor_tick_step() {
-  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim now; now="$(date -u +%s)"
+  local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim
   for p in "$root"/[0-9]*; do
+    [ -r "$p/cmdline" ] || continue   # ohne Treffer bleibt das Muster stehen; ein verschwundener Prozess ebenso
     cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
     case "$cmd" in
       *"lifeagents update --run-requested"*) name=Update; lim="${UPDATE_RUN_TIMEOUT_S:-7200}" ;;
@@ -89,7 +102,7 @@ _doctor_tick_step() {
       *"lifeagents backup auto"*)            name=Sicherung; lim="${BACKUP_TIMEOUT_S:-1800}" ;;
       *) continue ;;
     esac
-    printf '%s\t%s\t%s' "$name" "$(( now - $(stat -c %Y "$p" 2>/dev/null || echo "$now") ))" "$lim"; return 0
+    printf '%s\t%s\t%s' "$name" "$(_doctor_proc_age "$root" "$p")" "$lim"; return 0
   done
   # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
   if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "${UPDATE_RUN_TIMEOUT_S:-7200}"; fi
@@ -144,41 +157,57 @@ _doctor_compose_check() {
   esac
 }
 
-# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP ist das Datum
-#   (Haushalts-Zeitzone) des letzten Versuchs; vor BACKUP_AUTO_AT steht noch gestern darin. WARN (kein ROT): ob die Sicherung
-#   gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar nicht versucht".
+# _doctor_compose_backup_tick — Docker-Verbund: stoesst die Schleife die taegliche Sicherung an? LAST_BACKUP_TRY (Epoche) ist
+#   der letzte Versuch des Ticks (update_runner.sh: ab BACKUP_AUTO_AT stuendlich, auch ohne Erfolg); er ist hoechstens eine
+#   Stunde alt, vor BACKUP_AUTO_AT noch vom Vortag. WARN erst ab 26 h (ein ganzer Tag ohne Versuch) und kein ROT: ob die
+#   Sicherung gelang, sagt _doctor_backup (LAST_OK, ROT ab BACKUP_STALE_S); diese Zeile ist das fruehere Signal "es wird gar
+#   nicht versucht". Vor BACKUP_AUTO_AT ist ein leerer Zustand normal.
 _doctor_compose_backup_tick() {
-  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz yday
+  local st="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}" last tz age
   [ "$(id -u)" -eq 0 ] || return 0
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"; tz="${tz:-${HOUSEHOLD_TIMEZONE:-Europe/Berlin}}"
-  yday="$(TZ="$tz" date -d yesterday +%Y-%m-%d)"
-  last="$(read_env_value "$st" LAST_BACKUP 2>/dev/null || true)"
-  if ! [[ $last =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    # Der Tick schreibt LAST_BACKUP erst ab BACKUP_AUTO_AT; davor ist ein leerer Zustand normal.
-    if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
-      _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
-    fi
-  elif [[ $last < $yday ]]; then
-    _warn "Tägliche Sicherung wurde seit ${last} nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
-  else _pass "Tägliche Sicherung wird angestoßen (zuletzt ${last})"; fi
+  last="$(read_env_value "$st" LAST_BACKUP_TRY 2>/dev/null || true)"
+  case "$last" in
+    ''|*[!0-9]*)
+      if ! _doctor_compose_fresh && [ "$((10#$(TZ="$tz" date +%H%M)))" -ge "$((10#${BACKUP_AUTO_AT:-0330}))" ]; then
+        _warn "Tägliche Sicherung wurde noch nie angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+      fi ;;
+    *) age=$(( $(date -u +%s) - last ))
+       if [ "$age" -gt 93600 ]; then _warn "Tägliche Sicherung wurde seit $((age / 3600)) h nicht mehr angestoßen — Verlauf: docker logs ${LA_PROJECT}-master"
+       elif [ "$age" -ge 7200 ]; then _pass "Tägliche Sicherung wird angestoßen (letzter Versuch vor $((age / 3600)) h)"
+       else _pass "Tägliche Sicherung wird angestoßen (letzter Versuch vor $((age / 60 > 0 ? age / 60 : 0)) min)"; fi ;;
+  esac
 }
 
 # _doctor_compose_tunnel — Docker-Verbund, Weg Tunnel: laeuft tailscale, ist es angemeldet, laeuft die Anmeldung bald ab?
-#   Gleiche Einordnung (reach_ts_eval) und gleiche Texte wie der klassische Weg (reach_cli_doctor), nur ueber den Container.
+#   Gleiche Einordnung (reach_ts_eval) und gleiche Zustandssaetze wie der klassische Weg (reach_cli_doctor), nur ueber den
+#   Container; im Verbund steht der Befehl mit dem master-Aufruf (rt_master_cli_hint) davor. Kurz nach einem Update legt der
+#   Installer tailscale neu an: war der Tunnel schon in Betrieb (DOMAIN = sein Name), wartet doctor bis DOCTOR_TS_TRIES x 2 s
+#   auf "startet", bevor das ein Ausfall ist. Ohne Adresse (nie eingerichtet) ist "angemeldet fehlt noch" nur ein Hinweis:
+#   der Installer laeuft so regulaer durch (unattended, Anmeldung aufgeschoben); danach ist es ein Ausfall.
 _doctor_compose_tunnel() {
   [ "$(reach_mode)" = tunnel ] || return 0
+  local hint tries="${DOCTOR_TS_TRIES:-8}" txt
+  hint="$(rt_master_cli_hint)"
   if ! rt_edge_active tailscale; then
     _red "Tunnel: der Container tailscale läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; $(rt_edge_logs_hint tailscale))"
     return 0
   fi
   reach_ts_eval "$(_reach_ts_status)"
+  while [ "$REACH_TS_STATE" = starting ] && [ -n "${DOMAIN:-}" ] && [ "$tries" -gt 1 ]; do
+    tries=$((tries - 1)); sleep 2; reach_ts_eval "$(_reach_ts_status)"
+  done
   case "$REACH_TS_STATE" in
     running)
       if reach_funnel_configured "$REACH_TS_DNS" "$(rt_edge_exec tailscale tailscale funnel status --json 2>/dev/null || true)"; then
         _pass "Tunnel steht (Tailscale angemeldet${REACH_TS_DNS:+, ${REACH_TS_DNS}})"
-      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (lifeagents reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
-    needs_funnel) _red "Tunnel: $(reach_cli_state_text needs_funnel)" ;;
-    *) _red "Tunnel: $(reach_cli_state_text "$REACH_TS_STATE")" ;;
+      else _red "Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (${hint} reconfigure core → "'„Unverändert neu anwenden“'")"; fi ;;
+    *)
+      txt="$(reach_cli_state_text "$REACH_TS_STATE")"; txt="${txt//lifeagents reconfigure/${hint} reconfigure}"
+      case "$REACH_TS_STATE" in
+        needs_login|starting) if [ -z "${DOMAIN:-}" ]; then _warn "Tunnel: Einrichtung steht noch aus — ${txt}"; else _red "Tunnel: ${txt}"; fi ;;
+        *) _red "Tunnel: ${txt}" ;;
+      esac ;;
   esac
   if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
     _warn "Tailscale-Anmeldung läuft in ${REACH_TS_KEY_DAYS} Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → "'„Disable key expiry“'
@@ -195,9 +224,10 @@ _doctor_node_stale() {
   for p in "$root"/[0-9]*; do
     exe="$(readlink "$p/exe" 2>/dev/null || true)"
     case "$exe" in */node' (deleted)') ;; *) continue ;; esac
+    [ -r "$p/cmdline" ] || continue
     cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *n8n*)     n=n8n; u=n8n ;;
+      *n8n*)    n=n8n; u=n8n ;;
       *gateway*) n=LLM-Gateway; u=lifeagents-llm-gateway ;;
       *) continue ;;
     esac

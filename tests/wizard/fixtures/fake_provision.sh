@@ -4,7 +4,7 @@
 # dem ersten =), keine Leer-/Kommentarzeile, kein doppelter Schlüssel, keine Steuerzeichen, nie ausführen. Legt das Gelesene
 # als JSON ab (Modul-Wahl unter __packages) und meldet die Stufen über LIFEAGENTS_RESULT_FILE wie result_set.
 # Fehler auf Wunsch: Datei $WIZARD_FAKE_DIR/fail_stage; Anhalten in einer Stufe (Vorschau-Bilder): $WIZARD_FAKE_DIR/hold_stage.
-# real-path-test: tests/wizard/reader.test.js (nur der echte Antwort-Leser; ein Lauf Wizard bis echtes provision.sh fehlt)
+# real-path-test: .github/workflows/genericity.yml (Job compose-stack-cold: dieselbe Antwort-Datei (render_ci_answers.js, flow.js) und derselbe Aufruf gegen das echte provision.sh im Verbund; reader.test.js prueft den Leser einzeln. Offen: der Wizard-Prozess (server.js) startet provision.sh in keinem Test echt)
 set -euo pipefail
 D="${WIZARD_FAKE_DIR:?}"
 [ "$#" -eq 6 ] && [ "$1 $2 $3" = "--profile release --unattended" ] && [ "$5" = "--packages" ] || exit 64

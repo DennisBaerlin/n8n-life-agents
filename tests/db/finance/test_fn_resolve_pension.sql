@@ -12,7 +12,9 @@ BEGIN
 
   -- Setup
   SELECT finance.fn_create_pension('{"name":"__test_pen_dup__","pension_type":"private"}'::jsonb) INTO v_res;
-  SELECT finance.fn_create_pension('{"name":"__test_pen_dup__","pension_type":"ruerup"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_pension('{"name":"__test_pen_dup_b__","pension_type":"ruerup"}'::jsonb) INTO v_res;
+  -- Bestands-Dublette (sql.md: legitim, die create-fn lehnt eine neue ab) -> per UPDATE nachgestellt
+  UPDATE finance.pension SET name = '__test_pen_dup__' WHERE name = '__test_pen_dup_b__';
   SELECT finance.fn_create_pension('{"name":"__test_pen_uniq__","pension_type":"riester"}'::jsonb) INTO v_res;
   v_id1 := (v_res->>'pension_id')::int;
 

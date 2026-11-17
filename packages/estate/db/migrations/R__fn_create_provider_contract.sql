@@ -2,8 +2,8 @@
 -- estate.fn_create_provider_contract (ATOMIC WRITE)
 --   Legt einen neuen Nicht-finance-Vertrag im Register an (Energie/Telekom/Abo/Verein/Wohnen;
 --   Versicherungs-/Konto-Stammdaten leben bei finance — Grenzregel). Den deterministischen
---   Dubletten-Backstop (gleicher Anbieter + Kategorie) faehrt das Tool vor dem Gate
---   (fn_resolve_provider_contract, create_*-Pflicht-Node); Aenderungen -> set_provider_contract.
+--   Dubletten-Backstop (gleicher Anbieter + Kategorie, fn_resolve_provider_contract) in der fn ({ok:false,
+--   code:'duplicate', candidates}) und als create_*-Pflicht-Node im Tool vor dem Gate; Aenderungen -> set_provider_contract.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   death_action NULL = bewusst offener Gap (die Gap-Analyse nudgt darauf).
 --   finance_recurring_payment_id: lose Referenz ohne FK (stale = Gap-Anzeige, nie Crash);
@@ -18,6 +18,8 @@
 CREATE OR REPLACE FUNCTION estate.fn_create_provider_contract(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_dup_hits INT;
+    v_dup_cand JSONB;
     v_perm     TEXT;
     v_provider TEXT := NULLIF(trim(COALESCE(p->>'provider', '')), '');
     v_category TEXT := lower(NULLIF(trim(COALESCE(p->>'category', '')), ''));
@@ -46,6 +48,13 @@ BEGIN
     -- Lose finance-Referenz: nur eine echte Zahl uebernehmen (kein Cast-RAISE auf Muell).
     IF COALESCE(p->>'finance_recurring_payment_id', '') ~ '^[0-9]+$' THEN
         v_rp_id := (p->>'finance_recurring_payment_id')::bigint;
+    END IF;
+
+    -- Dubletten-Backstop in der fn (dieselbe Regel wie der Resolver des Werkzeugs; der Probelauf meldet ihn vor der Karte)
+    SELECT r.hit_count, r.candidates INTO v_dup_hits, v_dup_cand FROM estate.fn_resolve_provider_contract(v_provider, v_category) r;
+    IF v_dup_hits > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'duplicate', 'candidates', v_dup_cand,
+            'reason', 'A provider contract with "' || v_provider || '" in this category already exists - change it with the update tool, or use a different category.');
     END IF;
 
     INSERT INTO estate.provider_contracts (owner_person_id, category, provider, customer_no,

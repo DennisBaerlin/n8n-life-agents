@@ -4,7 +4,8 @@
 --   wie man rankommt ("Schluessel im Sekretaer") — nie Codes/PINs (Inhalt
 --   haerten Tool-Description + Instructions). Fundstellen sind FK-Ziel von estate.directives
 --   (RESTRICT) — deshalb gibt es kein delete_storage_place (Repurpose via
---   set_storage_place). Dubletten-Backstop (Name) faehrt das Tool vor dem Gate.
+--   set_storage_place). Dubletten-Backstop (Name, fn_resolve_storage_place) in der fn und als
+--   Komfort im Tool vor dem Gate -> {ok:false, code:'duplicate', candidates}.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Fundstelle), name (Pflicht),
 --     kind (Pflicht: safe|bank_deposit_box|folder|digital|other), location, access_hint, notes.
@@ -14,6 +15,8 @@
 CREATE OR REPLACE FUNCTION estate.fn_create_storage_place(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_dup_hits INT;
+    v_dup_cand JSONB;
     v_perm TEXT;
     v_name TEXT := NULLIF(trim(COALESCE(p->>'name', '')), '');
     v_kind TEXT := lower(NULLIF(trim(COALESCE(p->>'kind', '')), ''));
@@ -31,6 +34,13 @@ BEGIN
     IF v_kind IS NULL OR v_kind NOT IN ('safe', 'bank_deposit_box', 'folder', 'digital', 'other') THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid kind "' || COALESCE(v_kind, '') || '" — valid: safe | bank_deposit_box | folder | digital | other.');
+    END IF;
+
+    -- Dubletten-Backstop in der fn (dieselbe Regel wie der Resolver des Werkzeugs; der Probelauf meldet ihn vor der Karte)
+    SELECT r.hit_count, r.candidates INTO v_dup_hits, v_dup_cand FROM estate.fn_resolve_storage_place(v_name) r;
+    IF v_dup_hits > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'duplicate', 'candidates', v_dup_cand,
+            'reason', 'A storage place named "' || v_name || '" already exists - use tool_set_storage_place to change it, or a distinct name.');
     END IF;
 
     INSERT INTO estate.storage_places (owner_person_id, name, kind, location, access_hint, notes)

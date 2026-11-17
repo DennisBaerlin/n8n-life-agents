@@ -13,7 +13,8 @@
 --   Rueckgabe: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
 --   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
 --   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
---   -> {ok:false, reason}.
+--   -> {ok:false, reason}. Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name.
+--   ok:true traegt zusaetzlich existing_names, similar_names und card_lines (aehnlicher Name -> finance.note.similar_entry).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -30,6 +31,8 @@ DECLARE
     v_pension_id INT;
     v_rp_id      INT;
     v_dates      JSONB;
+    v_names      JSONB;   -- fn_entity_name_report
+    v_reject     JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'value_updated_at', 'retirement_start_date']);
@@ -76,6 +79,9 @@ BEGIN
                        || '") - add the new Renteninformation to it instead of creating a second one.');
         END IF;
     END IF;
+    v_names := finance.fn_entity_name_report('pension', p->>'name', p->>'owner_person_id');
+    v_reject := finance.fn_entity_name_reject(v_names, 'pension');
+    IF v_reject IS NOT NULL THEN RETURN v_reject; END IF;
     IF v_contrib IS NOT NULL AND v_contrib < 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Contribution amount must not be negative, got ' || v_contrib || '.');
@@ -129,6 +135,8 @@ BEGIN
     RETURNING id INTO v_pension_id;
 
     RETURN jsonb_build_object('ok', true, 'pension_id', v_pension_id, 'recurring_payment_id', v_rp_id,
+        'existing_names', v_names->'existing_names', 'similar_names', v_names->'similar',
+        'card_lines', finance.fn_similar_note(v_names->'similar'->>0),
         'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
                      || CASE WHEN v_rp_id IS NOT NULL
                              THEN jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'))

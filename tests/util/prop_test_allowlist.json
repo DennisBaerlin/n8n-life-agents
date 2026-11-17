@@ -10,6 +10,5 @@
   { "fn": "finance.fn_goal_end_transfer", "reason": "Offen: noch kein Eigenschafts-Test fuer das Fortfuehren eines Dauerauftrags durch eine Ziel-Rate (kein Termin doppelt, keiner verloren)." },
   { "fn": "finance.fn_apply_goal_reserve", "reason": "Offen: noch kein Eigenschafts-Test fuer den Topf-Wechsel einer Ziel-Rate gegen die Vorschau beider Konten." },
   { "fn": "finance.fn_transfer_free_end", "reason": "Offen: noch kein Eigenschafts-Test fuer das berechnete Ende eines Uebertrags gegen die Spar-Deckung." },
-  { "fn": "finance.fn_set_account_interest", "reason": "Offen: noch kein Eigenschafts-Test fuer Zins-Konditionen gegen die Zins-Vorschau." },
   { "fn": "estate.fn_cancel_case", "reason": "Offen: noch kein Eigenschafts-Test fuer das Absagen eines Falls gegen die offenen Fristen." }
 ]

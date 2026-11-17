@@ -317,9 +317,18 @@ _doctor_compose_pod() {
     fi
   fi
   # Rand: tailscale haengt per network_mode am Namensraum von edge — wird edge neu angelegt (z. B. anderer Port), bleibt
-  # tailscale sonst an einem toten Namensraum haengen (derselbe Einwand 17).
+  # tailscale sonst an einem toten Namensraum haengen (derselbe Einwand 17). Ein neu startender Container gilt fuer Docker
+  # als laufend (State.Running), nimmt aber kein exec an: leere Messung -> kurz warten wie die Tunnel-Zeile, danach "nicht
+  # gemessen" statt "abgehaengt" (den Ausfall selbst meldet _doctor_compose_tunnel).
   if rt_container_running "${LA_PROJECT}-tailscale"; then
-    if [ "$(rt_netns "${LA_PROJECT}-tailscale" || true)" = "$(rt_netns "${LA_PROJECT}-edge" || echo x)" ]; then
+    local ts_ns tries="${DOCTOR_TS_TRIES:-8}"
+    ts_ns="$(rt_netns "${LA_PROJECT}-tailscale" || true)"
+    while [ -z "$ts_ns" ] && [ "$tries" -gt 1 ]; do
+      tries=$((tries - 1)); sleep 2; ts_ns="$(rt_netns "${LA_PROJECT}-tailscale" || true)"
+    done
+    if [ -z "$ts_ns" ]; then
+      _warn "tailscale startet gerade neu — Netz-Namensraum nicht gemessen ($(rt_edge_logs_hint tailscale))"
+    elif [ "$ts_ns" = "$(rt_netns "${LA_PROJECT}-edge" || echo x)" ]; then
       _pass "tailscale teilt den Netz-Namensraum des Rands"
     else
       _red "tailscale hängt nicht mehr am Rand (edge wurde neu angelegt) — Abhilfe: docker compose -p ${LA_PROJECT} restart tailscale (hängt sich beim Start an den aktuellen Rand)"

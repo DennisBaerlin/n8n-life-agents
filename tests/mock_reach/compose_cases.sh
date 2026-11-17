@@ -471,6 +471,32 @@ out="$(dr '0 1')"; printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg' && pr
 out="$(dr '0 0')"; eq L_doctor_dead_fail 'fail=1' "$(printf '%s' "$out" | tail -n1)"
 out="$(dr E)";     printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg.*nicht gemessen' && eq L_doctor_notmeasured_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail L_doctor_notmeasured "$out"
 
+# doctor, Namensraum von tailscale gegen den Rand (echter Code, Teilschale): Ein neu startender Container gilt fuer Docker
+# als laufend, nimmt aber kein exec an -> leere Messung. Das ist "nicht gemessen" (WARN), kein "haengt nicht mehr am Rand".
+dt() {   # dt <versuche> <messfolge tailscale: Kennung oder - fuer leer> -> Zeilen zu tailscale + "fail=<n>"
+  printf '%s\n' "$2" | tr ' ' '\n' > "$L_SEQ"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    LA_PROJECT=t; N8N_PORT=5678; _fail=0; DOCTOR_TS_TRIES="$1"; sleep() { :; }
+    rt_container_running() { return 0; }; rt_probe_internal() { [ "$1" = 5678 ]; }
+    rt_host_gateway() { printf '172.30.0.1'; }; rt_probe_host() { return 0; }
+    rt_edge_active() { [ "$1" = wan ]; }; rt_edge_restart() { :; }; rt_edge_settle() { :; }; rt_edge_logs_hint() { printf 'logs'; }
+    REACH_LAN_TRIES=2; REACH_LAN_SLEEP=0
+    rt_netns() {
+      local v
+      case "$1" in
+        t-edge) echo net:9 ;;
+        t-tailscale) v="$(head -n1 "$L_SEQ")"; [ "$(wc -l < "$L_SEQ")" -gt 1 ] && sed -i 1d "$L_SEQ"; [ "$v" = - ] && return 1; echo "$v" ;;
+        *) echo net:1 ;;
+      esac
+    }
+    _doctor_compose_pod 0.0.0.0 > "$W/dt.out"; grep tailscale "$W/dt.out"; echo "fail=$_fail" )
+}
+out="$(dt 1 net:9)";     printf '%s' "$out" | grep -q '^  \[ OK \] tailscale teilt' && eq T_ns_same_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail T_ns_same "$out"
+out="$(dt 1 net:7)";     printf '%s' "$out" | grep -q '^  \[FAIL\] tailscale hängt nicht mehr am Rand' && eq T_ns_detached_fail 'fail=1' "$(printf '%s' "$out" | tail -n1)" || fail T_ns_detached "$out"
+out="$(dt 1 -)";         printf '%s' "$out" | grep -q '^  \[WARN\] tailscale.*nicht gemessen' && eq T_ns_restarting_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail T_ns_restarting "$out"
+out="$(dt 3 '- net:9')"; printf '%s' "$out" | grep -q '^  \[ OK \] tailscale teilt' && eq T_ns_recovers_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail T_ns_recovers "$out"
+out="$(dt 3 '- net:7')"; printf '%s' "$out" | grep -q '^  \[FAIL\] tailscale hängt nicht mehr am Rand' && pass T_ns_detached_after_restart || fail T_ns_detached_after_restart "$out"
+
 # doctor: Docker-Installation im Release-Profil ohne Versionsnummer (VERSION = dev) -> ROT, sonst schickt der Release-Check nie
 # eine Karte (Matrix mit Abbild-Quelle: tests/mock_runtime/cases.sh VH).
 dv() {   # dv <profil> <VERSION-Inhalt|-> -> Ausgabezeilen von _doctor_release_version + "fail=<n>"

@@ -262,8 +262,7 @@ case "$cmd" in
     # Lesende Liste fuer die Start-App (lib/images_cli.sh); Pfade von Sicherungen und master-Wechsel kommen aus
     # upgrade_guard.sh bzw. master_swap.sh (ueber fetch_release.sh).
     for f in common.sh fetch_release.sh deploy_workflows.sh upgrade_guard.sh images_cli.sh; do
-      [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.
-' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
+      [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done

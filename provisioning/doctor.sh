@@ -251,7 +251,9 @@ _doctor_release_version() {
   if is_release_tag "$v"; then _pass "Installierte Version: ${v}"; return 0; fi
   if version_is_named "$v"; then _pass "Installierte Version: ${v} (Entwickler-Stand)"; return 0; fi
   shown="${v:-leer}"
-  if tag="$(rt_master_release_tag)"; then
+  if [ -e /var/lib/lifeagents/upgrade.pending ] || [ -e /var/lib/lifeagents/master-swap/state ]; then
+    fix="Wird mit dem Abschluss des offenen Updates eingetragen (siehe die Zeile zum unvollendeten Update)."
+  elif tag="$(rt_master_release_tag)"; then
     fix="Behebt sich selbst: der nächste Durchlauf (höchstens 1 min) trägt ${tag} aus dem laufenden Programm-Paket ein."
   elif rt_is_compose; then fix="Abhilfe: einmal '$(rt_master_cli_hint) update'"
   else fix="Abhilfe: einmal 'lifeagents update'"; fi

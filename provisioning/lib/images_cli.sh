@@ -53,7 +53,8 @@ _img_pairs() {
 #   --plain eine ref je Zeile. Klassisch {"ok":false,"reason":"not_compose"}, rc 1 (dort gibt es keine Abbilder).
 images_keep() {
   local plain=0
-  case "${1:-}" in --plain) plain=1 ;; '') ;; *) die "Unbekannte Angabe '${1}' — erlaubt: --plain." ;; esac
+  # Fehler als JSON wie der Erfolg: die Start-App liest nur stdout.
+  case "${1:-}" in --plain) plain=1 ;; '') ;; *) printf '{"ok":false,"reason":"bad_argument"}\n'; return 2 ;; esac
   if ! rt_is_compose; then printf '{"ok":false,"reason":"not_compose"}\n'; return 1; fi
   require_root
   if [ "$plain" = 1 ]; then _img_pairs | cut -f1 | LC_ALL=C sort -u; return 0; fi

@@ -5,7 +5,8 @@
 --   bewusst nicht geaendert (gehoert zum set_recurring_payment-Thema).
 --   Wird current_value gesetzt ohne value_updated_at -> value_updated_at = heute (core.fn_today).
 --   Status-Kaskade: status in ('paused','paid_out') + verknuepfte recurring_payment ->
---   diese auf 'paused' (Beitrag verlaesst den Cashflow); status='active' -> recurring 'active'.
+--   diese auf 'paused' (Beitrag verlaesst den Cashflow); status='active' -> recurring 'active';
+--   ist der Beitrag beendet (fn_close_pension), entsteht eine Folge-Zeile ab heute (fn_reopen_recurring_payment).
 --   Namen: eine Umbenennung fuehrt 'AV-Beitrag <Name>' an der Beitrags-Kette mit.
 --   Eingabe jsonb: pension_id (im n8n via fn_resolve_pension aufgeloest), name, provider,
 --   contract_number, owner_person_id (Slug; leer=unveraendert), current_value, value_updated_at, guaranteed_monthly_pension,
@@ -24,6 +25,7 @@ DECLARE
     v_rp     INT;
     v_old    TEXT;
     v_dates  JSONB;
+    v_reopen JSONB;
 BEGIN
     -- relative Datumsangaben ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['value_updated_at', 'retirement_start_date']);
@@ -83,9 +85,20 @@ BEGIN
 
     -- Status-Kaskade auf den verknuepften Beitrag (recurring_payment).
     IF v_status IS NOT NULL AND v_rp IS NOT NULL THEN
-        UPDATE finance.recurring_payments
-        SET status = CASE WHEN v_status = 'active' THEN 'active' ELSE 'paused' END::finance.payment_status
-        WHERE id = v_rp;
+        IF v_status = 'active' AND EXISTS (SELECT 1 FROM finance.recurring_payments
+                                           WHERE id = v_rp AND valid_to IS NOT NULL AND valid_to <= core.fn_today()) THEN
+            -- beendeter Beitrag (fn_close_pension): nur 'active' zu setzen ergaebe "aktiv", aber nie wieder faellig ->
+            -- Folge-Zeile ab heute; der Helfer setzt die Vorsorge auf sie (fn_repoint_recurring_owners).
+            v_reopen := finance.fn_reopen_recurring_payment(v_rp, core.fn_today());
+            IF (v_reopen->>'ok')::boolean IS DISTINCT FROM true THEN
+                RAISE EXCEPTION 'Pension % contribution could not be reopened: %', v_id, v_reopen->>'reason';
+            END IF;
+            v_rp := (v_reopen->>'recurring_payment_id')::int;
+        ELSE
+            UPDATE finance.recurring_payments
+            SET status = CASE WHEN v_status = 'active' THEN 'active' ELSE 'paused' END::finance.payment_status
+            WHERE id = v_rp;
+        END IF;
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'pension_id', v_id, 'recurring_payment_id', v_rp,

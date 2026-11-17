@@ -431,8 +431,13 @@ main() {
                         ORDER BY finished_at DESC, id DESC LIMIT 1) l
         WHERE outcome IN ('partial','held','failed','interrupted')" 2>/dev/null || true)"
     if [ -n "$_lastfail" ]; then
+      # Befehle wie im Chat (rt_cli_hint); sie stehen im SQL-Text, darum nur mit unverdaechtigen Zeichen, sonst Rueckfall der fn.
+      local _cli _clit
+      _cli="$(rt_cli_hint)"; _clit="$(rt_cli_hint tty)"
+      case "${_cli}${_clit}" in *[!A-Za-z0-9\ _.-]*) _cli=''; _clit='' ;; esac
       _help="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
-        "SELECT core.fn_update_report(jsonb_build_object('request_id', ${_lastfail}::bigint, 'phase', 'result', 'bot_up', true))->>'text'" 2>/dev/null || true)"
+        "SELECT core.fn_update_report(jsonb_build_object('request_id', ${_lastfail}::bigint, 'phase', 'result', 'bot_up', true,
+                                                         'cli', '${_cli}', 'cli_tty', '${_clit}'))->>'text'" 2>/dev/null || true)"
       _warn "Das letzte Update hat nicht vollständig geklappt:"
       printf '%s\n' "$_help" | sed 's/^/         /'
     fi

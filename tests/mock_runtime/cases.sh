@@ -1331,4 +1331,23 @@ hp_case() (   # hp_case <bytes-die-ankommen> <bytes-der-datei> -> "<rc>|<endguel
 eq HP.abgebrochen-kein-gueltiger-name 'fehler|fehlt|nein' "$(hp_case 1000 4000)"
 eq HP.vollstaendig-wie-bisher '0|ganz|nein' "$(hp_case 4000 4000)"
 eq HP.leere-datei-vollstaendig '0|ganz|nein' "$(hp_case 0 0)"
+
+# ---------------------------------------------------------------------------- CL: Befehl in Meldungen je Betriebsart
+# Eine Adresse (rt_cli_hint): klassisch `sudo lifeagents`, Verbund `docker exec -i <projekt>-master lifeagents`; -it fuer Befehle
+# mit Rueckfrage (rollback/reconfigure brechen mit nur -i ab). Der Runner gibt beide Formen an core.fn_update_report mit.
+cl_hint() ( if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x; rt_cli_hint "${2:-}" )
+eq CL.klassisch 'sudo lifeagents' "$(cl_hint 0)"
+eq CL.klassisch-tty 'sudo lifeagents' "$(cl_hint 0 tty)"
+eq CL.verbund 'docker exec -i la-x-master lifeagents' "$(cl_hint 1)"
+eq CL.verbund-tty 'docker exec -it la-x-master lifeagents' "$(cl_hint 1 tty)"
+eq CL.master-hint-unveraendert 'docker exec -i la-x-master lifeagents' "$(LA_PROJECT=la-x rt_master_cli_hint)"
+cl_report() (   # cl_report <compose 0|1> -> das p, das _ur_report an die DB gibt (cli|cli_tty)
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _ur_sql() { case "$2" in *'fn_update_report('*) printf '%s' "$1" > "$W/cl.p"; printf '{}' ;; esac; }
+  _ur_send() { return 1; }; _up_close() { :; }; rm -f "$W/cl.p"
+  _ur_report 7 result bot_up=false >/dev/null 2>&1
+  jq -r '"\(.cli)|\(.cli_tty)"' "$W/cl.p" 2>/dev/null
+)
+eq CL.runner-klassisch 'sudo lifeagents|sudo lifeagents' "$(cl_report 0)"
+eq CL.runner-verbund 'docker exec -i la-x-master lifeagents|docker exec -it la-x-master lifeagents' "$(cl_report 1)"
 exit "$fails"

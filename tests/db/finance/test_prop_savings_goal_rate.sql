@@ -104,7 +104,47 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  RAISE NOTICE 'PASS prop savings goal rate [Datums-Weg: % Kombinationen Z1-Z4, Raten-Weg: % Kombinationen Z2/Z5/Z6]', v_n, v_nr;
+  -- Z8: die Rate laeuft schon (Start vor 40 bzw. 70 Tagen, die bisherigen Termine sind faellig und offen). Ein neuer
+  --     Zielbetrag rechnet die Rate neu: die schon faelligen Termine behalten ihren Betrag, die neue Rate gilt ab dem
+  --     naechsten Termin, und neue Rate x kommende Termine deckt den Rest.
+  DECLARE v_back INT; v_past0 TEXT; v_past1 TEXT; v_head INT; v_fut INT;
+  BEGIN
+    FOREACH v_back IN ARRAY ARRAY[40, 70] LOOP
+      FOREACH v_dom IN ARRAY ARRAY[NULL, 1, 15, -1] LOOP
+        BEGIN
+          v_tdate := (v_t + interval '10 months')::date;
+          v_res := finance.fn_create_savings_goal(jsonb_build_object('name','__prop_sgr_goal__','goal_type','other','target_amount',1200,
+            'target_date',v_tdate,'account_id',v_giro,'reserve_account_id',v_pot,'first_payment_date',v_t - v_back)
+            || CASE WHEN v_dom IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('schedule_day_of_month', v_dom) END);
+          IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL Z8 setup: %', v_res; END IF;
+          v_goal := (v_res->>'goal_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+          SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) INTO v_past0
+            FROM finance.fn_upcoming_payments(v_t - 200, v_t - 1) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+          v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id',v_goal,'target_amount',2400));
+          IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL Z8 [start -% tag=%]: %', v_back, v_dom, v_res; END IF;
+          v_head := (SELECT recurring_payment_id FROM finance.savings_goals WHERE id = v_goal);
+          SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) INTO v_past1
+            FROM finance.fn_upcoming_payments(v_t - 200, v_t - 1) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head));
+          IF v_past1 IS DISTINCT FROM v_past0 THEN
+            RAISE EXCEPTION 'FAIL Z8 [start -% tag=%]: faellige offene Termine vorher [%] nachher [%]', v_back, v_dom, v_past0, v_past1; END IF;
+          v_rate2 := (v_res->>'new_monthly_rate')::numeric;
+          SELECT count(*) INTO v_fut FROM finance.fn_upcoming_payments(v_t, v_tdate) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head));
+          IF v_fut = 0 OR v_rate2 * v_fut < 2400 OR v_rate2 * v_fut >= 2400 + v_fut * 0.01
+             OR EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_tdate) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head))
+                         AND u.amount IS DISTINCT FROM -v_rate2)
+             OR (v_res->>'recurring_payment_id')::int IS DISTINCT FROM v_head THEN
+            RAISE EXCEPTION 'FAIL Z8 [start -% tag=%]: neue Rate % x % kommende Termine, Vorschau %, Rueckgabe rp % (Kopf %)', v_back, v_dom, v_rate2, v_fut,
+              (SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 70) u
+                WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_head))), v_res->>'recurring_payment_id', v_head; END IF;
+          v_nr := v_nr + 1;
+          RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+        EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+        END;
+      END LOOP;
+    END LOOP;
+  END;
+
+  RAISE NOTICE 'PASS prop savings goal rate [Datums-Weg: % Kombinationen Z1-Z4, Raten-Weg und laufende Rate: % Kombinationen Z2/Z5/Z6/Z8]', v_n, v_nr;
 END $$;
 
 ROLLBACK;

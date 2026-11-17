@@ -5,7 +5,8 @@
 --   target_date (ein genannter Wert gleich dem gespeicherten aendert eine laufende Rate nicht) wird die monatliche Sparrate ueber Rest-Betrag / Rest-Zeit neu gerechnet
 --   (nicht Gesamt/Gesamt). Rest = effektiver Zielbetrag - bereits gespart
 --   (finance_savings_goal_progress.current_amount); Rest-Monate ab heute bis Zieldatum.
---   Die neu berechnete Rate wird in die verknuepfte recurring_payment in place geschrieben; sie wird auf
+--   Die neu berechnete Rate gilt ab dem naechsten offenen Termin (fn_change_owned_recurring: in place, solange noch nichts
+--   faellig oder erledigt war, sonst ein neues Glied; schon faellige Termine behalten ihren Betrag); sie wird auf
 --   den Cent aufgerundet (sonst erreichen die Raten das Ziel um Cents nicht).
 --   STATUS: completed/cancelled -> {ok:false} mit Verweis auf close_savings_goal (nur dort greift das Close-Gate
 --   "Reserve ~0 oder force"). active -> rp 'active'; ist die Rate beendet
@@ -471,9 +472,7 @@ BEGIN
             -- auf alle laufenden Zeilen der Raten-Kette (nach einer Raten-Aenderung laeuft die Vorgaengerzeile weiter).
             PERFORM finance.fn_apply_goal_reserve(v_id, v_reserve);
         END IF;
-        IF v_rate IS NOT NULL THEN
-            UPDATE finance.recurring_payments SET amount = -v_rate WHERE id = v_row.recurring_payment_id;
-        END IF;
+        -- Erst reaktivieren, dann die Rate setzen: der Helfer unten braucht ein Glied, das laeuft oder kommt.
         IF v_status = 'active' THEN
             IF finance.fn_recurring_chain_ended(v_row.recurring_payment_id, CURRENT_DATE) THEN
                 -- beendete Rate (nach close_savings_goal) -> Folge-rp ab heute; der Helfer setzt das Ziel auf sie.
@@ -484,6 +483,20 @@ BEGIN
                 v_row.recurring_payment_id := (v_reopen->>'recurring_payment_id')::int;
             ELSE
                 UPDATE finance.recurring_payments SET status = 'active' WHERE id = v_row.recurring_payment_id;
+            END IF;
+        END IF;
+        IF v_rate IS NOT NULL THEN
+            -- Neue Rate ueber fn_change_owned_recurring: in place, solange noch nichts faellig oder erledigt war, sonst ein
+            -- neues Glied ab dem naechsten offenen Termin. In place ueberschrieben bekaemen schon faellige, noch offene
+            -- Termine rueckwirkend den neuen Betrag. Eine beendete Kette (nichts mehr faellig) und ein Helfer ohne
+            -- kommenden Termin behalten das Ueberschreiben.
+            IF NOT finance.fn_recurring_chain_ended(v_row.recurring_payment_id, CURRENT_DATE) THEN
+                v_chg := finance.fn_change_owned_recurring(v_row.recurring_payment_id, NULL, -v_rate, NULL, NULL, NULL);
+            END IF;
+            IF (v_chg->>'ok')::boolean IS TRUE THEN
+                v_row.recurring_payment_id := (v_chg->>'recurring_payment_id')::int;
+            ELSE
+                UPDATE finance.recurring_payments SET amount = -v_rate WHERE id = v_row.recurring_payment_id;
             END IF;
         END IF;
     ELSIF v_new_pot IS NOT NULL THEN

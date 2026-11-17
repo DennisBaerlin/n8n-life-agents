@@ -1459,4 +1459,58 @@ vh_rb() (   # vh_rb <FROM_RELEASE> <env-tag des Ziel-Abbilds> -> "daten:<ziel>" 
 eq VH.rueckweg-dev-nimmt-nummer-des-ziels 'daten:v0.43.1' "$(vh_rb dev v0.43.1)"
 eq VH.rueckweg-mit-nummer-unveraendert 'daten:v1.2.3' "$(vh_rb v1.2.3 v0.43.1)"
 case "$(vh_rb dev '')" in 'no_version|abbruch:'*) pass VH.rueckweg-ohne-nummer-vor-den-daten ;; *) fail VH.rueckweg-ohne-nummer-vor-den-daten "$(vh_rb dev '')" ;; esac
+
+# ---------------------------------------------------------------------------- IK: lifeagents images keep (Liste "wird noch gebraucht")
+# Echter Code (images_cli.sh) gegen erfundene Dateien in der Form, die upgrade_guard.sh und master_swap.sh schreiben. Der echte
+# Weg (Update ueber zwei Staende, jedes gelistete Abbild vorhanden, Rueckweg nur mit diesen): Bericht ob Runde 15.
+[ -f "$ROOT/provisioning/lib/images_cli.sh" ] && . "$ROOT/provisioning/lib/images_cli.sh"
+ik_compose() {   # ik_compose <datei> <master-zeile> <postgres-digest>
+  printf '%s\n' 'name: lifeagents' '' 'x-images:' \
+    '  busybox: &img_busybox busybox:1.37@sha256:b1' "  postgres: &img_postgres postgres:17@sha256:$3" \
+    '  # Kommentarzeile im Block' "  master: &img_master $2" '' 'services:' '  anchor:' '    image: *img_busybox' > "$1"
+}
+ik_case() (   # ik_case [--plain] -> Ausgabe von images keep
+  local d="$W/ik"; rm -rf "$d"; mkdir -p "$d/bk" "$d/swap" "$d/state"
+  # hand-injected: im master setzt compose.yml LA_MASTER_IMAGE (laufendes Abbild); der Fall gibt es wie dort vor
+  export LIFEAGENTS_RUNTIME=compose LA_MASTER_IMAGE='reg.example/master@sha256:cccc'
+  require_root() { :; }
+  LA_COMPOSE_FILE="$d/compose.yml"; UPGRADE_BACKUP_DIR="$d/bk"; UPGRADE_STATE_DIR="$d/state"; UPGRADE_MARKER="$d/state/upgrade.pending"
+  SWAP_DIR="$d/swap"; SWAP_STATE="$d/swap/state"
+  ik_compose "$LA_COMPOSE_FILE" '${LA_MASTER_IMAGE:-reg.example/master@sha256:cccc}' p3
+  # Zwei aufbewahrte Sicherungen (Stand a -> b, Stand b -> c) samt Merkzettel-Kopie.
+  ik_compose "$d/bk/pre-upgrade-1.dump.gpg.compose.yml" '${LA_MASTER_IMAGE:-reg.example/master@sha256:aaaa}' p1
+  printf 'FROM_RELEASE=v9.0.0\nFROM_MASTER_IMAGE=reg.example/master@sha256:aaaa\n' > "$d/bk/pre-upgrade-1.dump.gpg.meta"
+  ik_compose "$d/bk/pre-upgrade-2.dump.gpg.compose.yml" '${LA_MASTER_IMAGE:?neutral}' p2
+  printf 'FROM_RELEASE=v9.1.0\nFROM_MASTER_IMAGE=ci-ops-master:b\n' > "$d/bk/pre-upgrade-2.dump.gpg.meta"
+  : > "$d/bk/pre-upgrade-1.dump.gpg"; : > "$d/bk/pre-upgrade-2.dump.gpg"
+  ik_compose "$d/swap/compose.prev.yml" '${LA_MASTER_IMAGE:-reg.example/master@sha256:bbbb}' p2
+  images_cli keep "$@" 2>/dev/null
+)
+ik_out="$(ik_case)"
+eq IK.json-ok true "$(printf '%s' "$ik_out" | jq -r .ok 2>/dev/null)"
+eq IK.alle-abbilder 'busybox:1.37@sha256:b1 ci-ops-master:b postgres:17@sha256:p1 postgres:17@sha256:p2 postgres:17@sha256:p3 reg.example/master@sha256:aaaa reg.example/master@sha256:bbbb reg.example/master@sha256:cccc' \
+  "$(printf '%s' "$ik_out" | jq -r '[.images[].ref] | join(" ")' 2>/dev/null)"
+eq IK.laufender-master-ist-helfer-abbild 'current running swap_helper' \
+  "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "reg.example/master@sha256:cccc") | .sources | join(" ")' 2>/dev/null)"
+eq IK.rueckweg-ziel-aus-merkzettel 'backup:pre-upgrade-2.dump.gpg' \
+  "$(printf '%s' "$ik_out" | jq -r '.images[] | select(.ref == "ci-ops-master:b") | .sources | join(" ")' 2>/dev/null)"
+eq IK.neutrale-zeile-keine-referenz 0 "$(printf '%s' "$ik_out" | jq '[.images[].ref | select(test("LA_MASTER"))] | length' 2>/dev/null)"
+eq IK.plain-eine-je-zeile 8 "$(ik_case --plain | grep -c .)"
+eq IK.klassisch-abgelehnt '{"ok":false,"reason":"not_compose"}|1' \
+  "$( ( LIFEAGENTS_RUNTIME=systemd; rc=0; out="$(images_cli keep 2>/dev/null)" || rc=$?; printf '%s|%s' "$out" "$rc" ) )"
+# Offener Wechsel und unvollendetes Update ohne Sicherung: Ziel und vorheriger Stand bleiben gelistet.
+ik_open() (
+  local d="$W/ik2"; rm -rf "$d"; mkdir -p "$d/bk" "$d/swap" "$d/state"
+  # hand-injected: im master setzt compose.yml LA_MASTER_IMAGE (laufendes Abbild); der Fall gibt es wie dort vor
+  export LIFEAGENTS_RUNTIME=compose LA_MASTER_IMAGE='m:old'; require_root() { :; }
+  LA_COMPOSE_FILE="$d/compose.yml"; UPGRADE_BACKUP_DIR="$d/bk"; UPGRADE_STATE_DIR="$d/state"; UPGRADE_MARKER="$d/state/upgrade.pending"
+  SWAP_DIR="$d/swap"; SWAP_STATE="$d/swap/state"
+  ik_compose "$LA_COMPOSE_FILE" '${LA_MASTER_IMAGE:-m:old}' p3
+  ik_compose "$d/swap/compose.new.yml" '${LA_MASTER_IMAGE:-m:new}' p4
+  printf 'PHASE=handoff\nFROM=m:old\nTO=m:new\n' > "$SWAP_STATE"
+  ik_compose "$d/state/upgrade.pending.compose.yml" '${LA_MASTER_IMAGE:-m:older}' p5
+  printf 'FROM_MASTER_IMAGE=m:older\nFROM_COMPOSE=%s\n' "$d/state/upgrade.pending.compose.yml" > "$UPGRADE_MARKER"
+  images_cli keep --plain 2>/dev/null | tr '\n' ' '
+)
+eq IK.offener-wechsel-und-merkzettel 'busybox:1.37@sha256:b1 m:new m:old m:older postgres:17@sha256:p3 postgres:17@sha256:p4 postgres:17@sha256:p5 ' "$(ik_open)"
 exit "$fails"

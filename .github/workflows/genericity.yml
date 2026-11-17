@@ -781,9 +781,17 @@ jobs:
           ready() { for _ in $(seq 1 120); do curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness" && return 0; sleep 3; done; return 1; }
           # Schlaf: der Rechner friert alle Prozesse ein, die Uhr springt danach um die Schlafzeit weiter (hier: docker pause).
           before="$(tick)"; [[ "$before" =~ ^[0-9]+$ ]]
-          running | xargs docker pause >/dev/null
+          # Je Container: einer, der im Schlaf endet (sein cgroup ist dann weg, resume scheitert), kommt ueber die
+          # Neustart-Regel zurueck; rot ist nur ein Container, der eingefroren bleibt. Die Zeile nennt ihn fuer die Diagnose.
+          state() { docker inspect -f '{{.Name}} {{.State.Status}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' "$1" 2>&1; }
+          for c in $(running); do docker pause "$c" >/dev/null || echo "pause scheiterte: $(state "$c")"; done
           sleep 150
-          running | xargs docker unpause >/dev/null
+          for c in $(running); do
+            docker unpause "$c" >/dev/null && continue
+            echo "unpause scheiterte: $(state "$c")"
+            sleep 10
+            [ "$(docker inspect -f '{{.State.Paused}}' "$c" 2>/dev/null)" != true ] || { echo "FAIL Container bleibt eingefroren: $(state "$c")"; exit 1; }
+          done
           ready || { docker logs --tail 60 "$LA_PROJECT-n8n"; exit 1; }
           woke=""
           for _ in $(seq 1 60); do now="$(tick)"; if [[ "$now" =~ ^[0-9]+$ ]] && [ "$now" -gt "$before" ]; then woke=1; break; fi; sleep 3; done

@@ -32,7 +32,9 @@ Check 'shellcheck-py-Version gefunden' ($rev -ne '')
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('scf_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 try {
-    foreach ($n in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR')) { [Environment]::SetEnvironmentVariable($n, $null, 'Process') }
+    # SKIP: die Auslass-Liste des aeusseren prek-Laufs (CI) nennt Hooks, die es im Wegwerf-Repo nicht gibt; prek warnt dann
+    # auf stderr, und 2>&1 macht daraus unter 'Stop' einen Abbruch.
+    foreach ($n in @('GIT_DIR','GIT_WORK_TREE','GIT_INDEX_FILE','GIT_PREFIX','GIT_COMMON_DIR','SKIP')) { [Environment]::SetEnvironmentVariable($n, $null, 'Process') }
     New-Item -ItemType Directory -Path (Join-Path $tmp 'config') | Out-Null
     Copy-Item (Join-Path $repo 'config\shellcheckrc') (Join-Path $tmp 'config\shellcheckrc')
     $wcfg = "repos:`n  - repo: https://github.com/shellcheck-py/shellcheck-py`n    rev: $rev`n    hooks:`n      - id: shellcheck`n        args: ['--rcfile=config/shellcheckrc']`n"

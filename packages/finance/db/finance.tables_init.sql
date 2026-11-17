@@ -1203,9 +1203,12 @@ RETURNS int LANGUAGE sql STABLE AS $$
     WHERE NOT EXISTS (SELECT 1 FROM finance.recurring_payments s WHERE s.predecessor_id = d.id);
 $$;
 
--- fn_recurring_current: das am Tag p_on gueltige Glied der Kette ([valid_from, valid_to)), sonst der Kopf (Kette
--- beendet oder erst kuenftig gueltig). Die eine Adresse fuer "aktuelle Rate/aktueller Beitrag" einer Entitaet, deren
--- Rate nur an der Raten-Kette steht (loan_overview, active_insurances, pension_overview). Init wie oben.
+-- fn_recurring_current: das am Tag p_on gueltige Glied der Kette ([valid_from, valid_to)); gilt keines, das naechste
+-- startende nicht leere Glied (Kette noch nicht gestartet oder Luecke: ein Vertrag vor dem Start mit geplanter Aenderung
+-- zeigt den Start-Betrag, wie fn_recurring_effective); sonst der Kopf (Kette beendet). Die eine Adresse fuer "aktuelle
+-- Rate/aktueller Beitrag" einer Entitaet, deren Rate nur an der Raten-Kette steht (loan_overview, active_insurances,
+-- pension_overview, savings_plan_overview). Ohne Status-Blick (anders als fn_recurring_effective). Init wie oben.
+-- Tests: tests/db/finance/test_prop_owned_recurring_views.sql
 CREATE OR REPLACE FUNCTION finance.fn_recurring_current(p_rp_id int, p_on date)
 RETURNS int LANGUAGE sql STABLE AS $$
     SELECT COALESCE(
@@ -1213,7 +1216,32 @@ RETURNS int LANGUAGE sql STABLE AS $$
           WHERE r.id IN (SELECT finance.fn_recurring_lineage(p_rp_id))
             AND r.valid_from <= p_on AND (r.valid_to IS NULL OR r.valid_to > p_on)
           ORDER BY r.valid_from DESC LIMIT 1),
+        (SELECT r.id FROM finance.recurring_payments r
+          WHERE r.id IN (SELECT finance.fn_recurring_lineage(p_rp_id))
+            AND r.valid_from > p_on AND (r.valid_to IS NULL OR r.valid_to > r.valid_from)
+          ORDER BY r.valid_from, r.id LIMIT 1),
         finance.fn_recurring_lineage_head(p_rp_id));
+$$;
+
+-- fn_recurring_starts_on (READ, STABLE): der erste Termin eines Glieds = kleinster Rasterpunkt in [valid_from, valid_to).
+--   Die eine Adresse fuer "startet am" (starts_on der Views): valid_from ist der Geltungsbeginn und muss kein Termin sein
+--   (genannter Vertragsbeginn, reaktivierte Zahlung). Suchfenster zwei Perioden + ein Monat wie fn_recurring_next_due;
+--   liegt darin kein Termin (leeres oder zu kurzes Glied), valid_from. Unbekannte id -> NULL. Init, weil Views sie lesen.
+--   Andere Frage als fn_recurring_first_due (R__fn_split_recurring_payment.sql: erster noch offene Termin nach dem juengsten
+--   erledigten, NULL bei pausierter Zeile = Post-State einer Aenderung): hier zaehlen weder Status noch Erledigtes.
+--   Tests: tests/db/finance/test_prop_recurring_change_vs_preview.sql (P5), test_prop_owned_recurring_views.sql (V8)
+CREATE OR REPLACE FUNCTION finance.fn_recurring_starts_on(p_rp_id int)
+RETURNS date LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(
+        (SELECT min(o.d)
+           FROM finance.fn_schedule_occurrences(r.first_payment_date, r.schedule_interval, r.schedule_unit,
+                    r.schedule_day_of_month, r.schedule_days_of_month, r.valid_from,
+                    -- Fenster ab dem spaeteren von Geltungsbeginn und Anker: vor dem Anker liegt nie ein Termin
+                    GREATEST(r.valid_from, r.first_payment_date)
+                    + (ceil(finance.fn_period_months(r.schedule_interval, r.schedule_unit) * 2 * 31)::int + 31)) AS o(d)
+          WHERE r.valid_to IS NULL OR o.d < r.valid_to),
+        r.valid_from)
+    FROM finance.recurring_payments r WHERE r.id = p_rp_id;
 $$;
 
 -- fn_recurring_effective (READ, STABLE): das massgebliche Glied einer Raten-Kette fuer „laeuft oder kommt"

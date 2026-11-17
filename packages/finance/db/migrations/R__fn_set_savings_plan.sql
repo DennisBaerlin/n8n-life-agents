@@ -78,6 +78,9 @@ DECLARE
     v_user_unit finance.schedule_unit;
     v_user_int  SMALLINT;
     v_label     TEXT;
+    v_cmp       finance.recurring_payments%ROWTYPE;
+    v_cmp_unit  finance.schedule_unit;
+    v_cmp_int   SMALLINT;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
@@ -123,25 +126,32 @@ BEGIN
     -- No-change: genannter Rhythmus/Betrag = gespeichert -> kein Split. Vor den Split-
     -- Vorbedingungen (sonst scheiterte der Aufruf schon am Stichtag und der Agent bot einen identischen Split an).
     -- Nichts anderes genannt -> {ok:false, code:'no_change'} mit Rhythmus + Monatsbetrag; sonst weiter in-place.
-    -- Nur wenn der Kopf am Stichtag schon gilt: eine geplante, noch nicht gueltige Aenderung (Kopf ab spaeter) ist nicht
-    -- das, was am Stichtag laeuft -> dann die normalen Split-Pruefungen.
+    -- Verglichen wird mit dem Glied, das am Stichtag gilt (v_cmp): bei einer geplanten Aenderung laeuft bis zu ihrem
+    -- Stichtag das fruehere Glied, ab dann der Kopf. Der Vergleich gegen den Kopf allein lehnte eine Wiederholung der
+    -- laufenden Bedingungen mit "Stichtag muss nach valid_from liegen" ab.
+    SELECT * INTO v_cmp FROM finance.recurring_payments WHERE id = finance.fn_recurring_current(v_rp.id, v_from);
+    -- Nutzer-Rhythmus dieses Glieds wie oben beim Kopf (feste Monatstage = woechentlich bzw. zweimal im Monat)
+    v_cmp_unit := CASE WHEN v_cmp.schedule_days_of_month IS NOT NULL THEN 'week'::finance.schedule_unit ELSE v_cmp.schedule_unit END;
+    v_cmp_int  := CASE WHEN v_cmp.schedule_days_of_month IS NOT NULL
+                       THEN (CASE WHEN cardinality(v_cmp.schedule_days_of_month) >= 4 THEN 1 ELSE 2 END)::smallint
+                       ELSE v_cmp.schedule_interval END;
     IF (v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL) AND v_cal_in IS NULL
-       AND finance.fn_recurring_current(v_rp.id, v_from) = v_rp.id
-       AND (v_amount IS NULL OR v_amount = abs(v_rp.amount))
-       AND COALESCE(v_unit_new, v_user_unit) = v_user_unit
-       AND COALESCE(v_interval_new, v_user_int) = v_user_int THEN
+       AND v_cmp.id IS NOT NULL
+       AND (v_amount IS NULL OR v_amount = abs(v_cmp.amount))
+       AND COALESCE(v_unit_new, v_cmp_unit) = v_cmp_unit
+       AND COALESCE(v_interval_new, v_cmp_int) = v_cmp_int THEN
         IF v_status IS NULL AND NULLIF(p->>'notes', '') IS NULL AND NULLIF(p->>'beneficiary_person_id', '') IS NULL
            AND v_asset_cls IS NULL THEN
-            v_label := finance.fn_schedule_label(v_rp.schedule_unit, v_rp.schedule_interval, v_rp.schedule_day_of_month,
-                                                 v_rp.schedule_days_of_month);
+            v_label := finance.fn_schedule_label(v_cmp.schedule_unit, v_cmp.schedule_interval, v_cmp.schedule_day_of_month,
+                                                 v_cmp.schedule_days_of_month);
             RETURN jsonb_build_object('ok', false, 'code', 'no_change',
                 'rhythm', v_label,
-                'amount_per_execution', abs(v_rp.amount),
-                'monthly_amount', abs(v_rp.monthly_equivalent),
+                'amount_per_execution', abs(v_cmp.amount),
+                'monthly_amount', abs(v_cmp.monthly_equivalent),
                 'reason', 'Nothing to change: savings plan "' || v_plan.name || '" is already stored as ' || v_label
-                       || ' with ' || to_char(abs(v_rp.amount), 'FM999999990D00') || ' '
-                       || (SELECT a.currency FROM finance.accounts a WHERE a.id = v_rp.account_id)
-                       || ' per execution = ' || to_char(abs(v_rp.monthly_equivalent), 'FM999999990D00')
+                       || ' with ' || to_char(abs(v_cmp.amount), 'FM999999990D00') || ' '
+                       || (SELECT a.currency FROM finance.accounts a WHERE a.id = v_cmp.account_id)
+                       || ' per execution = ' || to_char(abs(v_cmp.monthly_equivalent), 'FM999999990D00')
                        || ' per month. Tell the user it already runs that way; do not offer a change.');
         END IF;
         v_amount := NULL; v_unit_new := NULL; v_interval_new := NULL;
@@ -267,7 +277,7 @@ BEGIN
                 jsonb_build_object('card_lines', finance.fn_bank_note_recorded(v_new_rp_id, 'bank_change'))));
     ELSE
         -- Reaktivieren einer beendeten rp (Soft-Close) -> Folge-rp ab dem Stichtag
-        IF v_status = 'active' AND v_rp.valid_to IS NOT NULL AND v_rp.valid_to <= v_from THEN
+        IF v_status = 'active' AND finance.fn_recurring_chain_ended(v_rp.id, v_from) THEN
             v_split_res := finance.fn_reopen_recurring_payment(v_rp.id, v_from);
             IF (v_split_res->>'ok')::boolean IS DISTINCT FROM true THEN
                 RETURN v_split_res;

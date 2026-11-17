@@ -8,7 +8,9 @@
 --     (a) die Cash-Rate (savings_goals.recurring_payment_id), falls vorhanden;
 --     (b) alle verknuepften Sparplaene (savings_plans.savings_goal_id = goal) — Plan-Status='paused'
 --         und deren recurring_payment (Verrechnungskonto-Cash-Abbuchung) paused.
---   Jede pausierte recurring_payment bekommt valid_to=CURRENT_DATE (endet im Cashflow; Historie bleibt).
+--   Jede pausierte recurring_payment bekommt valid_to=CURRENT_DATE (endet im Cashflow; Historie bleibt); fruehere, noch
+--   laufende Glieder ihrer Kette (geplante Aenderung) enden mit.
+--   Tests: tests/db/finance/test_prop_stop_funders_chain.sql
 --
 --   Laesst unberuehrt: savings_goals.status (bleibt 'active' — voll gefuellt, wartet auf Verwendung),
 --     das Reserve-Journal (savings_goal_reserve_entries) und jeden Bestand (depot_holdings). Nie automatisch
@@ -44,6 +46,19 @@ BEGIN
     SET status = 'paused', valid_to = CURRENT_DATE
     FROM finance.savings_plans sp
     WHERE sp.recurring_payment_id = rp.id AND sp.savings_goal_id = v_id;
+
+    -- (c) fruehere, noch laufende Glieder derselben Ketten beenden: nach einer geplanten Aenderung laeuft das alte Glied
+    --     bis zum Stichtag weiter und bliebe sonst faellig. Der Kopf behaelt valid_to = heute (daran erkennt das
+    --     Reaktivieren die beendete Kette); ein Vorgaenger endet fruehestens an seinem Start. Grenze: startet der Kopf
+    --     erst kuenftig (geplante Aenderung), setzt das Reaktivieren mit seinen Bedingungen fort, also sofort mit dem
+    --     geplanten Betrag.
+    UPDATE finance.recurring_payments rp
+    SET status = 'paused', valid_to = GREATEST(rp.valid_from, CURRENT_DATE)
+    WHERE (rp.valid_to IS NULL OR rp.valid_to > CURRENT_DATE)
+      AND rp.id IN (SELECT finance.fn_recurring_lineage(h.head)
+                    FROM (SELECT v_rp_cash AS head WHERE v_rp_cash IS NOT NULL
+                          UNION ALL
+                          SELECT sp.recurring_payment_id FROM finance.savings_plans sp WHERE sp.savings_goal_id = v_id) h);
 
     WITH stopped AS (
         UPDATE finance.savings_plans

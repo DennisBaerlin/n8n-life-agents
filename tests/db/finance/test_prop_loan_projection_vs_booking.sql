@@ -7,6 +7,7 @@
 --   K2 Tilgungsende = Termin der Rate, die den Kredit abloest; Zinsen bis dahin = Summe der gebuchten Zinsanteile
 --   K3 nach einer Raten-Aenderung (fn_set_loan, Stichtag = naechster offener Termin) gilt K1/K2 fuer die neue Vorschau,
 --      und die Termine der Raten-Kette sind dieselben wie vorher
+--   K4 nach einer Sondertilgung (reine Tilgung, kein Termin erledigt) gilt K1/K2 fuer die neue Vorschau
 BEGIN;
 
 DO $$
@@ -21,7 +22,8 @@ BEGIN
   FOR r IN SELECT * FROM (VALUES
       (10000.00, 4.00, 500.00,  15, 0),   (10000.00, 0.00, 500.00,  1, 0),  (7300.00, 7.25, 333.33, -1, 0),
       (2500.00,  3.50, 410.00,  28, 0),   (12000.00, 2.10, 1000.00, -2, 0), (9999.99, 5.55, 777.77, 14, 0),
-      (10000.00, 4.00, 500.00,  15, 3),   (7300.00,  7.25, 333.33,  -1, 5), (12000.00, 2.10, 1000.00, 1, 1)
+      (10000.00, 4.00, 500.00,  15, 3),   (7300.00,  7.25, 333.33,  -1, 5), (12000.00, 2.10, 1000.00, 1, 1),
+      (10000.00, 4.00, 500.00,  15, -2),  (12000.00, 2.10, 1000.00, -2, -4)
     ) x(bal, rate, ann, dom, change_after) LOOP
     v_i := v_i + 1;
     v_res := finance.fn_create_loan(jsonb_build_object('name','__prop_lpb_loan'||v_i||'__','lender','Testbank','current_balance',r.bal,
@@ -57,6 +59,19 @@ BEGIN
         v_int := 0;   -- interest_total der neuen Vorschau zaehlt ab jetzt
         CONTINUE;     -- naechsten offenen Termin neu lesen (er liegt jetzt auf dem neuen Glied)
       END IF;
+      -- K4: nach -change_after gebuchten Raten eine Sondertilgung (kein Raten-Betrag, zwei Tage nach der letzten Rate)
+      IF NOT v_changed AND r.change_after < 0 AND v_n = -r.change_after THEN
+        v_res := finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_la,'debit_account_id',v_giro,
+                   'payment_amount',1234.56,'payment_date',v_last + 2));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'principal_amount')::numeric IS DISTINCT FROM 1234.56
+           OR (v_res->>'matched_due_date') IS NOT NULL THEN
+          RAISE EXCEPTION 'FAIL K4 %: Sondertilgung nicht als reine Tilgung gebucht: %', r, v_res; END IF;
+        v_changed := true;
+        v_pmid := finance.fn_loan_projected_balance(v_loan, v_mid, v_t);
+        SELECT payoff_date, interest_total INTO v_pd, v_pi FROM finance.fn_loan_projected_payoff(v_loan, v_t);
+        v_int := 0;
+        CONTINUE;
+      END IF;
       IF v_amid IS NULL AND o.due_date > v_mid THEN
         v_amid := -(SELECT balance FROM finance.account_balances WHERE account_id = v_la);
       END IF;
@@ -78,7 +93,7 @@ BEGIN
     IF v_pd IS DISTINCT FROM v_last OR v_pi IS DISTINCT FROM v_int THEN
       RAISE EXCEPTION 'FAIL K2 %: Vorschau Tilgungsende % Zinsen %, gebucht % / % (% Raten)', r, v_pd, v_pi, v_last, v_int, v_n; END IF;
   END LOOP;
-  RAISE NOTICE 'PASS prop loan projection vs booking [% Kredite bis zur Abloesung durchgebucht, K1-K3]', v_i;
+  RAISE NOTICE 'PASS prop loan projection vs booking [% Kredite bis zur Abloesung durchgebucht, K1-K4]', v_i;
 END $$;
 
 ROLLBACK;

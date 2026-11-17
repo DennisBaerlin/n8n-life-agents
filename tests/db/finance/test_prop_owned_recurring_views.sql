@@ -9,6 +9,11 @@
 --   V4 Vertragsende: kein Termin nach dem genannten letzten Tag; die View nennt diesen Tag
 --   V5 Sparplan: naechste Ausfuehrung der Uebersicht = fruehester offener Termin der Kette, vor und nach einer
 --      geplanten Betrags-Aenderung
+--   V6 Vertrag vor dem Start mit geplanter Aenderung: alle Sichten zeigen den Start-Betrag (fn_recurring_current)
+--   V7 eine Aenderung zum Stichtag der geplanten Aenderung vergleicht mit dem Glied, das an dem Stichtag gilt
+--   V8 "startet am" (fn_recurring_starts_on) und "erster offener Termin" (fn_recurring_first_due) sind zwei Fragen mit je einer Adresse
+--   V9 Sparplan: "laeuft schon so" vergleicht mit dem Glied am Stichtag
+--   V10 Abbuchungstag einer Versicherung verschieben: Zahl der Termine bleibt, kein bezahlter Monat wird wieder offen
 -- Start der Zahlungen 40 Tage vor heute (die Views lesen current_date; ein laufender Vertrag hat ein heute gueltiges
 -- Glied); jeder Fall in einem eigenen Savepoint.
 BEGIN;
@@ -157,7 +162,182 @@ BEGIN
     END;
   END LOOP;
 
-  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5)]', v_n_ins, v_n_pen, v_n_plan;
+  -- V6: Vertrag startet erst in 6 Tagen und hat schon eine geplante Aenderung (ab in 106 Tagen)
+  DECLARE v_start DATE := current_date + 6; v_chg DATE := current_date + 106; v_head INT;
+  BEGIN
+    -- Versicherung 30 -> 40
+    v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v6_ins__','premium_amount',30,'schedule_unit','month',
+      'first_payment_date',v_start,'debit_account_id',v_giro));
+    v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',40,'effective_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup insurance: %', v_res; END IF;
+    IF (SELECT premium_amount FROM finance.active_insurances WHERE id = v_ins) IS DISTINCT FROM 30
+       OR (SELECT -sum(monthly_equivalent) FROM finance.monthly_cashflow_overview WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))) IS DISTINCT FROM 30 THEN
+      RAISE EXCEPTION 'FAIL V6 Versicherung vor dem Start: Vertrags-Sicht %, Monatsrechnung % (Start-Beitrag 30)',
+        (SELECT premium_amount FROM finance.active_insurances WHERE id = v_ins),
+        (SELECT -sum(monthly_equivalent) FROM finance.monthly_cashflow_overview WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+    -- Sparplan 150 -> 200
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v6_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B3RBWM25','symbol','VWCE','security_name','Testfonds Welt','amount',150,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_start));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v6_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup plan: %', v_res; END IF;
+    SELECT * INTO v_so FROM finance.savings_plan_overview WHERE name = '__prop_orv_v6_plan__';
+    SELECT min(u.due_date) INTO v_next FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+    IF v_so.amount_per_execution IS DISTINCT FROM 150 OR v_so.next_execution IS DISTINCT FROM v_next OR v_so.starts_on IS DISTINCT FROM v_next
+       OR v_so.change_from IS DISTINCT FROM v_chg OR v_so.new_amount_per_execution IS DISTINCT FROM 200 THEN
+      RAISE EXCEPTION 'FAIL V6 Sparplan vor dem Start: Uebersicht Betrag % startet % naechste % Aenderung ab % neu % (erwartet 150 / % / % / % / 200)',
+        v_so.amount_per_execution, v_so.starts_on, v_so.next_execution, v_so.change_from, v_so.new_amount_per_execution, v_next, v_next, v_chg; END IF;
+    -- Vorsorge 80 -> 90 (Aenderung ueber den gemeinsamen Helfer der Vertrags-Ketten)
+    v_res := finance.fn_create_pension(jsonb_build_object('name','__prop_orv_v6_pen__','pension_type','private','contribution_amount',80,
+      'debit_account_id',v_giro,'first_payment_date',v_start));
+    v_pen := (v_res->>'pension_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_change_owned_recurring(v_rp, v_chg, -90, NULL, NULL, NULL);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'split')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V6 setup pension: %', v_res; END IF;
+    IF (SELECT contribution_amount FROM finance.pension_overview WHERE id = v_pen) IS DISTINCT FROM 80
+       OR (SELECT monthly_contribution FROM finance.pension_overview WHERE id = v_pen) IS DISTINCT FROM -80 THEN
+      RAISE EXCEPTION 'FAIL V6 Vorsorge vor dem Start: Sicht Beitrag % / Monat % (Start-Beitrag 80)',
+        (SELECT contribution_amount FROM finance.pension_overview WHERE id = v_pen), (SELECT monthly_contribution FROM finance.pension_overview WHERE id = v_pen); END IF;
+    -- die Regel selbst: vor dem Start das naechste startende Glied, am Stichtag der Aenderung und danach der Kopf
+    v_head := finance.fn_recurring_lineage_head(v_rp);
+    IF finance.fn_recurring_current(v_head, v_t) IS DISTINCT FROM v_rp OR finance.fn_recurring_current(v_rp, v_chg - 1) IS DISTINCT FROM v_rp
+       OR finance.fn_recurring_current(v_rp, v_chg) IS DISTINCT FROM v_head OR finance.fn_recurring_current(v_rp, v_chg + 4000) IS DISTINCT FROM v_head THEN
+      RAISE EXCEPTION 'FAIL V6 fn_recurring_current: heute % (erwartet %), am Stichtag % (erwartet %)', finance.fn_recurring_current(v_head, v_t), v_rp,
+        finance.fn_recurring_current(v_rp, v_chg), v_head; END IF;
+    -- V7: eine Aenderung zum Stichtag der geplanten Aenderung vergleicht mit dem Glied, das an dem Stichtag gilt.
+    -- Derselbe Betrag wie geplant aendert die Termine nicht; der Start-Betrag zum selben Stichtag nimmt die Erhoehung zurueck.
+    v_rp := (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins);
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',40,'effective_from',v_chg));
+    IF EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                 AND u.amount IS DISTINCT FROM CASE WHEN u.due_date < v_chg THEN -30 ELSE -40 END) THEN
+      RAISE EXCEPTION 'FAIL V7 Versicherung: gleicher geplanter Beitrag veraendert die Vorschau (%)', v_res - 'card_lines'; END IF;
+    v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'premium_amount',30,'effective_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR EXISTS (SELECT 1 FROM finance.fn_upcoming_payments(v_t, v_t + 400) u
+                   WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)))
+                     AND u.amount IS DISTINCT FROM -30) THEN
+      RAISE EXCEPTION 'FAIL V7 Versicherung: Erhoehung zum Stichtag zuruecknehmen (30) wirkt nicht: % | Vorschau %', v_res - 'card_lines',
+        (SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 200) u
+          WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)))); END IF;
+  END;
+
+  -- V8: zwei Fragen, zwei Adressen. "Startet am" (fn_recurring_starts_on: erster Termin des Glieds, gleich welcher
+  -- Status, gleich was erledigt ist) und "erster offener Termin" (fn_recurring_first_due: nach dem juengsten erledigten,
+  -- NULL bei pausierter Zeile) gegen dieselbe Zahlung in vier Lagen.
+  DECLARE v_start DATE := current_date + 10; v_first DATE; v_second DATE;
+  BEGIN
+    -- Lage 1: Sparplan vor dem Start, pausiert -> die Uebersicht nennt weiter den Start, offen ist nichts
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v8_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B4L5Y983','symbol','IUSQ','security_name','Testfonds Zwei','amount',60,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_start));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v8_plan__','status','paused'));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V8 setup pause: %', v_res; END IF;
+    IF (SELECT starts_on FROM finance.savings_plan_overview WHERE name = '__prop_orv_v8_plan__') IS DISTINCT FROM v_start
+       OR finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_start OR finance.fn_recurring_first_due(v_rp) IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL V8 [pausiert, vor dem Start]: Uebersicht startet %, starts_on %, first_due % (erwartet % / % / NULL)',
+        (SELECT starts_on FROM finance.savings_plan_overview WHERE name = '__prop_orv_v8_plan__'), finance.fn_recurring_starts_on(v_rp),
+        finance.fn_recurring_first_due(v_rp), v_start, v_start; END IF;
+    -- Lage 2: vor dem Start, aktiv -> beide nennen den ersten Termin
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v8_plan__','status','active'));
+    IF finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_start OR finance.fn_recurring_first_due(v_rp) IS DISTINCT FROM v_start THEN
+      RAISE EXCEPTION 'FAIL V8 [aktiv, vor dem Start]: starts_on % first_due % (erwartet beide %)', finance.fn_recurring_starts_on(v_rp), finance.fn_recurring_first_due(v_rp), v_start; END IF;
+    -- Lage 3: laufende Zahlung mit gebuchtem ersten Termin -> starts_on bleibt der erste Termin, first_due ist der naechste
+    v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_orv_v8_rp__','account_id',v_giro,'direction','income','amount',10,
+      'schedule_unit','month','first_payment_date',v_t - 40));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    SELECT min(d), max(d) INTO v_first, v_second FROM (SELECT o.due_date AS d FROM finance.fn_recurring_due_open(v_t - 60, v_t + 60) o
+                                                       WHERE o.recurring_payment_id = v_rp ORDER BY 1 LIMIT 2) q;
+    PERFORM finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id',v_rp,'due_date',v_first));
+    IF finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_first OR finance.fn_recurring_first_due(v_rp) IS DISTINCT FROM v_second THEN
+      RAISE EXCEPTION 'FAIL V8 [gebuchter erster Termin]: starts_on % (erwartet %), first_due % (erwartet %)', finance.fn_recurring_starts_on(v_rp), v_first,
+        finance.fn_recurring_first_due(v_rp), v_second; END IF;
+    -- Lage 4: Enddatum vor dem ersten Termin -> kein offener Termin; starts_on faellt auf den Geltungsbeginn
+    v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_orv_v8_end__','account_id',v_giro,'direction','income','amount',10,
+      'schedule_unit','year','first_payment_date',v_t + 200,'valid_from',v_t + 20,'valid_to',v_t + 50));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    IF finance.fn_recurring_first_due(v_rp) IS NOT NULL OR finance.fn_recurring_starts_on(v_rp) IS DISTINCT FROM v_t + 20 THEN
+      RAISE EXCEPTION 'FAIL V8 [Ende vor dem ersten Termin]: starts_on % first_due %', finance.fn_recurring_starts_on(v_rp), finance.fn_recurring_first_due(v_rp); END IF;
+  END;
+  -- V9: "laeuft schon so" vergleicht mit dem Glied, das am Stichtag gilt. Sparplan vor dem Start mit geplanter Aenderung
+  -- (150, ab in 106 Tagen 200): 150 ab heute und 200 ab dem Stichtag der Aenderung sind beide keine Aenderung.
+  DECLARE v_chg DATE := current_date + 106; v_sig TEXT;
+  BEGIN
+    v_res := finance.fn_create_savings_plan(jsonb_build_object('name','__prop_orv_v9_plan__','depot_name','__prop_orv_depot__',
+      'isin','IE00B5BMR087','symbol','CSPX','security_name','Testfonds Drei','amount',150,'schedule_interval',1,'schedule_unit','month','first_payment_date',current_date + 6));
+    v_rp := (v_res->>'recurring_payment_id')::int;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V9 setup: %', v_res; END IF;
+    SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) INTO v_sig FROM finance.fn_upcoming_payments(v_t, v_t + 300) u
+     WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',150));
+    IF (v_res->>'code') IS DISTINCT FROM 'no_change' OR (v_res->>'amount_per_execution')::numeric IS DISTINCT FROM 150 THEN
+      RAISE EXCEPTION 'FAIL V9 [150 ab heute, es laeuft 150]: erwartet no_change mit 150, got %', v_res; END IF;
+    v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__prop_orv_v9_plan__','new_amount',200,'valid_from',v_chg));
+    IF (v_res->>'code') IS DISTINCT FROM 'no_change' OR (v_res->>'amount_per_execution')::numeric IS DISTINCT FROM 200 THEN
+      RAISE EXCEPTION 'FAIL V9 [200 ab dem Stichtag, geplant ist 200]: erwartet no_change mit 200, got %', v_res; END IF;
+    IF (SELECT string_agg(u.due_date || '=' || u.amount, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 300) u
+         WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))) IS DISTINCT FROM v_sig THEN
+      RAISE EXCEPTION 'FAIL V9: eine Wiederholung hat die Vorschau veraendert'; END IF;
+  END;
+
+  -- V10: Abbuchungstag einer Versicherung verschieben (gleicher Helfer wie beim Kredit).
+  --   befristet, noch nichts faellig: die Zahl der Termine bleibt und jeder Monat behaelt genau einen;
+  --   laufend mit gebuchten Beitraegen: kein bezahlter Monat wird wieder offen, kommende Monate behalten genau einen Termin.
+  DECLARE v_nd INT; v_cnt0 INT; v_m0 TEXT; v_m1 TEXT; v_txt TEXT;
+  BEGIN
+    FOREACH v_nd IN ARRAY ARRAY[1, 5, 25, -1, -2] LOOP
+      BEGIN
+        v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v10__','premium_amount',30,'schedule_unit','month',
+          'schedule_day_of_month',15,'first_payment_date','2031-03-15','debit_account_id',v_giro));
+        v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'valid_to','2031-07-15'));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 setup Ende: %', v_res; END IF;
+        SELECT count(*), string_agg(to_char(u.due_date, 'YYYY-MM'), ',' ORDER BY u.due_date) INTO v_cnt0, v_m0
+          FROM finance.fn_upcoming_payments(DATE '2031-01-01', DATE '2031-12-31') u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'schedule_day_of_month',v_nd));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 [befristet, Tag 15 -> %]: %', v_nd, v_res; END IF;
+        SELECT string_agg(to_char(u.due_date, 'YYYY-MM'), ',' ORDER BY u.due_date) INTO v_m1
+          FROM finance.fn_upcoming_payments(DATE '2031-01-01', DATE '2031-12-31') u
+         WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)));
+        IF v_cnt0 <> 5 OR v_m1 IS DISTINCT FROM v_m0 THEN
+          RAISE EXCEPTION 'FAIL V10 [befristet, Tag 15 -> %]: Monate vorher [%] nachher [%]', v_nd, v_m0, v_m1; END IF;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+      BEGIN
+        v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v10__','premium_amount',30,'schedule_unit','month',
+          'first_payment_date',v_t - 70,'debit_account_id',v_giro));
+        v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+        PERFORM finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id',o.recurring_payment_id,'due_date',o.due_date))
+          FROM finance.fn_recurring_due_open(v_t) o WHERE o.recurring_payment_id = v_rp;
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'schedule_day_of_month',v_nd));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: %', v_nd, v_res; END IF;
+        v_rp := (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins);
+        SELECT string_agg(o.due_date::text, ',' ORDER BY o.due_date) INTO v_txt FROM finance.fn_recurring_due_open(v_t - 400, v_t + 200) o
+         WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+           AND EXISTS (SELECT 1 FROM finance.transactions t WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                         AND date_trunc('month', t.recurring_due_date) = date_trunc('month', o.due_date));
+        IF v_txt IS NOT NULL THEN
+          RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: in bezahlten Monaten wieder offen: %', v_nd, v_txt; END IF;
+        IF EXISTS (SELECT 1 FROM generate_series(date_trunc('month', v_t) + interval '1 month', date_trunc('month', v_t) + interval '5 months', interval '1 month') m
+                   WHERE (SELECT count(*) FROM finance.fn_upcoming_payments(v_t, v_t + 250) u
+                           WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp)) AND date_trunc('month', u.due_date) = m) <> 1) THEN
+          RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: ein kommender Monat ohne oder mit zwei Terminen: %', v_nd,
+            (SELECT string_agg(u.due_date::text, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 200) u
+              WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+    END LOOP;
+  END;
+
+  -- eine Definition je Frage: der Name kommt im Katalog genau einmal vor (zwei Dateien mit derselben Signatur wuerden sich
+  -- je nach Einspiel-Reihenfolge still ueberschreiben)
+  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_first_due') <> 1
+     OR (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_starts_on') <> 1 THEN
+    RAISE EXCEPTION 'FAIL V8: fn_recurring_first_due / fn_recurring_starts_on nicht je genau einmal definiert'; END IF;
+
+  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6, V7), zwei Adressen V8, Vergleich am Stichtag V9, Tag verschieben V10]', v_n_ins, v_n_pen, v_n_plan;
 END $$;
 
 ROLLBACK;

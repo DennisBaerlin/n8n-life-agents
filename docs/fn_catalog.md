@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 580 fn-Dateien.
+Umfang: 581 fn-Dateien.
 
 ## finance.fn_account_emoji_page (READ, STABLE) -- eine Seite der Knopf-Liste fuer das Konto-Zeichen
 - `finance.fn_account_emoji_page(p_account_id int, p_page int, p_lang text) -> jsonb`

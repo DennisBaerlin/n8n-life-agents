@@ -25,6 +25,7 @@
 --   (Buchungstag, Rhythmus/insurance_type unbekannt, Beitrag <= 0 oder unstimmig, Betrag unlesbar, Beitrag ohne Rhythmus
 --   oder ohne Konto, Versicherungssumme < 0, Meldefrist keine positive ganze Zahl, erste Abbuchung fehlt, Konto nicht EUR
 --   oder nicht buchbar [Depot/Kredit]; code invalid_date bei unaufloesbarem Datum) ohne Write.
+--   Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name. ok:true traegt existing_names, similar_names; aehnlicher Name -> Kartenzeile similar_entry.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_insurance(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -44,6 +45,8 @@ DECLARE
     v_reason   TEXT;
     v_acct_ccy CHAR(3);
     v_dates    JSONB;
+    v_names    JSONB;   -- fn_entity_name_report
+    v_reject   JSONB;
 BEGIN
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'valid_from']);
@@ -93,6 +96,10 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
 
+    v_names := finance.fn_entity_name_report('insurance', p->>'name', p->>'policyholder_person_id');
+    v_reject := finance.fn_entity_name_reject(v_names, 'insurance');
+    IF v_reject IS NOT NULL THEN RETURN v_reject; END IF;
+
     -- Beitrags-Kette via gemeinsamen Helper (eine Quelle fuer den Insert); Betrag je Abbuchung roh.
     IF v_per IS NOT NULL THEN
         v_rp_id := finance.fn_add_recurring_payment(
@@ -120,7 +127,9 @@ BEGIN
     RETURN jsonb_build_object(
         'ok', true,
         'insurance_id', v_ins_id,
-        'card_lines', finance.fn_similar_note(v_sim),
+        'card_lines', finance.fn_similar_note(COALESCE(v_sim, v_names->'similar'->>0)),
+        'existing_names', v_names->'existing_names',
+        'similar_names', v_names->'similar',
         'recurring_payment_id', v_rp_id,
         'premium_amount', v_per,
         'annual_premium', v_annual,

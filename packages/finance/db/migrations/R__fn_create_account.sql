@@ -37,7 +37,8 @@
 --   anlegt); opening_balance auf einem Depot (Depot-Saldo bleibt 0, Geld liegt auf dem Verrechnungskonto);
 --   Depot-Waehrung <> Waehrung des Verrechnungskontos; Kontonummer/IBAN schon bei einem aktiven Konto vergeben
 --   (gespeichert in der Normalform fn_normalize_account_number; UNIQUE-Index = Backstop; code invalid_iban bei falscher
---   Pruefziffer); Namens-Dublette unter aktiven Konten (code duplicate_name, candidates);
+--   Pruefziffer); Namens-Dublette unter aktiven Konten in Normalform core.fn_name_key (code duplicate_name, candidates, existing_names,
+--   suggested_name); ok:true traegt existing_names, similar_names;
 --   account_type fehlt/unbekannt; Verrechnungskonto nicht buchbar (Depot/Kredit);
 --   Zinssatz auf nicht verzinsbarem Kontotyp; Zins-Konditionen ungueltig
 --   (fn_interest_terms_reason: Rhythmus, Buchungstag, Gutschrift-Tag, Konvention); Zins ohne
@@ -51,6 +52,7 @@ DECLARE
     v_rate       NUMERIC := NULLIF(p->>'interest_rate', '')::numeric;
     v_dup_cand   JSONB;
     v_similar    JSONB;
+    v_names      JSONB;   -- fn_entity_name_report
     v_opening    NUMERIC;
     v_open_date  DATE;
     v_open_raw   TEXT;
@@ -140,13 +142,16 @@ BEGIN
                                         'owner_person_id', a.owner_person_id) ORDER BY a.id)
     INTO v_dup_cand
     FROM finance.accounts a
-    WHERE a.status = 'active' AND finance.fn_name_matches(a.name, p->>'name', FALSE);
+    WHERE a.status = 'active' AND core.fn_name_key(a.name) = core.fn_name_key(p->>'name');
+    v_names := finance.fn_entity_name_report('account', p->>'name', p->>'owner_person_id');
     IF v_dup_cand IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'duplicate_name',
             'reason', 'An active account named "' || (v_dup_cand->0->>'name') || '" already exists. Use that account, or '
                    || 'choose a distinct name - for a household member''s own account add their first name (e.g. "'
-                   || (p->>'name') || ' <first name>").',
-            'candidates', v_dup_cand);
+                   || COALESCE(v_names->>'suggested_name', (p->>'name') || ' <first name>') || '"). Names already used for accounts: '
+                   || (SELECT string_agg('"' || n || '"', ', ') FROM jsonb_array_elements_text(v_names->'existing_names') n) || '.',
+            'candidates', v_dup_cand,
+            'existing_names', v_names->'existing_names', 'suggested_name', v_names->'suggested_name');
     END IF;
     -- Weicher Hinweis (Karte, kein Block, hohe Schwelle): gleicher Typ + gleiche Bank + gleicher Inhaber und
     -- keine zwei verschiedenen bekannten Kontonummern -> "aehnliches Konto vorhanden".
@@ -300,7 +305,8 @@ BEGIN
         'emoji', finance.fn_account_emoji(v_emoji, v_acct_type),
         'label', finance.fn_account_label(v_emoji, v_acct_type, p->>'name'),
         'effective', v_dates->'resolved',
-        'card_lines', COALESCE(v_similar, '[]'::jsonb)
+        'card_lines', COALESCE(v_similar, '[]'::jsonb),
+        'existing_names', v_names->'existing_names', 'similar_names', v_names->'similar'
     );
 END;
 $$;

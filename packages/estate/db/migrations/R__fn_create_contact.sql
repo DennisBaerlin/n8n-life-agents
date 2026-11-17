@@ -2,8 +2,8 @@
 -- estate.fn_create_contact (ATOMIC WRITE)
 --   Legt einen neuen Schluessel-Kontakt des Ereignis-/Vorsorgefalls an (Notar, Steuerberater,
 --   Anwalt, Hausarzt, Bestatter, Arbeitgeber-HR, Vermieter, Vertrauensperson). Kein UNIQUE
---   auf role (mehrere trusted_person/physician legitim); Dubletten-Backstop (Name+Rolle)
---   faehrt das Tool vor dem Gate (fn_resolve_contact).
+--   auf role (mehrere trusted_person/physician legitim); Dubletten-Backstop (Name+Rolle,
+--   fn_resolve_contact) in der fn und als Komfort im Tool vor dem Gate -> {ok:false, code:'duplicate', candidates}.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Kontakt), role (Pflicht, geschlossene Liste:
 --     notary|tax_advisor|lawyer|physician|undertaker|employer_hr|landlord|trusted_person), name (Pflicht),
@@ -14,6 +14,8 @@
 CREATE OR REPLACE FUNCTION estate.fn_create_contact(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_dup_hits INT;
+    v_dup_cand JSONB;
     v_perm TEXT;
     v_name TEXT := NULLIF(trim(COALESCE(p->>'name', '')), '');
     v_role TEXT := lower(NULLIF(trim(COALESCE(p->>'role', '')), ''));
@@ -32,6 +34,13 @@ BEGIN
         ('notary', 'tax_advisor', 'lawyer', 'physician', 'undertaker', 'employer_hr', 'landlord', 'trusted_person') THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid role "' || COALESCE(v_role, '') || '" — valid: notary | tax_advisor | lawyer | physician | undertaker | employer_hr | landlord | trusted_person.');
+    END IF;
+
+    -- Dubletten-Backstop in der fn (dieselbe Regel wie der Resolver des Werkzeugs; der Probelauf meldet ihn vor der Karte)
+    SELECT r.hit_count, r.candidates INTO v_dup_hits, v_dup_cand FROM estate.fn_resolve_contact(v_name, v_role) r;
+    IF v_dup_hits > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'duplicate', 'candidates', v_dup_cand,
+            'reason', 'A contact named "' || v_name || '" with this role already exists - use tool_set_contact to change it, or a distinct name.');
     END IF;
 
     INSERT INTO estate.contacts (owner_person_id, role, name, organization, phone, email, address, notes)

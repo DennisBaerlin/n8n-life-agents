@@ -59,7 +59,9 @@
 --   + optional savings_squeeze (fn_savings_squeeze_fold).
 --   Korrigierbar (Topf fehlt/ungeeignet, Zielbetrag<=0, Startbestand<0 oder mehr als frei, weder Datum noch Rate,
 --   Datum vor first_payment, Rate ohne Abbuchungskonto, Rate in ein Depot, Sparplan nicht gefunden/mehrdeutig/schon
---   gebunden) -> {ok:false, reason} ohne Write (kein RAISE -> kein Owner-Alert).
+--   gebunden) -> {ok:false, reason} ohne Write (kein RAISE -> kein Owner-Alert). Namens-Regel fn_entity_name_report in allen
+--   Pfaden: Dublette -> code name_exists (+ candidates, existing_names, suggested_name), Personen-Zusatz eines Geschwisters
+--   -> code name_needs_person. ok:true traegt existing_names, similar_names.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
@@ -106,6 +108,8 @@ DECLARE
     v_emerg      BOOLEAN;
     v_tmonths    NUMERIC  := NULLIF(p->>'target_months', '')::numeric;
     v_es         JSONB;     -- fn_emergency_reserve_status (Karte)
+    v_names      JSONB;     -- fn_entity_name_report
+    v_reject     JSONB;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
@@ -199,6 +203,10 @@ BEGIN
         END IF;
         p := p || jsonb_build_object('kind', 'emergency_reserve');
     END IF;
+    -- Namens-Regel aller Wege (Rate, Sparplan, Ruecklagen; Import): fn_entity_name_report, Code wie die Ruecklagen-Pfade
+    v_names := finance.fn_entity_name_report('savings_goal', v_name, p->>'beneficiary_person_id');
+    v_reject := finance.fn_entity_name_reject(v_names, 'savings goal', 'name_exists');
+    IF v_reject IS NOT NULL THEN RETURN v_reject; END IF;
 
     -- Sparkonto-Pflicht (Gesetz in der fn; Tool + Import pruefen vorab nur als Komfort).
     IF v_reserve IS NULL THEN
@@ -342,7 +350,7 @@ BEGIN
     IF v_emerg THEN
         v_es := finance.fn_emergency_reserve_status();
     END IF;
-    v_lines := finance.fn_similar_note(v_sim)
+    v_lines := finance.fn_similar_note(COALESCE(v_sim, v_names->'similar'->>0))
         || CASE WHEN v_rate = 0 AND v_re_id IS NULL AND NOT v_emerg THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_covered'))
                 ELSE '[]'::jsonb END
         -- Instandhaltungsruecklage: Empfehlung nach II. BV (Untergrenze) + Hinweis, wenn die wirksame Rate darunter liegt
@@ -395,6 +403,7 @@ BEGIN
         'savings_plan_ids', to_jsonb(v_plan_ids),
         'replaced_transfer_id', v_old_id,
         'card_lines', v_lines,
+        'existing_names', v_names->'existing_names', 'similar_names', v_names->'similar',
         'beneficiary_person_id', v_benef,
         'beneficiary_name', (SELECT hp.full_name FROM core.fn_household_persons() hp WHERE hp.person_id = v_benef),
         -- effective geht fest in den echten Write (New-FnWriteGate): erste Rate, wie die Karte sie zeigt (auch nach

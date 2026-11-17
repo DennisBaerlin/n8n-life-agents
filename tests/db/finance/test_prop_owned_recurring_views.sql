@@ -11,6 +11,9 @@
 --      geplanten Betrags-Aenderung
 --   V6 Vertrag vor dem Start mit geplanter Aenderung: alle Sichten zeigen den Start-Betrag (fn_recurring_current)
 --   V7 eine Aenderung zum Stichtag der geplanten Aenderung vergleicht mit dem Glied, das an dem Stichtag gilt
+--   V8 "startet am" (fn_recurring_starts_on) und "erster offener Termin" (fn_recurring_first_due) sind zwei Fragen mit je einer Adresse
+--   V9 Sparplan: "laeuft schon so" vergleicht mit dem Glied am Stichtag
+--   V10 Abbuchungstag einer Versicherung verschieben: Zahl der Termine bleibt, kein bezahlter Monat wird wieder offen
 -- Start der Zahlungen 40 Tage vor heute (die Views lesen current_date; ein laufender Vertrag hat ein heute gueltiges
 -- Glied); jeder Fall in einem eigenen Savepoint.
 BEGIN;
@@ -277,13 +280,64 @@ BEGIN
       RAISE EXCEPTION 'FAIL V9: eine Wiederholung hat die Vorschau veraendert'; END IF;
   END;
 
+  -- V10: Abbuchungstag einer Versicherung verschieben (gleicher Helfer wie beim Kredit).
+  --   befristet, noch nichts faellig: die Zahl der Termine bleibt und jeder Monat behaelt genau einen;
+  --   laufend mit gebuchten Beitraegen: kein bezahlter Monat wird wieder offen, kommende Monate behalten genau einen Termin.
+  DECLARE v_nd INT; v_cnt0 INT; v_m0 TEXT; v_m1 TEXT; v_txt TEXT;
+  BEGIN
+    FOREACH v_nd IN ARRAY ARRAY[1, 5, 25, -1, -2] LOOP
+      BEGIN
+        v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v10__','premium_amount',30,'schedule_unit','month',
+          'schedule_day_of_month',15,'first_payment_date','2031-03-15','debit_account_id',v_giro));
+        v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'valid_to','2031-07-15'));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 setup Ende: %', v_res; END IF;
+        SELECT count(*), string_agg(to_char(u.due_date, 'YYYY-MM'), ',' ORDER BY u.due_date) INTO v_cnt0, v_m0
+          FROM finance.fn_upcoming_payments(DATE '2031-01-01', DATE '2031-12-31') u WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp));
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'schedule_day_of_month',v_nd));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 [befristet, Tag 15 -> %]: %', v_nd, v_res; END IF;
+        SELECT string_agg(to_char(u.due_date, 'YYYY-MM'), ',' ORDER BY u.due_date) INTO v_m1
+          FROM finance.fn_upcoming_payments(DATE '2031-01-01', DATE '2031-12-31') u
+         WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage((SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins)));
+        IF v_cnt0 <> 5 OR v_m1 IS DISTINCT FROM v_m0 THEN
+          RAISE EXCEPTION 'FAIL V10 [befristet, Tag 15 -> %]: Monate vorher [%] nachher [%]', v_nd, v_m0, v_m1; END IF;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+      BEGIN
+        v_res := finance.fn_create_insurance(jsonb_build_object('name','__prop_orv_v10__','premium_amount',30,'schedule_unit','month',
+          'first_payment_date',v_t - 70,'debit_account_id',v_giro));
+        v_ins := (v_res->>'insurance_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+        PERFORM finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id',o.recurring_payment_id,'due_date',o.due_date))
+          FROM finance.fn_recurring_due_open(v_t) o WHERE o.recurring_payment_id = v_rp;
+        v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id',v_ins,'schedule_day_of_month',v_nd));
+        IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: %', v_nd, v_res; END IF;
+        v_rp := (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_ins);
+        SELECT string_agg(o.due_date::text, ',' ORDER BY o.due_date) INTO v_txt FROM finance.fn_recurring_due_open(v_t - 400, v_t + 200) o
+         WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+           AND EXISTS (SELECT 1 FROM finance.transactions t WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))
+                         AND date_trunc('month', t.recurring_due_date) = date_trunc('month', o.due_date));
+        IF v_txt IS NOT NULL THEN
+          RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: in bezahlten Monaten wieder offen: %', v_nd, v_txt; END IF;
+        IF EXISTS (SELECT 1 FROM generate_series(date_trunc('month', v_t) + interval '1 month', date_trunc('month', v_t) + interval '5 months', interval '1 month') m
+                   WHERE (SELECT count(*) FROM finance.fn_upcoming_payments(v_t, v_t + 250) u
+                           WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp)) AND date_trunc('month', u.due_date) = m) <> 1) THEN
+          RAISE EXCEPTION 'FAIL V10 [laufend, Tag -> %]: ein kommender Monat ohne oder mit zwei Terminen: %', v_nd,
+            (SELECT string_agg(u.due_date::text, ',' ORDER BY u.due_date) FROM finance.fn_upcoming_payments(v_t, v_t + 200) u
+              WHERE u.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_rp))); END IF;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+    END LOOP;
+  END;
+
   -- eine Definition je Frage: der Name kommt im Katalog genau einmal vor (zwei Dateien mit derselben Signatur wuerden sich
   -- je nach Einspiel-Reihenfolge still ueberschreiben)
   IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_first_due') <> 1
      OR (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'finance' AND p.proname = 'fn_recurring_starts_on') <> 1 THEN
     RAISE EXCEPTION 'FAIL V8: fn_recurring_first_due / fn_recurring_starts_on nicht je genau einmal definiert'; END IF;
 
-  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6, V7)]', v_n_ins, v_n_pen, v_n_plan;
+  RAISE NOTICE 'PASS prop owned recurring views [Versicherung: % Faelle (V1-V4), Vorsorge: % (V1), Sparplan: % (V1-V3, V5), vor dem Start mit geplanter Aenderung: 3 Vertragsarten (V6, V7), zwei Adressen V8, Vergleich am Stichtag V9, Tag verschieben V10]', v_n_ins, v_n_pen, v_n_plan;
 END $$;
 
 ROLLBACK;

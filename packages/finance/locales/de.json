@@ -1140,6 +1140,7 @@
   "finance.note.lots_mismatch": "{name}: Die Käufe in der Datei weichen um {difference} Stück von der Übernahme ab, hier ändert sich nichts.",
   "finance.tpl.statement_trade_tax_row": "Steuer {name}: {amount} am {date}",
   "finance.note.lots_not_bookable": "{name}: Ein Einzelkauf aus der Datei ist zu klein zum Buchen, hier ändert sich nichts.",
+  "finance.note.lots_takeover_day_added": "{name}: Der Kauf vom {date} über {shares} Stück fehlte noch in der Übernahme und kommt dazu.",
   "finance.wf.finance_tool_import_bank_export": "Bank-Export (Datei)",
   "finance.dialog.monthly_check_line_file": "• {name} (Stand bestätigt bis: {date}) – per Datei: in der App den Umsatz-Export (dieses Jahr) erstellen und die Datei hier schicken; enthält die Datei keinen Endstand, auch den Kontostand nennen, den die App gerade zeigt",
   "finance.cron.reconcile_accounts.label": "Monats-Check (Kontoauszüge)",

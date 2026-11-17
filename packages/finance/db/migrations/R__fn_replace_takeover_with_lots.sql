@@ -9,7 +9,9 @@
 --     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
 --     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage), zaehlen nicht.
 --     Summe der Lot-Stueck = Uebernahme-Stueck exakt (8 Stellen) -> ersetzen; sonst mismatched (code lots_mismatch,
---     difference = Uebernahme - Export), nichts an dieser Position geaendert.
+--     difference = Uebernahme - Export), nichts an dieser Position geaendert. Ausnahme Kauf am Uebernahme-Tag: stimmen die
+--     Zeilen VOR dem Tag exakt und gibt es am Tag nur Kaeufe, enthielt die Uebernahme sie noch nicht (Broker zeigt den Kauf
+--     erst nach der Abwicklung) -> sie kommen als Lots dazu (same_day_shares, Bestand waechst), sonst blieben sie ungebucht.
 --   Ersetzen: alle Lots in einer neuen group_id ueber fn_replace_takeover_apply (fn_book_takeover_pair; ein Write = eine group_id = ein Void).
 --     Lot-Datum <= bestaetigter Kontostand-Tag des Verrechnungskontos (GREATEST(last_reconciled_at,
 --     opening_balance_date); keiner gesetzt = alle) -> cash-neutrales Uebernahme-Paar (der Stand enthaelt den Kauf schon);
@@ -24,7 +26,7 @@
 --   Eine Gruppe aus einer frueheren Ersetzung (transaction_audit.replaced_by_group) ist nie wieder Kandidat.
 --   Ein nicht buchbares Lot (fn_trade_amount_reason, z. B. FIFO-Rest unter 1 Cent) -> mismatched code lots_not_bookable.
 --   Rueckgabe: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
---   cash_lots_count}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
+--   cash_lots_count, same_day_shares (0 = keiner), take_date}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
 --   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|
 --   export_account_mismatch|multiple_sub_accounts|stale_preview), reason}.
@@ -51,6 +53,9 @@ DECLARE
     v_plan     JSONB := '[]'::jsonb;
     v_pl       JSONB;
     v_fp       TEXT;
+    v_same     NUMERIC;
+    v_sum_b    NUMERIC;
+    v_n_b      INT;
 BEGIN
     -- die geteilte Lade-Sequenz (Leser + derselbe Konto-Waechter wie der Monats-Check, buchbar prueft er mit)
     v_norm := finance.fn_bank_export_load(p);
@@ -101,7 +106,26 @@ BEGIN
                           to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum));
             v_sum := v_h.take_shares;
         END IF;
-        IF v_sum <> v_h.take_shares THEN
+        -- Kauf am Uebernahme-Tag, den die Uebernahme noch nicht enthielt (Broker zeigt den Sparplan-Kauf erst nach der
+        -- Abwicklung im Bestand): stimmen die Zeilen VOR dem Tag exakt, kommen die Kaeufe des Tages als eigene Lots dazu.
+        -- Ohne das bliebe der Kauf ewig ungebucht: hier lots_mismatch, im Monats-Check covered_by_takeover.
+        v_same := 0;
+        IF v_sum > v_h.take_shares
+           AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'buy' AND (r->>'date')::date = v_h.take_date)
+           AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'sell' AND (r->>'date')::date = v_h.take_date) THEN
+            SELECT COALESCE(sum((l->>'shares')::numeric), 0), count(*) INTO v_sum_b, v_n_b
+            FROM jsonb_array_elements(finance.fn_import_fifo_lots(
+                     (SELECT COALESCE(jsonb_agg(r), '[]'::jsonb) FROM jsonb_array_elements(v_rows) r
+                      WHERE (r->>'date')::date < v_h.take_date))->'lots') l;
+            IF v_n_b > 0 AND abs(v_sum_b - v_h.take_shares) <= 0.00000001 * v_n_b THEN
+                v_same := v_sum - v_sum_b;
+                -- Rundungs-Staub der Zeilen davor wie oben aufs letzte Lot: Summe = Uebernahme + Kaeufe des Tages exakt
+                v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
+                              to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum_b));
+                v_sum := v_h.take_shares + v_same;
+            END IF;
+        END IF;
+        IF v_sum <> v_h.take_shares + v_same THEN
             v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'lots_mismatch',
                 'takeover_shares', v_h.take_shares, 'export_shares', v_sum, 'difference', v_h.take_shares - v_sum);
             CONTINUE;
@@ -125,7 +149,7 @@ BEGIN
             CONTINUE;
         END IF;
         v_plan := v_plan || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'symbol', v_h.symbol,
-            'buy_id', v_h.buy_id, 'avg_before', v_h.avg_before, 'lots', v_lots);
+            'buy_id', v_h.buy_id, 'avg_before', v_h.avg_before, 'take_date', v_h.take_date, 'same_day_shares', v_same, 'lots', v_lots);
     END LOOP;
 
     -- Plan/Apply wie der Monats-Check: der echte Write nach dem Tipp bucht nur, wenn derselbe Plan herauskommt
@@ -144,7 +168,8 @@ BEGIN
 
         SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'lots_count', jsonb_array_length(v_pl->'lots'),
                    'cash_lots_count', v_cash_n, 'shares', h.shares, 'avg_purchase_price', h.average_purchase_price,
-                   'avg_before', (v_pl->>'avg_before')::numeric)
+                   'avg_before', (v_pl->>'avg_before')::numeric, 'same_day_shares', (v_pl->>'same_day_shares')::numeric,
+                   'take_date', v_pl->>'take_date')
         INTO v_r FROM finance.depot_holdings h WHERE h.id = (v_pl->>'holding_id')::int;
         v_replaced := v_replaced || v_r;
     END LOOP;
@@ -160,6 +185,11 @@ BEGIN
                    'avg_before', core.fn_ui_money((r->>'avg_before')::numeric, v_acct.currency),
                    'avg', core.fn_ui_money((r->>'avg_purchase_price')::numeric, v_acct.currency)))) ORDER BY (r->>'holding_id')::int), '[]'::jsonb)
     INTO v_card FROM jsonb_array_elements(v_replaced) r;
+    -- Bestand waechst um den Kauf am Uebernahme-Tag: sonst saehe die Karte nur eine Stueck-Aenderung ohne Grund
+    v_card := v_card || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_takeover_day_added',
+                  'params', jsonb_build_object('name', r->>'name', 'date', core.fn_ui_date((r->>'take_date')::date),
+                      'shares', core.fn_ui_num((r->>'same_day_shares')::numeric, 8))) ORDER BY (r->>'holding_id')::int)
+              FROM jsonb_array_elements(v_replaced) r WHERE (r->>'same_day_shares')::numeric > 0), '[]'::jsonb);
     IF jsonb_array_length(v_replaced) > 0 THEN
         v_card := v_card || jsonb_build_array(
             core.fn_ui_money(v_after - v_before, v_acct.currency, true) || jsonb_build_object('label', 'finance.label.lots_settlement_change'));

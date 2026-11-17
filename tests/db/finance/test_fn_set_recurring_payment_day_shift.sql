@@ -317,6 +317,21 @@ BEGIN
   IF d IS DISTINCT FROM DATE '2031-06-27' THEN
     RAISE EXCEPTION 'FAIL day_shift [explizites Ende]: valid_to % (erwartet 2031-06-27)', d; END IF;
   RAISE NOTICE 'PASS day_shift [explizites Ende gilt woertlich]';
+
+  -- TEST 20: derselbe Tag noch einmal genannt (keine Verschiebung) -> kein first_due (sonst zeigte die Karte den aeltesten offenen
+  --          Termin als "Gilt ab"); Betrag + Tag an einem Glied mit Nachfolger -> has_successor, kein gegabelter Split
+  SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__test_dsh_v__','account_id',v_acct,
+    'direction','expense','amount',50,'schedule_unit','month','schedule_day_of_month',20,'first_payment_date','2031-01-20')) INTO v_res;
+  v_rp := (v_res->>'recurring_payment_id')::int;
+  SELECT finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id',v_rp,'schedule_day_of_month',20)) INTO v_res;
+  IF v_res ? 'first_due' THEN RAISE EXCEPTION 'FAIL day_shift [gleicher Tag ohne first_due]: %', v_res; END IF;
+  PERFORM finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id',v_rp,'amount',55,'valid_from','2031-04-20'));
+  SELECT finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id',v_rp,'amount',52,
+    'valid_from','2031-02-21','schedule_day_of_month',10)) INTO v_res;
+  IF v_res->>'code' IS DISTINCT FROM 'has_successor'
+     OR (SELECT count(*) FROM finance.recurring_payments WHERE predecessor_id = v_rp) <> 1 THEN
+    RAISE EXCEPTION 'FAIL day_shift [Betrag+Tag am Glied mit Nachfolger]: %', v_res; END IF;
+  RAISE NOTICE 'PASS day_shift [gleicher Tag: kein first_due; Betrag+Tag am Glied mit Nachfolger abgelehnt]';
 END $$;
 
 ROLLBACK;

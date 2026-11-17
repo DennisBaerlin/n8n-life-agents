@@ -243,7 +243,7 @@ function Build-AgentFinanceAdvisor {
     $nToolHandoffOverview = $null
     if ($hasHandoff) {
         $nToolHandoffOverview = New-AdvisorToolNode 'tool_send_handoff_overview' (Resolve-CoreServiceAlias 'core:send_handoff_overview' $CoreServiceMap) `
-            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with a [Go through] button; each entry then comes on its own confirmation card. Call it when the user wants to enter agreed items now (before publishing), or when the conversation ends without publishing while entries are open. Do NOT call it right after tool_publish_plan - publishing sends the list itself. Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
+            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with a [Go through] button; each entry then comes on its own confirmation card. Call it when agreed items should be entered before publishing (the user asks, or an open one explains a database warning or cannot wait), or when the conversation ends without publishing while entries are open. Do NOT call it right after tool_publish_plan - publishing sends the list itself. Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
             @() ([ordered]@{ domain = $DOMAIN_EXPR }) @(1120, 208) -StartNode $START_NODE
     }
 

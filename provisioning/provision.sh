@@ -395,6 +395,9 @@ main() {
       *) warn "Ignoriere ungueltiges INSTALL_PROFILE='$_persisted_profile' in $INSTALL_ENV_FILE (erwarte dev|release)." ;;
     esac
   fi
+  # Gesetz Versionsnummer (common.sh): ein Release-Lauf ohne Nummer nimmt die des laufenden Abbilds oder bricht hier ab.
+  # --apply-network schreibt keine VERSION und bleibt so auch fuer einen Stand ohne Nummer moeglich.
+  if [ "$APPLY_NETWORK" -ne 1 ]; then release_tag_resolve "$PROFILE"; fi
 
   # TRUSTED_PROXIES (Flag / Env / --unattended-Datei / core.env) validieren und profilunabhaengig sofort
   # persistieren (Muster INSTALL_PROFILE) — sonst fiele ein Dev-Profil-Update still auf "nur lokal" zurueck
@@ -890,7 +893,7 @@ install_cli() {
   rm -f "$staging/provisioning/install.sh"   # Bootstrap-Launcher gehoert nicht in die Runtime
   [ -d "$REPO_ROOT/packages" ] && cp -a "$REPO_ROOT/packages" "$staging/packages"   # Paket-Baum (Core + Pakete)
   # Installierte Version: fetch_release/Bootstrap exportieren RELEASE_TAG vor dem exec des gepinnten Kerns
-  # (`--version <tag>`/`latest`); ein direkter dev-Lauf hat keinen Tag -> 'dev'.
+  # (`--version <tag>`/`latest`); ein direkter dev-Lauf hat keinen Tag -> 'dev' (im Release-Profil ersetzt release_tag_resolve das vorher).
   printf '%s\n' "${RELEASE_TAG:-dev}" > "$staging/VERSION"
   chmod 0644 "$staging/VERSION"
 

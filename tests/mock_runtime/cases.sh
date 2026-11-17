@@ -46,7 +46,10 @@ case "$(printf '|%s' "$@")" in *'|down|'*) printf '%s\n' "${COMPOSE_PROFILES:-}"
 if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
 case "$me $1 ${2:-}" in
   "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
-  "docker image inspect")  [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
+  "docker image inspect")  # mit -f: Umgebung + Versions-Etikett des Abbilds wie unten bei inspect -f
+    if [ "${3:-}" = -f ]; then printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+}" "${STUB_REL_LABEL:-}"; exit 0; fi
+    [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
   "docker ps --format")    printf '%s' "${STUB_PS:-}"; exit 0 ;;   # STUB_PS = Zeilen wie aus dem festen JSON-Format
   "docker inspect -f")
     # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
@@ -54,6 +57,9 @@ case "$me $1 ${2:-}" in
     case "$3" in
       *State.Running*) case " ${STUB_RUNNING:-} " in *" $n "*) echo true ;; *) echo false ;; esac ;;
       *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
+      # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett).
+      *Config.Env*)    printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+}" "${STUB_REL_LABEL:-}" ;;
     esac
     exit 0 ;;
 esac
@@ -1331,4 +1337,126 @@ hp_case() (   # hp_case <bytes-die-ankommen> <bytes-der-datei> -> "<rc>|<endguel
 eq HP.abgebrochen-kein-gueltiger-name 'fehler|fehlt|nein' "$(hp_case 1000 4000)"
 eq HP.vollstaendig-wie-bisher '0|ganz|nein' "$(hp_case 4000 4000)"
 eq HP.leere-datei-vollstaendig '0|ganz|nein' "$(hp_case 0 0)"
+
+# ---------------------------------------------------------------------------- VH: Versionsnummer als Gesetz (Release-Profil)
+# Echter Code (common.sh, runtime.sh, update_runner.sh update_cli, doctor.sh); Attrappe ist nur docker (Umgebung und Etikett
+# des master-Containers). Der echte Weg mit Abbild, Tick und Release-Check: genericity.yml compose-stack-ops, Schritt
+# "Update aus dev".
+vh_env() {   # vh_env <profil|-> <VERSION|-fehlt|-leer> -> core.env + VERSION unter $W/vh
+  rm -rf "$W/vh"; mkdir -p "$W/vh/etc" "$W/vh/lib"
+  [ "$1" = - ] || printf 'INSTALL_PROFILE=%s\n' "$1" > "$W/vh/etc/core.env"
+  case "$2" in -fehlt) ;; -leer) : > "$W/vh/lib/VERSION" ;; *) printf '%s\n' "$2" > "$W/vh/lib/VERSION" ;; esac
+}
+vh_ver() { if [ -e "$W/vh/lib/VERSION" ]; then head -n1 "$W/vh/lib/VERSION"; else echo fehlt; fi; }
+vh_case() (   # vh_case <profil> <VERSION> <env-tag> <etikett> [systemd] -> "<rc>|<VERSION danach>|<docker-aufrufe>"
+  vh_env "$1" "$2"; : > "$STUB_LOG"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME="${5:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL="$4"
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  local rc=0; lifeagents_version_heal >/dev/null 2>&1 || rc=$?
+  printf '%s|%s|%s' "$rc" "$(vh_ver)" "$(grep -c '^docker' "$STUB_LOG")"
+)
+eq VH.dev-aus-umgebung-des-abbilds '0|v9.0.0|1' "$(vh_case release dev v9.0.0 '')"
+eq VH.dev-aus-etikett-altes-abbild '0|v0.43.1|1' "$(vh_case release dev '' v0.43.1)"
+eq VH.umgebung-dev-etikett-gilt '0|v0.43.1|1' "$(vh_case release dev dev v0.43.1)"
+eq VH.leer-wird-nachgetragen '0|v9.0.0|1' "$(vh_case release -leer v9.0.0 '')"
+eq VH.keine-quelle-nichts-geschrieben '1|dev|1' "$(vh_case release dev dev '')"
+eq VH.etikett-kein-release-nicht-uebernommen '1|dev|1' "$(vh_case release dev '' latest)"
+eq VH.entwickler-stand-bleibt '0|dev-0123abc|0' "$(vh_case release dev-0123abc v9.0.0 '')"
+eq VH.release-bleibt '0|v1.2.3|0' "$(vh_case release v1.2.3 v9.0.0 '')"
+eq VH.dev-profil-unberuehrt '0|dev|0' "$(vh_case dev dev v9.0.0 '')"
+eq VH.ohne-installation-nichts '0|fehlt|0' "$(vh_case release -fehlt v9.0.0 '')"
+eq VH.klassisch-keine-quelle '1|dev|0' "$(vh_case release dev v9.0.0 '' systemd)"
+# Kein Nachtragen mitten in einem Umbau: dann liefe womoeglich schon das Ziel-Abbild (Release-Wechsel ginge verloren).
+vh_busy() (   # vh_busy <sperre|wechsel|merkzettel> -> VERSION danach
+  vh_env release dev; export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME=compose STUB_REL_ENV=v9.0.0 STUB_REL_LABEL=''
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  LIFEAGENTS_UPDATE_LOCK="$W/vh/lock"; UPGRADE_MARKER="$W/vh/upgrade.pending"; SWAP_STATE="$W/vh/swap.state"
+  case "$1" in
+    sperre) flock "$LIFEAGENTS_UPDATE_LOCK" sleep 8 & sleep 0.5 ;;   # laenger als die 5 s, die die Heilung wartet
+    wechsel) : > "$SWAP_STATE" ;;
+    merkzettel) : > "$UPGRADE_MARKER" ;;
+  esac
+  lifeagents_version_heal >/dev/null 2>&1; vh_ver; wait
+)
+eq VH.sperre-belegt-nichts-nachgetragen dev "$(vh_busy sperre)"
+eq VH.master-wechsel-nichts-nachgetragen dev "$(vh_busy wechsel)"
+eq VH.unvollendetes-update-nichts-nachgetragen dev "$(vh_busy merkzettel)"
+
+# Einstieg: jeder Timer-Modus von `lifeagents update` heilt zuerst (Tick, Release-Check, Auftrag); die Hilfe aendert nichts.
+vh_cli() (   # vh_cli <args...> -> "<VERSION danach>|<aufgerufen>"
+  vh_env release dev; : > "$STUB_LOG"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME=compose STUB_REL_ENV=v9.0.0 STUB_REL_LABEL=''
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  update_check() { echo check >> "$W/vh/called"; }; update_run_requested() { echo run >> "$W/vh/called"; }
+  update_tick() { echo tick >> "$W/vh/called"; }
+  update_cli "$@" >/dev/null 2>&1 || true
+  printf '%s|%s' "$(vh_ver)" "$(tr '\n' ' ' < "$W/vh/called" 2>/dev/null)"
+)
+eq VH.cli-release-check-heilt-vorher 'v9.0.0|check ' "$(vh_cli --check --scheduled)"
+eq VH.cli-tick-heilt-vorher 'v9.0.0|tick ' "$(vh_cli --tick)"
+eq VH.cli-auftrag-heilt-vorher 'v9.0.0|run ' "$(vh_cli --run-requested)"
+eq VH.cli-hilfe-aendert-nichts 'dev|' "$(vh_cli --help)"
+
+# provision.sh: ein Release-Lauf ohne Versionsnummer nimmt die des Abbilds oder bricht vor jeder Aenderung ab.
+vh_resolve() (   # vh_resolve <profil> <RELEASE_TAG|-> <env-tag> [systemd] -> "<rc>|<RELEASE_TAG>|<reason_code>"
+  # Eigener bash-Prozess: die_because schreibt den Grund nur in der Haupt-Shell (wie in provision.sh main).
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_RUNTIME="${4:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL='' LIFEAGENTS_RESULT_FILE="$W/vh.result"
+  rm -f "$W/vh.result"; if [ "$2" = - ]; then unset RELEASE_TAG; else export RELEASE_TAG="$2"; fi
+  local rc=0 tag
+  tag="$(bash -c '. "$1/provisioning/lib/common.sh"; release_tag_resolve "$2" 2>/dev/null; printf "%s" "${RELEASE_TAG:-}"' _ "$ROOT" "$1")" || rc=$?
+  printf '%s|%s|%s' "$rc" "$tag" "$(read_env_value "$W/vh.result" reason_code 2>/dev/null)"
+)
+eq VH.lauf-dev-nimmt-abbild-tag '0|v9.0.0|' "$(vh_resolve release dev v9.0.0)"
+eq VH.lauf-ohne-tag-nimmt-abbild-tag '0|v9.0.0|' "$(vh_resolve release - v9.0.0)"
+eq VH.lauf-ohne-quelle-bricht-ab '1||no_version' "$(vh_resolve release dev dev)"
+eq VH.lauf-klassisch-ohne-tag-bricht-ab '1||no_version' "$(vh_resolve release dev v9.0.0 systemd)"
+eq VH.lauf-entwickler-stand-bleibt '0|dev-0123abc|' "$(vh_resolve release dev-0123abc v9.0.0)"
+eq VH.lauf-dev-profil-unberuehrt '0|dev|' "$(vh_resolve dev dev v9.0.0)"
+
+# doctor: im Release-Profil ist eine fehlende Versionsnummer ROT, mit dem Weg, wie sie wiederkommt; dev-<rev> ist in Ordnung.
+vh_doc() (   # vh_doc <profil> <VERSION> <env-tag> [systemd] -> Ausgabe + fail=<n>
+  vh_env "$1" "$2"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    _fail=0; export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME="${4:-compose}" STUB_REL_ENV="$3" STUB_REL_LABEL=''; LA_PROJECT=t
+    lifeagents_runtime_dir() { printf '%s' "$W/vh/lib"; }
+    _doctor_release_version; echo "fail=$_fail" )
+)
+eq VH.doctor-release-gruen '  [ OK ] Installierte Version: v1.2.3
+fail=0' "$(vh_doc release v1.2.3 v9.0.0)"
+eq VH.doctor-dev-rot-heilt-selbst '  [FAIL] Keine Versionsnummer eingetragen (VERSION: dev) — Update-Hinweise im Chat kommen so nicht an. Behebt sich selbst: der nächste Durchlauf (höchstens 1 min) trägt v9.0.0 aus dem laufenden Programm-Paket ein.
+fail=1' "$(vh_doc release dev v9.0.0)"
+eq VH.doctor-dev-rot-ohne-quelle "  [FAIL] Keine Versionsnummer eingetragen (VERSION: dev) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal '$(LA_PROJECT=t rt_master_cli_hint) update'
+fail=1" "$(vh_doc release dev dev)"
+eq VH.doctor-klassisch-rot "  [FAIL] Keine Versionsnummer eingetragen (VERSION: leer) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal 'lifeagents update'
+fail=1" "$(vh_doc release -leer v9.0.0 systemd)"
+eq VH.doctor-entwickler-stand '  [ OK ] Installierte Version: dev-0123abc (Entwickler-Stand)
+fail=0' "$(vh_doc release dev-0123abc v9.0.0)"
+eq VH.doctor-dev-profil-still 'fail=0' "$(vh_doc dev dev v9.0.0)"
+eq VH.doctor-ohne-installation-still 'fail=0' "$(vh_doc release -fehlt v9.0.0)"
+
+# Rueckweg im Verbund auf einen Stand mit FROM_RELEASE=dev: die Nummer kommt aus dem Ziel-Abbild, bevor Daten angefasst werden;
+# fehlt sie auch dort, Abbruch vorher (sonst braeche release_tag_resolve erst nach dem Zuruecksetzen ab).
+vh_rb() (   # vh_rb <FROM_RELEASE> <env-tag des Ziel-Abbilds> -> "daten:<ziel>" | "<grund>|abbruch:<meldung>"
+  local d="$W/vhrb"; rm -rf "$d"; mkdir -p "$d/etc"
+  # hand-injected: Umgebung und Etikett des master-Abbilds sind die Eingabe des Falls (echter Weg: genericity.yml Schritt "Update aus dev")
+  export LIFEAGENTS_RUNTIME=compose STUB_REL_ENV="$2" STUB_REL_LABEL='' STUB_IMAGE_PRESENT=1
+  printf 'INSTALL_PROFILE=release\n' > "$d/etc/core.env"; lifeagents_env_file() { printf '%s/%s.env' "$d/etc" "$1"; }
+  require_root() { :; }; N8N_DB_NAME=n8n
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"; printf 'services: {}\n' > "$d/b.compose.yml"
+  printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\nFROM_MASTER_IMAGE=reg.example/master@sha256:dddd\nFROM_COMPOSE=%s\n' \
+    "$1" "$d/b.dump.gpg" "$d/b.compose.yml" > "$UPGRADE_MARKER"
+  update_lock_acquire() { return 0; }; backup_key_read() { echo k; }; gpg_sym_decrypt_any() { _BK_HIT_KEY=k; return 0; }
+  # shellcheck disable=SC2154  # from_rel ist eine lokale Variable von upgrade_rollback (dynamischer Geltungsbereich)
+  pg_su_exec() { [ -s "$d/out" ] || printf 'daten:%s' "$from_rel" > "$d/out"; exit 0; }
+  pg_su_psql() { pg_su_exec "$@"; }
+  die() { [ -s "$d/out" ] || printf 'abbruch:%s' "$*" > "$d/out"; exit 1; }; die_because() { printf '%s|' "$1" > "$d/why"; shift; die "$@"; }
+  ( upgrade_rollback --yes ) >/dev/null 2>&1
+  printf '%s%s' "$(cat "$d/why" 2>/dev/null)" "$(head -c 40 "$d/out")"
+)
+eq VH.rueckweg-dev-nimmt-nummer-des-ziels 'daten:v0.43.1' "$(vh_rb dev v0.43.1)"
+eq VH.rueckweg-mit-nummer-unveraendert 'daten:v1.2.3' "$(vh_rb v1.2.3 v0.43.1)"
+case "$(vh_rb dev '')" in 'no_version|abbruch:'*) pass VH.rueckweg-ohne-nummer-vor-den-daten ;; *) fail VH.rueckweg-ohne-nummer-vor-den-daten "$(vh_rb dev '')" ;; esac
 exit "$fails"

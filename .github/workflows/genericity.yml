@@ -671,27 +671,26 @@ jobs:
           for _ in $(seq 1 25); do docker exec "$m" curl -sf http://127.0.0.1:8093/repos/owner/repo/releases/latest >/dev/null && break; sleep 0.4; done
           docker exec "$m" curl -sf http://127.0.0.1:8093/repos/owner/repo/releases/latest | jq -e '.tag_name == "v9.1.0"'
 
-      - name: Update from an install without a version number (dev) — the release must be offered and the update must run
-        # Bekannte Luecke, rot auf main (Befund Nacht 2026-11-16): ohne Versionsnummer meldet der Release-Check "nichts zu tun",
-        # es kommt keine Karte, ein alter Knopf lehnt ab (unknown_release). Der Schritt blockiert den Lauf nicht; sobald der
-        # Update-Weg solche Installationen mitnimmt, continue-on-error entfernen.
-        continue-on-error: true
+      - name: Update from an install without a version number (dev) — the number is restored, then the release is offered
+        # Gesetz Versionsnummer (provisioning/lib/common.sh lifeagents_version_heal): der Release-Check traegt die Nummer des
+        # laufenden master-Abbilds nach, bevor er vergleicht. Der naechste Schritt faehrt das Update ueber den echten Auftrag
+        # von genau diesem Stand aus.
         run: |
           set -euo pipefail
           m="$LA_PROJECT-master"; log="$RUNNER_TEMP/tgmock/mock_telegram.jsonl"
           q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
           # hand-injected: Release-Quelle und Bot-Adresse zeigen auf die Mocks; die Tick-Schleife des master hat diese Umgebung nicht
           upd() { docker exec -e PROVISION_GH_API=http://127.0.0.1:8093 -e PROVISION_REPO_SLUG=owner/repo -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 "$m" lifeagents update "$@"; }
-          trap 'docker exec "$m" sh -c "echo v9.0.0 > /usr/local/lib/lifeagents/VERSION"' EXIT
-          docker exec "$m" sh -c 'echo dev > /usr/local/lib/lifeagents/VERSION'
+          # Unter der Update-Sperre heilt die Tick-Schleife nicht (lifeagents_version_heal): so sieht doctor den Zustand ohne Nummer.
+          if docker exec "$m" flock /run/lifeagents-update.lock sh -c 'echo dev > /usr/local/lib/lifeagents/VERSION; bash /opt/lifeagents/provisioning/doctor.sh' > "$RUNNER_TEMP/doctor-dev.txt"; then
+            echo "FAIL doctor ohne Versionsnummer gruen"; exit 1
+          fi
+          grep -F '[FAIL] Keine Versionsnummer eingetragen (VERSION: dev)' "$RUNNER_TEMP/doctor-dev.txt"
           q "DELETE FROM core.notification_state WHERE source='release_update'; DELETE FROM core.update_requests" >/dev/null
           : > "$log"
           upd --check
-          if ! grep -q 'upd%3Anow%3Av9.1.0' "$log"; then
-            echo "::warning title=Bekannte Luecke::Installation ohne Versionsnummer (dev) bekommt keine Update-Karte - Konzept B der Docker-Betriebs-Arbeit noch nicht gebaut"
-            echo "FAIL aus 'dev' kommt keine Update-Karte fuer v9.1.0"; exit 1
-          fi
-          echo "::notice title=Luecke geschlossen::der dev-Fall bekommt eine Karte - continue-on-error an diesem Schritt entfernen"
+          test "$(docker exec "$m" lifeagents version)" = v9.0.0 || { echo "FAIL Versionsnummer nicht nachgetragen: $(docker exec "$m" lifeagents version)"; exit 1; }
+          grep -q 'upd%3Anow%3Av9.1.0' "$log" || { echo "FAIL aus 'dev' kommt keine Update-Karte fuer v9.1.0"; tail -n 5 "$log"; exit 1; }
 
       - name: Update by a real order (card -> tap -> order -> tick -> swap -> version + report), not by calling the helper
         run: |

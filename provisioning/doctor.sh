@@ -239,15 +239,23 @@ _doctor_node_stale() {
   _warn "Node.js: ${names} ${verb} noch mit der alten Version — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart ${units}')"
 }
 
-# _doctor_release_version — Docker-Verbund, Release-Profil: traegt VERSION kein Tag (dev), schickt der Release-Check nie eine
-#   Karte (update_runner.sh bricht bei Nicht-Tag still ab). WARN, kein ROT: Betrieb und Daten sind in Ordnung.
+# _doctor_release_version — Release-Profil (beide Betriebsarten): ohne Versionsnummer (Gesetz und Begriff: common.sh
+#   lifeagents_version_heal) schickt der Release-Check nie eine Karte und der Rueckweg kennt sein Ziel nicht -> ROT. Nur lesen:
+#   nachgetragen wird im naechsten Durchlauf von `lifeagents update` (Tick jede Minute), sofern das Abbild die Nummer traegt.
 _doctor_release_version() {
-  local ce v
-  ce="$(lifeagents_env_file core)"
-  [ -r "$ce" ] && [ "$(read_env_value "$ce" INSTALL_PROFILE 2>/dev/null || true)" = release ] || return 0
-  v="$(head -n1 "$(lifeagents_version_marker)" 2>/dev/null | tr -d '[:space:]' || true)"
-  if [[ $v =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then _pass "Installierte Version: ${v}"
-  else _warn "Keine Release-Version eingetragen (VERSION: ${v:-fehlt}) — Update-Hinweise im Chat kommen nicht an. Abhilfe: einmal '$(rt_master_cli_hint) update'"; fi
+  local m v tag shown fix
+  [ "$(_install_profile)" = release ] || return 0
+  m="$(lifeagents_version_marker)"
+  [ -e "$m" ] || return 0   # nicht installiert (reversibel deinstalliert): kein Stand, dem eine Nummer fehlt
+  v="$(head -n1 "$m" 2>/dev/null | tr -d '[:space:]' || true)"
+  if is_release_tag "$v"; then _pass "Installierte Version: ${v}"; return 0; fi
+  if version_is_named "$v"; then _pass "Installierte Version: ${v} (Entwickler-Stand)"; return 0; fi
+  shown="${v:-leer}"
+  if tag="$(rt_master_release_tag)"; then
+    fix="Behebt sich selbst: der nächste Durchlauf (höchstens 1 min) trägt ${tag} aus dem laufenden Programm-Paket ein."
+  elif rt_is_compose; then fix="Abhilfe: einmal '$(rt_master_cli_hint) update'"
+  else fix="Abhilfe: einmal 'lifeagents update'"; fi
+  _red "Keine Versionsnummer eingetragen (VERSION: ${shown}) — Update-Hinweise im Chat kommen so nicht an. ${fix}"
 }
 
 # _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
@@ -408,12 +416,12 @@ main() {
     _doctor_compose_tick
     _doctor_compose_check
     _doctor_compose_backup_tick
-    _doctor_release_version
   else
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
     svc_active lifeagents-backup.timer "Tägliche Sicherung"
   fi
+  _doctor_release_version
   _doctor_backup
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
     local _stuck _lastfail _help _runner_log="journalctl -u lifeagents-update-run -n 50"

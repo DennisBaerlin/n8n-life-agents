@@ -471,7 +471,8 @@ out="$(dr '0 1')"; printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg' && pr
 out="$(dr '0 0')"; eq L_doctor_dead_fail 'fail=1' "$(printf '%s' "$out" | tail -n1)"
 out="$(dr E)";     printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg.*nicht gemessen' && eq L_doctor_notmeasured_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail L_doctor_notmeasured "$out"
 
-# doctor: Docker-Installation ohne Release-Version (VERSION = dev) -> WARN, sonst schickt der Release-Check nie eine Karte.
+# doctor: Docker-Installation im Release-Profil ohne Versionsnummer (VERSION = dev) -> ROT, sonst schickt der Release-Check nie
+# eine Karte (Matrix mit Abbild-Quelle: tests/mock_runtime/cases.sh VH).
 dv() {   # dv <profil> <VERSION-Inhalt|-> -> Ausgabezeilen von _doctor_release_version + "fail=<n>"
   printf '%s\n' "INSTALL_PROFILE=$1" > "$W/dv.env"; if [ "$2" = - ]; then rm -f "$W/dv.ver"; else printf '%s\n' "$2" > "$W/dv.ver"; fi
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
@@ -480,7 +481,7 @@ dv() {   # dv <profil> <VERSION-Inhalt|-> -> Ausgabezeilen von _doctor_release_v
     _doctor_release_version; echo "fail=$_fail" )
 }
 out="$(dv release dev)"
-printf '%s' "$out" | grep -q '^  \[WARN\] .*Release-Version.*lifeagents update' && eq D_version_dev_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D_version_dev "$out"
+printf '%s' "$out" | grep -q '^  \[FAIL\] Keine Versionsnummer eingetragen (VERSION: dev)' && eq D_version_dev_fail 'fail=1' "$(printf '%s' "$out" | tail -n1)" || fail D_version_dev "$out"
 out="$(dv release v1.2.3)"; printf '%s' "$out" | grep -q '^  \[WARN\]' && fail D_version_tag_kein_warn "$out" || eq D_version_tag_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)"
 out="$(dv dev dev)";        printf '%s' "$out" | grep -q '^  \[WARN\]' && fail D_version_devprofil_still "$out" || pass D_version_devprofil_still
 printf 'compose_cases: %s Fehler\n' "$fails"

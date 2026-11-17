@@ -493,8 +493,8 @@ upgrade_rollback() {
     die "Der vorherige Stand ${from_rel} stammt aus der Zeit vor ${RELEASE_HISTORY_START} und ist im öffentlichen Repo nicht ladbar — kein Rückweg. Die Sicherung bleibt unter ${backup}."
   fi
   # Verbund: der vorherige Stand ist das vorherige master-Image samt compose.yml (Merkzettel), es wird nichts geladen ->
-  # auch ein Stand ohne Release-Tag (VERSION 'dev', Image ohne -Version gebaut) kommt zurueck. Klassisch braucht der Rueckweg
-  # das install.sh eines Release.
+  # auch ein Stand mit FROM_RELEASE=dev kommt zurueck (die Nummer liefert dann sein Abbild, siehe unten). Klassisch braucht der
+  # Rueckweg das install.sh eines Release.
   if rt_is_compose && [ -n "$(read_env_value "$src" FROM_MASTER_IMAGE || true)" ] && [[ "$from_rel" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
     :
   else
@@ -532,6 +532,12 @@ upgrade_rollback() {
       || die "Der Merkzettel nennt kein vorheriges Programm-Paket (FROM_MASTER_IMAGE/FROM_COMPOSE) — kein automatischer Rückweg, es wurde nichts geändert."
     rt_image_ensure "$from_compose" "$from_img" \
       || die "Das vorherige Programm-Paket ${from_img} ist nicht ladbar — Rückweg abgebrochen, es wurde nichts geändert."
+    # Gesetz Versionsnummer (common.sh): ein Ziel ohne Nummer (Merkzettel aus einem dev-Stand) nimmt die seines Abbilds; sonst
+    # braeche release_tag_resolve das Einspielen erst ab, nachdem die Daten schon zurueckgesetzt sind.
+    if [ "$(_install_profile)" = release ] && ! version_is_named "$from_rel"; then
+      from_rel="$(rt_image_release_tag "$from_img")" \
+        || die_because no_version "Der vorherige Stand trägt keine Versionsnummer, auch sein Programm-Paket nicht — Rückweg abgebrochen, es wurde nichts geändert."
+    fi
   else
   work="$(mktemp -d)"
   _gh_release_json "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases/tags/${from_rel}" "$work/rel.json"

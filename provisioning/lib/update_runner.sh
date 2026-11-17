@@ -29,6 +29,7 @@ UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/log/lifeagents}"
 # update_cli [args] — der `lifeagents update`-Arm: --check | --run-requested (Timer, kehren zurueck) oder ein normales
 #   Update (optional --version <tag>, --allow-downgrade; Rest geht an provision.sh) — fetch_and_run_release kehrt nie zurueck.
 update_cli() {
+  case "${1:-}" in --help|-h) ;; *) lifeagents_version_heal || true ;; esac   # vor dem Lesen von VERSION (common.sh)
   case "${1:-}" in
     --check)         update_check "$([ "${2:-}" = --scheduled ] && printf scheduled)"; return 0 ;;
     --run-requested) update_run_requested; return 0 ;;

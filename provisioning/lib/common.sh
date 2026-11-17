@@ -282,7 +282,8 @@ lifeagents_version_heal() {
 release_tag_resolve() {
   [ "${1:-}" = release ] || return 0
   version_is_named "${RELEASE_TAG:-}" && return 0
-  local tag fix="'lifeagents update' holt das neueste Release samt Nummer."
+  local tag fix
+  fix="'$(rt_cli_hint) update' holt das neueste Release samt Nummer."
   if tag="$(rt_master_release_tag)"; then
     log "Versionsnummer aus dem laufenden Programm-Paket: ${tag} (übergeben: '${RELEASE_TAG:-leer}')."
     export RELEASE_TAG="$tag"; return 0

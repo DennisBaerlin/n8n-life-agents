@@ -384,8 +384,16 @@ rt_host_ls() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" sh -c 'cd /in &&
 # rt_host_check <rechner-ordner> — gibt es den Ordner und ist er beschreibbar? (Probe anlegen + loeschen)
 # shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
 rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1; }
-# rt_master_cli_hint -> Befehlsanfang, mit dem man auf dem Rechner die CLI im master aufruft (fuer Meldungen mit Beispiel).
-rt_master_cli_hint() { printf 'docker exec -i %s-master lifeagents' "${LA_PROJECT:-lifeagents}"; }
+# rt_master_cli_hint [tty] -> Befehlsanfang, mit dem man auf dem Rechner die CLI im master aufruft (fuer Meldungen mit Beispiel).
+#   tty = fuer Befehle mit Rueckfrage (rollback, reconfigure): mit nur -i bricht rollback ab ("braucht ein Terminal") und
+#   reconfigure zeigt nur die Hilfe (im echten Verbund belegt); update/doctor/backup lesen hoechstens stdin -> -i.
+rt_master_cli_hint() {
+  local f=-i; [ "${1:-}" = tty ] && f=-it
+  printf 'docker exec %s %s-master lifeagents' "$f" "${LA_PROJECT:-lifeagents}"
+}
+# rt_cli_hint [tty] -> derselbe Befehlsanfang fuer beide Betriebsarten: Verbund wie oben, klassisch `sudo lifeagents` (die CLI
+#   verlangt root). Die eine Adresse fuer Befehle in Meldungen an den Owner (Chat-Hilfe core.fn_update_report, Halt-Nachricht).
+rt_cli_hint() { if rt_is_compose; then rt_master_cli_hint "${1:-}"; else printf 'sudo lifeagents'; fi; }
 # rt_host_exists <rechner-ordner> — laesst Docker den Ordner einbinden? (fehlt er oder darf Docker nicht hinein, scheitert der
 #   Mount; Docker Desktop unterscheidet beides nicht verlaesslich). rt_host_readable: zusaetzlich auflistbar (macOS-
 #   Datenschutz kann den Mount erlauben und das Lesen verbieten).

@@ -3,7 +3,8 @@
 --   Eingabe: p_tag text. Die eine Regel fuer [Erneut versuchen] (upd:retry:<tag>): genutzt vom Callback-Handler (darf der Tap einen
 --   Auftrag anlegen?) und von core.fn_update_report (wird der Knopf ueberhaupt angeboten?).
 --   Erlaubt genau dann, wenn der zuletzt abgeschlossene Auftrag fuer <tag> partial/failed/interrupted ist, sein
---   Grund keine Sicherheits-/Sinnlos-Wiederholung ist (signature, checksum, downgrade, not_found) und seit dem
+--   Grund keine Sicherheits-/Sinnlos-Wiederholung ist (signature, checksum, downgrade, not_found,
+--   master_image, pg_major) und seit dem
 --   letzten [Jetzt aktualisieren] fuer <tag> weniger als 2 Wiederholungen liefen (keine Schleife; danach bleiben
 --   Terminal und Rueckweg).
 --   Rueckgabe: boolean (nie NULL). Tests: tests/db/core/test_fn_update_requests.sql
@@ -29,7 +30,7 @@ BEGIN
      LIMIT 1;
     IF NOT FOUND
        OR v_last.outcome NOT IN ('partial', 'failed', 'interrupted')
-       OR COALESCE(v_last.reason_code, '') IN ('signature', 'checksum', 'downgrade', 'not_found') THEN
+       OR COALESCE(v_last.reason_code, '') IN ('signature', 'checksum', 'downgrade', 'not_found', 'master_image', 'pg_major') THEN
         RETURN false;
     END IF;
     SELECT COALESCE(max(id), 0) INTO v_base_id

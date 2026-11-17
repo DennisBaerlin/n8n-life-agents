@@ -1,10 +1,11 @@
 -- ============================================================
 -- fn_close_pension (ATOMIC WRITE) -- Smart-Close (analog fn_close_savings_plan)
---   Historie = Transaktionen mit recurring_payment_id = pension.recurring_payment_id (rp ist optional) oder Standmitteilungen.
---   Keine Historie -> Hard-DELETE: Pension + ggf. verknuepfte RP (Karteileiche).
---     FK-Reihenfolge: Pension zuerst (FK pension->rp), dann RP.
---   Historie vorhanden -> Soft-Close: pension.status='paused'; RP.status='paused' +
---     valid_to=CURRENT_DATE (Beitrag endet im Cashflow, Historie bleibt).
+--   Historie = Transaktionen an einem Glied der Beitrags-Kette (fn_recurring_lineage; nach einer Beitragsaenderung traegt
+--   die Vorsorge mehrere Glieder, die Kette ist optional) oder Standmitteilungen.
+--   Keine Historie -> Hard-DELETE: Pension + die ganze Kette (Karteileiche).
+--     FK-Reihenfolge: Pension zuerst (FK pension->rp), dann die Kette in einem Statement (Vorgaenger-FK NO ACTION).
+--   Historie vorhanden -> Soft-Close: pension.status='paused'; alle noch laufenden Glieder enden heute
+--     (fn_end_recurring_chain: Beitrag endet im Cashflow, Historie bleibt).
 --   Eingabe jsonb: pension_name.
 --   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count} | {ok:false, code:'not_found'|'ambiguous', reason,
 --   candidates}.
@@ -33,13 +34,14 @@ BEGIN
 
     SELECT COUNT(*) INTO v_tx_count
     FROM finance.transactions
-    WHERE recurring_payment_id = v_pension.recurring_payment_id;
+    WHERE recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_pension.recurring_payment_id));
 
     IF v_tx_count = 0 AND NOT EXISTS (SELECT 1 FROM finance.pension_statements s WHERE s.pension_id = v_pension.id) THEN
-        -- Hard-DELETE: erst Pension (FK pension->rp), dann RP (falls vorhanden)
+        -- Hard-DELETE: erst Pension (FK pension->rp), dann die Kette (falls vorhanden)
         DELETE FROM finance.pension WHERE id = v_pension.id;
         IF v_pension.recurring_payment_id IS NOT NULL THEN
-            DELETE FROM finance.recurring_payments WHERE id = v_pension.recurring_payment_id;
+            DELETE FROM finance.recurring_payments
+             WHERE id IN (SELECT finance.fn_recurring_lineage(v_pension.recurring_payment_id));
         END IF;
 
         RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'tx_count', 0);
@@ -50,9 +52,7 @@ BEGIN
         WHERE id = v_pension.id;
 
         IF v_pension.recurring_payment_id IS NOT NULL THEN
-            UPDATE finance.recurring_payments
-            SET status = 'paused', valid_to = CURRENT_DATE
-            WHERE id = v_pension.recurring_payment_id;
+            PERFORM finance.fn_end_recurring_chain(v_pension.recurring_payment_id, CURRENT_DATE);
         END IF;
 
         RETURN jsonb_build_object('ok', true, 'action', 'closed', 'tx_count', v_tx_count);

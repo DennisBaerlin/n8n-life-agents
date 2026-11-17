@@ -110,6 +110,8 @@
 #   (38) WERKZEUG-EINGABEN STIMMEN: die Input-Zeile einer Tool-Description nennt genau die $fromAI-Felder. Selbst-Asserts.
 #   (39) Telegram nur ueber die Helfer: Bot-API-URLs in provisioning/ nur in tg_api_curl/_tg_post; Ausnahmeliste scripts/build/telegram_direct_allowlist.json (Ratchet). Selbst-Asserts.
 #   (40) Lese-Knoten ohne Zeile: ein Werkzeug-Lese-Knoten mit WHERE braucht alwaysOutputData (New-RequiredRowGate); Ausnahmeliste scripts/build/read_gate_allowlist.json (Ratchet). Selbst-Asserts.
+#   (41) Pruef-fn ohne Registry: jede <pkg>.fn_validate_<x>(p_facts jsonb) ist im context_validators-Block ihres Manifests gebunden;
+#       Ausnahmeliste scripts/build/validator_registry_allowlist.json (Ratchet). Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -2782,6 +2784,63 @@ else {
     foreach ($rn in $rgCancel.nodes) { if ($rn.name -eq 'Read case') { $rn.alwaysOutputData = $false } }
     $rgBack = (Get-ReadGateFindings $rgCancel).Count
     if ($rgBase -ne 0 -or $rgBack -ne 1) { $errors.Add("LESE-KNOTEN SELBST-ASSERT 'Rueckbau': cancel_case gebaut=$rgBase (erwartet 0), ohne alwaysOutputData=$rgBack (erwartet 1) -- Check 40 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
+# (41) Pruef-fn ohne Registry: eine Paket-fn <pkg>.fn_validate_<x>(p_facts jsonb) prueft Fakten nur, wenn ein
+#      manifest-context_validators-Eintrag desselben Pakets sie bindet; der Core-Trigger dispatcht allein ueber
+#      core.context_validators, sonst laeuft sie im Betrieb nie und nur ihre Tests rufen sie. Bestehende Luecken stehen in
+#      scripts/build/validator_registry_allowlist.json (Ratchet: nur schrumpfend; Eintrag ohne Grund, fuer eine gebundene
+#      oder fehlende fn ist ein Fehler). Core-Validatoren (agent.*) ruft der Trigger direkt und sind nicht Gegenstand.
+# ---------------------------------------------------------------
+function Get-ValidatorRegistryIssues($Defined, $Bound, $Allow) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    foreach ($fn in $Defined) {
+        if ($Bound -contains $fn) { continue }
+        if (@($Allow | Where-Object { $_.fn -eq $fn }).Count) { continue }
+        $iss.Add("$fn ist definiert, aber kein manifest-context_validators-Eintrag bindet sie -- die Pruefung laeuft im Betrieb nie (Eintrag im Manifest des Pakets oder fn loeschen; neue Ausnahmen sind verboten).")
+    }
+    foreach ($a in $Allow) {
+        if ([string]::IsNullOrWhiteSpace([string]$a.reason)) { $iss.Add("Ausnahmeliste: '$($a.fn)' ohne reason.") }
+        if ($Bound -contains $a.fn) { $iss.Add("Ausnahmeliste: '$($a.fn)' ist inzwischen gebunden -- Eintrag streichen (Ratchet).") }
+        elseif ($Defined -notcontains $a.fn) { $iss.Add("Ausnahmeliste: '$($a.fn)' ist nicht mehr definiert -- Eintrag streichen (Ratchet).") }
+    }
+    return , $iss
+}
+$vrDefined = New-Object System.Collections.Generic.List[string]
+$vrBound   = New-Object System.Collections.Generic.List[string]
+foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
+    $pkg = $pdir.Name
+    $dbDir = Join-Path $pdir.FullName 'db'
+    if (Test-Path $dbDir) {
+        foreach ($f in (Get-ChildItem $dbDir -Recurse -Filter '*.sql')) {
+            $txt = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
+            foreach ($m in [regex]::Matches($txt, "(?i)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+($pkg\.fn_validate_[a-z0-9_]+)\s*\(\s*p_facts\s+jsonb\s*\)")) {
+                $n = $m.Groups[1].Value.ToLower()
+                if (-not $vrDefined.Contains($n)) { $vrDefined.Add($n) }
+            }
+        }
+    }
+    $mf = Read-Manifest $pkg
+    if ($null -ne $mf -and $mf.PSObject.Properties.Name -contains 'context_validators' -and $null -ne $mf.context_validators) {
+        foreach ($p in $mf.context_validators.PSObject.Properties) { if ($p.Name -ne '_comment') { $vrBound.Add(([string]$p.Value).ToLower()) } }
+    }
+}
+$vrAllow = @(([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build\validator_registry_allowlist.json'), $Utf8NoBom) | ConvertFrom-Json).allow)
+foreach ($i in (Get-ValidatorRegistryIssues $vrDefined $vrBound $vrAllow)) { $errors.Add("Pruef-fn ohne Registry: $i") }
+$vrA = @([pscustomobject]@{ fn = 'x.fn_validate_a'; reason = 'offen' })
+foreach ($sa in @(
+    @{ n = 'gebunden';          d = @('x.fn_validate_a'); b = @('x.fn_validate_a'); a = @();   want = 0 },
+    @{ n = 'ungebunden';        d = @('x.fn_validate_a'); b = @();                  a = @();   want = 1 },
+    @{ n = 'Ausnahme gilt';     d = @('x.fn_validate_a'); b = @();                  a = $vrA;  want = 0 },
+    @{ n = 'Ausnahme gebunden'; d = @('x.fn_validate_a'); b = @('x.fn_validate_a'); a = $vrA;  want = 1 },
+    @{ n = 'Ausnahme verwaist'; d = @();                  b = @();                  a = $vrA;  want = 1 },
+    @{ n = 'Ausnahme ohne Grund'; d = @('x.fn_validate_a'); b = @();                a = @([pscustomobject]@{ fn = 'x.fn_validate_a'; reason = '' }); want = 1 })) {
+    $got = (Get-ValidatorRegistryIssues $sa.d $sa.b $sa.a).Count
+    if ($got -ne $sa.want) { $errors.Add("Pruef-fn Selbst-Assert '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 41 ist defekt.") }
+}
+if ($vrDefined -notcontains 'finance.fn_validate_finance_profile' -or $vrBound -notcontains 'finance.fn_validate_finance_profile') {
+    $errors.Add("Pruef-fn Selbst-Assert 'Bestand': finance.fn_validate_finance_profile nicht als definiert und gebunden erkannt -- Check 41 liest Dateien oder Manifeste falsch.")
 }
 
 # ---------------------------------------------------------------

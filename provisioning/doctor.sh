@@ -255,8 +255,7 @@ _doctor_release_version() {
     fix="Wird mit dem Abschluss des offenen Updates eingetragen (siehe die Zeile zum unvollendeten Update)."
   elif tag="$(rt_master_release_tag)"; then
     fix="Behebt sich selbst: der nächste Durchlauf (höchstens 1 min) trägt ${tag} aus dem laufenden Programm-Paket ein."
-  elif rt_is_compose; then fix="Abhilfe: einmal '$(rt_master_cli_hint) update'"
-  else fix="Abhilfe: einmal 'lifeagents update'"; fi
+  else fix="Abhilfe: einmal '$(rt_cli_hint) update'"; fi
   _red "Keine Versionsnummer eingetragen (VERSION: ${shown}) — Update-Hinweise im Chat kommen so nicht an. ${fix}"
 }
 
@@ -441,8 +440,13 @@ main() {
                         ORDER BY finished_at DESC, id DESC LIMIT 1) l
         WHERE outcome IN ('partial','held','failed','interrupted')" 2>/dev/null || true)"
     if [ -n "$_lastfail" ]; then
+      # Befehle wie im Chat (rt_cli_hint); sie stehen im SQL-Text, darum nur mit unverdaechtigen Zeichen, sonst Rueckfall der fn.
+      local _cli _clit
+      _cli="$(rt_cli_hint)"; _clit="$(rt_cli_hint tty)"
+      case "${_cli}${_clit}" in *[!A-Za-z0-9\ _.-]*) _cli=''; _clit='' ;; esac
       _help="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
-        "SELECT core.fn_update_report(jsonb_build_object('request_id', ${_lastfail}::bigint, 'phase', 'result', 'bot_up', true))->>'text'" 2>/dev/null || true)"
+        "SELECT core.fn_update_report(jsonb_build_object('request_id', ${_lastfail}::bigint, 'phase', 'result', 'bot_up', true,
+                                                         'cli', '${_cli}', 'cli_tty', '${_clit}'))->>'text'" 2>/dev/null || true)"
       _warn "Das letzte Update hat nicht vollständig geklappt:"
       printf '%s\n' "$_help" | sed 's/^/         /'
     fi

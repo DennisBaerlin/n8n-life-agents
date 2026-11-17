@@ -317,6 +317,126 @@ BEGIN
   r := core.fn_handle_update_cb('{"data":"upd:now:v0.15.0","chat_id":"8202"}');
   IF (SELECT finished_at FROM core.update_requests WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [13g Mitglied schliesst nicht]'; END IF;
 
+  -- ---------- 14) Befehl je Weg: der Runner gibt cli/cli_tty mit (rt_cli_hint), die Hilfe nennt genau diesen Befehl ----------
+  -- Klassisch `sudo lifeagents`, Verbund `docker exec -i|-it <projekt>-master lifeagents`; -it nur fuer Befehle mit Rueckfrage
+  -- (rollback, reconfigure). Unbekanntes/fehlendes cli (alter Runner beim Umstieg) -> klassisch.
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('core.update.where.server', 'de', 'WS', 'core'), ('core.update.where.docker', 'de', 'WD', 'core'),
+    ('core.update.todo.later', 'de', 'TL {where}|{cli} update', 'core'),
+    ('core.update.todo.terminal_update', 'de', 'TU {where}|{cli} update', 'core'),
+    ('core.update.todo.rollback', 'de', 'RB {where}|{cli_tty} rollback', 'core'),
+    ('core.update.todo.held', 'de', 'TH {where}|{cli_tty} reconfigure', 'core'),
+    ('core.update.todo.doctor', 'de', 'TD {where}|{cli} doctor', 'core'),
+    ('core.update.done_not_ready', 'de', 'DNR {where}|{cli} doctor', 'core'),
+    ('core.update.todo.disk', 'de', 'DISK', 'core'), ('core.update.todo.disk_docker', 'de', 'DISKDOCKER', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
+  DECLARE
+    c_dk  constant text := 'docker exec -i la-x-master lifeagents';
+    c_dkt constant text := 'docker exec -it la-x-master lifeagents';
+    -- r14 <outcome> <reason> <changed> <from_version> <bot_up> <cli|null> <cli_tty|null> -> Text der Meldung
+    v_t text;
+  BEGIN
+    -- 14a Docker, mittendrin, Bot aus: Terminal-Update mit -i, Rueckweg mit -it, Ort "Docker"
+    DELETE FROM core.update_requests;
+    INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+    VALUES ('v0.15.0', now(), 'v0.14.0', now(), 'failed', 'workflows', 'unknown', true) RETURNING id INTO v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false,
+             'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('TU WD|' || c_dk || ' update' IN v_t) = 0 OR position('RB WD|' || c_dkt || ' rollback' IN v_t) = 0
+       OR position('sudo' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [14a Docker bot_down]: %', v_t; END IF;
+    -- 14b gleicher Fall klassisch: sudo, Ort "Server", kein docker
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false,
+             'cli', 'sudo lifeagents', 'cli_tty', 'sudo lifeagents'))->>'text';
+    IF position('TU WS|sudo lifeagents update' IN v_t) = 0 OR position('RB WS|sudo lifeagents rollback' IN v_t) = 0
+       OR position('docker' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [14b klassisch bot_down]: %', v_t; END IF;
+    -- 14c ohne cli (alter Runner) -> klassisch; fremdes cli (kein erlaubtes Muster) -> klassisch, nie der fremde Text
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false))->>'text';
+    IF position('TU WS|sudo lifeagents update' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14c ohne cli]: %', v_t; END IF;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false,
+             'cli', 'rm -rf / ; lifeagents', 'cli_tty', 'docker exec -it a b; lifeagents'))->>'text';
+    IF position('rm -rf' IN v_t) > 0 OR position('a b;' IN v_t) > 0 OR position('TU WS|sudo lifeagents update' IN v_t) = 0
+       OR position('RB WS|sudo lifeagents rollback' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14c fremdes cli]: %', v_t; END IF;
+    -- 14d Rueckweg nur, wenn `lifeagents rollback` dort laufen kann (upgrade_rollback): klassisch nur mit Release-Tag,
+    --     Verbund mit irgendeiner Versionsangabe (dev), ohne Angabe nirgends
+    UPDATE core.update_requests SET from_version = 'dev' WHERE id = v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', 'sudo lifeagents'))->>'text';
+    IF position('RB ' IN v_t) > 0 OR position('TU WS|' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14d klassisch dev ohne Rueckweg]: %', v_t; END IF;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('RB WD|' || c_dkt IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14d Docker dev mit Rueckweg]: %', v_t; END IF;
+    UPDATE core.update_requests SET from_version = NULL WHERE id = v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('RB ' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [14d Docker ohne Version ohne Rueckweg]: %', v_t; END IF;
+    -- 14e nichts geaendert: spaeter (cli -i), Speicherplatz je Weg (Docker ohne df-Befehl); Bot aus -> kein Wiederholen-Knopf, also "spaeter"
+    DELETE FROM core.update_requests;
+    INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+    VALUES ('v0.16.0', now(), 'v0.15.0', now(), 'failed', 'preflight', 'disk', false) RETURNING id INTO v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('DISKDOCKER' IN v_t) = 0 OR position('TL WD|' || c_dk || ' update' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14e Docker Platz]: %', v_t; END IF;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', 'sudo lifeagents'))->>'text';
+    IF position('DISKDOCKER' IN v_t) > 0 OR position('DISK' IN v_t) = 0 OR position('TL WS|sudo lifeagents update' IN v_t) = 0
+    THEN RAISE EXCEPTION 'FAIL [14e klassisch Platz]: %', v_t; END IF;
+    -- 14f wartet (reconfigure mit -it), teilweise + fertig ohne Bot (doctor mit -i)
+    DELETE FROM core.update_requests;
+    INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, changed)
+    VALUES ('v0.16.0', now(), 'v0.15.0', now(), 'held', false) RETURNING id INTO v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X', 'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('TH WD|' || c_dkt || ' reconfigure' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14f held Docker]: %', v_t; END IF;
+    UPDATE core.update_requests SET outcome = 'partial', changed = true WHERE id = v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'failed', 'Y', 'cli', c_dk, 'cli_tty', c_dkt))->>'text';
+    IF position('TD WD|' || c_dk || ' doctor' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14f partial Docker]: %', v_t; END IF;
+    UPDATE core.update_requests SET outcome = 'succeeded' WHERE id = v_id;
+    v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'cli', 'sudo lifeagents'))->>'text';
+    IF position('DNR WS|sudo lifeagents doctor' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [14f done_not_ready klassisch]: %', v_t; END IF;
+  END;
+
+  -- ---------- 15) Abbruch-Gruende ohne Sinn fuer eine Wiederholung: eigener Satz, kein Knopf, kein "spaeter" ----------
+  -- master_image (Release ohne master-Image) und pg_major (Daten in anderer PostgreSQL-Hauptversion) kaemen beim selben Tag wieder.
+  FOR v_txt IN SELECT unnest(ARRAY['master_image', 'pg_major']) LOOP
+    DELETE FROM core.update_requests;
+    INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+    VALUES ('v0.16.0', now(), 'v0.15.0', now(), 'failed', 'preflight', v_txt, false) RETURNING id INTO v_id;
+    IF core.fn_update_retry_allowed('v0.16.0') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [15a % -> kein retry]', v_txt; END IF;
+    r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true,
+           'help_url', 'https://example.org/hilfe', 'cli', 'sudo lifeagents'));
+    IF position('core.update.reason.' || v_txt IN r->>'text') = 0 OR position('core.update.reason.unknown' IN r->>'text') > 0
+    THEN RAISE EXCEPTION 'FAIL [15b % eigener Satz]: %', v_txt, r->>'text'; END IF;
+    IF position('core.update.todo.no_retry' IN r->>'text') = 0 OR position('TL ' IN r->>'text') > 0
+       OR position('core.update.todo.retry' IN r->>'text') > 0 THEN RAISE EXCEPTION 'FAIL [15c % Folgezeile]: %', v_txt, r->>'text'; END IF;
+    IF position('callback_data' IN r->>'keyboard') > 0 OR position('https://example.org/hilfe#unchanged' IN r->>'keyboard') = 0
+    THEN RAISE EXCEPTION 'FAIL [15d % Knoepfe]: %', v_txt, r->'keyboard'; END IF;
+  END LOOP;
+  -- pg_major aus upgrade_detect kommt nach `result_set changed true` (Schritt base), aber vor jedem Tausch -> trotzdem
+  -- "nichts geaendert" mit Grund, nie "mittendrin" (dessen Kopf nennt keinen Grund) und kein Rueckweg.
+  UPDATE core.update_requests SET changed = true, stage = 'base' WHERE id = v_id;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'cli', 'docker exec -i la-x-master lifeagents'));
+  IF r->>'class' IS DISTINCT FROM 'unchanged' OR position('core.update.reason.pg_major' IN r->>'text') = 0
+     OR position('RB ' IN r->>'text') > 0 THEN RAISE EXCEPTION 'FAIL [15e pg_major nach changed=true]: %', r; END IF;
+
+  -- ---------- 16) "Laeuft weiter auf ...": Versionsangabe nur mit Release-Tag, nie "?" oder "dev" ----------
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('core.update.from_note', 'de', ' (V {from})', 'core'),
+    ('core.update.held', 'de', 'HELD{from_note}.', 'core'),
+    ('core.update.fail.unchanged', 'de', 'UNCH{from_note}.', 'core'),
+    ('core.update.fail.security', 'de', 'SEC{from_note}.', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
+  DECLARE
+    v_t text; v_case text[];
+  BEGIN
+    FOREACH v_case SLICE 1 IN ARRAY ARRAY[['held', '', 'HELD'], ['failed', 'net', 'UNCH'], ['failed', 'signature', 'SEC']] LOOP
+      DELETE FROM core.update_requests;
+      INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, stage, reason_code, changed)
+      VALUES ('v0.16.0', now(), 'v0.15.0', now(), v_case[1], 'download', NULLIF(v_case[2], ''), false) RETURNING id INTO v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || ' (V v0.15.0).' IN v_t) = 0 THEN RAISE EXCEPTION 'FAIL [16a % mit Version]: %', v_case[3], v_t; END IF;
+      UPDATE core.update_requests SET from_version = NULL WHERE id = v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || '.' IN v_t) = 0 OR position('?' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [16b % ohne Version]: %', v_case[3], v_t; END IF;
+      UPDATE core.update_requests SET from_version = 'dev' WHERE id = v_id;
+      v_t := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true, 'missing', 'X'))->>'text';
+      IF position(v_case[3] || '.' IN v_t) = 0 OR position('dev' IN v_t) > 0 THEN RAISE EXCEPTION 'FAIL [16c % dev]: %', v_case[3], v_t; END IF;
+    END LOOP;
+  END;
+
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;
 

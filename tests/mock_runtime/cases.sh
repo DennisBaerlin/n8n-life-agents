@@ -1430,7 +1430,7 @@ eq VH.doctor-dev-rot-heilt-selbst '  [FAIL] Keine Versionsnummer eingetragen (VE
 fail=1' "$(vh_doc release dev v9.0.0)"
 eq VH.doctor-dev-rot-ohne-quelle "  [FAIL] Keine Versionsnummer eingetragen (VERSION: dev) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal '$(LA_PROJECT=t rt_master_cli_hint) update'
 fail=1" "$(vh_doc release dev dev)"
-eq VH.doctor-klassisch-rot "  [FAIL] Keine Versionsnummer eingetragen (VERSION: leer) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal 'lifeagents update'
+eq VH.doctor-klassisch-rot "  [FAIL] Keine Versionsnummer eingetragen (VERSION: leer) — Update-Hinweise im Chat kommen so nicht an. Abhilfe: einmal '$(LIFEAGENTS_RUNTIME=systemd rt_cli_hint) update'
 fail=1" "$(vh_doc release -leer v9.0.0 systemd)"
 eq VH.doctor-entwickler-stand '  [ OK ] Installierte Version: dev-0123abc (Entwickler-Stand)
 fail=0' "$(vh_doc release dev-0123abc v9.0.0)"
@@ -1513,4 +1513,80 @@ ik_open() (
   images_cli keep --plain 2>/dev/null | tr '\n' ' '
 )
 eq IK.offener-wechsel-und-merkzettel 'busybox:1.37@sha256:b1 m:new m:old m:older postgres:17@sha256:p3 postgres:17@sha256:p4 postgres:17@sha256:p5 ' "$(ik_open)"
+# ---------------------------------------------------------------------------- CL: Befehl in Meldungen je Betriebsart
+# Eine Adresse (rt_cli_hint): klassisch `sudo lifeagents`, Verbund `docker exec -i <projekt>-master lifeagents`; -it fuer Befehle
+# mit Rueckfrage (rollback/reconfigure brechen mit nur -i ab). Der Runner gibt beide Formen an core.fn_update_report mit.
+cl_hint() ( if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x; rt_cli_hint "${2:-}" )
+eq CL.klassisch 'sudo lifeagents' "$(cl_hint 0)"
+eq CL.klassisch-tty 'sudo lifeagents' "$(cl_hint 0 tty)"
+eq CL.verbund 'docker exec -i la-x-master lifeagents' "$(cl_hint 1)"
+eq CL.verbund-tty 'docker exec -it la-x-master lifeagents' "$(cl_hint 1 tty)"
+eq CL.master-hint-unveraendert 'docker exec -i la-x-master lifeagents' "$(LA_PROJECT=la-x rt_master_cli_hint)"
+cl_report() (   # cl_report <compose 0|1> -> das p, das _ur_report an die DB gibt (cli|cli_tty)
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _ur_sql() { case "$2" in *'fn_update_report('*) printf '%s' "$1" > "$W/cl.p"; printf '{}' ;; esac; }
+  _ur_send() { return 1; }; _up_close() { :; }; rm -f "$W/cl.p"
+  _ur_report 7 result bot_up=false >/dev/null 2>&1
+  jq -r '"\(.cli)|\(.cli_tty)"' "$W/cl.p" 2>/dev/null
+)
+eq CL.runner-klassisch 'sudo lifeagents|sudo lifeagents' "$(cl_report 0)"
+eq CL.runner-verbund 'docker exec -i la-x-master lifeagents|docker exec -it la-x-master lifeagents' "$(cl_report 1)"
+# ---------------------------------------------------------------------------- HL: Halt-Nachricht, wenn eine Pflichtangabe fehlt
+# Unbeaufsichtigtes Update haelt an: Telegram-Text aus dem Katalog in der Owner-Sprache, Befehl je Betriebsart aus rt_cli_hint
+# (reconfigure fragt nach -> -it), "an deinen Daten", kein "Server" im Verbund.
+hl_case() (   # hl_case <compose 0|1> <lang> -> der Telegram-Text
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  _pkg_dir() { printf '%s' "$ROOT/packages"; }
+  backup_kit_lang() { printf '%s' "$HL_LANG"; }; HL_LANG="$2"   # Owner-Sprache aus der DB: eigene Faelle in tests/backup
+  LIFEAGENTS_DIR="$W/hl"; rm -rf "$LIFEAGENTS_DIR"; mkdir -p "$LIFEAGENTS_DIR"; LIFEAGENTS_UPDATE_REQUESTED=0
+  notify_owner_telegram() { printf '%s' "$1" > "$W/hl.msg"; return 0; }; rm -f "$W/hl.msg"
+  ( _hold_update_for_missing_keys ANTHROPIC_API_KEY 'Anthropic-Schlüssel' ) >/dev/null 2>&1
+  cat "$W/hl.msg" 2>/dev/null
+)
+hl_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+hl_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+HLC="$(hl_case 0 de)"; HLD="$(hl_case 1 de)"; HLE="$(hl_case 1 en)"
+hl_has HL.klassisch-befehl "$HLC" $'\nsudo lifeagents reconfigure\n'
+hl_has HL.klassisch-server "$HLC" 'Server'
+hl_has HL.klassisch-daten "$HLC" 'An deinen Daten wurde nichts geändert'
+hl_has HL.klassisch-angabe "$HLC" 'Anthropic-Schlüssel'
+hl_has HL.verbund-befehl "$HLD" $'\ndocker exec -it la-x-master lifeagents reconfigure\n'
+hl_not HL.verbund-kein-server "$HLD" 'Server'
+hl_not HL.verbund-kein-sudo "$HLD" 'sudo'
+hl_has HL.verbund-ort "$HLD" 'PowerShell'
+hl_has HL.verbund-englisch "$HLE" 'docker exec -it la-x-master lifeagents reconfigure'
+hl_not HL.verbund-englisch-kein-deutsch "$HLE" 'wartet'
+
+# ---------------------------------------------------------------------------- RH: Rueckweg-Hinweis im Verbund
+# Scheitert n8n nach einem Versionswechsel, druckt upgrade_rollback_hint den Rueckweg. Im Verbund gibt es kein systemctl,
+# runuser, dropdb oder install.sh: dort nur der Befehl, der hier laeuft (rollback mit -it, fragt nach), und wo das Protokoll
+# steht. Geht `lifeagents rollback` nicht (kein vorheriges Programm-Paket im Merkzettel), wird er nicht versprochen.
+rh_case() (   # rh_case <compose 0|1> <from_release> <master-image|-> -> Ausgabe des Hinweises
+  local d="$W/rh"; rm -rf "$d"; mkdir -p "$d"
+  if [ "$1" = 1 ]; then rt_is_compose() { return 0; }; else rt_is_compose() { return 1; }; fi; LA_PROJECT=la-x
+  UPGRADE_MARKER="$d/upgrade.pending"; printf 'x' > "$d/b.dump.gpg"
+  { printf 'FROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=core.backup_key\n' "$2" "$d/b.dump.gpg"
+    [ "$3" = - ] || printf 'FROM_MASTER_IMAGE=%s\nFROM_COMPOSE=%s\n' "$3" "$d/b.compose.yml"; } > "$UPGRADE_MARKER"
+  ui_fd() { echo 2; }; RELEASE_TAG=v9.9.9; N8N_DB_NAME=n8n
+  upgrade_rollback_hint 2>&1
+)
+rh_has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1" "fehlt '$3' in: $2" ;; esac; }
+rh_not() { case "$2" in *"$3"*) fail "$1" "unerwartet '$3' in: $2" ;; *) pass "$1" ;; esac; }
+RHV="$(rh_case 1 v0.40.0 reg.example/master@sha256:dddd)"
+rh_has RH.verbund-befehl "$RHV" 'docker exec -it la-x-master lifeagents rollback'
+rh_has RH.verbund-ort "$RHV" 'PowerShell'
+rh_has RH.verbund-protokoll "$RHV" 'docker logs'
+for w in systemctl runuser dropdb install.sh journalctl; do rh_not "RH.verbund-ohne-$w" "$RHV" "$w"; done
+RHD="$(rh_case 1 dev reg.example/master@sha256:dddd)"
+rh_has RH.verbund-dev-befehl "$RHD" 'lifeagents rollback'
+RHN="$(rh_case 1 v0.40.0 -)"
+rh_not RH.verbund-ohne-merkzettel-kein-befehl "$RHN" 'lifeagents rollback'
+rh_has RH.verbund-ohne-merkzettel-sicherung "$RHN" "$W/rh/b.dump.gpg"
+for w in systemctl dropdb install.sh; do rh_not "RH.verbund-ohne-merkzettel-ohne-$w" "$RHN" "$w"; done
+RHG="$(rh_case 1 v0.9.0 reg.example/master@sha256:dddd)"
+rh_not RH.verbund-alt-ohne-journalctl "$RHG" 'journalctl'
+rh_has RH.verbund-alt-kein-rueckweg "$RHG" 'KEIN RÜCKWEG'
+RHK="$(rh_case 0 v0.40.0 -)"
+rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
+
 exit "$fails"

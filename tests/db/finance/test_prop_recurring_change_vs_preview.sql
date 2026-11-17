@@ -10,6 +10,7 @@
 --   P3 Buchen eines Termins nimmt genau diesen aus der Vorschau und laesst den voraussichtlichen Endstand gleich;
 --      Stornieren der Buchung stellt die Vorschau wieder her
 --   P4 Pausieren leert die Vorschau, Fortsetzen stellt sie wieder her (auch bei einer Kette aus zwei Gliedern)
+--   P5 "startet am" (upcoming_recurring_payments.starts_on) = erster Termin der Vorschau, auch bei abweichendem Geltungsbeginn
 -- Jeder Fall laeuft in einem eigenen Savepoint (SQLSTATE RS000 rollt ihn zurueck), damit die Konten je Fall leer sind.
 -- Feste Daten im Jahr 2031: Raster, Split und Vorschau-Fenster haengen dort nicht von "heute" ab.
 BEGIN;
@@ -44,7 +45,7 @@ DECLARE
   v_doms INT[] := ARRAY[NULL,1,15,28,-1,-2];
   v_dom INT; v_eff DATE; v_eff2 DATE; v_bounded BOOLEAN; v_k INT;
   v_before TEXT; v_after TEXT; v_dates0 DATE[]; v_dates1 DATE[]; v_sig TEXT; v_end0 NUMERIC; v_end1 NUMERIC;
-  v_n_split INT := 0; v_n_read INT := 0; v_n_book INT := 0; v_n_pause INT := 0;
+  v_n_split INT := 0; v_n_read INT := 0; v_n_book INT := 0; v_n_pause INT := 0; v_n_start INT := 0;
   r RECORD; o RECORD; v_tx INT; v_cnt INT;
 BEGIN
   SELECT (finance.fn_create_account('{"name":"__prop_cvp_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
@@ -212,8 +213,29 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  RAISE NOTICE 'PASS prop recurring change vs preview [P1 Split: % Faelle (je 2 Wechsel), P2 Sichten: %, P3 Buchen/Storno/Skip: %, P4 Pause/Fortsetzen: %]',
-    v_n_split, v_n_read, v_n_book, v_n_pause;
+  -- P5: "startet am" der Views = erster Termin der Vorschau, auch wenn der genannte Geltungsbeginn kein Termin ist
+  FOREACH v_dom IN ARRAY v_doms LOOP
+    FOR v_k IN 0..40 BY 8 LOOP
+      BEGIN
+        v_eff := DATE '2031-03-01' + v_k;   -- genannter Geltungsbeginn
+        v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__prop_cvp_p5__','account_id',v_giro,
+          'direction','expense','amount',100,'schedule_unit','month','first_payment_date',v_eff,'valid_from',v_eff)
+          || CASE WHEN v_dom IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('schedule_day_of_month', v_dom) END);
+        v_rp := (v_res->>'recurring_payment_id')::int;
+        SELECT min(u.due_date) INTO v_eff2 FROM finance.fn_upcoming_payments(c_from, c_until) u WHERE u.recurring_payment_id = v_rp;
+        IF (SELECT starts_on FROM finance.upcoming_recurring_payments WHERE id = v_rp) IS DISTINCT FROM v_eff2
+           OR finance.fn_recurring_first_due(v_rp) IS DISTINCT FROM v_eff2 THEN
+          RAISE EXCEPTION 'FAIL P5 [dom=% geltung ab %]: starts_on % / first_due %, erster Termin der Vorschau %', v_dom, v_eff,
+            (SELECT starts_on FROM finance.upcoming_recurring_payments WHERE id = v_rp), finance.fn_recurring_first_due(v_rp), v_eff2; END IF;
+        v_n_start := v_n_start + 1;
+        RAISE EXCEPTION USING ERRCODE = 'RS000', MESSAGE = 'rollback';
+      EXCEPTION WHEN SQLSTATE 'RS000' THEN NULL;
+      END;
+    END LOOP;
+  END LOOP;
+
+  RAISE NOTICE 'PASS prop recurring change vs preview [P1 Split: % Faelle (je 2 Wechsel), P2 Sichten: %, P3 Buchen/Storno/Skip: %, P4 Pause/Fortsetzen: %, P5 startet am: %]',
+    v_n_split, v_n_read, v_n_book, v_n_pause, v_n_start;
 END $$;
 
 ROLLBACK;

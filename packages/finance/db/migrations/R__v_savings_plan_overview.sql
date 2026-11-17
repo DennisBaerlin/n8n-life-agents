@@ -4,8 +4,8 @@
 --   Monatsbetrag (recurring_payments.monthly_equivalent), naechste Ausfuehrung. Aus recurring_payments gelesen
 --   wird der Betrag je Ausfuehrung leicht als Monatsbetrag missdeutet (feste Ausfuehrungstage).
 --   Der Agent liest Sparplaene hier, nie aus den Rohtabellen.
---   Bedingungen aus dem HEUTE gueltigen Glied der Raten-Kette (fn_recurring_current; vor dem Start = Kopf ->
---   starts_on). Eine geplante Aenderung (Kopf <> heute gueltiges Glied, Validity-Split mit kuenftigem Stichtag)
+--   Bedingungen aus dem HEUTE gueltigen Glied der Raten-Kette (fn_recurring_current; vor dem Start = das zuerst startende Glied,
+--   starts_on = sein erster Termin). Eine geplante Aenderung (Kopf <> heute gueltiges Glied, Validity-Split mit kuenftigem Stichtag)
 --   steht in change_from / new_amount_per_execution / new_rhythm.
 --   next_execution kettenbewusst (nur aktive Plaene): erster Rasterpunkt des heute gueltigen Glieds ab
 --   max(heute, juengste erledigte Ausfuehrung der Kette + 1, valid_from) vor dessen valid_to, sonst der des Kopfs.
@@ -48,7 +48,7 @@ SELECT sp.id,
        finance.fn_schedule_label(c.schedule_unit, c.schedule_interval, c.schedule_day_of_month,
                                  c.schedule_days_of_month) AS rhythm,
        abs(c.monthly_equivalent)                AS monthly_amount,
-       CASE WHEN c.valid_from > current_date THEN c.valid_from END AS starts_on,
+       CASE WHEN c.valid_from > current_date THEN finance.fn_recurring_first_due(c.id) END AS starts_on,
        CASE WHEN sp.status = 'active' THEN coalesce(
            (SELECT min(o.d)
               FROM finance.fn_schedule_occurrences(c.first_payment_date, c.schedule_interval, c.schedule_unit,

@@ -5,7 +5,7 @@
 --   Nutzer selbst ueberweist, sagt die letzte Spalte executed_by), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
 --   Rhythmus in Klartext (fn_schedule_label) und Monatsbetrag (recurring_payments.monthly_equivalent).
 --   kind transfer = eigenes Konto -> eigenes Konto; debit = Spar-Abfluss ohne Ziel-Konto (Vorsorge-Beitrag,
---   Sparziel-Rate ohne Topf). starts_on = erst kuenftiger Start (sonst NULL).
+--   Sparziel-Rate ohne Topf). starts_on = erster Termin einer erst kuenftig startenden Zahlung (fn_recurring_first_due; sonst NULL).
 --   Ende beide vom Kopf der Kette (eine geplante Betragsaenderung ist kein Ende): last_valid_day = letzter gueltiger Tag
 --   (fn_recurring_last_valid_day), last_execution = letzter echter Termin (fn_recurring_last_due). Bewusst kein valid_to:
 --   roh gelesen wird es als letzter Termin missverstanden (exklusives Ende).
@@ -24,7 +24,7 @@ SELECT o.rp_id                                  AS recurring_payment_id,
        finance.fn_schedule_label(r.schedule_unit, r.schedule_interval, r.schedule_day_of_month,
                                  r.schedule_days_of_month) AS rhythm,
        abs(r.monthly_equivalent)                AS monthly_amount,
-       CASE WHEN r.valid_from > current_date THEN r.valid_from END AS starts_on,
+       CASE WHEN r.valid_from > current_date THEN finance.fn_recurring_first_due(r.id) END AS starts_on,
        finance.fn_recurring_last_valid_day(o.head_id) AS last_valid_day,
        finance.fn_recurring_last_due(o.head_id)       AS last_execution,
        -- bank | manual | unknown (fn_transfer_executed_by, vom Kopf der Kette; Debit-Zeilen ohne Ziel: unknown)

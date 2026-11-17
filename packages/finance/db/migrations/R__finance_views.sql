@@ -67,13 +67,13 @@ WHERE status = 'active'
 -- VIEW: Erfasste Zahlungen, die noch nicht gestartet sind
 -- Je Kette hoechstens eine Zeile: das massgebliche Glied (fn_recurring_effective), wenn es erst kommt. Eine geplante
 -- Betragsaenderung einer laufenden Kette steht deshalb nicht hier. Inkl. interner Transfers, wie active_recurring_payments.
--- counted_in_cashflow = zaehlt schon in der Monatsrechnung (fn_recurring_starts_within_cycle, dort mit starts_on); false =
+-- counted_in_cashflow = zaehlt schon in der Monatsrechnung (fn_recurring_starts_within_cycle, gemessen am Geltungsbeginn valid_from; starts_on nennt den ersten Termin); false =
 -- startet spaeter, zaehlt noch nicht, ist aber erfasst. Zusammen mit active_recurring_payments die Antwort auf „gibt es das
 -- schon?" (fn_recurring_name_check, Buchhalter, Berater).
 -- ============================================================
 CREATE VIEW finance.upcoming_recurring_payments AS
 SELECT *,
-       valid_from AS starts_on,
+       finance.fn_recurring_first_due(id) AS starts_on,   -- erster Termin, nicht der Geltungsbeginn
        finance.fn_recurring_last_valid_day(id) AS last_valid_day,
        finance.fn_schedule_label(schedule_unit, schedule_interval, schedule_day_of_month, schedule_days_of_month) AS rhythm,
        finance.fn_recurring_starts_within_cycle(valid_from, schedule_interval, schedule_unit, current_date) AS counted_in_cashflow
@@ -275,7 +275,7 @@ SELECT c.id,
             THEN round(c.monthly_equivalent_eur * (1 - c.internal_share), 2) ELSE 0 END    AS saving_eur,
        ((c.monthly_equivalent <> 0 AND c.monthly_equivalent_eur IS NULL)
         OR (c.cashflow_class = 'loan' AND c.loan_interest_native > 0 AND c.loan_interest_eur IS NULL)) AS fx_gap,
-       CASE WHEN c.valid_from > current_date THEN c.valid_from END AS starts_on
+       CASE WHEN c.valid_from > current_date THEN finance.fn_recurring_first_due(c.id) END AS starts_on
 FROM classed c;
 
 -- ============================================================

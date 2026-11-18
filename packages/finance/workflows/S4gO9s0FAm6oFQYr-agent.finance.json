@@ -7810,7 +7810,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.finance — Buchhalter (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis statt Agent) -\u003e Load Config -\u003e Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -\u003e Load Agent Context (System-Prompt + Lazy-Manifest) -\u003e Onboarding status read -\u003e Build Agent Input -\u003e Finance Agent.\nCQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.",
+                                         "content":  "## Ablauf\n**agent.finance — Buchhalter (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis statt Agent) -\u003e Load Config -\u003e Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -\u003e Load Agent Context (System-Prompt + Lazy-Manifest) -\u003e Onboarding status read -\u003e Find table marker -\u003e (nur mit Tabellen-Datei) Read bank export facts -\u003e Build Agent Input -\u003e Finance Agent.\nCQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.",
                                          "height":  250,
                                          "width":  560,
                                          "color":  4
@@ -7823,6 +7823,22 @@
                                    ],
                       "id":  "2638584b-c000-5eb3-914e-f771ea0c500a",
                       "name":  "Doc: Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Tabellen-Datei vor dem Modell lesen**\n\nFind table marker sucht im Auftrag den ersten Marker [attachment ... type=document ext=csv|xlsx|xls]. Nur dann liest Read bank export facts (agent.finance.tool_get_bank_export_facts, finance_ro, finance.fn_bank_export_facts) die Datei: Bank, Konto bzw. Kandidaten, bestätigt bis, Zeitraum, Zeilenzahl - nie Zeilen-Inhalte. Build Agent Input hängt das als Abschnitt Bank export file in this message ans ENDE des System-Prompts (nicht in den Auftrag: der steht im Chat-Gedächtnis und ist vom Nutzer tippbar).\nFalle: ohne Marker läuft Read bank export facts nicht; Build Agent Input liest den Knoten deshalb nur über isExecuted (sonst bricht jede Nachricht ohne Datei mit Referenced node is unexecuted ab, Infra-Fall ic46c). Unbekannte oder kaputte Datei und ein Fehler im Tool (onError continue) -\u003e kein Abschnitt, der Agent läuft wie ohne Datei.",
+                                         "height":  260,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1060,
+                                       -620
+                                   ],
+                      "id":  "ffd95ed5-41a5-58fb-9f50-91a0f373e67c",
+                      "name":  "Doc: Tabellen-Datei vorab"
                   },
                   {
                       "parameters":  {

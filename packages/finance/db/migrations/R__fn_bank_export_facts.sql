@@ -17,12 +17,13 @@ DECLARE
     v_load JSONB;
     v_ok   BOOLEAN;
 BEGIN
-    v_norm := finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb));
-    IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
+    -- Erfolg: load traegt die Leser-Rueckgabe schon (ein Lesedurchgang); nur bei einem Konto-Fehler fehlen die Datei-Fakten
+    v_load := finance.fn_bank_export_load(jsonb_build_object('table', COALESCE(p->'table', '{}'::jsonb)));
+    v_ok := (v_load->>'ok')::boolean IS DISTINCT FROM false;
+    v_norm := CASE WHEN v_ok THEN v_load ELSE finance.fn_bank_export_normalize(COALESCE(p->'table', '{}'::jsonb)) END;
+    IF (v_norm->>'ok')::boolean IS DISTINCT FROM true AND NOT v_ok THEN
         RETURN jsonb_build_object('ok', true, 'recognised', false, 'code', v_norm->>'code');
     END IF;
-    v_load := finance.fn_bank_export_load(jsonb_build_object('table', p->'table'));
-    v_ok := (v_load->>'ok')::boolean IS DISTINCT FROM false;
     RETURN jsonb_build_object(
         'ok', true, 'recognised', true,
         'profile', v_norm->>'profile',

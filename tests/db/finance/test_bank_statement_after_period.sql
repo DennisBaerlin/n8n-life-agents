@@ -43,7 +43,7 @@ BEGIN
     IF (v_app->>'balance_after')::numeric IS DISTINCT FROM 970 THEN
         RAISE EXCEPTION 'FAIL [AP3 balance_after = 970]: %', v_app->>'balance_after';
     END IF;
-    -- Neu: Stand am period_end und die Zeilen danach im Ausgang, jede Zahl aus der DB
+    -- Stand am period_end und die Zeilen danach im Ausgang, jede Zahl aus der DB
     IF (v_app->>'balance_at_period_end')::numeric IS DISTINCT FROM 970 THEN
         RAISE EXCEPTION 'FAIL [AP4 balance_at_period_end = 970]: %', v_app->>'balance_at_period_end';
     END IF;

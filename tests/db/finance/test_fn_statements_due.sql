@@ -86,6 +86,10 @@ BEGIN
     -- nie bestaetigt (Bank angegeben, kein Datum) -> faellig, never
     v_id := pg_temp.sd_acc('__t_sd_never__', 'Lindenbank');
     UPDATE finance.accounts SET opening_balance_date = NULL, last_reconciled_at = NULL WHERE id = v_id;
+    -- nie bestaetigt, aber erst nach dem Stichtag angelegt -> fuer den Vormonat nicht faellig
+    v_id := pg_temp.sd_acc('__t_sd_new__', 'Lindenbank');
+    UPDATE finance.accounts SET opening_balance_date = NULL, last_reconciled_at = NULL,
+                                created_at = TIMESTAMPTZ '2030-11-02 10:00+00' WHERE id = v_id;
     -- kein Kandidat: Bargeld ohne Bank/Nummer/Auszug; geschlossenes Konto
     PERFORM pg_temp.sd_acc('__t_sd_cash__', NULL);
     PERFORM pg_temp.sd_acc('__t_sd_closed__', 'Lindenbank', NULL, 'closed');
@@ -106,6 +110,8 @@ BEGIN
     PERFORM pg_temp.sd_expect(N3, '__t_sd_manual__', false, 'SD2 Chat bis Stichtag');
     PERFORM pg_temp.sd_expect(N3, '__t_sd_opened__', true, 'SD2 Startdatum im Oktober');
     PERFORM pg_temp.sd_expect(N3, '__t_sd_never__', true, 'SD2 nie bestaetigt');
+    PERFORM pg_temp.sd_expect(N3, '__t_sd_new__', false, 'SD2 nach dem Stichtag angelegt');
+    PERFORM pg_temp.sd_expect(DATE '2030-12-03', '__t_sd_new__', true, 'SD2 nach dem Stichtag angelegt, Folgemonat');
     PERFORM pg_temp.sd_expect(N3, '__t_sd_cash__', false, 'SD2 Bargeld kein Kandidat');
     PERFORM pg_temp.sd_expect(N3, '__t_sd_closed__', false, 'SD2 geschlossen kein Kandidat');
     -- SD3 Felder je Eintrag

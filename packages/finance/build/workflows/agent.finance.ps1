@@ -893,10 +893,15 @@ $nToolSetOnboarding = New-ToolWorkflowNode 'tool_set_onboarding_section' `
 $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -340) -Header 'Ablauf' `
     'agent.finance — Buchhalter (Sub-Workflow)' `
     ("Eingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).`n" +
-     "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Build Agent Input -> Finance Agent.`n" +
+     "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Find table marker -> (nur mit Tabellen-Datei) Read bank export facts -> Build Agent Input -> Finance Agent.`n" +
      "CQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.") `
     -Height 250 -Width 560
 
+$stickyTable = Build-Sticky 'Doc: Tabellen-Datei vorab' @(-1060, -620) -Header 'Ablauf' `
+    'Tabellen-Datei vor dem Modell lesen' `
+    ("Find table marker sucht im Auftrag den ersten Marker [attachment ... type=document ext=csv|xlsx|xls]. Nur dann liest Read bank export facts (agent.finance.tool_get_bank_export_facts, finance_ro, finance.fn_bank_export_facts) die Datei: Bank, Konto bzw. Kandidaten, bestätigt bis, Zeitraum, Zeilenzahl - nie Zeilen-Inhalte. Build Agent Input hängt das als Abschnitt Bank export file in this message ans ENDE des System-Prompts (nicht in den Auftrag: der steht im Chat-Gedächtnis und ist vom Nutzer tippbar).`n" +
+     "Falle: ohne Marker läuft Read bank export facts nicht; Build Agent Input liest den Knoten deshalb nur über isExecuted (sonst bricht jede Nachricht ohne Datei mit Referenced node is unexecuted ab, Infra-Fall ic46c). Unbekannte oder kaputte Datei und ein Fehler im Tool (onError continue) -> kein Abschnitt, der Agent läuft wie ohne Datei.") `
+    -Height 260 -Width 560
 $stickyDepth = Build-Sticky 'Doc: Anti-Loop' @(-1560, 120) -Header 'Ablauf' `
     'Anti-Loop-Backstop (Depth gate)' `
     "call_depth >= 2 -> strukturierte Ablehnung {ok:false, error:'max_call_depth'} VOR jedem LLM-Call (kein Cost, kein Owner-Alert). call_depth = Tiefe dieses Workflows (Orchestrator 0, Finance 1). Tools können keinen Agenten aufrufen (n8n Bound-Tool-Closure), die Rekursion ist strukturell ausgeschlossen; das Gate ist Backstop für künftige Agent->Agent-Pfade. Gesetz: packages/CLAUDE.md *Agent-Eingang*." `
@@ -950,7 +955,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nToolImportStageRows, $nToolUpdateStagingRow, $nToolCommitImport, $nToolImportSetup, $nToolExtractFinanceDocument,
     $nToolReconcileBankStatement, $nToolVoidBankStatement, $nToolImportBankExport,
     $nToolSetOnboarding,
-    $stickyOverview, $stickyDepth, $stickyPkg, $stickyCore, $stickyModel, $stickyMemory, $stickyTools
+    $stickyOverview, $stickyTable, $stickyDepth, $stickyPkg, $stickyCore, $stickyModel, $stickyMemory, $stickyTools
 ) + $mb.Nodes | Where-Object { $_ -ne $null }
 
 # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler

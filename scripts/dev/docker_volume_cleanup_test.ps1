@@ -121,10 +121,17 @@ try {
     $wtTop = (git -C $wt rev-parse --show-toplevel).Trim()
     $anon = New-Throwaway 'ta-voltest-hook' @('lifeagents.substrate=n8n', "lifeagents.worktree=$wtTop")
     Assert-That "ta-voltest-hook : Wegwerf-Container hat ein anonymes Volume" ($anon.Count -ge 1)
+    # Zustandsdateien liegen im Haupt-Checkout (scripts/lib/n8ntest_state_file.ps1): nur die des abgebauten Containers geht mit weg.
+    $ownState = Join-Path $main '.local\n8ntest_state.ta-voltest-hook.json'
+    $otherState = Join-Path $main '.local\n8ntest_state.ta-voltest-fremd.json'
+    New-Item -ItemType Directory -Force (Join-Path $main '.local') | Out-Null
+    foreach ($f in $ownState, $otherState) { [System.IO.File]::WriteAllText($f, '{}') }
     $payload = (@{ cwd = $wt } | ConvertTo-Json -Compress)
     $exe = (Get-Process -Id $PID).Path
     $payload | & $exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo '.claude\hooks\stop_own_substrate.ps1') *> $null
     Test-Gone 'ta-voltest-hook' $anon
+    Assert-That "ta-voltest-hook : Zustandsdatei im Haupt-Checkout geloescht" (-not (Test-Path $ownState))
+    Assert-That "ta-voltest-hook : Zustandsdatei eines fremden Containers bleibt" (Test-Path $otherState)
 } finally {
     # Nur Eigenes aufraeumen: die Wegwerf-Container und die Volumes, die dieser Test selbst notiert hat, plus das benannte Test-Volume.
     foreach ($c in $made) { [void](Invoke-Docker @('rm', '-fv', $c)) }

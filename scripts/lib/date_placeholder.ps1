@@ -17,9 +17,8 @@
 function Get-DatePlaceholderReferenceDay {
     param([string]$StateFile)
     if (-not $StateFile) {
-        $container = if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }
-        $root = & git -C $PSScriptRoot rev-parse --show-toplevel 2>$null
-        if ($LASTEXITCODE -eq 0 -and $root) { $StateFile = Join-Path $root ".local\n8ntest_state.$container.json" }
+        # Ausserhalb eines Git-Checkouts (Mock-Kopie, CI-Container) gibt es keine Zustandsdatei -> UTC-Datum unten.
+        try { . (Join-Path $PSScriptRoot 'n8ntest_state_file.ps1'); $StateFile = Get-TestN8nStateFile 2>$null } catch { $StateFile = $null }
     }
     if ($StateFile -and (Test-Path -LiteralPath $StateFile)) {
         try {

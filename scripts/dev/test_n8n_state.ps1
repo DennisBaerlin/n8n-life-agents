@@ -12,15 +12,8 @@
 #
 # Throw (kein Silent-Fallback): laeuft kein Test-Substrat, soll der Tier-Lauf mit klarer Anweisung
 # abbrechen statt versehentlich gegen eine fremde Instanz zu feuern.
-# Get-TestN8nStateFile — die eine Adresse der Zustandsdatei: je Container eine eigene
-# (.local/n8ntest_state.<container>.json; Container = $env:N8NTEST_CONTAINER, sonst der Bootstrap-Default). Eine gemeinsame
-# Datei liesse ein zweites Substrat URL/API-Key des ersten ueberschreiben (Symptom: 403 in parallelen Laeufen). Jeder Leser/Schreiber (Bootstrap, enable_mock_*, Tier-Skripte)
-# holt den Pfad hier.
-function Get-TestN8nStateFile {
-    param([string]$Container = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }))
-    $repoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
-    return (Join-Path $repoRoot ".local\n8ntest_state.$Container.json")
-}
+# Get-TestN8nStateFile: Pfad der Zustandsdatei (Haupt-Checkout, je Container) -> scripts/lib/n8ntest_state_file.ps1.
+. (Join-Path $PSScriptRoot '..\lib\n8ntest_state_file.ps1')
 
 # Get-TestN8nState — der rohe Zustand (url, api_key, container, mock_*) des aktuellen Substrats; Throw mit Hinweis, wenn keins.
 function Get-TestN8nState {

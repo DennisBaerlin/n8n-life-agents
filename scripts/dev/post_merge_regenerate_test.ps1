@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Test der Auswahl in scripts/post_merge_regenerate.ps1: welche Quellen-Dateien welchen Generator anstossen. Baut nichts.
+# Test der Auswahl in scripts/post_merge_regenerate.ps1: welche Quellen-Dateien welchen Generator anstossen (Tokens, Site, fn-Katalog). Baut nichts.
 # Usage:  .\scripts\dev\post_merge_regenerate_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -11,12 +11,16 @@ function Test-Case($name, [string[]]$files, $expect) {
     $out = (& powershell -NoProfile -ExecutionPolicy Bypass -File $script -Files $files) -join ''
     if ($out -eq $expect) { Write-Host "  [PASS] $name" } else { Write-Host "  [FAIL] $name (erwartet '$expect', war '$out')" -ForegroundColor Red; $script:failed++ }
 }
-Test-Case 'keine relevante Datei'             @('README.md', 'packages/finance/manifest.json') 'Tokens=False Site=False'
-Test-Case 'Token-Quelle: Tokens und Site'    @('config/ui.tokens.json')                       'Tokens=True Site=True'
-Test-Case 'Token-Skript mit Windows-Pfad'    @('scripts\build_ui_tokens.ps1')                  'Tokens=True Site=True'
-Test-Case 'Site-Quelle: nur Site'            @('docs/site/layouts/partials/mark.html')                'Tokens=False Site=True'
-Test-Case 'Site-Output allein loest nichts'  @('docs/site/public/index.html')                  'Tokens=False Site=False'
-Test-Case 'Site-Skript'                       @('scripts/build_site.ps1')                       'Tokens=False Site=True'
+Test-Case 'keine relevante Datei'             @('README.md', 'packages/finance/manifest.json') 'Tokens=False Site=False FnCatalog=False'
+Test-Case 'Token-Quelle: Tokens und Site'    @('config/ui.tokens.json')                       'Tokens=True Site=True FnCatalog=False'
+Test-Case 'Token-Skript mit Windows-Pfad'    @('scripts\build_ui_tokens.ps1')                  'Tokens=True Site=True FnCatalog=False'
+Test-Case 'Site-Quelle: nur Site'            @('docs/site/layouts/partials/mark.html')                'Tokens=False Site=True FnCatalog=False'
+Test-Case 'Site-Output allein loest nichts'  @('docs/site/public/index.html')                  'Tokens=False Site=False FnCatalog=False'
+Test-Case 'Site-Skript'                       @('scripts/build_site.ps1')                       'Tokens=False Site=True FnCatalog=False'
+Test-Case 'fn-Quelle: nur fn-Katalog'         @('packages/finance/db/migrations/R__fn_account_confirmed_until.sql') 'Tokens=False Site=False FnCatalog=True'
+Test-Case 'fn-Generator mit Windows-Pfad'   @('scripts\gen_fn_catalog.ps1')                 'Tokens=False Site=False FnCatalog=True'
+Test-Case 'Katalog-Output allein loest nichts' @('docs/fn_catalog.md')                       'Tokens=False Site=False FnCatalog=False'
+Test-Case 'Versions-Migration ist keine fn-Quelle' @('packages/finance/db/migrations/V001__rename_loan_payout_to_disbursement.sql') 'Tokens=False Site=False FnCatalog=False'
 # Echter Git-Ablauf im Wegwerf-Repo (-Plan baut nichts). Ohne die GIT_*-Variablen wuerde jedes git hier das Repo des Aufrufers
 # treffen, wenn der Test aus einem Git-Hook laeuft.
 Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' } | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
@@ -46,7 +50,7 @@ try {
     # Konflikt-Merge: git ruft post-merge nicht; nach der Aufloesung schliesst `git commit` ihn ab.
     Invoke-Git merge side
     [System.IO.File]::WriteAllText($page, "eins`nbeide`ndrei`n"); Invoke-Git add -A; Invoke-Git commit -q -m 'merge side'
-    Test-Plan 'Konflikt-Merge-Commit: -Commit findet die Site-Quelle' @('-Commit') 'Tokens=False Site=True'
+    Test-Plan 'Konflikt-Merge-Commit: -Commit findet die Site-Quelle' @('-Commit') 'Tokens=False Site=True FnCatalog=False'
     # Ein gewoehnlicher Commit loest nichts aus, auch wenn ORIG_HEAD vom Merge noch auf einen Site-Stand zeigt.
     [System.IO.File]::WriteAllText((Join-Path $tmp 'notes.txt'), "x`n"); Invoke-Git add -A; Invoke-Git commit -q -m plain
     Test-Plan 'gewoehnlicher Commit: -Commit tut nichts' @('-Commit') ''
@@ -57,7 +61,7 @@ try {
     [System.IO.File]::WriteAllText($layout, "<p>x</p>`n"); Invoke-Git add -A; Invoke-Git commit -q -m layout
     Invoke-Git checkout -q main
     Invoke-Git merge --no-ff -m 'merge other' other
-    Test-Plan 'sauberer Merge: ORIG_HEAD..HEAD findet die Site-Quelle' @() 'Tokens=False Site=True'
+    Test-Plan 'sauberer Merge: ORIG_HEAD..HEAD findet die Site-Quelle' @() 'Tokens=False Site=True FnCatalog=False'
     # Scheitert der Generator (Stand-in mit Ausgabe UND Exit 3), steht die Warnung da, nicht die Erfolgsmeldung.
     $stub = Join-Path $tmp 'scripts\build_site.ps1'
     New-Item -ItemType Directory -Path (Split-Path $stub) | Out-Null

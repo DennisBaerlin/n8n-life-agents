@@ -1,8 +1,10 @@
 ﻿#Requires -Version 5.1
 # post_merge_regenerate.ps1 -- git-Hook (prek, Stage post-merge und post-commit): erzeugt nach einem Merge/Pull die generierten Dateien neu, wenn
-# deren Quellen im Merge geaendert wurden (sonst steht der erzeugte Block veraltet da und ui_token_lint wird rot).
+# deren Quellen im Merge geaendert wurden (sonst steht der erzeugte Block veraltet da und ui_token_lint bzw. gen_fn_catalog -Verify wird rot).
 #   Quellen Tokens  config/ui.*, scripts/lib/ui_tokens.ps1, scripts/lib/ui_art.ps1, scripts/build_ui_tokens.ps1 -> build_ui_tokens.ps1
 #   Quellen Site    docs/site/{content,layouts,static,data,hugo.toml}, scripts/build_site.ps1                    -> build_site.ps1
+#   Quellen fn-Katalog packages/*/db/migrations/R__fn_*.sql, scripts/gen_fn_catalog.ps1                -> gen_fn_catalog.ps1
+#   (Merge-Commits fahren keine Commit-Hooks; ohne diesen Lauf bleibt der Katalog nach dem Merge zweier fn-Branches veraltet.)
 # Das Ergebnis bleibt als Aenderung im Arbeitsbaum stehen (kein Auto-Commit); der Merge-Commit selbst bleibt unberuehrt.
 # Zwei Ausloeser, ein Skript:
 #   post-merge  (Stage post-merge)   sauber durchgelaufener Merge/Pull; geaenderte Dateien = ORIG_HEAD..HEAD. Fehlt ORIG_HEAD, passiert nichts.
@@ -25,8 +27,9 @@ function Get-RegenerateTargets([string[]]$Changed) {
     $norm = @($Changed | Where-Object { $_ } | ForEach-Object { $_ -replace '\\', '/' })
     $tokens = @($norm | Where-Object { $_ -match '^(config/ui\.|scripts/lib/ui_(tokens|art)\.ps1$|scripts/build_ui_tokens\.ps1$)' }).Count -gt 0
     $site = @($norm | Where-Object { $_ -match '^(docs/site/(content|layouts|static|data)/|docs/site/hugo\.toml$|scripts/build_site\.ps1$)' }).Count -gt 0
+    $fn = @($norm | Where-Object { $_ -match '^(packages/[^/]+/db/migrations/R__fn_[^/]*\.sql$|scripts/gen_fn_catalog\.ps1$)' }).Count -gt 0
     # build_ui_tokens schreibt auch ins Site-Partial: nach einem Token-Lauf ist die Site mit zu bauen
-    return [pscustomobject]@{ Tokens = $tokens; Site = ($site -or $tokens) }
+    return [pscustomobject]@{ Tokens = $tokens; Site = ($site -or $tokens); FnCatalog = $fn }
 }
 
 # Geaenderte Dateien des Merges; $null = nichts zu tun (kein ORIG_HEAD, kein Merge-Commit im -Commit-Modus).
@@ -56,7 +59,7 @@ function Invoke-Generator([string]$PowerShellExe, [string]$Root, [string]$Script
 
 if ($PSBoundParameters.ContainsKey('Files')) {
     $t = Get-RegenerateTargets $Files
-    Write-Output ("Tokens={0} Site={1}" -f $t.Tokens, $t.Site)
+    Write-Output ("Tokens={0} Site={1} FnCatalog={2}" -f $t.Tokens, $t.Site, $t.FnCatalog)
     return
 }
 
@@ -65,7 +68,7 @@ try {
     $changed = Get-MergeChangedFiles $root $Commit.IsPresent
     if (-not $changed) { exit 0 }
     $t = Get-RegenerateTargets $changed
-    if ($Plan) { Write-Output ("Tokens={0} Site={1}" -f $t.Tokens, $t.Site); exit 0 }
+    if ($Plan) { Write-Output ("Tokens={0} Site={1} FnCatalog={2}" -f $t.Tokens, $t.Site, $t.FnCatalog); exit 0 }
     $ps = (Get-Process -Id $PID).Path
     $ok = $true
     if ($t.Tokens) {
@@ -76,7 +79,11 @@ try {
         Write-Host 'post-merge: Quellen der Site geaendert -> build_site.ps1' -ForegroundColor Cyan
         $ok = (Invoke-Generator $ps $root 'build_site.ps1') -and $ok
     }
-    if (($t.Tokens -or $t.Site) -and $ok) { Write-Host 'post-merge: Ergebnis steht als Aenderung im Arbeitsbaum (git status), nicht committet.' }
+    if ($t.FnCatalog) {
+        Write-Host 'post-merge: Quellen des fn-Katalogs geaendert -> gen_fn_catalog.ps1' -ForegroundColor Cyan
+        $ok = (Invoke-Generator $ps $root 'gen_fn_catalog.ps1') -and $ok
+    }
+    if (($t.Tokens -or $t.Site -or $t.FnCatalog) -and $ok) { Write-Host 'post-merge: Ergebnis steht als Aenderung im Arbeitsbaum (git status), nicht committet.' }
 } catch {
     Write-Host "post-merge: Regenerieren uebersprungen ($($_.Exception.Message))" -ForegroundColor Yellow
 }

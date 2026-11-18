@@ -510,18 +510,18 @@ repos:
         files: ^scripts/(lib/docker_cleanup_select|dev/docker_cleanup|dev/docker_cleanup_test)\.ps1$
 
       - id: post-merge-regenerate-test
-        name: post_merge_regenerate_test (which changed sources trigger build_ui_tokens / build_site after a merge)
+        name: post_merge_regenerate_test (which changed sources trigger build_ui_tokens / build_site / gen_fn_catalog after a merge)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/post_merge_regenerate_test.ps1
         pass_filenames: false
         files: ^scripts/(post_merge_regenerate|dev/post_merge_regenerate_test)\.ps1$
 
-      # Nach Merge/Pull: erzeugte UI-Tokens und Site neu bauen, wenn deren Quellen im Merge geaendert wurden. Ergebnis bleibt
+      # Nach Merge/Pull: erzeugte UI-Tokens, Site und fn-Katalog neu bauen, wenn deren Quellen im Merge geaendert wurden. Ergebnis bleibt
       # unkommittet im Arbeitsbaum (kein Auto-Commit). Braucht `prek install --hook-type post-merge --hook-type post-commit`
       # (install_git_hooks.ps1). Git ruft post-merge nicht, wenn ein Konflikt-Merge von Hand per `git commit` abgeschlossen wird;
       # dafuer die post-commit-Variante (-Commit: laeuft nur, wenn HEAD ein Merge-Commit ist).
       - id: post-merge-regenerate
-        name: post_merge_regenerate (rebuild generated UI token blocks and site when their sources changed in the merge)
+        name: post_merge_regenerate (rebuild generated UI token blocks, site and fn catalog when their sources changed in the merge)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/post_merge_regenerate.ps1
         pass_filenames: false

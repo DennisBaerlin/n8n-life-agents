@@ -81,12 +81,16 @@ function Invoke-Outgoing([string[]]$ScriptArgs = @(), [hashtable]$Environment = 
     }
     @{ code = $code; hash = [string](@($out | Where-Object { $_ -match '^[0-9a-f]{64}$' }) | Select-Object -Last 1) }
 }
-# Setzt einen Stempel direkt (der Skript-Weg hat unten eigene Faelle).
+# Setzt einen Stempel direkt, mit denselben Feldern wie das Stempel-Skript (dessen Pruefungen von Baum und Lint haben unten eigene Faelle).
 function Add-Stamp([string[]]$ScriptArgs) {
-    $h = (Invoke-Outgoing $ScriptArgs).hash
-    if (-not $h) { throw 'kein Hash' }
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $line = [string](@(& powershell -NoProfile -ExecutionPolicy Bypass -File $outgoing @ScriptArgs -Manifest) | Where-Object { $_ -match '^\{' } | Select-Object -Last 1) }
+    finally { $ErrorActionPreference = $prev }
+    if (-not $line) { throw 'kein Hash' }
+    $m = $line | ConvertFrom-Json
     New-Item -ItemType Directory -Force $stampDir | Out-Null
-    [System.IO.File]::WriteAllText((Join-Path $stampDir "$h.json"), '{}', $u8)
+    $body = @{ hash = $m.hash; commits = @($m.commits); header = @($m.header) } | ConvertTo-Json -Compress
+    [System.IO.File]::WriteAllText((Join-Path $stampDir "$($m.hash).json"), $body, $u8)
 }
 # Schreibt den Pruef-Text; ein Fehler darf nie als leerer oder alter Text durchgehen.
 function Get-ReviewText([string]$Source, [string]$File) {
@@ -239,12 +243,31 @@ function Assert-Stamp([string]$Name, [bool]$ExpectStamp, [string[]]$ScriptArgs =
 Assert-Stamp 'Ohne Owner-Fenster, Baum sauber: Stempel' $true
 Assert-Case 'Stempel aus dem Skript gibt frei' $false "$publish feat/b"
 $body = [System.IO.File]::ReadAllText((Get-ChildItem $stampDir | Select-Object -First 1).FullName, $u8) | ConvertFrom-Json
-Assert-True 'Stempel enthaelt nur Hash, Commit, Zeitpunkt' ((@($body.PSObject.Properties.Name | Sort-Object) -join ',') -eq 'commit,hash,reviewed_at')
+Assert-True 'Stempel enthaelt nur Hashes und Zeitpunkt, keinen Text' ((@($body.PSObject.Properties.Name | Sort-Object) -join ',') -eq 'commit,commits,hash,header,reviewed_at' -and -not (@($body.commits) + @($body.header) | Where-Object { $_ -notmatch '^[0-9a-f]{40,64}$' }))
 Invoke-SandboxGit @('tag', '-a', 'v2.0.0', '-m', 'Text-drei')
 Assert-Stamp 'Mit -AllTags: Stempel' $true @('-AllTags')
 Assert-Case 'Mit --tags frei'                 $false "$publish feat/b --tags"
 Assert-Case 'Derselbe Push ohne Tags frei'    $false "$publish feat/b"
 Invoke-SandboxGit @('tag', '-d', 'v2.0.0')
+# Die Leitung pusht den Sammel-Branch, nachdem die Session ihren Branch gestempelt hat: das Remote kennt dann einen Teil der
+# Commits, das Ausgehende schrumpft, der Hash aendert sich. Der Stempel deckt weiter, was nur Gepruefftes enthaelt.
+Write-Host 'Remote kennt einen Teil schon:'
+Invoke-SandboxGit @('checkout', '-q', '-b', 'feat/c')
+New-SandboxCommit 'ce-eins'
+$part = [string](& git -C $sandbox rev-parse HEAD)
+New-SandboxCommit 'ce-zwei'
+$branchC = @('-Ref', 'feat/c', '-Remote', 'origin', '-DestRef', 'feat/c')
+if (Test-Path $stampDir) { Remove-Item $stampDir -Recurse -Force }
+Assert-True 'Stempel ueber den ganzen Branch' ((Invoke-Stamp $branchC) -eq 0)
+$fullHash = (Invoke-Outgoing $branchC).hash
+Invoke-SandboxGit @('push', '-q', 'origin', "${part}:refs/heads/integ")
+Assert-True 'Teil oeffentlich: anderer Hash'  ((Invoke-Outgoing $branchC).hash -ne $fullHash)
+Assert-True 'Teil oeffentlich: Stempel gilt weiter' ((Invoke-Outgoing (@('-Check') + $branchC)).code -eq 0)
+Assert-Case 'Hook: Teil oeffentlich frei'     $false "$publish feat/c"
+Assert-True 'Anderer Zielname: nicht gedeckt' ((Invoke-Outgoing @('-Check', '-Ref', 'feat/c', '-Remote', 'origin', '-DestRef', 'feat/x')).code -eq 1)
+New-SandboxCommit 'ce-drei'
+Assert-True 'Neuer Commit: nicht gedeckt'     ((Invoke-Outgoing (@('-Check') + $branchC)).code -eq 1)
+Invoke-SandboxGit @('checkout', '-q', 'feat/b')
 Invoke-SandboxGit @('push', '-q', 'origin', 'feat/b')
 Remove-Item $stampDir -Recurse -Force
 Assert-True 'Nichts ausgehend: kein Hash'     (-not (Invoke-Outgoing).hash)
@@ -295,13 +318,16 @@ if (-not $prek) {
     New-SandboxCommit 'pin-commit'
     Invoke-SandboxGit @('tag', '-a', 'v3.0.0', '-m', 'Release drei')
     Assert-True 'main-Push ohne Stempel: echter Hook lehnt ab' ((Invoke-SandboxPush @('origin', 'main')) -ne 0)
-    # Falsche Reihenfolge: Tag-Stempel zuerst (Text enthaelt den Pin-Commit), dann main-Stempel und main-Push.
+    # Tag-Stempel vor dem main-Push (Text enthaelt noch den Pin-Commit): Nach dem main-Push ist der Hash ein anderer, das Ausgehende
+    # aber eine Teilmenge des Geprueften -> der fruehe Stempel deckt den Tag-Push. Ein geaenderter Tag-Text dagegen nicht.
     Add-Stamp @('-Ref', 'v3.0.0')
-    $staleTagHash = (Invoke-Outgoing @('-Ref', 'v3.0.0')).hash
+    $earlyTagHash = (Invoke-Outgoing @('-Ref', 'v3.0.0')).hash
     Add-Stamp @('-Ref', 'main')
     Assert-True 'main-Push mit Stempel: frei' ((Invoke-SandboxPush @('origin', 'main')) -eq 0)
-    Assert-True 'Tag-Stempel von vorher gilt nicht mehr' ((Invoke-Outgoing @('-Ref', 'v3.0.0')).hash -ne $staleTagHash)
-    Assert-Case 'Tag-Push mit veraltetem Stempel gesperrt' $true "$publish v3.0.0"
+    Assert-True 'Tag nach main-Push: anderer Hash' ((Invoke-Outgoing @('-Ref', 'v3.0.0')).hash -ne $earlyTagHash)
+    Assert-Case 'Tag-Push mit fruehem Stempel frei' $false "$publish v3.0.0"
+    Invoke-SandboxGit @('tag', '-f', '-a', 'v3.0.0', '-m', 'Release drei anders')
+    Assert-Case 'Tag-Push mit geaendertem Text gesperrt' $true "$publish v3.0.0"
     Add-Stamp @('-Ref', 'v3.0.0')
     Assert-Case 'Tag-Push nach neuem Stempel frei' $false "$publish v3.0.0"
     Assert-True 'echter Tag-Push gelingt' ((Invoke-SandboxPush @('origin', 'v3.0.0')) -eq 0)

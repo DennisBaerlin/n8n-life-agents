@@ -4,12 +4,14 @@
 # Ausgehend ist jeder Commit, den das Remote noch nicht kennt, einzeln mit Text, Identitaeten und Aenderung: Der Gesamtunterschied
 # wuerde einen Wert verbergen, den ein Commit einfuegt und der naechste wieder loescht, und der waere trotzdem oeffentlich.
 # Dazu ein neuer Branch-Name und neue Tags (mit Text), soweit dieser Push sie mitnimmt.
-# Der Hash deckt alles ab, auch generierte Dateien; jede Aenderung am Ausgehenden macht einen Stempel ungueltig.
+# Der Hash deckt alles ab, auch generierte Dateien; jede Aenderung am Ausgehenden macht einen Stempel ungueltig, ausser das Ausgehende
+# schrumpft auf schon Geprueftes (Deckung, unten bei Test-StampCovers).
 # Kein LLM, kein Substrat; fragt das Remote (git ls-remote). Ausgaben nennen nie einen Inhalt.
 # Usage:
 #   .\scripts\privacy_outgoing.ps1 [-Ref <ref>] [-Remote <name>] [-DestRef <zielname>] [-AllTags]   gibt den Hash aus, nichts ausgehend = keine Ausgabe
 #   ... -OutFile <datei>   schreibt zusaetzlich den Text fuer die Pruefung, ohne generierte Dateien (ihre Quellen sind im Text)
 #   ... -Check             prueft den Stempel; Exit 0 = frei, 1 = Stempel fehlt, 2 = nicht pruefbar
+#   ... -Manifest          statt des Hashs eine JSON-Zeile {hash, commits, header} fuer den Stempel (scripts/privacy_review_stamp.ps1)
 # Ohne -Ref/-Remote/-DestRef gelten PRE_COMMIT_TO_REF, PRE_COMMIT_REMOTE_NAME, PRE_COMMIT_REMOTE_BRANCH (von prek), sonst HEAD und origin.
 # -Check gilt nur auf der Owner-Maschine (Liste oder echte Chat-ID im Haupt-Checkout): Beitraege von aussen brauchen keinen Stempel.
 param(
@@ -18,7 +20,8 @@ param(
     [string]$DestRef,
     [switch]$AllTags,
     [string]$OutFile,
-    [switch]$Check
+    [switch]$Check,
+    [switch]$Manifest
 )
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -100,6 +103,22 @@ if ($headerBytes.Length -eq 0 -and $fullBytes.Length -eq 0) {
 $sha = [System.Security.Cryptography.SHA256]::Create()
 $hash = -join ($sha.ComputeHash((Join-Bytes @($headerBytes, $fullBytes))) | ForEach-Object { $_.ToString('x2') })
 
+# Deckung: Ein Commit-Hash legt Text, Identitaeten und Aenderung fest (bei Merges auch --cc, die Eltern stecken im Hash). Ein Stempel
+# deckt darum auch einen spaeteren Push, dessen Commits und Kopfzeilen eine Teilmenge der gestempelten sind: Das Remote kennt
+# inzwischen einen Teil (Sammel-Branch gepusht), der Hash ist anders, Neues ist nicht dazugekommen. Kopfzeilen (Branch-/Tag-Name,
+# Tag-Text) stehen nur als Hash im Stempel. Test: scripts/dev/privacy_review_hook_test.ps1 (Abschnitt "Remote kennt einen Teil schon").
+$commits = @(Invoke-Git (@('rev-list') + $revs) | Where-Object { $_ })
+$headerHashes = @($header | ForEach-Object { -join ($sha.ComputeHash($u8.GetBytes([string]$_)) | ForEach-Object { $_.ToString('x2') }) })
+function Test-StampCovers([string]$StampFile) {
+    try { $s = [System.IO.File]::ReadAllText($StampFile, $u8) | ConvertFrom-Json } catch { return $false }
+    if (-not $s.PSObject.Properties['commits'] -or -not $s.PSObject.Properties['header']) { return $false }
+    $known = @{}; foreach ($c in @($s.commits)) { $known[[string]$c] = $true }
+    $knownHeader = @{}; foreach ($h in @($s.header)) { $knownHeader[[string]$h] = $true }
+    foreach ($c in $commits) { if (-not $known.ContainsKey($c)) { return $false } }
+    foreach ($h in $headerHashes) { if (-not $knownHeader.ContainsKey($h)) { return $false } }
+    return $true
+}
+
 if ($OutFile) {
     # glob: ohne dieses Merkmal passt * auch ueber / und nimmt die Quellen unter packages/*/build/workflows/ mit heraus
     $generated = @('--', '.', ':(exclude,glob)packages/*/workflows/**', ':(exclude)docs/site/public/*', ':(exclude)docs/fn_catalog.md')
@@ -112,10 +131,15 @@ if ($OutFile) {
 }
 
 if ($Check) {
-    if (Test-Path (Join-Path $MainRoot ".local\privacy_review_stamps\$hash.json")) { Write-Host '  Pruefstempel vorhanden' -ForegroundColor DarkGray; exit 0 }
+    $stampDir = Join-Path $MainRoot '.local\privacy_review_stamps'
+    if (Test-Path (Join-Path $stampDir "$hash.json")) { Write-Host '  Pruefstempel vorhanden' -ForegroundColor DarkGray; exit 0 }
+    foreach ($f in @(Get-ChildItem -LiteralPath $stampDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+        if (Test-StampCovers $f.FullName) { Write-Host '  Pruefstempel deckt diesen Push (nur schon gepruefte Commits)' -ForegroundColor DarkGray; exit 0 }
+    }
     $flags = "-Ref $Ref -Remote $Remote -DestRef $DestRef" + $(if ($AllTags) { ' -AllTags' } else { '' })
     Write-Host "  [FAIL] Kein Pruefstempel fuer genau diesen Push. Skill /privacy-review, Aufruf des Stempels: privacy_review_stamp.ps1 $flags" -ForegroundColor Red
     exit 1
 }
+if ($Manifest) { Write-Output (@{ hash = $hash; commits = $commits; header = $headerHashes } | ConvertTo-Json -Compress); exit 0 }
 Write-Output $hash
 exit 0

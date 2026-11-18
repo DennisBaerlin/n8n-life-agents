@@ -355,18 +355,31 @@ rt_docker_mem() { docker info --format '{{.MemTotal}}' 2>/dev/null; }
 # rt_container_env <container> -> Umgebung des Containers, eine KEY=wert-Zeile je Eintrag. Beim master steht darin das
 #   Superuser-Passwort: die Ausgabe geht nur in die Werte-Datei des Kerns, nie in eine Meldung.
 rt_container_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null; }
-# rt_volume_label <name> -> unser Label am Volume (leer = fremd); rc 1 = es gibt das Volume nicht.
-rt_volume_label() { docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null; }
+# rt_volume_label <name> -> unser Label am Volume (leer = fremd); rc 1 = es gibt das Volume nicht, rc 2 = Docker-Fehler
+#   (nicht „fehlt“: der Kern legte sonst neue Werte ueber vorhandene Daten an).
+rt_volume_label() {
+  local out rc=0
+  out="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    case "$out" in *[Nn]o\ such\ volume*) return 1 ;; *) return 2 ;; esac
+  fi
+  printf '%s\n' "$out"
+}
 # rt_vol_own <kurzname> — gibt es <projekt>_<kurzname> mit unserem Label? Vorher pruefen: ein --mount auf ein fehlendes
-#   Volume legte es still ohne Label an, und rt_volumes_ensure braeche danach ab.
-rt_vol_own() { [ "$(rt_volume_label "${LA_PROJECT}_$1")" = "$LA_PROJECT" ]; }
+#   Volume legte es still ohne Label an, und rt_volumes_ensure braeche danach ab. rc 1 = fehlt oder fremd, 2 = Docker-Fehler.
+rt_vol_own() {
+  local l rc=0
+  l="$(rt_volume_label "${LA_PROJECT}_$1")" || rc=$?
+  [ "$rc" -eq 0 ] || return "$rc"
+  [ "$l" = "$LA_PROJECT" ]
+}
 # rt_vol_get <kurzname> <datei> -> Inhalt einer Datei im eigenen Volume (busybox, ohne Netz, nur lesend gemountet).
 #   rc 1 = Volume oder Datei fehlt, rc 2 = Lesen gescheitert (Container lief nicht, Abbild fehlt ohne Netz, …). Der Kern
 #   wertet rc 2 nie als „fehlt“: sonst erzeugte er ein neues Passwort ueber einer Datenbank mit altem.
 # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
 rt_vol_get() {
   local rc=0
-  rt_vol_own "$1" || return 1
+  rt_vol_own "$1" || return "$?"
   _rt_host_run "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" sh -c '[ -e "$1" ] || exit 3; cat "$1"' _ "/$1/$2" 2>/dev/null || rc=$?
   case "$rc" in 0) return 0 ;; 3) return 1 ;; *) return 2 ;; esac
 }

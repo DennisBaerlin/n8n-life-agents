@@ -42,9 +42,9 @@ err() {
   [ -n "$SC_LASTF" ] && printf '%s\n' "$*" >> "$SC_LASTF" 2>/dev/null
   return 0
 }
-# JSON-Zeilen ueber fd 9 = stdout beim Start (sc_main): ein Trap laeuft mitten in einem Schritt mit `>&2`, dessen Umleitung
-# dann noch gilt; ueber fd 1 landete das result sonst auf stderr.
-_sc_line() { if [ "$SC_JSON" = 1 ]; then printf '%s\n' "$1" >&9; fi; }
+# JSON-Zeilen ueber SC_OUT = stdout beim Start (sc_main, eigener fd: 9 nutzt die Update-Sperre in common.sh): ein Trap
+# laeuft mitten in einem Schritt mit `>&2`, dessen Umleitung dann noch gilt; ueber fd 1 landete das result auf stderr.
+_sc_line() { if [ "$SC_JSON" = 1 ]; then printf '%s\n' "$1" >&"$SC_OUT"; fi; }
 sc_step() {
   _sc_line "$(jq -cn --arg verb "$SC_VERB" --arg step "$1" '{v:1,type:"progress",verb:$verb,step:$step}')"
   log "stack ${SC_VERB}: ${1}"
@@ -67,8 +67,21 @@ sc_fail() {
   _sc_result false "$(jq -cn --arg r "$r" --arg d "$d" --argjson x "$x" '$x + {reason:$r,detail:$d}')"
   exit 1
 }
+# _sc_fg <befehl…> — einen langen Schritt (compose up --wait, Weitergabe, provision.sh) so fahren, dass ein Signal ihn
+#   unterbricht: bash fuehrt einen Trap erst nach dem laufenden Vordergrund-Befehl aus, `wait` dagegen kehrt sofort zurueck.
+#   stdin ueber SC_IN: ein Hintergrund-Befehl bekaeme sonst /dev/null (Antwort-Datei, Weitergabe mit -i).
+_sc_fg() {
+  local rc=0
+  "$@" <&"$SC_IN" &
+  SC_CHILD=$!
+  wait "$SC_CHILD" || rc=$?
+  SC_CHILD=''
+  return "$rc"
+}
 _sc_on_exit() {
   local rc=$? d=''
+  # Ein unterbrochener langer Schritt endet mit dem Kern (im Container ohnehin: PID 1 endet).
+  if [ -n "${SC_CHILD:-}" ]; then kill -TERM "$SC_CHILD" 2>/dev/null || true; fi
   if [ "$SC_DONE" != 1 ] && [ -n "$SC_VERB" ]; then
     d="$(tail -n1 "$SC_LASTF" 2>/dev/null || true)"
     [ -n "$d" ] || d="Abbruch ohne Meldung (Exit ${rc})."
@@ -97,20 +110,23 @@ _sc_ver_ge() {   # <version> <mindestens>: nur die Zahlen vor einem Suffix (26.1
   [ "$(printf '%s\n%s\n' "$2" "$v" | sort -V | head -n1)" = "$2" ]
 }
 # sc_init — eigenes Abbild und die Abbild-Namen aus der eigenen compose.yml (nicht aus der Umgebung: die hat nur der master).
+#   Alle Helfer-Container des Kerns (Volumes lesen/schreiben, Port-Probe, check) laufen aus dem eigenen Abbild, das schon
+#   vorliegt: der Kern laedt so selbst nie etwas. busybox laedt nur Compose fuer den anchor und zaehlt damit als selbst
+#   geladen (Merkliste); eine von einem Helfer geladene Kopie stuende sonst auf der Merkliste und bliebe nach --delete-data.
 sc_init() {
-  local svc img
+  local svc img anchor=''
   SC_SELF="$(rt_self_image || true)"
   [ -n "$SC_SELF" ] || sc_fail internal "Eigenes Abbild unbekannt: der Kern laeuft nicht unter dem Namen $(rt_core_container)."
   export LA_CORE_SELF_IMAGE="$SC_SELF" LA_MASTER_IMAGE="$SC_SELF" LA_PROJECT
   SC_IMAGES=()
-  LA_PROBE_IMAGE='' LA_N8N_IMAGE=''
+  LA_N8N_IMAGE=''
   while read -r svc img; do
     [ -n "$img" ] || continue
     case " ${SC_IMAGES[*]} " in *" $img "*) ;; *) SC_IMAGES+=("$img") ;; esac
-    case "$svc" in anchor) LA_PROBE_IMAGE="$img" ;; n8n) LA_N8N_IMAGE="$img" ;; esac
+    case "$svc" in anchor) anchor="$img" ;; n8n) LA_N8N_IMAGE="$img" ;; esac
   done <<<"$(_sc_ro rt_stack_images || true)"
-  [ -n "$LA_PROBE_IMAGE" ] || sc_fail internal "compose.yml nennt kein Abbild fuer anchor."
-  export LA_PROBE_IMAGE LA_N8N_IMAGE
+  [ -n "$anchor" ] || sc_fail internal "compose.yml nennt kein Abbild fuer anchor."
+  export LA_PROBE_IMAGE="$SC_SELF" LA_N8N_IMAGE
 }
 _sc_need_core() {
   [ "${LA_CORE:-}" = 1 ] || sc_fail in_master "stack ${SC_VERB} laeuft nur als eigener Kurzlauf-Container (docker run … stack ${SC_VERB}), nicht im master."
@@ -131,30 +147,35 @@ _sc_vget() {
 }
 # sc_lock — kein laufender master-Wechsel; sonst legte der Helfer den master gleich neu an. Gegenstueck: master_swap_begin
 #   prueft den Kern nach dem Schreiben der Zustandsdatei ein zweites Mal (lib/master_swap.sh).
-#   Eine offene Zustandsdatei zaehlt fuer Anlegen/Starten/Einrichten nur, solange der master laeuft: nur sein Tick schliesst
-#   sie ab; ohne master kaeme dieser Tick nie. Den Abbau sperrt sie nur als frische Uebergabe (PHASE=handoff, juenger als
-#   10 Min laut STARTED, der Helfer startet gleich): ein laufender, aber kaputter master (rollback_failed) liesse sich sonst
-#   nie entfernen.
+#   Nicht lesbar = busy (bei Unklarheit wartet der Kern). Ohne laufenden master zaehlt eine offene Zustandsdatei nicht: nur
+#   sein Tick schliesst sie ab, ohne master kaeme dieser Tick nie. Laeuft der master, sperrt sie Anlegen/Starten/Einrichten
+#   immer, den Abbau nur, solange der Wechsel arbeitet (swapping, swapped, applying: Sicherung und Migration im neuen
+#   master; handoff juenger als 5 Min = Frist von master_swap_resolve, unbekanntes Alter = frisch). Nach rolled_back,
+#   rollback_failed oder einer haengen gebliebenen Uebergabe laesst sich ein kaputter master so immer noch entfernen.
 sc_lock() {
-  local phase started age
+  local st rc=0 phase started t age=0
   if rt_swap_helper_running; then sc_fail busy "Gerade laeuft ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."; fi
-  _sc_vget var_la master-swap/state || return 0
-  [ -n "$SC_VREAD" ] || return 0
-  if [ "$SC_VERB" = uninstall ]; then
-    phase="$(sed -n 's/^PHASE=//p' <<<"$SC_VREAD" | head -n1)"
-    started="$(sed -n 's/^STARTED=//p' <<<"$SC_VREAD" | head -n1)"
-    age=$(( $(date +%s) - $(date -d "${started:-1970-01-01T00:00:00Z}" +%s 2>/dev/null || echo 0) ))
-    if [ "$phase" = handoff ] && [ "$age" -lt 600 ]; then
-      sc_fail busy "Gerade beginnt ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."
-    fi
-    warn "Ein master-Wechsel ist offen (Phase ${phase:-?}) — der Abbau geht trotzdem."
+  st="$(rt_vol_get var_la master-swap/state)" || rc=$?
+  case "$rc" in
+    0) ;;
+    1) return 0 ;;
+    *) sc_fail busy "Der Zustand eines Updates liess sich nicht lesen — danach erneut versuchen. Nichts geaendert." ;;
+  esac
+  [ -n "$st" ] || return 0
+  if ! rt_container_running "$(rt_master_container)"; then
+    warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
     return 0
   fi
-  if rt_container_running "$(rt_master_container)"; then
-    sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
+  if [ "$SC_VERB" = uninstall ]; then
+    phase="$(sed -n 's/^PHASE=//p' <<<"$st" | head -n1)"
+    started="$(sed -n 's/^STARTED=//p' <<<"$st" | head -n1)"
+    if [ -n "$started" ] && t="$(date -d "$started" +%s 2>/dev/null)"; then age=$(( $(date +%s) - t )); fi
+    case "$phase" in
+      rolled_back|rollback_failed) warn "Ein master-Wechsel endete ${phase} — der Abbau geht trotzdem."; return 0 ;;
+      handoff) if [ "$age" -ge 300 ]; then warn "Eine Uebergabe an den Helfer haengt seit ${age} s — der Abbau geht trotzdem."; return 0; fi ;;
+    esac
   fi
-  warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
-  return 0
+  sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
 }
 # sc_delegate — laeuft die Installation mit einem anderen Abbild, macht deren eigener Kern die Arbeit (ein neuerer oder
 #   aelterer Einstieg legt so nie einen Verbund mit fremden Pins an; Updates gehen nur ueber den signierten Weg im Chat).
@@ -167,7 +188,7 @@ sc_delegate() {
     if rt_image_has_core "$img"; then
       [ -z "${LA_CORE_DELEGATED:-}" ] || sc_fail internal "Weitergabe: der master laeuft mit ${img}, nicht mit diesem Abbild."
       log "Die Installation laeuft mit ${img} — dessen Kern uebernimmt."
-      rt_core_delegate "$img" "${SC_ARGS[@]}" || rc=$?
+      _sc_fg rt_core_delegate "$img" "${SC_ARGS[@]}" || rc=$?
       # Der innere Kern endet nur mit 0/1 und hat dann sein result geschrieben; alles andere (Docker 125–127, Signal 137/143)
       # heisst: kein result -> dieser Kern schreibt eines.
       case "$rc" in
@@ -247,7 +268,12 @@ sc_values_complete() {
   fi
   if [ -z "${SV[LA_TS_HOSTNAME]:-}" ]; then
     # Gibt es den Tailscale-Knoten schon, traegt er seinen Namen; ein neu gezogener braeuchte eine neue Anmeldung.
-    if rt_volume_label "${LA_PROJECT}_ts_state" >/dev/null; then SV[LA_TS_HOSTNAME]=bot; else SV[LA_TS_HOSTNAME]="$(_sc_ts_draw)"; fi
+    k=0; rt_volume_label "${LA_PROJECT}_ts_state" >/dev/null || k=$?
+    case "$k" in
+      0) SV[LA_TS_HOSTNAME]=bot ;;
+      1) SV[LA_TS_HOSTNAME]="$(_sc_ts_draw)" ;;
+      *) sc_fail internal "Volume ${LA_PROJECT}_ts_state liess sich nicht pruefen — nichts geaendert." ;;
+    esac
   fi
   # Ports: gespeicherte bleiben. Ohne einen Container des Projekts wird ein inzwischen belegter neu gesucht; bei laufendem
   # Verbund nie (ein neuer Port legte edge und tailscale neu an, und belegt ist er dann von uns selbst).
@@ -293,9 +319,6 @@ _sc_probe_subpath() {
 # sc_checks — setzt SC_CHECKS (JSON-Liste), SC_WARNINGS (JSON-Liste) und SC_CHECK_REASON (erster rote Grund, leer = alles gut).
 sc_checks() {
   local rows=() warns=() v avail mem sp=0
-  # Pruef-Container aus dem eigenen Abbild (liegt schon vor), nicht aus busybox: check laedt so nichts. Ein von check
-  # geladenes busybox stuende sonst auf der Merkliste des ersten up und bliebe nach --delete-data liegen.
-  local LA_PROBE_IMAGE="$SC_SELF"
   SC_CHECK_REASON=''
   _sc_chk() {
     rows+=("$(jq -cn --arg id "$1" --arg r "${2:-}" 'if $r == "" then {id:$id,ok:true} else {id:$id,ok:false,reason:$r} end')")
@@ -362,8 +385,8 @@ sc_up() {
   rt_stack_config_check >&2 || sc_fail internal "compose.yml ungueltig oder ein Pflicht-Wert fehlt."
   sc_step start
   before_ids="$(for v in anchor postgres master edge; do rt_container_id "${LA_PROJECT}-$v" || true; done)"
-  rt_stack_pull anchor postgres master edge >&2 || sc_fail pull_failed "Die Abbilder liessen sich nicht laden (Netz oder Platz?)."
-  if ! rt_stack_up_wait anchor postgres master edge >&2; then
+  _sc_fg rt_stack_pull anchor postgres master edge >&2 || sc_fail pull_failed "Die Abbilder liessen sich nicht laden (Netz oder Platz?)."
+  if ! _sc_fg rt_stack_up_wait anchor postgres master edge >&2; then
     health="$(rt_container_health "$LA_PG_CONTAINER" || true)"
     case "$health" in
       unhealthy|starting) sc_fail db_unhealthy "Die Datenbank wurde nicht gesund ($(svc_logs_hint postgresql))." ;;
@@ -402,7 +425,7 @@ sc_start() {
 }
 
 sc_status() {
-  local m installed=false running=false ver core=0 svcs phase='' upd=false x
+  local m installed=false running=false ver core=0 svcs phase='' upd=false x st rc
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   if [ "${LA_CORE:-}" = 1 ]; then sc_delegate; fi
@@ -417,7 +440,9 @@ sc_status() {
   if [ "$running" = true ]; then
     phase="$(rt_master_exec node /opt/lifeagents/provisioning/wizard/ctl.js status 2>/dev/null | jq -r '.phase // empty' 2>/dev/null || true)"
   fi
-  if rt_swap_helper_running || [ -n "$(rt_vol_get var_la master-swap/state || true)" ]; then upd=true; fi
+  # Zustand nicht lesbar = laeuft (die App startet dann nichts Aenderndes).
+  st=''; rc=0; st="$(rt_vol_get var_la master-swap/state)" || rc=$?
+  if rt_swap_helper_running || [ -n "$st" ] || [ "$rc" -ge 2 ]; then upd=true; fi
   x="$(jq -cn --argjson i "$installed" --argjson r "$running" --arg v "$ver" --argjson core "$core" \
     --argjson ports "$(_sc_ports_json)" --argjson s "$svcs" --arg ph "$phase" --argjson u "$upd" \
     '{installed:$i,running:$r,version:$v,core:$core,ports:$ports,services:$s,update_running:$u}
@@ -453,7 +478,7 @@ sc_install() {
   sc_step answers
   rt_master_write "$SC_ANSWERS" || sc_fail internal "Die Antwort-Datei liess sich nicht in den master legen."
   sc_step provision
-  rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
+  _sc_fg rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
   rt_master_exec rm -f "$SC_ANSWERS" || true
   [ "$rc" -eq 0 ] || sc_fail install_failed "Die Einrichtung im master endete mit Exit ${rc}." "$(jq -cn --argjson n "$rc" '{provision_exit:$n}')"
   sc_step 'done'
@@ -471,7 +496,7 @@ sc_uninstall() {
   sc_values_read; sc_values_export
   sc_step webhook
   if rt_container_running "$(rt_master_container)" && rt_master_exec test -x /usr/local/bin/lifeagents 2>/dev/null; then
-    rt_master_exec lifeagents telegram release-webhook >&2 || _sc_kept telegram-webhook webhook_failed
+    _sc_fg rt_master_exec lifeagents telegram release-webhook >&2 || _sc_kept telegram-webhook webhook_failed
   fi
   # Ohne Merkliste (Bestand der Start-App, var_la schon geloescht) ist unbekannt, was vorher auf dem Rechner lag: dann
   # entfernt der Abbau kein einziges Abbild — ein Nachbar koennte es nutzen, auch wenn gerade kein Container laeuft.
@@ -480,7 +505,7 @@ sc_uninstall() {
   for v in $(_sc_ro rt_stack_services | awk '{print $2}' || true); do
     if [ -n "$(rt_container_id "$v" || true)" ]; then n=$((n + 1)); fi
   done
-  _sc_ro rt_stack_down >&2 || sc_fail internal "Container liessen sich nicht entfernen — Daten unberuehrt."
+  _sc_fg _sc_ro rt_stack_down >&2 || sc_fail internal "Container liessen sich nicht entfernen — Daten unberuehrt."
   sc_step volumes
   # Abgeleitete Volumes (keine Nutzerdaten) gehen immer; ein fremdes gleichen Namens bleibt unangetastet.
   for v in $LA_DERIVED_VOLUMES; do
@@ -538,7 +563,7 @@ sc_main() {
     esac
   done
   SC_LASTF="$(mktemp)"
-  exec 9>&1
+  exec {SC_OUT}>&1 {SC_IN}<&0
   trap _sc_on_exit EXIT
   # Als PID 1 des Kern-Containers ignoriert bash SIGTERM ohne eigenen Handler: `docker stop` toetete ihn erst nach 10 s per
   # SIGKILL, ohne result. Mit Handler endet er sofort nach dem laufenden Schritt, der EXIT-Trap schreibt das result.

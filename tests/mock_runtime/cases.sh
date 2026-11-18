@@ -78,9 +78,9 @@ case "$me $1 ${2:-}" in
     # Dazu zaehlen dann auch die mit `volume create` angelegten (${STUB_LOG}.vols), bis `volume rm` sie entfernt.
     if [ -n "${STUB_VOLS+x}" ]; then
       case " $STUB_VOLS $(tr '\n' ' ' < "${STUB_LOG}.vols" 2>/dev/null) " in *" ${*: -1} "*) printf '%s\n' "${STUB_VOL_LABEL:-lifeagents}"; exit 0 ;; esac
-      exit 1
+      echo "Error: No such volume: ${*: -1}" >&2; exit 1
     fi
-    [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
+    [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; echo "Error: No such volume: ${*: -1}" >&2; exit 1 ;;
   "docker image inspect")  # mit -f: Umgebung + Versions-Etikett des Abbilds wie unten bei inspect -f
     if [ "${3:-}" = -f ]; then
       case "${4:-}" in *io.lifeagents.core*) case " ${STUB_CORE_IMAGES:-} " in *" ${*: -1} "*) echo 1 ;; *) echo '<no value>' ;; esac; exit 0 ;; esac
@@ -612,7 +612,7 @@ _used="$(grep -oE '(sc_fail|_sc_chk [a-z]+) [a-z_]+' "$ROOT/provisioning/lib/sta
 _bad=''; for r in $_used; do case " $_reasons " in *" $r "*) ;; *) _bad="$_bad $r" ;; esac; done
 eq SC.gruende-geschlossen '' "${_bad# }"
 [ "$(wc -w <<<"$_reasons")" -ge 20 ] && pass SC.gruende-liste-lesbar || fail SC.gruende-liste-lesbar "$_reasons"
-_ub="$( ( . "$ROOT/provisioning/lib/stack_core.sh"; exec 9>&1; SC_VERB=up SC_JSON=1; sc_fail erfunden "x" ) 2>/dev/null | jq -r .reason)"
+_ub="$( ( . "$ROOT/provisioning/lib/stack_core.sh"; exec {SC_OUT}>&1; SC_VERB=up SC_JSON=1; sc_fail erfunden "x" ) 2>/dev/null | jq -r .reason)"
 eq SC.fremder-grund-internal internal "$_ub"
 
 # Erster Lauf auf leerem Docker: Werte neu, im Volume abgelegt; stdout nur JSON-Zeilen mit v 1, genau ein result am Ende.
@@ -774,14 +774,36 @@ STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" STUB_RUNNING=lifeagents-master scr unins
 eq SC.frische-uebergabe-abbau-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state=$'PHASE=handoff\nSTARTED=2026-01-01T00:00:00Z' STUB_RUNNING=lifeagents-master scr uninstall --json
 eq SC.alte-uebergabe-abbau-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
+# Unbekanntes Alter zaehlt als frisch.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=handoff' STUB_RUNNING=lifeagents-master scr uninstall --json
+eq SC.uebergabe-ohne-zeit-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+# Der neue master richtet gerade ein (swapped/applying: Sicherung, Migration) -> Abbau wartet; ohne laufenden master nicht.
+for _ph in swapping swapped applying; do
+  STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state="PHASE=$_ph" STUB_RUNNING=lifeagents-master scr uninstall --json
+  eq "SC.abbau-waehrend-$_ph-busy" 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+done
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=applying' scr uninstall --json
+eq SC.abbau-applying-ohne-master-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=rolled_back' STUB_RUNNING=lifeagents-master scr uninstall --json
+eq SC.abbau-rolled-back-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
 
 # Lesefehler (Kurzlauf-Container scheitert) ist kein fehlender Wert: Abbruch, nie ein neues Passwort oder neue Ports.
-STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_FAIL='dst=/var_la,readonly' STUB_RUNNING=lifeagents-master scr up --json
-eq SC.lesefehler-werte-abbruch 'internal|0' "$(res .reason)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
-STUB_VOLS="${_lp}pgdata" STUB_FAIL='dst=/pgdata,readonly' STUB_RUNNING=lifeagents-master scr up --json
-eq SC.lesefehler-pgdata-abbruch 'internal|0' "$(res .reason)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
-STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='dst=/rt_tree,readonly' scr up --json
+# Der Fehler trifft genau das Lesen von stack.env (das Schreiben hat ein anderes Skript), nicht die Sperre davor.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_FAIL='cat "$1"|_|/var_la/stack.env' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.lesefehler-werte-abbruch 'internal|values|0' "$(res .reason)|$(jq -r 'select(.type == "progress") | .step' "$SCO" | tail -n1)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
+STUB_VOLS="${_lp}pgdata" STUB_FAIL='cat "$1"|_|/pgdata/PG_VERSION' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.lesefehler-pgdata-abbruch 'internal|values|0' "$(res .reason)|$(jq -r 'select(.type == "progress") | .step' "$SCO" | tail -n1)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/rt_tree/VERSION' scr up --json
 eq SC.lesefehler-version-abbruch 'internal|0' "$(res .reason)|$(grep -c '|up|-d|' "$STUB_LOG")"
+# Docker-Fehler schon beim Nachsehen, ob das Volume da ist: kein „fehlt“, also keine neuen Werte.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_var_la' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.volume-inspect-fehler-kein-neuer-wert 'false|0' "$(res .ok)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
+# Zustand des Wechsels nicht lesbar: jedes aendernde Verb wartet (Sperre schliesst bei Unklarheit).
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr uninstall --json
+eq SC.lesefehler-sperre-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+# status: Zustand nicht lesbar -> update_running true (die App startet dann nichts Aenderndes).
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr status --json
+eq SC.status-lesefehler-update-laeuft 'true|true' "$(res .ok)|$(res .update_running)"
 
 # Weitergabe endet unerwartet (Signal, Exit 137): trotzdem genau ein result, Exit 1.
 STUB_DELEGATE_RC=137 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
@@ -791,15 +813,22 @@ eq SC.weitergabe-signal-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | se
 : > "$STUB_LOG"; : > "${STUB_LOG}.vols"
 ( cd "$W" && exec env -u LA_EDGE_PORT -u LA_WIZARD_PORT -u LA_PG_SUPERPW -u LA_PROBE_IMAGE -u LIFEAGENTS_RUNTIME \
     LA_CORE=1 LA_PROJECT=lifeagents STUB_IMG_lifeagents_core="$SC_SELFIMG" STUB_CONFIG_JSON="$SC_CFG" RELEASE_TAG=v9.0.0 \
-    STUB_VOLS='' STUB_SLOW_UP=3 bash "$ROOT/provisioning/compose/stack.sh" up --json >"$SCO" 2>"$SCE" ) & _pid=$!
+    STUB_VOLS='' STUB_SLOW_UP=30 bash "$ROOT/provisioning/compose/stack.sh" up --json >"$SCO" 2>"$SCE" ) & _pid=$!
 for _ in $(seq 1 50); do grep -q '"step":"start"' "$SCO" 2>/dev/null && break; sleep 0.1; done
-kill -TERM "$_pid" 2>/dev/null; SC_RC=0; wait "$_pid" || SC_RC=$?
-eq SC.signal-result 'internal|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")"
+sleep 0.5; kill -TERM "$_pid" 2>/dev/null
+# Wie docker stop: nach der Frist (hier 5 s) waere SIGKILL faellig. Der Kern muss vorher enden, nicht erst nach dem Schritt.
+_gone=0; for _ in $(seq 1 50); do kill -0 "$_pid" 2>/dev/null || { _gone=1; break; }; sleep 0.1; done
+[ "$_gone" = 1 ] || kill -KILL "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null || true
+eq SC.signal-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$_gone"
 
 # check laedt nichts: alle Pruef-Container laufen aus dem eigenen Abbild (ein von check geladenes busybox stuende sonst
 # auf der Merkliste des ersten up und bliebe nach --delete-data liegen).
 STUB_VOLS='' scr check --json
 eq SC.check-nur-eigenes-abbild "0|$(grep -c '^docker|run|' "$STUB_LOG")" "$(grep '^docker|run|' "$STUB_LOG" | grep -vcF "|$SC_SELFIMG|")|$(grep '^docker|run|' "$STUB_LOG" | grep -cF "|$SC_SELFIMG|")"
+# Auch die Helfer-Container von up (Volumes lesen/schreiben, Port-Probe) laufen aus dem eigenen Abbild: busybox laedt nur
+# Compose fuer den anchor, und genau so zaehlt es als selbst geladen.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_RUNNING=lifeagents-master scr up --json
+eq SC.helfer-nur-eigenes-abbild 0 "$(grep '^docker|run|' "$STUB_LOG" | grep -vcF "|$SC_SELFIMG|")"
 
 # ---------------------------------------------------------------------------- K: Tick (Ersatz der Update-Timer im Verbund)
 # shellcheck source=/dev/null

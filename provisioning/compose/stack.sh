@@ -1,69 +1,33 @@
 #!/usr/bin/env bash
-# stack.sh — Docker-Verbund von aussen anwerfen (Rechner-Seite): CI-Lauf (genericity.yml) und Vorlage fuer die Start-App.
-# Fuehrt nur die Schritte aus, die vor dem master liegen; alles Weitere erledigt provision.sh im master. Jeder
-# Docker-Aufruf laeuft ueber lib/runtime.sh (eine Datei, Positivliste) mit festem Projekt.
+# stack.sh — Kern des Docker-Verbunds (Logik: lib/stack_core.sh). Im master-Abbild als Befehl `stack` (master.Dockerfile).
+# Jeder Einstieg (Start-App, setup.sh, CI) startet den Verbund nur ueber genau diese Form, nie mit eigener Start-Logik:
 #
-# Usage (Variablen wie in compose.yml: LA_PROJECT, LA_EDGE_PORT, LA_WIZARD_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE):
-#   bash provisioning/compose/stack.sh up                       Volumes anlegen, Datei pruefen, anchor/postgres/master/edge
-#   bash provisioning/compose/stack.sh install <antwort-datei> [provision.sh-Flags…]
-#                                                               Antwort-Datei in den master legen, provision.sh dort fahren
-#   bash provisioning/compose/stack.sh ps                       Zustand der eigenen Container
-#   bash provisioning/compose/stack.sh uninstall [--delete-data]
-#                                                               Entfernen (Pruefliste Nr. 17): Container + Netze dieses Projekts;
-#                                                               mit --delete-data (die App fragt vorher ausdruecklich) auch die
-#                                                               Daten-Volumes — jedes nur mit unserem Label. Images bleiben (die
-#                                                               App entfernt nur, was ihr Journal als selbst geladen fuehrt).
-# Voraussetzung: der Docker-Daemon antwortet (up/uninstall brechen sonst ab); up braucht die Compose-Variablen oben.
-# Exit: install = Exit des provision.sh-Laufs im master; Abbruch per die 1 (auch unbekannte uninstall-Option);
-# unbekanntes Verb 2.
+#   docker run --rm -i --name <projekt>-core --label io.lifeagents.install=<projekt> \
+#     --env LA_CORE=1 [--env LA_PROJECT=<projekt>] \
+#     --mount type=bind,src=<socket des rechners>,dst=/var/run/docker.sock \
+#     <register>/master@sha256:<…> stack <verb> [--json] [optionen]
+#
+# Abbild immer in der Schreibweise des Release-Pins (der Kern setzt sie als LA_MASTER_IMAGE ein). Kein Wert im Aufruf: Ports,
+# Passwort und Tailscale-Name erzeugt und merkt sich der Kern im Volume <projekt>_var_la. Der feste Name sperrt einen zweiten
+# Kern (Docker scheitert mit Exit 125 „name already in use“, bevor etwas geschieht); ein Einstieg fragt vorher
+# `docker inspect <projekt>-core`, laeuft er, ist das busy.
+#
+# Verben:
+#   check                       Faehigkeits-Pruefung (Docker, Linux-Container, Engine >= 26.0, Unterpfad, Socket, Platz)
+#   up                          Werte anlegen (einmalig), Volumes, anchor/postgres/master/edge; Zweitlauf aendert nichts
+#   start                       nur vorhandene Container starten
+#   status                      Zustand (auch `docker exec <projekt>-master stack status`)
+#   wizard-url [--hints-stdin]  Einmal-Link zum Fragebogen (stdin = hints.env fuer den Fragebogen)
+#   install [-- <optionen>]     Antwort-Datei ueber stdin, provision.sh --unattended im master (Automatik, CI)
+#   uninstall [--delete-data]   Webhook loesen, Container + Netze + abgeleitete Volumes entfernen; mit --delete-data auch
+#                               Daten-Volumes (nur mit unserem Label) und die selbst geladenen Abbilder der compose.yml
+# Ausgabe mit --json: JSON-Zeilen auf stdout (Vertrag: Kopf von lib/stack_core.sh), Text auf stderr.
+# Exit: 0 = ok, 1 = abgelehnt/gescheitert (reason im result), 2 = Aufruf falsch.
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
-LA_COMPOSE_FILE="$HERE/compose.yml"
-# Git Bash unter Windows (Entwickler-Rechner): docker.exe versteht nur Windows-Pfade.
-if command -v cygpath >/dev/null 2>&1; then LA_COMPOSE_FILE="$(cygpath -m "$LA_COMPOSE_FILE")"; export MSYS_NO_PATHCONV=1; fi
-
-_answers_in_master=/run/lifeagents-wizard/answers.env   # tmpfs im master (compose.yml): nie auf einer Platte
-
-case "${1:-}" in
-  up)
-    rt_docker_ok || die "Docker antwortet nicht."
-    rt_stack_config_check || die "compose.yml ungültig oder Pflicht-Variable fehlt (LA_EDGE_PORT, LA_WIZARD_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE)."
-    rt_volumes_ensure
-    rt_stack_up anchor postgres master edge
-    rt_wait_healthy "$LA_PG_CONTAINER" 180 || die "Datenbank wurde nicht gesund ($(svc_logs_hint postgresql))."
-    ok "Verbund ${LA_PROJECT} läuft (anchor, postgres, master, edge)."
-    ;;
-  install)
-    [ -r "${2:-}" ] || die "Antwort-Datei fehlt: stack.sh install <datei>"
-    rt_master_write "$_answers_in_master" < "$2"
-    shift 2
-    rc=0
-    rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$_answers_in_master" "$@" || rc=$?
-    rt_master_exec rm -f "$_answers_in_master" || true
-    exit "$rc"
-    ;;
-  ps) rt_stack_ps ;;
-  uninstall)
-    del=0
-    case "${2:-}" in --delete-data) del=1 ;; '') ;; *) die "Unbekannte Option: $2" ;; esac
-    rt_docker_ok || die "Docker antwortet nicht."
-    # Kein noch laufender master-Wechsel: der Helfer legte den master sonst gleich wieder an.
-    if rt_swap_helper_running; then die "Gerade läuft ein Update (master-Wechsel) — danach erneut entfernen. Nichts geändert."; fi
-    rt_stack_down || die "Container ließen sich nicht entfernen — Daten unberührt."
-    # Abgeleitete Volumes (keine Nutzerdaten) gehen immer; Compose nennt sie <projekt>_<name> und versieht sie mit unserem Label.
-    # Bleibt eines stehen, nennt rt_volume_rm_own den Grund; die Daten sind davon nie betroffen.
-    for v in $LA_DERIVED_VOLUMES; do rt_volume_rm_own "${LA_PROJECT}_${v}" || true; done
-    if [ "$del" -eq 1 ]; then
-      rc=0
-      for v in $LA_STATE_VOLUMES; do rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=1; done
-      [ "$rc" -eq 0 ] || die "Mindestens ein Daten-Volume blieb stehen (Grund je Volume oben)."
-      ok "Verbund ${LA_PROJECT} entfernt, Daten gelöscht."
-    else
-      ok "Verbund ${LA_PROJECT} entfernt; die Daten bleiben (Volumes ${LA_PROJECT}_*) — eine neue Installation findet sie wieder."
-    fi
-    ;;
-  *) printf 'Usage: stack.sh up | install <antwort-datei> [flags…] | ps | uninstall [--delete-data]\n' >&2; exit 2 ;;
-esac
+# shellcheck source=../lib/stack_core.sh
+. "$HERE/../lib/stack_core.sh"
+sc_main "$@"

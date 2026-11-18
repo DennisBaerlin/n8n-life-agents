@@ -2184,8 +2184,9 @@ $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
 # damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
 # Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
-# `stop` nur fuer den eigenen Wechsel-Helfer mit festem Namen (rt_swap_helper_stop, haengender Helfer).
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+stop\s+"\$\{LA_PROJECT\}-swap"\s|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+# `stop` nur fuer den eigenen Wechsel-Helfer mit festem Namen (rt_swap_helper_stop, haengender Helfer). `image rm` nur mit
+# "$1" und ohne -f (rt_image_rm_own: Docker lehnt ab, solange ein Container das Abbild nutzt); `info` nur mit festem Format.
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+stop\s+"\$\{LA_PROJECT\}-swap"\s|^\s+ps\s+--format\s+''\{"image":|^\s+info\s+--format\s+''\{\{\.MemTotal\}\}''|^\s+(image|volume)\s+(inspect|create)\b|^\s+(volume|image)\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
@@ -2237,7 +2238,12 @@ foreach ($sa in @(
     @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
     @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 },
     @{ n = 'runtime: stop Helfer ok'; r = $rtRel; t = "  docker stop `"`${LA_PROJECT}-swap`" >/dev/null`n";       want = 0 },
-    @{ n = 'runtime: stop frei';     r = $rtRel; t = "  docker stop `"`$c`"`n";                                    want = 1 })) {
+    @{ n = 'runtime: stop frei';     r = $rtRel; t = "  docker stop `"`$c`"`n";                                    want = 1 },
+    @{ n = 'runtime: info Speicher'; r = $rtRel; t = "  docker info --format '{{.MemTotal}}' 2>/dev/null`n";       want = 0 },
+    @{ n = 'runtime: info frei';     r = $rtRel; t = "  docker info`n";                                              want = 1 },
+    @{ n = 'runtime: image rm ok';   r = $rtRel; t = "  docker image rm `"`$1`" >/dev/null 2>&1`n";               want = 0 },
+    @{ n = 'runtime: image rm -f';   r = $rtRel; t = "  docker image rm -f `"`$1`"`n";                             want = 1 },
+    @{ n = 'runtime: image rm frei'; r = $rtRel; t = "  docker image rm `"`$img`"`n";                              want = 1 })) {
     $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count
     if ($got -ne $sa.want) { $errors.Add("BETRIEBSART-WRAPPER SELBST-ASSERT '$($sa.n)': erwartet $($sa.want) Treffer, gefunden $got -- Check 32 ist defekt.") }
 }
@@ -2304,16 +2310,15 @@ foreach ($k in 'N8N_VERSION', 'PG_VERSION', 'NODE_MAJOR') {
 $rtTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'lib\runtime.sh'), $Utf8NoBom)
 $cState = @(([regex]::Match($rtTxt, '(?m)^LA_STATE_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ })
 if (-not $cState.Count) { $errors.Add("COMPOSE-PINS: LA_STATE_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
-# Der Helfer des master-Wechsels (lib/master_swap.sh) legt den master aus seiner Env-Datei an: jede Variable, die compose.yml
-# interpoliert, muss in SWAP_STACK_VARS stehen — sonst entstuende der neue master mit anderer Definition (oder gar nicht).
-$swapPath = Join-Path $provDir 'lib\master_swap.sh'
+# Kern (lib/stack_core.sh) und Helfer des master-Wechsels (lib/master_swap.sh) setzen die Werte aus einer Liste: jede
+# Variable, die compose.yml interpoliert, muss in LA_STACK_VARS stehen — sonst entstuende der master mit anderer Definition
+# (oder gar nicht).
 if (Test-Path $composePath) {
-    $swapVars = @()
-    if (Test-Path $swapPath) { $swapVars = @(([regex]::Match([System.IO.File]::ReadAllText($swapPath, $Utf8NoBom), '(?m)^SWAP_STACK_VARS="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ }) }
-    if (-not $swapVars.Count) { $errors.Add("COMPOSE-PINS: SWAP_STACK_VARS in lib/master_swap.sh nicht lesbar -- Check 33 ist defekt.") }
+    $stackVars = @(([regex]::Match($rtTxt, '(?m)^LA_STACK_VARS="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ })
+    if (-not $stackVars.Count) { $errors.Add("COMPOSE-PINS: LA_STACK_VARS in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
     else {
         $cyVars = @([regex]::Matches([System.IO.File]::ReadAllText($composePath, $Utf8NoBom), '\$\{(LA_[A-Z0-9_]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        foreach ($v in $cyVars) { if ($swapVars -notcontains $v) { $errors.Add("COMPOSE-PINS: compose.yml interpoliert $v, SWAP_STACK_VARS (lib/master_swap.sh) kennt es nicht -- der Helfer legte den master anders an.") } }
+        foreach ($v in $cyVars) { if ($stackVars -notcontains $v) { $errors.Add("COMPOSE-PINS: compose.yml interpoliert $v, LA_STACK_VARS (lib/runtime.sh) kennt es nicht -- Kern und Helfer legten den master anders an.") } }
     }
 }
 # Spiegel der Start-App: provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App

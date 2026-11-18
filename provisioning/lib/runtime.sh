@@ -9,17 +9,18 @@
 #
 # Docker-Positivliste (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
-#   docker stop "${LA_PROJECT}-swap" (nur rt_swap_helper_stop) ·
+#   docker info --format '{{.MemTotal}}' (nur rt_docker_mem) · docker stop "${LA_PROJECT}-swap" (nur rt_swap_helper_stop) ·
 #   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
 #   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
 # Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
 # rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` nur in rt_stack_down (ohne
-# -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts).
+# -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts) und `docker image rm "$1"`
+# nur in rt_image_rm_own (ohne -f: nutzt ein Container das Abbild, lehnt Docker ab; welche Abbilder, waehlt der Kern
+# lib/stack_core.sh aus compose.yml abzueglich der vorher schon vorhandenen).
 # Verboten sind breite Befehle (prune, --all/-a, ps -q, rm $(…), down -v/--volumes, --rmi, system …): unser master hat
 # Zugriff auf ganz Docker, ein Fehler hier traefe fremde Container (z. B. Paperless) — die wichtigste Regel des Verbunds.
 # Bind-Mounts nur per `--mount` (der Schalter -v ist wegen `down -v` gesperrt). Alles, was wir anlegen, traegt den
-# Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>. `image rm <laut Journal selbst geladen>` gehoert
-# der Start-App (sie fuehrt das Journal), nicht dem master.
+# Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>.
 
 rt_is_compose() { [ "${LIFEAGENTS_RUNTIME:-systemd}" = compose ]; }
 
@@ -36,8 +37,12 @@ LA_N8N_EXEC_USER="${LA_N8N_EXEC_USER:-node}"   # Nutzer des n8n-Images (uid 1000
 LA_STATE_VOLUMES="pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state wizard_state"
 # Abgeleitete Volumes (compose.yml: von Compose verwaltet, jeder Installer-Lauf schreibt sie neu, keine Nutzerdaten):
 # der Deinstaller entfernt sie immer. contract_lint 33 haelt die Liste gleich mit compose.yml.
-# shellcheck disable=SC2034  # gelesen von compose/stack.sh
+# shellcheck disable=SC2034  # gelesen von lib/stack_core.sh
 LA_DERIVED_VOLUMES="shared gw_code n8n_patches reach_conf caddy_data"
+# Variablen, die compose.yml interpoliert: der Kern (lib/stack_core.sh) setzt sie, der Helfer des master-Wechsels
+# (lib/master_swap.sh) schreibt sie in seine Env-Datei. contract_lint 33 haelt die Liste gleich mit compose.yml.
+# shellcheck disable=SC2034  # gelesen von lib/master_swap.sh und lib/stack_core.sh
+LA_STACK_VARS="LA_PROJECT LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_MASTER_IMAGE LA_TS_HOSTNAME"
 
 # _rt_compose <args…> — docker compose mit festem Projekt und fester Datei (nie das Projekt aus der Umgebung raten).
 _rt_compose() { docker compose -p "$LA_PROJECT" -f "$LA_COMPOSE_FILE" "$@"; }
@@ -286,6 +291,10 @@ rt_stack_up() {
     sleep "${RT_UP_RETRY_DELAY:-10}"; n=$((n + 1))
   done
 }
+# rt_stack_up_wait <dienste…> — wie rt_stack_up, kehrt aber erst zurueck, wenn die Dienste laufen bzw. gesund sind
+# (`--wait`, Postgres hat einen Healthcheck). Nur fuer die Start-Dienste des Kerns: tailscale/wan (reach.sh) enden ohne
+# Anmeldung bzw. Adresse von selbst, ein --wait schluege dort fehl.
+rt_stack_up_wait() { rt_stack_up --wait --wait-timeout "${RT_UP_WAIT_SECS:-180}" "$@"; }
 # rt_stack_ps — Zustand der laufenden eigenen Container (nur dieses Projekt; Name, Dienst, Status).
 rt_stack_ps() { _rt_compose ps --format '{{.Name}}\t{{.Service}}\t{{.State}}\t{{.Health}}'; }
 # rt_master_container -> Name des master-Containers (Host-Seite: Start-App bzw. CI).
@@ -298,11 +307,117 @@ rt_master_write() {
 }
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
+# rt_master_exec_in <befehl…> — wie rt_master_exec, reicht aber stdin weiter (Antwort-Datei fuer provision.sh).
+rt_master_exec_in() { docker exec -i "$(rt_master_container)" "$@"; }
+
+# --- Kern (lib/stack_core.sh): Kurzlauf aus dem master-Abbild, der den Verbund anlegt, prueft und entfernt -------------
+# Fester Name = Sperre gegen einen zweiten Kern (Docker lehnt den Namen ab, bevor etwas geschieht); die Weitergabe an das
+# Abbild der Installation laeuft als <projekt>-core-next.
+rt_core_container() { printf '%s-core%s' "$LA_PROJECT" "${LA_CORE_DELEGATED:+-next}"; }
+# rt_core_running — laeuft ein Kern dieses Projekts (auch eine Weitergabe)? Gegensperre des master-Wechsels.
+rt_core_running() { rt_container_running "${LA_PROJECT}-core" || rt_container_running "${LA_PROJECT}-core-next"; }
+# rt_self_image -> das Abbild, aus dem dieser Prozess laeuft, in der Schreibweise des Aufrufs (Release-Pin
+#   <register>/master@sha256:…): im Kern aus dem eigenen Container, im master aus seiner Umgebung. Eine andere
+#   Schreibweise als LA_MASTER_IMAGE liesse Compose den master neu anlegen.
+rt_self_image() {
+  if [ "${LA_CORE:-}" = 1 ]; then docker inspect -f '{{.Config.Image}}' "$(rt_core_container)" 2>/dev/null
+  else [ -n "${LA_MASTER_IMAGE:-}" ] && printf '%s\n' "$LA_MASTER_IMAGE"; fi
+}
+# rt_image_has_core <abbild> — traegt das Abbild das Kern-Etikett (master.Dockerfile, Stand ab dem Kern)?
+rt_image_has_core() { [ "$(docker image inspect -f '{{index .Config.Labels "io.lifeagents.core"}}' "$1" 2>/dev/null)" = 1 ]; }
+# rt_image_present <abbild> — liegt das Abbild lokal vor?
+rt_image_present() { docker image inspect "$1" >/dev/null 2>&1; }
+# rt_core_delegate <abbild> <verb> [args…] — denselben Aufruf im Abbild der Installation fahren (stdin, stdout, stderr und
+#   Exit durchgereicht). LA_CORE_DELEGATED verhindert eine zweite Weitergabe; Werte gehen nie ueber die Umgebung mit.
+rt_core_delegate() {
+  local img="$1"; shift
+  docker run --rm -i --name "${LA_PROJECT}-core-next" --label "${LA_LABEL}=${LA_PROJECT}" \
+    --env LA_CORE=1 --env "LA_PROJECT=${LA_PROJECT}" --env "LA_CORE_DELEGATED=${LA_CORE_SELF_IMAGE:?}" --env LA_CORE_PORTS \
+    --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock "$img" stack "$@"
+}
+# rt_docker_server <Version|Os> -> Feld des Docker-Daemons (nicht des Clients).
+rt_docker_server() {
+  case "$1" in
+    Version) docker version --format '{{.Server.Version}}' 2>/dev/null ;;
+    Os)      docker version --format '{{.Server.Os}}' 2>/dev/null ;;
+    *) return 2 ;;
+  esac
+}
+# rt_docker_mem -> Arbeitsspeicher, den Docker sieht, in Byte (Docker Desktop: der der VM).
+rt_docker_mem() { docker info --format '{{.MemTotal}}' 2>/dev/null; }
+# rt_container_env <container> -> Umgebung des Containers, eine KEY=wert-Zeile je Eintrag. Beim master steht darin das
+#   Superuser-Passwort: die Ausgabe geht nur in die Werte-Datei des Kerns, nie in eine Meldung.
+rt_container_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null; }
+# rt_volume_label <name> -> unser Label am Volume (leer = fremd); rc 1 = es gibt das Volume nicht.
+rt_volume_label() { docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null; }
+# rt_vol_own <kurzname> — gibt es <projekt>_<kurzname> mit unserem Label? Vorher pruefen: ein --mount auf ein fehlendes
+#   Volume legte es still ohne Label an, und rt_volumes_ensure braeche danach ab.
+rt_vol_own() { [ "$(rt_volume_label "${LA_PROJECT}_$1")" = "$LA_PROJECT" ]; }
+# rt_vol_get <kurzname> <datei> -> Inhalt einer Datei im eigenen Volume (busybox, ohne Netz, nur lesend gemountet).
+#   rc 1 = Volume oder Datei fehlt.
+rt_vol_get() {
+  rt_vol_own "$1" || return 1
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none \
+    --mount "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" cat "/$1/$2" 2>/dev/null
+}
+# rt_vol_put <kurzname> <datei> — stdin als Datei (0600 root) ins eigene Volume: erst .part, dann umbenannt.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_vol_put() {
+  rt_vol_own "$1" || return 1
+  docker run --rm -i --label "${LA_LABEL}=${LA_PROJECT}" --network none \
+    --mount "type=volume,src=${LA_PROJECT}_$1,dst=/$1" "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" \
+    sh -c 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1.part" && mv -f "$1.part" "$1"' _ "/$1/$2"
+}
+# rt_probe_run <mount-angabe> <befehl…> — Kurzlauf-Container der Faehigkeits-Pruefung (busybox, ohne Netz, unser Label).
+rt_probe_run() {
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
+}
+# rt_probe_df -> `df -Pk /` aus einem Kurzlauf-Container (die Platte, auf der Docker seine Abbilder und Volumes ablegt).
+rt_probe_df() { docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" df -Pk /; }
+# rt_probe_socket <abbild> — erreicht ein Container mit eingehaengtem Socket den Daemon (der master braucht genau das)?
+rt_probe_socket() {
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none \
+    --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock --entrypoint docker "$1" version >/dev/null 2>&1
+}
+# rt_volume_create_own <name> — ein Volume mit unserem Label anlegen (Pruef-Volume des Kerns).
+rt_volume_create_own() { docker volume create --label "${LA_LABEL}=${LA_PROJECT}" "$1" >/dev/null; }
+# _rt_all_profiles -> alle Profile der compose.yml, mit Komma (fuer COMPOSE_PROFILES: Profil-Dienste zaehlen sonst nicht).
+_rt_all_profiles() { _rt_compose config --profiles | paste -sd, -; }
+# rt_stack_images -> "<dienst> <abbild>" je Dienst aller Profile. Die aufgeloeste Fassung traegt das Superuser-Passwort:
+#   sie geht nur in jq, nie in eine Ausgabe.
+rt_stack_images() {
+  local profiles
+  profiles="$(_rt_all_profiles)" || return 1
+  COMPOSE_PROFILES="$profiles" _rt_compose config --format json 2>/dev/null \
+    | jq -r '.services // {} | to_entries[] | select(.value.image) | "\(.key) \(.value.image)"' 2>/dev/null
+}
+# rt_stack_services -> "<dienst> <container>" je Dienst aller Profile (Namen laut compose.yml, nur lesend).
+rt_stack_services() {
+  local profiles
+  profiles="$(_rt_all_profiles)" || return 1
+  COMPOSE_PROFILES="$profiles" _rt_compose config --format json 2>/dev/null \
+    | jq -r '.services // {} | to_entries[] | "\(.key) \(.value.container_name // "")"' 2>/dev/null
+}
+# rt_stack_start <dienste…> — vorhandene Container dieser Dienste starten (legt nie etwas an; Profil-Dienste eingeschlossen).
+rt_stack_start() {
+  local profiles
+  profiles="$(_rt_all_profiles)" || return 1
+  COMPOSE_PROFILES="$profiles" _rt_compose start "$@" >&2
+}
+# rt_image_rm_own <abbild> — ein Abbild entfernen, das der Kern laut compose.yml selbst geladen hat (Auswahl: stack_core.sh).
+#   Ohne -f: nutzt ein Container (auch ein fremder) das Abbild, lehnt Docker ab. rc 0 = entfernt oder nicht vorhanden.
+rt_image_rm_own() {
+  rt_image_present "$1" || return 0
+  docker image rm "$1" >/dev/null 2>&1
+}
 
 # --- Laufzeit im Verbund: Image-Wechsel, Messung, Rechner-Ordner, Abbau -------------------------------------------------
 # rt_container_image <container> -> das Image (Name@Digest wie in compose.yml), mit dem der Container angelegt wurde.
 rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
 # rt_container_running <container> — 0 = laeuft.
+# rt_container_health <container> -> Zustand des Healthchecks (healthy|unhealthy|starting), leer ohne Healthcheck.
+rt_container_health() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null; }
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das diese Datei selbst nennt (Release-Pin:
 #   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
@@ -419,7 +534,7 @@ rt_host_rm() {
 #   Container mit unserem Compose-Projekt, nie fremde.
 rt_stack_down() {
   local profiles
-  profiles="$(_rt_compose config --profiles | paste -sd, -)" || return 1
+  profiles="$(_rt_all_profiles)" || return 1
   COMPOSE_PROFILES="$profiles" _rt_compose down --remove-orphans
 }
 # rt_volume_rm_own <name> — ein Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).

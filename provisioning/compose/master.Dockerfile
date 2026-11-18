@@ -22,7 +22,12 @@ COPY packages /opt/lifeagents/packages
 # Die CLI selbst legt install_cli ins Volume rt_tree (ueberlebt jede Neuanlage des master, Update = Image-Wechsel); bis zur
 # ersten Installation zeigt der Link ins Leere (die Tick-Schleife in compose.yml wartet so still).
 RUN ln -s /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents
-LABEL io.lifeagents.install.image="master"
+# Kern (`docker run … <master> stack <verb>`, compose/stack.sh): geht vor der ersten Installation, die CLI oben noch nicht.
+RUN printf '#!/bin/sh\nexec bash /opt/lifeagents/provisioning/compose/stack.sh "$@"\n' > /usr/local/bin/stack \
+ && chmod 0755 /usr/local/bin/stack
+# io.lifeagents.core = Fassung des Kern-Vertrags ("v" der JSON-Zeilen). Ein Kern gibt nur an Abbilder mit diesem Etikett
+# weiter (lib/stack_core.sh sc_delegate); Abbilder ohne kennen `stack` nicht.
+LABEL io.lifeagents.install.image="master" io.lifeagents.core="1"
 # Release-Tag dieses Images (build_master_image.ps1 -Version). provision.sh schreibt ihn in VERSION; ein Lauf ohne Nummer liest
 # ihn ueber docker inspect nach (common.sh release_tag_resolve). Ohne -Version gebaut (dev) bricht ein Release-Lauf darum ab:
 # lokale Baue mit --build-arg RELEASE_TAG=dev-<rev>. Explizite Setzer (update_runner, upgrade_guard-Rueckweg) gehen vor.

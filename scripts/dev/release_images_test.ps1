@@ -183,7 +183,8 @@ Check 'build_master_image.ps1 gibt RELEASE_TAG=$Version als Build-Argument mit' 
 Check 'CI: kein von Hand eingespritztes RELEASE_TAG beim Installieren' ($genericity -notmatch 'docker exec -e RELEASE_TAG=')
 $ciBuilds = [regex]::Matches($genericity, 'docker build -q -f provisioning/compose/master\.Dockerfile[^\r\n]*')
 Check 'CI: beide master-Bauten (Installations- und Update-Lauf) tragen das Build-Argument' ($ciBuilds.Count -eq 2 -and @($ciBuilds | Where-Object { $_.Value -match '--build-arg RELEASE_TAG=v\d+\.\d+\.\d+' }).Count -eq 2) "($($ciBuilds.Count) Bauten)"
-Check 'CI: Installations-Lauf prueft die VERSION nach stack.sh install' ($genericity -match '(?s)name: Assert the stack.*?lifeagents version.*?= v9\.0\.0.*?name: Second run')
+Check 'CI: der Verbund startet nur ueber den Kern (docker run … stack), nie ueber stack.sh auf dem Rechner' ($genericity -notmatch 'bash provisioning/compose/stack\.sh' -and $genericity -match 'docker run --rm -i "\$\{CORE_A\[@\]\}"' -and $genericity -match '(?m)^\s+core_run up1 up\s*$' -and $genericity -match '(?m)^\s+core_run take up\s*$')
+Check 'CI: Installations-Lauf prueft die VERSION nach der Installation' ($genericity -match '(?s)name: Assert the stack.*?lifeagents version.*?= v9\.0\.0.*?name: Second run')
 $masterBlock = [regex]::Match($real, '(?ms)^  master:\r?\n(.*?)(?=^  \S|^\S)').Groups[1].Value
 $shm = [regex]::Match($masterBlock, '(?m)^    shm_size:\s*(\d+)m\s*$')
 Check 'compose.yml: master hat shm_size 256m..512m (die Sicherung legt Dump + Tarball in /dev/shm, Docker-Standard 64m)' ($shm.Success -and [int]$shm.Groups[1].Value -ge 256 -and [int]$shm.Groups[1].Value -le 512)

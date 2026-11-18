@@ -271,6 +271,33 @@ jobs:
           grep -n 'img_master' provisioning/compose/compose.yml
           docker image rm "$img:ci" >/dev/null   # der Stack muss es per Digest aus dem Register ziehen
           echo "MASTER_PIN=$pin" >> "$GITHUB_ENV"
+          echo "CORE_IMAGE=$pin" >> "$GITHUB_ENV"
+          # Der Kern in der einen Aufruf-Form (Kopf von provisioning/compose/stack.sh); jeder Schritt sourct sie.
+          cat > "$RUNNER_TEMP/core.sh" <<'CORE'
+          core_args() {
+            CORE_A=(--name "$LA_PROJECT-core" --label "io.lifeagents.install=$LA_PROJECT" --env LA_CORE=1 --env LA_PROJECT)
+            if [ -n "${LA_CORE_PORTS:-}" ]; then CORE_A+=(--env LA_CORE_PORTS); fi
+            CORE_A+=(--mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock "$CORE_IMAGE" stack)
+          }
+          core() { core_args; docker run --rm -i "${CORE_A[@]}" "$@"; }
+          # core_run <name> <verb> [optionen…] — Kern mit --json (stdin leer), Ausgabe nach $RUNNER_TEMP/core-<name>.jsonl/.err;
+          # prueft den Vertrag: nur JSON-Zeilen mit "v":1, genau ein result. rc = Exit des Kerns, 99 = Vertrag verletzt (auch
+          # unter `|| rc=$?`, wo set -e nicht greift).
+          core_run() {
+            local n="$1" v="$2" rc=0; shift 2
+            core "$v" --json "$@" < /dev/null > "$RUNNER_TEMP/core-$n.jsonl" 2> "$RUNNER_TEMP/core-$n.err" || rc=$?
+            cat "$RUNNER_TEMP/core-$n.jsonl"
+            [ "$(grep -cv '^{"v":1,' "$RUNNER_TEMP/core-$n.jsonl" || true)" = 0 ] || { echo "FAIL $n: Zeile ohne JSON v1"; return 99; }
+            [ "$(jq -s '[.[] | select(.type == "result")] | length' "$RUNNER_TEMP/core-$n.jsonl")" = 1 ] || { echo "FAIL $n: nicht genau ein result"; return 99; }
+            return "$rc"
+          }
+          core_res() { tail -n1 "$RUNNER_TEMP/core-$1.jsonl"; }
+          # vol_cat <volume-kurzname> <datei> — Datei aus einem Volume des Projekts lesen (Pruefung, nur lesend).
+          vol_cat() {
+            docker run --rm --network none --mount "type=volume,src=${LA_PROJECT}_$1,dst=/v,readonly" \
+              "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-anchor" 2>/dev/null || echo busybox:1.37)" cat "/v/$2"
+          }
+          CORE
 
       - name: Neighbour before (foreign container + volume + network, no label of ours)
         run: |
@@ -287,15 +314,38 @@ jobs:
           }
           state > "$RUNNER_TEMP/neighbour.before"; cat "$RUNNER_TEMP/neighbour.before"
 
-      - name: Start the stack (volumes, anchor, postgres, master, edge)
+      - name: Start the stack through the core on an empty Docker (check, up; values kept in the volume, no secret in the call)
         run: |
           set -euo pipefail
-          pw="$(openssl rand -hex 16)"; echo "::add-mask::$pw"
-          echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
-          LA_PG_SUPERPW="$pw" bash provisioning/compose/stack.sh up
+          . "$RUNNER_TEMP/core.sh"
+          core_run check check
+          core_res check | jq -e '.ok == true and ([.checks[] | select(.ok)] | length) == 6'
+          test -z "$(docker volume ls -q --filter "name=${LA_PROJECT}_probe")"   # Pruef-Volume wieder weg
+          # Leeres Docker: up legt Werte und Volumes an. Beweist die Reihenfolge Volume vor Werte-Datei, die die Attrappe nicht
+          # sieht (ein Lese-Container auf ein fehlendes Volume legte es ohne Etikett an).
+          core_run up1 up
+          core_res up1 | jq -e ".ok and .changed and .ports.edge == $LA_EDGE_PORT and .ports.wizard == $LA_WIZARD_PORT and .version == \"v9.0.0\""
+          pw="$(docker exec "$LA_PROJECT-master" printenv LA_PG_SUPERPW)"; echo "::add-mask::$pw"
+          [[ "$pw" =~ ^[0-9a-f]{64}$ ]] || { echo "FAIL Passwort nicht 64 Hex"; exit 1; }
+          test "$(vol_cat var_la stack.env | sed -n 's/^LA_PG_SUPERPW=//p')" = "$pw"
+          test "$(docker run --rm --network none --mount "type=volume,src=${LA_PROJECT}_var_la,dst=/v,readonly" "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-anchor")" stat -c %a /v/stack.env)" = 600
+          vol_cat var_la core-foreign-images
+          # Kein Geheimnis im Aufruf des Kerns (docker inspect zeigt seine Umgebung dauerhaft) und keines in seiner Ausgabe.
+          core_args; docker create "${CORE_A[@]}" up --json >/dev/null
+          if docker inspect "$LA_PROJECT-core" | grep -qF "$pw"; then echo "FAIL Passwort in docker inspect des Kerns"; exit 1; fi
+          docker rm "$LA_PROJECT-core" >/dev/null
+          if grep -qF "$pw" "$RUNNER_TEMP"/core-*; then echo "FAIL Passwort in der Ausgabe des Kerns"; exit 1; fi
           # master aus dem Pin (Digest), und er kennt sein eigenes Image (master_swap, upgrade_guard brauchen es)
           test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$MASTER_PIN"
           test "$(docker exec "$LA_PROJECT-master" printenv LA_MASTER_IMAGE)" = "$MASTER_PIN"
+          docker inspect -f '{{index .Config.Labels "io.lifeagents.core"}}' "$MASTER_PIN" | grep -qx 1
+          # Status ueber den Kern und im master selbst (docker exec), Einmal-Link zum Fragebogen.
+          core_run status1 status
+          core_res status1 | jq -e '.installed and .running and .core == 1 and (.update_running | not)'
+          docker exec "$LA_PROJECT-master" stack status --json | tail -n1 | jq -e '.running'
+          # Der Wizard startet mit dem master; sein Steuerkanal kann ein paar Sekunden nach `up` noch fehlen.
+          for _ in $(seq 1 15); do core_run url wizard-url >/dev/null && break; sleep 2; done
+          core_res url | jq -e --arg p "$LA_WIZARD_PORT" '.ok and (.url | startswith("http://127.0.0.1:" + $p + "/start?t="))' >/dev/null
 
       - name: Telegram mock in the pod (own container on the anchor, shares 127.0.0.1 with n8n and the master)
         run: bash tests/mock_telegram/start_in_pod.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
@@ -361,6 +411,10 @@ jobs:
           docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env
           docker exec "$LA_PROJECT-master" rm -f /run/lifeagents-wizard/answers.env
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT count(*) FROM core.package_registry WHERE status='active'" | tr -d '[:space:]')" -ge 5
+          # Der Kern ein zweites Mal auf der fertigen Installation: aendert nichts (gleiche Werte aus var_la, gleiche Pins).
+          . "$RUNNER_TEMP/core.sh"
+          core_run up2 up
+          core_res up2 | jq -e '.ok and (.changed | not) and .pulled == []'
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
           # n8n, gateway und der Tunnel-Knoten entstehen erst im Erstlauf; wan startet erst im Rand-Schritt.
           grep -v -e '-n8n ' -e '-gateway ' -e '-tailscale ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"
@@ -496,17 +550,62 @@ jobs:
           state > "$RUNNER_TEMP/neighbour.after"
           diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
 
+      - name: Docker restart (like a reboot of a Linux server) — the stack comes back by its restart rule, the core sees it
+        # Nach dem Nachbar-Vergleich: der Nachbar hat keine Neustart-Regel und bliebe danach stehen.
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          sudo systemctl restart docker
+          for _ in $(seq 1 60); do docker version >/dev/null 2>&1 && break; sleep 2; done
+          ready=""
+          for _ in $(seq 1 120); do
+            if curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness"; then ready=1; break; fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.Status}}'; exit 1; }
+          core_run status2 status
+          core_res status2 | jq -e '.running and ([.services[] | select(.name == "postgres") | .health] == ["healthy"])'
+          core_run start1 start
+          core_res start1 | jq -e '.ok'
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Uninstall with data through the core — only the images it loaded itself go (first run on an empty Docker)
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true   # Test-Container am anchor, nicht Teil des Verbunds
+          imgs="$(LA_PG_SUPERPW=unused docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox config --images | sort -u)"
+          before="$(vol_cat var_la core-foreign-images)"
+          core_run del uninstall --delete-data
+          core_res del | jq -e '.ok and (.removed.volumes | length) == 9 and (.removed.images | length) > 0'
+          core_res del | jq -e --arg m "$MASTER_PIN" '[.kept[] | select(.what == $m)] | length == 1'   # nutzt der Kern gerade
+          for i in $imgs; do
+            [ "$i" = "$MASTER_PIN" ] && continue
+            if printf '%s\n' "$before" | grep -qxF "$i"; then docker image inspect "$i" >/dev/null || { echo "FAIL $i lag vorher da und ist weg"; exit 1; }; continue; fi
+            if docker image inspect "$i" >/dev/null 2>&1; then
+              core_res del | jq -e --arg i "$i" '[.kept[] | select(.what == $i and .reason == "image_in_use")] | length == 1' >/dev/null \
+                || { echo "FAIL $i blieb ohne Grund"; exit 1; }
+            fi
+          done
+          test -z "$(docker ps -a --filter "label=com.docker.compose.project=$LA_PROJECT" --format '{{.Names}}')"
+          test -z "$(docker volume ls -q --filter "label=io.lifeagents.install=$LA_PROJECT")"
+          docker image inspect alpine:3.20 >/dev/null   # Abbild des Nachbarn
+
       - name: Logs on failure
         if: failure()
         run: |
           for c in master n8n postgres gateway edge tailscale wan; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
           tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
+          tail -n 20 "$RUNNER_TEMP"/core-*.err 2>&1 || true
 
       - name: Teardown (only our project + the neighbour)
         if: always()
         run: |
           docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true   # der Mock haengt am anchor: zuerst weg
-          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down -v --remove-orphans || true
+          # Werte nur fuer die Interpolation von compose.yml (das Passwort steht nicht in der Umgebung des Jobs).
+          LA_PG_SUPERPW=unused LA_MASTER_IMAGE="${MASTER_PIN:-unused}" \
+            docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down -v --remove-orphans || true
           docker rm -fv ci-port80 "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
@@ -535,6 +634,8 @@ jobs:
       LA_EDGE_PORT: '5890'
       LA_WIZARD_PORT: '5891'
       LA_MASTER_IMAGE: ci-ops-master:a
+      CORE_IMAGE: ci-ops-master:a
+      LA_CORE_PORTS: 5890-5899
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -546,7 +647,8 @@ jobs:
           set -euo pipefail
           git archive --format=tar HEAD provisioning packages .gitattributes \
             | docker build -q -f provisioning/compose/master.Dockerfile --build-arg RELEASE_TAG=v9.0.0 -t ci-ops-master:a -
-          printf 'FROM ci-ops-master:a\nLABEL io.lifeagents.ci=b\n' | docker build -q -t ci-ops-master:b -
+          # b traegt wie ein echter Release-Bau seine eigene Nummer (der Kern vergleicht sie mit VERSION der Daten).
+          printf 'FROM ci-ops-master:a\nENV RELEASE_TAG=v9.1.0\nLABEL io.lifeagents.ci=b\n' | docker build -q -t ci-ops-master:b -
           printf 'FROM ci-ops-master:a\nRUN rm /usr/bin/jq\n' | docker build -q -t ci-ops-master:c -
           printf '%s\n' 'FROM ci-ops-master:b' \
             "RUN printf '\\nupgrade_finish() { die \"CI: Fehler nach der Sicherung\"; }\\n' >> /opt/lifeagents/provisioning/lib/upgrade_guard.sh" \
@@ -558,6 +660,39 @@ jobs:
           b_ref="$(docker inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' 127.0.0.1:5000/ci/ops-master:b | grep -m1 '^127.0.0.1:5000/ci/ops-master@sha256:')"
           echo "B_REF=$b_ref" >> "$GITHUB_ENV"
           docker image rm 127.0.0.1:5000/ci/ops-master:b >/dev/null
+          # Kern-Helfer wie im kalten Lauf (dort erklaert).
+          cat > "$RUNNER_TEMP/core.sh" <<'CORE'
+          core_args() {
+            CORE_A=(--name "$LA_PROJECT-core" --label "io.lifeagents.install=$LA_PROJECT" --env LA_CORE=1 --env LA_PROJECT)
+            if [ -n "${LA_CORE_PORTS:-}" ]; then CORE_A+=(--env LA_CORE_PORTS); fi
+            CORE_A+=(--mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock "$CORE_IMAGE" stack)
+          }
+          core() { core_args; docker run --rm -i "${CORE_A[@]}" "$@"; }
+          core_run() {
+            local n="$1" v="$2" rc=0; shift 2
+            core "$v" --json "$@" < /dev/null > "$RUNNER_TEMP/core-$n.jsonl" 2> "$RUNNER_TEMP/core-$n.err" || rc=$?
+            cat "$RUNNER_TEMP/core-$n.jsonl"
+            [ "$(grep -cv '^{"v":1,' "$RUNNER_TEMP/core-$n.jsonl" || true)" = 0 ] || { echo "FAIL $n: Zeile ohne JSON v1"; return 99; }
+            [ "$(jq -s '[.[] | select(.type == "result")] | length' "$RUNNER_TEMP/core-$n.jsonl")" = 1 ] || { echo "FAIL $n: nicht genau ein result"; return 99; }
+            return "$rc"
+          }
+          core_res() { tail -n1 "$RUNNER_TEMP/core-$1.jsonl"; }
+          vol_cat() {
+            docker run --rm --network none --mount "type=volume,src=${LA_PROJECT}_$1,dst=/v,readonly" \
+              "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-anchor" 2>/dev/null || echo busybox:1.37)" cat "/v/$2"
+          }
+          # app_start <master-abbild> — Start wie die Start-App vor dem Kern: Volumes mit Etikett, Werte ueber die Umgebung,
+          # `compose up` vom Rechner (provisioning/desktop/core/src/core_start.rs). Setzt APP_PW.
+          app_start() {
+            APP_PW="$(openssl rand -hex 16)"; echo "::add-mask::$APP_PW"
+            for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do
+              docker volume create --label "io.lifeagents.install=$LA_PROJECT" "${LA_PROJECT}_$v" >/dev/null
+            done
+            # hand-injected: so uebergibt die Start-App ihre Werte (app.env); genau diesen Bestand soll der Kern uebernehmen
+            LA_PG_SUPERPW="$APP_PW" LA_MASTER_IMAGE="$1" LA_TS_HOSTNAME=bot \
+              docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml up -d --wait anchor postgres master edge
+          }
+          CORE
 
       - name: Neighbour before (foreign container, volume, network + a decoy volume with our prefix but no label)
         run: |
@@ -575,13 +710,39 @@ jobs:
           }
           state > "$RUNNER_TEMP/neighbour.before"; cat "$RUNNER_TEMP/neighbour.before"
 
+      - name: Stack of the desktop app before the core, then the core takes it over (no container recreated, values kept)
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          app_start ci-ops-master:a
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/app.ids"
+          core_run take up
+          core_res take | jq -e '.ok and (.changed | not) and .ports.edge == 5890 and .ports.wizard == 5891'
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/app.ids" -
+          # Die Werte der App stehen jetzt im Volume (kein neues Passwort, die Daten bleiben erreichbar).
+          test "$(vol_cat var_la stack.env | sed -n 's/^LA_PG_SUPERPW=//p')" = "$APP_PW"
+          test "$(vol_cat var_la stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')" = bot
+          # Ohne Merkliste (die App hatte keine) bleibt beim Abbau jedes Abbild; genau das prueft der letzte Schritt.
+          if vol_cat var_la core-foreign-images 2>/dev/null; then echo "FAIL Merkliste ohne ersten Lauf des Kerns"; exit 1; fi
+          if grep -qF "$APP_PW" "$RUNNER_TEMP"/core-*; then echo "FAIL Passwort in der Ausgabe des Kerns"; exit 1; fi
+          # Nur fuer die Rechner-seitigen compose-Aufrufe der folgenden Schritte (restart anchor, Teardown).
+          echo "LA_PG_SUPERPW=$APP_PW" >> "$GITHUB_ENV"
+
+      - name: stack install hands the answers to provision.sh in the master and reports its exit (broken file -> nothing changes)
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          rc=0; printf 'A=$(touch /tmp/pwned)\n' | core install --json > "$RUNNER_TEMP/core-inst.jsonl" 2> "$RUNNER_TEMP/core-inst.err" || rc=$?
+          cat "$RUNNER_TEMP/core-inst.jsonl"
+          test "$rc" = 1
+          core_res inst | jq -e '.ok == false and .reason == "install_failed" and .provision_exit != 0'
+          docker exec "$LA_PROJECT-master" test ! -e /run/lifeagents-wizard/answers.env
+          docker exec "$LA_PROJECT-master" test ! -e /tmp/pwned
+          docker exec "$LA_PROJECT-master" test ! -e /usr/local/lib/lifeagents/VERSION
+
       - name: Install the core (release v9.0.0 on image a), CLI + tick loop alive
         run: |
           set -euo pipefail
-          pw="$(openssl rand -hex 16)"; echo "::add-mask::$pw"
-          echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
-          export LA_PG_SUPERPW="$pw"
-          bash provisioning/compose/stack.sh up
           # Antwort-Datei wie im Assistenten; Telegram-Mock im Pod (Karte, Tipp und Meldung des Updates laufen ueber ihn).
           bash tests/mock_telegram/start_in_pod.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
           mkdir -p "$RUNNER_TEMP/bk-wizard"
@@ -619,6 +780,23 @@ jobs:
           q "UPDATE agent.core_contexts SET content = 'nachher' WHERE name = 'ci_restore_probe'" >/dev/null
           docker exec "$LA_PROJECT-master" lifeagents backup restore "$name" --yes
           test "$(q "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'")" = vorher
+
+      - name: Locks — a running core blocks a second core and the start of an update
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          # Ein Kern laeuft (hier ein Platzhalter mit seinem festen Namen; ein echter `up` ist dafuer zu kurz).
+          docker run -d --rm --name "$LA_PROJECT-core" --label "io.lifeagents.install=$LA_PROJECT" --entrypoint sleep "$CORE_IMAGE" 120 >/dev/null
+          rc=0; core up --json > "$RUNNER_TEMP/core-second.jsonl" 2>&1 || rc=$?
+          test "$rc" = 125   # Docker lehnt den Namen ab, bevor der zweite Kern laeuft (der Einstieg wertet das als busy)
+          rc=0; docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:b' > "$RUNNER_TEMP/swap-locked.txt" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/swap-locked.txt"
+          test "$rc" != 0
+          grep -q 'eingerichtet oder entfernt' "$RUNNER_TEMP/swap-locked.txt"
+          docker exec "$LA_PROJECT-master" test ! -e /var/lib/lifeagents/master-swap/state
+          test -z "$(docker ps -q --filter "name=^${LA_PROJECT}-swap$")"
+          docker stop "$LA_PROJECT-core" >/dev/null
+          test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = ci-ops-master:a
 
       - name: Version jump, abort 1 — the new master image cannot be loaded (nothing changes)
         run: |
@@ -823,18 +1001,35 @@ jobs:
           for _ in $(seq 1 60); do curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness" && break; sleep 3; done
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
-      - name: Uninstall keeping data, data is found again; uninstall with data; neighbour unchanged
+      - name: Uninstall keeping data (older core hands over), data is found again; uninstall with data; neighbour unchanged
         run: |
           set -euo pipefail
-          bash provisioning/compose/stack.sh uninstall
-          test -z "$(docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}')"
+          . "$RUNNER_TEMP/core.sh"
+          # Ein aelteres Abbild als Einstieg: der master laeuft nach dem Update mit b, also macht dessen Kern die Arbeit.
+          test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$B_REF"
+          core_run un1 uninstall
+          core_res un1 | jq -e '.ok and .delegated_from == "ci-ops-master:a"'
+          test -z "$(docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --filter "label=com.docker.compose.project=$LA_PROJECT" --format '{{.Names}}')"
           docker volume inspect "${LA_PROJECT}_pgdata" >/dev/null
-          bash provisioning/compose/stack.sh up
+          # Ohne master entscheiden die Daten: v9.1.0 liegt im Volume, Abbild a ist v9.0.0 -> ablehnen, nichts anlegen.
+          rc=0; core_run old up || rc=$?
+          test "$rc" = 1
+          core_res old | jq -e '.reason == "newer_installation"'
+          test -z "$(docker ps -a --filter "label=com.docker.compose.project=$LA_PROJECT" --format '{{.Names}}')"
+          # Mit dem Abbild der Installation: gleiche Werte aus var_la, die Datenbank ist mit demselben Passwort erreichbar.
+          CORE_IMAGE="$B_REF" core_run up3 up
+          core_res up3 | jq -e '.ok and .changed and .ports.edge == 5890 and .version == "v9.1.0"'
           test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT content FROM agent.core_contexts WHERE name = 'ci_restore_probe'" | tr -d '[:space:]')" = vorher
-          bash provisioning/compose/stack.sh uninstall --delete-data
+          imgs="$(LA_MASTER_IMAGE="$B_REF" docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox config --images | sort -u)"
+          CORE_IMAGE="$B_REF" core_run un2 uninstall --delete-data
+          # Bestand der App ohne Merkliste: kein Abbild wird entfernt (es koennte vorher schon da gewesen sein).
+          core_res un2 | jq -e '.ok and .removed.images == [] and (.removed.volumes | length) == 9'
+          for i in $imgs; do docker image inspect "$i" >/dev/null 2>&1 || { echo "FAIL Abbild $i entfernt"; exit 1; }; done
           test -z "$(docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}')"
           test -z "$(docker volume ls --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Name}}')"
           test -z "$(docker network ls --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Name}}')"
+          core_run un3 uninstall --delete-data
+          core_res un3 | jq -e '.ok and .removed.containers == 0'
           state() {
             docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.RestartCount}} {{.State.Status}}' ci-neighbour
             docker volume inspect -f '{{.Name}} {{.CreatedAt}}' ci-neighbour-data "${LA_PROJECT}_fremd"
@@ -844,10 +1039,29 @@ jobs:
           state > "$RUNNER_TEMP/neighbour.after"
           diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
 
+      - name: Installation from before the core (master image without the core label) — up and uninstall refused, status works
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
+          printf 'FROM ci-ops-master:a\nLABEL io.lifeagents.core=""\n' | docker build -q -t ci-ops-master:old -
+          app_start ci-ops-master:old
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/old.ids"
+          rc=0; core_run leg up || rc=$?
+          test "$rc" = 1
+          core_res leg | jq -e '.reason == "legacy_installation"'
+          core_run legst status
+          core_res legst | jq -e '.ok and .running and .core == 0'
+          rc=0; core_run legun uninstall || rc=$?
+          test "$rc" = 1
+          core_res legun | jq -e '.reason == "legacy_installation"'
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/old.ids" -
+          if docker ps -a --format '{{.Names}}' | grep -qx "$LA_PROJECT-core-next"; then echo "FAIL Weitergabe an ein Abbild ohne Kern"; exit 1; fi
+
       - name: Logs on failure
         if: failure()
         run: |
           tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
+          tail -n 20 "$RUNNER_TEMP"/core-*.err 2>&1 || true
           # Neustarts und Ende je Container (Ursache fuer "ein Container startet von selbst neu": tailscale ohne Anmeldung endet
           # nach 60 s von selbst, die Neustart-Regel startet ihn neu; OOM und Exit-Code trennen das von einem Speicherfund).
           docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}' | sort | while read -r c; do

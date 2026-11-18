@@ -17,8 +17,6 @@
 SWAP_DIR="${SWAP_DIR:-/var/lib/lifeagents/master-swap}"
 SWAP_STATE="${SWAP_DIR}/state"
 MASTER_IMAGE_TREE="${MASTER_IMAGE_TREE:-/opt/lifeagents}"   # Installer-Baum im master-Image (master.Dockerfile)
-# Variablen, die compose.yml interpoliert (eine Liste fuer die Env-Datei des Helfers; contract_lint 33 haelt sie gleich).
-SWAP_STACK_VARS="LA_PROJECT LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_MASTER_IMAGE LA_TS_HOSTNAME"
 
 _swap_get() { read_env_value "$SWAP_STATE" "$1" 2>/dev/null || true; }
 _swap_set() { env_upsert "$SWAP_STATE" "$1" "$2"; }
@@ -28,7 +26,7 @@ _swap_set() { env_upsert "$SWAP_STATE" "$1" "$2"; }
 _swap_write_stack_env() {
   local out="$1" img="$2" v val
   ( umask 077; : > "$out" )
-  for v in $SWAP_STACK_VARS; do
+  for v in $LA_STACK_VARS; do
     if [ "$v" = LA_MASTER_IMAGE ]; then val="$img"; else val="${!v:-}"; fi
     case "$val" in *$'\n'*|*$'\r'*) die "Wert von ${v} enthält einen Zeilenumbruch — master-Wechsel abgebrochen, nichts geändert." ;; esac
     [ -n "$val" ] && printf '%s=%s\n' "$v" "$val" >> "$out"
@@ -42,6 +40,10 @@ _swap_write_stack_env() {
 master_swap_begin() {
   local tag="$1" cf="$2" target="$3" mode="${4:-update}" from="${LA_MASTER_IMAGE:-}" phase
   [ -n "$from" ] || die "LA_MASTER_IMAGE fehlt im master — Wechsel abgebrochen, nichts geändert."
+  # Gegensperre zum Kern (lib/stack_core.sh sc_lock): legt er gerade den Verbund an oder entfernt ihn, wartet das Update.
+  if rt_core_running; then
+    die_because locked "Gerade wird der Assistent eingerichtet oder entfernt — danach erneut versuchen. Nichts geändert."
+  fi
   # Dieselbe Sperre wie jedes Update (der Chat-Runner haelt sie schon): kein Tick schaut dazwischen.
   update_lock_acquire 30 || die_because locked "Gerade läuft ein Update oder eine Einrichtung — danach erneut versuchen. Nichts geändert."
   if [ -f "$SWAP_STATE" ]; then

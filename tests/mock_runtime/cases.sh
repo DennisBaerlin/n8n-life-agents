@@ -44,11 +44,46 @@ if [ "$me" = docker ] && [ "${1:-}" = compose ]; then printf '%s|%s\n' "${5:-}" 
 case "$(printf '|%s' "$@")" in *'|down|'*) printf '%s\n' "${COMPOSE_PROFILES:-}" >> "${STUB_LOG}.profiles" ;; esac
 # Gezielter Fehlschlag: STUB_FAIL = Teilstring der argv-Zeile (z. B. "pull", "run|--rm|-d", "exec|lifeagents-master|bash").
 if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
+# Kern (lib/stack_core.sh): Kurzlauf-Container. STUB_CAT_<pfad mit _> = Inhalt einer Datei im Volume (rt_vol_get),
+# stdin von `run -i` landet in ${STUB_LOG}.put (rt_vol_put), STUB_BUSY_PORTS = belegte Ports (rt_host_port_free),
+# STUB_DF_KB = freier Platz, STUB_DELEGATE_RC = Exit einer Weitergabe (core-next).
+if [ "$me" = docker ] && [ -n "${STUB_VOLS+x}" ] && [ "${1:-}" = volume ]; then
+  case "${2:-}" in
+    create) printf '%s\n' "${*: -1}" >> "${STUB_LOG}.vols" ;;
+    rm) grep -vxF -- "${*: -1}" "${STUB_LOG}.vols" > "${STUB_LOG}.vols.n" 2>/dev/null; mv -f "${STUB_LOG}.vols.n" "${STUB_LOG}.vols" ;;
+  esac
+fi
+if [ "$me" = docker ] && [ "${1:-}" = run ]; then
+  a="$(printf '|%s' "$@")"
+  case "$a" in *'|-i|'*) { printf '== %s\n' "${*: -1}"; cat; } >> "${STUB_LOG}.put" ;; esac
+  case "$a" in
+    *'|--name|'*'-core-next|'*) exit "${STUB_DELEGATE_RC:-0}" ;;
+    *'-portprobe-'*) p="${a##*-portprobe-}"; p="${p%%|*}"; case " ${STUB_BUSY_PORTS:-} " in *" $p "*) exit 125 ;; esac; exit 0 ;;
+    *'|cat|/r/f') echo ok; exit 0 ;;
+    *'|df|-Pk|/') printf 'Filesystem 1024-blocks Used Available Capacity Mounted\noverlay 1 1 %s 1%% /\n' "${STUB_DF_KB:-50000000}"; exit 0 ;;
+    *'|cat|/var_la/'*|*'|cat|/rt_tree/'*) v="STUB_CAT_$(printf '%s' "${*: -1}" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}"; exit 0 ;;
+  esac
+  exit 0
+fi
 case "$me $1 ${2:-}" in
-  "docker volume inspect") [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
+  "docker version --format")
+    case "${3:-}" in *Os*) printf '%s\n' "${STUB_SRV_OS:-linux}" ;; *) printf '%s\n' "${STUB_SRV_VERSION:-27.5.1}" ;; esac; exit 0 ;;
+  "docker info --format") printf '%s\n' "${STUB_MEM:-8000000000}"; exit 0 ;;
+  "docker volume inspect")
+    # STUB_VOLS gesetzt = nur diese Volumes gibt es (Label STUB_VOL_LABEL, Standard lifeagents); sonst gilt STUB_VOL_LABEL fuer alle.
+    # Dazu zaehlen dann auch die mit `volume create` angelegten (${STUB_LOG}.vols), bis `volume rm` sie entfernt.
+    if [ -n "${STUB_VOLS+x}" ]; then
+      case " $STUB_VOLS $(tr '\n' ' ' < "${STUB_LOG}.vols" 2>/dev/null) " in *" ${*: -1} "*) printf '%s\n' "${STUB_VOL_LABEL:-lifeagents}"; exit 0 ;; esac
+      exit 1
+    fi
+    [ -n "${STUB_VOL_LABEL+x}" ] && { printf '%s\n' "$STUB_VOL_LABEL"; exit 0; }; exit 1 ;;
   "docker image inspect")  # mit -f: Umgebung + Versions-Etikett des Abbilds wie unten bei inspect -f
-    if [ "${3:-}" = -f ]; then printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
-}" "${STUB_REL_LABEL:-}"; exit 0; fi
+    if [ "${3:-}" = -f ]; then
+      case "${4:-}" in *io.lifeagents.core*) case " ${STUB_CORE_IMAGES:-} " in *" ${*: -1} "*) echo 1 ;; *) echo '<no value>' ;; esac; exit 0 ;; esac
+      printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+}" "${STUB_REL_LABEL:-}"; exit 0
+    fi
+    case " ${STUB_IMAGES_ABSENT:-} " in *" ${3:-} "*) exit 1 ;; esac
     [ "${STUB_IMAGE_PRESENT:-1}" = 1 ]; exit $? ;;
   "docker ps --format")    printf '%s' "${STUB_PS:-}"; exit 0 ;;   # STUB_PS = Zeilen wie aus dem festen JSON-Format
   "docker inspect -f")
@@ -57,14 +92,18 @@ case "$me $1 ${2:-}" in
     case "$3" in
       *State.Running*) case " ${STUB_RUNNING:-} " in *" $n "*) echo true ;; *) echo false ;; esac ;;
       *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
-      # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett).
-      *Config.Env*)    printf 'PATH=/usr/bin\n%s%s\n' "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
+      # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett);
+      # STUB_MASTER_ENV = weitere Zeilen der Umgebung (Werte einer Installation der Start-App).
+      *Config.Env*)    printf 'PATH=/usr/bin\n%s%s%s\n' "${STUB_MASTER_ENV:+$STUB_MASTER_ENV
+}" "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
 }" "${STUB_REL_LABEL:-}" ;;
+      # STUB_EXISTING = vorhandene Container (Kennung id-<name>); ohne Eintrag gibt es den Container nicht.
+      *'{{.Id}}'*)     case " ${STUB_EXISTING:-} " in *" $n "*) printf 'id-%s\n' "$n" ;; *) exit 1 ;; esac ;;
     esac
     exit 0 ;;
 esac
 case "$(printf '|%s' "$@")" in
-  *"|config|--format|json|"*) printf '%s' "${STUB_CONFIG_JSON:-}"; exit 0 ;;
+  *"|config|--format|json|"*|*"|config|--format|json") printf '%s' "${STUB_CONFIG_JSON:-}"; exit 0 ;;
   *"|config|--profiles") printf '%s' "${STUB_PROFILES:-}"; exit 0 ;;
   *"|cat|/var/lib/postgresql/data/PG_VERSION"*) printf '%s\n' "${STUB_PG_MAJOR:-17}"; exit 0 ;;
 esac
@@ -301,6 +340,10 @@ eq S.helfer-rueckweg-ausgefuehrt "$SWAP_DIR/compose.old.yml|$LA_MASTER_IMAGE" "$
 eq S.helfer-rueckweg-zustand rollback_failed "$(sget PHASE)"
 master_swap_close
 if [ -e "$SWAP_STATE" ] || [ ! -e "$SWAP_DIR/compose.prev.yml" ]; then fail S.abschluss "state blieb oder compose.prev fehlt"; else pass S.abschluss; fi
+# Gegensperre: laeuft ein Kern (stack up/uninstall), beginnt kein Wechsel; nichts gestartet, keine Zustandsdatei.
+: > "$STUB_LOG"
+if ( STUB_RUNNING=lifeagents-core master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.kern-sperrt "kein Abbruch"; else pass S.kern-sperrt; fi
+if grep -q 'lifeagents-swap' "$STUB_LOG" || [ -e "$SWAP_STATE" ]; then fail S.kern-sperrt-nichts-geaendert "Helfer oder Zustand"; else pass S.kern-sperrt-nichts-geaendert; fi
 # Image nicht ladbar / Helfer startet nicht -> Abbruch, KEIN Zustand bleibt liegen.
 rm -rf "$SWAP_DIR"
 if ( STUB_IMAGE_PRESENT=0 STUB_FAIL='|pull|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.pull-fehler-bricht-ab "kein Abbruch"; else pass S.pull-fehler-bricht-ab; fi
@@ -505,7 +548,18 @@ eq B.kennung-alter-name '' "$(_bkp_file_key_id lifeagents-backup-20261001033000.
 
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
 unset LIFEAGENTS_RUNTIME
-dst() { : > "$STUB_LOG"; ( cd "$W" && LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall "$@" ) >/dev/null 2>&1; }
+# Der Kern laeuft als eigener Container (LA_CORE=1, eigenes Abbild aus <projekt>-core); Abbild-Namen liest er aus compose.yml.
+SC_SELFIMG=reg.example/master@sha256:aaaa
+SC_CFG="$(jq -cn --arg m "$SC_SELFIMG" '{services:{anchor:{image:"busybox:t",container_name:"lifeagents-anchor"},
+  postgres:{image:"postgres:t",container_name:"lifeagents-postgres"},master:{image:$m,container_name:"lifeagents-master"},
+  edge:{image:"caddy:t",container_name:"lifeagents-edge"},tailscale:{image:"ts:t",container_name:"lifeagents-tailscale"}}}')"
+# real-path-test: genericity.yml compose-stack-cold/-ops fahren dieselben Verben im echten Docker (Kern per docker run).
+core() {
+  ( cd "$W" && env -u LA_EDGE_PORT -u LA_WIZARD_PORT -u LA_PG_SUPERPW -u LA_PROBE_IMAGE -u LIFEAGENTS_RUNTIME \
+      LA_CORE="${SC_CORE-1}" LA_PROJECT=lifeagents STUB_IMG_lifeagents_core="$SC_SELFIMG" STUB_CONFIG_JSON="$SC_CFG" \
+      RELEASE_TAG="${SC_REL:-v9.0.0}" bash "$ROOT/provisioning/compose/stack.sh" "$@" )
+}
+dst() { : > "$STUB_LOG"; core uninstall "$@" >/dev/null 2>&1; }
 STUB_VOL_LABEL=lifeagents STUB_PROFILES=$'fritzbox\ntunnel\n' dst
 if grep -q '^docker|compose|-p|lifeagents|-f|.*|down|--remove-orphans|stdin=$' "$STUB_LOG"; then pass D.down-ohne-v; else fail D.down-ohne-v "$(grep compose "$STUB_LOG")"; fi
 # Container aus Profilen (tailscale, wan) sind keine Waisen: Compose entfernt sie nur, wenn ihr Profil beim down aktiv ist.
@@ -518,13 +572,161 @@ read -ra _vols <<<"$LA_STATE_VOLUMES"; read -ra _dv <<<"$_derived"
 eq D.mit-daten-alle-eigenen "$(( ${#_vols[@]} + ${#_dv[@]} ))" "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
 # Ein Volume, das sich nicht entfernen laesst (z. B. noch belegt), ist kein Label-Fall: die Meldung nennt den wahren Grund.
 : > "$STUB_LOG"
-if _out="$( ( cd "$W" && STUB_VOL_LABEL=lifeagents STUB_FAIL='|volume|rm|lifeagents_pgdata' LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall --delete-data ) 2>&1 )"; then fail D.rm-fehler-abbruch "Exit 0"; else pass D.rm-fehler-abbruch; fi
+if _out="$(STUB_VOL_LABEL=lifeagents STUB_FAIL='|volume|rm|lifeagents_pgdata' core uninstall --delete-data 2>&1)"; then fail D.rm-fehler-abbruch "Exit 0"; else pass D.rm-fehler-abbruch; fi
 case "$_out" in *Label*) fail D.rm-fehler-wahrer-grund "meldet Label: $_out" ;; *"Daemon-Fehler"*) pass D.rm-fehler-wahrer-grund ;; *) fail D.rm-fehler-wahrer-grund "Grund fehlt: $_out" ;; esac
 if STUB_VOL_LABEL=fremd dst --delete-data; then fail D.fremdes-label-abbruch "Exit 0"; else pass D.fremdes-label-abbruch; fi
 eq D.fremdes-label-unberuehrt 0 "$(grep -c '^docker|volume|rm|' "$STUB_LOG")"
 if grep -qE 'prune|\|-v\||--volumes|--rmi|\|-a\||--all' "$STUB_LOG"; then fail D.nie-breit "$(grep -E 'prune|-v|--rmi' "$STUB_LOG" | head -1)"; else pass D.nie-breit; fi
 if STUB_RUNNING=lifeagents-swap dst; then fail D.nicht-waehrend-wechsel "Exit 0"; else pass D.nicht-waehrend-wechsel; fi
 if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down lief"; else pass D.waehrend-wechsel-unberuehrt; fi
+
+# ---------------------------------------------------------------------------- SC: Kern (lib/stack_core.sh, stack <verb> --json)
+# Nur Logik, die der echte Weg schwer erzwingt (Werte-Quellen, Ports, Weitergabe, JSON-Vertrag); ob Docker dabei wirklich
+# anlegt und startet, belegt erst genericity.yml.
+SCO="$W/sc.out"; SCE="$W/sc.err"
+scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
+res() { tail -n1 "$SCO" | jq -r "$1" 2>/dev/null; }
+put_of() { awk -v f="== $1" '$0 == f {on=1; next} /^== /{on=0} on' "${STUB_LOG}.put"; }
+_lp="lifeagents_"
+SC_ALLVOLS="$(for v in $LA_STATE_VOLUMES; do printf '%s%s ' "$_lp" "$v"; done)"
+SC_STORED=$'LA_EDGE_PORT=5890\nLA_WIZARD_PORT=5891\nLA_PG_SUPERPW=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nLA_TS_HOSTNAME=calm-otter'
+
+# Gruende: jede Stelle im Kern nennt nur Gruende der geschlossenen Liste; ein fremder Grund wird internal.
+_reasons="$(sed -n 's/^SC_REASONS="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")"
+_used="$(grep -oE '(sc_fail|_sc_chk [a-z]+) [a-z_]+' "$ROOT/provisioning/lib/stack_core.sh" | awk '{print $NF}' | grep -vxE 'sc_fail|r|reason' | sort -u)"
+_bad=''; for r in $_used; do case " $_reasons " in *" $r "*) ;; *) _bad="$_bad $r" ;; esac; done
+eq SC.gruende-geschlossen '' "${_bad# }"
+[ "$(wc -w <<<"$_reasons")" -ge 20 ] && pass SC.gruende-liste-lesbar || fail SC.gruende-liste-lesbar "$_reasons"
+_ub="$( ( . "$ROOT/provisioning/lib/stack_core.sh"; SC_VERB=up SC_JSON=1; sc_fail erfunden "x" ) 2>/dev/null | jq -r .reason)"
+eq SC.fremder-grund-internal internal "$_ub"
+
+# Erster Lauf auf leerem Docker: Werte neu, im Volume abgelegt; stdout nur JSON-Zeilen mit v 1, genau ein result am Ende.
+STUB_VOLS='' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.up-leer-ok 'true|0' "$(res .ok)|$SC_RC"
+_nj="$(grep -cv '^{' "$SCO")"; _nv="$(jq -s '[.[] | select(.v != 1)] | length' "$SCO")"; _nr="$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")"
+eq SC.nur-json-zeilen '0|0|1' "$_nj|$_nv|$_nr"
+eq SC.schritte-up 'lock delegate check values volumes start done' "$(jq -r 'select(.type == "progress") | .step' "$SCO" | tr '\n' ' ' | sed 's/ $//')"
+_pw="$(put_of /var_la/stack.env | sed -n 's/^LA_PG_SUPERPW=//p')"
+[[ "$_pw" =~ ^[0-9a-f]{64}$ ]] && pass SC.passwort-neu-64-hex || fail SC.passwort-neu-64-hex "'$_pw'"
+eq SC.ports-neu '5880|5881|5880|5881' "$(put_of /var_la/stack.env | sed -n 's/^LA_EDGE_PORT=//p')|$(put_of /var_la/stack.env | sed -n 's/^LA_WIZARD_PORT=//p')|$(res .ports.edge)|$(res .ports.wizard)"
+[[ "$(put_of /var_la/stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')" =~ ^[a-z]+-[a-z]+$ ]] && pass SC.ts-name-gezogen || fail SC.ts-name-gezogen "$(put_of /var_la/stack.env)"
+if [ -n "$_pw" ] && ! grep -qF "$_pw" "$SCO" "$SCE"; then pass SC.passwort-nie-in-ausgabe; else fail SC.passwort-nie-in-ausgabe "Passwort in stdout/stderr"; fi
+if [ -n "$_pw" ] && grep -qF "$_pw" "$STUB_LOG"; then fail SC.passwort-nie-im-argv "steht in einem docker-Aufruf"; else pass SC.passwort-nie-im-argv; fi
+# Volumes vor dem ersten Schreiben: kein Lese-/Schreib-Container auf ein Volume, das noch nicht angelegt ist.
+_first_put="$(grep -n '^docker|run|--rm|-i|.*lifeagents_var_la' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+_create="$(grep -n '^docker|volume|create|.*|lifeagents_var_la|' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+[ -n "$_first_put" ] && [ -n "$_create" ] && [ "$_create" -lt "$_first_put" ] && pass SC.volume-vor-werten || fail SC.volume-vor-werten "create=$_create put=$_first_put"
+if put_of /var_la/core-foreign-images | grep -q .; then pass SC.merkliste-erster-lauf; else fail SC.merkliste-erster-lauf "keine Merkliste"; fi
+grep -qF "|up|-d|--wait|--wait-timeout|180|anchor|postgres|master|edge|" "$STUB_LOG" && pass SC.up-wartet || fail SC.up-wartet "$(grep '|up|' "$STUB_LOG")"
+grep -q "^docker|compose|.*|up|" "$STUB_LOG" && grep -q 'reg.example/master@sha256:aaaa' "${STUB_LOG}.env" && pass SC.master-eigenes-abbild || fail SC.master-eigenes-abbild "$(cat "${STUB_LOG}.env")"
+
+# Gespeicherte Werte bleiben: kein Schreiben, Ports wie gespeichert.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_RUNNING=lifeagents-master scr up --json
+eq SC.werte-bleiben '5890|5891|' "$(res .ports.edge)|$(res .ports.wizard)|$(put_of /var_la/stack.env)"
+if put_of /var_la/core-foreign-images | grep -q . || grep -q '^== /var_la/core-foreign-images' "${STUB_LOG}.put"; then fail SC.merkliste-nur-erster-lauf "neu geschrieben"; else pass SC.merkliste-nur-erster-lauf; fi
+
+# Bestand der Start-App: keine Werte-Datei, aber ein master -> seine Umgebung wird uebernommen (kein neues Passwort).
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING="lifeagents-master lifeagents-postgres" STUB_IMG_lifeagents_master="$SC_SELFIMG" STUB_RUNNING=lifeagents-master \
+  STUB_MASTER_ENV=$'LA_EDGE_PORT=5884\nLA_WIZARD_PORT=5885\nLA_PG_SUPERPW=feedfacefeedfacefeedfacefeedface\nLA_TS_HOSTNAME=bot' scr up --json
+eq SC.bestand-uebernommen 'LA_EDGE_PORT=5884 LA_WIZARD_PORT=5885 LA_PG_SUPERPW=feedfacefeedfacefeedfacefeedface LA_TS_HOSTNAME=bot' "$(put_of /var_la/stack.env | tr '\n' ' ' | sed 's/ $//')"
+if grep -qF feedface "$SCO" "$SCE"; then fail SC.bestand-passwort-nie-in-ausgabe "steht in der Ausgabe"; else pass SC.bestand-passwort-nie-in-ausgabe; fi
+
+# Datenbank da, Passwort nirgends -> values_lost, nichts angelegt.
+STUB_VOLS="${_lp}pgdata" scr up --json
+eq SC.werte-verloren 'values_lost|1' "$(res .reason)|$SC_RC"
+if grep -v 'lifeagents_probe' "$STUB_LOG" | grep -q '|volume|create|\||up|' || [ -s "${STUB_LOG}.put" ]; then fail SC.werte-verloren-nichts-geaendert "$(grep -E 'create|\|up\|' "$STUB_LOG" | head -1)"; else pass SC.werte-verloren-nichts-geaendert; fi
+# Tailscale-Knoten schon da -> sein Name bleibt (bot), nie neu gezogen.
+STUB_VOLS="${_lp}ts_state" STUB_RUNNING=lifeagents-master scr up --json
+eq SC.ts-bestand-bot bot "$(put_of /var_la/stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')"
+
+# Ports: belegt ohne Container -> neu gesucht; belegt mit Container -> bleibt; nichts frei -> port_none_free.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_BUSY_PORTS='5890 5880' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.port-belegt-neu '5881|5891' "$(res .ports.edge)|$(res .ports.wizard)"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_BUSY_PORTS='5890' STUB_EXISTING=lifeagents-edge STUB_RUNNING=lifeagents-master scr up --json
+eq SC.port-mit-container-bleibt '5890|' "$(res .ports.edge)|$(put_of /var_la/stack.env)"
+STUB_VOLS='' STUB_BUSY_PORTS="$(seq -s ' ' 5880 5899)" scr up --json
+eq SC.port-keiner-frei 'port_none_free|1' "$(res .reason)|$SC_RC"
+# Test-Verbund neben einer echten Installation: eigene Spanne.
+LA_CORE_PORTS=57200-57299 STUB_BUSY_PORTS=57200 STUB_VOLS='' STUB_RUNNING=lifeagents-master scr up --json
+eq SC.port-spanne '57201|57202' "$(res .ports.edge)|$(res .ports.wizard)"
+
+# Weitergabe: master mit anderem Abbild und Kern-Etikett -> genau ein Kurzlauf dieses Abbilds, selbst nichts angelegt.
+OTHER=reg.example/master@sha256:bbbb
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
+_d="$(grep -c '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG")"
+eq SC.weitergabe-ein-lauf "1|0" "$_d|$SC_RC"
+grep '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG" | grep -qF "|LA_CORE_DELEGATED=$SC_SELFIMG|" \
+  && grep '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG" | grep -qF "|$OTHER|stack|up|--json|" \
+  && pass SC.weitergabe-aufruf || fail SC.weitergabe-aufruf "$(grep core-next "$STUB_LOG")"
+if grep -qE '\|volume\|create\||\|up\|-d\|' "$STUB_LOG"; then fail SC.weitergabe-selbst-nichts "$(grep -E 'create|\|up\|' "$STUB_LOG" | head -1)"; else pass SC.weitergabe-selbst-nichts; fi
+if grep -q '"type":"result"' "$SCO"; then fail SC.weitergabe-ein-ergebnis "der aeussere Kern schrieb ein eigenes result"; else pass SC.weitergabe-ein-ergebnis; fi
+STUB_DELEGATE_RC=1 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
+eq SC.weitergabe-exit-durchgereicht 1 "$SC_RC"
+# Kein Kern-Etikett (Stand vor dem Kern) -> legacy_installation, keine Weitergabe; start/status gehen weiter.
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" scr up --json
+eq SC.legacy-up 'legacy_installation|0' "$(res .reason)|$(grep -c '^docker|run|.*core-next' "$STUB_LOG")"
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" scr status --json
+eq SC.legacy-status-geht 'true|0' "$(res .ok)|$(res .core)"
+# Schon weitergegeben -> keine zweite Weitergabe.
+LA_CORE_DELEGATED="$SC_SELFIMG" STUB_IMG_lifeagents_core_next="$SC_SELFIMG" STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master \
+  STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
+eq SC.keine-zweite-weitergabe 'internal|0' "$(res .reason)|$(grep -c '^docker|run|.*core-next' "$STUB_LOG")"
+# Daten einer neueren Fassung ohne master -> newer_installation.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v9.5.0 scr up --json
+eq SC.neuere-installation newer_installation "$(res .reason)"
+
+# Unerwarteter Abbruch (die in einem Helfer) -> trotzdem genau ein result mit internal und der letzten Meldung.
+STUB_VOLS='' STUB_FAIL='|volume|create|--label|io.lifeagents.install=lifeagents|lifeagents_pgdata' scr up --json
+eq SC.abbruch-internal "internal|1|1" "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$SC_RC"
+case "$(res .detail)" in *anlegen*) pass SC.abbruch-detail ;; *) fail SC.abbruch-detail "$(res .detail)" ;; esac
+# Nicht als Kern gestartet (z. B. docker exec im master) -> in_master, nichts angelegt.
+SC_CORE='' STUB_VOLS='' scr up --json
+eq SC.nicht-im-master "in_master|0" "$(res .reason)|$(grep -c 'volume|create' "$STUB_LOG")"
+# Ohne --json: stdout leer.
+STUB_VOLS='' STUB_RUNNING=lifeagents-master scr up
+eq SC.ohne-json-stdout-leer "0|0" "$(wc -c < "$SCO" | tr -d ' ')|$SC_RC"
+# Falscher Aufruf: Exit 2, kein JSON.
+scr up --json --gibtsnicht
+eq SC.aufruf-falsch "2|0" "$SC_RC|$(wc -c < "$SCO" | tr -d ' ')"
+
+# check: je Pruefung ok/reason; Pruef-Volume danach weg; Arbeitsspeicher nur Warnung.
+STUB_VOLS='' scr check --json
+eq SC.check-gruen 'true|docker,linux,engine,subpath,socket,disk' "$(res .ok)|$(res '[.checks[].id] | join(",")')"
+eq SC.check-pruef-volume-weg '1|1' "$(grep -c '^docker|volume|create|.*|lifeagents_probe|' "$STUB_LOG")|$(grep -c '^docker|volume|rm|lifeagents_probe|' "$STUB_LOG")"
+STUB_VOLS='' STUB_SRV_VERSION=25.0.5 scr check --json
+eq SC.check-engine-alt 'docker_too_old|false' "$(res .reason)|$(res '.checks[] | select(.id == "engine") | .ok')"
+STUB_VOLS='' STUB_SRV_OS=windows scr check --json;  eq SC.check-windows docker_windows_mode "$(res .reason)"
+STUB_VOLS='' STUB_DF_KB=1000 scr check --json;      eq SC.check-platz disk_low "$(res .reason)"
+STUB_VOLS='' STUB_MEM=2000000000 scr check --json;  eq SC.check-speicher-warnung 'true|memory_low' "$(res .ok)|$(res '.warnings | join(",")')"
+STUB_VOLS='' STUB_FAIL='|cat|/r/f' scr check --json; eq SC.check-unterpfad docker_capability "$(res .reason)"
+STUB_FAIL='|version|' scr check --json;             eq SC.check-docker-aus 'docker_unreachable|false' "$(res .reason)|$(res '.checks[0].ok')"
+
+# uninstall --delete-data: Abbilder laut compose.yml ausser der Merkliste; belegtes Abbild bleibt (kept).
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_core_foreign_images='postgres:t' STUB_RUNNING=lifeagents-master scr uninstall --delete-data --json
+eq SC.abbau-abbilder "busybox:t caddy:t $SC_SELFIMG ts:t" "$(grep '^docker|image|rm|' "$STUB_LOG" | cut -d'|' -f4 | sort | tr '\n' ' ' | sed 's/ $//')"
+grep -q '^docker|exec|lifeagents-master|lifeagents|telegram|release-webhook|' "$STUB_LOG" && pass SC.abbau-webhook-zuerst || fail SC.abbau-webhook-zuerst "kein release-webhook"
+_wh="$(grep -n 'release-webhook' "$STUB_LOG" | head -n1 | cut -d: -f1)"; _dn="$(grep -n '|down|' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+[ -n "$_wh" ] && [ -n "$_dn" ] && [ "$_wh" -lt "$_dn" ] && pass SC.abbau-webhook-vor-down || fail SC.abbau-webhook-vor-down "webhook=$_wh down=$_dn"
+eq SC.abbau-schritte 'lock webhook containers volumes images done' "$(jq -r 'select(.type == "progress") | .step' "$SCO" | tr '\n' ' ' | sed 's/ $//')"
+# Ohne Merkliste (Bestand der Start-App, oder var_la schon geloescht) weiss der Kern nicht, was vorher da war: kein Abbild.
+STUB_VOLS="${_lp}pgdata" scr uninstall --delete-data --json
+eq SC.abbau-ohne-merkliste-keine-abbilder 'true|0' "$(res .ok)|$(grep -c '^docker|image|rm|' "$STUB_LOG")"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_core_foreign_images='fremd:x' STUB_FAIL='|image|rm|caddy:t' scr uninstall --delete-data --json
+eq SC.abbau-abbild-belegt 'true|image_in_use' "$(res .ok)|$(res '.kept[] | select(.what == "caddy:t") | .reason')"
+
+# status (auch im master per docker exec, ohne LA_CORE): Felder.
+SC_CORE='' LA_MASTER_IMAGE="$SC_SELFIMG" STUB_VOLS="${_lp}pgdata ${_lp}rt_tree" STUB_CAT__rt_tree_VERSION=v9.0.0 scr status --json
+eq SC.status-felder 'true|false|v9.0.0|false' "$(res .installed)|$(res .running)|$(res .version)|$(res .update_running)"
+STUB_RUNNING=lifeagents-swap STUB_VOLS='' scr status --json
+eq SC.status-update-laeuft true "$(res .update_running)"
+# start: ohne Installation not_installed; nur vorhandene, stehende Container.
+STUB_VOLS='' scr start --json;  eq SC.start-ohne-installation not_installed "$(res .reason)"
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor scr start --json
+grep -q '^docker|compose|.*|start|edge|stdin=$' "$STUB_LOG" && pass SC.start-nur-vorhandene || fail SC.start-nur-vorhandene "$(grep '|start|' "$STUB_LOG")"
+if grep -q '|up|' "$STUB_LOG"; then fail SC.start-legt-nichts-an "up lief"; else pass SC.start-legt-nichts-an; fi
+# Sperre: laufender master-Wechsel -> busy vor jeder Aenderung.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=handoff' scr up --json
+eq SC.wechsel-offen-busy 'busy|0' "$(res .reason)|$(grep -c 'volume|create' "$STUB_LOG")"
 
 # ---------------------------------------------------------------------------- K: Tick (Ersatz der Update-Timer im Verbund)
 # shellcheck source=/dev/null

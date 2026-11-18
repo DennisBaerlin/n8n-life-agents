@@ -29,6 +29,7 @@ $Domain = '__e2e_monitor__'
 $Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
+. "$PSScriptRoot\..\lib\probe_window.ps1"
 function Invoke-Sql([string]$Sql) { Invoke-SqlViaTempFile -Container $Container -Sql $Sql }
 function Assert-That([bool]$Cond, [string]$Msg) { if (-not $Cond) { throw $Msg } }
 function Assert-Equal($Actual, $Expected, [string]$Msg) { if ("$Actual" -ne "$Expected") { throw "${Msg}: erwartet '$Expected', ist '$Actual'" } }
@@ -37,12 +38,9 @@ $wf = (Invoke-RestMethod -Uri "$N8nUrl/api/v1/workflows?limit=250" -Headers @{ '
     Where-Object { $_.name -eq 'agent.monitor.cron_check_triggers' } | Select-Object -First 1
 if (-not $wf) { throw 'Workflow agent.monitor.cron_check_triggers fehlt.' }
 
-# Nicht um Minute 10 (echter Zeitplan) und nicht ueber den Stundenwechsel (Fenster-Grenze) starten.
-function Wait-SafeMinute {
-    while ((Get-Date).Minute -in @(9, 10, 11, 59, 0)) { Start-Sleep -Seconds 5 }
-}
 function Invoke-Run {
-    Wait-SafeMinute
+    # Nicht um Minute 10 (echter Zeitplan) und nicht ueber den Stundenwechsel; das Fenster wird erst nach dem Warten gerechnet.
+    Write-Window (Get-RunWindow -Mode $script:WindowMode -HourNow { Get-DbHour })
     Assert-LlmGatewayUpstream -Container $Container -Expect mock
     $base = Get-MaxExecId -WfId $wf.id -BridgeUrl $N8nUrl -ApiKey $ApiKey
     Start-TestCron -BridgeUrl $N8nUrl -Secret $TEST_HARNESS_SECRET -WorkflowId $wf.id | Out-Null
@@ -61,16 +59,18 @@ function Get-SendText { ((Get-Sends | ForEach-Object { ConvertFrom-TgEscaped ([s
 function Clear-Logs { Clear-MockRequestLogs -Container $Container }
 # Simuliert den naechsten Tag fuer den Tages-Slot 'monitor' (nur ein Lauf je Tag sendet Vorwarnung/Info).
 function Clear-Budget { Invoke-Sql 'DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;' | Out-Null }
-function Set-Window([string]$Mode) {
-    $from = 0; $until = 24
-    if ($Mode -eq 'outside') {
-        $h = [int](Invoke-Sql "SELECT extract(hour FROM now() AT TIME ZONE current_setting('TimeZone'))::int;")
-        if ($h -ge 23) { $from = 0; $until = 23 } else { $from = $h + 1; $until = 24 }
-    }
+$script:WindowMode = 'inside'
+function Get-DbHour { [int](Invoke-Sql "SELECT extract(hour FROM now() AT TIME ZONE current_setting('TimeZone'))::int;") }
+function Write-Window($W) {
     Invoke-Sql @"
-INSERT INTO core.config (package, category, key, value) VALUES ('core','general','reminders_from','$from'),('core','general','reminders_until','$until')
+INSERT INTO core.config (package, category, key, value) VALUES ('core','general','reminders_from','$($W.From)'),('core','general','reminders_until','$($W.Until)')
 ON CONFLICT (category, key) DO UPDATE SET value = excluded.value;
 "@ | Out-Null
+}
+# Merkt den Modus; Invoke-Run schreibt das Fenster nach dem Warten neu (Stundenwechsel).
+function Set-Window([string]$Mode) {
+    $script:WindowMode = $Mode
+    Write-Window (Get-WindowHours $Mode (Get-DbHour))
 }
 function Set-Telegram-Failing([bool]$On) {
     $q = 'method=sendMessage' + $(if ($On) { '' } else { '&off=1' })

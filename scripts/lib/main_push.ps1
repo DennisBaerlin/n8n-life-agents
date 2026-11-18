@@ -42,6 +42,22 @@ function Test-WorkflowTriggered($Filter, [string[]]$Files) {
     return $true
 }
 
+# Urteil fuer den Elternstand eines Pin-Commits: je Workflow entscheidet der juengste abgeschlossene Lauf, und gruen ist nur
+# conclusion=success (cancelled, skipped, timed_out, failure sperren). Laeufe, die der main-Push des Elternstands gerade
+# gestartet hat, uebergeht es: der Elternstand war vor dem Push gruen, sonst haette ihn die Sperre nicht durchgelassen.
+# Zeilenform wie Get-MainPushProblems; leer = frei.
+function Get-PinParentProblems([string[]]$Required, [object[]]$Runs, [string]$Sha) {
+    $problems = @()
+    foreach ($wf in $Required) {
+        $done = @($Runs | Where-Object {
+                $_ -and ("$($_.name)" -eq $wf -or "$($_.path)" -like "*/$wf.yml") -and "$($_.head_sha)".StartsWith($Sha, [StringComparison]::OrdinalIgnoreCase) -and "$($_.status)" -eq 'completed'
+            } | Sort-Object { [datetime]$_.created_at } -Descending)
+        if ($done.Count -eq 0) { $problems += "${wf}: kein abgeschlossener Lauf" }
+        elseif ("$($done[0].conclusion)" -ne 'success') { $problems += "${wf}: rot ($($done[0].conclusion))" }
+    }
+    return $problems
+}
+
 # Je verlangtem Workflow, der auf dem Stand nicht gruen ist, eine Zeile "<workflow>: <urteil>"; leer = frei.
 function Get-MainPushProblems([string[]]$Required, [object[]]$Runs, [string]$Sha) {
     $problems = @()

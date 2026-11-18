@@ -2233,12 +2233,15 @@ DO $$ BEGIN
 END $$;
 
 -- Staking-Ertrag-Form: Stueck-Zugang einer Position, gebucht auf dem Verrechnungskonto ohne Geldfluss.
+-- Nur beim ersten Anlegen (kein DROP+ADD je Apply, das pruefte jedes Mal die ganze Tabelle); die Art ist neu, kein
+-- Bestand kann sie verletzen. Eine spaetere Aenderung der Form braucht eine V-Migration.
 DO $$ BEGIN
-    ALTER TABLE finance.transactions DROP CONSTRAINT IF EXISTS finance_transactions_reward_shape;
-    ALTER TABLE finance.transactions ADD CONSTRAINT finance_transactions_reward_shape CHECK (
-        category::text <> 'reward'
-        OR (amount = 0 AND holding_id IS NOT NULL AND shares > 0)
-    );
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_transactions_reward_shape') THEN
+        ALTER TABLE finance.transactions ADD CONSTRAINT finance_transactions_reward_shape CHECK (
+            category::text <> 'reward'
+            OR (amount = 0 AND holding_id IS NOT NULL AND shares > 0)
+        );
+    END IF;
 END $$;
 
 -- Umbuchungs-Gruppierung (Backstop zu fn_book_transaction, das 'transfer' gar nicht annimmt, und zu

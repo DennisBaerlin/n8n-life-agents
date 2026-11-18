@@ -363,11 +363,11 @@ repos:
         files: ^scripts/(dev/paid_guard_test|dev/test_n8n_state|lib/paid_guard|lib/judge_record|n8n_test|orch_test|e2e_test|multiturn_test|conversation_test|monitor_probe|judge_eval)\.ps1$
 
       - id: date-placeholder-test
-        name: date_placeholder_test ({{date:+30d@2}} resolves identically in PowerShell and in the mock-LLM server)
+        name: date_placeholder_test ({{date:+30d@2}} resolves identically in PowerShell and in the mock-LLM server; every mock server.js runs as a single file)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/date_placeholder_test.ps1
         pass_filenames: false
-        files: ^(scripts/(dev/date_placeholder_test|lib/date_placeholder)\.ps1|tests/mock_llm/(server|date_placeholder_check)\.js|tests/mock_telegram/server\.js|tests/util/date_placeholder(_vectors\.json|\.js))$
+        files: ^(scripts/(dev/date_placeholder_test|dev/enable_mock_telegram|lib/date_placeholder)\.ps1|tests/mock_llm/date_placeholder_check\.js|tests/mock_[^/]+/server\.js|tests/util/date_placeholder_vectors\.json)$
 
       - id: precondition-lint-test
         name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)

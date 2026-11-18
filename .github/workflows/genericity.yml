@@ -848,7 +848,12 @@ jobs:
         if: failure()
         run: |
           tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
-          for c in master n8n postgres gateway edge swap; do echo "=== $c"; docker logs --tail 80 "$LA_PROJECT-$c" 2>&1 || true; done
+          # Neustarts und Ende je Container (Ursache fuer "ein Container startet von selbst neu": tailscale ohne Anmeldung endet
+          # nach 60 s von selbst, die Neustart-Regel startet ihn neu; OOM und Exit-Code trennen das von einem Speicherfund).
+          docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}}' | sort | while read -r c; do
+            docker inspect -f '{{.Name}} {{.State.Status}} paused={{.State.Paused}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} restarts={{.RestartCount}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}' "$c" 2>&1 || true
+          done
+          for c in master n8n postgres gateway edge tailscale swap; do echo "=== $c"; docker logs --tail 80 "$LA_PROJECT-$c" 2>&1 || true; done
           docker exec "$LA_PROJECT-master" sh -c 'cat /var/lib/lifeagents/master-swap/state; tail -n 60 /var/lib/lifeagents/log/*.log' 2>&1 || true
 
       - name: Teardown (only our project + the neighbour)

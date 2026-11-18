@@ -438,6 +438,14 @@ rt_image_rm_own() {
 rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
 # rt_container_health <container> -> Zustand des Healthchecks (healthy|unhealthy|starting), leer ohne Healthcheck.
 rt_container_health() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null; }
+# rt_container_running_known <container> — 0 = laeuft, 1 = laeuft nicht oder gibt es nicht, 2 = Docker-Fehler (unbekannt).
+#   Fuer Sperren: ein gestoertes Docker darf nicht wie „kein master“ aussehen.
+rt_container_running_known() {
+  local out
+  if out="$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)"; then [ "$out" = true ] && return 0; return 1; fi
+  out="$(docker inspect -f '{{.Id}}' "$1" 2>&1 >/dev/null || true)"
+  case "$out" in *[Nn]o\ such\ *) return 1 ;; *) return 2 ;; esac
+}
 # rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das diese Datei selbst nennt (Release-Pin:
@@ -561,11 +569,11 @@ rt_stack_down() {
 }
 # rt_volume_rm_own <name> — ein Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
 #   rc 0 = entfernt oder nicht vorhanden, 1 = fremdes Label (unberuehrt), 2 = Docker lehnte ab (Meldung nennt den Grund,
-#   z. B. noch von einem Container belegt, oder es liess sich nicht pruefen).
+#   z. B. noch von einem Container belegt), 3 = liess sich nicht pruefen (Docker-Fehler, bleibt stehen).
 rt_volume_rm_own() {
   local lbl err rc=0
   lbl="$(rt_volume_label "$1")" || rc=$?
-  case "$rc" in 0) ;; 1) return 0 ;; *) warn "Volume $1 ließ sich nicht prüfen (Docker-Fehler) — bleibt stehen."; return 2 ;; esac
+  case "$rc" in 0) ;; 1) return 0 ;; *) warn "Volume $1 ließ sich nicht prüfen (Docker-Fehler) — bleibt stehen."; return 3 ;; esac
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
   err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }

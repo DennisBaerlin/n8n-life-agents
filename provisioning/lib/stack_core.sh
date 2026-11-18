@@ -78,29 +78,36 @@ _sc_fg() {
   SC_CHILD=''
   return "$rc"
 }
-# _sc_on_signal <exit> — TERM/INT. Der laufende lange Schritt ist eine Subshell (_sc_fg) mit dem docker-Client darunter:
-#   das Signal geht an diesen Client weiter. Was er ausserhalb dieses Containers angestossen hat, endet damit nicht von
-#   selbst: `docker run` (Weitergabe) reicht TERM an den inneren Kern weiter, und dessen result ist dann das eine result;
-#   `docker exec` (provision.sh im master) reicht nichts weiter, provision.sh laeuft dort zu Ende (wiederholbar).
+# _sc_kill_below <pid> — TERM an alle Nachfahren (der docker-Client kann Enkel sein, z. B. unter _sc_ro), nicht an <pid>.
+_sc_kill_below() {
+  local c
+  for c in $(pgrep -P "$1" 2>/dev/null); do _sc_kill_below "$c"; kill -TERM "$c" 2>/dev/null || true; done
+}
+# _sc_on_signal <exit> <name> — TERM/INT. Der laufende lange Schritt ist eine Subshell (_sc_fg) mit dem docker-Client
+#   darunter: das Signal geht an diesen Client. Was er ausserhalb dieses Containers angestossen hat, endet damit nicht von
+#   selbst: `docker run` (Weitergabe) reicht TERM an den inneren Kern weiter, dessen result ist dann das eine result
+#   (Wartezeit 8 s, unter der SIGKILL-Frist von docker stop: ein innerer Kern ohne Handler liefe sonst bis zum Ende);
+#   `docker exec` (provision.sh im master) reicht nichts weiter, provision.sh laeuft dort zu Ende. Seine Antwort-Datei bleibt
+#   darum liegen (tmpfs im master, 0700 root; dieselben Zugangsdaten legt die Installation in /etc/lifeagents ab).
 _sc_on_signal() {
-  local rc=0
+  local rc=0 _
   err "Abgebrochen (Signal ${2:-TERM})."
   if [ -n "${SC_CHILD:-}" ]; then
-    pkill -TERM -P "$SC_CHILD" 2>/dev/null || true
+    _sc_kill_below "$SC_CHILD"
     if [ "${SC_DELEGATING:-0}" = 1 ]; then
-      wait "$SC_CHILD" || rc=$?
-      SC_CHILD=''
-      case "$rc" in 0|1) SC_DONE=1; exit "$rc" ;; esac
+      for _ in $(seq 1 80); do kill -0 "$SC_CHILD" 2>/dev/null || break; sleep 0.1; done
+      if ! kill -0 "$SC_CHILD" 2>/dev/null; then
+        wait "$SC_CHILD" || rc=$?
+        SC_CHILD=''
+        case "$rc" in 0|1) SC_DONE=1; exit "$rc" ;; esac
+      fi
     fi
   fi
   exit "$1"
 }
 _sc_on_exit() {
   local rc=$? d=''
-  if [ -n "${SC_CHILD:-}" ]; then pkill -TERM -P "$SC_CHILD" 2>/dev/null || true; kill -TERM "$SC_CHILD" 2>/dev/null || true; fi
-  # Die Antwort-Datei traegt Zugangsdaten: nach einem Abbruch nicht im master liegen lassen (provision.sh hat sie dann
-  # laengst gelesen).
-  if [ "${SC_ANSWERS_PUT:-0}" = 1 ]; then rt_master_exec rm -f "$SC_ANSWERS" >/dev/null 2>&1 || true; fi
+  if [ -n "${SC_CHILD:-}" ]; then _sc_kill_below "$SC_CHILD"; kill -TERM "$SC_CHILD" 2>/dev/null || true; fi
   if [ "$SC_DONE" != 1 ] && [ -n "$SC_VERB" ]; then
     d="$(tail -n1 "$SC_LASTF" 2>/dev/null || true)"
     [ -n "$d" ] || d="Abbruch ohne Meldung (Exit ${rc})."
@@ -173,12 +180,14 @@ _sc_vget() {
 #   neuen master) juenger als 60 Min; unbekanntes Alter oder unbekannte Phase = arbeitet. Danach, und nach rolled_back oder
 #   rollback_failed, laesst sich ein kaputter master entfernen.
 sc_lock() {
-  local st rc=0 phase started t age=-1
+  local st rc=0 mr phase started t age=-1
   if rt_swap_helper_running; then sc_fail busy "Gerade laeuft ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."; fi
   st="$(rt_vol_get var_la master-swap/state)" || rc=$?
   [ "$rc" = 1 ] && return 0
-  if ! rt_container_running "$(rt_master_container)"; then
-    [ "$rc" = 0 ] && [ -z "$st" ] && return 0
+  [ "$rc" = 0 ] && [ -z "$st" ] && return 0
+  # „Kein master“ muss feststehen: ein gestoertes Docker (rc 2) zaehlt als „laeuft vielleicht“.
+  mr=0; rt_container_running_known "$(rt_master_container)" || mr=$?
+  if [ "$mr" = 1 ]; then
     warn "Ein master-Wechsel ist offen (oder sein Zustand unlesbar), aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
     return 0
   fi
@@ -456,7 +465,8 @@ sc_status() {
   if [ "${LA_CORE:-}" = 1 ]; then sc_delegate; fi
   m="$(rt_master_container)"
   rc=0; rt_vol_own pgdata || rc=$?
-  case "$rc" in 0) installed=true ;; 1) ;; *) sc_fail internal "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
+  # Nicht pruefbar = installiert (sicherer Standard: die App bietet dann keine Neuinstallation an).
+  case "$rc" in 0) installed=true ;; 1) ;; *) installed=true; warn "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
   rt_container_running "$m" && running=true
   ver="$(rt_vol_get rt_tree VERSION | tr -d '[:space:]' || true)"
   if [ -n "$(rt_container_image "$m" || true)" ] && rt_image_has_core "$(rt_container_image "$m")"; then core=1; fi
@@ -502,12 +512,10 @@ sc_install() {
   sc_delegate
   rt_container_running "$(rt_master_container)" || sc_fail master_not_running "Der master laeuft nicht — zuerst stack up."
   sc_step answers
-  SC_ANSWERS_PUT=1
   rt_master_write "$SC_ANSWERS" || sc_fail internal "Die Antwort-Datei liess sich nicht in den master legen."
   sc_step provision
   _sc_fg rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
   rt_master_exec rm -f "$SC_ANSWERS" || true
-  SC_ANSWERS_PUT=0
   [ "$rc" -eq 0 ] || sc_fail install_failed "Die Einrichtung im master endete mit Exit ${rc}." "$(jq -cn --argjson n "$rc" '{provision_exit:$n}')"
   sc_step 'done'
   sc_ok '{"provision_exit":0}'
@@ -538,17 +546,19 @@ sc_uninstall() {
   # Abgeleitete Volumes (keine Nutzerdaten) gehen immer; ein fremdes gleichen Namens bleibt unangetastet.
   for v in $LA_DERIVED_VOLUMES; do
     rc=0; rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=$?
-    case "$rc" in 2) _sc_kept "${LA_PROJECT}_${v}" volume_busy ;; esac
+    case "$rc" in 2) _sc_kept "${LA_PROJECT}_${v}" volume_busy ;; 3) _sc_kept "${LA_PROJECT}_${v}" inspect_failed ;; esac
   done
   if [ "$SC_DELETE_DATA" = 1 ]; then
     for v in $LA_STATE_VOLUMES; do
+      # Vorher nachsehen nur, um „gab es nicht“ (kein Eintrag) von „entfernt“ zu trennen; rt_volume_rm_own prueft selbst.
       rc=0; rt_volume_label "${LA_PROJECT}_${v}" >/dev/null || rc=$?
-      case "$rc" in 0) ;; 1) continue ;; *) dkept=1; _sc_kept "${LA_PROJECT}_${v}" inspect_failed; continue ;; esac
+      [ "$rc" = 1 ] && continue
       rc=0; rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=$?
       case "$rc" in
         0) rmv+=("${LA_PROJECT}_${v}") ;;
         1) fvol=1 ;;
-        *) dkept=1; _sc_kept "${LA_PROJECT}_${v}" volume_busy ;;
+        2) dkept=1; _sc_kept "${LA_PROJECT}_${v}" volume_busy ;;
+        *) dkept=1; _sc_kept "${LA_PROJECT}_${v}" inspect_failed ;;
       esac
     done
     sc_step images

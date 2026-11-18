@@ -43,7 +43,11 @@ if [ "$me" = docker ] && [ "${1:-}" = compose ]; then printf '%s|%s\n' "${5:-}" 
 # Abbau: welche Profile Compose dabei kannte (sonst blieben Container aus Profilen stehen).
 case "$(printf '|%s' "$@")" in *'|down|'*) printf '%s\n' "${COMPOSE_PROFILES:-}" >> "${STUB_LOG}.profiles" ;; esac
 # Gezielter Fehlschlag: STUB_FAIL = Teilstring der argv-Zeile (z. B. "pull", "run|--rm|-d", "exec|lifeagents-master|bash").
-if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
+# STUB_FAIL_FROM=N: erst ab dem N-ten passenden Aufruf scheitern (ein Fehler mitten im Lauf, nicht schon beim ersten Blick).
+if [ -n "${STUB_FAIL:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL"*)
+  if [ -n "${STUB_FAIL_FROM:-}" ]; then echo x >> "${STUB_LOG}.failn"; [ "$(wc -l < "${STUB_LOG}.failn")" -ge "$STUB_FAIL_FROM" ] || exit_ok=1; fi
+  [ -n "${exit_ok:-}" ] || { echo "stub: Daemon-Fehler" >&2; exit 1; } ;; esac; fi
+if [ -n "${STUB_FAIL2:-}" ]; then case "$(printf '|%s' "$@")" in *"$STUB_FAIL2"*) echo "stub: Daemon-Fehler" >&2; exit 1 ;; esac; fi
 # Kern (lib/stack_core.sh): Kurzlauf-Container. STUB_CAT_<pfad mit _> = Inhalt einer Datei im Volume (rt_vol_get),
 # stdin von `run -i` landet in ${STUB_LOG}.put (rt_vol_put), STUB_BUSY_PORTS = belegte Ports (rt_host_port_free),
 # STUB_DF_KB = freier Platz, STUB_DELEGATE_RC = Exit einer Weitergabe (core-next).
@@ -60,7 +64,9 @@ if [ "$me" = docker ] && [ "${1:-}" = run ]; then
     # STUB_DELEGATE_SLEEP: der innere Kern laeuft so lange; ein weitergeleitetes TERM beantwortet er wie der echte (result, Exit 1).
     *'|--name|'*'-core-next|'*)
       if [ -n "${STUB_DELEGATE_SLEEP:-}" ]; then
-        trap 'printf "%s\n" "{\"v\":1,\"type\":\"result\",\"verb\":\"up\",\"ok\":false,\"reason\":\"internal\",\"detail\":\"innen\"}"; exit 1' TERM
+        # STUB_DELEGATE_DEAF: ein innerer Kern, der TERM ignoriert (aelterer Stand ohne Handler).
+        if [ -n "${STUB_DELEGATE_DEAF:-}" ]; then trap '' TERM; else
+        trap 'printf "%s\n" "{\"v\":1,\"type\":\"result\",\"verb\":\"up\",\"ok\":false,\"reason\":\"internal\",\"detail\":\"innen\"}"; exit 1' TERM; fi
         sleep "$STUB_DELEGATE_SLEEP" & wait $!
       fi
       exit "${STUB_DELEGATE_RC:-0}" ;;
@@ -77,6 +83,7 @@ fi
 case "$(printf '|%s' "$@")" in
   *'|up|-d|--wait|'*) [ -z "${STUB_SLOW_UP:-}" ] || sleep "$STUB_SLOW_UP" ;;
   *'|exec|lifeagents-master|bash|/opt/lifeagents/provisioning/provision.sh|'*) [ -z "${STUB_SLOW_EXEC:-}" ] || sleep "$STUB_SLOW_EXEC" ;;
+  *'|down|--remove-orphans'*) [ -z "${STUB_SLOW_DOWN:-}" ] || sleep "$STUB_SLOW_DOWN" ;;
 esac
 case "$me $1 ${2:-}" in
   "docker version --format")
@@ -115,7 +122,7 @@ case "$me $1 ${2:-}" in
       # STUB_EXISTING = vorhandene Container (Kennung id-<name>); ohne Eintrag gibt es den Container nicht.
       # Argumente eines Containers (Kern: welches Verb laeuft); STUB_ARGS_<name mit _>, Standard 'up --json'.
       *'.Args'*)       v="STUB_ARGS_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; printf '%s\n' "${!v:-up --json}" ;;
-      *'{{.Id}}'*)     case " ${STUB_EXISTING:-} " in *" $n "*) printf 'id-%s\n' "$n" ;; *) exit 1 ;; esac ;;
+      *'{{.Id}}'*)     case " ${STUB_EXISTING:-} " in *" $n "*) printf 'id-%s\n' "$n" ;; *) echo "Error: No such object: $n" >&2; exit 1 ;; esac ;;
     esac
     exit 0 ;;
 esac
@@ -618,7 +625,7 @@ if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down l
 # Nur Logik, die der echte Weg schwer erzwingt (Werte-Quellen, Ports, Weitergabe, JSON-Vertrag); ob Docker dabei wirklich
 # anlegt und startet, belegt erst genericity.yml.
 SCO="$W/sc.out"; SCE="$W/sc.err"
-scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
+scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; rm -f "${STUB_LOG}.failn"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
 res() { tail -n1 "$SCO" | jq -r "$1" 2>/dev/null; }
 put_of() { awk -v f="== $1" '$0 == f {on=1; next} /^== /{on=0} on' "${STUB_LOG}.put"; }
 _lp="lifeagents_"
@@ -814,7 +821,7 @@ STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeag
 eq SC.abbau-pgdata-unpruefbar 'data_kept|lifeagents_pgdata' "$(res .reason)|$(res '[.kept[] | select(.what == "lifeagents_pgdata") | .what] | first')"
 # status/start: Docker-Fehler bei pgdata ist kein „nicht installiert“.
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_pgdata' scr status --json
-eq SC.status-pgdata-unpruefbar 'false|internal' "$(res .ok)|$(res .reason)"
+eq SC.status-pgdata-unpruefbar 'true|true' "$(res .ok)|$(res .installed)"
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_pgdata' scr start --json
 eq SC.start-pgdata-unpruefbar internal "$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=rolled_back' STUB_RUNNING=lifeagents-master scr uninstall --json
@@ -838,6 +845,15 @@ STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' STUB_RU
 eq SC.lesefehler-sperre-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr uninstall --json
 eq SC.lesefehler-ohne-master-abbau-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
+# Unlesbar und auch die Frage „laeuft der master?“ scheitert (Docker gestoert): das ist kein „kein master“ -> busy.
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' STUB_FAIL2='|lifeagents-master' scr uninstall --json
+eq SC.lesefehler-master-unklar-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+# Erster Blick auf var_la gelingt, der zweite (Erkennung „erster Lauf“) scheitert: kein erster Lauf, keine neue Merkliste.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_var_la' STUB_FAIL_FROM=2 STUB_RUNNING=lifeagents-master scr up --json
+eq SC.erster-lauf-inspect-fehler 'internal|delegate|0' "$(res .reason)|$(jq -r 'select(.type == "progress") | .step' "$SCO" | tail -n1)|$(wc -l < "${STUB_LOG}.put" | tr -d ' ')"
+# Abgeleitetes Volume nicht pruefbar: Grund inspect_failed, nicht volume_busy.
+STUB_VOLS="$SC_ALLVOLS ${_lp}n8n_patches" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_n8n_patches' scr uninstall --json
+eq SC.abbau-abgeleitet-unpruefbar inspect_failed "$(res '.kept[] | select(.what == "lifeagents_n8n_patches") | .reason')"
 # status: Zustand nicht lesbar -> update_running true (die App startet dann nichts Aenderndes).
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr status --json
 eq SC.status-lesefehler-update-laeuft 'true|true' "$(res .ok)|$(res .update_running)"
@@ -868,15 +884,22 @@ sc_sig() {
       bash "$ROOT/provisioning/compose/stack.sh" "$@" >"$SCO" 2>"$SCE" </dev/null ) & _pid=$!
   for _ in $(seq 1 50); do grep -q "\"step\":\"$step\"" "$SCO" 2>/dev/null && break; sleep 0.1; done
   sleep 0.5; kill -TERM "$_pid" 2>/dev/null
-  _gone=0; for _ in $(seq 1 50); do kill -0 "$_pid" 2>/dev/null || { _gone=1; break; }; sleep 0.1; done
+  _gone=0; for _ in $(seq 1 "${SC_SIG_WAIT:-50}"); do kill -0 "$_pid" 2>/dev/null || { _gone=1; break; }; sleep 0.1; done
   [ "$_gone" = 1 ] || kill -KILL "$_pid" 2>/dev/null; SC_RC=0; wait "$_pid" 2>/dev/null || SC_RC=$?
 }
 # Weitergabe: TERM geht an den inneren Kern weiter; sein result ist das eine result (kein zweites vom aeusseren).
 STUB_DELEGATE_SLEEP=30 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" sc_sig delegate up --json
 eq SC.signal-weitergabe-ein-result 'innen|1|1|1' "$(res .detail)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$SC_RC|$_gone"
-# install: die Antwort-Datei (Zugangsdaten) bleibt nach einem Abbruch nicht im master liegen.
+# install: result nach dem Signal; die Antwort-Datei bleibt fuer das im master weiterlaufende provision.sh liegen (docker exec
+# reicht kein Signal weiter; geloescht scheiterte es still, bevor es sie gelesen hat).
 STUB_SLOW_EXEC=30 STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master sc_sig provision install --json
-eq SC.signal-install-raeumt-antworten "internal|1" "$(res .reason)|$(grep -c '^docker|exec|lifeagents-master|rm|-f|/run/lifeagents-wizard/answers.env|' "$STUB_LOG")"
+eq SC.signal-install-result "internal|1|0" "$(res .reason)|$_gone|$(grep -c '^docker|exec|lifeagents-master|rm|-f|/run/lifeagents-wizard/answers.env|' "$STUB_LOG")"
+# Innerer Kern ignoriert TERM (aelterer Stand): der aeussere wartet begrenzt und endet vor der SIGKILL-Frist mit einem result.
+STUB_DELEGATE_SLEEP=30 STUB_DELEGATE_DEAF=1 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" SC_SIG_WAIT=120 sc_sig delegate up --json
+eq SC.signal-weitergabe-taub-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$_gone"
+# Abbau: der compose-Client unter _sc_ro (Enkel des Hintergrund-Schritts) endet mit.
+STUB_SLOW_DOWN=30 STUB_VOLS="$SC_ALLVOLS" sc_sig containers uninstall --json
+sleep 0.3; eq SC.signal-enkel-beendet 'internal|0' "$(res .reason)|$(pgrep -fc "$W/bin/docker compose .*down --remove-orphans" || true)"
 
 # check laedt nichts: alle Pruef-Container laufen aus dem eigenen Abbild (ein von check geladenes busybox stuende sonst
 # auf der Merkliste des ersten up und bliebe nach --delete-data liegen).

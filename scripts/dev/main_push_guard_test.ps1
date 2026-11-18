@@ -41,10 +41,11 @@ Assert-True 'paths-ignore: nur Ausnahmen starten nicht' (-not (Test-WorkflowTrig
 Assert-True 'paths-ignore: eine andere Datei startet' (Test-WorkflowTriggered $fIgnore @('README.md', 'scripts/check_ci_status.ps1'))
 Assert-True 'paths-ignore: *.md gilt nur im Wurzelordner' (Test-WorkflowTriggered $fIgnore @('tests/fixtures/README.md'))
 
-function New-Run([string]$Name, [string]$Sha, [string]$Status = 'completed', [string]$Conclusion = 'success') {
+function New-Run([string]$Name, [string]$Sha, [string]$Status = 'completed', [string]$Conclusion = 'success', [string]$At = '2026-01-01T10:00:00Z') {
     return [pscustomobject]@{ name = $Name; path = ".github/workflows/$Name.yml"; head_sha = $Sha; status = $Status
-        conclusion = $Conclusion; created_at = '2026-01-01T10:00:00Z'; id = 1; html_url = 'https://example.invalid/runs/1' }
+        conclusion = $Conclusion; created_at = $At; id = 1; html_url = 'https://example.invalid/runs/1' }
 }
+$later = '2026-01-01T11:00:00Z'
 function New-Runs([string]$Sha, [string[]]$Names) { return @($Names | ForEach-Object { New-Run $_ $Sha }) }
 $all = @('ci', 'free-gates', 'genericity')
 $shaA = 'a' * 40
@@ -55,6 +56,21 @@ $p = @(Get-MainPushProblems $all @((New-Run 'ci' $shaA), (New-Run 'free-gates' $
 Assert-True 'rot und laufend werden genannt' ($p.Count -eq 2 -and ($p -join ';') -eq 'free-gates: rot;genericity: laeuft noch') ($p -join ';')
 $p = @(Get-MainPushProblems $all (New-Runs ('b' * 40) $all) $shaA)
 Assert-True 'Laeufe auf anderem Stand zaehlen nicht' ($p.Count -eq 3 -and $p[0] -eq 'ci: kein Lauf') ($p -join ';')
+
+Write-Host 'Urteil Elternstand des Pin-Commits (nur abgeschlossene Laeufe, nur success):'
+$older = New-Runs $shaA $all
+$p = @(Get-PinParentProblems $all (@($older) + @($all | ForEach-Object { New-Run $_ $shaA 'in_progress' '' $later })) $shaA)
+Assert-True 'gruen, juenger ein laufender Lauf: frei' ($p.Count -eq 0) ($p -join ';')
+$p = @(Get-PinParentProblems $all (@($older) + @(New-Run 'free-gates' $shaA 'completed' 'failure' $later)) $shaA)
+Assert-True 'gruen, juenger abgeschlossen rot: gesperrt' ($p.Count -eq 1 -and $p[0] -eq 'free-gates: rot (failure)') ($p -join ';')
+foreach ($end in 'cancelled', 'skipped', 'timed_out') {
+    $p = @(Get-PinParentProblems $all (@($older) + @(New-Run 'ci' $shaA 'completed' $end $later)) $shaA)
+    Assert-True "gruen, juenger abgeschlossen $end : gesperrt" ($p.Count -eq 1 -and $p[0] -eq "ci: rot ($end)") ($p -join ';')
+}
+$p = @(Get-PinParentProblems $all @((New-Run 'ci' $shaA), (New-Run 'free-gates' $shaA 'in_progress' ''), (New-Run 'genericity' $shaA)) $shaA)
+Assert-True 'nur laufender Lauf: kein abgeschlossener' ($p.Count -eq 1 -and $p[0] -eq 'free-gates: kein abgeschlossener Lauf') ($p -join ';')
+$p = @(Get-PinParentProblems $all (New-Runs ('b' * 40) $all) $shaA)
+Assert-True 'Laeufe auf anderem Stand zaehlen nicht' ($p.Count -eq 3) ($p -join ';')
 
 $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $sandbox = Join-Path $env:TEMP "main_push_guard_$id"
@@ -170,6 +186,27 @@ try {
     Invoke-SandboxGit @('commit', '-q', '-am', 'pin und mehr')
     Set-Runs (New-Runs (Get-Sha 'HEAD~1') $all)
     Assert-Exit 'Pin-Datei plus andere Datei: Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin') + $toMain))
+
+    Write-Host 'Skript, Pin-Commit, Laeufe des main-Push auf dem Elternstand:'
+    $base2 = New-Scenario 'pin2' @('provisioning\a.sh')
+    Add-Content -LiteralPath (Join-Path $sandbox 'provisioning\compose\compose.yml') -Value '  pin: zwei' -Encoding UTF8
+    Invoke-SandboxGit @('commit', '-q', '-am', 'chore(release): pin master image')
+    $newerPending = @($all | ForEach-Object { New-Run $_ $base2 'in_progress' '' $later })
+    Set-Runs ((New-Runs $base2 $all) + $newerPending)
+    Assert-Exit 'gruene Laeufe, juengere laufen noch: Exit 0' 0 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Set-Runs ((New-Runs $base2 $all) + @(New-Run 'free-gates' $base2 'completed' 'failure' $later))
+    Assert-Exit 'gruen, juengerer Lauf abgeschlossen rot: Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Set-Runs ((New-Runs $base2 $all) + @(New-Run 'genericity' $base2 'completed' 'cancelled' $later))
+    Assert-Exit 'gruen, juengerer Lauf abgebrochen (cancelled): Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Set-Runs ((New-Runs $base2 $all) + @(New-Run 'ci' $base2 'completed' 'skipped' $later))
+    Assert-Exit 'gruen, juengerer Lauf uebersprungen (skipped): Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Set-Runs $newerPending
+    Assert-Exit 'nur laufende Laeufe, kein abgeschlossener: Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Set-Runs ((New-Runs $base2 @('ci', 'genericity')) + $newerPending)
+    Assert-Exit 'ein Workflow nur laufend (free-gates): Exit 1' 1 (Invoke-Guard (@('-Ref', 'pin2') + $toMain))
+    Invoke-SandboxGit @('checkout', '-q', 'code')
+    Set-Runs ((New-Runs $code $all) + @($all | ForEach-Object { New-Run $_ $code 'in_progress' '' $later }))
+    Assert-Exit 'kein Pin-Commit: gruen, juengerer laeuft noch bleibt gesperrt: Exit 1' 1 (Invoke-Guard (@('-Ref', 'code') + $toMain))
 
     Write-Host 'Hook:'
     Invoke-SandboxGit @('checkout', '-q', 'code')

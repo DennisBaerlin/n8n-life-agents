@@ -42,7 +42,7 @@ function Test-WorkflowTriggered($Filter, [string[]]$Files) {
     return $true
 }
 
-# Urteil fuer den Elternstand eines Pin-Commits: je Workflow entscheidet der juengste ABGESCHLOSSENE Lauf, und gruen ist nur
+# Urteil fuer den Elternstand eines Pin-Commits: je Workflow entscheidet der juengste abgeschlossene Lauf, und gruen ist nur
 # conclusion=success (cancelled, skipped, timed_out, failure sperren). Laeufe, die der main-Push des Elternstands gerade
 # gestartet hat, uebergeht es: der Elternstand war vor dem Push gruen, sonst haette ihn die Sperre nicht durchgelassen.
 # Zeilenform wie Get-MainPushProblems; leer = frei.

@@ -14,8 +14,12 @@
 --   statement_age_days = Tage seit dem bestaetigten Stand (NULL ohne Abgleich): der Alltag laeuft ab d0 ohne Obergrenze,
 --   ein alter Auszug drueckt die Vorschau also beliebig tief -> fn_advisor_review warnt ab finance.statement_stale_days
 --   nicht mehr vor Unterdeckung, sondern meldet den veralteten Auszug.
---   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'), sonst core.config
---   finance.coverage_buffer_eur (Default 250) in die Kontowaehrung umgerechnet (buffer_source 'default').
+--   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'); sonst ohne erwarteten Abgang 0
+--   (buffer_source 'none': ein Konto, von dem nichts abgeht, z. B. ein Verrechnungskonto ohne Sparplan, braucht keinen;
+--   ein Minus bleibt ein Fehlbetrag); sonst core.config finance.coverage_buffer_eur (Default 250) in die Kontowaehrung
+--   umgerechnet (buffer_source 'default'). outflow_expected = geplante Abbuchung (Dauerauftrag, Sparplan, Uebertrag weg,
+--   Kreditrate) in den naechsten 400 Tagen oder Alltagsausgaben aus Auszuegen (everyday_per_day < 0), unabhaengig vom
+--   Horizont.
 --   Bruecke = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
 --   weicht er vom bestaetigten Stand ab, steht eine rueckdatierte Buchung dazwischen) + booked + out + in + everyday
 --   = min_projected exakt. confirmed = bestaetigter Stand (NULL ohne Abgleich).
@@ -24,7 +28,7 @@
 --   einem Kinderkonto (Eigentuemer role child, core.fn_household_persons): der Vorschlag geht ohne LLM in Karte/Alert.
 --   Rueckgabe: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, statement_age_days, estimated_today,
 --   next_income_date, next_income_name, next_income_amount, next_income_rp_id, horizon_end, planned_out, planned_in, everyday_per_day,
---   has_history, provisional, min_projected, min_date, buffer, buffer_source, shortfall,
+--   has_history, provisional, min_projected, min_date, buffer, buffer_source (account|none|default), outflow_expected, shortfall,
 --   bridge:{from, base, confirmed, booked, out, in, everyday, days},
 --   suggestion:{amount, by_date, from_account} | null} | {ok:false, reason} (kein cash-Konto)
 --   Tests: tests/db/finance/test_fn_account_outlook.sql
@@ -51,6 +55,7 @@ DECLARE
     v_in       NUMERIC;
     v_buffer   NUMERIC;
     v_bsrc     TEXT;
+    v_outx     BOOLEAN;
     v_short    NUMERIC;
     v_sugg     JSONB;
     v_bridge   JSONB;
@@ -106,9 +111,19 @@ BEGIN
     FROM finance.fn_account_planned_flows(p_account_id, v_inc_date, v_inc_date) pf
     WHERE v_inc_date IS NOT NULL AND pf.recurring_payment_id = v_inc_rp;
 
+    -- Abgang erwartet: geplante Abbuchung in 400 Tagen (dieselbe Quelle wie die Reihe) oder Alltag aus Auszuegen.
+    -- Bewusst nicht planned_out: das reicht nur bis zum Horizont, beim Verrechnungskonto liegt die Sparplan-Abbuchung
+    -- oft einen Tag nach dem Zubringer -> der Puffer spraenge im Monat zwischen 0 und Standard.
+    v_outx := COALESCE(v_per_day, 0) < 0
+              OR EXISTS (SELECT 1 FROM finance.fn_account_planned_flows(p_account_id, v_today, v_today + 400) pf WHERE pf.amount < 0);
+
     IF v_acct.min_balance IS NOT NULL THEN
         v_buffer := v_acct.min_balance;
         v_bsrc   := 'account';
+    ELSIF NOT v_outx THEN
+        -- nichts geht ab: kein Puffer noetig; ein Minus bleibt ein Fehlbetrag (shortfall > 0)
+        v_buffer := 0;
+        v_bsrc   := 'none';
     ELSE
         v_bsrc   := 'default';
         -- Kontowaehrung zum heutigen Kurs (fn_config_eur_in_currency); ohne Kurs der EUR-Wert (bisherige Rueckfallebene)
@@ -142,7 +157,7 @@ BEGIN
         'planned_out', round(v_out, 2), 'planned_in', round(v_in, 2),
         'everyday_per_day', v_per_day, 'has_history', COALESCE(v_hist, false), 'provisional', COALESCE(v_prov, false),
         'min_projected', round(v_min, 2), 'min_date', v_min_date,
-        'buffer', v_buffer, 'buffer_source', v_bsrc, 'shortfall', v_short,
+        'buffer', v_buffer, 'buffer_source', v_bsrc, 'outflow_expected', v_outx, 'shortfall', v_short,
         'bridge', v_bridge, 'suggestion', v_sugg);
 END;
 $$;

@@ -88,7 +88,7 @@ function Build-ImportBankExport {
             ,@('purchases_cash_effect', "={{ (($R) || {}).settlement_change || 0 }}", 'number')
         ) `
         -CancelAction 'the monthly check from the bank export (no statement was booked)' -ReturnExtra @(
-            ,@('trades_booked', "={{ `$('Apply statement').item.json.r.trades_booked || 0 }}", 'number')
+            ,@('trades_by_kind', "={{ `$('Apply statement').item.json.r.trades_by_kind || {} }}", 'object')
             ,@('trades_not_booked', "={{ `$('Apply statement').item.json.r.trades_blocked || [] }}", 'array')
             ,@('unknown_export_rows', "={{ `$('Apply statement').item.json.r.export_unknown || [] }}", 'array')
             ,@('positions_replaced_by_purchases', "={{ (($R) || {}).replaced || [] }}", 'array')

@@ -84,6 +84,16 @@ BEGIN
        OR (SELECT amount FROM finance.transactions t JOIN finance.depot_holdings h ON h.id = t.holding_id
            WHERE h.symbol = 'XMEME' AND h.account_id = v_dep AND t.category::text = 'buy') IS DISTINCT FROM -25.00 THEN
         RAISE EXCEPTION 'FAIL [B6 Ertraege + Kleinst-Muenze centgenau]'; END IF;
+    -- je Art Anzahl und Summe (Ertraege ohne Geld, mit Muenz-Namen): der Agent nennt Staking nie "Kaeufe"
+    IF (v_app->'trades_by_kind'->'buy'->>'count')::int IS DISTINCT FROM 2
+       OR (v_app->'trades_by_kind'->'buy'->>'amount')::numeric IS DISTINCT FROM -85.15
+       OR (v_app->'trades_by_kind'->'sell'->>'count')::int IS DISTINCT FROM 1
+       OR (v_app->'trades_by_kind'->'sell'->>'amount')::numeric IS DISTINCT FROM 64.50
+       OR (v_app->'trades_by_kind'->'dividend'->>'count')::int IS DISTINCT FROM 0
+       OR (v_app->'trades_by_kind'->'reward'->>'count')::int IS DISTINCT FROM 3
+       OR v_app->'trades_by_kind'->'reward'->'names' IS DISTINCT FROM '["BTC", "ETH"]'::jsonb
+       OR (v_app->>'trades_booked')::int IS DISTINCT FROM 6 THEN
+        RAISE EXCEPTION 'FAIL [B6b trades_by_kind]: %', v_app; END IF;
     RAISE NOTICE 'PASS [B4-B6 Buchung]';
 
     -- Re-Import derselben Datei: nichts Neues
@@ -207,5 +217,42 @@ BEGIN
        OR (v_res->'seen_refs') ? md5('bq-03') OR NOT (v_res->'seen_refs') ? md5('bq-01') THEN
         RAISE EXCEPTION 'FAIL [Q2 offener Vorgang: Grund auf der Karte, nie gesehen]: %', v_res; END IF;
     RAISE NOTICE 'PASS [Q1-Q2 gesperrte Ertraege, offener Vorgang]';
+END $$;
+
+-- ---------- Teil 5: faellige Auszuege im Ergebnis (statements_due) ----------
+--   Nach dem Abgleich steht die Liste aus fn_statements_due im Ergebnis: das eben abgeglichene Konto fehlt darin, ein
+--   anderes faelliges Konto steht darin (Konten vor dem Stichtag angelegt, sonst waeren sie nie faellig).
+DO $$
+DECLARE
+    T      DATE := core.fn_today();
+    v_bv INT; v_open INT; v_p JSONB; v_res JSONB; v_app JSONB;
+BEGIN
+    v_bv := (finance.fn_create_account(jsonb_build_object('name', '__t_bvd_bv__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Bitvavo', 'opening_balance', 0, 'opening_balance_date', (T - 70)::text))->>'account_id')::int;
+    v_open := (finance.fn_create_account(jsonb_build_object('name', '__t_bvd_offen__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Testbank', 'opening_balance', 50, 'opening_balance_date', (T - 70)::text))->>'account_id')::int;
+    UPDATE finance.accounts SET created_at = T - 70 WHERE id IN (v_bv, v_open);
+    UPDATE finance.accounts SET last_reconciled_at = T - 40, last_reconciled_balance = 0 WHERE id = v_bv;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_statements_due()->'accounts') e WHERE e->>'name' = '__t_bvd_bv__') THEN
+        RAISE EXCEPTION 'SETUP [D0] __t_bvd_bv__ vor dem Abgleich nicht faellig: %', finance.fn_statements_due(); END IF;
+
+    v_p := jsonb_build_object('source', 'file', 'account_name', '__t_bvd_bv__', 'closing_balance', 100,
+        'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.bv_hdr(),
+            pg_temp.bv(T-5, 'deposit', 'EUR', '100.00', '', '', '0.00', 'Completed', 'bd-01'))));
+    v_res := finance.fn_statement_prepare(v_p);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP [D0 prepare]: %', v_res; END IF;
+    v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_res->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR jsonb_typeof(v_app->'statements_due') IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'FAIL [D1 statements_due im Ergebnis]: %', v_app; END IF;
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_app->'statements_due') e WHERE e->>'name' = '__t_bvd_bv__') THEN
+        RAISE EXCEPTION 'FAIL [D2 abgeglichenes Konto ist nicht mehr faellig]: %', v_app->'statements_due'; END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_app->'statements_due') e
+                   WHERE e->>'name' = '__t_bvd_offen__' AND (e->>'covered_until')::date = T - 70) THEN
+        RAISE EXCEPTION 'FAIL [D3 anderes faelliges Konto steht darin, gedeckt bis zum Startdatum]: %', v_app->'statements_due'; END IF;
+    IF v_app->'statements_due' IS DISTINCT FROM (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', e->>'name',
+               'covered_until', e->'covered_until') ORDER BY o), '[]'::jsonb)
+             FROM jsonb_array_elements(finance.fn_statements_due()->'accounts') WITH ORDINALITY x(e, o)) THEN
+        RAISE EXCEPTION 'FAIL [D4 dieselbe Liste wie fn_statements_due]: % / %', v_app->'statements_due', finance.fn_statements_due(); END IF;
+    RAISE NOTICE 'PASS [D1-D4 statements_due]';
 END $$;
 ROLLBACK;

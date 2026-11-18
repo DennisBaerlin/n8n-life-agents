@@ -143,6 +143,12 @@ BEGIN
        OR (v_app->>'lump_amount')::numeric <> 57.00 OR jsonb_array_length(v_app->'savings_plan_estimated') <> 0 THEN
         RAISE EXCEPTION 'FAIL [C16 apply Zahlen]: %', v_app;
     END IF;
+    -- dieselben fuenf Trades je Art (Kauf, Verkauf, Dividende; keine Ertraege)
+    IF v_app->'trades_by_kind' IS DISTINCT FROM jsonb_build_object(
+           'buy', jsonb_build_object('count', 2, 'amount', -73.00), 'sell', jsonb_build_object('count', 2, 'amount', 103.00),
+           'dividend', jsonb_build_object('count', 1, 'amount', 3.75), 'reward', jsonb_build_object('count', 0, 'names', '[]'::jsonb)) THEN
+        RAISE EXCEPTION 'FAIL [C16d trades_by_kind]: %', v_app->'trades_by_kind';
+    END IF;
     -- Rest getrennt nach Richtung (Netto-Differenz, eines ist 0); booked_count = 1 Sparplan (Trades separat)
     IF (v_app->>'rest_inflow')::numeric IS DISTINCT FROM 57.00 OR (v_app->>'rest_outflow')::numeric IS DISTINCT FROM 0
        OR (v_app->>'booked_count')::int IS DISTINCT FROM 1 OR jsonb_array_length(v_app->'transfers') <> 0 THEN

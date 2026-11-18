@@ -950,6 +950,12 @@
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c81f949a-524d-56bf-8d58-4b2d67a7c6b9",
+                                                                                     "name":  "statements_due",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.statements_due || [] }}",
+                                                                                     "type":  "array"
                                                                                  }
                                                                              ]
                                                          },
@@ -1407,6 +1413,12 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "324f772d-dd71-5548-abc3-16cfbb79917f",
+                                                                                     "name":  "statements_due",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.statements_due || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "64aacbe5-4fdb-514d-b2cb-e64aaaab2b79",
                                                                                      "name":  "recurring",
                                                                                      "value":  "={{ $(\u0027Stage after check\u0027).item.json.r || {} }}",
                                                                                      "type":  "object"

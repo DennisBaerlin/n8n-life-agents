@@ -98,6 +98,11 @@ DO $$
 DECLARE
   v jsonb; v_id int; v_amt numeric; v_buf numeric;
 BEGIN
+  -- das Tagesgeld ohne Bewegung braucht einen Abgang hinter dem Horizont, sonst hat es Puffer 0 und kein Fixture-Konto
+  -- traegt ein Puffer-Urteil ohne Fehlbetrag; der tiefste Stand bleibt gleich
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from)
+  VALUES ('LS Abo', (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_savings_mira'), -1, 1, 'year',
+          core.fn_today() + 390, core.fn_today() + 390);
   SELECT x.id INTO v_id FROM (SELECT id::int AS id FROM pg_temp.app_fx WHERE key LIKE 'acc\_%') x
    WHERE finance.fn_account_low_state(x.id)->>'verdict' = 'buffer'
      AND (finance.fn_account_low_state(x.id)->>'short_by')::numeric = 0
@@ -136,6 +141,29 @@ BEGIN
   v := finance.fn_account_low_state(v_id);
   IF v->>'verdict' = 'stale' THEN RAISE EXCEPTION 'FAIL [9b] Grenztag ist noch nicht alt, got %', v; END IF;
   RAISE NOTICE 'PASS [9] alter Auszug';
+END $$;
+
+-- [10] Konto mit Auszug, von dem nichts abgeht (Verrechnungskonto ohne Sparplan): kein Puffer -> Saldo 0 ist ok, kein
+--      warn/alert; ein Minus bleibt alert (short_by = Fehlbetrag). Werte erfunden.
+DO $$
+DECLARE
+  v jsonb; v_zero int; v_neg int;
+BEGIN
+  v_zero := (finance.fn_create_account('{"name":"__t_ls_none_zero__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_neg  := (finance.fn_create_account('{"name":"__t_ls_none_neg__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_neg, -40, core.fn_today() - 10, 'other');
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_zero, core.fn_today() - 34, core.fn_today() - 20, 0, 0, 'EUR', 0, 0, 0, 0, NULL),
+         (v_neg,  core.fn_today() - 34, core.fn_today() - 20, 0, 0, 'EUR', 0, 0, 0, 0, NULL);
+
+  v := finance.fn_account_low_state(v_zero);
+  IF v->>'source' <> 'outlook' OR v->>'state' <> 'ok' OR (v->>'buffer')::numeric <> 0 OR (v->>'short_by')::numeric <> 0 THEN
+    RAISE EXCEPTION 'FAIL [10a] Saldo 0 ohne Abgang -> ok, Puffer 0, got %', v; END IF;
+  v := finance.fn_account_low_state(v_neg);
+  IF v->>'state' <> 'alert' OR (v->>'short_by')::numeric <> 40 THEN
+    RAISE EXCEPTION 'FAIL [10b] Minus ohne Abgang -> alert, short_by 40, got %', v; END IF;
+  RAISE NOTICE 'PASS [10] ohne Abgang kein Puffer, Minus bleibt alert';
 END $$;
 
 ROLLBACK;

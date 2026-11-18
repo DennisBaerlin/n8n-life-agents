@@ -2,10 +2,10 @@
 -- test_bank_statement_after_period -- Datei-Import mit Zeilen vom Importtag: der Ausgang trennt die zwei Tage
 --   fn_apply_bank_statement (source:'file', N26-Profil, App-Kontostand des Owners). Der Zeitraum endet gestern, die
 --   Zeile von heute bucht erst der naechste Export. Der Ausgang muss beide Tage nennen, damit das Modell nie den
---   gebuchten Stand (gestern) mit der Owner-Zahl (heute) vergleicht: balance_date = period_end,
---   balance_at_period_end = bestaetigter Stand, after_period = Summe der Datei-Zeilen danach, owner_balance = die
---   genannte App-Zahl (= balance_at_period_end + after_period, von der DB gerechnet). Werte erfunden, Daten relativ
---   zu core.fn_today().
+--   gebuchten Stand (gestern) mit der Owner-Zahl (heute) vergleicht: period_end (schon im Ausgang der Kette),
+--   balance_at_period_end = bestaetigter Stand, after_period = Summe der Datei-Zeilen danach (DB-Rechnung der Prepare).
+--   Die App-Zahl selbst kommt nicht zurueck (kein Echo einer Eingabe). Gedruckter Auszug: after_period = 0.
+--   Werte erfunden, Daten relativ zu core.fn_today().
 -- ============================================================
 BEGIN;
 CREATE FUNCTION pg_temp.n26_row(p_d date, p_partner text, p_type text, p_amt text)
@@ -43,19 +43,16 @@ BEGIN
     IF (v_app->>'balance_after')::numeric IS DISTINCT FROM 970 THEN
         RAISE EXCEPTION 'FAIL [AP3 balance_after = 970]: %', v_app->>'balance_after';
     END IF;
-    -- Neu: beide Tage im Ausgang, jede Zahl aus der DB
-    IF (v_app->>'balance_date')::date IS DISTINCT FROM T - 1 THEN
-        RAISE EXCEPTION 'FAIL [AP4 balance_date = gestern]: %', v_app->>'balance_date';
-    END IF;
+    -- Neu: Stand am period_end und die Zeilen danach im Ausgang, jede Zahl aus der DB
     IF (v_app->>'balance_at_period_end')::numeric IS DISTINCT FROM 970 THEN
-        RAISE EXCEPTION 'FAIL [AP5 balance_at_period_end = 970]: %', v_app->>'balance_at_period_end';
+        RAISE EXCEPTION 'FAIL [AP4 balance_at_period_end = 970]: %', v_app->>'balance_at_period_end';
     END IF;
     IF (v_app->>'after_period')::numeric IS DISTINCT FROM -10 THEN
-        RAISE EXCEPTION 'FAIL [AP6 after_period = -10]: %', v_app->>'after_period';
+        RAISE EXCEPTION 'FAIL [AP5 after_period = -10]: %', v_app->>'after_period';
     END IF;
-    IF (v_app->>'owner_balance')::numeric IS DISTINCT FROM 960 THEN
-        RAISE EXCEPTION 'FAIL [AP7 owner_balance = 960]: %', v_app->>'owner_balance';
+    IF v_app ? 'owner_balance' THEN
+        RAISE EXCEPTION 'FAIL [AP6 kein Echo der App-Zahl]: %', v_app->>'owner_balance';
     END IF;
-    RAISE NOTICE 'PASS [AP1-AP7 Datei-Import trennt Stand gestern und App-Zahl heute]';
+    RAISE NOTICE 'PASS [AP1-AP6 Datei-Import trennt Stand gestern und Zeilen von heute]';
 END $$;
 ROLLBACK;

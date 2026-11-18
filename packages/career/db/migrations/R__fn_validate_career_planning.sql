@@ -3,7 +3,8 @@
 --   Strukturvalidierung des advisor-gepflegten 'career_planning'-Sidecars (Ziel-Rollen, Ziel-Branchen,
 --   Umstiegs-Timeline). Vorbild finance.fn_validate_financial_planning (partial-tolerant: jeder Top-Block
 --   optional). Der Plan-Sidecar wird von core.fn_advisor_publish_plan(domain='career') geschrieben; der
---   Core-Trigger dispatcht die Struktur generisch ueber core.context_validators hierher. Die Derived-Value-
+--   Die Pruefstelle agent.fn_validate_context_facts ruft sie ueber advisors.career.plan_validate_fn (Berater-
+--   Eintrag, per_user-Basisname; keine context_validators-Zeile). Die Derived-Value-
 --   Denylist (keine gespeicherten Ableitungen wie computed_months/target_year) liegt im Core-Validator.
 --   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig).
 --   Die Soll-Skills je Ziel-Rolle (target_roles[].required_skills[]={name,min_level?,is_blocker?}) werden hier

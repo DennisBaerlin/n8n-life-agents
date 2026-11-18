@@ -244,7 +244,7 @@ BEGIN
         || jsonb_build_object('last_confirmed_at', to_char(CURRENT_DATE, 'YYYY-MM-DD')));
 
     -- Freundliche Vorpruefung (Paritaet fn_set_context_facts, "Korrigierbare Ablehnung"): Core-Form + der Paket-
-    -- Validator des Basis-Namens. Der Trigger auf agent.core_contexts bleibt das Netz dahinter, wuerde aber RAISEn
+    -- Validator des Basis-Namens (context_validators oder advisors.plan_validate_fn). Der Trigger auf agent.core_contexts bleibt das Netz dahinter, wuerde aber RAISEn
     -- (Owner-Alarm, undurchsichtiger Tool-Fehler) — hier bekommt der Advisor {ok:false, reason} zum Korrigieren.
     v_err := agent.fn_validate_context_facts(v_merged, v_physical);
     IF v_err IS NOT NULL THEN

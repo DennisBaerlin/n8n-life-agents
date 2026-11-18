@@ -337,7 +337,9 @@ $$;
 -- agent.fn_validate_context_facts(p_facts, p_name) -> Fehlertext (mit Wert, fuer den Schreibenden) | NULL
 --   Die eine Pruefung "Fakten fuer Kontext X": (1) Core-Anteil agent.fn_validate_household_facts, (2) Paket-Anteil
 --   ueber die Registry core.context_validators (exakter Name zuerst, sonst der per_user-Basisname) -> dynamisches
---   EXECUTE. validate_fn ist installer-geschrieben (CHECK: schema-qualifiziert, lowercase) -> kein Injection-Pfad;
+--   EXECUTE; fehlt dort eine Zeile, (3) core.advisors.plan_validate_fn der Domaene, deren plan_context der Kontext ist
+--   (Plan-Dokument ohne Fakten-Kontext-Nebenwirkungen). validate_fn/plan_validate_fn sind installer-geschrieben (CHECK:
+--   schema-qualifiziert, lowercase) -> kein Injection-Pfad;
 --   to_regprocedure-Guard faengt eine veraltete Registry-Zeile ab. Konsumenten: der Trigger unten (Netz) und die
 --   freundlichen Vorpruefungen in agent.fn_set_context_facts / agent.fn_advisor_publish_plan ({ok:false, reason}).
 -- ------------------------------------------------------------
@@ -357,6 +359,12 @@ BEGIN
     IF v_fn IS NULL THEN
         SELECT cv.validate_fn INTO v_fn FROM core.context_validators cv
         WHERE cv.context_name = agent.fn_context_base_name(p_name);
+    END IF;
+    IF v_fn IS NULL THEN
+        SELECT a.plan_validate_fn INTO v_fn FROM core.advisors a
+        WHERE a.plan_validate_fn IS NOT NULL
+          AND a.plan_context IN (p_name, agent.fn_context_base_name(p_name))
+        ORDER BY a.domain LIMIT 1;
     END IF;
     IF v_fn IS NOT NULL AND to_regprocedure(v_fn || '(jsonb)') IS NOT NULL THEN
         EXECUTE format('SELECT %s($1)', v_fn) INTO v_err USING p_facts;

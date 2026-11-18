@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_import_fifo_lots (READ, IMMUTABLE) -- verbliebene Kaeufe einer Position nach FIFO
 --   Die eine FIFO-Rechnung fuer Export-Dateien (fn_replace_takeover_with_lots, fn_setup_positions).
---   Eingabe: Zeilen einer Position [{date, kind buy|sell, shares (Betrag), gross, fee, row_no, ...}] in beliebiger Folge; je
---   Tag zuerst Kaeufe. Jede Stueckzahl wird auf die Spaltenpraezision (8 Stellen) gerundet, Exporte liefern mehr.
+--   Eingabe: Zeilen einer Position [{date, kind buy|sell|reward, shares (Betrag), gross, fee, row_no, ...}] in beliebiger Folge; je
+--   Tag Kaeufe, dann Ertraege, dann Verkaeufe. Jede Stueckzahl wird auf die Spaltenpraezision (8 Stellen) gerundet, Exporte liefern mehr.
 --   Ein Bestand 0 setzt neu an (fruehere Kaeufe sind vollstaendig verkauft).
 --   Rueckgabe: {lots:[Zeile || {shares (Rest), orig (urspruengliche Stueck)}], unmatched_sell_shares}.
 --   unmatched_sell_shares > 0 = es wurde mehr verkauft als die Zeilen belegen (Datei unvollstaendig).
@@ -19,11 +19,13 @@ DECLARE
 BEGIN
     FOR v_row IN
         SELECT e FROM jsonb_array_elements(COALESCE(p_rows, '[]'::jsonb)) e
-        ORDER BY (e->>'date')::date, (e->>'kind' = 'sell'), (e->>'row_no')::int
+        ORDER BY (e->>'date')::date, (e->>'kind' = 'sell'), (e->>'kind' = 'reward'), (e->>'row_no')::int
     LOOP
-        IF v_row->>'kind' = 'buy' THEN
+        IF v_row->>'kind' IN ('buy', 'reward') THEN
             v_lots := v_lots || jsonb_build_array(v_row || jsonb_build_object(
-                'shares', round((v_row->>'shares')::numeric, 8), 'orig', round((v_row->>'shares')::numeric, 8)));
+                'shares', round((v_row->>'shares')::numeric, 8), 'orig', round((v_row->>'shares')::numeric, 8))
+                -- Ertrag = Lot mit Kosten 0 (Verkaeufe verbrauchen ihn in Datums-Folge wie einen Kauf)
+                || CASE WHEN v_row->>'kind' = 'reward' THEN '{"gross": 0, "fee": 0}'::jsonb ELSE '{}'::jsonb END);
         ELSIF v_row->>'kind' = 'sell' THEN
             v_rest := round((v_row->>'shares')::numeric, 8);
             v_i := 0;

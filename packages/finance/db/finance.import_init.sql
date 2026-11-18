@@ -17,6 +17,8 @@
 --                      shares*, price_per_share* (Einstand), isin (Pflicht bei stocks_depot), name, order_fee (def 0),
 --                      transaction_date (def heute), depot_number/depot_holder (gedruckt -> fn_import_resolve_depot)
 --                      -> Bestandsuebernahme (existing_position): Verrechnungskonto-Saldo bleibt
+--   reward:            depot* (Name), symbol (Pflicht ohne ISIN), shares*, transaction_date*, isin, name
+--                      -> Staking-Ertrag der Ersteinrichtung (fn_import_positions_from_export): Stueck ohne Kosten
 --   insurance:         name*, premium_amount (je Abbuchung, + schedule_unit Pflicht) ODER annual_premium (def year),
 --                      debit_account* (Name, EUR), first_payment_date*,
 --                      insurance_company, policy_number, policyholder_person, interval/day_of_month, valid_from
@@ -71,7 +73,7 @@ ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_stag
 ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_entity_type_chk
     CHECK (entity_type IN
         ('account','stock_buy','insurance','pension','recurring_payment','recurring_transfer',
-         'real_estate','savings_goal','loan','pension_statement'));
+         'real_estate','savings_goal','loan','pension_statement','reward'));
 
 -- Dauerauftrags-Vorschlaege aus Kontoauszug/Bank-Export (fn_import_stage_recurring): ein offener Stapel je Chat,
 -- je Vorschlag eine Knopf-Nachricht (fn_get_recurring_suggestion_queue -> fn_handle_recurring_suggestion_cb). Die Regel

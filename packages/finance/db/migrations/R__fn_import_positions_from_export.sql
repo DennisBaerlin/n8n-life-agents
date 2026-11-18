@@ -1,7 +1,8 @@
 -- ============================================================
--- fn_import_positions_from_export (Staging-Write, kein HITL) -- offene Positionen der Datei als stock_buy einstellen
---   Eingabe: chat_id, table:{rows}. Je verbliebenem Kauf eine datierte Zeile mit cost_origin (Tranchen in fn_import_bundle), Depot
---   des Verrechnungskontos nach Art (Aktie/ETF oder Krypto). Ein unbestaetigter Stapel desselben Laufs wird ersetzt.
+-- fn_import_positions_from_export (Staging-Write, kein HITL) -- offene Positionen der Datei als stock_buy/reward einstellen
+--   Eingabe: chat_id, table:{rows}. Je verbliebenem Kauf eine datierte Zeile mit cost_origin (Tranchen in fn_import_bundle), je
+--   Ertrags-Tag eine reward-Zeile (Stueck ohne Kosten), Depot des Verrechnungskontos nach Art (Aktie/ETF oder Krypto). Ein
+--   unbestaetigter Stapel desselben Laufs wird ersetzt.
 --   Karte und Write sind danach tool_commit_import.
 --   Rueckgabe: {ok:true, batch_id, staged, invalid, errors, positions (Anzahl)} | {ok:false, reason} (Setup ohne Phase
 --   'positions' oder Fehler aus fn_import_stage).
@@ -35,6 +36,12 @@ BEGIN
                || CASE WHEN (x->>'is_crypto')::boolean THEN jsonb_build_object('symbol', x->>'symbol') ELSE '{}'::jsonb END)
     INTO v_rows
     FROM jsonb_array_elements(v_next->'positions') x, jsonb_array_elements(x->'lots') l;
+    v_rows := COALESCE(v_rows, '[]'::jsonb) || COALESCE((
+        SELECT jsonb_agg(jsonb_build_object('entity_type', 'reward',
+                   'depot', CASE WHEN (x->>'is_crypto')::boolean THEN v_coin ELSE v_depot END,
+                   'isin', x->>'isin', 'name', x->>'name', 'shares', (w->>'shares')::numeric, 'transaction_date', w->>'date')
+                   || CASE WHEN (x->>'is_crypto')::boolean THEN jsonb_build_object('symbol', x->>'symbol') ELSE '{}'::jsonb END)
+        FROM jsonb_array_elements(v_next->'positions') x, jsonb_array_elements(COALESCE(x->'rewards', '[]'::jsonb)) w), '[]'::jsonb);
 
     IF v_s.batch_id IS NOT NULL THEN
         DELETE FROM finance.import_staging WHERE batch_id = v_s.batch_id AND status <> 'committed';

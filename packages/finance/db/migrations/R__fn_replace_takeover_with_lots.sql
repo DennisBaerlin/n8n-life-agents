@@ -6,8 +6,10 @@
 --   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil; mehrere Sub-Konten -> multiple_sub_accounts).
 --   Je Position eines Depots mit diesem Verrechnungskonto, die genau ein Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
---     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
---     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage), zaehlen nicht.
+--     Lots = Export-Kaeufe und Staking-Ertraege (Lot ohne Kosten -> reward-Buchung) minus -Verkaeufe (FIFO) seit dem
+--     letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
+--     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage; Ertrag nur am
+--     selben Tag), zaehlen nicht.
 --     Summe der Lot-Stueck = Uebernahme-Stueck exakt (8 Stellen) -> ersetzen; sonst mismatched (code lots_mismatch,
 --     difference = Uebernahme - Export), nichts an dieser Position geaendert. Ausnahme Kauf am Uebernahme-Tag: stimmen die
 --     Zeilen VOR dem Tag exakt und gibt es am Tag nur Kaeufe, enthielt die Uebernahme sie noch nicht (Broker zeigt den Kauf
@@ -25,12 +27,26 @@
 --   dem Tipp bekommt ihn mit und bucht nur bei gleichem Plan (sonst stale_preview, kein Write; Muster fn_apply_bank_statement).
 --   Eine Gruppe aus einer frueheren Ersetzung (transaction_audit.replaced_by_group) ist nie wieder Kandidat.
 --   Ein nicht buchbares Lot (fn_trade_amount_reason, z. B. FIFO-Rest unter 1 Cent) -> mismatched code lots_not_bookable.
+--   Eine Zeile der Position bis zum Uebernahme-Datum in anderer Waehrung als das Verrechnungskonto -> mismatched code
+--   currency_mismatch (ihr Kurswert waere ein falscher Einstand).
+--   Rundungs-Staub (Zeilen-Summe weicht um <= 1e-8 je Lot ab) geht auf das letzte cash-neutrale Lot (fn_takeover_dust_lot).
 --   Rueckgabe: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
---   cash_lots_count, same_day_shares (0 = keiner), take_date}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
+--   cash_lots_count, same_day_shares (0 = keiner), take_date}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable'|'currency_mismatch', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
 --   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|
 --   export_account_mismatch|multiple_sub_accounts|stale_preview), reason}.
 -- ============================================================
+
+-- Hilfs-fn: Index des Lots, das den Rundungs-Staub traegt. Nur Lots mit Datum < p_before; davon das letzte
+-- cash-neutrale (Datum <= p_cut, ohne Stichtag alle), sonst das letzte; keins davor -> letztes Lot ueberhaupt.
+CREATE OR REPLACE FUNCTION finance.fn_takeover_dust_lot(p_lots jsonb, p_cut date, p_before date)
+RETURNS int LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE((SELECT (o - 1)::int FROM jsonb_array_elements(p_lots) WITH ORDINALITY AS x(l, o)
+                     WHERE (l->>'date')::date < p_before
+                     ORDER BY (p_cut IS NULL OR (l->>'date')::date <= p_cut) DESC, o DESC LIMIT 1),
+                    jsonb_array_length(p_lots) - 1);
+$$;
+
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_with_lots(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
@@ -56,6 +72,7 @@ DECLARE
     v_same     NUMERIC;
     v_sum_b    NUMERIC;
     v_n_b      INT;
+    v_ix       INT;
 BEGIN
     -- die geteilte Lade-Sequenz (Leser + derselbe Konto-Waechter wie der Monats-Check, buchbar prueft er mit)
     v_norm := finance.fn_bank_export_load(p);
@@ -82,28 +99,43 @@ BEGIN
                  AND EXISTS (SELECT 1 FROM finance.transactions g WHERE g.group_id = x.group_id AND g.category::text = 'position_takeover')) = 1
         ORDER BY h.id
     LOOP
-        -- Export-Zeilen der Position bis zum Uebernahme-Datum, die nicht schon als eigene Buchung existieren
-        SELECT COALESCE(jsonb_agg(r ORDER BY (r->>'date')::date, (r->>'kind' = 'sell'), (r->>'row_no')::int), '[]'::jsonb)
+        -- Export-Zeilen der Position bis zum Uebernahme-Datum, die nicht schon als eigene Buchung existieren. Ertraege
+        -- (Staking) zaehlen mit: sie stecken im uebernommenen Bestand; schon gebucht nur am selben Tag (gleich grosse
+        -- Ertraege im Wochentakt sind verschiedene Zeilen)
+        SELECT COALESCE(jsonb_agg(r ORDER BY (r->>'date')::date, (r->>'kind' = 'sell'), (r->>'kind' = 'reward'), (r->>'row_no')::int), '[]'::jsonb)
         INTO v_rows
         FROM jsonb_array_elements(v_norm->'rows') r
-        WHERE r->>'kind' IN ('buy', 'sell') AND (r->>'date')::date <= v_h.take_date
+        WHERE r->>'kind' IN ('buy', 'sell', 'reward') AND (r->>'date')::date <= v_h.take_date
           AND (upper(r->>'isin') = v_h.isin OR (r->>'isin' IS NULL AND v_h.isin IS NULL AND upper(r->>'symbol') = upper(v_h.symbol)))
           AND NOT EXISTS (SELECT 1 FROM finance.transactions t
                           WHERE t.holding_id = v_h.id AND t.category::text = r->>'kind'
                             AND (t.group_id IS DISTINCT FROM v_h.group_id)
                             AND abs(t.shares) = (r->>'shares')::numeric
-                            AND abs(t.transaction_date - (r->>'date')::date) <= 5);
+                            AND abs(t.transaction_date - (r->>'date')::date) <= CASE WHEN r->>'kind' = 'reward' THEN 0 ELSE 5 END);
         CONTINUE WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'buy');
+        -- Eine Zeile in anderer Waehrung als das Verrechnungskonto: ihr Kurswert waere still ein falscher Einstand
+        -- (der Konto-Waechter nimmt gemischte Dateien an) -> nie ersetzen.
+        IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_norm->'rows') r
+                   WHERE r->>'kind' IN ('buy', 'sell') AND (r->>'date')::date <= v_h.take_date
+                     AND (upper(r->>'isin') = v_h.isin OR (r->>'isin' IS NULL AND v_h.isin IS NULL AND upper(r->>'symbol') = upper(v_h.symbol)))
+                     AND upper(COALESCE(r->>'currency', v_acct.currency)) <> v_acct.currency) THEN
+            v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'currency_mismatch',
+                'takeover_shares', v_h.take_shares, 'export_shares', NULL, 'difference', 0);
+            CONTINUE;
+        END IF;
 
         -- FIFO: die eine Adresse (fn_import_fifo_lots), ein Bestand 0 setzt neu an
         v_lots := finance.fn_import_fifo_lots(v_rows)->'lots';
         SELECT COALESCE(sum((l->>'shares')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lots) l;
 
-        -- Exporte liefern mehr Stellen als gespeichert: Rundungs-Staub der Zeilen ist kein Unterschied, er landet auf dem letzten Lot
+        -- Exporte liefern mehr Stellen als gespeichert: Rundungs-Staub der Zeilen ist kein Unterschied. Er landet auf
+        -- dem letzten cash-neutralen Lot (Datum <= Stichtag), sonst dem letzten: ein echter Kauf muss die Export-Stueck
+        -- exakt behalten, sonst findet Stufe 0 im Monats-Check ihn nicht und sperrt die Zeile (covered_by_takeover).
         IF v_sum <> v_h.take_shares AND abs(v_sum - v_h.take_shares) <= 0.00000001 * GREATEST(jsonb_array_length(v_lots), 1)
            AND jsonb_array_length(v_lots) > 0 THEN
-            v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
-                          to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum));
+            v_ix := finance.fn_takeover_dust_lot(v_lots, v_cut, v_h.take_date + 1);
+            v_lots := jsonb_set(v_lots, ARRAY[v_ix::text, 'shares'],
+                          to_jsonb((v_lots->v_ix->>'shares')::numeric + v_h.take_shares - v_sum));
             v_sum := v_h.take_shares;
         END IF;
         -- Kauf am Uebernahme-Tag, den die Uebernahme noch nicht enthielt (Broker zeigt den Sparplan-Kauf erst nach der
@@ -119,9 +151,10 @@ BEGIN
                       WHERE (r->>'date')::date < v_h.take_date))->'lots') l;
             IF v_n_b > 0 AND abs(v_sum_b - v_h.take_shares) <= 0.00000001 * v_n_b THEN
                 v_same := v_sum - v_sum_b;
-                -- Rundungs-Staub der Zeilen davor wie oben aufs letzte Lot: Summe = Uebernahme + Kaeufe des Tages exakt
-                v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
-                              to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum_b));
+                -- Rundungs-Staub der Zeilen davor auf ein Lot VOR dem Tag: Summe = Uebernahme + Kaeufe des Tages exakt
+                v_ix := finance.fn_takeover_dust_lot(v_lots, v_cut, v_h.take_date);
+                v_lots := jsonb_set(v_lots, ARRAY[v_ix::text, 'shares'],
+                              to_jsonb((v_lots->v_ix->>'shares')::numeric + v_h.take_shares - v_sum_b));
                 v_sum := v_h.take_shares + v_same;
             END IF;
         END IF;
@@ -133,15 +166,18 @@ BEGIN
 
         -- Plan je Lot (Kurs aus dem Kurswert, anteilige Gebuehr, Cash ja/nein); ein nicht buchbares Lot (z. B. FIFO-Rest
         -- unter 1 Cent) -> lots_not_bookable als DATEN, die Position bleibt unveraendert (nie RAISE im Probelauf)
-        SELECT jsonb_agg(jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
+        -- Ertrags-Lot (Kosten 0): eigene reward-Buchung ohne Kurs und ohne Geld (fn_replace_takeover_apply)
+        SELECT jsonb_agg(CASE WHEN l->>'kind' = 'reward'
+                   THEN jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric, 'reward', true, 'cash', false)
+                   ELSE jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
                    'price', finance.fn_unit_price_from_total((l->>'gross')::numeric, (l->>'orig')::numeric),
                    'fee', round((l->>'fee')::numeric * (l->>'shares')::numeric / (l->>'orig')::numeric, 2),
-                   'cash', v_cut IS NOT NULL AND (l->>'date')::date > v_cut) ORDER BY o)
+                   'cash', v_cut IS NOT NULL AND (l->>'date')::date > v_cut) END ORDER BY o)
         INTO v_lots FROM jsonb_array_elements(v_lots) WITH ORDINALITY AS x(l, o);
         SELECT string_agg(COALESCE(finance.fn_trade_amount_reason((l->>'shares')::numeric,
                               (l->>'shares')::numeric * (l->>'price')::numeric + (l->>'fee')::numeric),
                           CASE WHEN COALESCE((l->>'price')::numeric, 0) <= 0 THEN 'price missing' END), '; ')
-        INTO v_reason FROM jsonb_array_elements(v_lots) l;
+        INTO v_reason FROM jsonb_array_elements(v_lots) l WHERE (l->>'reward')::boolean IS DISTINCT FROM true;
         IF v_reason IS NOT NULL THEN
             v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'lots_not_bookable',
                 'reason', v_reason, 'takeover_shares', v_h.take_shares, 'export_shares', v_sum, 'difference', 0);
@@ -166,7 +202,7 @@ BEGIN
                    v_pl->>'symbol');
         v_cash_n := (v_r->>'cash_lots_count')::int;
 
-        SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'lots_count', jsonb_array_length(v_pl->'lots'),
+        SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'lots_count', (SELECT count(*) FROM jsonb_array_elements(v_pl->'lots') l WHERE (l->>'reward')::boolean IS DISTINCT FROM true),
                    'cash_lots_count', v_cash_n, 'shares', h.shares, 'avg_purchase_price', h.average_purchase_price,
                    'avg_before', (v_pl->>'avg_before')::numeric, 'same_day_shares', (v_pl->>'same_day_shares')::numeric,
                    'take_date', v_pl->>'take_date')
@@ -202,6 +238,9 @@ BEGIN
         v_card := v_card || (SELECT jsonb_agg(CASE WHEN m->>'code' = 'lots_not_bookable'
                       THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_not_bookable',
                                'params', jsonb_build_object('name', m->>'name'))
+                      WHEN m->>'code' = 'currency_mismatch'
+                      THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_currency_mismatch',
+                               'params', jsonb_build_object('name', m->>'name', 'currency', v_acct.currency))
                       ELSE jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_mismatch',
                                'params', jsonb_build_object('name', m->>'name',
                                    'difference', core.fn_ui_num((m->>'difference')::numeric, 8))) END)

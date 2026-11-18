@@ -21,6 +21,8 @@
 --     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
 --                     wie fn_create_loan first_rate_interest/_principal)
 --   Zeilen mit cost_origin (Ersteinrichtung) erscheinen je Position einmal: Stueck und Einstand summiert, x.lots_count, x.transaction_date = erster Kauf.
+--   reward-Zeilen (Staking der Ersteinrichtung) je Position einmal: Stueck summiert, x.symbol, x.rewards_count,
+--   x.date_from/x.date_to (erster/letzter Ertrag).
 --   name = Anzeige-Name der Zeile (name, sonst symbol, sonst die referenzierte Rente).
 --   Rueckgabe jsonb-Array (leer = '[]', nie NULL -> der Pg-Knoten liefert immer genau ein Item).
 -- ============================================================
@@ -142,7 +144,19 @@ BEGIN
     -- Ersteinrichtung: Kaeufe einer Position (cost_origin) auf der Karte zusammenfassen, je Position eine Zeile statt je Kauf
     SELECT COALESCE(jsonb_agg(e ORDER BY (e->>'row_no')::int), '[]'::jsonb) INTO v_out FROM (
         SELECT x AS e FROM jsonb_array_elements(v_out) x
-        WHERE x->>'entity_type' <> 'stock_buy' OR NULLIF(x->'p'->>'cost_origin', '') IS NULL
+        WHERE (x->>'entity_type' <> 'stock_buy' OR NULLIF(x->'p'->>'cost_origin', '') IS NULL) AND x->>'entity_type' <> 'reward'
+        UNION ALL
+        SELECT (first_row) || jsonb_build_object(
+                   'p', (first_row->'p') || jsonb_build_object('shares', shs),
+                   'x', (first_row->'x') || jsonb_build_object('symbol', finance.fn_holding_symbol(first_row->'p'->>'symbol', first_row->'p'->>'isin'),
+                                                               'rewards_count', n, 'date_from', d_from, 'date_to', d_to))
+        FROM (
+            SELECT (array_agg(x ORDER BY (x->>'row_no')::int))[1] AS first_row, count(*) AS n,
+                   min(x->'p'->>'transaction_date') AS d_from, max(x->'p'->>'transaction_date') AS d_to,
+                   sum((x->'p'->>'shares')::numeric) AS shs
+            FROM jsonb_array_elements(v_out) x
+            WHERE x->>'entity_type' = 'reward'
+            GROUP BY x->'p'->>'depot', COALESCE(x->'p'->>'isin', x->'p'->>'symbol')) r
         UNION ALL
         SELECT (first_row) || jsonb_build_object(
                    'p', (first_row->'p') || jsonb_build_object('shares', shs, 'price_per_share', finance.fn_unit_price_from_total(cost, shs), 'order_fee', fee),

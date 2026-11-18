@@ -94,8 +94,8 @@ BEGIN
         END;
     END IF;
 
-    -- Name ist Pflicht (ausser stock_buy = Buchung [symbol] und pension_statement [pension-Ref])
-    IF p_type NOT IN ('stock_buy','pension_statement') AND v_name IS NULL THEN
+    -- Name ist Pflicht (ausser stock_buy/reward = Buchung [symbol] und pension_statement [pension-Ref])
+    IF p_type NOT IN ('stock_buy','reward','pension_statement') AND v_name IS NULL THEN
         RETURN 'name is required';
     END IF;
 
@@ -103,7 +103,7 @@ BEGIN
     -- nur Bezeichnung, derselbe ETF in zwei Depots ist legitim. Mehrere Zeilen derselben Position (Depot + ISIN/Symbol)
     -- sind datierte Tranchen; eine undatierte oder gleiche Zeile meldet fn_import_bundle als Dublette ("appears more than once"),
     -- eine im Bestand schon gehaltene Position fn_book_stock_buy ("already holds").
-    IF v_name IS NOT NULL AND p_type <> 'stock_buy' THEN
+    IF v_name IS NOT NULL AND p_type NOT IN ('stock_buy', 'reward') THEN
         SELECT COUNT(*) INTO v_hits FROM finance.import_staging s
         WHERE s.batch_id = p_batch_id AND s.row_no <> p_row_no
           AND s.entity_type = p_type AND core.fn_name_key(s.payload->>'name') = core.fn_name_key(v_name)
@@ -199,6 +199,28 @@ BEGIN
         LIMIT 1;
         IF COALESCE(v_num, 0) > 0 THEN
             RETURN format('depot "%s" already holds %s units of %s - to correct a taken-over holding use tool_replace_holding_lots (name/symbol only: set_holding); remove this row', v_ref, v_num, finance.fn_holding_symbol(p->>'symbol', p->>'isin'));
+        END IF;
+
+    ELSIF p_type = 'reward' THEN
+        -- Staking-Ertrag (nur aus der Ersteinrichtung): Stueck ohne Kosten auf eine Position des Depots
+        IF finance.fn_holding_symbol(p->>'symbol', p->>'isin') IS NULL THEN
+            RETURN 'symbol (for crypto the coin symbol) or isin is required';
+        END IF;
+        v_ref := NULLIF(trim(COALESCE(p->>'depot','')), '');
+        IF v_ref IS NULL THEN RETURN 'depot (name of the depot account) is required'; END IF;
+        v_acct_type := finance.fn_import_ref_account_type(p_batch_id, v_ref);
+        IF v_acct_type IS NULL THEN
+            RETURN format('depot "%s" not found (neither existing nor in this batch)', v_ref);
+        ELSIF v_acct_type NOT IN ('stocks_depot','crypto_depot') THEN
+            RETURN format('depot "%s" is type %s — needs stocks_depot or crypto_depot', v_ref, v_acct_type);
+        ELSIF v_acct_type = 'stocks_depot' AND NULLIF(trim(COALESCE(p->>'isin','')),'') IS NULL THEN
+            RETURN 'isin is required for a stocks_depot position';
+        END IF;
+        v_num := NULLIF(p->>'shares','')::numeric;
+        IF v_num IS NULL OR v_num <= 0 THEN RETURN 'shares must be a positive number'; END IF;
+        IF v_num <> round(v_num, 8) THEN RETURN 'shares must have at most 8 decimal places'; END IF;
+        IF NULLIF(p->>'transaction_date','') IS NULL OR NOT pg_input_is_valid(p->>'transaction_date', 'date') THEN
+            RETURN 'transaction_date (ISO date of the reward) is required';
         END IF;
 
     ELSIF p_type = 'insurance' THEN

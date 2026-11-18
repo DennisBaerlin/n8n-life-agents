@@ -1,5 +1,7 @@
 -- ============================================================
--- fn_setup_effective_rows (READ, IMMUTABLE) -- Export-Zeilen + Antworten -> wirksame Kauf-/Verkaufszeilen
+-- fn_setup_effective_rows (READ, IMMUTABLE) -- Export-Zeilen + Antworten -> wirksame Kauf-/Verkaufs-/Ertragszeilen
+--   Ertraege (reward, Staking) zaehlen als Stueck-Zugang ohne Kosten; kanonische shares sind ohne Vorzeichen, die Art
+--   entscheidet (buy/reward +, sell -).
 --   Quellzeilen bleiben unveraendert, die Antworten liegen getrennt in setup_session.decisions; nur Zeilen bis p_cut zaehlen.
 --   Fusion (CORPORATE_ACTION/MERGER): genau ein Paar am Tag (alt negativ, neu positiv) und alte Stueck = Bestand -> die Zeilen
 --   der alten ISIN wandern auf die neue, Stueck anteilig, Einstand und Kaufdaten bleiben; ein Rundungsrest landet auf dem
@@ -36,7 +38,7 @@ BEGIN
     LOOP
         v_key := COALESCE(v_r->>'ext_ref', 'row' || (v_r->>'row_no'));
         v_type := NULL;
-        IF v_r->>'kind' IN ('buy', 'sell') THEN
+        IF v_r->>'kind' IN ('buy', 'sell', 'reward') THEN
             v_rows := v_rows || jsonb_build_array(v_r || '{"origin":"export"}'::jsonb);
         ELSIF v_r->>'category' = 'TRADING' AND v_r->>'type' = 'BUY' AND v_r->>'reason' = 'no_cash_amount'
               AND (v_r->>'shares')::numeric > 0 THEN
@@ -80,7 +82,7 @@ BEGIN
         v_key := 'merger:' || v_m.d;
         v_held := NULL;
         IF jsonb_array_length(COALESCE(v_m.olds, '[]'::jsonb)) = 1 AND jsonb_array_length(COALESCE(v_m.news, '[]'::jsonb)) = 1 THEN
-            SELECT COALESCE(sum(CASE WHEN x->>'kind' = 'buy' THEN 1 ELSE -1 END * round((x->>'shares')::numeric, 8)), 0) INTO v_held
+            SELECT COALESCE(sum(CASE WHEN x->>'kind' IN ('buy', 'reward') THEN 1 ELSE -1 END * round((x->>'shares')::numeric, 8)), 0) INTO v_held
             FROM jsonb_array_elements(v_rows) x
             WHERE x->>'isin' = v_old->>'isin' AND (x->>'date')::date <= v_m.d;
         END IF;
@@ -102,7 +104,7 @@ BEGIN
         INTO v_rows FROM jsonb_array_elements(v_rows) WITH ORDINALITY AS t(x, o);
 
         -- Rundungsrest: die Summe der neuen Stueck muss exakt der Datei entsprechen
-        SELECT COALESCE(sum(CASE WHEN x->>'kind' = 'buy' THEN 1 ELSE -1 END * (x->>'shares')::numeric), 0),
+        SELECT COALESCE(sum(CASE WHEN x->>'kind' IN ('buy', 'reward') THEN 1 ELSE -1 END * (x->>'shares')::numeric), 0),
                max(o - 1) FILTER (WHERE x->>'kind' = 'buy')
         INTO v_net, v_last
         FROM jsonb_array_elements(v_rows) WITH ORDINALITY AS t(x, o)

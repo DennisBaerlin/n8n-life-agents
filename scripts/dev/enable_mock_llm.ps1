@@ -177,6 +177,9 @@ $r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_llm')
 if ($r.Code -ne 0) { throw "mkdir /opt/mock_llm fehlgeschlagen: $($r.Output -join "`n")" }
 $r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
 if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
+# Datums-Platzhalter (tests/util/date_placeholder.js, eine JS-Adresse fuer beide Attrappen) neben server.js
+$r = Invoke-Native docker @('cp',(Join-Path $RepoRoot 'tests\util\date_placeholder.js'),"${Container}:/opt/mock_llm/date_placeholder.js")
+if ($r.Code -ne 0) { throw "docker cp date_placeholder.js fehlgeschlagen: $($r.Output -join "`n")" }
 Copy-Scenarios
 
 # --- 2) Mock als transiente systemd-unit starten (Reload: stop+start, um neue server.js zu ziehen) --

@@ -89,6 +89,7 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 . "$PSScriptRoot\lib\paid_guard.ps1"
+. "$PSScriptRoot\lib\next_step_marker.ps1"
 $llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 # Cleanup nur ueber die geguardete Function (in der Container-DB). Wirft bei Guard-Verletzung.
@@ -152,7 +153,7 @@ $obSeed = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c',
     'DO $$ DECLARE v text; BEGIN UPDATE agent.guide_onboarding_state SET status=''completed'' WHERE status<>''completed''; FOR v IN SELECT DISTINCT package FROM core.schema_version WHERE package<>''core'' LOOP IF to_regclass(format(''%I.onboarding_state'', v)) IS NOT NULL THEN EXECUTE format(''UPDATE %I.onboarding_state SET status=%L WHERE status<>%L'', v, ''completed'', ''completed''); END IF; END LOOP; END $$;')
 if ($obSeed.Code -ne 0) { throw "Onboarding-Seed (Core-first-Gate) fehlgeschlagen: $(($obSeed.Output | Where-Object { $_ }) -join ' ')" }
 
-$passed = 0; $failed = 0
+$passed = 0; $failed = 0; $judgeBundle = @()
 $completed = $false
 
 try {
@@ -240,7 +241,26 @@ try {
             Write-Host "    --- AI-Agent runData (Diagnose) ---" -ForegroundColor Yellow
             Write-Host "    $(Format-AgentRunData $ex.data.resultData.runData $AgentNodeName)" -ForegroundColor Yellow
             Write-Host "    -----------------------------------" -ForegroundColor Yellow
+        }        # Optional expected_behavior: die Antwort NACH der zugestimmten Karte geht an den Bewerter (judge_eval.ps1). Nur hier
+        # sieht ein Bewerter, was der Nutzer nach einem echten Write liest; die Routing-Stufe lehnt jede Karte ab.
+        if ($tc.PSObject.Properties['expected_behavior'] -and $tc.expected_behavior) {
+            $rd = $ex.data.resultData.runData
+            $calls = @(Get-ToolCall $rd $AgentNodeName)
+            $wCalls = @($calls | Where-Object { Test-IsWriteTool $_.tool })
+            $judgeBundle += [ordered]@{
+                id = $tc.id; name = $tc.name; task = $tc.task
+                expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
+                det_pass = ($actual -eq $exp -and $strictOk)
+                actual_tool = $(if ($wCalls.Count) { $wCalls[0].tool } else { $null })
+                actual_tool_input = (@($wCalls | ForEach-Object { $_.input }) -join "`n")
+                actual_tool_output = (Get-ReadToolOutput $rd -Write -PerCall 12000 -Total 24000)
+                read_tools = (@($calls | Where-Object { -not (Test-IsWriteTool $_.tool) } | ForEach-Object { $_.tool } | Select-Object -Unique) -join ', ')
+                read_tool_outputs = (Get-ReadToolOutput $rd)
+                actual_output = (Split-NextStepMarker (Get-AgentOutput $rd $AgentNodeName)).text
+            }
+            Write-Host "    [JUDGE] Antwort nach der Karte zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
         }
+
         } catch {
             $failed++
             Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Invoke-PaidRunCleanup -Container $Container -WorkflowId @($wfDef.id); Invoke-Clean }
@@ -267,6 +287,8 @@ Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$passed/$($cases.Count) E2E-Tests bestanden, $failed fehlgeschlagen." -ForegroundColor $color
+# Nur mit Rubrik-Faellen: ein E2E-Lauf ohne expected_behavior laesst das Bundle eines vorigen n8n_test-Laufs stehen.
+if ($judgeBundle.Count -gt 0) { Write-JudgeBundle -Entries $judgeBundle -RepoRoot $RepoRoot -Suite "e2e_test-$([System.IO.Path]::GetFileNameWithoutExtension($CasesFile))" }
 Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'e2e_test' -RepoRoot $RepoRoot
 Write-Host ""
 

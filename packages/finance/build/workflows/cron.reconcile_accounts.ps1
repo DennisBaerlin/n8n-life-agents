@@ -25,41 +25,19 @@ function Build-CronReconcileAccounts {
         'Paket aktiv UND cron_enable.reconcile_accounts' `
         'Erster Schritt: core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''reconcile_accounts'')=''true'' (DB entscheidet, fail-closed). Aus -> No-op. Läuft unter finance_ro (read-only). Toggle: lifeagents config set cron_enable reconcile_accounts false.' 280 400
 
-    # Eine Zeile: Stichtag (letzter Tag des Vormonats) + die faelligen Konten (Name, bestaetigt bis) + die Texte in
+    # Eine Zeile: finance.fn_statements_due() (die eine Regel "Auszug faellig", dieselbe liest der Bot) + die Texte in
     # Owner-Sprache (core.fn_ui_texts_for, an finance_ro gegrantet). Die Anzeige (Datum per Intl im Owner-Locale) baut
-    # 'Build message' — nie to_char (Format hinge an lc_numeric).
-    # Kandidaten = aktive cash-Konten mit Kontoauszug — Kontonummer bekannt, eine Bank angegeben
-    # (Bargeld hat keine) oder schon ein eingespielter Auszug. Faellig, wenn der bestaetigte Stand den Stichtag noch nicht
-    # erreicht: naechstes erwartetes Auszugs-Ende = letztes Auszugs-Ende + Laenge des letzten Auszugs in Monaten (ein
-    # Quartalsauszug fragt nur jedes Quartal), sonst COALESCE(last_reconciled_at, created_at) < Stichtag. Bei 0 Treffern
-    # unterdrueckt das IF die Nachricht (am 17. erscheinen nur noch die fehlenden Konten).
+    # 'Build message' - nie to_char (Format hinge an lc_numeric). Bei 0 Treffern unterdrueckt das IF die Nachricht
+    # (am 17. erscheinen nur noch die fehlenden Konten).
     $keys = Get-UiKeysSql (@('finance.dialog.monthly_check_intro', 'finance.dialog.monthly_check_line', 'finance.dialog.monthly_check_line_file',
         'finance.dialog.monthly_check_never', 'finance.dialog.monthly_check_howto', 'core.reminders.btn_off') + $script:UiRenderKeys)
     $find = Build-Pg 'Find overdue accounts' @(-240, 0) @"
-=WITH cut AS (
-    SELECT (date_trunc('month', CURRENT_DATE) - interval '1 day')::date AS d
-), acc AS (
-    SELECT a.name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS label, a.last_reconciled_at::date AS last_reconciled,
-           finance.fn_bank_export_account_profile(a.id) IS NOT NULL AS file_export,
-           CASE WHEN s.period_end IS NOT NULL
-                THEN (s.period_end + make_interval(months => GREATEST(round((s.period_end - s.period_start + 1) / 30.0)::int, 1)))::date
-                ELSE COALESCE(a.last_reconciled_at, a.created_at::date) + 1 END AS next_due
-    FROM finance.accounts a
-    LEFT JOIN LATERAL (SELECT b.period_start, b.period_end FROM finance.bank_statements b
-                       WHERE b.account_id = a.id ORDER BY b.period_end DESC LIMIT 1) s ON true
-    WHERE a.status = 'active'
-      AND a.account_type = 'cash'
-      AND (a.account_number IS NOT NULL OR NULLIF(trim(a.bank), '') IS NOT NULL OR s.period_end IS NOT NULL)
-)
-SELECT
-    (SELECT d FROM cut) AS cut_date,
-    (SELECT count(*)::int FROM acc WHERE next_due <= (SELECT d FROM cut)) AS overdue_count,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('name', name, 'label', label, 'last_reconciled', last_reconciled, 'file_export', file_export)
-                               ORDER BY last_reconciled NULLS FIRST, name)
-              FROM acc WHERE next_due <= (SELECT d FROM cut)), '[]'::jsonb) AS accounts,
-    core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys))) AS ui;
+=SELECT d->'cut_date' AS cut_date,
+       jsonb_array_length(d->'accounts') AS overdue_count,
+       d->'accounts' AS accounts,
+       core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys))) AS ui
+FROM (SELECT finance.fn_statements_due() AS d) x;
 "@ $null
-
     $ifAny = Build-If 'Any overdue?' @(0, 0) "={{ `$json.overdue_count }}" '0' 'larger' 'number'
 
     # Text im Owner-Locale (geteilter Renderer, Datum per Intl); Kontonamen = Daten (escapt der Send-Helper).
@@ -68,7 +46,7 @@ const m = $('Find overdue accounts').first().json;
 const U = uiRender(m.ui || {});
 const rows = Array.isArray(m.accounts) ? m.accounts : [];
 const lines = rows.map((r) => U.fill(U.t(r.file_export ? 'finance.dialog.monthly_check_line_file' : 'finance.dialog.monthly_check_line'), {
-  name: r.label, date: r.last_reconciled ? { kind: 'date', value: r.last_reconciled } : U.t('finance.dialog.monthly_check_never') }));
+  name: r.label, date: r.covered_until ? { kind: 'date', value: r.covered_until } : U.t('finance.dialog.monthly_check_never') }));
 const intro = U.fill(U.t('finance.dialog.monthly_check_intro'), { date: { kind: 'date', value: m.cut_date } });
 // Datei-Export-Bank (finance.fn_bank_export_account_profile): der Schritt steht in der Kontozeile, die PDF-Anleitung nur bei PDF-Konten
 const howto = rows.some((r) => !r.file_export) ? '\n\n' + U.t('finance.dialog.monthly_check_howto') : '';
@@ -92,7 +70,7 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -300) `
         'Monats-Check-Erinnerung (3. und 17. des Monats, kein LLM, kein Write)' `
-        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Kandidaten: aktive cash-Konten mit Kontoauszug (Kontonummer bekannt, Bank angegeben oder schon ein Auszug eingespielt; Bargeld ohne Bank fällt raus). Fällig, wenn der bestätigte Stand den Stichtag (letzter Tag des Vormonats) nicht erreicht: nächstes erwartetes Auszugs-Ende = letztes Auszugs-Ende + dessen Länge in Monaten (ein Quartalsauszug fragt nur jedes Quartal). Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 600
+        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Welche Konten fällig sind, entscheidet allein finance.fn_statements_due() (Stichtag letzter Tag des Vormonats; gedruckte Auszüge folgen dem Takt ihrer Bank, Datei-Exporte müssen den Monat bis zum Ende abdecken). Dieselbe Regel liest der Bot, wenn jemand fragt, welcher Auszug fehlt. Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 600
 
     $stickyDesign = Build-Sticky 'Workflow danach' @(0, 160) `
         'Ein PDF -> eine Karte -> ein atomarer Write' `

@@ -15,8 +15,8 @@
 --     Zeilen VOR dem Tag exakt und gibt es am Tag nur Kaeufe, enthielt die Uebernahme sie noch nicht (Broker zeigt den Kauf
 --     erst nach der Abwicklung) -> sie kommen als Lots dazu (same_day_shares, Bestand waechst), sonst blieben sie ungebucht.
 --   Ersetzen: alle Lots in einer neuen group_id ueber fn_replace_takeover_apply (fn_book_takeover_pair; ein Write = eine group_id = ein Void).
---     Lot-Datum <= bestaetigter Kontostand-Tag des Verrechnungskontos (GREATEST(last_reconciled_at,
---     opening_balance_date); keiner gesetzt = alle) -> cash-neutrales Uebernahme-Paar (der Stand enthaelt den Kauf schon);
+--     Lot-Datum <= bestaetigter Kontostand-Tag des Verrechnungskontos (finance.fn_account_confirmed_until;
+--     keiner gesetzt = alle) -> cash-neutrales Uebernahme-Paar (der Stand enthaelt den Kauf schon);
 --     spaeter -> echter Kauf (Cash-Abfluss, der Stand enthaelt ihn noch nicht) -- der
 --     Monats-Check erkennt ihn danach in Stufe 0 als schon gebucht, ein Kauf bis zum Uebernahme-Datum wird dort nie
 --     gebucht (covered_by_takeover) -> nie doppelt.
@@ -80,7 +80,7 @@ BEGIN
         RETURN v_norm;
     END IF;
     SELECT * INTO v_acct FROM finance.accounts WHERE id = (v_norm->>'account_id')::int;
-    v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
+    v_cut := finance.fn_account_confirmed_until(v_acct.id);
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_acct.id FOR UPDATE;
     v_before := finance.fn_get_balance(v_acct.id);
 

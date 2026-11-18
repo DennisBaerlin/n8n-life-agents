@@ -338,6 +338,16 @@ BEGIN
     IF finance.fn_bank_export_account_profile(v_a) IS DISTINCT FROM 'trade_republic_v1' THEN
       RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_bank_export_account_profile]'; END IF;
     RESET ROLE;
+    -- Vorab-Leser der Tabellen-Datei (tool_get_bank_export_facts) und die Faelligkeits-Regel (Cron + Bot) unter finance_ro
+    SET LOCAL ROLE finance_ro;
+    v_res := finance.fn_bank_export_facts(jsonb_build_object('table', jsonb_build_object('rows',
+                jsonb_build_array('["datetime","category","type","amount","currency","transaction_id"]'::jsonb) ||
+                jsonb_build_array(jsonb_build_array((CURRENT_DATE - 3)::text, 'CASH', 'CARD_TRANSACTION', '-7.50', 'EUR', 'r-2')))));
+    PERFORM finance.fn_account_confirmed_until(v_a);
+    PERFORM finance.fn_statements_due();
+    RESET ROLE;
+    IF (v_res->>'recognised')::boolean IS DISTINCT FROM true THEN
+      RAISE EXCEPTION 'FAIL [finance_ro -> fn_bank_export_facts]: %', v_res; END IF;
     -- (2-hl) Bestand durch eingetippte Einzelkaeufe ersetzen: tool_replace_holding_lots laeuft unter finance_rw (Positionssuche,
     -- Probelauf mit Karte ueber core.fn_ui_*, Tausch ueber fn_replace_takeover_apply + fn_void_transaction)
     DECLARE v_dep INT; v_lots JSONB; BEGIN

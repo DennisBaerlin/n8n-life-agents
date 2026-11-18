@@ -109,7 +109,7 @@ Format im Start-Node (`executeWorkflowTrigger`):
 
 ## Scheduled Workflows — Beispiel `cron_reconcile_accounts`
 
-Monats-Check-Erinnerung (3. und 17., `schedule.reconcile_accounts`): fällig ist ein aktives `cash`-Konto mit Kontoauszug (Kontonummer, Bank oder schon ein Auszug), dessen bestätigter Stand den Stichtag (letzter Tag des Vormonats) nicht erreicht; mit Auszug-Historie gilt der Takt des letzten Auszugs (Quartalsauszug fragt nur jedes Quartal). Alles in EINER Query gegen die Basistabellen (`finance.accounts` + `finance.bank_statements`), kein `fn_*`, keine Schwelle in der Config (ein Fakt: der Takt steckt im Auszug). Der Text (Konten, Stichtag, Schritt-für-Schritt-Anleitung) kommt aus dem Katalog in Owner-Sprache; die Antwort ist ein PDF an den Bot → `tool_reconcile_bank_statement`.
+Monats-Check-Erinnerung (3. und 17., `schedule.reconcile_accounts`): welches Konto fällig ist, entscheidet allein `finance.fn_statements_due()` (Regel im fn-Kopf, Test `test_fn_statements_due.sql`); dieselbe fn liest der Bot, wenn jemand fragt, welcher Auszug fehlt. Gedruckte Auszüge folgen dem Takt ihrer Bank, Datei-Exporte müssen den Monat bis zum Stichtag abdecken (ihr Zeitraum endet am Importtag − 1 und sagt nichts über einen Takt). Keine Schwelle in der Config. Der Text (Konten, Stichtag, Schritt-für-Schritt-Anleitung) kommt aus dem Katalog in Owner-Sprache; die Antwort ist ein PDF an den Bot → `tool_reconcile_bank_statement`.
 
 ## Tool-Bau — Mechanik
 

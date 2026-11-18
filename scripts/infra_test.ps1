@@ -17,7 +17,8 @@
 #   Hinweis fehlschlaegt (statt gegen eine fehlende Attrappe zu laufen); der Body-Platzhalter __OWNER_CHAT_ID__ pairt den
 #   Substrat-Owner deterministisch (Set-OwnerTelegramPairing, uid $TestOwnerTelegramUid wie mock_route_test) und setzt die uid ein,
 #   fuer Pfade, die einen aufgeloesten Haushalts-Absender brauchen (agent.sub_dispatch_tool: core.fn_resolve_service
-#   ist fail-closed fuer unbekannte Absender).
+#   ist fail-closed fuer unbekannte Absender). agent_state: true = der Fall prueft einen Knoten hinter den Agenten-Toren;
+#   vorher Fixture-Seed, Owner-Pairing und abgeschlossenes Onboarding (Initialize-AgentTestState wie mock_route_test).
 #
 # Usage:  .\scripts\infra_test.ps1 [-Id ic01] [-Timeout 30] [-Verbose]
 # Exit-Code = Anzahl Fehler; 1 ohne Lauf, wenn ein Mock fehlt, den ein gewaehlter Fall verlangt (`requires`).
@@ -157,6 +158,14 @@ foreach ($tc in $cases) {
         if (@($tc.requires) -contains 'mock_llm') {
             try { Assert-LlmGatewayUpstream -Container $conn.Container -Expect mock }
             catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
+        }
+
+        # agent_state: der Fall prueft einen Knoten hinter den Agenten-Toren (Core-first, Paket-Onboarding) -> Fixtures,
+        # Pairing und abgeschlossenes Onboarding wie mock_route_test; sonst endet der Lauf am Core-first-Tor des frischen Substrats.
+        if ($tc.PSObject.Properties['agent_state'] -and $tc.agent_state) {
+            Initialize-AgentTestState -Container $conn.Container -RepoRoot $RepoRoot
+            Set-TestHouseholdOnboarding -Container $conn.Container -Status 'completed'
+            Set-TestPackageOnboarding -Container $conn.Container -Sections $null
         }
 
         $webhookUrl = "$N8N_URL/webhook/$($tc.harness_path)"

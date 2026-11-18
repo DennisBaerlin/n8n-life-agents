@@ -1382,6 +1382,28 @@
     "final": "Das ist ein Trade-Republic-Export fuer das Testbroker Cash Girokonto. Welchen Kontostand zeigt dir die App dort gerade?"
   },
   {
+    "_comment": "tc164 Tabellen-Datei mit Vorab-Ergebnis des Workflows (Abschnitt Bank export file im System-Prompt, Beweis der Verdrahtung: Infra-Faelle ic46a-c) -> tool_import_bank_export ohne geratenes Konto.",
+    "match": "Kannst du das bitte einlesen? [attachment file_id=mock_photo_083",
+    "calls": [
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_photo_083" } }
+    ],
+    "final": "Das ist ein Trade-Republic-Export fuer das Testbroker Cash Girokonto. Welchen Kontostand zeigt dir die App dort gerade?"
+  },
+  {
+    "_comment": "tc166 Tabellen-Datei mit Dauerauftrags-Frage (ext=csv) -> tool_import_recurring_suggestions, das Vorab-Ergebnis legt das Werkzeug nicht fest.",
+    "match": "schau in diesen Export, welche Dauerauftraege mir noch fehlen",
+    "calls": [
+      { "tool": "tool_import_recurring_suggestions", "args": { "file_id": "mock_photo_083" } }
+    ],
+    "final": "Der Trade-Republic-Export ist zu alt fuer Vorschlaege. Schick mir bitte einen aktuellen Export ueber mindestens drei Monate."
+  },
+  {
+    "_comment": "tc165 Welcher Auszug fehlt -> kein Write; die Regel (finance.fn_statements_due) prueft der bezahlte Tier an der Antwort.",
+    "match": "Fuer welche Konten fehlt mir noch ein Kontoauszug",
+    "calls": [],
+    "final": "Fuer __E2E__ SD Kurz fehlt noch ein Auszug bis zum Monatsende."
+  },
+  {
     "_comment": "tc86 Befund 2026-10-30: Export-CSV fuer ein genanntes Konto einer anderen Bank -> export_account_mismatch -> Rueckfrage mit dem Kandidaten.",
     "match": "Hier ist der Umsatz-Export fuer mein Lindenbank Giro",
     "calls": [

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Selbsttest der Datums-Platzhalter {{date:<offset>[@<tag>]}} (Grammatik: scripts/lib/date_placeholder.ps1). Kein Substrat, keine Kosten.
 # Dieselben Pruefwerte (tests/util/date_placeholder_vectors.json, u. a. Monats- und Jahreswechsel) laufen gegen die PowerShell-Seite
-# und gegen den JS-Zwilling in tests/mock_llm/server.js (node lokal, sonst Docker-Image des workflow_lint).
+# und gegen den JS-Zwilling tests/util/date_placeholder.js (ueber tests/mock_llm/server.js; node lokal, sonst Docker-Image des workflow_lint).
 # Usage:  .\scripts\dev\date_placeholder_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -64,6 +64,14 @@ try {
 Assert-That ((Get-DatePlaceholderReferenceDay -StateFile (Join-Path ([System.IO.Path]::GetTempPath()) 'dpt_gibtes_nicht.json')) -eq [datetime]::UtcNow.Date) 'ohne State-Datei: UTC-Datum'
 $src = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\enable_mock_llm.ps1'), $Utf8NoBom)
 Assert-That ($src -match 'MOCK_LLM_TODAY=\$MockToday' -and $src -match 'today = \$MockToday') 'enable_mock_llm setzt MOCK_LLM_TODAY am Mock und mock_llm.today im State'
+# Eine JS-Adresse (tests/util/date_placeholder.js): beide Attrappen laden sie, keine eigene Kopie der Grammatik, beide
+# enable-Skripte kopieren sie neben server.js (sonst fehlte sie im Container).
+foreach ($m in @('mock_llm', 'mock_telegram')) {
+    $js = [System.IO.File]::ReadAllText((Join-Path $repo "tests\$m\server.js"), $Utf8NoBom)
+    Assert-That ($js.Contains("require('./date_placeholder.js')") -and -not ($js -match 'function datePlaceholderValue')) "$m (server.js) laedt das gemeinsame Platzhalter-Modul statt einer eigenen Kopie"
+    $en = [System.IO.File]::ReadAllText((Join-Path $repo "scripts\dev\enable_$m.ps1"), $Utf8NoBom)
+    Assert-That ($en.Contains("tests\util\date_placeholder.js") -and $en.Contains("/opt/$m/date_placeholder.js")) "enable_$m.ps1 kopiert das Modul neben server.js"
+}
 
 Write-Host "JS (tests/mock_llm/server.js)"
 $node = Get-Command node -ErrorAction SilentlyContinue

@@ -1,0 +1,377 @@
+{
+    "id":  "eDshBe1EpXRW73YH",
+    "name":  "agent.finance.tool_get_bank_export_facts",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "file_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "d96ad7d0-cb0f-55da-b87a-69f41d57134a",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Start\u0027).item.json.file_id }}",
+                                                                              "accept":  "table"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "11ee2760-8601-58ad-8764-e783b4034b33",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "41538410-574a-583f-8753-477068e440c9",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "f7e2ebe8-d1c7-5da3-a036-383d194eb468",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "419e09a2-4b88-56ed-98d3-0249e17376e6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6fd9dbb2-2ee9-5212-865f-b81578e4254e",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "2c8543ed-b450-59fa-9928-8ec85d123ad3",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const f = $(\u0027Fetch telegram file\u0027).first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m, rows: [] } }];\nconst cell = (v) =\u003e (v === null || v === undefined) ? \u0027\u0027 : String(v);\nif (Array.isArray(f.rows) \u0026\u0026 f.rows.length) {\n  const grid = f.rows.map((r) =\u003e (Array.isArray(r) ? r : []).map(cell));\n  if (grid.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\n  return [{ json: { ok: true, rows: grid, row_count: grid.length } }];\n}\nconst t = String(f.text || \u0027\u0027);\nif (!t.trim()) return fail(\u0027not_an_export\u0027, \u0027This file is not a bank export (it is a photo or PDF). A printed bank statement goes to tool_reconcile_bank_statement.\u0027);\nconst head = t.split(/\\r?\\n/, 20).join(\u0027\\n\u0027);\nconst delim = head.split(\u0027;\u0027).length \u003e head.split(\u0027,\u0027).length ? \u0027;\u0027 : \u0027,\u0027;\nconst rows = []; let row = []; let fld = \u0027\u0027; let q = false;\nfor (let i = 0; i \u003c t.length; i++) {\n  const c = t[i];\n  if (q) { if (c === \u0027\"\u0027) { if (t[i + 1] === \u0027\"\u0027) { fld += \u0027\"\u0027; i++; } else q = false; } else fld += c; }\n  else if (c === \u0027\"\u0027) q = true;\n  else if (c === delim) { row.push(fld); fld = \u0027\u0027; }\n  else if (c === \u0027\\n\u0027 || c === \u0027\\r\u0027) { if (c === \u0027\\r\u0027 \u0026\u0026 t[i + 1] === \u0027\\n\u0027) i++; row.push(fld); rows.push(row); row = []; fld = \u0027\u0027; }\n  else fld += c;\n}\nif (fld !== \u0027\u0027 || row.length) { row.push(fld); rows.push(row); }\nif (rows.length \u003c 2 || !rows.some((r) =\u003e r.length \u003e= 2)) return fail(\u0027export_invalid\u0027, \u0027The file has no readable table (header row missing).\u0027);\nif (rows.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\nreturn [{ json: { ok: true, rows, row_count: rows.length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "ca7bedbe-cb18-5fb8-b70b-35bead298025",
+                      "name":  "Read table"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "95973cf3-a89d-5a90-9fda-db29431641f6",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "531d3362-3e5e-5293-be47-832e5e7adc2f",
+                      "name":  "Table read?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0f4f9e4b-14d7-5418-8ca5-de27c88a6b0f",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6360f522-2cc2-5377-8d19-92a6b8aeb582",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8d58f524-56a0-500c-b120-0881c62dfa38",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "d337c2ec-64f8-5d46-aca3-5d193da9d176",
+                      "name":  "Not an export"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_bank_export_facts($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "02abe506-70b8-5e55-9615-e5ced0d2dd49",
+                      "name":  "Read facts",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RO__",
+                                                           "name":  "Postgres finance_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e45e787b-3729-57ee-8086-68533bed26d3",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ !!($json.r \u0026\u0026 $json.r.ok) }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9c038c9b-71e6-5ac4-8343-0e29e447a831",
+                                                                                     "name":  "recognised",
+                                                                                     "value":  "={{ !!($json.r \u0026\u0026 $json.r.recognised) }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c27c758e-3385-57f0-8aac-48710d0af16c",
+                                                                                     "name":  "facts",
+                                                                                     "value":  "={{ $json.r || {} }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "fb7c32c4-82c1-53bb-8eb4-6bc18fe79f1d",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Tabellen-Datei vor dem Modell erkennen (nur lesen, kein LLM)**\n\nAufrufer: agent.finance (Knoten Read bank export facts), nur wenn der Auftrag einen Marker mit ext=csv, xlsx oder xls trägt; nur die erste solche Datei. Fetch telegram file + Read table = der geteilte Leser (bank_export_table.ps1). Read facts (finance_ro) = finance.fn_bank_export_facts: Profil, Bank, das Konto der Datei bzw. die Kandidaten (Namen), bestätigt bis, Zeitraum und Zeilenzahl. Nie Zeilen-Inhalte: das Ergebnis landet im System-Prompt. Unbekannte oder kaputte Datei -\u003e recognised false bzw. ok false; der Agent läuft dann ohne Abschnitt weiter.",
+                                         "height":  460,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       220,
+                                       -460
+                                   ],
+                      "id":  "f92c876c-8356-52de-84d4-7d0a25e3eb07",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch telegram file",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Read table",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Read table":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Table read?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Table read?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Read facts",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Not an export",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Read facts":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Return",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

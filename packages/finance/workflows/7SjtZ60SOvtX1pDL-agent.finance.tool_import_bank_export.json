@@ -1264,60 +1264,72 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "7762681d-f36c-54a7-9e24-0010a82b5904",
+                                                                                     "name":  "balance_at_period_end",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_at_period_end }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cb9bd718-b378-5d6f-af2c-27e08b90ed6e",
+                                                                                     "name":  "after_period",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.after_period || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "23f825a5-5400-53fe-968a-55ddf8420e72",
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "cb9bd718-b378-5d6f-af2c-27e08b90ed6e",
+                                                                                     "id":  "f929b224-6501-5e79-adbd-149b7eff7a74",
                                                                                      "name":  "trades_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_booked || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "23f825a5-5400-53fe-968a-55ddf8420e72",
+                                                                                     "id":  "39df9235-efe6-5e37-b06e-540a59e25540",
                                                                                      "name":  "trades_not_booked",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.trades_blocked || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f929b224-6501-5e79-adbd-149b7eff7a74",
+                                                                                     "id":  "44ac8387-1a82-5e17-8442-4a621d9bb9c7",
                                                                                      "name":  "unknown_export_rows",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.export_unknown || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "39df9235-efe6-5e37-b06e-540a59e25540",
+                                                                                     "id":  "a27eb8c4-759c-5fda-9362-00f74898c739",
                                                                                      "name":  "positions_replaced_by_purchases",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).replaced || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "44ac8387-1a82-5e17-8442-4a621d9bb9c7",
+                                                                                     "id":  "f11f0bf8-f685-50c3-97d1-f8e270bf823f",
                                                                                      "name":  "positions_not_matching_export",
                                                                                      "value":  "={{ $(\u0027Preview lots\u0027).isExecuted ? ($(\u0027Preview lots\u0027).first().json.r.mismatched || []) : [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a27eb8c4-759c-5fda-9362-00f74898c739",
+                                                                                     "id":  "d645b22b-bad6-564c-bc39-fa20f753b324",
                                                                                      "name":  "purchases_cash_effect",
                                                                                      "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).settlement_change || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f11f0bf8-f685-50c3-97d1-f8e270bf823f",
+                                                                                     "id":  "57a7a418-fede-5a5c-9e25-88ab6ec4a926",
                                                                                      "name":  "interest_correction",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.interest_correction || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d645b22b-bad6-564c-bc39-fa20f753b324",
+                                                                                     "id":  "d3c76bcc-4580-5e35-bbb8-25fe3bb54d83",
                                                                                      "name":  "legacy_returns",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.legacy_returns || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "57a7a418-fede-5a5c-9e25-88ab6ec4a926",
+                                                                                     "id":  "056fd789-4a05-548a-bf60-1f17cb53911b",
                                                                                      "name":  "provider_payments_unassigned",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.pool_unassigned || 0 }}",
                                                                                      "type":  "number"

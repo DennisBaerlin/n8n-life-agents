@@ -20,11 +20,12 @@
 # per provision.sh den Rest ein und startet n8n und gateway selbst (`up -d --no-deps`): n8n braucht die erzeugte
 # Patch-Datei, gateway seine Env-Datei — beide gibt es vor dem ersten Lauf nicht.
 #
-# PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
-# nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
-# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (nur ohne Release-Pin, x-images.master). Optional:
-# LA_TS_HOSTNAME (Tailscale-Name aus zwei Woertern, einmal gezogen von der Start-App aus lib/ts_names.json; `bot` nur als
-# Rueckfall; Zertifikats-Protokolle sind oeffentlich).
+# PFLICHT-VARIABLEN (setzt der Kern, lib/stack_core.sh, aus seiner Werte-Datei im Volume var_la; der master bekommt dieselben,
+# damit sein `docker compose` die Container nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei
+# freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den Datenbank-Container, nie ausgeben: `config --quiet`),
+# LA_MASTER_IMAGE (das Abbild des Kerns in der Schreibweise des Release-Pins, x-images.master). Optional: LA_TS_HOSTNAME
+# (Tailscale-Name aus zwei Woertern, einmal gezogen vom Kern aus lib/ts_names.json; `bot` nur als Rueckfall;
+# Zertifikats-Protokolle sind oeffentlich).
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
 name: lifeagents

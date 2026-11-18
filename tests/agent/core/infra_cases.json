@@ -695,5 +695,21 @@
     "must_not_contain": null,
     "must_equal": "not_installed",
     "notes": "Reihenfolge: erst Paketstatus, dann audience; mit audience all greift das Kinder-Tor nie (Agenten fuer alle, z. B. der Haushalt-Knopf zum Hilfe-Agenten)."
+  },
+  {
+    "id": "ic46a", "name": "Tabellen-Datei vor dem Modell: erkannter Export -> Vorab-Ergebnis im Auftrag", "requires": ["mock_telegram", "mock_llm"],
+    "harness_path": "finance-test", "target_name": "agent.finance",
+    "body": { "task": "Kannst du das bitte einlesen? [attachment file_id=mock_photo_083 type=document ext=csv]", "chat_id": "test_ic46a", "call_depth": 0 },
+    "check_node": "Build Agent Input", "check_field": "task",
+    "must_be_nonempty": null, "must_contain": "[bank_export file_id=mock_photo_083 recognised=true bank=Trade Republic", "must_not_contain": null, "must_equal": null,
+    "notes": "Befund 2026-11-17 (Eigenschaft: Tabellen-Datei ohne Werkzeug beantwortet, Bank geraten). agent.finance liest Dateien mit ext=csv/xlsx/xls vor dem Modell (fn_bank_export_identify) und haengt das Ergebnis als [bank_export ...]-Zeile an den Auftrag: Bank, Konto bzw. Kandidaten kommen aus der DB. Fixture mock_photo_083.csv (Trade Republic). Routing danach: finance_cases tc164."
+  },
+  {
+    "id": "ic46b", "name": "Tabellen-Datei vor dem Modell: unbrauchbare Datei -> Auftrag unveraendert, kein Abbruch", "requires": ["mock_telegram", "mock_llm"],
+    "harness_path": "finance-test", "target_name": "agent.finance",
+    "body": { "task": "Hier ist mein Export [attachment file_id=mock_xlsname_ole type=document ext=xls]", "chat_id": "test_ic46b", "call_depth": 0 },
+    "check_node": "Build Agent Input", "check_field": "task",
+    "must_be_nonempty": null, "must_contain": "[attachment file_id=mock_xlsname_ole type=document ext=xls]", "must_not_contain": "[bank_export", "must_equal": null,
+    "notes": "Gegenstueck zu ic46a: echtes altes .xls (OLE) liest der Tabellen-Leser nicht -> keine Vorab-Zeile, der Auftrag geht unveraendert ans Modell (wie mt03 Turn 1). Bleibt auch vor dem Fix gruen (Waechter gegen einen Abbruch)."
   }
 ]

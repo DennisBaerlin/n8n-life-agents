@@ -26,6 +26,7 @@ Für das Regelwerk selbst (CLAUDE.md, Regeln, Skills) gibt es das eingebaute `/d
 - `SECURITY DEFINER`: `search_path` gepinnt, voll-qualifizierte Namen, kein dynamisches SQL, `REVOKE … FROM public` und gezielte `GRANT`s; Rollen ohne Zugriff auf fremde Schemas.
 - Das LLM rechnet nicht: keine abgeleiteten Größen als Tool-Input; Datums-Keys über `core.fn_resolve_input_dates`.
 - Zu jeder `fn_*` und jeder Invariante ein Test in `tests/db/<pkg>/`; `docs/fn_catalog.md` ist generiert, nicht von Hand geändert.
+- Zustand gegen Vorschau: Jede `fn`, die eine Quelle von Datum, Frist oder Betrag ändert, wird in einem `test_prop_*` aufgerufen, der den gespeicherten Zustand mit der abgeleiteten Vorschau vergleicht. Funktion für Funktion zu lesen findet diese Fehlerart nicht. Fehlt so ein Test oder steht die `fn` nur auf der Ausnahmeliste von `prop_test_lint`, ist das ein Fund.
 - Migrations-Modell: eine Function je `R__`-Datei, Init und `R__` synchron.
 
 **Workflows** (`packages/*/build/workflows/`, Gesetze `packages/CLAUDE.md` *Workflow-Bau*, *Build-Gotchas*)

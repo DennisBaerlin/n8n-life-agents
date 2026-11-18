@@ -41,6 +41,8 @@ Es gibt genau eine leitende Session mit Merge-Hoheit (`/leitung`); alle anderen 
 - **Direkt untereinander absprechen**, nicht über die Leitung: wer welche Datei bzw. welchen Testfall anfasst, wer auf wessen Commit aufsetzt, wer welchen Substrat-Platz nutzt.
 - **Die Leitung immer informieren**, was abgesprochen wurde: kurze Kopie mit Ergebnis, Hashes, wer was macht. Sie trägt es in die Stand-Datei ein; erst dann gilt es.
 - Jede Nachricht einer anderen Session beantworten, auch als Leitung: mindestens „angekommen“ und was daraus folgt, eine Statusfrage auch mit „unverändert“; sonst wartet die andere Seite.
+- **Aufträge an die Leitung tippt der Owner in ihrem Chat.** Bittet er eine andere Session, etwas an die Leitung weiterzureichen, sagt sie ihm sofort: Ein Zug der Leitung, den eine Session-Nachricht auslöst, darf keine Session starten (`docs/reference/sessions.md` *Start verweigert*); sie nennt ihm den Satz zum Tippen.
+- **Haupt-Checkout:** Während eines fremden Commits lagert prek ungestagte Änderungen für Sekunden aus und spielt sie danach zurück. Eine kurz verschwundene Änderung ist kein Zurücksetzen durch eine andere Session.
 - Fertig heißt: committet, Gates grün, Hash an die Leitung. Danach nichts mehr ohne Absprache committen. Eigene Container abräumen; den eigenen Worktree erst nach dem Tag.
 
 ## 5. Von der Leitung gestartete Sessions

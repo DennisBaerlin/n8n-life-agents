@@ -48,7 +48,7 @@ Der Auslieferungs-Kern läuft byte-identisch im Test-Substrat (systemd-Docker-Co
 
 ## Backup/Restore
 
-- Nur die Nutzerdaten-Teilmenge aus dem Manifest-`backup`-Block; `pg_dump` ignoriert `-n`, sobald `-t` gesetzt ist. Restore ist atomar (eine `psql -1`-TX); Entschlüsselung, Pre-Flight und Version-Gate laufen vor dem Wipe; Cross-Version bewusst nicht unterstützt.
+- Nur die Nutzerdaten-Teilmenge aus dem Manifest-`backup`-Block; `pg_dump` ignoriert `-n`, sobald `-t` gesetzt ist. Restore ist atomar (eine `psql -1`-TX); Entschlüsselung, Pre-Flight und Aufbau-Abgleich (`_bkp_schema_check`) vor dem Wipe; Unpassendes bricht ab.
 
 ## LLM-Gateway
 

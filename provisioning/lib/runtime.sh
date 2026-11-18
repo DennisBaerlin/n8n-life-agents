@@ -233,14 +233,16 @@ rt_wait_healthy() {
 # rt_volumes_ensure — die zustandsfuehrenden Volumes anlegen (external in compose.yml, also nicht von Compose). Ein Volume
 # mit unserem Namen ohne unser Label gehoert jemand anderem -> Abbruch, nie uebernehmen. rc 0 = alle da.
 rt_volumes_ensure() {
-  local v name lbl
+  local v name lbl rc
   for v in $LA_STATE_VOLUMES; do
     name="${LA_PROJECT}_${v}"
-    if lbl="$(rt_volume_label "$name")"; then
-      [ "$lbl" = "$LA_PROJECT" ] || die "Volume ${name} existiert, gehört aber nicht zu dieser Installation (Label ${LA_LABEL} fehlt) — nichts geändert."
-    else
-      docker volume create --label "${LA_LABEL}=${LA_PROJECT}" "$name" >/dev/null || die "Volume ${name} ließ sich nicht anlegen."
-    fi
+    rc=0; lbl="$(rt_volume_label "$name")" || rc=$?
+    case "$rc" in
+      0) [ "$lbl" = "$LA_PROJECT" ] || die "Volume ${name} existiert, gehört aber nicht zu dieser Installation (Label ${LA_LABEL} fehlt) — nichts geändert." ;;
+      1) docker volume create --label "${LA_LABEL}=${LA_PROJECT}" "$name" >/dev/null || die "Volume ${name} ließ sich nicht anlegen." ;;
+      # `volume create` auf einen vorhandenen Namen gaebe dieses Volume ungeprueft zurueck (auch ein fremdes).
+      *) die "Volume ${name} ließ sich nicht prüfen (Docker-Fehler) — nichts angelegt." ;;
+    esac
   done
 }
 # rt_stack_config_check — Prueft die Compose-Datei samt Interpolation (Pruefliste Nr. 13), ohne sie auszugeben: die
@@ -357,13 +359,12 @@ rt_docker_mem() { docker info --format '{{.MemTotal}}' 2>/dev/null; }
 rt_container_env() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null; }
 # rt_volume_label <name> -> unser Label am Volume (leer = fremd); rc 1 = es gibt das Volume nicht, rc 2 = Docker-Fehler
 #   (nicht „fehlt“: der Kern legte sonst neue Werte ueber vorhandene Daten an).
+#   Warnungen der CLI auf stderr gehoeren nicht zum Label; den Grund eines Fehlers liest erst ein zweiter Aufruf.
 rt_volume_label() {
-  local out rc=0
-  out="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>&1)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    case "$out" in *[Nn]o\ such\ volume*) return 1 ;; *) return 2 ;; esac
-  fi
-  printf '%s\n' "$out"
+  local out err
+  if out="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null)"; then printf '%s\n' "$out"; return 0; fi
+  err="$(docker volume inspect -f '{{.Name}}' "$1" 2>&1 >/dev/null || true)"
+  case "$err" in *[Nn]o\ such\ volume*) return 1 ;; *) return 2 ;; esac
 }
 # rt_vol_own <kurzname> — gibt es <projekt>_<kurzname> mit unserem Label? Vorher pruefen: ein --mount auf ein fehlendes
 #   Volume legte es still ohne Label an, und rt_volumes_ensure braeche danach ab. rc 1 = fehlt oder fremd, 2 = Docker-Fehler.
@@ -373,7 +374,8 @@ rt_vol_own() {
   [ "$rc" -eq 0 ] || return "$rc"
   [ "$l" = "$LA_PROJECT" ]
 }
-# rt_vol_get <kurzname> <datei> -> Inhalt einer Datei im eigenen Volume (busybox, ohne Netz, nur lesend gemountet).
+# rt_vol_get <kurzname> <datei> -> Inhalt einer Datei im eigenen Volume (Kurzlauf aus LA_PROBE_IMAGE, ohne Netz, nur lesend
+#   gemountet; im Kern ist das das eigene Abbild, lib/stack_core.sh sc_init).
 #   rc 1 = Volume oder Datei fehlt, rc 2 = Lesen gescheitert (Container lief nicht, Abbild fehlt ohne Netz, …). Der Kern
 #   wertet rc 2 nie als „fehlt“: sonst erzeugte er ein neues Passwort ueber einer Datenbank mit altem.
 # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
@@ -491,7 +493,8 @@ rt_probe_internal() {
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 2 anchor "$1" >/dev/null 2>&1
 }
 # _rt_host_run [-i] <mount-angabe> <befehl…> — ein Kurzlauf-Container fuer einen Ordner auf dem Rechner (Sicherung:
-#   nicht auf der Docker-Platte): busybox, ohne Netz, genau dieser eine Bind-Mount, unser Label. Fehlt der Ordner, scheitert
+#   nicht auf der Docker-Platte): LA_PROBE_IMAGE (im master busybox, im Kern das eigene Abbild: dort nur sh, cat, df,
+#   mkdir, mv verwenden, kein nc), ohne Netz, genau dieser eine Bind-Mount, unser Label. Fehlt der Ordner, scheitert
 #   der Mount (Docker legt ihn mit --mount nie still an). -i = stdin durchreichen.
 _rt_host_run() {
   local i=()
@@ -558,10 +561,11 @@ rt_stack_down() {
 }
 # rt_volume_rm_own <name> — ein Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
 #   rc 0 = entfernt oder nicht vorhanden, 1 = fremdes Label (unberuehrt), 2 = Docker lehnte ab (Meldung nennt den Grund,
-#   z. B. noch von einem Container belegt).
+#   z. B. noch von einem Container belegt, oder es liess sich nicht pruefen).
 rt_volume_rm_own() {
-  local lbl err
-  lbl="$(rt_volume_label "$1")" || return 0
+  local lbl err rc=0
+  lbl="$(rt_volume_label "$1")" || rc=$?
+  case "$rc" in 0) ;; 1) return 0 ;; *) warn "Volume $1 ließ sich nicht prüfen (Docker-Fehler) — bleibt stehen."; return 2 ;; esac
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
   err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }

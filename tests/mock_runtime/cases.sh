@@ -57,7 +57,13 @@ if [ "$me" = docker ] && [ "${1:-}" = run ]; then
   a="$(printf '|%s' "$@")"
   case "$a" in *'|-i|'*) { printf '== %s\n' "${*: -1}"; cat; } >> "${STUB_LOG}.put" ;; esac
   case "$a" in
-    *'|--name|'*'-core-next|'*) exit "${STUB_DELEGATE_RC:-0}" ;;
+    # STUB_DELEGATE_SLEEP: der innere Kern laeuft so lange; ein weitergeleitetes TERM beantwortet er wie der echte (result, Exit 1).
+    *'|--name|'*'-core-next|'*)
+      if [ -n "${STUB_DELEGATE_SLEEP:-}" ]; then
+        trap 'printf "%s\n" "{\"v\":1,\"type\":\"result\",\"verb\":\"up\",\"ok\":false,\"reason\":\"internal\",\"detail\":\"innen\"}"; exit 1' TERM
+        sleep "$STUB_DELEGATE_SLEEP" & wait $!
+      fi
+      exit "${STUB_DELEGATE_RC:-0}" ;;
     *'-portprobe-'*) p="${a##*-portprobe-}"; p="${p%%|*}"; case " ${STUB_BUSY_PORTS:-} " in *" $p "*) exit 125 ;; esac; exit 0 ;;
     *'|cat|/r/f') echo ok; exit 0 ;;
     *'|df|-Pk|/') printf 'Filesystem 1024-blocks Used Available Capacity Mounted\noverlay 1 1 %s 1%% /\n' "${STUB_DF_KB:-50000000}"; exit 0 ;;
@@ -67,8 +73,11 @@ if [ "$me" = docker ] && [ "${1:-}" = run ]; then
     v="STUB_CAT_$(printf '%s' "${*: -1}" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 3; printf '%s\n' "${!v}"; exit 0 ;; esac ;; esac
   exit 0
 fi
-# STUB_SLOW_UP = Sekunden, die `compose up --wait` dauert (Abbruch per Signal mitten im Start).
-case "$(printf '|%s' "$@")" in *'|up|-d|--wait|'*) [ -z "${STUB_SLOW_UP:-}" ] || sleep "$STUB_SLOW_UP" ;; esac
+# STUB_SLOW_UP / STUB_SLOW_EXEC = Sekunden, die `compose up --wait` bzw. provision.sh im master dauern (Abbruch per Signal).
+case "$(printf '|%s' "$@")" in
+  *'|up|-d|--wait|'*) [ -z "${STUB_SLOW_UP:-}" ] || sleep "$STUB_SLOW_UP" ;;
+  *'|exec|lifeagents-master|bash|/opt/lifeagents/provisioning/provision.sh|'*) [ -z "${STUB_SLOW_EXEC:-}" ] || sleep "$STUB_SLOW_EXEC" ;;
+esac
 case "$me $1 ${2:-}" in
   "docker version --format")
     case "${3:-}" in *Os*) printf '%s\n' "${STUB_SRV_OS:-linux}" ;; *) printf '%s\n' "${STUB_SRV_VERSION:-27.5.1}" ;; esac; exit 0 ;;
@@ -76,6 +85,8 @@ case "$me $1 ${2:-}" in
   "docker volume inspect")
     # STUB_VOLS gesetzt = nur diese Volumes gibt es (Label STUB_VOL_LABEL, Standard lifeagents); sonst gilt STUB_VOL_LABEL fuer alle.
     # Dazu zaehlen dann auch die mit `volume create` angelegten (${STUB_LOG}.vols), bis `volume rm` sie entfernt.
+    # STUB_WARN = die CLI warnt auf stderr, auch wenn die Abfrage gelingt (z. B. DOCKER_HOST ueberschreibt den Kontext).
+    [ -z "${STUB_WARN:-}" ] || echo "WARNING: DOCKER_HOST environment variable overrides the active context." >&2
     if [ -n "${STUB_VOLS+x}" ]; then
       case " $STUB_VOLS $(tr '\n' ' ' < "${STUB_LOG}.vols" 2>/dev/null) " in *" ${*: -1} "*) printf '%s\n' "${STUB_VOL_LABEL:-lifeagents}"; exit 0 ;; esac
       echo "Error: No such volume: ${*: -1}" >&2; exit 1
@@ -203,6 +214,14 @@ if ( STUB_VOL_LABEL='' rt_volumes_ensure ) 2>/dev/null; then fail V.fremdes-volu
 if grep -q 'volume|create' "$STUB_LOG"; then fail V.fremdes-unberuehrt "es wurde angelegt"; else pass V.fremdes-unberuehrt; fi
 : > "$STUB_LOG"; ( STUB_VOL_LABEL=lifeagents rt_volumes_ensure ) 2>/dev/null
 if grep -q 'volume|create' "$STUB_LOG"; then fail V.eigenes-bleibt "doppelt angelegt"; else pass V.eigenes-bleibt; fi
+# Docker-Fehler beim Nachsehen ist kein „fehlt“: weder anlegen (traefe ein vorhandenes, evtl. fremdes Volume) noch weiter.
+: > "$STUB_LOG"
+if ( STUB_VOL_LABEL=lifeagents STUB_FAIL='|lifeagents_pgdata' rt_volumes_ensure ) 2>/dev/null; then fail V.inspect-fehler-abbruch "kein Abbruch"; else pass V.inspect-fehler-abbruch; fi
+if grep -q 'volume|create|.*lifeagents_pgdata' "$STUB_LOG"; then fail V.inspect-fehler-kein-create "angelegt"; else pass V.inspect-fehler-kein-create; fi
+# Eine Warnung der CLI auf stderr gehoert nicht zum Label.
+eq V.label-trotz-warnung lifeagents "$(STUB_WARN=1 STUB_VOL_LABEL=lifeagents rt_volume_label lifeagents_pgdata 2>/dev/null)"
+eq V.label-fehlt-rc1 1 "$( (rt_volume_label lifeagents_gibtsnicht >/dev/null 2>&1); echo $?)"
+eq V.label-fehler-rc2 2 "$( (STUB_VOL_LABEL=lifeagents STUB_FAIL='|lifeagents_x' rt_volume_label lifeagents_x >/dev/null 2>&1); echo $?)"
 unset LIFEAGENTS_RUNTIME
 
 # ---------------------------------------------------------------------------- T: Telegram
@@ -784,6 +803,20 @@ for _ph in swapping swapped applying; do
 done
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=applying' scr uninstall --json
 eq SC.abbau-applying-ohne-master-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
+# Laufender master, dessen Tick seit ueber einer Stunde nicht abschliesst (kaputtes neues Abbild): der Abbau geht.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state=$'PHASE=applying\nSTARTED=2026-01-01T00:00:00Z' STUB_RUNNING=lifeagents-master scr uninstall --json
+eq SC.abbau-applying-alt-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state="PHASE=applying
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" STUB_RUNNING=lifeagents-master scr uninstall --json
+eq SC.abbau-applying-frisch-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+# Daten-Volume beim Abbau nicht pruefbar: nicht als entfernt zaehlen, sondern data_kept.
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_pgdata' scr uninstall --delete-data --json
+eq SC.abbau-pgdata-unpruefbar 'data_kept|lifeagents_pgdata' "$(res .reason)|$(res '[.kept[] | select(.what == "lifeagents_pgdata") | .what] | first')"
+# status/start: Docker-Fehler bei pgdata ist kein „nicht installiert“.
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_pgdata' scr status --json
+eq SC.status-pgdata-unpruefbar 'false|internal' "$(res .ok)|$(res .reason)"
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_pgdata' scr start --json
+eq SC.start-pgdata-unpruefbar internal "$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=rolled_back' STUB_RUNNING=lifeagents-master scr uninstall --json
 eq SC.abbau-rolled-back-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
 
@@ -795,12 +828,16 @@ STUB_VOLS="${_lp}pgdata" STUB_FAIL='cat "$1"|_|/pgdata/PG_VERSION' STUB_RUNNING=
 eq SC.lesefehler-pgdata-abbruch 'internal|values|0' "$(res .reason)|$(jq -r 'select(.type == "progress") | .step' "$SCO" | tail -n1)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/rt_tree/VERSION' scr up --json
 eq SC.lesefehler-version-abbruch 'internal|0' "$(res .reason)|$(grep -c '|up|-d|' "$STUB_LOG")"
-# Docker-Fehler schon beim Nachsehen, ob das Volume da ist: kein „fehlt“, also keine neuen Werte.
+# Docker-Fehler schon beim Nachsehen, ob var_la da ist: die Sperre (erstes Lesen) wartet, keine neuen Werte. Den spaeteren
+# Pfad (erster Lauf erkannt, Merkliste) erreicht eine feste Attrappe nicht; er hat dieselbe rc-2-Regel (sc_up).
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_stack_env="$SC_STORED" STUB_FAIL='|volume|inspect|-f|{{index .Labels "io.lifeagents.install"}}|lifeagents_var_la' STUB_RUNNING=lifeagents-master scr up --json
-eq SC.volume-inspect-fehler-kein-neuer-wert 'false|0' "$(res .ok)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
-# Zustand des Wechsels nicht lesbar: jedes aendernde Verb wartet (Sperre schliesst bei Unklarheit).
-STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr uninstall --json
+eq SC.volume-inspect-fehler-sperre 'busy|lock|0' "$(res .reason)|$(jq -r 'select(.type == "progress") | .step' "$SCO" | tail -n1)|$(grep -c '^== /var_la/stack.env' "${STUB_LOG}.put")"
+# Zustand des Wechsels nicht lesbar, master laeuft: jedes aendernde Verb wartet (Sperre schliesst bei Unklarheit). Ohne
+# master und ohne Helfer kann kein Wechsel weiterlaufen: dann geht es (sonst sperrte z. B. eine volle Platte den Abbau).
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' STUB_RUNNING=lifeagents-master scr uninstall --json
 eq SC.lesefehler-sperre-busy 'busy|0' "$(res .reason)|$(grep -c '|down|' "$STUB_LOG")"
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr uninstall --json
+eq SC.lesefehler-ohne-master-abbau-geht 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
 # status: Zustand nicht lesbar -> update_running true (die App startet dann nichts Aenderndes).
 STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='cat "$1"|_|/var_la/master-swap/state' scr status --json
 eq SC.status-lesefehler-update-laeuft 'true|true' "$(res .ok)|$(res .update_running)"
@@ -820,6 +857,26 @@ sleep 0.5; kill -TERM "$_pid" 2>/dev/null
 _gone=0; for _ in $(seq 1 50); do kill -0 "$_pid" 2>/dev/null || { _gone=1; break; }; sleep 0.1; done
 [ "$_gone" = 1 ] || kill -KILL "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null || true
 eq SC.signal-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$_gone"
+# Der unterbrochene Schritt (hier der docker-Client fuer compose up) endet mit, statt weiterzulaufen.
+sleep 0.3; eq SC.signal-kind-beendet 0 "$(pgrep -fc "$W/bin/docker compose .*up -d --wait" || true)"
+# sc_sig <verb-args…> — Kern im Hintergrund wie in einem Container starten, nach dem Schritt <step> TERM senden.
+sc_sig() {
+  local step="$1"; shift
+  : > "$STUB_LOG"; : > "${STUB_LOG}.vols"; : > "$SCO"
+  ( cd "$W" && exec env -u LA_EDGE_PORT -u LA_WIZARD_PORT -u LA_PG_SUPERPW -u LA_PROBE_IMAGE -u LIFEAGENTS_RUNTIME \
+      LA_CORE=1 LA_PROJECT=lifeagents STUB_IMG_lifeagents_core="$SC_SELFIMG" STUB_CONFIG_JSON="$SC_CFG" RELEASE_TAG=v9.0.0 \
+      bash "$ROOT/provisioning/compose/stack.sh" "$@" >"$SCO" 2>"$SCE" </dev/null ) & _pid=$!
+  for _ in $(seq 1 50); do grep -q "\"step\":\"$step\"" "$SCO" 2>/dev/null && break; sleep 0.1; done
+  sleep 0.5; kill -TERM "$_pid" 2>/dev/null
+  _gone=0; for _ in $(seq 1 50); do kill -0 "$_pid" 2>/dev/null || { _gone=1; break; }; sleep 0.1; done
+  [ "$_gone" = 1 ] || kill -KILL "$_pid" 2>/dev/null; SC_RC=0; wait "$_pid" 2>/dev/null || SC_RC=$?
+}
+# Weitergabe: TERM geht an den inneren Kern weiter; sein result ist das eine result (kein zweites vom aeusseren).
+STUB_DELEGATE_SLEEP=30 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" sc_sig delegate up --json
+eq SC.signal-weitergabe-ein-result 'innen|1|1|1' "$(res .detail)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$SC_RC|$_gone"
+# install: die Antwort-Datei (Zugangsdaten) bleibt nach einem Abbruch nicht im master liegen.
+STUB_SLOW_EXEC=30 STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master sc_sig provision install --json
+eq SC.signal-install-raeumt-antworten "internal|1" "$(res .reason)|$(grep -c '^docker|exec|lifeagents-master|rm|-f|/run/lifeagents-wizard/answers.env|' "$STUB_LOG")"
 
 # check laedt nichts: alle Pruef-Container laufen aus dem eigenen Abbild (ein von check geladenes busybox stuende sonst
 # auf der Merkliste des ersten up und bliebe nach --delete-data liegen).

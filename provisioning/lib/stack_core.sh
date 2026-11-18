@@ -78,10 +78,29 @@ _sc_fg() {
   SC_CHILD=''
   return "$rc"
 }
+# _sc_on_signal <exit> — TERM/INT. Der laufende lange Schritt ist eine Subshell (_sc_fg) mit dem docker-Client darunter:
+#   das Signal geht an diesen Client weiter. Was er ausserhalb dieses Containers angestossen hat, endet damit nicht von
+#   selbst: `docker run` (Weitergabe) reicht TERM an den inneren Kern weiter, und dessen result ist dann das eine result;
+#   `docker exec` (provision.sh im master) reicht nichts weiter, provision.sh laeuft dort zu Ende (wiederholbar).
+_sc_on_signal() {
+  local rc=0
+  err "Abgebrochen (Signal ${2:-TERM})."
+  if [ -n "${SC_CHILD:-}" ]; then
+    pkill -TERM -P "$SC_CHILD" 2>/dev/null || true
+    if [ "${SC_DELEGATING:-0}" = 1 ]; then
+      wait "$SC_CHILD" || rc=$?
+      SC_CHILD=''
+      case "$rc" in 0|1) SC_DONE=1; exit "$rc" ;; esac
+    fi
+  fi
+  exit "$1"
+}
 _sc_on_exit() {
   local rc=$? d=''
-  # Ein unterbrochener langer Schritt endet mit dem Kern (im Container ohnehin: PID 1 endet).
-  if [ -n "${SC_CHILD:-}" ]; then kill -TERM "$SC_CHILD" 2>/dev/null || true; fi
+  if [ -n "${SC_CHILD:-}" ]; then pkill -TERM -P "$SC_CHILD" 2>/dev/null || true; kill -TERM "$SC_CHILD" 2>/dev/null || true; fi
+  # Die Antwort-Datei traegt Zugangsdaten: nach einem Abbruch nicht im master liegen lassen (provision.sh hat sie dann
+  # laengst gelesen).
+  if [ "${SC_ANSWERS_PUT:-0}" = 1 ]; then rt_master_exec rm -f "$SC_ANSWERS" >/dev/null 2>&1 || true; fi
   if [ "$SC_DONE" != 1 ] && [ -n "$SC_VERB" ]; then
     d="$(tail -n1 "$SC_LASTF" 2>/dev/null || true)"
     [ -n "$d" ] || d="Abbruch ohne Meldung (Exit ${rc})."
@@ -147,25 +166,24 @@ _sc_vget() {
 }
 # sc_lock — kein laufender master-Wechsel; sonst legte der Helfer den master gleich neu an. Gegenstueck: master_swap_begin
 #   prueft den Kern nach dem Schreiben der Zustandsdatei ein zweites Mal (lib/master_swap.sh).
-#   Nicht lesbar = busy (bei Unklarheit wartet der Kern). Ohne laufenden master zaehlt eine offene Zustandsdatei nicht: nur
-#   sein Tick schliesst sie ab, ohne master kaeme dieser Tick nie. Laeuft der master, sperrt sie Anlegen/Starten/Einrichten
-#   immer, den Abbau nur, solange der Wechsel arbeitet (swapping, swapped, applying: Sicherung und Migration im neuen
-#   master; handoff juenger als 5 Min = Frist von master_swap_resolve, unbekanntes Alter = frisch). Nach rolled_back,
-#   rollback_failed oder einer haengen gebliebenen Uebergabe laesst sich ein kaputter master so immer noch entfernen.
+#   Ohne laufenden master (und ohne Helfer, oben) kann kein Wechsel weiterlaufen: eine offene oder unlesbare Zustandsdatei
+#   zaehlt dann nicht (nur der Tick des master schliesst sie ab; sonst sperrte sie fuer immer, eine volle Platte auch den
+#   Abbau). Laeuft der master: unlesbar = busy; Anlegen/Starten/Einrichten wartet immer; der Abbau nur, solange der Wechsel
+#   arbeitet: handoff juenger als 5 Min (Frist von master_swap_resolve), swapping/swapped/applying (Sicherung, Migration im
+#   neuen master) juenger als 60 Min; unbekanntes Alter oder unbekannte Phase = arbeitet. Danach, und nach rolled_back oder
+#   rollback_failed, laesst sich ein kaputter master entfernen.
 sc_lock() {
-  local st rc=0 phase started t age=0
+  local st rc=0 phase started t age=-1
   if rt_swap_helper_running; then sc_fail busy "Gerade laeuft ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."; fi
   st="$(rt_vol_get var_la master-swap/state)" || rc=$?
-  case "$rc" in
-    0) ;;
-    1) return 0 ;;
-    *) sc_fail busy "Der Zustand eines Updates liess sich nicht lesen — danach erneut versuchen. Nichts geaendert." ;;
-  esac
-  [ -n "$st" ] || return 0
+  [ "$rc" = 1 ] && return 0
   if ! rt_container_running "$(rt_master_container)"; then
-    warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
+    [ "$rc" = 0 ] && [ -z "$st" ] && return 0
+    warn "Ein master-Wechsel ist offen (oder sein Zustand unlesbar), aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
     return 0
   fi
+  [ "$rc" = 0 ] || sc_fail busy "Der Zustand eines Updates liess sich nicht lesen — danach erneut versuchen. Nichts geaendert."
+  [ -n "$st" ] || return 0
   if [ "$SC_VERB" = uninstall ]; then
     phase="$(sed -n 's/^PHASE=//p' <<<"$st" | head -n1)"
     started="$(sed -n 's/^STARTED=//p' <<<"$st" | head -n1)"
@@ -173,6 +191,7 @@ sc_lock() {
     case "$phase" in
       rolled_back|rollback_failed) warn "Ein master-Wechsel endete ${phase} — der Abbau geht trotzdem."; return 0 ;;
       handoff) if [ "$age" -ge 300 ]; then warn "Eine Uebergabe an den Helfer haengt seit ${age} s — der Abbau geht trotzdem."; return 0; fi ;;
+      swapping|swapped|applying) if [ "$age" -ge 3600 ]; then warn "Ein master-Wechsel (${phase}) haengt seit ${age} s — der Abbau geht trotzdem."; return 0; fi ;;
     esac
   fi
   sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
@@ -188,7 +207,9 @@ sc_delegate() {
     if rt_image_has_core "$img"; then
       [ -z "${LA_CORE_DELEGATED:-}" ] || sc_fail internal "Weitergabe: der master laeuft mit ${img}, nicht mit diesem Abbild."
       log "Die Installation laeuft mit ${img} — dessen Kern uebernimmt."
+      SC_DELEGATING=1
       _sc_fg rt_core_delegate "$img" "${SC_ARGS[@]}" || rc=$?
+      SC_DELEGATING=0
       # Der innere Kern endet nur mit 0/1 und hat dann sein result geschrieben; alles andere (Docker 125–127, Signal 137/143)
       # heisst: kein result -> dieser Kern schreibt eines.
       case "$rc" in
@@ -352,14 +373,15 @@ sc_check() {
 }
 
 sc_up() {
-  local first=0 foreign=() before=() pulled after_ids before_ids v lbl health x
+  local first=0 foreign=() before=() pulled after_ids before_ids v lbl health x rc
   _sc_need_core
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   sc_step lock;     sc_lock
   sc_step delegate; sc_delegate
   # Merkliste fremder Abbilder nur beim allerersten Lauf (var_la fehlt noch): was schon lag, entfernt der Abbau nie.
-  rt_vol_own var_la || first=1
+  rc=0; rt_vol_own var_la || rc=$?
+  case "$rc" in 0) ;; 1) first=1 ;; *) sc_fail internal "Volume ${LA_PROJECT}_var_la liess sich nicht pruefen — nichts geaendert." ;; esac
   mapfile -t before < <(_sc_present_images)
   if [ "$first" = 1 ]; then foreign=("${before[@]}"); fi
   sc_step check;    sc_checks
@@ -368,7 +390,9 @@ sc_up() {
   sc_step values;   sc_values_read; sc_values_complete; sc_values_export
   sc_step volumes
   for v in $LA_STATE_VOLUMES; do
-    if lbl="$(rt_volume_label "${LA_PROJECT}_${v}")" && [ "$lbl" != "$LA_PROJECT" ]; then
+    rc=0; lbl="$(rt_volume_label "${LA_PROJECT}_${v}")" || rc=$?
+    [ "$rc" -le 1 ] || sc_fail internal "Volume ${LA_PROJECT}_${v} liess sich nicht pruefen — nichts geaendert."
+    if [ "$rc" = 0 ] && [ "$lbl" != "$LA_PROJECT" ]; then
       sc_fail foreign_objects "Volume ${LA_PROJECT}_${v} gehoert nicht zu dieser Installation. Nichts geaendert."
     fi
   done
@@ -403,13 +427,14 @@ sc_up() {
 }
 
 sc_start() {
-  local svc c started=() todo=()
+  local svc c started=() todo=() rc
   _sc_need_core
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   sc_lock
   sc_delegate
-  rt_vol_own pgdata || sc_fail not_installed "Auf diesem Rechner gibt es keine Installation."
+  rc=0; rt_vol_own pgdata || rc=$?
+  case "$rc" in 0) ;; 1) sc_fail not_installed "Auf diesem Rechner gibt es keine Installation." ;; *) sc_fail internal "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
   sc_values_read; sc_values_export
   while read -r svc c; do
     [ -n "$c" ] || continue
@@ -430,7 +455,8 @@ sc_status() {
   sc_init
   if [ "${LA_CORE:-}" = 1 ]; then sc_delegate; fi
   m="$(rt_master_container)"
-  rt_vol_own pgdata && installed=true
+  rc=0; rt_vol_own pgdata || rc=$?
+  case "$rc" in 0) installed=true ;; 1) ;; *) sc_fail internal "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
   rt_container_running "$m" && running=true
   ver="$(rt_vol_get rt_tree VERSION | tr -d '[:space:]' || true)"
   if [ -n "$(rt_container_image "$m" || true)" ] && rt_image_has_core "$(rt_container_image "$m")"; then core=1; fi
@@ -476,10 +502,12 @@ sc_install() {
   sc_delegate
   rt_container_running "$(rt_master_container)" || sc_fail master_not_running "Der master laeuft nicht — zuerst stack up."
   sc_step answers
+  SC_ANSWERS_PUT=1
   rt_master_write "$SC_ANSWERS" || sc_fail internal "Die Antwort-Datei liess sich nicht in den master legen."
   sc_step provision
   _sc_fg rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
   rt_master_exec rm -f "$SC_ANSWERS" || true
+  SC_ANSWERS_PUT=0
   [ "$rc" -eq 0 ] || sc_fail install_failed "Die Einrichtung im master endete mit Exit ${rc}." "$(jq -cn --argjson n "$rc" '{provision_exit:$n}')"
   sc_step 'done'
   sc_ok '{"provision_exit":0}'
@@ -514,7 +542,8 @@ sc_uninstall() {
   done
   if [ "$SC_DELETE_DATA" = 1 ]; then
     for v in $LA_STATE_VOLUMES; do
-      if ! rt_volume_label "${LA_PROJECT}_${v}" >/dev/null; then continue; fi
+      rc=0; rt_volume_label "${LA_PROJECT}_${v}" >/dev/null || rc=$?
+      case "$rc" in 0) ;; 1) continue ;; *) dkept=1; _sc_kept "${LA_PROJECT}_${v}" inspect_failed; continue ;; esac
       rc=0; rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=$?
       case "$rc" in
         0) rmv+=("${LA_PROJECT}_${v}") ;;
@@ -567,8 +596,8 @@ sc_main() {
   trap _sc_on_exit EXIT
   # Als PID 1 des Kern-Containers ignoriert bash SIGTERM ohne eigenen Handler: `docker stop` toetete ihn erst nach 10 s per
   # SIGKILL, ohne result. Mit Handler endet er sofort nach dem laufenden Schritt, der EXIT-Trap schreibt das result.
-  trap 'err "Abgebrochen (Signal TERM)."; exit 143' TERM
-  trap 'err "Abgebrochen (Signal INT)."; exit 130' INT
+  trap '_sc_on_signal 143 TERM' TERM
+  trap '_sc_on_signal 130 INT' INT
   case "$SC_VERB" in
     check) sc_check ;; up) sc_up ;; start) sc_start ;; status) sc_status ;; wizard-url) sc_wizard_url ;;
     install) sc_install ;; uninstall) sc_uninstall ;;

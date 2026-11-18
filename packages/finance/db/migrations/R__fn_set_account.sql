@@ -94,9 +94,10 @@ BEGIN
             'reason', 'The account number ' || v_number || ' already belongs to the account "' || v_taken || '".');
     END IF;
 
-    -- Verrechnungskonto (Bank-Import-Modul): nur Depot/P2P, dieselbe Pruefung wie fn_create_account
+    -- Verrechnungskonto (Bank-Import-Modul): dieselbe Pruefung wie fn_create_account, Profil nach der neuen Bank
     v_settle := NULLIF(p->>'settlement_id', '')::int;
-    SELECT finance.fn_settlement_account_reason(a.account_type::text, a.currency, v_settle, a.id) INTO v_taken
+    SELECT finance.fn_settlement_account_reason(a.account_type::text, a.currency, v_settle, a.id,
+               COALESCE(NULLIF(btrim(p->>'bank'), ''), NULLIF(btrim(a.bank), ''), a.name)) INTO v_taken
     FROM finance.accounts a WHERE a.id = v_id;
     IF v_taken IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_taken);

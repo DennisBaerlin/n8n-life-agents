@@ -61,7 +61,7 @@ BEGIN
     IF (SELECT average_purchase_price FROM finance.depot_holdings WHERE id = v_h) <> 50 THEN
         RAISE EXCEPTION 'FAIL [R5b Einstand nach Kauf]: %', (SELECT average_purchase_price FROM finance.depot_holdings WHERE id = v_h); END IF;
 
-    v_res := finance.fn_book_stock_sell(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_set, 'holding_id', v_h,
+    v_res := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed', true, 'depot_id', v_dep, 'settlement_id', v_set, 'holding_id', v_h,
                  'shares', 0.25, 'price_per_share', 120, 'order_fee', 0, 'transaction_date', (T - 15)::text));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (SELECT average_purchase_price FROM finance.depot_holdings WHERE id = v_h) <> 50 THEN
         RAISE EXCEPTION 'FAIL [R6 Verkauf laesst Einstand]: %', v_res; END IF;

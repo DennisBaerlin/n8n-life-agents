@@ -58,9 +58,9 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 - **Alltagsausgaben:** geschätzt aus deinen letzten Kontoauszügen. Der allererste Auszug eines Kontos zählt nicht mehr, sobald ein zweiter da ist, weil er meist entstanden ist, bevor deine Daueraufträge erfasst waren. Einzelne Ausgaben ab 250 € zählen als einmalig nicht mit, Überweisungen auf eigene Konten nie. Die Schätzung je Tag siehst du in der [Übersicht](uebersicht-app.html) unter Konten beim tiefsten Stand.
 - **Zahlung fehlt:** Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast. Lief ein eigener Dauerauftrag oder Sparplan noch nie, sagt er stattdessen, dass du ihn bei deiner Bank einrichten oder beenden lassen kannst.
 
-## CSV-Export statt Kontoauszug (Trade Republic, N26)
+## CSV-Export statt Kontoauszug (Trade Republic, N26, Bitvavo)
 
-Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic und N26. Für so ein Konto lautet die Erinnerung anders:
+Manche Banken bieten statt eines Monats-PDFs einen Umsatz-Export als CSV-Datei an, heute Trade Republic, N26 und die Krypto-Börse Bitvavo. Für so ein Konto lautet die Erinnerung anders:
 
 1. In der App den Transaktions-Export für dieses Jahr erstellen und die CSV-Datei an den Bot schicken.
 2. Dazu den Kontostand nennen, den die App **gerade** zeigt, z. B. „laut App 1.234,56 €". Der Export enthält keinen Kontostand. Ohne deine Zahl macht der Bot keine Karte; er rechnet sich nie selbst einen Stand aus. Schickst du die Datei ohne Text, fragt er danach.
@@ -85,9 +85,18 @@ Bei N26:
 - **Datum:** Es zählt der Buchungstag, nicht die Wertstellung.
 - **Unbekannte Umsatzarten** bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
 
+Bei Bitvavo:
+
+- **Export:** In der Bitvavo-App bzw. im Web die Transaktionen als CSV herunterladen, am einfachsten für dieses Jahr. Als Kontostand nennst du dein Euro-Guthaben bei Bitvavo, also das Geld, das gerade nicht in Münzen steckt.
+- **Zwei Konten:** Das Euro-Guthaben ist ein eigenes Konto, die Münzen liegen in einem Krypto-Depot daran, so wie bei Trade Republic Verrechnungskonto und Depot.
+- **Käufe und Verkäufe** bucht der Bot centgenau mit dem Betrag, den Bitvavo abgebucht oder gutgeschrieben hat. Die Gebühr steckt darin schon und zählt nicht doppelt.
+- **Staking:** Gutschriften ohne Euro-Betrag bucht er als Staking-Ertrag ins Krypto-Depot, mit Einstand 0 €. So stimmt die Stückzahl im Bot mit Bitvavo überein. Die Karte zeigt je Münze eine Summe. Eine Steuerrechnung macht der Bot dafür nicht.
+- **Ein- und Auszahlungen:** Bitvavo zahlt nur auf dein verifiziertes Bankkonto aus. Sag dem Bot einmal, welches das ist, z. B. „Bitvavo zahlt auf mein Girokonto aus“. Dann bucht er Ein- und Auszahlungen als Übertrag mit diesem Konto, egal ob du zuerst die Bitvavo-Datei oder den Auszug des Girokontos schickst.
+- **Nicht gebucht** werden Münzen, die du von außen ein- oder an eine fremde Adresse auszahlst, noch nicht abgeschlossene Vorgänge und Käufe, die nicht in Euro abgerechnet sind. Die Karte nennt sie mit Grund, ihr Betrag zählt zum Rest.
+
 ## Neu dabei: Einrichtung aus einer einzigen Datei
 
-Hast du noch kein passendes Konto oder Depot, reicht es, den Export einmal zu schicken. Der Bot fragt nach dem aktuellen Kontostand, schlägt die Zinsen nach und legt Konto und Depot je per Karte an. Danach rechnet er deinen heutigen Bestand mit den echten Kaufdaten aus der Datei aus und zeigt ihn auf einer Karte. Fusionen übernimmt er selbst, bei Abspaltungen und Gratis-Aktien schlägt er einen geschätzten Einstand vor oder fragt nach. Bei einer Datei mit gedrucktem Stand wie von Bondora beginnt das Konto am Anfang der Datei, die echten Zinsen kommen aus ihr.
+Hast du noch kein passendes Konto oder Depot, reicht es, den Export einmal zu schicken. Der Bot fragt nach dem aktuellen Kontostand, schlägt die Zinsen nach und legt Konto und Depot je per Karte an. Danach rechnet er deinen heutigen Bestand mit den echten Kaufdaten aus der Datei aus und zeigt ihn auf einer Karte. Fusionen übernimmt er selbst, bei Abspaltungen und Gratis-Aktien schlägt er einen geschätzten Einstand vor oder fragt nach. Staking-Erträge übernimmt er als eigene Zugänge mit Einstand 0 €. Bei einer Datei mit gedrucktem Stand wie von Bondora beginnt das Konto am Anfang der Datei, die echten Zinsen kommen aus ihr.
 
 ## Bondora Go&Grow (Excel-Kontoauszug)
 

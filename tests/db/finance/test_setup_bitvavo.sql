@@ -46,7 +46,7 @@ BEGIN
 
     -- ---------- Krypto-Depot ----------
     v_r := finance.fn_setup_advance(jsonb_build_object('chat_id', v_chat, 'table', v_tbl));
-    IF v_r->>'phase' <> 'depot' THEN RAISE EXCEPTION 'FAIL [B3 Depot]: %', v_r; END IF;
+    IF v_r->>'phase' <> 'crypto_depot' THEN RAISE EXCEPTION 'FAIL [B3 Krypto-Depot]: %', v_r; END IF;
     v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_bvsu_dep__', 'account_type', 'crypto_depot',
                  'currency', 'EUR', 'settlement_id', v_acct))->>'account_id')::int;
 

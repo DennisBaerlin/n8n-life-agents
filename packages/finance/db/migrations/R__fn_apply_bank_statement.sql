@@ -13,7 +13,8 @@
 --   Ein {ok:false} einer inneren Buch-fn wird zu RAISE SQLSTATE 'FN001' -> Rollback des Blocks -> {ok:false, reason}
 --   (kein Teilzustand, kein Owner-Alarm).
 --   Bank-Export-Datei (source:'file', Broker-CSV): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
---   ueber fn_book_stock_buy / fn_book_stock_sell / fn_book_dividend (Herkunft bank_statement_id wie jede Buchung hier);
+--   ueber fn_book_stock_buy / fn_book_stock_sell (Export-Betrag exakt) / fn_book_dividend, Staking-Ertrag (reward) als
+--   eigene Buchung amount 0 in derselben Schleife (Herkunft bank_statement_id wie jede Buchung hier);
 --   balance_source aus der Prepare; seen_refs -> finance.statement_seen_refs (faellt mit dem Auszug per CASCADE weg).
 --   Bank-Import-Modul: matched kind transfer -> fn_book_transfer (beide Beine am Zeilendatum); Stufe-0-Treffer einer
 --   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine dieses Kontos aufs Zeilendatum;
@@ -292,8 +293,11 @@ BEGIN
             v_skipped := v_skipped || v_k;
         END LOOP;
 
-        -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, Kauf vor Verkauf).
-        -- Verkauf/Dividende einer erst in diesem Export gekauften Position: die Holding entsteht beim Kauf davor.
+        -- Broker-CSV: Wertpapier-Zeilen ohne Treffer aus den Export-Werten buchen (Reihenfolge = Datum, je Tag Kauf vor
+        -- Ertrag vor Verkauf). Ertraege laufen in derselben Schleife: fn_void_bank_statement storniert in umgekehrter
+        -- id-Folge, ein Verkauf nach Ertraegen faellt so vor ihnen weg (sonst brach der Oversell-Schutz die Ruecknahme ab).
+        -- Verkauf/Dividende/Ertrag einer erst in diesem Export gekauften Position: die Holding entsteht beim Kauf davor.
+        -- Kauf/Verkauf buchen den Export-Betrag exakt (cost_basis_total bzw. total_credited), der Kurs folgt daraus.
         FOR v_m IN SELECT e FROM jsonb_array_elements(COALESCE(v_prep->'trades', '[]'::jsonb)) e LOOP
             v_hold := NULLIF(v_m->>'holding_id', '')::int;
             IF v_hold IS NULL AND v_m->>'kind' <> 'buy' THEN
@@ -305,15 +309,26 @@ BEGIN
             IF v_m->>'kind' = 'buy' THEN
                 v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', (v_m->>'depot_id')::int,
                            'settlement_id', v_acct, 'isin', v_m->>'isin', 'symbol', v_m->>'symbol', 'name', v_m->>'name',
-                           'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
+                           'shares', (v_m->>'shares')::numeric, 'cost_basis_total', -(v_m->>'amount')::numeric,
                            'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date',
                            'price_currency_confirmed', true));
             ELSIF v_m->>'kind' = 'sell' THEN
                 v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_acct,
                            'holding_id', v_hold, 'symbol', v_m->>'symbol',
-                           'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
+                           'shares', (v_m->>'shares')::numeric, 'total_credited', (v_m->>'amount')::numeric,
                            'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date',
                            'price_currency_confirmed', true));
+            ELSIF v_m->>'kind' = 'reward' THEN
+                -- Staking-Ertrag: Stueck ohne Geld auf dem Verrechnungskonto (Depots tragen keine Buchung), Form-CHECK
+                -- finance_transactions_reward_shape; fehlt die Position, entsteht sie im Depot aus der Vorschau
+                IF v_hold IS NULL THEN
+                    v_hold := finance.fn_depot_holding_id((v_m->>'depot_id')::int, v_m->>'isin', v_m->>'symbol',
+                                  jsonb_build_object('name', v_m->>'name',
+                                      'currency', (SELECT d.currency FROM finance.accounts d WHERE d.id = (v_m->>'depot_id')::int)));
+                END IF;
+                INSERT INTO finance.transactions (account_id, holding_id, category, amount, shares, transaction_date, description)
+                VALUES (v_acct, v_hold, 'reward', 0, (v_m->>'shares')::numeric, (v_m->>'date')::date, 'Staking ' || (v_m->>'name'))
+                RETURNING jsonb_build_object('ok', true, 'transaction_id', id) INTO v_r;
             ELSE
                 v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_acct,
                            'holding_id', v_hold, 'amount', (v_m->>'amount')::numeric,

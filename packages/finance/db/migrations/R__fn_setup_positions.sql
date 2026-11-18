@@ -7,7 +7,10 @@
 --   position_incomplete (mehr verkauft als gekauft). Schon gehaltene Position -> held, sonst sperrte sie den Stapel.
 --   Lots eines Tages werden zusammengefasst (Dubletten-Sperre fn_import_bundle), zu kleine (fn_trade_amount_reason) wandern
 --   zur Nachbar-Zeile, Einstand je Rest anteilig.
---   RUECKGABE: {positions:[{key, isin, symbol, name, shares, cost, is_crypto, origin, hints[], lots:[{date, shares, price, fee}]}],
+--   Ertraege (reward) je Tag in rewards[] (Stueck ohne Kosten, eigene reward-Buchung); eine Muenze nur aus Ertraegen ist
+--   vollstaendig (nie position_incomplete), shares = Lots + Ertraege, cost nur aus den Lots.
+--   RUECKGABE: {positions:[{key, isin, symbol, name, shares, cost, is_crypto, origin, hints[], lots:[{date, shares, price, fee}],
+--   rewards:[{date, shares}]}],
 --   open_items[], held[], notes[]}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_positions(p_rows jsonb, p_decisions jsonb, p_account_id int, p_cut date)
@@ -26,6 +29,7 @@ DECLARE
     v_fixed JSONB;
     v_l     JSONB;
     v_key   TEXT;
+    v_rw    JSONB;
 BEGIN
     SELECT currency INTO v_ccy FROM finance.accounts WHERE id = p_account_id;
     FOR v_g IN
@@ -66,13 +70,19 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- je Tag eine Zeile: Rest-Kurswert und anteilige Gebuehr
-        SELECT jsonb_agg(jsonb_build_object('date', d, 'shares', s, 'cost', c, 'fee', f) ORDER BY d)
+
+        -- je Tag eine Zeile: Rest-Kurswert und anteilige Gebuehr. Ertraege (Lot mit Kosten 0) getrennt: sie werden eigene
+        -- reward-Buchungen, nie ein Uebernahme-Lot (fn_book_takeover_pair lehnt Kurs 0 ab), und mischen nie einen Kaufkurs.
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('date', d, 'shares', s, 'cost', c, 'fee', f) ORDER BY d), '[]'::jsonb)
         INTO v_day FROM (
             SELECT l->>'date' AS d, sum((l->>'shares')::numeric) AS s,
                    sum((l->>'gross')::numeric * (l->>'shares')::numeric / (l->>'orig')::numeric) AS c,
                    sum(COALESCE((l->>'fee')::numeric, 0) * (l->>'shares')::numeric / (l->>'orig')::numeric) AS f
-            FROM jsonb_array_elements(v_fifo->'lots') l GROUP BY 1) t;
+            FROM jsonb_array_elements(v_fifo->'lots') l WHERE l->>'kind' IS DISTINCT FROM 'reward' GROUP BY 1) t;
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('date', d, 'shares', s) ORDER BY d), '[]'::jsonb)
+        INTO v_rw FROM (
+            SELECT l->>'date' AS d, sum((l->>'shares')::numeric) AS s
+            FROM jsonb_array_elements(v_fifo->'lots') l WHERE l->>'kind' = 'reward' GROUP BY 1) t;
 
         -- zu kleine Tages-Zeilen an die Folgezeile haengen (Bestand und Einstand bleiben vollstaendig)
         v_fixed := '[]'::jsonb;
@@ -96,8 +106,10 @@ BEGIN
             v_l := NULL;
         END IF;
         -- nur Rundungs-Staub uebrig: Position ist geschlossen
-        CONTINUE WHEN jsonb_array_length(v_fixed) = 0 AND (SELECT sum((l->>'shares')::numeric) FROM jsonb_array_elements(v_day) l) < 0.0000001;
-        IF v_l IS NOT NULL OR jsonb_array_length(v_fixed) = 0 THEN
+        CONTINUE WHEN jsonb_array_length(v_fixed) = 0
+            AND COALESCE((SELECT sum((l->>'shares')::numeric) FROM jsonb_array_elements(v_day || v_rw) l), 0) < 0.0000001;
+        -- ein nicht buchbarer Kauf-Rest, oder nichts Buchbares; eine Muenze nur aus Ertraegen ist vollstaendig
+        IF v_l IS NOT NULL OR (jsonb_array_length(v_fixed) = 0 AND jsonb_array_length(v_rw) = 0) THEN
             v_key := 'oversold:' || v_g.k;
             IF (v_dec->v_key->>'skip')::boolean IS DISTINCT FROM true THEN
                 v_open := v_open || jsonb_build_object('key', v_key, 'type', 'position_incomplete', 'isin', v_g.isin, 'name', v_g.name);
@@ -105,17 +117,19 @@ BEGIN
             CONTINUE;
         END IF;
 
-        SELECT jsonb_build_object('key', v_g.k, 'isin', v_g.isin, 'symbol', v_g.symbol, 'name', v_g.name, 'is_crypto', v_g.isin IS NULL,
-                   'origin', CASE WHEN v_g.estimated THEN 'estimated' ELSE 'export' END,
-                   'hints', to_jsonb(array_remove(ARRAY[CASE WHEN v_g.merged THEN 'merger' END,
-                                                       CASE WHEN v_g.no_amount THEN 'buy_without_amount' END,
-                                                       CASE WHEN v_g.estimated THEN 'estimated' END], NULL)),
-                   'shares', sum((l->>'shares')::numeric), 'cost', round(sum((l->>'cost')::numeric + (l->>'fee')::numeric), 2),
-                   'lots', jsonb_agg(jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
-                       'price', finance.fn_unit_price_from_total((l->>'cost')::numeric, (l->>'shares')::numeric),
-                       'fee', round((l->>'fee')::numeric, 2)) ORDER BY l->>'date'))
-        INTO v_l FROM jsonb_array_elements(v_fixed) l;
-        v_out := v_out || jsonb_build_array(v_l);
+        v_out := v_out || jsonb_build_array(jsonb_build_object('key', v_g.k, 'isin', v_g.isin, 'symbol', v_g.symbol, 'name', v_g.name,
+            'is_crypto', v_g.isin IS NULL,
+            'origin', CASE WHEN v_g.estimated THEN 'estimated' ELSE 'export' END,
+            'hints', to_jsonb(array_remove(ARRAY[CASE WHEN v_g.merged THEN 'merger' END,
+                                                CASE WHEN v_g.no_amount THEN 'buy_without_amount' END,
+                                                CASE WHEN v_g.estimated THEN 'estimated' END], NULL)),
+            'shares', (SELECT COALESCE(sum((l->>'shares')::numeric), 0) FROM jsonb_array_elements(v_fixed || v_rw) l),
+            'cost', (SELECT COALESCE(round(sum((l->>'cost')::numeric + (l->>'fee')::numeric), 2), 0) FROM jsonb_array_elements(v_fixed) l),
+            'lots', (SELECT COALESCE(jsonb_agg(jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
+                         'price', finance.fn_unit_price_from_total((l->>'cost')::numeric, (l->>'shares')::numeric),
+                         'fee', round((l->>'fee')::numeric, 2)) ORDER BY l->>'date'), '[]'::jsonb)
+                     FROM jsonb_array_elements(v_fixed) l),
+            'rewards', v_rw));
     END LOOP;
     RETURN jsonb_build_object('positions', v_out, 'open_items', v_open, 'held', v_held, 'notes', v_eff->'notes');
 END;

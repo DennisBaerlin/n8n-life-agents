@@ -3,7 +3,9 @@
 --   Eingabe jsonb: batch_id (Pflicht, Staging-Batch), dry_run (optional boolean, Probelauf).
 --   Loop ueber die bestehenden fn_create_*/fn_book_* (= die getestete Validierungs-
 --   Oberflaeche, keine Duplikation) in Abhaengigkeits-Reihenfolge:
---   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy) -> pension_statement.
+--   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy) -> pension_statement/reward.
+--   reward (Staking-Ertrag der Ersteinrichtung): eine reward-Buchung (amount 0) auf dem Verrechnungskonto, Position
+--   wird bei Bedarf angelegt (fn_depot_holding_id); nach den Kaeufen, damit deren Uebernahme-Guard den Stand vor dem Batch sieht.
 --   Namen->ID-Aufloesung passiert hier (Staging traegt rohe Namen): zuerst gegen die in
 --   diesem Lauf erzeugten Konten (In-Batch-Referenzen), sonst fn_resolve_* (0/>1 = Fehler).
 --
@@ -62,6 +64,7 @@ DECLARE
     v_res       JSONB;
     v_payload   JSONB;
     v_id        INT;
+    v_tx        INT;                   -- reward-Buchung (Ersteinrichtung)
     v_ref_id    INT;
     v_settle    INT;
     v_err       TEXT;
@@ -109,6 +112,8 @@ BEGIN
                          WHEN 'real_estate'       THEN 1
                          WHEN 'loan'              THEN 2
                          WHEN 'pension_statement' THEN 4   -- nach den Pensions (In-Batch-Referenz)
+                         -- nach den Kaeufen: der erste Uebernahme-Kauf prueft "Position haelt schon Stueck"
+                         WHEN 'reward'            THEN 4
                          ELSE 3 END,
                      row_no
             FOR UPDATE
@@ -391,6 +396,41 @@ BEGIN
                                               'provider_symbol', h.provider_symbol, 'quote_currency', h.quote_currency,
                                               'asset_class', h.asset_class)
                     FROM finance.depot_holdings h WHERE h.id = (v_r->>'holding_id')::int);
+
+            ELSIF v_row.entity_type = 'reward' THEN
+                -- Staking-Ertrag der Ersteinrichtung: Stueck ohne Geld auf dem Verrechnungskonto (Depots tragen keine
+                -- Buchung), Form-CHECK finance_transactions_reward_shape; die Position entsteht hier, wenn kein Kauf sie hat
+                v_res    := finance.fn_import_resolve_account(v_payload->>'depot', v_acct_map);
+                v_ref_id := NULLIF(v_res->>'id','')::int;
+                v_err    := v_res->>'error';
+                IF v_err IS NOT NULL THEN
+                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
+                    CONTINUE;
+                END IF;
+                v_settle := COALESCE(
+                    NULLIF(v_acct_map->lower(v_payload->>'depot')->>'settlement_id','')::int,
+                    (SELECT settlement_account_id FROM finance.accounts WHERE id = v_ref_id));
+                IF v_settle IS NULL THEN
+                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row,
+                        'error', format('depot "%s" has no settlement account', v_payload->>'depot'));
+                    CONTINUE;
+                END IF;
+                v_id := finance.fn_depot_holding_id(v_ref_id, NULLIF(v_payload->>'isin', ''),
+                            finance.fn_holding_symbol(v_payload->>'symbol', v_payload->>'isin'),
+                            jsonb_build_object('name', v_payload->>'name',
+                                'currency', (SELECT currency FROM finance.accounts WHERE id = v_ref_id)));
+                INSERT INTO finance.transactions (account_id, holding_id, category, amount, shares, transaction_date, description)
+                VALUES (v_settle, v_id, 'reward', 0, (v_payload->>'shares')::numeric, (v_payload->>'transaction_date')::date,
+                        'Staking ' || finance.fn_holding_symbol(v_payload->>'symbol', v_payload->>'isin'))
+                RETURNING id INTO v_tx;
+                v_created := v_created || jsonb_build_object('row_no', v_cur_row, 'entity_type', 'reward', 'id', v_tx);
+                IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_positions) x WHERE (x->>'holding_id')::int = v_id) THEN
+                    v_positions := v_positions || (
+                        SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'symbol', h.symbol, 'isin', h.isin,
+                                                  'provider_symbol', h.provider_symbol, 'quote_currency', h.quote_currency,
+                                                  'asset_class', h.asset_class)
+                        FROM finance.depot_holdings h WHERE h.id = v_id);
+                END IF;
 
             ELSIF v_row.entity_type = 'pension_statement' THEN
                 -- Pension aufloesen: die von fn_import_stage gesetzte pension_id (Folgebescheid), sonst In-Batch, sonst

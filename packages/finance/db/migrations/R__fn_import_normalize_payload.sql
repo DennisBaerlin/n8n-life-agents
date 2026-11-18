@@ -42,6 +42,7 @@ BEGIN
     v_plain := CASE p_type
         WHEN 'account'           THEN ARRAY['interest_rate']
         WHEN 'stock_buy'         THEN ARRAY['shares','price_per_share','average_purchase_price']
+        WHEN 'reward'            THEN ARRAY['shares']
         WHEN 'loan'              THEN ARRAY['interest_rate']
         WHEN 'pension_statement' THEN ARRAY['earning_points']   -- Entgeltpunkte "9,1234": rein dezimal, kein Tausenderpunkt
         ELSE ARRAY[]::TEXT[]

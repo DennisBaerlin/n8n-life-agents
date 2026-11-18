@@ -339,5 +339,46 @@ BEGIN
        OR (SELECT count(*) FROM finance.transactions WHERE holding_id = v_h) <> 1 THEN
         RAISE EXCEPTION 'FAIL [L17 Fremdwaehrungs-Zeile ersetzt nie still]: %', v_res; END IF;
     RAISE NOTICE 'PASS [L17 Fremdwaehrungs-Zeile ersetzt nie still]';
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'mismatched') m
+                   WHERE (m->>'holding_id')::int = v_h AND m->>'code' = 'currency_mismatch')
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'card_lines') c WHERE c->>'value' = 'finance.note.lots_currency_mismatch') THEN
+        RAISE EXCEPTION 'FAIL [L17b eigener Code + Karten-Hinweis]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [L17b currency_mismatch mit Hinweis]';
+END $$;
+
+-- L18 Rundungsrest ohne Kauf am Tag, das letzte Lot ist ein echter Kauf (nach dem Stichtag): Zeilen 1 (heute-30, vor dem
+--   Stichtag heute-20) + 0.99999999 (heute-12, danach) = Uebernahme 2 (heute-10) minus 1e-8. Der Staub gehoert aufs
+--   cash-neutrale Lot; der echte Kauf behaelt die Export-Stueck exakt, sonst sperrt der Monats-Check ihn (covered_by_takeover).
+DO $$
+DECLARE
+    T DATE := core.fn_today();
+    v_acc INT; v_dep INT; v_h INT; v_res JSONB; v_p JSONB; v_prep JSONB;
+BEGIN
+    v_acc := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_gdust__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_gdust_dep__', 'account_type', 'stocks_depot',
+                 'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc,
+                 'isin', 'IE00LOTSGDU1', 'symbol', 'GDU', 'name', 'Gdu ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
+                 'transaction_date', (T - 10)::text, 'existing_position', true))->>'holding_id')::int;
+    v_p := jsonb_build_object('account_name', '__t_lots_gdust__',
+        'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.tr_hdr()) || jsonb_build_array(
+            pg_temp.tr_row(T - 30, 'BUY', 'IE00LOTSGDU1', '1.0000000000', '-25.00', '', 'gd-01'),
+            pg_temp.tr_row(T - 12, 'BUY', 'IE00LOTSGDU1', '0.9999999900', '-25.00', '', 'gd-02'))));
+    v_res := finance.fn_replace_takeover_with_lots(v_p);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'replaced') <> 1
+       OR (v_res->'replaced'->0->>'shares')::numeric <> 2 OR (v_res->>'settlement_change')::numeric <> -25 THEN
+        RAISE EXCEPTION 'FAIL [L18a Ersetzen mit Staub]: %', v_res; END IF;
+    IF (SELECT shares FROM finance.transactions
+        WHERE holding_id = v_h AND category::text = 'buy' AND transaction_date = T - 12) IS DISTINCT FROM 0.99999999 THEN
+        RAISE EXCEPTION 'FAIL [L18b echter Kauf traegt den Rundungsrest]: shares=%',
+            (SELECT array_agg(shares ORDER BY transaction_date) FROM finance.transactions WHERE holding_id = v_h AND category::text = 'buy'); END IF;
+    v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'file', 'closing_balance', 975));
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'trades') <> 0
+       OR jsonb_array_length(v_prep->'trades_blocked') <> 0
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'already_booked') b
+                      WHERE (b->>'trade')::boolean AND (b->>'amount')::numeric = -25) THEN
+        RAISE EXCEPTION 'FAIL [L18c Monats-Check: echter Kauf schon gebucht]: %', v_prep; END IF;
+    RAISE NOTICE 'PASS [L18 Rundungsrest aufs cash-neutrale Lot]';
 END $$;
 ROLLBACK;

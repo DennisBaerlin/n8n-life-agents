@@ -130,13 +130,28 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_set_account [fremde Waehrung]: %', v_r; END IF;
     v_r := finance.fn_set_account(jsonb_build_object('account_id', v_p, 'settlement_id', v_p));
     IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_set_account [sich selbst]: %', v_r; END IF;
-    -- Backstop: der CHECK haelt auch direkte Writes
-    BEGIN
-      UPDATE finance.accounts SET settlement_account_id = v_c WHERE id = v_c2;
-      RAISE EXCEPTION 'FAIL settlement_kind CHECK: Girokonto mit Verrechnungskonto angenommen';
-    EXCEPTION WHEN check_violation THEN NULL;
+    -- Geld-Konto einer Krypto-Boerse (Profil mit counterparty_pattern): Verrechnungskonto = Girokonto, auch beim Anlegen
+    v_r := finance.fn_create_account(jsonb_build_object('name', '__sa_st_bv__', 'account_type', 'cash', 'currency', 'EUR',
+             'bank', 'Bitvavo', 'settlement_id', v_c));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+       OR (SELECT settlement_account_id FROM finance.accounts WHERE id = (v_r->>'account_id')::int) IS DISTINCT FROM v_c THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [Boersen-Geldkonto mit Verrechnungskonto]: %', v_r; END IF;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', (v_r->>'account_id')::int, 'settlement_id', v_p));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [Boersen-Geldkonto: Verrechnungskonto muss Girokonto sein]: %', v_r; END IF;
+    -- Backstop: der CHECK haelt auch direkte Writes. Ein Geld-Konto (cash) darf eins tragen, wenn sein Export-Profil
+    -- ein counterparty_pattern hat (Pruefung in fn_settlement_account_reason, oben abgelehnt); der CHECK sperrt die
+    -- uebrigen Kontoarten.
+    DECLARE v_fd INT; BEGIN
+      INSERT INTO finance.accounts (name, account_type, currency, status, fixed_deposit_maturity_date)
+        VALUES ('__sa_st_fd__', 'fixed_deposit', 'EUR', 'active', core.fn_today() + 365) RETURNING id INTO v_fd;
+      BEGIN
+        UPDATE finance.accounts SET settlement_account_id = v_c WHERE id = v_fd;
+        RAISE EXCEPTION 'FAIL settlement_kind CHECK: Festgeld mit Verrechnungskonto angenommen';
+      EXCEPTION WHEN check_violation THEN NULL;
+      END;
     END;
-    RAISE NOTICE 'PASS fn_set_account [Verrechnungskonto nur Depot/P2P]';
+    RAISE NOTICE 'PASS fn_set_account [Verrechnungskonto nur Depot/P2P/Boersen-Geldkonto]';
   END;
 
   -- Falsch zugeordnete IBAN entfernen und beim richtigen Konto eintragen (sonst Dublette)

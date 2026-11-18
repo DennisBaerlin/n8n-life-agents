@@ -175,6 +175,9 @@ ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'reconciliation'
 -- Bestandsuebernahme: Gegenbuchung zum synthetischen Kauf einer bereits gehaltenen Position
 -- (fn_book_stock_buy existing_position) -> der Saldo des Verrechnungskontos bleibt unveraendert.
 ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'position_takeover';
+-- Staking-Ertrag: Stueck-Zugang ohne Geldfluss (amount 0, Einstand 0), Form-CHECK finance_transactions_reward_shape.
+-- Nie in einem DO-Block oder V__ nutzen (unsafe use of new value): Vergleiche ueber category::text.
+ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'reward';
 
 -- ============================================================
 -- CURRENCIES (ISO-4217 dimension — nur tatsaechlich genutzte Waehrungen geseedet)
@@ -798,14 +801,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_accounts_number_active_uq
     ON finance.accounts (account_number)
     WHERE account_number IS NOT NULL AND status = 'active';
 
--- Ein Verrechnungskonto haben nur Depots und P2P-Konten (P2P: das verifizierte Auszahlungskonto,
--- z. B. Bondora Go&Grow -> Girokonto des Inhabers; der Monats-Check paart Ein-/Auszahlungen ohne Gegen-IBAN damit).
+-- Ein Verrechnungskonto haben nur Depots, P2P-Konten (das verifizierte Auszahlungskonto, z. B. Bondora Go&Grow ->
+-- Girokonto des Inhabers; der Monats-Check paart Ein-/Auszahlungen ohne Gegen-IBAN damit) und Geld-Konten (cash)
+-- eines Anbieters, dessen Export Ein-/Auszahlungen ohne Gegen-IBAN fuehrt (Profil mit counterparty_pattern, z. B.
+-- Euro-Guthaben einer Krypto-Boerse). Die Profil-Bedingung prueft fn_settlement_account_reason (die Profile sind R__,
+-- ein CHECK kann sie nicht lesen); dieser CHECK ist der Backstop der Kontoarten.
 -- NOT VALID nur beim ersten Anlegen (Altbestand mit Verrechnungskonto bei anderer Kontoart):
--- finance:V032 raeumt auf und VALIDATEt. Kein DROP+ADD je Apply (Muster finance_transactions_transfer_grouped).
+-- finance:V032 raeumt auf und VALIDATEt. Kein DROP+ADD je Apply (Muster finance_transactions_transfer_grouped);
+-- der Wechsel auf die Fassung mit cash ersetzt einmal (nur lockernd, der Bestand erfuellt sie).
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_accounts_settlement_kind') THEN
         ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_settlement_kind
-            CHECK (settlement_account_id IS NULL OR account_type IN ('stocks_depot', 'crypto_depot', 'p2p')) NOT VALID;
+            CHECK (settlement_account_id IS NULL OR account_type IN ('stocks_depot', 'crypto_depot', 'p2p', 'cash')) NOT VALID;
+    ELSIF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'finance_accounts_settlement_kind'
+                        AND pg_get_constraintdef(oid) LIKE '%cash%') THEN
+        ALTER TABLE finance.accounts DROP CONSTRAINT finance_accounts_settlement_kind;
+        ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_settlement_kind
+            CHECK (settlement_account_id IS NULL OR account_type IN ('stocks_depot', 'crypto_depot', 'p2p', 'cash'));
     END IF;
 END $$;
 
@@ -2220,6 +2232,15 @@ DO $$ BEGIN
     );
 END $$;
 
+-- Staking-Ertrag-Form: Stueck-Zugang einer Position, gebucht auf dem Verrechnungskonto ohne Geldfluss.
+DO $$ BEGIN
+    ALTER TABLE finance.transactions DROP CONSTRAINT IF EXISTS finance_transactions_reward_shape;
+    ALTER TABLE finance.transactions ADD CONSTRAINT finance_transactions_reward_shape CHECK (
+        category::text <> 'reward'
+        OR (amount = 0 AND holding_id IS NOT NULL AND shares > 0)
+    );
+END $$;
+
 -- Umbuchungs-Gruppierung (Backstop zu fn_book_transaction, das 'transfer' gar nicht annimmt, und zu
 -- fn_book_transfer/fn_book_recurring_transfer, die beide Beine mit EINER group_id schreiben): eine transfer-Zeile
 -- ohne group_id waere ein einbeiniger Transfer, den fn_void_transaction nicht als Paar stornieren kann.
@@ -2703,6 +2724,8 @@ CREATE TRIGGER trg_finance_update_holding_shares
 --   Kostenbasis je Kauf: Bestandsuebernahme mit unit_price -> shares x unit_price + order_fee (der genannte
 --   Einstand, ungerundet; Betrag/Stueck waere der Einstand mit Rundungsrest); sonst
 --   |amount| = der abgebuchte Cent-Betrag inkl. Gebuehr (Broker-Konvention).
+--   reward (Staking-Ertrag) zaehlt wie ein Kauf mit Kosten 0: der Durchschnitt sinkt, eine Position nur aus
+--   Ertraegen hat Einstand 0 (Bewertung zum Marktwert bei Zufluss ist bewusst nicht umgesetzt, keine Steuerrechnung).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_holding_avg_cost(p_holding_id int)
 RETURNS numeric LANGUAGE plpgsql STABLE AS $$
@@ -2713,15 +2736,17 @@ DECLARE
     v_avg    NUMERIC;
 BEGIN
     FOR v_tx IN
-        SELECT category, shares,
-               CASE WHEN unit_price IS NOT NULL THEN shares * unit_price + COALESCE(order_fee, 0) ELSE abs(amount) END AS cost
+        SELECT category::text AS category, shares,
+               CASE WHEN category::text = 'reward' THEN 0
+                    WHEN unit_price IS NOT NULL THEN shares * unit_price + COALESCE(order_fee, 0)
+                    ELSE abs(amount) END AS cost
         FROM finance.transactions
         WHERE holding_id = p_holding_id
-          AND category IN ('buy', 'sell')
+          AND category::text IN ('buy', 'sell', 'reward')
           AND shares IS NOT NULL
         ORDER BY transaction_date, id
     LOOP
-        IF v_tx.category = 'buy' THEN
+        IF v_tx.category IN ('buy', 'reward') THEN
             IF v_shares <= 0 THEN
                 v_shares := 0;
                 v_cost   := 0;

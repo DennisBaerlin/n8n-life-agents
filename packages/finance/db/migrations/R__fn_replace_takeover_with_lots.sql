@@ -25,12 +25,26 @@
 --   dem Tipp bekommt ihn mit und bucht nur bei gleichem Plan (sonst stale_preview, kein Write; Muster fn_apply_bank_statement).
 --   Eine Gruppe aus einer frueheren Ersetzung (transaction_audit.replaced_by_group) ist nie wieder Kandidat.
 --   Ein nicht buchbares Lot (fn_trade_amount_reason, z. B. FIFO-Rest unter 1 Cent) -> mismatched code lots_not_bookable.
+--   Eine Zeile der Position bis zum Uebernahme-Datum in anderer Waehrung als das Verrechnungskonto -> mismatched code
+--   currency_mismatch (ihr Kurswert waere ein falscher Einstand).
+--   Rundungs-Staub (Zeilen-Summe weicht um <= 1e-8 je Lot ab) geht auf das letzte cash-neutrale Lot (fn_takeover_dust_lot).
 --   Rueckgabe: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
---   cash_lots_count, same_day_shares (0 = keiner), take_date}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
+--   cash_lots_count, same_day_shares (0 = keiner), take_date}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable'|'currency_mismatch', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
 --   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|
 --   export_account_mismatch|multiple_sub_accounts|stale_preview), reason}.
 -- ============================================================
+
+-- Hilfs-fn: Index des Lots, das den Rundungs-Staub traegt. Nur Lots mit Datum < p_before; davon das letzte
+-- cash-neutrale (Datum <= p_cut, ohne Stichtag alle), sonst das letzte; keins davor -> letztes Lot ueberhaupt.
+CREATE OR REPLACE FUNCTION finance.fn_takeover_dust_lot(p_lots jsonb, p_cut date, p_before date)
+RETURNS int LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE((SELECT (o - 1)::int FROM jsonb_array_elements(p_lots) WITH ORDINALITY AS x(l, o)
+                     WHERE (l->>'date')::date < p_before
+                     ORDER BY (p_cut IS NULL OR (l->>'date')::date <= p_cut) DESC, o DESC LIMIT 1),
+                    jsonb_array_length(p_lots) - 1);
+$$;
+
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_with_lots(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
@@ -56,6 +70,7 @@ DECLARE
     v_same     NUMERIC;
     v_sum_b    NUMERIC;
     v_n_b      INT;
+    v_ix       INT;
 BEGIN
     -- die geteilte Lade-Sequenz (Leser + derselbe Konto-Waechter wie der Monats-Check, buchbar prueft er mit)
     v_norm := finance.fn_bank_export_load(p);
@@ -94,16 +109,29 @@ BEGIN
                             AND abs(t.shares) = (r->>'shares')::numeric
                             AND abs(t.transaction_date - (r->>'date')::date) <= 5);
         CONTINUE WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'buy');
+        -- Eine Zeile in anderer Waehrung als das Verrechnungskonto: ihr Kurswert waere still ein falscher Einstand
+        -- (der Konto-Waechter nimmt gemischte Dateien an) -> nie ersetzen.
+        IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_norm->'rows') r
+                   WHERE r->>'kind' IN ('buy', 'sell') AND (r->>'date')::date <= v_h.take_date
+                     AND (upper(r->>'isin') = v_h.isin OR (r->>'isin' IS NULL AND v_h.isin IS NULL AND upper(r->>'symbol') = upper(v_h.symbol)))
+                     AND upper(COALESCE(r->>'currency', v_acct.currency)) <> v_acct.currency) THEN
+            v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'currency_mismatch',
+                'takeover_shares', v_h.take_shares, 'export_shares', NULL, 'difference', 0);
+            CONTINUE;
+        END IF;
 
         -- FIFO: die eine Adresse (fn_import_fifo_lots), ein Bestand 0 setzt neu an
         v_lots := finance.fn_import_fifo_lots(v_rows)->'lots';
         SELECT COALESCE(sum((l->>'shares')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lots) l;
 
-        -- Exporte liefern mehr Stellen als gespeichert: Rundungs-Staub der Zeilen ist kein Unterschied, er landet auf dem letzten Lot
+        -- Exporte liefern mehr Stellen als gespeichert: Rundungs-Staub der Zeilen ist kein Unterschied. Er landet auf
+        -- dem letzten cash-neutralen Lot (Datum <= Stichtag), sonst dem letzten: ein echter Kauf muss die Export-Stueck
+        -- exakt behalten, sonst findet Stufe 0 im Monats-Check ihn nicht und sperrt die Zeile (covered_by_takeover).
         IF v_sum <> v_h.take_shares AND abs(v_sum - v_h.take_shares) <= 0.00000001 * GREATEST(jsonb_array_length(v_lots), 1)
            AND jsonb_array_length(v_lots) > 0 THEN
-            v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
-                          to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum));
+            v_ix := finance.fn_takeover_dust_lot(v_lots, v_cut, v_h.take_date + 1);
+            v_lots := jsonb_set(v_lots, ARRAY[v_ix::text, 'shares'],
+                          to_jsonb((v_lots->v_ix->>'shares')::numeric + v_h.take_shares - v_sum));
             v_sum := v_h.take_shares;
         END IF;
         -- Kauf am Uebernahme-Tag, den die Uebernahme noch nicht enthielt (Broker zeigt den Sparplan-Kauf erst nach der
@@ -119,9 +147,10 @@ BEGIN
                       WHERE (r->>'date')::date < v_h.take_date))->'lots') l;
             IF v_n_b > 0 AND abs(v_sum_b - v_h.take_shares) <= 0.00000001 * v_n_b THEN
                 v_same := v_sum - v_sum_b;
-                -- Rundungs-Staub der Zeilen davor wie oben aufs letzte Lot: Summe = Uebernahme + Kaeufe des Tages exakt
-                v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
-                              to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum_b));
+                -- Rundungs-Staub der Zeilen davor auf ein Lot VOR dem Tag: Summe = Uebernahme + Kaeufe des Tages exakt
+                v_ix := finance.fn_takeover_dust_lot(v_lots, v_cut, v_h.take_date);
+                v_lots := jsonb_set(v_lots, ARRAY[v_ix::text, 'shares'],
+                              to_jsonb((v_lots->v_ix->>'shares')::numeric + v_h.take_shares - v_sum_b));
                 v_sum := v_h.take_shares + v_same;
             END IF;
         END IF;
@@ -202,6 +231,9 @@ BEGIN
         v_card := v_card || (SELECT jsonb_agg(CASE WHEN m->>'code' = 'lots_not_bookable'
                       THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_not_bookable',
                                'params', jsonb_build_object('name', m->>'name'))
+                      WHEN m->>'code' = 'currency_mismatch'
+                      THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_currency_mismatch',
+                               'params', jsonb_build_object('name', m->>'name', 'currency', v_acct.currency))
                       ELSE jsonb_build_object('kind', 'note', 'value', 'finance.note.lots_mismatch',
                                'params', jsonb_build_object('name', m->>'name',
                                    'difference', core.fn_ui_num((m->>'difference')::numeric, 8))) END)

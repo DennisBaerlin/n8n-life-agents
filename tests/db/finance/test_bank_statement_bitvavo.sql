@@ -126,6 +126,12 @@ BEGIN
     v_s := jsonb_build_object('account_name', '__t_bvg_giro__', 'currency', 'EUR', 'period_start', T - 19, 'period_end', T - 1,
         'opening_balance', 1000, 'closing_balance', 900,
         'lines', jsonb_build_array(jsonb_build_object('date', T - 10, 'amount', -100, 'counterparty', 'Bitvavo B.V.', 'purpose', 'Einzahlung')));
+    -- Teil 1 laeuft in derselben Transaktion: sein Bitvavo-Konto ist ein zweiter Kandidat -> der Agent fragt nach
+    v_res := finance.fn_statement_prepare(v_s);
+    IF v_res->>'code' IS DISTINCT FROM 'transfer_choice_required'
+       OR v_res->'candidates' <> '["__t_bvs_bv__", "__t_bvg_bv__"]'::jsonb THEN
+        RAISE EXCEPTION 'FAIL [G0 zwei Bitvavo-Konten -> Rueckfrage]: %', v_res; END IF;
+    v_s := v_s || jsonb_build_object('transfer_account', '__t_bvg_bv__');
     v_res := finance.fn_statement_prepare(v_s);
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'lump')::numeric <> 0
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'matched') m
@@ -142,6 +148,28 @@ BEGIN
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'lump')::numeric <> 0
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'already_booked') b WHERE (b->>'amount')::numeric = 100) THEN
         RAISE EXCEPTION 'FAIL [G3 Bitvavo-Export erkennt den Uebertrag]: %', v_res; END IF;
-    RAISE NOTICE 'PASS [G1-G3 Girokonto zuerst]';
+    RAISE NOTICE 'PASS [G0-G3 Girokonto zuerst]';
+END $$;
+
+-- ---------- Teil 3: Stueckpreis unter 5e-9 (rundet auf 8 Stellen zu 0) ----------
+--   1 000 000 000 Stueck fuer 1.00 inkl. 0.01 Gebuehr: kein buchbarer Kurs -> korrigierbare Ablehnung als Daten
+--   (trades_blocked not_bookable, Karten-Grund), nie ein Abbruch in apply.
+DO $$
+DECLARE
+    T      DATE := core.fn_today();
+    v_bv INT; v_res JSONB;
+BEGIN
+    v_bv := (finance.fn_create_account(jsonb_build_object('name', '__t_bvp_bv__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Bitvavo', 'opening_balance', 10, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    PERFORM finance.fn_create_account(jsonb_build_object('name', '__t_bvp_dep__', 'account_type', 'crypto_depot',
+                 'currency', 'EUR', 'settlement_id', v_bv));
+    v_res := finance.fn_statement_prepare(jsonb_build_object('source', 'file', 'account_name', '__t_bvp_bv__', 'closing_balance', 9,
+        'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.bv_hdr(),
+            pg_temp.bv(T-5, 'buy', 'XTINY', '1000000000', '0.000000001', '-1.00', '0.01', 'Completed', 'bp-01')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'trades') <> 0
+       OR jsonb_array_length(v_res->'trades_blocked') <> 1 OR v_res->'trades_blocked'->0->>'reason' <> 'not_bookable'
+       OR (v_res->'card_lines')::text NOT LIKE '%finance.tpl.statement_trade_not_bookable%' THEN
+        RAISE EXCEPTION 'FAIL [P1 Stueckpreis unter 5e-9 -> not_bookable]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [P1 Stueckpreis unter 5e-9]';
 END $$;
 ROLLBACK;

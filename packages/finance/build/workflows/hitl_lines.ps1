@@ -83,7 +83,7 @@ function Get-FinanceInterestScheduleLines {
 
 function Get-FinanceHitlLines {
     param(
-        [Parameter(Mandatory)][ValidateSet('account','stock_buy','insurance','pension','pension_statement',
+        [Parameter(Mandatory)][ValidateSet('account','stock_buy','reward','insurance','pension','pension_statement',
             'recurring_payment','real_estate','savings_goal','loan')][string]$Entity,
         [Parameter(Mandatory)][string]$S,
         [hashtable]$D = @{},
@@ -193,6 +193,23 @@ function Get-FinanceHitlLines {
                 $lines += (New-HitlNote -Key 'finance.note.existing_position' -If "($S.existing_position === true || $S.existing_position === 'true')")
             }
             $lines
+        }
+        'reward' {
+            # Staking-Ertraege der Ersteinrichtung, je Position eine Zeile (fn_import_card_rows summiert): Stueck ohne
+            # Kosten, Zeitraum und Anzahl der Gutschriften; der Einstand dieser Stueck ist 0
+            $sym = & $need 'Symbol'
+            @(
+                (New-HitlLine 'finance.label.security'           $sym)
+                (New-HitlLine 'finance.label.designation'        "($S.name || $sym)")
+                (New-HitlLine 'finance.label.depot'              "$S.depot_name")
+                (New-HitlLine 'finance.label.pieces'             "$S.shares" -Kind number -Digits -1)
+                (New-HitlLine 'finance.label.setup_rewards'      "'finance.tpl.setup_rewards_period'" -Kind tpl -Params @{
+                    count = (New-HitlValue -Kind number -Value (& $need 'Count'))
+                    from  = (New-HitlValue -Kind date -Value (& $need 'Date'))
+                    to    = (New-HitlValue -Kind date -Value (& $need 'DateTo')) })
+                (New-HitlLine 'finance.label.booking'            "'finance.value.staking_reward'" -Kind key)
+                (New-HitlNote -Key 'finance.note.setup_reward_cost_zero')
+            )
         }
         'insurance' {
             # Ohne Beitrag (unbekannt) legt die fn keine Beitrags-Kette an: Rhythmus, Konto, Tag und erste Abbuchung werden
@@ -388,7 +405,11 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            # depot_holder: nur Hinweis fuer die Depot-Zuordnung (fn_import_resolve_depot), wird nicht
                            # gespeichert -- die Karte zeigt das gewaehlte Depot
                            Covered = @('quote_currency', 'transaction_date', 'symbol', 'depot_holder') }
-    insurance         = @{ Heading = 'finance.label.insurance'; Alias = @{ debit_account = 'debit_account_name' }
+    # Staking-Ertraege der Ersteinrichtung: Kennung und Zeitraum aus den Summen von fn_import_card_rows (X.*)
+    reward            = @{ Heading = 'finance.label.staking_rewards'; Alias = @{ depot = 'depot_name' }
+                           D = @{ Symbol = 'X.symbol'; Count = 'X.rewards_count'; Date = 'X.date_from'; DateTo = 'X.date_to' }
+                           Covered = @('symbol', 'isin', 'transaction_date') }
+    insurance        = @{ Heading = 'finance.label.insurance'; Alias = @{ debit_account = 'debit_account_name' }
                            D = @{ Person = 'X.person'; PeriodAmount = 'X.period_amount'; Annual = 'X.annual_premium'; ValidFrom = 'X.valid_from' }
                            # Beitrag und Vertragsbeginn: die Karte zeigt sie als abgeleitete Werte (X.*), wie gespeichert
                            Covered = @('premium_amount', 'annual_premium', 'valid_from') }

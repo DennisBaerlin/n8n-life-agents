@@ -460,6 +460,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: hook-path-lint
+        name: hook_path_lint (every hook command in .claude/settings.json is anchored on CLAUDE_PROJECT_DIR or absolute and names an existing file; the test runs the lint on fixtures and on the real tree; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_path_lint_test.ps1
+        pass_filenames: false
+        files: ^(\.claude/(settings\.json|hooks/.*)|scripts/(hook_path_lint|dev/hook_path_lint_test)\.ps1)$
+
       - id: ci-wait-test
         name: ci_wait_test (check_ci_status -Wait verdict - green, red, pending, no run, rerun after red; no network)
         language: system

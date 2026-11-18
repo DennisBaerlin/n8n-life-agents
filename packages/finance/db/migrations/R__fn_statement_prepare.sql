@@ -10,7 +10,7 @@
 --     1. Konto (fn_resolve_account_by_number bzw. Name), buchbar, Waehrung, Zeitraum nicht in der Zukunft, nicht schon
 --        bestaetigt (last_reconciled_at >= period_end -> already_covered mit covered_until + useful_from = ab wann ein
 --        Auszug weiterhilft), Saldo-Probe Anfang + Summe = Ende (0,00).
---     2. Schnitt cut = spaetester bestaetigter Tag: GREATEST(period_start-1, last_reconciled_at, opening_balance_date).
+--     2. Schnitt cut = spaetester bestaetigter Tag: GREATEST(period_start-1, fn_account_confirmed_until).
 --        Zeilen bis cut stecken im bestaetigten Saldo und werden ignoriert (Ueberlappung ok). drift = Stand laut
 --        Auszug am cut - Systemstand am cut (Abweichung vor dem Zeitraum, separat gebucht und auf der Karte gewarnt;
 --        Datei mit Owner-Saldo: s. Bank-Export-Datei).
@@ -269,7 +269,7 @@ BEGIN
                        || '(tool_reconcile_account), then send the export again.');
         END IF;
         v_pe  := core.fn_today() - 1;
-        v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
+        v_cut := finance.fn_account_confirmed_until(v_acct.id);
         -- vor der Saldo-Pflicht: eine Datei, die nichts Neues bringen kann, fragt nie nach dem Kontostand
         IF v_cut >= v_pe THEN
             RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
@@ -449,7 +449,7 @@ BEGIN
     END IF;
 
     -- ---------- 2. Schnitt + Abweichung vor dem Zeitraum ----------
-    v_cut := GREATEST(v_ps - 1, v_acct.last_reconciled_at, v_acct.opening_balance_date);
+    v_cut := GREATEST(v_ps - 1, finance.fn_account_confirmed_until(v_acct.id));
     IF v_cut >= v_pe THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
             'account_id', v_acct.id, 'balance_verified', v_balance_ok,

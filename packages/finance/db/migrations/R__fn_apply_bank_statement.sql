@@ -49,6 +49,8 @@
 --   Rueckgabe: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, unmatched_in, unmatched_out, rest_other, rest_unexplained, rest_kind, export_gap, difference_candidates[], lump_offsets[], transfers_unclear[], pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
 --   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
+--   balance_at_period_end (= closing_balance der Prepare, Stand am period_end), after_period (Summe der Datei-Zeilen nach period_end,
+--   0 ohne solche Zeilen; die App-Zahl des Nutzers enthaelt sie schon, kein Echo der App-Zahl),
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
 --   (code stale_preview | booking_failed, sonst ok:false der Prepare unveraendert)
 --   Tests: tests/db/finance/test_bank_statement.sql
@@ -488,6 +490,8 @@ BEGIN
         'savings_plan_estimated', v_spe,
         'unknown_mandates', v_prep->'unknown_mandates',
         'balance_after', (SELECT balance FROM finance.account_balances WHERE account_id = v_acct),
+        'balance_at_period_end', (v_prep->>'closing_balance')::numeric,
+        'after_period', COALESCE((v_prep->>'after_period')::numeric, 0),
         'outlook', finance.fn_account_outlook(v_acct));
 END;
 $$;

@@ -684,5 +684,19 @@
         "expect":  1,
         "is_negative":  false,
         "notes":  "Plan regelmaessige-zahlungen-aus-pdf B3 (bezahlt). Der Agent liest den Auszug eines bestaetigten Monats (already_covered) und ruft tool_send_recurring_suggestions. Geprueft wird read-only der Stapel: Gehalt 2400 am Monatsletzten mit Start nach dem bestaetigten Monat, genau die Werte, die der Knopf anlegt, und keine Buchung ausser dem Startbetrag. Der Tipp selbst laeuft nicht hier: verify_sql ist bewusst schreibgeschuetzt gemeint, und eine Zeile, die eine Funktion im selben SQL-Befehl anlegt, sieht die aeussere Abfrage nicht (befundener Fehlgrund 2026-11-11). Den Tipp decken real_ingress ri86-ri91 und test_fn_handle_recurring_suggestion_cb. Die chat_id test_e2e_... ist nicht numerisch, darum schickt der Versand hier nichts (Betrieb: immer numerisch). Aufraeumen: fn_clear_e2e_data (Konto __E2E__ RZ Giro)."
+    },
+    {
+        "id":  "e2e59",
+        "name":  "import_bank_export: Datei mit Zeilen vom Importtag -> gebucht bis gestern, Antwort ohne falsche Abweichung",
+        "task":  "Hier ist mein N26-Export fuer das __E2E__ N26 Konto, laut App stehen dort gerade 960,00 Euro [attachment file_id=mock_photo_after_period type=document ext=csv]",
+        "chat_id":  "test_e2e_e2e59",
+        "sentinel_accounts":  1,
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ N26 Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ N26 Konto','account_type','cash','account_holder','Erika','currency','EUR','bank','N26','opening_balance',1000,'opening_balance_date',(core.fn_today() - 20)::text)));",
+        "precondition_sql":  "(SELECT count(*) FROM finance.accounts a JOIN finance.account_balances b ON b.account_id = a.id WHERE a.name = '__E2E__ N26 Konto' AND a.bank = 'N26' AND a.opening_balance_date = core.fn_today() - 20 AND b.balance = 1000) = 1 AND (SELECT count(*) FROM finance.accounts a WHERE a.status = 'active' AND finance.fn_bank_export_account_profile(a.id) = 'n26_v1') = 1",
+        "verify_sql":  "SELECT count(*) FROM finance.accounts a JOIN finance.account_balances b ON b.account_id = a.id JOIN finance.bank_statements s ON s.account_id = a.id WHERE a.name = '__E2E__ N26 Konto' AND b.balance = 970 AND s.period_end = core.fn_today() - 1 AND s.balance_source = 'owner';",
+        "expect":  1,
+        "is_negative":  false,
+        "expected_behavior":  "Nach der bestaetigten Karte meldet der Buchhalter den Monats-Check als erledigt: gebucht bis gestern (period_end, Stand 970,00 = balance_at_period_end) und die Zahlung von heute (-10,00 = after_period) kommt mit dem naechsten Export; die 960,00 aus der App enthalten sie schon. Er sagt NICHT, dass der Kontostand nicht passt oder abweicht, und schlaegt keine Korrektur oder Rueckfrage zum Kontostand vor. Alle Zahlen stammen aus dem Werkzeug-Ergebnis, keine eigene Rechnung.",
+        "notes":  "Befund 2026-11-17 (Eigenschaft: nach dem Datei-Import meldete der Bot eine Abweichung, weil er den bis gestern gebuchten Stand mit der App-Zahl von heute verglich). Teil b: fn_apply_bank_statement gibt balance_at_period_end und after_period aus der Prepare zurueck (test_bank_statement_after_period AP4/AP5), statement_chain reicht sie weiter, die Ergebnis-Regel BOOKED UP TO verbietet den Vergleich. Fixture tests/mock_telegram/docs/mock_photo_after_period.csv (N26, Zeile vor 10 Tagen -30,00, Zeile heute -10,00; Datums-Platzhalter, ic46d). Die Antwort NACH der Karte bewertet nur diese Stufe (e2e_test schreibt expected_behavior ins Judge-Bundle, danach judge_eval). Gegenlauf auf dem Stand vor Teil b zeigt den Befund. Aufraeumen: fn_clear_e2e_data (Konto __E2E__ N26 Konto, Auszug per CASCADE)."
     }
 ]

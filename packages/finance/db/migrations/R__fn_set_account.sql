@@ -94,9 +94,11 @@ BEGIN
             'reason', 'The account number ' || v_number || ' already belongs to the account "' || v_taken || '".');
     END IF;
 
-    -- Verrechnungskonto (Bank-Import-Modul): dieselbe Pruefung wie fn_create_account, Profil nach der neuen Bank
+    -- Verrechnungskonto (Bank-Import-Modul): dieselbe Pruefung wie fn_create_account, Profil nach der neuen Bank. Ein
+    -- Bankwechsel prueft auch ein schon gesetztes Verrechnungskonto (ein Geld-Konto darf es nur mit passendem Profil haben).
     v_settle := NULLIF(p->>'settlement_id', '')::int;
-    SELECT finance.fn_settlement_account_reason(a.account_type::text, a.currency, v_settle, a.id,
+    SELECT finance.fn_settlement_account_reason(a.account_type::text, a.currency,
+               COALESCE(v_settle, CASE WHEN NULLIF(btrim(p->>'bank'), '') IS NOT NULL THEN a.settlement_account_id END), a.id,
                COALESCE(NULLIF(btrim(p->>'bank'), ''), NULLIF(btrim(a.bank), ''), a.name)) INTO v_taken
     FROM finance.accounts a WHERE a.id = v_id;
     IF v_taken IS NOT NULL THEN

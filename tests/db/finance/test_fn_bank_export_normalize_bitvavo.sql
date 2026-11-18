@@ -114,6 +114,14 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [V11 export_invalid]';
 
+    -- Auszahlung mit Gebuehr (Muster Bondora): Geld = Abgang inkl. Gebuehr, transfer_fee getrennt fuer den Uebertrag
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', jsonb_build_array(v_hdr,
+        '["Europe/Amsterdam","2026-08-09","10:00:00","withdrawal","EUR","-100.00","","","","","EUR","1.00","Completed","tx-bv-0098",""]'::jsonb)));
+    IF (v_res->'rows'->0->>'cash_amount')::numeric <> -101 OR (v_res->'rows'->0->>'transfer_fee')::numeric <> 1
+       OR v_res->'rows'->0->>'sub_kind' <> 'withdrawal' THEN
+        RAISE EXCEPTION 'FAIL [V16 Auszahlung mit Gebuehr]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [V16 Auszahlung mit Gebuehr]';
+
     -- Konto -> Profil, keine Kollision mit den anderen Profilen
     v_acct := (finance.fn_create_account('{"name":"__t_bv_a__","account_type":"cash","currency":"EUR","bank":"Bitvavo"}'::jsonb)->>'account_id')::int;
     IF finance.fn_bank_export_account_profile(v_acct) IS DISTINCT FROM 'bitvavo_v1' THEN RAISE EXCEPTION 'FAIL [V12 Bank Bitvavo]'; END IF;

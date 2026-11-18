@@ -59,7 +59,7 @@
 -- ============================================================
 
 -- Hilfs-fn: Position eines Depots suchen (ISIN; Krypto ohne ISIN per Symbol) und mit p_create (nicht NULL) anlegen,
--- wenn sie fehlt. Die eine Adresse fuer Kauf (fn_book_stock_buy) und Staking-Ertrag (fn_apply_bank_statement).
+-- wenn sie fehlt. Die eine Adresse fuer Kauf (fn_book_stock_buy) und Staking-Ertrag (fn_book_reward).
 -- p_create: {name, currency (Default EUR), asset_class?, provider_symbol?, quote_currency?}; nur beim Anlegen gesetzt,
 -- eine bestehende Position behaelt ihre Werte. Rueckgabe: holding_id | NULL (nicht gefunden, p_create NULL).
 CREATE OR REPLACE FUNCTION finance.fn_depot_holding_id(p_depot int, p_isin text, p_symbol text, p_create jsonb DEFAULT NULL)

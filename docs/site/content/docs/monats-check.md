@@ -92,7 +92,7 @@ Bei Bitvavo:
 - **Käufe und Verkäufe** bucht der Bot centgenau mit dem Betrag, den Bitvavo abgebucht oder gutgeschrieben hat. Die Gebühr steckt darin schon und zählt nicht doppelt.
 - **Staking:** Gutschriften ohne Euro-Betrag bucht er als Staking-Ertrag ins Krypto-Depot, mit Einstand 0 €. So stimmt die Stückzahl im Bot mit Bitvavo überein. Die Karte zeigt je Münze eine Summe. Eine Steuerrechnung macht der Bot dafür nicht.
 - **Ein- und Auszahlungen:** Bitvavo zahlt nur auf dein verifiziertes Bankkonto aus. Sag dem Bot einmal, welches das ist, z. B. „Bitvavo zahlt auf mein Girokonto aus“. Dann bucht er Ein- und Auszahlungen als Übertrag mit diesem Konto, egal ob du zuerst die Bitvavo-Datei oder den Auszug des Girokontos schickst.
-- **Nicht gebucht** werden Münzen, die du von außen ein- oder an eine fremde Adresse auszahlst, noch nicht abgeschlossene Vorgänge und Käufe, die nicht in Euro abgerechnet sind. Die Karte nennt sie mit Grund, ihr Betrag zählt zum Rest.
+- **Nicht gebucht** werden Münzen, die du von außen ein- oder an eine fremde Adresse auszahlst, noch nicht abgeschlossene Vorgänge und Käufe, die nicht in Euro abgerechnet sind. Die Karte nennt sie mit Grund.
 
 ## Neu dabei: Einrichtung aus einer einzigen Datei
 

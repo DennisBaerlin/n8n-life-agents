@@ -213,6 +213,8 @@ BEGIN
             RETURN format('depot "%s" not found (neither existing nor in this batch)', v_ref);
         ELSIF v_acct_type NOT IN ('stocks_depot','crypto_depot') THEN
             RETURN format('depot "%s" is type %s — needs stocks_depot or crypto_depot', v_ref, v_acct_type);
+        ELSIF v_acct_type = 'stocks_depot' AND NULLIF(trim(COALESCE(p->>'isin','')),'') IS NULL THEN
+            RETURN 'isin is required for a stocks_depot position';
         END IF;
         v_num := NULLIF(p->>'shares','')::numeric;
         IF v_num IS NULL OR v_num <= 0 THEN RETURN 'shares must be a positive number'; END IF;

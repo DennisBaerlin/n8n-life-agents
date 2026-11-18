@@ -86,4 +86,21 @@ BEGIN
         RAISE EXCEPTION 'FAIL [B10 Re-Import ohne Doppelung]: %', v_r; END IF;
     RAISE NOTICE 'PASS [B10 Re-Import]';
 END $$;
+
+-- Staging-Art reward: im Aktiendepot nur mit ISIN (wie stock_buy), sonst entstuende eine Position ohne ISIN
+DO $$
+DECLARE
+    v_set INT;
+    v_r   JSONB;
+BEGIN
+    v_set := (finance.fn_create_account('{"name":"__t_bvsu_sd_set__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+    PERFORM finance.fn_create_account(jsonb_build_object('name', '__t_bvsu_sd__', 'account_type', 'stocks_depot',
+                'currency', 'EUR', 'settlement_id', v_set));
+    v_r := finance.fn_import_stage(jsonb_build_object('source', 'csv', 'rows', jsonb_build_array(
+               jsonb_build_object('entity_type', 'reward', 'depot', '__t_bvsu_sd__', 'symbol', 'VWXX', 'shares', 1,
+                                  'transaction_date', (core.fn_today() - 5)::text))));
+    IF (v_r->>'invalid')::int IS DISTINCT FROM 1 OR (v_r->'errors')::text NOT LIKE '%isin is required%' THEN
+        RAISE EXCEPTION 'FAIL [B11 reward im Aktiendepot ohne ISIN]: %', v_r; END IF;
+    RAISE NOTICE 'PASS [B11 reward im Aktiendepot nur mit ISIN]';
+END $$;
 ROLLBACK;

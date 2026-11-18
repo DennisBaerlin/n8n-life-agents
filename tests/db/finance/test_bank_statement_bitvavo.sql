@@ -171,5 +171,41 @@ BEGIN
        OR (v_res->'card_lines')::text NOT LIKE '%finance.tpl.statement_trade_not_bookable%' THEN
         RAISE EXCEPTION 'FAIL [P1 Stueckpreis unter 5e-9 -> not_bookable]: %', v_res; END IF;
     RAISE NOTICE 'PASS [P1 Stueckpreis unter 5e-9]';
+
+    -- Verkauf, dessen Gebuehr den Erloes uebersteigt: Gutschrift waere negativ -> not_bookable, nie ein Abbruch in apply
+    v_res := finance.fn_statement_prepare(jsonb_build_object('source', 'file', 'account_name', '__t_bvp_bv__', 'closing_balance', 9.50,
+        'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.bv_hdr(),
+            pg_temp.bv(T-5, 'buy',  'XFEE', '1.00000000',  '1.00', '-1.00', '0.00', 'Completed', 'bp-02'),
+            pg_temp.bv(T-4, 'sell', 'XFEE', '-1.00000000', '0.50', '-0.50', '1.00', 'Completed', 'bp-03')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'trades_blocked') b WHERE b->>'kind' = 'sell' AND b->>'reason' = 'not_bookable')
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'trades') x WHERE x->>'kind' = 'sell') THEN
+        RAISE EXCEPTION 'FAIL [P2 Verkauf mit Gebuehr ueber dem Erloes]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [P2 Verkauf mit Gebuehr ueber dem Erloes]';
+END $$;
+
+-- ---------- Teil 4: nicht buchbare Ertraege, offene Vorgaenge ----------
+--   Kein Krypto-Depot: zwei Ertraege derselben Muenze sind security_unknown -> EINE Summenzeile ohne Euro-Betrag.
+--   Ein offener Vorgang (Pending) steht mit Grund auf der Karte und gilt nie als gesehen (statement_seen_refs).
+DO $$
+DECLARE
+    T      DATE := core.fn_today();
+    v_res JSONB;
+BEGIN
+    PERFORM finance.fn_create_account(jsonb_build_object('name', '__t_bvq_bv__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Bitvavo', 'opening_balance', 10, 'opening_balance_date', (T - 20)::text));
+    v_res := finance.fn_statement_prepare(jsonb_build_object('source', 'file', 'account_name', '__t_bvq_bv__', 'closing_balance', 10,
+        'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.bv_hdr(),
+            pg_temp.bv(T-6, 'staking',    'ETH', '0.00010000', '', '', '',     'Distributed', 'bq-01'),
+            pg_temp.bv(T-5, 'staking',    'ETH', '0.00020000', '', '', '',     'Distributed', 'bq-02'),
+            pg_temp.bv(T-4, 'withdrawal', 'EUR', '-50.00',     '', '', '0.00', 'Pending',     'bq-03')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'trades_blocked') <> 2
+       OR (SELECT count(*) FROM regexp_matches((v_res->'card_lines')::text, 'finance\.tpl\.statement_trade_reward_blocked_row', 'g')) <> 1
+       OR (v_res->'card_lines')::text LIKE '%finance.tpl.statement_trade_blocked_row%' THEN
+        RAISE EXCEPTION 'FAIL [Q1 gesperrte Ertraege als eine Summe]: %', v_res->'card_lines'; END IF;
+    IF (v_res->'card_lines')::text NOT LIKE '%finance.tpl.statement_export_reason_not_completed%'
+       OR (v_res->'seen_refs') ? md5('bq-03') OR NOT (v_res->'seen_refs') ? md5('bq-01') THEN
+        RAISE EXCEPTION 'FAIL [Q2 offener Vorgang: Grund auf der Karte, nie gesehen]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [Q1-Q2 gesperrte Ertraege, offener Vorgang]';
 END $$;
 ROLLBACK;

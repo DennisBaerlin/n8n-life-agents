@@ -11,8 +11,10 @@
 --   Completed noch Distributed; crypto_transfer = Ein-/Auszahlung einer Muenze; foreign_currency = Kauf/Verkauf mit
 --   Quote, Zahlung oder Gebuehr nicht in EUR; unsupported_type = alles andere).
 --   Paid mit mehr als 2 Nachkommastellen -> export_invalid (der gebuchte Betrag waere nicht centgenau).
---   sub_kind deposit|withdrawal (Geld-Zeilen ohne Gegen-IBAN): Stufe T paart sie mit dem Verrechnungskonto des Kontos.
---   Rueckgabe: {ok:true, rows:[{row_no, date, kind, type, sub_kind, cash_amount, isin, symbol, name, shares, price, gross, fee,
+--   sub_kind deposit|withdrawal (Geld-Zeilen ohne Gegen-IBAN): Stufe T paart sie mit dem Verrechnungskonto des Kontos;
+--   transfer_fee = Gebuehr einer Auszahlung (Uebertrag ohne sie). Eine Einzahlung mit Gebuehr
+--   bleibt ein Uebertrag ueber den Netto-Betrag und passt dann nicht zur Bank-Zeile: Rest, nie doppelt.
+--   Rueckgabe: {ok:true, rows:[{row_no, date, kind, type, sub_kind, transfer_fee, cash_amount, isin, symbol, name, shares, price, gross, fee,
 --   tax, currency, counterparty, counterparty_iban, purpose, ext_ref (md5 der Transaction ID), reason}],
 --   unknown_rows:[{row_no, date, type, cash_amount, name, reason}], account_types[], currencies[]}
 --   | {ok:false, code:'export_invalid', reason, row_no?}. row_no = Zeile in der Datei (Kopfzeile = header_row_no).
@@ -109,6 +111,8 @@ BEGIN
         v_arr := v_arr || jsonb_build_object(
             'row_no', v_n + v_hrow, 'date', v_d, 'kind', v_kind, 'type', v_typ,
             'sub_kind', CASE WHEN v_kind = 'cash' THEN v_typ END,
+            -- Auszahlung mit Gebuehr (Muster Bondora): Uebertrag = Abgang - Gebuehr, die Gebuehr bucht die Prepare eigens
+            'transfer_fee', CASE WHEN v_kind = 'cash' AND v_typ = 'withdrawal' AND v_fee > 0 THEN round(v_fee, 2) END,
             'cash_amount', v_cash,
             'isin', NULL, 'symbol', CASE WHEN v_cur <> 'EUR' THEN v_cur END,
             'name', CASE WHEN v_cur <> 'EUR' THEN v_cur END,

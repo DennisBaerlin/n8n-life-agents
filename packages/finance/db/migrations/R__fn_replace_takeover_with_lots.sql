@@ -6,8 +6,10 @@
 --   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil; mehrere Sub-Konten -> multiple_sub_accounts).
 --   Je Position eines Depots mit diesem Verrechnungskonto, die genau ein Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
---     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
---     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage), zaehlen nicht.
+--     Lots = Export-Kaeufe und Staking-Ertraege (Lot ohne Kosten -> reward-Buchung) minus -Verkaeufe (FIFO) seit dem
+--     letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
+--     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage; Ertrag nur am
+--     selben Tag), zaehlen nicht.
 --     Summe der Lot-Stueck = Uebernahme-Stueck exakt (8 Stellen) -> ersetzen; sonst mismatched (code lots_mismatch,
 --     difference = Uebernahme - Export), nichts an dieser Position geaendert. Ausnahme Kauf am Uebernahme-Tag: stimmen die
 --     Zeilen VOR dem Tag exakt und gibt es am Tag nur Kaeufe, enthielt die Uebernahme sie noch nicht (Broker zeigt den Kauf
@@ -97,17 +99,19 @@ BEGIN
                  AND EXISTS (SELECT 1 FROM finance.transactions g WHERE g.group_id = x.group_id AND g.category::text = 'position_takeover')) = 1
         ORDER BY h.id
     LOOP
-        -- Export-Zeilen der Position bis zum Uebernahme-Datum, die nicht schon als eigene Buchung existieren
-        SELECT COALESCE(jsonb_agg(r ORDER BY (r->>'date')::date, (r->>'kind' = 'sell'), (r->>'row_no')::int), '[]'::jsonb)
+        -- Export-Zeilen der Position bis zum Uebernahme-Datum, die nicht schon als eigene Buchung existieren. Ertraege
+        -- (Staking) zaehlen mit: sie stecken im uebernommenen Bestand; schon gebucht nur am selben Tag (gleich grosse
+        -- Ertraege im Wochentakt sind verschiedene Zeilen)
+        SELECT COALESCE(jsonb_agg(r ORDER BY (r->>'date')::date, (r->>'kind' = 'sell'), (r->>'kind' = 'reward'), (r->>'row_no')::int), '[]'::jsonb)
         INTO v_rows
         FROM jsonb_array_elements(v_norm->'rows') r
-        WHERE r->>'kind' IN ('buy', 'sell') AND (r->>'date')::date <= v_h.take_date
+        WHERE r->>'kind' IN ('buy', 'sell', 'reward') AND (r->>'date')::date <= v_h.take_date
           AND (upper(r->>'isin') = v_h.isin OR (r->>'isin' IS NULL AND v_h.isin IS NULL AND upper(r->>'symbol') = upper(v_h.symbol)))
           AND NOT EXISTS (SELECT 1 FROM finance.transactions t
                           WHERE t.holding_id = v_h.id AND t.category::text = r->>'kind'
                             AND (t.group_id IS DISTINCT FROM v_h.group_id)
                             AND abs(t.shares) = (r->>'shares')::numeric
-                            AND abs(t.transaction_date - (r->>'date')::date) <= 5);
+                            AND abs(t.transaction_date - (r->>'date')::date) <= CASE WHEN r->>'kind' = 'reward' THEN 0 ELSE 5 END);
         CONTINUE WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'buy');
         -- Eine Zeile in anderer Waehrung als das Verrechnungskonto: ihr Kurswert waere still ein falscher Einstand
         -- (der Konto-Waechter nimmt gemischte Dateien an) -> nie ersetzen.
@@ -162,15 +166,18 @@ BEGIN
 
         -- Plan je Lot (Kurs aus dem Kurswert, anteilige Gebuehr, Cash ja/nein); ein nicht buchbares Lot (z. B. FIFO-Rest
         -- unter 1 Cent) -> lots_not_bookable als DATEN, die Position bleibt unveraendert (nie RAISE im Probelauf)
-        SELECT jsonb_agg(jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
+        -- Ertrags-Lot (Kosten 0): eigene reward-Buchung ohne Kurs und ohne Geld (fn_replace_takeover_apply)
+        SELECT jsonb_agg(CASE WHEN l->>'kind' = 'reward'
+                   THEN jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric, 'reward', true, 'cash', false)
+                   ELSE jsonb_build_object('date', l->>'date', 'shares', (l->>'shares')::numeric,
                    'price', finance.fn_unit_price_from_total((l->>'gross')::numeric, (l->>'orig')::numeric),
                    'fee', round((l->>'fee')::numeric * (l->>'shares')::numeric / (l->>'orig')::numeric, 2),
-                   'cash', v_cut IS NOT NULL AND (l->>'date')::date > v_cut) ORDER BY o)
+                   'cash', v_cut IS NOT NULL AND (l->>'date')::date > v_cut) END ORDER BY o)
         INTO v_lots FROM jsonb_array_elements(v_lots) WITH ORDINALITY AS x(l, o);
         SELECT string_agg(COALESCE(finance.fn_trade_amount_reason((l->>'shares')::numeric,
                               (l->>'shares')::numeric * (l->>'price')::numeric + (l->>'fee')::numeric),
                           CASE WHEN COALESCE((l->>'price')::numeric, 0) <= 0 THEN 'price missing' END), '; ')
-        INTO v_reason FROM jsonb_array_elements(v_lots) l;
+        INTO v_reason FROM jsonb_array_elements(v_lots) l WHERE (l->>'reward')::boolean IS DISTINCT FROM true;
         IF v_reason IS NOT NULL THEN
             v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'lots_not_bookable',
                 'reason', v_reason, 'takeover_shares', v_h.take_shares, 'export_shares', v_sum, 'difference', 0);
@@ -195,7 +202,7 @@ BEGIN
                    v_pl->>'symbol');
         v_cash_n := (v_r->>'cash_lots_count')::int;
 
-        SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'lots_count', jsonb_array_length(v_pl->'lots'),
+        SELECT jsonb_build_object('holding_id', h.id, 'name', h.name, 'lots_count', (SELECT count(*) FROM jsonb_array_elements(v_pl->'lots') l WHERE (l->>'reward')::boolean IS DISTINCT FROM true),
                    'cash_lots_count', v_cash_n, 'shares', h.shares, 'avg_purchase_price', h.average_purchase_price,
                    'avg_before', (v_pl->>'avg_before')::numeric, 'same_day_shares', (v_pl->>'same_day_shares')::numeric,
                    'take_date', v_pl->>'take_date')

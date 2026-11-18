@@ -5,7 +5,7 @@
 --   Oberflaeche, keine Duplikation) in Abhaengigkeits-Reihenfolge:
 --   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy) -> pension_statement/reward.
 --   reward (Staking-Ertrag der Ersteinrichtung): eine reward-Buchung (amount 0) auf dem Verrechnungskonto, Position
---   wird bei Bedarf angelegt (fn_depot_holding_id); nach den Kaeufen, damit deren Uebernahme-Guard den Stand vor dem Batch sieht.
+--   wird bei Bedarf angelegt (fn_book_reward); nach den Kaeufen, damit deren Uebernahme-Guard den Stand vor dem Batch sieht.
 --   Namen->ID-Aufloesung passiert hier (Staging traegt rohe Namen): zuerst gegen die in
 --   diesem Lauf erzeugten Konten (In-Batch-Referenzen), sonst fn_resolve_* (0/>1 = Fehler).
 --
@@ -415,14 +415,11 @@ BEGIN
                         'error', format('depot "%s" has no settlement account', v_payload->>'depot'));
                     CONTINUE;
                 END IF;
-                v_id := finance.fn_depot_holding_id(v_ref_id, NULLIF(v_payload->>'isin', ''),
-                            finance.fn_holding_symbol(v_payload->>'symbol', v_payload->>'isin'),
-                            jsonb_build_object('name', v_payload->>'name',
-                                'currency', (SELECT currency FROM finance.accounts WHERE id = v_ref_id)));
-                INSERT INTO finance.transactions (account_id, holding_id, category, amount, shares, transaction_date, description)
-                VALUES (v_settle, v_id, 'reward', 0, (v_payload->>'shares')::numeric, (v_payload->>'transaction_date')::date,
-                        'Staking ' || finance.fn_holding_symbol(v_payload->>'symbol', v_payload->>'isin'))
-                RETURNING id INTO v_tx;
+                v_r := finance.fn_book_reward(v_ref_id, v_settle, NULLIF(v_payload->>'isin', ''),
+                           finance.fn_holding_symbol(v_payload->>'symbol', v_payload->>'isin'), v_payload->>'name',
+                           (v_payload->>'shares')::numeric, (v_payload->>'transaction_date')::date);
+                v_id := (v_r->>'holding_id')::int;
+                v_tx := (v_r->>'transaction_id')::int;
                 v_created := v_created || jsonb_build_object('row_no', v_cur_row, 'entity_type', 'reward', 'id', v_tx);
                 IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_positions) x WHERE (x->>'holding_id')::int = v_id) THEN
                     v_positions := v_positions || (

@@ -111,7 +111,7 @@ BEGIN
   END;
 
   -- Verrechnungskonto (Bank-Import-Modul): p2p -> Girokonto ok; Girokonto selbst, Depot-Ziel, fremde Waehrung -> {ok:false}
-  DECLARE v_c INT; v_c2 INT; v_usd INT; v_p INT; v_r JSONB; BEGIN
+  DECLARE v_c INT; v_c2 INT; v_usd INT; v_p INT; v_bv INT; v_r JSONB; BEGIN
     PERFORM finance.fn_ensure_currency('USD');
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_c__', 'cash', 'EUR', 'active') RETURNING id INTO v_c;
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_st_c2__', 'cash', 'EUR', 'active') RETURNING id INTO v_c2;
@@ -136,9 +136,14 @@ BEGIN
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true
        OR (SELECT settlement_account_id FROM finance.accounts WHERE id = (v_r->>'account_id')::int) IS DISTINCT FROM v_c THEN
       RAISE EXCEPTION 'FAIL fn_create_account [Boersen-Geldkonto mit Verrechnungskonto]: %', v_r; END IF;
-    v_r := finance.fn_set_account(jsonb_build_object('account_id', (v_r->>'account_id')::int, 'settlement_id', v_p));
+    v_bv := (v_r->>'account_id')::int;
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_bv, 'settlement_id', v_p));
     IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN
       RAISE EXCEPTION 'FAIL fn_set_account [Boersen-Geldkonto: Verrechnungskonto muss Girokonto sein]: %', v_r; END IF;
+    -- Bankwechsel weg vom Profil: das schon gesetzte Verrechnungskonto passt nicht mehr -> {ok:false}, nichts geaendert
+    v_r := finance.fn_set_account(jsonb_build_object('account_id', v_bv, 'bank', 'Testbank'));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR (SELECT bank FROM finance.accounts WHERE id = v_bv) <> 'Bitvavo' THEN
+      RAISE EXCEPTION 'FAIL fn_set_account [Bankwechsel prueft das Verrechnungskonto]: %', v_r; END IF;
     -- Backstop: der CHECK haelt auch direkte Writes. Ein Geld-Konto (cash) darf eins tragen, wenn sein Export-Profil
     -- ein counterparty_pattern hat (Pruefung in fn_settlement_account_reason, oben abgelehnt); der CHECK sperrt die
     -- uebrigen Kontoarten.

@@ -63,7 +63,7 @@
 --   gebuchte Zahlung ausgleicht (hoechstens damalige Vormerkung, Luecke, gebuchte Abgaenge): eigene Kartenzeile, die
 --   Rest-Zeile zeigt lump - pending_settled. Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
---   gegen gebuchte Trades (nicht fuer reward), sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend bzw. eine
+--   gegen gebuchte Trades (reward nur am selben Tag), sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend bzw. eine
 --   reward-Buchung; kind reward = Staking, amount 0, je Muenze eine Kartenzeile), nicht buchbar ->
 --   trades_blocked[] (covered_by_takeover, oversell, security_unknown, not_bookable); unknown-Zeilen des Exports -> export_unknown[].
 --   Steuer auf Kauf/Verkauf = eigene Buchung (trades[].tax, nie im Rest); Verkaufs-Check zaehlt
@@ -294,7 +294,7 @@ BEGIN
                    'amount', (r->>'cash_amount')::numeric, 'counterparty', r->>'counterparty',
                    'counterparty_iban', r->>'counterparty_iban', 'purpose', COALESCE(r->>'purpose', r->>'name'),
                    'kind', r->>'kind', 'isin', r->>'isin', 'symbol', r->>'symbol', 'name', r->>'name',
-                   'sub_kind', r->>'sub_kind', 'shares', r->'shares', 'gross', r->'gross', 'fee', r->'fee', 'tax', r->'tax', 'row_no', r->'row_no', 'ext_ref', r->>'ext_ref',
+                   'sub_kind', r->>'sub_kind', 'transfer_fee', r->'transfer_fee', 'shares', r->'shares', 'gross', r->'gross', 'fee', r->'fee', 'tax', r->'tax', 'row_no', r->'row_no', 'ext_ref', r->>'ext_ref',
                    'reason', r->>'reason')
                  -- je Tag Kauf vor Ertrag vor Verkauf: ein Ertrag vor dem ersten Kauf legt keine leere Position an, ein
                  -- Verkauf desselben Tages sieht ihn (Oversell-Pruefung, Storno in umgekehrter Folge)
@@ -858,8 +858,8 @@ BEGIN
     --   Position bei Verkauf/Dividende bzw. kein eindeutiges Depot beim Kauf (security_unknown), Stueckpreis unter
     --   5e-9 bzw. Betrag unter 1 Cent (not_bookable, fn_trade_amount_reason).
     --   Kauf/Verkauf buchen genau den Export-Betrag (Kurswert +- Gebuehr, centgenau), der Kurs ist daraus abgeleitet.
-    --   Ertrag (reward, Staking): Stueck-Zugang ohne Geld (amount 0), ohne Stufe 0 (gleich grosse Ertraege im
-    --   Wochentakt waeren sonst "schon gebucht"; Doppelungen verhindern Stichtag und statement_seen_refs), neue Position
+    --   Ertrag (reward, Staking): Stueck-Zugang ohne Geld (amount 0), Stufe 0 nur am selben Tag (gleich grosse Ertraege im
+    --   Wochentakt waeren mit +-5 Tagen "schon gebucht"; Doppelungen verhindern Stichtag und statement_seen_refs), neue Position
     --   wie beim Kauf, steckt er in einer Bestandsuebernahme -> covered_by_takeover. Die Karte zeigt je Muenze eine Summe.
     --   Wertpapier-Geldfluesse (Kauf/Verkauf/Dividende/Steuer/Kapitalmassnahme) zaehlen nie in unmatched_out/in.
     IF v_file THEN
@@ -876,12 +876,13 @@ BEGIN
             v_hcount := COALESCE(v_hold.n, 0);
 
             v_tx_id := NULL;
-            IF v_hcount = 1 AND v_line->>'kind' <> 'reward' THEN
+            IF v_hcount = 1 THEN
                 SELECT t.id, t.transaction_date, t.amount INTO v_tx_id, v_tx_date, v_tx_amt
                 FROM finance.transactions t
                 WHERE t.account_id = v_acct.id AND t.holding_id = v_hold.id AND t.category::text = v_line->>'kind'
                   AND t.transaction_date <= v_pe + 5   -- auch vor dem Schnitt: von Hand gebucht, Export bucht spaeter
-                  AND abs(t.transaction_date - (v_line->>'booking_date')::date) <= 5
+                  -- Ertrag nur am selben Tag: gleich grosse Ertraege im Wochentakt sind verschiedene Zeilen
+                  AND abs(t.transaction_date - (v_line->>'booking_date')::date) <= CASE WHEN v_line->>'kind' = 'reward' THEN 0 ELSE 5 END
                   AND NOT (t.id = ANY(v_used_tx))
                   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_booked) b WHERE (b->>'transaction_id')::int = t.id)
                   AND CASE WHEN v_line->>'kind' = 'dividend' THEN t.amount = (v_line->>'amount')::numeric
@@ -939,7 +940,7 @@ BEGIN
             IF v_reason IS NOT NULL THEN
                 v_tblocked := v_tblocked || jsonb_build_object('line_idx', v_idx, 'kind', v_line->>'kind', 'reason', v_reason,
                     'name', COALESCE(v_line->>'name', v_line->>'isin', v_line->>'symbol'), 'amount', (v_line->>'amount')::numeric,
-                    'line_date', v_line->>'date');
+                    'shares', (v_line->>'shares')::numeric, 'line_date', v_line->>'date');
                 CONTINUE;
             END IF;
 
@@ -955,7 +956,9 @@ BEGIN
                 ELSE (v_line->>'amount')::numeric END;
             IF v_line->>'kind' IN ('buy', 'sell')
                AND (COALESCE(v_price, 0) <= 0
-                    OR finance.fn_trade_amount_reason((v_line->>'shares')::numeric, abs(v_tamt)) IS NOT NULL) THEN
+                    -- Betrag aus Sicht des Kontos: Kauf wird abgebucht, Verkauf gutgeschrieben; beide muessen > 0 sein
+                    OR finance.fn_trade_amount_reason((v_line->>'shares')::numeric,
+                           CASE WHEN v_line->>'kind' = 'buy' THEN -v_tamt ELSE v_tamt END) IS NOT NULL) THEN
                 v_tblocked := v_tblocked || jsonb_build_object('line_idx', v_idx, 'kind', v_line->>'kind', 'reason', 'not_bookable',
                     'name', COALESCE(v_line->>'name', v_line->>'isin', v_line->>'symbol'), 'amount', (v_line->>'amount')::numeric,
                     'line_date', v_line->>'date');
@@ -1309,7 +1312,7 @@ BEGIN
     END IF;
     IF jsonb_array_length(v_tblocked) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_trades_blocked'))
-            || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
                     core.fn_ui_tpl('finance.tpl.statement_trade_blocked_row', jsonb_build_object('name', x->>'name',
                         'amount', core.fn_ui_money((x->>'amount')::numeric, v_acct.currency),
                         'date', core.fn_ui_date((x->>'line_date')::date),
@@ -1319,7 +1322,16 @@ BEGIN
                                    WHEN 'not_bookable' THEN core.fn_ui_tpl('finance.tpl.statement_trade_not_bookable', '{}'::jsonb)
                                    ELSE core.fn_ui_tpl('finance.tpl.statement_trade_security_unknown', '{}'::jsonb) END)))
                   ORDER BY (x->>'line_date')::date, (x->>'line_idx')::int)
-                FROM jsonb_array_elements(v_tblocked) x);
+                FROM jsonb_array_elements(v_tblocked) x WHERE x->>'kind' <> 'reward'), '[]'::jsonb)
+            -- gesperrte Ertraege wie gebuchte: eine Summe je Muenze und Grund, ohne Euro-Betrag (es gibt keinen)
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+                    core.fn_ui_tpl('finance.tpl.statement_trade_reward_blocked_row', jsonb_build_object('name', s.name,
+                        'shares', core.fn_ui_num(s.shares, 8), 'count', s.n,
+                        'why', CASE s.reason
+                                   WHEN 'covered_by_takeover' THEN core.fn_ui_tpl('finance.tpl.statement_trade_covered_by_takeover', '{}'::jsonb)
+                                   ELSE core.fn_ui_tpl('finance.tpl.statement_trade_security_unknown', '{}'::jsonb) END))) ORDER BY s.name, s.reason)
+                FROM (SELECT x->>'name' AS name, x->>'reason' AS reason, sum((x->>'shares')::numeric) AS shares, count(*) AS n
+                      FROM jsonb_array_elements(v_tblocked) x WHERE x->>'kind' = 'reward' GROUP BY 1, 2) s), '[]'::jsonb);
     END IF;
     IF jsonb_array_length(v_file_unk) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_export_unknown'))
@@ -1328,7 +1340,6 @@ BEGIN
                     CASE WHEN u->>'reason' IN ('crypto_transfer', 'not_completed', 'foreign_currency')
                     THEN core.fn_ui_tpl('finance.tpl.statement_export_unknown_why_row', jsonb_build_object(
                         'name', COALESCE(u->>'name', u->>'type'), 'type', u->>'type',
-                        'amount', core.fn_ui_money((u->>'cash_amount')::numeric, v_acct.currency),
                         'date', core.fn_ui_date((u->>'date')::date),
                         'why', CASE u->>'reason'
                                    WHEN 'crypto_transfer' THEN core.fn_ui_tpl('finance.tpl.statement_export_reason_crypto_transfer', '{}'::jsonb)
@@ -1468,7 +1479,10 @@ BEGIN
                'trades', v_trades, 'trades_blocked', v_tblocked, 'export_unknown', v_file_unk,
                'late_count', (SELECT count(*) FROM jsonb_array_elements(v_lines) l WHERE (l->>'late')::boolean),
                'seen_refs', (SELECT COALESCE(jsonb_agg(DISTINCT l->>'ext_ref'), '[]'::jsonb)
-                             FROM jsonb_array_elements(v_lines) l WHERE l->>'ext_ref' IS NOT NULL))
+                             -- ein noch offener Vorgang (not_completed) gilt nie als gesehen: kommt er spaeter abgeschlossen
+                             -- mit derselben Kennung, zaehlt er als spaete Zeile statt still zu fehlen
+                             FROM jsonb_array_elements(v_lines) l WHERE l->>'ext_ref' IS NOT NULL
+                               AND l->>'reason' IS DISTINCT FROM 'not_completed'))
            ELSE '{}'::jsonb END;
 END;
 $$;

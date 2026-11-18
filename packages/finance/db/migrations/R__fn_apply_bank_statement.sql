@@ -319,16 +319,10 @@ BEGIN
                            'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date',
                            'price_currency_confirmed', true));
             ELSIF v_m->>'kind' = 'reward' THEN
-                -- Staking-Ertrag: Stueck ohne Geld auf dem Verrechnungskonto (Depots tragen keine Buchung), Form-CHECK
-                -- finance_transactions_reward_shape; fehlt die Position, entsteht sie im Depot aus der Vorschau
-                IF v_hold IS NULL THEN
-                    v_hold := finance.fn_depot_holding_id((v_m->>'depot_id')::int, v_m->>'isin', v_m->>'symbol',
-                                  jsonb_build_object('name', v_m->>'name',
-                                      'currency', (SELECT d.currency FROM finance.accounts d WHERE d.id = (v_m->>'depot_id')::int)));
-                END IF;
-                INSERT INTO finance.transactions (account_id, holding_id, category, amount, shares, transaction_date, description)
-                VALUES (v_acct, v_hold, 'reward', 0, (v_m->>'shares')::numeric, (v_m->>'date')::date, 'Staking ' || (v_m->>'name'))
-                RETURNING jsonb_build_object('ok', true, 'transaction_id', id) INTO v_r;
+                -- Staking-Ertrag (fn_book_reward): fehlt die Position, entsteht sie im Depot aus der Vorschau
+                v_r := finance.fn_book_reward(COALESCE((SELECT h.account_id FROM finance.depot_holdings h WHERE h.id = v_hold),
+                                                       (v_m->>'depot_id')::int),
+                           v_acct, v_m->>'isin', v_m->>'symbol', v_m->>'name', (v_m->>'shares')::numeric, (v_m->>'date')::date);
             ELSE
                 v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_acct,
                            'holding_id', v_hold, 'amount', (v_m->>'amount')::numeric,

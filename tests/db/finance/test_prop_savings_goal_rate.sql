@@ -79,10 +79,11 @@ BEGIN
         v_goal := (v_res->>'goal_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
         SELECT target_date INTO v_tdate FROM finance.savings_goals WHERE id = v_goal;
         SELECT abs(amount) INTO v_rate FROM finance.recurring_payments WHERE id = v_rp;
-        SELECT count(*) INTO v_cnt FROM finance.fn_upcoming_payments(v_t, v_tdate - 1) u WHERE u.recurring_payment_id = v_rp;
-        -- Z5: die genannte Rate bleibt; vor dem Zieldatum liegen mindestens so viele Termine, wie sie braucht
-        IF v_rate IS DISTINCT FROM r.rate OR v_cnt < ceil(r.target / r.rate)::int THEN
-          RAISE EXCEPTION 'FAIL Z5 [ziel=% rate=% tag=%]: Zieldatum %, % Termine davor (noetig %), Rate %', r.target, r.rate, v_dom, v_tdate, v_cnt,
+        SELECT count(*) INTO v_cnt FROM finance.fn_upcoming_payments(v_t, v_tdate) u WHERE u.recurring_payment_id = v_rp;
+        -- Z5: die genannte Rate bleibt; das Zieldatum ist der Tag der letzten Rate: bis einschliesslich Zieldatum liegen
+        -- genau so viele Termine, wie die Rate braucht (Eigenschaft im Detail: test_prop_savings_goal_last_rate_date)
+        IF v_rate IS DISTINCT FROM r.rate OR v_cnt IS DISTINCT FROM ceil(r.target / r.rate)::int THEN
+          RAISE EXCEPTION 'FAIL Z5 [ziel=% rate=% tag=%]: Zieldatum %, % Termine bis einschliesslich Zieldatum (noetig %), Rate %', r.target, r.rate, v_dom, v_tdate, v_cnt,
             ceil(r.target / r.rate)::int, v_rate; END IF;
         -- Z2 im Raten-Weg
         IF (v_prev->>'target_date')::date IS DISTINCT FROM v_tdate OR (v_res->>'target_date')::date IS DISTINCT FROM v_tdate

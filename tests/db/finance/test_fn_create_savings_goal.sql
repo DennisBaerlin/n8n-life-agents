@@ -115,9 +115,10 @@ BEGIN
   IF (v_result->>'monthly_rate')::numeric IS DISTINCT FROM 200 THEN
     RAISE EXCEPTION 'FAIL fn_create_savings_goal [rate-driven rate]: erwartet 200, got %', v_result->>'monthly_rate';
   END IF;
-  IF (v_result->>'target_date')::date IS DISTINCT FROM ('2027-01-01'::date + INTERVAL '250 months')::date THEN
+  -- 250 Raten ab 01.01.2027: Zieldatum = Tag der 250. (letzten) Rate = erste Rate + 249 Monate
+  IF (v_result->>'target_date')::date IS DISTINCT FROM ('2027-01-01'::date + INTERVAL '249 months')::date THEN
     RAISE EXCEPTION 'FAIL fn_create_savings_goal [rate-driven date]: erwartet %, got %',
-      ('2027-01-01'::date + INTERVAL '250 months')::date, v_result->>'target_date';
+      ('2027-01-01'::date + INTERVAL '249 months')::date, v_result->>'target_date';
   END IF;
   RAISE NOTICE 'PASS fn_create_savings_goal [rate-driven]: date=%', v_result->>'target_date';
 
@@ -475,7 +476,7 @@ BEGIN
      OR (v_r->>'replaced_transfer_id')::int IS DISTINCT FROM v_old
      OR v_rp.account_id <> v_from OR v_rp.target_account_id <> v_pot1 OR v_rp.amount <> -150
      OR v_rp.schedule_day_of_month IS DISTINCT FROM 1::smallint OR v_rp.first_payment_date <> v_next1
-     OR (v_r->>'target_date')::date <> (v_next1 + interval '20 months')::date
+     OR (v_r->>'target_date')::date <> (v_next1 + interval '19 months')::date   -- 20 Raten, Zieldatum = Tag der 20. Rate
      OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_old)
      OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_replaces_transfer"}]'::jsonb) THEN
     RAISE EXCEPTION 'FAIL create [R2 replace]: % rp=%', v_r, row_to_json(v_rp); END IF;
@@ -549,7 +550,7 @@ BEGIN
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
      OR jsonb_array_length(v_r->'savings_plan_ids') <> 2 OR (v_r->>'plan_monthly_amount')::numeric <> 80
      OR (v_r->>'current_amount')::numeric <> 1000
-     OR (v_r->>'target_date')::date <> (core.fn_today() + interval '100 months')::date
+     OR (v_r->>'target_date')::date <> (core.fn_today() + interval '99 months')::date   -- 100 Raten ab heute, Zieldatum = 100. Rate
      OR (SELECT count(*) FROM finance.savings_plans WHERE savings_goal_id = (v_r->>'goal_id')::int) <> 2
      OR v_r->'card_lines' @> '[{"value":"finance.note.goal_plan_rate"}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL create [P1 zwei Plaene]: %', v_r; END IF;

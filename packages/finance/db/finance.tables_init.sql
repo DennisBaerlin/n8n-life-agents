@@ -357,6 +357,51 @@ CREATE OR REPLACE FUNCTION finance.fn_schedule_occurrences(
     WHERE o.d >= p_anchor AND o.d >= p_from AND o.d <= p_until;
 $$;
 
+-- fn_savings_goal_expected (READ, STABLE): erwarteter Stand eines Sparziels mit Ratenplan, EUR -- die Messlatte der Ampel
+--   (savings_goal_progress.expected_percent / pace_drift_pp / behind_amount). Erwartet = Hand-Zuordnung (Startbestand) + Summe
+--   der Raten, die bis heute faellig waren (Raster fn_schedule_occurrences ueber die aktiven Glieder der Raten-Kette seit
+--   Anlage des Ziels), gedeckelt am Ziel; eine negative Hand-Zuordnung (Entnahme) zaehlt 0. Eine Rate zaehlt erst, wenn sie
+--   gebucht oder uebersprungen ist oder seit mindestens 10 Tagen faellig ist (Faelligkeit <= heute - 10): gebucht wird oft erst
+--   Tage nach der Faelligkeit (Erinnerung, Kontoauszug), dieselbe Grenze wie fn_reconcile_account. Sonst waere die Ampel
+--   an jedem Faelligkeitstag kurz rot.
+--   Eingabe: p_goal_id. RUECKGABE: numeric (EUR) oder NULL = keine Plan-Messung, die View faellt auf die Kalendertage zurueck:
+--   unbekanntes Ziel, Ziel ohne Betrag (Ruecklage) oder Betrag <= 0, ohne Raten-Kette, mit verknuepftem Sparplan (er fuettert
+--   ueber Kaeufe; ein Verknuepfungsdatum fehlt im Schema) oder ohne laufendes Glied (pausiert/beendet).
+--   Grenzen: Raten, die waehrend einer Pause faellig waren, zaehlen nach dem Wiederaufnehmen als faellig (keine
+--   Pausen-Historie); Sparziele sind EUR (|Rate| ohne Umrechnung).
+--   Im Init, weil die View savings_goal_progress (R__finance_views laeuft vor allen R__fn_*) sie bindet; plpgsql, weil die
+--   View savings_goal_account_share erst danach entsteht.
+--   Tests: tests/db/finance/test_savings_goal_pace_plan.sql
+CREATE OR REPLACE FUNCTION finance.fn_savings_goal_expected(p_goal_id int)
+RETURNS numeric LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    g        RECORD;
+    v_manual NUMERIC;
+    v_rates  NUMERIC;
+BEGIN
+    SELECT sg.target_amount, sg.recurring_payment_id, sg.created_at::date AS created_day INTO g
+      FROM finance.savings_goals sg WHERE sg.id = p_goal_id;
+    IF NOT FOUND OR g.target_amount IS NULL OR g.target_amount <= 0 OR g.recurring_payment_id IS NULL THEN RETURN NULL; END IF;
+    IF EXISTS (SELECT 1 FROM finance.savings_plans sp WHERE sp.savings_goal_id = p_goal_id) THEN RETURN NULL; END IF;
+    IF NOT EXISTS (SELECT 1 FROM finance.fn_recurring_lineage(g.recurring_payment_id) lid
+                   JOIN finance.recurring_payments rp ON rp.id = lid
+                   WHERE rp.status = 'active' AND (rp.valid_to IS NULL OR rp.valid_to > current_date)) THEN
+        RETURN NULL;
+    END IF;
+    SELECT COALESCE(sum(s.manual_eur), 0) INTO v_manual FROM finance.savings_goal_account_share s WHERE s.goal_id = p_goal_id;
+    SELECT COALESCE(sum(abs(rp.amount)), 0) INTO v_rates
+    FROM finance.fn_recurring_lineage(g.recurring_payment_id) lid
+    JOIN finance.recurring_payments rp ON rp.id = lid AND rp.status = 'active'
+    CROSS JOIN LATERAL finance.fn_schedule_occurrences(
+        rp.first_payment_date, rp.schedule_interval, rp.schedule_unit, rp.schedule_day_of_month, rp.schedule_days_of_month,
+        GREATEST(rp.valid_from, g.created_day), LEAST(current_date, COALESCE(rp.valid_to - 1, current_date))) o(d)
+    WHERE o.d <= current_date - 10
+       OR EXISTS (SELECT 1 FROM finance.transactions t WHERE t.recurring_payment_id = rp.id AND t.recurring_due_date = o.d)
+       OR EXISTS (SELECT 1 FROM finance.recurring_payment_skips k WHERE k.recurring_payment_id = rp.id AND k.due_date = o.d);
+    RETURN LEAST(GREATEST(v_manual, 0) + v_rates, g.target_amount);
+END;
+$$;
+
 -- fn_loan_balance_at: voraussichtliche Restschuld zum Zieldatum -- rein, alle Eingaben als Argumente.
 --   p_balance  = Restschuld heute (positiv), p_rate_pct = Jahreszins, p_segments = die Raten-Glieder der Kette
 --   [{anchor, interval, unit, dom, days, valid_from, valid_to (exklusiv), amount (positiv)}], p_after = juengster

@@ -384,7 +384,7 @@ GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency, 
 --   * Journal-Term = signed SUM(savings_goal_reserve_entries, je Zeile via fn_to_eur nach EUR) je Ziel (append-only,
 --     derived -> driftfrei), additiv zum Tag-Term; auf jedem zuordenbaren Konto (Zuordnung ohne
 --     Geldbewegung). Beides liefert savings_goal_account_share. Der Depot-Marktwert ist nur Deckung.
--- Erkenntnis-Fakten (DB rechnet, LLM reasoned darueber): expected_percent (Zeit-Pace), pace_drift_pp,
+-- Erkenntnis-Fakten (DB rechnet, LLM reasoned darueber): expected_percent (Plan-Messlatte bei Raten-Ziel, sonst Zeit-Pace), pace_drift_pp,
 --   observed_monthly_rate, projected_completion_date (beim beobachteten Tempo), required_catchup_rate
 --   (um das Zieldatum zu halten). Anker durchgaengig created_at; Div/0 + Vorzeichen geguardet
 --   (projected/catchup = NULL bei gedecktem Ziel bzw. Zieldatum nicht in der Zukunft). Toleranz-Schwelle
@@ -424,7 +424,9 @@ base AS (
                        WHERE rp.status = 'active'
                          AND rp.valid_from <= current_date
                          AND (rp.valid_to IS NULL OR rp.valid_to > current_date)
-                         AND rp.target_account_id IS NULL) AS measurable
+                         AND rp.target_account_id IS NULL) AS measurable,
+           -- Plan-Messlatte (EUR) bei Raten-Ziel; NULL = Rueckfall auf die Kalendertage (Regeln in der fn)
+           finance.fn_savings_goal_expected(g.id) AS plan_expected
     FROM finance.savings_goals g
     LEFT JOIN share s ON s.goal_id = g.id
 )
@@ -442,13 +444,19 @@ SELECT
         ELSE NULL
     END                                                 AS progress_percent,
     (b.target_date - current_date)                      AS days_remaining,
-    -- erwarteter Zeit-Pace (elapsed/total seit created_at); NULL wenn Zieldatum nicht nach created_at
-    CASE WHEN b.target_date > b.created_at::date
+    -- erwartet = was laut Ratenplan bis heute faellig war (b.plan_expected, fn_savings_goal_expected); ohne Plan-Messung
+    -- (keine Raten-Kette, Sparplan-Quelle, Rate pausiert/beendet) linearer Zeit-Pace elapsed/total seit created_at.
+    -- NULL wenn weder noch (Zieldatum nicht nach created_at)
+    CASE WHEN b.plan_expected IS NOT NULL
+         THEN round(b.plan_expected / b.target_amount * 100, 2)
+         WHEN b.target_date > b.created_at::date
          THEN round(LEAST(GREATEST((current_date - b.created_at::date)::numeric
                                    / (b.target_date - b.created_at::date), 0), 1) * 100, 2)
          ELSE NULL END                                  AS expected_percent,
     -- pace_drift_pp = erwartet - tatsaechlich (positiv = hinter Plan); NULL wenn nicht messbar
-    CASE WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable
+    CASE WHEN b.plan_expected IS NOT NULL AND b.measurable
+         THEN round((b.plan_expected - b.saved) / b.target_amount * 100, 2)
+         WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable
          THEN round(LEAST(GREATEST((current_date - b.created_at::date)::numeric
                                    / (b.target_date - b.created_at::date), 0), 1) * 100
                     - b.saved / b.target_amount * 100, 2)
@@ -481,9 +489,11 @@ SELECT
     b.saved - b.paced                                   AS earmarked_amount,     -- davon Hand-Zuordnung (EUR)
     b.real_estate_id,                                   -- gesetzt = Instandhaltungsruecklage (ohne Ziel/Datum -> Prozent/Rest/Pace NULL)
     b.fx_gap                                            AS has_fx_gap,           -- ein Ziel-Anteil ohne Wechselkurs: current_amount zu niedrig
-    -- Rueckstand in EUR = Soll-Stand heute (linearer Zeit-Pace wie pace_drift_pp, ungerundet) minus Gespartes, >= 0;
-    -- NULL ohne Messbarkeit oder bei fx-Luecke (der Stand waere zu niedrig, der Rueckstand zu hoch).
-    CASE WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable AND NOT b.fx_gap
+    -- Rueckstand in EUR = Soll-Stand heute (Plan-Messlatte bzw. linearer Zeit-Pace wie pace_drift_pp, ungerundet) minus
+    -- Gespartes, >= 0; NULL ohne Messbarkeit oder bei fx-Luecke (der Stand waere zu niedrig, der Rueckstand zu hoch).
+    CASE WHEN b.plan_expected IS NOT NULL AND b.measurable AND NOT b.fx_gap
+         THEN round(GREATEST(b.plan_expected - b.saved, 0), 2)
+         WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable AND NOT b.fx_gap
          THEN round(GREATEST(LEAST(GREATEST((current_date - b.created_at::date)::numeric
                                             / (b.target_date - b.created_at::date), 0), 1) * b.target_amount
                              - b.saved, 0), 2)

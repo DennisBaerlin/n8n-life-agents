@@ -8,7 +8,8 @@
 --      (Grundlage des Validity-Splits: alte Zeile bis Stichtag-1, neue ab Stichtag, bei gleichem Raster geht nichts verloren)
 --   E3 Monatsraster mit festem Tag: je Monat ab dem ersten Termin genau ein Termin im Abstand des Intervalls,
 --      -1 = Monatsletzter, -2 = vorletzter Tag (auch Februar / Schaltjahr)
---   E4 fn_schedule_first_occurrence = kleinster Rastertermin ab dem Anker
+--   E4 fn_schedule_first_occurrence = kleinster Rastertermin ab dem Anker; bei festem Tag und Intervall > 1 der naechste
+--      solche Tag ab dem Anker (der Rhythmus laeuft von dort weiter)
 BEGIN;
 
 DO $$
@@ -49,9 +50,16 @@ BEGIN
         IF v_all[1] > (v_a + make_interval(months => v_int))::date + 3 THEN
           RAISE EXCEPTION 'FAIL E3 [month a=% dom=% n=%]: erster Termin % mehr als ein Intervall nach dem Anker', v_a, v_dom, v_int, v_all[1]; END IF;
         -- E4
+        -- fester Tag bei Intervall > 1: der erste Termin ist der naechste solche Tag ab dem Anker (Raster mit Intervall 1),
+        -- sonst der erste Rastertermin
+        IF v_dom IS NOT NULL AND v_int > 1 THEN
+          SELECT min(d) INTO v_exp FROM finance.fn_schedule_occurrences(v_a, 1, 'month', v_dom::smallint, NULL, v_a, v_a + 62) d;
+        ELSE
+          v_exp := v_all[1];
+        END IF;
         v_first := finance.fn_schedule_first_occurrence(v_a, v_int, 'month', v_dom::smallint, NULL);
-        IF v_first IS DISTINCT FROM v_all[1] THEN
-          RAISE EXCEPTION 'FAIL E4 [month a=% dom=% n=%]: first_occurrence=% Raster=%', v_a, v_dom, v_int, v_first, v_all[1]; END IF;
+        IF v_first IS DISTINCT FROM v_exp THEN
+          RAISE EXCEPTION 'FAIL E4 [month a=% dom=% n=%]: first_occurrence=% erwartet=%', v_a, v_dom, v_int, v_first, v_exp; END IF;
         -- E2: Schnitte im 19-Tage-Takt ueber 13 Monate (trifft Termine, Tage davor/danach und Monatsgrenzen)
         FOR v_cut IN 0..400 BY 19 LOOP
           v_b := v_a + v_cut;

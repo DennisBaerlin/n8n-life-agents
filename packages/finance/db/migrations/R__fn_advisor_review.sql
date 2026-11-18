@@ -171,7 +171,7 @@ BEGIN
 
     -- ---------- (1) Sparziel-Pace-Drift (buchwert-immun; Fakten aus der View) ----------
     -- expected/pace/projected/catchup rechnet finance.savings_goal_progress (ein Fakt, eine Adresse);
-    -- hier nur die Meldung. pace_drift_pp IS NOT NULL == Zieldatum nach created_at.
+    -- hier nur die Meldung. pace_drift_pp IS NOT NULL == messbares Ziel mit Messlatte (Ratenplan oder Zieldatum nach created_at).
     -- "hinter Plan" (Toleranz core/advisor/drift_pace_pp) entscheidet finance.fn_savings_goal_pace — dieselbe Regel wie die
     -- Ampel der Mini-App.
     -- 'unknown' (Kurs-Luecke) meldet hier nie: der Rueckstand ist nicht beurteilbar, die Luecke selbst

@@ -3,10 +3,10 @@
 -- Sparrate, Fachregel: Rest = Ziel - schon gespart; Rate = Rest / Anzahl Raten, auf den Cent aufgerundet (sonst
 --   bleibt das Ziel um Cent unerreicht); Laufzeit aus einer Rate = ceil(Rest / Rate) Raten.
 --   (1) Raten-getrieben: Ziel 12.000, gespart 2.000, 400 je Monat ab 10.02.2027 -> 25 Raten, die 25. am 10.02.2029,
---       Ziel erreicht -> Zieldatum 10.03.2029 (ein Monat nach der letzten Rate, Konvention "Raten vor dem Zieldatum")
+--       Ziel erreicht -> Zieldatum 10.02.2029 (Tag der letzten Rate; Zaehlung "Raten bis einschliesslich Zieldatum")
 --   (2) Ziel-getrieben, Zieltag vor dem Abbuchungstag: ab 15.02.2027 bis 10.08.2028 -> 18 Raten (15.02.2027 bis
 --       15.07.2028), 10.000 / 18 = 555,555... -> 555,56 (18 x 555,56 = 10.000,08 >= 10.000)
---   (3) Monatsende: ab 31.01.2028 (Schaltjahr) 300 je Monat auf 1.000 -> 4 Raten -> Zieldatum 31.05.2028
+--   (3) Monatsende: ab 31.01.2028 (Schaltjahr) 300 je Monat auf 1.000 -> 4 Raten (31.01., 29.02., 31.03., 30.04.) -> Zieldatum 30.04.2028
 --   (4) Schon gedeckt (gespart >= Ziel) -> Rate 0, 0 Monate; Rate 0 als Eingabe -> {ok:false}
 -- Sparziel-Fortschritt, Fachregel linearer Zeit-Soll: Soll % = vergangene Tage / Gesamttage; Rueckstand = Soll - Ist.
 --   (5) Ziel 12.000, angelegt vor 73 Tagen, Zieldatum in 292 Tagen (365 gesamt), 1.500 zugeordnet:
@@ -25,13 +25,13 @@ DECLARE
   v jsonb;
 BEGIN
   v := finance.fn_savings_rate_schedule('{"target_amount":12000,"already_saved":2000,"first_payment_date":"2027-02-10","monthly_savings_rate":400}');
-  IF (v->>'months')::int IS DISTINCT FROM 25 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2029-03-10' THEN
+  IF (v->>'months')::int IS DISTINCT FROM 25 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2029-02-10' THEN
     RAISE EXCEPTION 'FAIL [1] Raten-getrieben: %', v; END IF;
   v := finance.fn_savings_rate_schedule('{"target_amount":12000,"already_saved":2000,"first_payment_date":"2027-02-15","target_date":"2028-08-10"}');
   IF (v->>'months')::int IS DISTINCT FROM 18 OR (v->>'monthly_rate')::numeric IS DISTINCT FROM 555.56 THEN
     RAISE EXCEPTION 'FAIL [2] Ziel-getrieben: %', v; END IF;
   v := finance.fn_savings_rate_schedule('{"target_amount":1000,"first_payment_date":"2028-01-31","monthly_savings_rate":300}');
-  IF (v->>'months')::int IS DISTINCT FROM 4 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2028-05-31' THEN
+  IF (v->>'months')::int IS DISTINCT FROM 4 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2028-04-30' THEN
     RAISE EXCEPTION 'FAIL [3] Monatsende: %', v; END IF;
   v := finance.fn_savings_rate_schedule(jsonb_build_object('target_amount', 12000, 'already_saved', 12500,
          'first_payment_date', current_date + 10, 'target_date', current_date + 400));

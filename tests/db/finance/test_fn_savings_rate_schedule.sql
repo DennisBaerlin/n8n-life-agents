@@ -25,7 +25,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS schedule [target-driven]: rate=%, months=%', v_result->>'monthly_rate', v_result->>'months';
 
-  -- TEST 2: Raten-getrieben — 50000 EUR bei 200/Monat -> 250 Monate, Datum first + 250 Monate
+  -- TEST 2: Raten-getrieben — 50000 EUR bei 200/Monat -> 250 Raten, Zieldatum = Tag der 250. (letzten) Rate = first + 249 Monate
   SELECT finance.fn_savings_rate_schedule(jsonb_build_object(
     'target_amount', 50000, 'monthly_savings_rate', 200, 'first_payment_date', '2027-01-01'
   )) INTO v_result;
@@ -38,10 +38,18 @@ BEGIN
   IF (v_result->>'monthly_rate')::numeric IS DISTINCT FROM 200 THEN
     RAISE EXCEPTION 'FAIL schedule [rate-driven rate]: erwartet 200, got %', v_result->>'monthly_rate';
   END IF;
-  IF (v_result->>'target_date')::date IS DISTINCT FROM ('2027-01-01'::date + INTERVAL '250 months')::date THEN
+  IF (v_result->>'target_date')::date IS DISTINCT FROM ('2027-01-01'::date + INTERVAL '249 months')::date THEN
     RAISE EXCEPTION 'FAIL schedule [rate-driven date]: erwartet %, got %',
-      ('2027-01-01'::date + INTERVAL '250 months')::date, v_result->>'target_date';
+      ('2027-01-01'::date + INTERVAL '249 months')::date, v_result->>'target_date';
   END IF;
+  -- Gegenprobe: mit diesem Datum zaehlt die Ziel-getriebene Richtung wieder 250 Raten und dieselbe Rate
+  SELECT finance.fn_savings_rate_schedule(jsonb_build_object('target_amount', 50000,
+    'target_date', v_result->>'target_date', 'first_payment_date', '2027-01-01')) INTO v_result;
+  IF (v_result->>'months')::int IS DISTINCT FROM 250 OR (v_result->>'monthly_rate')::numeric IS DISTINCT FROM 200 THEN
+    RAISE EXCEPTION 'FAIL schedule [rate-driven Gegenprobe]: %', v_result;
+  END IF;
+  SELECT finance.fn_savings_rate_schedule(jsonb_build_object(
+    'target_amount', 50000, 'monthly_savings_rate', 200, 'first_payment_date', '2027-01-01')) INTO v_result;
   RAISE NOTICE 'PASS schedule [rate-driven]: date=%, months=%', v_result->>'target_date', v_result->>'months';
 
   -- TEST 3: Aufrunden bei nicht-glatter Teilung — 1000 EUR bei 300/Monat -> ceil(3.33)=4 Monate
@@ -93,6 +101,14 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS schedule [1000/3 -> 333.34, Raten erreichen das Ziel]';
 
+  -- TEST 8: Rate viel zu klein (100000 bei 0,05 -> 2 Mio. Raten) -> {ok:false} statt einer endlosen Terminliste
+  SELECT finance.fn_savings_rate_schedule(jsonb_build_object(
+    'target_amount', 100000, 'monthly_savings_rate', 0.05, 'first_payment_date', '2027-01-01')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL schedule [Rate zu klein]: erwartet ok=false, got %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS schedule [Rate zu klein -> ok:false]';
+
 END $$;
 
 -- Ohne first_payment_date gilt der naechste Termin des Abbuchungstags ab heute, ohne Tag heute.
@@ -116,7 +132,7 @@ END $$;
 --  (A2) Ziel 3000, schon 3000, Datum in der Zukunft: Rate 0, months 0, ok
 --  (A3) gedeckt, aber kein Datum -> ok:false (Zieldatum ist Pflicht)
 --  (A4) gedeckt, Datum in der Vergangenheit -> ok:false
---  (A5) Raten-Modus: Ziel 3000, schon 1000, Rate 500 -> 4 Monate
+--  (A5) Raten-Modus: Ziel 3000, schon 1000, Rate 500 -> 4 Raten ab 01.11.2026, Zieldatum = Tag der 4. Rate (01.02.2027)
 DO $$
 DECLARE v jsonb;
 BEGIN
@@ -132,7 +148,7 @@ BEGIN
   v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":3000,"target_date":"2020-01-01"}'::jsonb);
   IF (v->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL schedule [A4 Vergangenheit]: %', v; END IF;
   v := finance.fn_savings_rate_schedule('{"target_amount":3000,"already_saved":1000,"monthly_savings_rate":500,"first_payment_date":"2026-11-01"}'::jsonb);
-  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'months')::int IS DISTINCT FROM 4 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2027-03-01' THEN
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'months')::int IS DISTINCT FROM 4 OR (v->>'target_date')::date IS DISTINCT FROM DATE '2027-02-01' THEN
     RAISE EXCEPTION 'FAIL schedule [A5 Raten-Modus Rest]: %', v; END IF;
   RAISE NOTICE 'PASS schedule [already_saved: Rest-Rate, gedeckt = Rate 0, Datum Pflicht/Zukunft, Raten-Modus auf dem Rest]';
 END $$;

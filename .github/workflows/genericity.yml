@@ -785,8 +785,9 @@ jobs:
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/core.sh"
-          # Ein Kern laeuft (hier ein Platzhalter mit seinem festen Namen; ein echter `up` ist dafuer zu kurz).
-          docker run -d --rm --name "$LA_PROJECT-core" --label "io.lifeagents.install=$LA_PROJECT" --entrypoint sleep "$CORE_IMAGE" 120 >/dev/null
+          # Ein Kern laeuft mit `up` (hier ein Platzhalter mit festem Namen und dem Verb in den Argumenten; ein echter `up` ist
+          # dafuer zu kurz). Nur aendernde Verben sperren das Update (lib/runtime.sh rt_core_changing).
+          docker run -d --rm --name "$LA_PROJECT-core" --label "io.lifeagents.install=$LA_PROJECT" --entrypoint sh "$CORE_IMAGE" -c 'sleep 120' up >/dev/null
           rc=0; core up --json > "$RUNNER_TEMP/core-second.jsonl" 2>&1 || rc=$?
           test "$rc" = 125   # Docker lehnt den Namen ab, bevor der zweite Kern laeuft (der Einstieg wertet das als busy)
           rc=0; docker exec "$LA_PROJECT-master" bash -c '. /opt/lifeagents/provisioning/lib/common.sh; . /opt/lifeagents/provisioning/lib/master_swap.sh; master_swap_begin v9.1.0 "$LA_COMPOSE_FILE" ci-ops-master:b' > "$RUNNER_TEMP/swap-locked.txt" 2>&1 || rc=$?
@@ -1039,22 +1040,25 @@ jobs:
           state > "$RUNNER_TEMP/neighbour.after"
           diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
 
-      - name: Installation from before the core (master image without the core label) — up and uninstall refused, status works
+      - name: Installation from before the core (master image without the core label) — up refused, status and uninstall work
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/core.sh"
           printf 'FROM ci-ops-master:a\nLABEL io.lifeagents.core=""\n' | docker build -q -t ci-ops-master:old -
           app_start ci-ops-master:old
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/old.ids"
+          # Anlegen haengt an den Pins des Abbilds: ein fremder Kern legte den Verbund am signierten Update vorbei an.
           rc=0; core_run leg up || rc=$?
           test "$rc" = 1
           core_res leg | jq -e '.reason == "legacy_installation"'
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/old.ids" -
           core_run legst status
           core_res legst | jq -e '.ok and .running and .core == 0'
-          rc=0; core_run legun uninstall || rc=$?
-          test "$rc" = 1
-          core_res legun | jq -e '.reason == "legacy_installation"'
-          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/old.ids" -
+          # Entfernen haengt nicht an den Pins: auch diese Installation laesst sich abbauen, die Daten bleiben.
+          core_run legun uninstall
+          core_res legun | jq -e '.ok and .removed.containers == 4'
+          test -z "$(docker ps -a --filter "label=com.docker.compose.project=$LA_PROJECT" --format '{{.Names}}')"
+          docker volume inspect "${LA_PROJECT}_pgdata" >/dev/null
           if docker ps -a --format '{{.Names}}' | grep -qx "$LA_PROJECT-core-next"; then echo "FAIL Weitergabe an ein Abbild ohne Kern"; exit 1; fi
 
       - name: Logs on failure

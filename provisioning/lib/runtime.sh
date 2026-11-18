@@ -236,7 +236,7 @@ rt_volumes_ensure() {
   local v name lbl
   for v in $LA_STATE_VOLUMES; do
     name="${LA_PROJECT}_${v}"
-    if lbl="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$name" 2>/dev/null)"; then
+    if lbl="$(rt_volume_label "$name")"; then
       [ "$lbl" = "$LA_PROJECT" ] || die "Volume ${name} existiert, gehört aber nicht zu dieser Installation (Label ${LA_LABEL} fehlt) — nichts geändert."
     else
       docker volume create --label "${LA_LABEL}=${LA_PROJECT}" "$name" >/dev/null || die "Volume ${name} ließ sich nicht anlegen."
@@ -291,10 +291,11 @@ rt_stack_up() {
     sleep "${RT_UP_RETRY_DELAY:-10}"; n=$((n + 1))
   done
 }
-# rt_stack_up_wait <dienste…> — wie rt_stack_up, kehrt aber erst zurueck, wenn die Dienste laufen bzw. gesund sind
-# (`--wait`, Postgres hat einen Healthcheck). Nur fuer die Start-Dienste des Kerns: tailscale/wan (reach.sh) enden ohne
+# rt_stack_up_wait <dienste…> — Dienste starten und erst zurueckkehren, wenn sie laufen bzw. gesund sind (`--wait`, Postgres
+# hat einen Healthcheck). Ein Versuch: der Kern laedt die Abbilder vorher (rt_stack_pull), eine abgelaufene Wartezeit ist
+# ein kranker Dienst, kein Netz-Aussetzer. Nur fuer die Start-Dienste des Kerns: tailscale/wan (reach.sh) enden ohne
 # Anmeldung bzw. Adresse von selbst, ein --wait schluege dort fehl.
-rt_stack_up_wait() { rt_stack_up --wait --wait-timeout "${RT_UP_WAIT_SECS:-180}" "$@"; }
+rt_stack_up_wait() { _rt_compose up -d --wait --wait-timeout "${RT_UP_WAIT_SECS:-180}" "$@"; }
 # rt_stack_ps — Zustand der laufenden eigenen Container (nur dieses Projekt; Name, Dienst, Status).
 rt_stack_ps() { _rt_compose ps --format '{{.Name}}\t{{.Service}}\t{{.State}}\t{{.Health}}'; }
 # rt_master_container -> Name des master-Containers (Host-Seite: Start-App bzw. CI).
@@ -314,8 +315,16 @@ rt_master_exec_in() { docker exec -i "$(rt_master_container)" "$@"; }
 # Fester Name = Sperre gegen einen zweiten Kern (Docker lehnt den Namen ab, bevor etwas geschieht); die Weitergabe an das
 # Abbild der Installation laeuft als <projekt>-core-next.
 rt_core_container() { printf '%s-core%s' "$LA_PROJECT" "${LA_CORE_DELEGATED:+-next}"; }
-# rt_core_running — laeuft ein Kern dieses Projekts (auch eine Weitergabe)? Gegensperre des master-Wechsels.
-rt_core_running() { rt_container_running "${LA_PROJECT}-core" || rt_container_running "${LA_PROJECT}-core-next"; }
+# rt_core_changing — laeuft ein Kern dieses Projekts (auch eine Weitergabe) mit einem aendernden Verb? Gegensperre des
+#   master-Wechsels; ein nur lesender (status, check, wizard-url, den eine Start-App regelmaessig ruft) haelt kein Update auf.
+rt_core_changing() {
+  local c
+  for c in "${LA_PROJECT}-core" "${LA_PROJECT}-core-next"; do
+    rt_container_running "$c" || continue
+    case " $(docker inspect -f '{{join .Args " "}}' "$c" 2>/dev/null) " in *" up "*|*" start "*|*" install "*|*" uninstall "*) return 0 ;; esac
+  done
+  return 1
+}
 # rt_self_image -> das Abbild, aus dem dieser Prozess laeuft, in der Schreibweise des Aufrufs (Release-Pin
 #   <register>/master@sha256:…): im Kern aus dem eigenen Container, im master aus seiner Umgebung. Eine andere
 #   Schreibweise als LA_MASTER_IMAGE liesse Compose den master neu anlegen.
@@ -357,22 +366,17 @@ rt_vol_own() { [ "$(rt_volume_label "${LA_PROJECT}_$1")" = "$LA_PROJECT" ]; }
 #   rc 1 = Volume oder Datei fehlt.
 rt_vol_get() {
   rt_vol_own "$1" || return 1
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none \
-    --mount "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" cat "/$1/$2" 2>/dev/null
+  _rt_host_run "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" cat "/$1/$2" 2>/dev/null
 }
 # rt_vol_put <kurzname> <datei> — stdin als Datei (0600 root) ins eigene Volume: erst .part, dann umbenannt.
 # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
 rt_vol_put() {
   rt_vol_own "$1" || return 1
-  docker run --rm -i --label "${LA_LABEL}=${LA_PROJECT}" --network none \
-    --mount "type=volume,src=${LA_PROJECT}_$1,dst=/$1" "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" \
+  _rt_host_run -i "type=volume,src=${LA_PROJECT}_$1,dst=/$1" \
     sh -c 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1.part" && mv -f "$1.part" "$1"' _ "/$1/$2"
 }
-# rt_probe_run <mount-angabe> <befehl…> — Kurzlauf-Container der Faehigkeits-Pruefung (busybox, ohne Netz, unser Label).
-rt_probe_run() {
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
-}
+# rt_probe_run <mount-angabe> <befehl…> — Kurzlauf-Container der Faehigkeits-Pruefung (wie _rt_host_run).
+rt_probe_run() { _rt_host_run "$@"; }
 # rt_probe_df -> `df -Pk /` aus einem Kurzlauf-Container (die Platte, auf der Docker seine Abbilder und Volumes ablegt).
 rt_probe_df() { docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" df -Pk /; }
 # rt_probe_socket <abbild> — erreicht ein Container mit eingehaengtem Socket den Daemon (der master braucht genau das)?
@@ -542,7 +546,7 @@ rt_stack_down() {
 #   z. B. noch von einem Container belegt).
 rt_volume_rm_own() {
   local lbl err
-  lbl="$(docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}" "$1" 2>/dev/null)" || return 0
+  lbl="$(rt_volume_label "$1")" || return 0
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
   err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }

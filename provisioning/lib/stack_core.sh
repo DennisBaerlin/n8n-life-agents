@@ -9,7 +9,7 @@
 # Exit 0 = ok:true, 1 = ok:false, 2 = Aufruf falsch (dann kein JSON). Ein Feld umbenennen oder einen Grund aendern = "v":2.
 #
 # Geschlossene Liste der Gruende (die eine Adresse; Selbst-Assert in tests/mock_runtime/cases.sh Abschnitt SC):
-SC_REASONS="docker_unreachable docker_windows_mode docker_too_old docker_capability docker_socket disk_low foreign_objects values_lost port_none_free busy legacy_installation newer_installation pull_failed start_failed db_unhealthy not_installed master_not_running install_failed in_master data_kept internal"
+SC_REASONS="docker_unreachable docker_windows_mode docker_too_old docker_capability docker_socket disk_low foreign_objects values_lost port_none_free busy legacy_installation newer_installation older_installation pull_failed start_failed db_unhealthy not_installed master_not_running install_failed in_master data_kept internal"
 # Grenzen der Pruefung: Volume-Unterpfade gibt es ab Docker Engine 26.0 (Release Notes 26.0, moby/moby#45687); 10 GiB frei;
 # unter 3,5 GiB Arbeitsspeicher nur eine Warnung. Ports: 5880–5899 auf 127.0.0.1; LA_CORE_PORTS=<von>-<bis> verschiebt die
 # Spanne fuer Test-Verbuende neben einer echten Installation (eigener LA_PROJECT je Worktree, CI).
@@ -113,12 +113,18 @@ sc_init() {
 _sc_need_core() {
   [ "${LA_CORE:-}" = 1 ] || sc_fail in_master "stack ${SC_VERB} laeuft nur als eigener Kurzlauf-Container (docker run … stack ${SC_VERB}), nicht im master."
 }
-# sc_lock — kein laufender master-Wechsel (Helfer oder offene Zustandsdatei); sonst legte der Helfer den master gleich neu an.
+# sc_lock — kein laufender master-Wechsel; sonst legte der Helfer den master gleich neu an. Eine offene Zustandsdatei zaehlt
+#   nur, solange der master laeuft: nur sein Tick schliesst sie ab. Ohne master (Wechsel endete in rollback_failed, master
+#   gestorben) kaeme dieser Tick nie, und der Verbund liesse sich weder starten noch entfernen.
 sc_lock() {
   if rt_swap_helper_running; then sc_fail busy "Gerade laeuft ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."; fi
   if [ -n "$(rt_vol_get var_la master-swap/state || true)" ]; then
-    sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
+    if rt_container_running "$(rt_master_container)"; then
+      sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
+    fi
+    warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
   fi
+  return 0
 }
 # sc_delegate — laeuft die Installation mit einem anderen Abbild, macht deren eigener Kern die Arbeit (ein neuerer oder
 #   aelterer Einstieg legt so nie einen Verbund mit fremden Pins an; Updates gehen nur ueber den signierten Weg im Chat).
@@ -136,17 +142,23 @@ sc_delegate() {
       SC_DONE=1
       exit "$rc"
     fi
+    # Starten, Ansehen und Entfernen haengen nicht an den Pins dieses Abbilds; Anlegen und Einrichten schon.
     case "$SC_VERB" in
-      start|status|wizard-url) return 0 ;;
+      start|status|wizard-url|uninstall) return 0 ;;
     esac
     sc_fail legacy_installation "Diese Installation stammt von vor dem Kern (${img}); zuerst im Chat aktualisieren. Nichts geaendert."
   fi
   if [ -z "$img" ]; then
     inst="$(rt_vol_get rt_tree VERSION | tr -d '[:space:]' || true)"
-    if is_release_tag "$inst" && is_release_tag "$own" && [ "$inst" != "$own" ] \
-       && [ "$(printf '%s\n%s\n' "$inst" "$own" | sort -V | tail -n1)" = "$inst" ]; then
+    # Ohne master liefen sonst die eigenen Pins ueber Daten einer anderen Fassung: neuere Daten verstuende dieses Programm
+    # nicht, aeltere bekaemen neue Pins (z. B. eine neue Postgres-Hauptversion) ohne Sicherung vorher (upgrade_guard).
+    if is_release_tag "$inst" && is_release_tag "$own" && [ "$inst" != "$own" ]; then
       case "$SC_VERB" in
-        up|install) sc_fail newer_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — ein neueres Programm verwenden. Nichts geaendert." ;;
+        up|install)
+          if [ "$(printf '%s\n%s\n' "$inst" "$own" | sort -V | tail -n1)" = "$inst" ]; then
+            sc_fail newer_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — ein neueres Programm verwenden. Nichts geaendert."
+          fi
+          sc_fail older_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — zuerst mit ${inst} starten, dann im Chat aktualisieren. Nichts geaendert." ;;
       esac
     fi
   fi
@@ -185,11 +197,13 @@ _sc_port_pick() {   # <anderer belegter Wert> -> freier Port der Spanne
   done
   return 1
 }
-# sc_values_complete — fehlende Werte bilden (nie einen gespeicherten ueberschreiben; Ausnahmen: E5b und Ports, s. u.).
+# sc_values_complete — fehlende Werte bilden. Ein gespeicherter wird nie ueberschrieben; Ausnahme Ports (s. u.). Gibt es eine
+#   Datenbank, aber nirgends ihr Passwort, bricht der Kern ab, statt sie mit einem neuen auszusperren.
 sc_values_complete() {
   local k p
   if [ -z "${SV[LA_PG_SUPERPW]:-}" ]; then
-    if rt_vol_own pgdata; then
+    # Initialisiert = PG_VERSION liegt im Volume; ein leeres pgdata (erster Lauf vor dem Start abgebrochen) ist keine Datenbank.
+    if [ -n "$(rt_vol_get pgdata PG_VERSION || true)" ]; then
       sc_fail values_lost "Die Datenbank ist da, ihr Passwort aber nirgends mehr gespeichert — ein neues Passwort sperrte die Daten aus. Nichts geaendert."
     fi
     SV[LA_PG_SUPERPW]="$(rand_hex 32)"
@@ -295,13 +309,16 @@ sc_up() {
       sc_fail foreign_objects "Volume ${LA_PROJECT}_${v} gehoert nicht zu dieser Installation. Nichts geaendert."
     fi
   done
-  rt_volumes_ensure
+  # var_la zuerst und die Werte hinein, erst danach die uebrigen (pgdata): bricht der Lauf dazwischen ab, fehlte sonst das
+  # Passwort einer Datenbank, die es schon gibt.
+  rt_vol_own var_la || rt_volume_create_own "${LA_PROJECT}_var_la" || sc_fail internal "Volume ${LA_PROJECT}_var_la liess sich nicht anlegen."
   if [ "$(_sc_values_text)" != "$SC_VALUES_STORED" ]; then
     _sc_values_text | rt_vol_put var_la "$SC_VALUES_FILE" || sc_fail internal "Die Werte liessen sich nicht im Volume ${LA_PROJECT}_var_la ablegen."
   fi
   if [ "$first" = 1 ]; then
     printf '%s\n' "${foreign[@]}" | rt_vol_put var_la "$SC_FOREIGN_FILE" || sc_fail internal "Die Merkliste vorhandener Abbilder liess sich nicht ablegen."
   fi
+  rt_volumes_ensure
   rt_stack_config_check >&2 || sc_fail internal "compose.yml ungueltig oder ein Pflicht-Wert fehlt."
   sc_step start
   before_ids="$(for v in anchor postgres master edge; do rt_container_id "${LA_PROJECT}-$v" || true; done)"
@@ -355,8 +372,8 @@ sc_status() {
   ver="$(rt_vol_get rt_tree VERSION | tr -d '[:space:]' || true)"
   if [ -n "$(rt_container_image "$m" || true)" ] && rt_image_has_core "$(rt_container_image "$m")"; then core=1; fi
   sc_values_read
-  svcs="$(_sc_ro rt_stack_ps 2>/dev/null | jq -cR 'split("\t") | select(length >= 3) | {name:.[1],state:.[2]} + (if (.[3] // "") == "" then {} else {health:.[3]} end)' | jq -cs . || echo '[]')"
-  [ -n "$svcs" ] || svcs='[]'
+  svcs="$(_sc_ro rt_stack_ps 2>/dev/null || true)"
+  svcs="$(jq -cR 'split("\t") | select(length >= 3) | {name:.[1],state:.[2]} + (if (.[3] // "") == "" then {} else {health:.[3]} end)' <<<"$svcs" | jq -cs .)"
   if [ "$running" = true ]; then
     phase="$(rt_master_exec node /opt/lifeagents/provisioning/wizard/ctl.js status 2>/dev/null | jq -r '.phase // empty' 2>/dev/null || true)"
   fi

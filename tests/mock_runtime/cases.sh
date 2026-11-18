@@ -61,7 +61,7 @@ if [ "$me" = docker ] && [ "${1:-}" = run ]; then
     *'-portprobe-'*) p="${a##*-portprobe-}"; p="${p%%|*}"; case " ${STUB_BUSY_PORTS:-} " in *" $p "*) exit 125 ;; esac; exit 0 ;;
     *'|cat|/r/f') echo ok; exit 0 ;;
     *'|df|-Pk|/') printf 'Filesystem 1024-blocks Used Available Capacity Mounted\noverlay 1 1 %s 1%% /\n' "${STUB_DF_KB:-50000000}"; exit 0 ;;
-    *'|cat|/var_la/'*|*'|cat|/rt_tree/'*) v="STUB_CAT_$(printf '%s' "${*: -1}" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}"; exit 0 ;;
+    *'|cat|/var_la/'*|*'|cat|/rt_tree/'*|*'|cat|/pgdata/'*) v="STUB_CAT_$(printf '%s' "${*: -1}" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}"; exit 0 ;;
   esac
   exit 0
 fi
@@ -98,6 +98,8 @@ case "$me $1 ${2:-}" in
 }" "${STUB_REL_ENV:+RELEASE_TAG=$STUB_REL_ENV
 }" "${STUB_REL_LABEL:-}" ;;
       # STUB_EXISTING = vorhandene Container (Kennung id-<name>); ohne Eintrag gibt es den Container nicht.
+      # Argumente eines Containers (Kern: welches Verb laeuft); STUB_ARGS_<name mit _>, Standard 'up --json'.
+      *'.Args'*)       v="STUB_ARGS_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; printf '%s\n' "${!v:-up --json}" ;;
       *'{{.Id}}'*)     case " ${STUB_EXISTING:-} " in *" $n "*) printf 'id-%s\n' "$n" ;; *) exit 1 ;; esac ;;
     esac
     exit 0 ;;
@@ -344,6 +346,9 @@ if [ -e "$SWAP_STATE" ] || [ ! -e "$SWAP_DIR/compose.prev.yml" ]; then fail S.ab
 : > "$STUB_LOG"
 if ( STUB_RUNNING=lifeagents-core master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.kern-sperrt "kein Abbruch"; else pass S.kern-sperrt; fi
 if grep -q 'lifeagents-swap' "$STUB_LOG" || [ -e "$SWAP_STATE" ]; then fail S.kern-sperrt-nichts-geaendert "Helfer oder Zustand"; else pass S.kern-sperrt-nichts-geaendert; fi
+# Ein nur lesender Kern (status/check/wizard-url) haelt kein Update auf.
+if ( STUB_RUNNING=lifeagents-core STUB_ARGS_lifeagents_core='status --json' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then pass S.lesender-kern-sperrt-nicht; else fail S.lesender-kern-sperrt-nicht "Abbruch"; fi
+master_swap_close; rm -f "$SWAP_STATE"
 # Image nicht ladbar / Helfer startet nicht -> Abbruch, KEIN Zustand bleibt liegen.
 rm -rf "$SWAP_DIR"
 if ( STUB_IMAGE_PRESENT=0 STUB_FAIL='|pull|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.pull-fehler-bricht-ab "kein Abbruch"; else pass S.pull-fehler-bricht-ab; fi
@@ -631,10 +636,18 @@ STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING="lifeagents-master lifeagents-postgres" ST
 eq SC.bestand-uebernommen 'LA_EDGE_PORT=5884 LA_WIZARD_PORT=5885 LA_PG_SUPERPW=feedfacefeedfacefeedfacefeedface LA_TS_HOSTNAME=bot' "$(put_of /var_la/stack.env | tr '\n' ' ' | sed 's/ $//')"
 if grep -qF feedface "$SCO" "$SCE"; then fail SC.bestand-passwort-nie-in-ausgabe "steht in der Ausgabe"; else pass SC.bestand-passwort-nie-in-ausgabe; fi
 
-# Datenbank da, Passwort nirgends -> values_lost, nichts angelegt.
-STUB_VOLS="${_lp}pgdata" scr up --json
+# Datenbank da (initialisiert), Passwort nirgends -> values_lost, nichts angelegt.
+STUB_VOLS="${_lp}pgdata" STUB_CAT__pgdata_PG_VERSION=17 scr up --json
 eq SC.werte-verloren 'values_lost|1' "$(res .reason)|$SC_RC"
 if grep -v 'lifeagents_probe' "$STUB_LOG" | grep -q '|volume|create|\||up|' || [ -s "${STUB_LOG}.put" ]; then fail SC.werte-verloren-nichts-geaendert "$(grep -E 'create|\|up\|' "$STUB_LOG" | head -1)"; else pass SC.werte-verloren-nichts-geaendert; fi
+# Abbruch eines ersten Laufs nach dem Anlegen der Volumes: leeres pgdata ist keine Datenbank -> neue Werte, kein Abbruch.
+STUB_VOLS="${_lp}pgdata" STUB_RUNNING=lifeagents-master scr up --json
+eq SC.leeres-pgdata-neu 'true|64' "$(res .ok)|$(put_of /var_la/stack.env | sed -n 's/^LA_PG_SUPERPW=//p' | tr -d '\n' | wc -c | tr -d ' ')"
+# Werte liegen ab, bevor pgdata entsteht (ein Abbruch dazwischen liesse sonst eine Datenbank ohne Passwort zurueck).
+STUB_VOLS='' STUB_RUNNING=lifeagents-master scr up --json
+_pg="$(grep -n '^docker|volume|create|.*|lifeagents_pgdata|' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+_vp="$(grep -n '^docker|run|--rm|-i|.*lifeagents_var_la' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+[ -n "$_pg" ] && [ -n "$_vp" ] && [ "$_vp" -lt "$_pg" ] && pass SC.werte-vor-pgdata || fail SC.werte-vor-pgdata "put=$_vp pgdata=$_pg"
 # Tailscale-Knoten schon da -> sein Name bleibt (bot), nie neu gezogen.
 STUB_VOLS="${_lp}ts_state" STUB_RUNNING=lifeagents-master scr up --json
 eq SC.ts-bestand-bot bot "$(put_of /var_la/stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')"
@@ -667,6 +680,9 @@ STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_mast
 eq SC.legacy-up 'legacy_installation|0' "$(res .reason)|$(grep -c '^docker|run|.*core-next' "$STUB_LOG")"
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" scr status --json
 eq SC.legacy-status-geht 'true|0' "$(res .ok)|$(res .core)"
+# Entfernen haengt nicht an den Pins: auch eine Installation von vor dem Kern laesst sich abbauen.
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" scr uninstall --json
+eq SC.legacy-uninstall-geht "true|1|0" "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")|$(grep -c '^docker|run|.*core-next' "$STUB_LOG")"
 # Schon weitergegeben -> keine zweite Weitergabe.
 LA_CORE_DELEGATED="$SC_SELFIMG" STUB_IMG_lifeagents_core_next="$SC_SELFIMG" STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master \
   STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
@@ -674,6 +690,9 @@ eq SC.keine-zweite-weitergabe 'internal|0' "$(res .reason)|$(grep -c '^docker|ru
 # Daten einer neueren Fassung ohne master -> newer_installation.
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v9.5.0 scr up --json
 eq SC.neuere-installation newer_installation "$(res .reason)"
+# Daten einer aelteren Fassung ohne master -> older_installation (die eigenen Pins liefen sonst ohne Sicherung ueber alten Daten).
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v8.9.0 scr up --json
+eq SC.aeltere-installation 'older_installation|0' "$(res .reason)|$(grep -c '|up|-d|' "$STUB_LOG")"
 
 # Unerwarteter Abbruch (die in einem Helfer) -> trotzdem genau ein result mit internal und der letzten Meldung.
 STUB_VOLS='' STUB_FAIL='|volume|create|--label|io.lifeagents.install=lifeagents|lifeagents_pgdata' scr up --json
@@ -719,14 +738,20 @@ SC_CORE='' LA_MASTER_IMAGE="$SC_SELFIMG" STUB_VOLS="${_lp}pgdata ${_lp}rt_tree" 
 eq SC.status-felder 'true|false|v9.0.0|false' "$(res .installed)|$(res .running)|$(res .version)|$(res .update_running)"
 STUB_RUNNING=lifeagents-swap STUB_VOLS='' scr status --json
 eq SC.status-update-laeuft true "$(res .update_running)"
+STUB_VOLS="${_lp}pgdata" STUB_FAIL='|ps|--format|' scr status --json
+eq SC.status-ps-fehler-leere-liste 'true|0' "$(res .ok)|$(res '.services | length')"
 # start: ohne Installation not_installed; nur vorhandene, stehende Container.
 STUB_VOLS='' scr start --json;  eq SC.start-ohne-installation not_installed "$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor scr start --json
 grep -q '^docker|compose|.*|start|edge|stdin=$' "$STUB_LOG" && pass SC.start-nur-vorhandene || fail SC.start-nur-vorhandene "$(grep '|start|' "$STUB_LOG")"
 if grep -q '|up|' "$STUB_LOG"; then fail SC.start-legt-nichts-an "up lief"; else pass SC.start-legt-nichts-an; fi
-# Sperre: laufender master-Wechsel -> busy vor jeder Aenderung.
-STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=handoff' scr up --json
+# Sperre: offener master-Wechsel bei laufendem master (sein Tick schliesst ihn ab) -> busy vor jeder Aenderung.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=handoff' STUB_RUNNING=lifeagents-master scr up --json
 eq SC.wechsel-offen-busy 'busy|0' "$(res .reason)|$(grep -c 'volume|create' "$STUB_LOG")"
+# Offene Datei ohne laufenden master (Wechsel endete in rollback_failed): kein Tick schliesst sie je -> kein busy,
+# sonst liesse sich der Verbund weder starten noch entfernen.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=rollback_failed' scr uninstall --json
+eq SC.wechsel-ohne-master-entfernbar 'true|1' "$(res .ok)|$(grep -c '|down|' "$STUB_LOG")"
 
 # ---------------------------------------------------------------------------- K: Tick (Ersatz der Update-Timer im Verbund)
 # shellcheck source=/dev/null

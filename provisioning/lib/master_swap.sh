@@ -41,7 +41,7 @@ master_swap_begin() {
   local tag="$1" cf="$2" target="$3" mode="${4:-update}" from="${LA_MASTER_IMAGE:-}" phase
   [ -n "$from" ] || die "LA_MASTER_IMAGE fehlt im master — Wechsel abgebrochen, nichts geändert."
   # Gegensperre zum Kern (lib/stack_core.sh sc_lock): legt er gerade den Verbund an oder entfernt ihn, wartet das Update.
-  if rt_core_running; then
+  if rt_core_changing; then
     die_because locked "Gerade wird der Assistent eingerichtet oder entfernt — danach erneut versuchen. Nichts geändert."
   fi
   # Dieselbe Sperre wie jedes Update (der Chat-Runner haelt sie schon): kein Tick schaut dazwischen.

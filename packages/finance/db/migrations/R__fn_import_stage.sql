@@ -50,9 +50,9 @@ BEGIN
         v_type := v_row->>'entity_type';
         IF v_type IS NULL OR v_type NOT IN
            ('account','stock_buy','insurance','pension','recurring_payment',
-            'real_estate','savings_goal','loan','pension_statement') THEN
+            'real_estate','savings_goal','loan','pension_statement','reward') THEN
             RETURN jsonb_build_object('ok', false,
-                'reason', format('unknown entity_type "%s" — allowed: account, stock_buy, insurance, pension, recurring_payment, real_estate, savings_goal, loan, pension_statement', COALESCE(v_type,'<null>')));
+                'reason', format('unknown entity_type "%s" — allowed: account, stock_buy, insurance, pension, recurring_payment, real_estate, savings_goal, loan, pension_statement, reward', COALESCE(v_type,'<null>')));
         END IF;
     END LOOP;
 

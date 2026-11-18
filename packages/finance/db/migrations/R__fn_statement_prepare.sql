@@ -63,8 +63,9 @@
 --   gebuchte Zahlung ausgleicht (hoechstens damalige Vormerkung, Luecke, gebuchte Abgaenge): eigene Kartenzeile, die
 --   Rest-Zeile zeigt lump - pending_settled. Spaete Zeilen (Referenz-Hash im letzten CSV-Zeitraum nicht gesehen) zaehlen mit Datum
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
---   gegen gebuchte Trades, sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend), nicht buchbar ->
---   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> export_unknown[].
+--   gegen gebuchte Trades (reward nur am selben Tag), sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend bzw. eine
+--   reward-Buchung; kind reward = Staking, amount 0, je Muenze eine Kartenzeile), nicht buchbar ->
+--   trades_blocked[] (covered_by_takeover, oversell, security_unknown, not_bookable); unknown-Zeilen des Exports -> export_unknown[].
 --   Steuer auf Kauf/Verkauf = eigene Buchung (trades[].tax, nie im Rest); Verkaufs-Check zaehlt
 --   Sparplan-Kaeufe und Kaeufe dieses Exports mit; Verkauf/Dividende einer erst im Export gekauften Position wird gebucht;
 --   neue Position nur ins eine Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
@@ -101,9 +102,10 @@
 --   rest_kind = die Bezeichnung des Rests auf der Karte (everyday|rest_net|unexplained_in|unexplained_out|other_diff); der Agent liest sie.
 --   difference_candidates = fn_statement_diff_candidates fuer rest_unexplained, drift, Rest, export_gap (ohne die Stufe-0-Treffer
 --   dieses Auszugs, nicht im fingerprint).
---   Pool-Regel (Profil counterparty_pattern, Bondora): Geldzeile an/von einem Anbieter-Sammelkonto -> P2P-Konto des Profils,
+--   Pool-Regel (Profil counterparty_pattern, Bondora, Krypto-Boerse): Geldzeile an/von einem Anbieter-Sammelkonto -> Konto des
+--   Profils (Kontoart default_account_type),
 --   nur buchbar und am Zeilendatum nicht abgeglichen (Eingang: Verrechnungskonto bzw. gleicher Inhaber ohne anderes
---   Verrechnungskonto, Gebuehr-Bein partner_fee beim P2P-Konto; Ausgang: Referenz = Kontonummer als ganzes Wort im
+--   Verrechnungskonto, Gebuehr-Bein partner_fee beim Profil-Konto; Ausgang: Referenz = Kontonummer als ganzes Wort im
 --   Verwendungszweck). Genau eine Zeile mit zwei Kandidaten: Eingabe transfer_account (Kontoname laut Nutzer, 'none' =
 --   keins); fehlt sie oder passt sie zu keinem -> {ok:false, code:'transfer_choice_required', candidates[2] (Namen, nach
 --   id), amount, date} ohne Karte (der Agent fragt, Muster account_ambiguous; die Karte zeigt danach die Zuordnung).
@@ -292,9 +294,11 @@ BEGIN
                    'amount', (r->>'cash_amount')::numeric, 'counterparty', r->>'counterparty',
                    'counterparty_iban', r->>'counterparty_iban', 'purpose', COALESCE(r->>'purpose', r->>'name'),
                    'kind', r->>'kind', 'isin', r->>'isin', 'symbol', r->>'symbol', 'name', r->>'name',
-                   'shares', r->'shares', 'gross', r->'gross', 'fee', r->'fee', 'tax', r->'tax', 'row_no', r->'row_no', 'ext_ref', r->>'ext_ref',
+                   'sub_kind', r->>'sub_kind', 'transfer_fee', r->'transfer_fee', 'shares', r->'shares', 'gross', r->'gross', 'fee', r->'fee', 'tax', r->'tax', 'row_no', r->'row_no', 'ext_ref', r->>'ext_ref',
                    'reason', r->>'reason')
-                 ORDER BY GREATEST((r->>'date')::date, v_cut + 1), (r->>'kind' = 'sell'), (r->>'row_no')::int), '[]'::jsonb)
+                 -- je Tag Kauf vor Ertrag vor Verkauf: ein Ertrag vor dem ersten Kauf legt keine leere Position an, ein
+                 -- Verkauf desselben Tages sieht ihn (Oversell-Pruefung, Storno in umgekehrter Folge)
+                 ORDER BY GREATEST((r->>'date')::date, v_cut + 1), (r->>'kind' = 'sell'), (r->>'kind' = 'reward'), (r->>'row_no')::int), '[]'::jsonb)
         INTO v_lines
         FROM jsonb_array_elements(v_norm->'rows') r
         WHERE ((r->>'date')::date > v_cut AND (r->>'date')::date <= v_pe)
@@ -464,11 +468,12 @@ BEGIN
 
     -- ---------- 3a. Pool-Regel (Anbieter mit Sammelkonto, z. B. Bondora) ----------
     --   Eine noch offene Geldzeile, deren Gegenpart-Name zum counterparty_pattern eines Profils passt. Kandidaten = aktive,
-    --   buchbare P2P-Konten dieses Profils (fn_bank_export_account_profile) in der Kontowaehrung, die am Zeilendatum noch
+    --   buchbare Konten dieses Profils (fn_bank_export_account_profile, Kontoart = default_account_type des Profils: Bondora
+    --   P2P, Krypto-Boerse das Geld-Konto) in der Kontowaehrung, die am Zeilendatum noch
     --   nicht abgeglichen sind (deren eigener Auszug haette die Bewegung schon gepaart oder im Rest - nie doppelt).
-    --   Eingang (Auszahlung, Bondora zahlt nur auf das verifizierte Konto): das P2P-Konto, dessen Verrechnungskonto dieses
+    --   Eingang (Auszahlung, der Anbieter zahlt nur auf das verifizierte Konto): das Konto, dessen Verrechnungskonto dieses
     --   Konto ist, sonst eines desselben Inhabers (nie Haushalt) ohne anderes Verrechnungskonto -> Transfer + Gebuehr-Bein
-    --   (Profil withdrawal_fee) beim P2P-Konto. Ausgang (Einzahlung): Referenz = Kontonummer als ganzes Wort im
+    --   (Profil withdrawal_fee) beim Profil-Konto. Ausgang (Einzahlung): Referenz = Kontonummer als ganzes Wort im
     --   Verwendungszweck, sonst alle Kandidaten. Genau ein Kandidat -> Transfer. Genau eine Zeile mit zwei Kandidaten:
     --   ohne transfer_account -> code transfer_choice_required (der Agent fragt, Muster account_ambiguous); mit Namen eines
     --   der beiden -> Transfer; 'none' -> Rest; anderer Name -> erneut transfer_choice_required. Mehrere solche Zeilen oder
@@ -490,7 +495,8 @@ BEGIN
                  ORDER BY a.id), '[]'::jsonb)
         INTO v_pool_c
         FROM finance.accounts a
-        WHERE a.status = 'active' AND a.account_type::text = 'p2p' AND a.id <> v_acct.id AND a.currency = v_acct.currency
+        WHERE a.status = 'active' AND a.account_type::text = v_pool_pr->>'default_account_type' AND a.id <> v_acct.id
+          AND a.currency = v_acct.currency
           AND finance.fn_bank_export_account_profile(a.id) = v_pool_pr->>'key';
         CONTINUE WHEN jsonb_array_length(v_pool_c) = 0;   -- kein Konto dieses Anbieters im Haushalt: normale Zeile
         SELECT COALESCE(jsonb_agg(c), '[]'::jsonb) INTO v_pool_c FROM jsonb_array_elements(v_pool_c) c WHERE (c->>'usable')::boolean;
@@ -849,12 +855,17 @@ BEGIN
     --   Sonst bucht apply aus den Export-Werten (Kurs aus dem Kurswert via fn_unit_price_from_total) -> trades.
     --   Nicht buchbar (trades_blocked): Kauf, der noch in einer Bestandsuebernahme derselben Position steckt
     --   (covered_by_takeover: erst die Einzelkaeufe uebernehmen), Verkauf ueber den Bestand (oversell), unbekannte
-    --   Position bei Verkauf/Dividende bzw. kein eindeutiges Depot beim Kauf (security_unknown).
+    --   Position bei Verkauf/Dividende bzw. kein eindeutiges Depot beim Kauf (security_unknown), Stueckpreis unter
+    --   5e-9 bzw. Betrag unter 1 Cent (not_bookable, fn_trade_amount_reason).
+    --   Kauf/Verkauf buchen genau den Export-Betrag (Kurswert +- Gebuehr, centgenau), der Kurs ist daraus abgeleitet.
+    --   Ertrag (reward, Staking): Stueck-Zugang ohne Geld (amount 0), Stufe 0 nur am selben Tag (gleich grosse Ertraege im
+    --   Wochentakt waeren mit +-5 Tagen "schon gebucht"; Doppelungen verhindern Stichtag und statement_seen_refs), neue Position
+    --   wie beim Kauf, steckt er in einer Bestandsuebernahme -> covered_by_takeover. Die Karte zeigt je Muenze eine Summe.
     --   Wertpapier-Geldfluesse (Kauf/Verkauf/Dividende/Steuer/Kapitalmassnahme) zaehlen nie in unmatched_out/in.
     IF v_file THEN
         FOR v_line, v_idx IN SELECT e, (o)::int FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(e, o)
                              WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u) LOOP
-            CONTINUE WHEN v_line->>'kind' NOT IN ('buy', 'sell', 'dividend');
+            CONTINUE WHEN v_line->>'kind' NOT IN ('buy', 'sell', 'dividend', 'reward');
 
             SELECT count(*) OVER () AS n, h.id, h.account_id AS depot_id, h.shares, h.name, h.symbol INTO v_hold
             FROM finance.depot_holdings h JOIN finance.accounts d ON d.id = h.account_id
@@ -870,7 +881,8 @@ BEGIN
                 FROM finance.transactions t
                 WHERE t.account_id = v_acct.id AND t.holding_id = v_hold.id AND t.category::text = v_line->>'kind'
                   AND t.transaction_date <= v_pe + 5   -- auch vor dem Schnitt: von Hand gebucht, Export bucht spaeter
-                  AND abs(t.transaction_date - (v_line->>'booking_date')::date) <= 5
+                  -- Ertrag nur am selben Tag: gleich grosse Ertraege im Wochentakt sind verschiedene Zeilen
+                  AND abs(t.transaction_date - (v_line->>'booking_date')::date) <= CASE WHEN v_line->>'kind' = 'reward' THEN 0 ELSE 5 END
                   AND NOT (t.id = ANY(v_used_tx))
                   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_booked) b WHERE (b->>'transaction_id')::int = t.id)
                   AND CASE WHEN v_line->>'kind' = 'dividend' THEN t.amount = (v_line->>'amount')::numeric
@@ -897,14 +909,14 @@ BEGIN
                    OR (v_line->>'isin' IS NULL AND v_lines->((m->>'line_idx')::int - 1)->>'isin' IS NULL
                        AND upper(v_lines->((m->>'line_idx')::int - 1)->>'symbol') = upper(v_line->>'symbol')));
             SELECT v_avail
-                   + COALESCE(sum((x->>'shares')::numeric) FILTER (WHERE x->>'kind' = 'buy'), 0)
+                   + COALESCE(sum((x->>'shares')::numeric) FILTER (WHERE x->>'kind' IN ('buy', 'reward')), 0)
                    - COALESCE(sum((x->>'shares')::numeric) FILTER (WHERE x->>'kind' = 'sell'), 0)
             INTO v_avail FROM jsonb_array_elements(v_trades) x
             WHERE x->>'isin' = v_line->>'isin'
                OR (v_line->>'isin' IS NULL AND x->>'isin' IS NULL AND upper(x->>'symbol') = upper(v_line->>'symbol'));
             IF v_hcount > 1 THEN
                 v_reason := 'security_unknown';
-            ELSIF v_line->>'kind' = 'buy' THEN
+            ELSIF v_line->>'kind' IN ('buy', 'reward') THEN
                 IF v_hcount = 0 THEN
                     -- neue Position: das eine aktive Depot dieses Verrechnungskontos der passenden Art (Krypto ohne ISIN)
                     SELECT CASE WHEN count(*) = 1 THEN min(d.id) END INTO v_depot
@@ -928,25 +940,38 @@ BEGIN
             IF v_reason IS NOT NULL THEN
                 v_tblocked := v_tblocked || jsonb_build_object('line_idx', v_idx, 'kind', v_line->>'kind', 'reason', v_reason,
                     'name', COALESCE(v_line->>'name', v_line->>'isin', v_line->>'symbol'), 'amount', (v_line->>'amount')::numeric,
-                    'line_date', v_line->>'date');
+                    'shares', (v_line->>'shares')::numeric, 'line_date', v_line->>'date');
                 CONTINUE;
             END IF;
 
             -- Kauf/Verkauf ohne Steuer (die Buch-fns kennen keine), die einbehaltene Steuer als eigene Buchung (tax);
-            -- Dividende netto (amount = Cash-Wirkung inkl. Steuer)
-            v_price := finance.fn_unit_price_from_total((v_line->>'gross')::numeric, (v_line->>'shares')::numeric);
+            -- Dividende netto (amount = Cash-Wirkung inkl. Steuer). Kauf/Verkauf = Kurswert +- Gebuehr exakt (apply
+            -- uebergibt den Betrag als cost_basis_total bzw. total_credited; ein Kurs * Stueck verfehlte ihn um Cent).
+            v_price := CASE WHEN v_line->>'kind' IN ('buy', 'sell')
+                            THEN finance.fn_unit_price_from_total((v_line->>'gross')::numeric, (v_line->>'shares')::numeric) END;
             v_tamt := CASE v_line->>'kind'
-                WHEN 'buy'  THEN -(round((v_line->>'shares')::numeric * v_price, 2) + (v_line->>'fee')::numeric)
-                WHEN 'sell' THEN round((v_line->>'shares')::numeric * v_price, 2) - (v_line->>'fee')::numeric
+                WHEN 'buy'    THEN -((v_line->>'gross')::numeric + COALESCE((v_line->>'fee')::numeric, 0))
+                WHEN 'sell'   THEN (v_line->>'gross')::numeric - COALESCE((v_line->>'fee')::numeric, 0)
+                WHEN 'reward' THEN 0
                 ELSE (v_line->>'amount')::numeric END;
+            IF v_line->>'kind' IN ('buy', 'sell')
+               AND (COALESCE(v_price, 0) <= 0
+                    -- Betrag aus Sicht des Kontos: Kauf wird abgebucht, Verkauf gutgeschrieben; beide muessen > 0 sein
+                    OR finance.fn_trade_amount_reason((v_line->>'shares')::numeric,
+                           CASE WHEN v_line->>'kind' = 'buy' THEN -v_tamt ELSE v_tamt END) IS NOT NULL) THEN
+                v_tblocked := v_tblocked || jsonb_build_object('line_idx', v_idx, 'kind', v_line->>'kind', 'reason', 'not_bookable',
+                    'name', COALESCE(v_line->>'name', v_line->>'isin', v_line->>'symbol'), 'amount', (v_line->>'amount')::numeric,
+                    'line_date', v_line->>'date');
+                CONTINUE;
+            END IF;
             v_ttax := CASE WHEN v_line->>'kind' IN ('buy', 'sell') THEN round(COALESCE((v_line->>'tax')::numeric, 0), 2) ELSE 0 END;
             v_trades := v_trades || jsonb_build_object('line_idx', v_idx, 'kind', v_line->>'kind',
                 'holding_id', CASE WHEN v_hcount = 1 THEN v_hold.id END, 'depot_id', v_depot,
                 'isin', v_line->>'isin', 'symbol', COALESCE(v_hold.symbol, v_line->>'symbol'),
                 'name', COALESCE(v_hold.name, v_line->>'name', v_line->>'symbol'),
                 'shares', CASE WHEN v_line->>'kind' <> 'dividend' THEN (v_line->>'shares')::numeric END,
-                'price_per_share', CASE WHEN v_line->>'kind' <> 'dividend' THEN v_price END,
-                'order_fee', CASE WHEN v_line->>'kind' <> 'dividend' THEN (v_line->>'fee')::numeric END,
+                'price_per_share', v_price,
+                'order_fee', CASE WHEN v_line->>'kind' IN ('buy', 'sell') THEN (v_line->>'fee')::numeric END,
                 'tax', v_ttax, 'date', v_line->>'date', 'amount', v_tamt);
             v_book_sum := v_book_sum + v_tamt + v_ttax;
         END LOOP;
@@ -1017,7 +1042,7 @@ BEGIN
           FROM jsonb_array_elements(v_lines) WITH ORDINALITY AS x(l, o)
           WHERE (o)::int IN (SELECT (u)::int FROM jsonb_array_elements_text(v_match->'unmatched') u)
             AND (l->>'date')::date > v_cut
-            AND NOT (v_file AND COALESCE(l->>'kind', '') IN ('buy', 'sell', 'dividend', 'tax', 'corporate'))
+            AND NOT (v_file AND COALESCE(l->>'kind', '') IN ('buy', 'sell', 'dividend', 'reward', 'tax', 'corporate'))
             AND NOT (v_printed_file AND COALESCE(l->>'kind', '') IN ('interest_line', 'legacy_return'))) u;
 
     -- ---------- 4. fehlende Zahlungen, unbekannte Mandate ----------
@@ -1258,7 +1283,7 @@ BEGIN
     -- Broker-CSV: Wertpapier-Buchungen aus dem Export, nicht buchbare Wertpapier-Zeilen, unbekannte Export-Zeilen
     IF jsonb_array_length(v_trades) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_trades'))
-            || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
                     CASE WHEN x->>'kind' = 'dividend'
                          THEN core.fn_ui_tpl('finance.tpl.statement_dividend_row', jsonb_build_object('name', x->>'name',
                                   'amount', core.fn_ui_money((x->>'amount')::numeric, v_acct.currency),
@@ -1270,7 +1295,15 @@ BEGIN
                                   'shares', core.fn_ui_num((x->>'shares')::numeric, 8),
                                   'amount', core.fn_ui_money((x->>'amount')::numeric, v_acct.currency),
                                   'date', core.fn_ui_date((x->>'date')::date))) END) ORDER BY (x->>'date')::date, (x->>'line_idx')::int)
-                FROM jsonb_array_elements(v_trades) x)
+                FROM jsonb_array_elements(v_trades) x WHERE x->>'kind' <> 'reward'), '[]'::jsonb)
+            -- Ertraege: eine Summenzeile je Muenze (Staking schreibt taeglich/woechentlich, Einzelzeilen fuellten die Karte)
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+                    core.fn_ui_tpl('finance.tpl.statement_trade_reward', jsonb_build_object('name', s.name,
+                        'shares', core.fn_ui_num(s.shares, 8), 'count', s.n,
+                        'from', core.fn_ui_date(s.d_from), 'to', core.fn_ui_date(s.d_to)))) ORDER BY s.name)
+                FROM (SELECT x->>'name' AS name, sum((x->>'shares')::numeric) AS shares, count(*) AS n,
+                             min((x->>'date')::date) AS d_from, max((x->>'date')::date) AS d_to
+                      FROM jsonb_array_elements(v_trades) x WHERE x->>'kind' = 'reward' GROUP BY x->>'name') s), '[]'::jsonb)
             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
                     core.fn_ui_tpl('finance.tpl.statement_trade_tax_row', jsonb_build_object('name', x->>'name',
                         'amount', core.fn_ui_money((x->>'tax')::numeric, v_acct.currency),
@@ -1279,24 +1312,43 @@ BEGIN
     END IF;
     IF jsonb_array_length(v_tblocked) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_trades_blocked'))
-            || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
                     core.fn_ui_tpl('finance.tpl.statement_trade_blocked_row', jsonb_build_object('name', x->>'name',
                         'amount', core.fn_ui_money((x->>'amount')::numeric, v_acct.currency),
                         'date', core.fn_ui_date((x->>'line_date')::date),
                         'why', CASE x->>'reason'
                                    WHEN 'covered_by_takeover' THEN core.fn_ui_tpl('finance.tpl.statement_trade_covered_by_takeover', '{}'::jsonb)
                                    WHEN 'oversell' THEN core.fn_ui_tpl('finance.tpl.statement_trade_oversell', '{}'::jsonb)
+                                   WHEN 'not_bookable' THEN core.fn_ui_tpl('finance.tpl.statement_trade_not_bookable', '{}'::jsonb)
                                    ELSE core.fn_ui_tpl('finance.tpl.statement_trade_security_unknown', '{}'::jsonb) END)))
                   ORDER BY (x->>'line_date')::date, (x->>'line_idx')::int)
-                FROM jsonb_array_elements(v_tblocked) x);
+                FROM jsonb_array_elements(v_tblocked) x WHERE x->>'kind' <> 'reward'), '[]'::jsonb)
+            -- gesperrte Ertraege wie gebuchte: eine Summe je Muenze und Grund, ohne Euro-Betrag (es gibt keinen)
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
+                    core.fn_ui_tpl('finance.tpl.statement_trade_reward_blocked_row', jsonb_build_object('name', s.name,
+                        'shares', core.fn_ui_num(s.shares, 8), 'count', s.n,
+                        'why', CASE s.reason
+                                   WHEN 'covered_by_takeover' THEN core.fn_ui_tpl('finance.tpl.statement_trade_covered_by_takeover', '{}'::jsonb)
+                                   ELSE core.fn_ui_tpl('finance.tpl.statement_trade_security_unknown', '{}'::jsonb) END))) ORDER BY s.name, s.reason)
+                FROM (SELECT x->>'name' AS name, x->>'reason' AS reason, sum((x->>'shares')::numeric) AS shares, count(*) AS n
+                      FROM jsonb_array_elements(v_tblocked) x WHERE x->>'kind' = 'reward' GROUP BY 1, 2) s), '[]'::jsonb);
     END IF;
     IF jsonb_array_length(v_file_unk) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_export_unknown'))
+            -- Grund in Laien-Worten, wo der Leser ihn kennt (ein Key je Grund); sonst nur Art und Betrag
             || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
-                    core.fn_ui_tpl('finance.tpl.statement_export_unknown_row', jsonb_build_object(
+                    CASE WHEN u->>'reason' IN ('crypto_transfer', 'not_completed', 'foreign_currency')
+                    THEN core.fn_ui_tpl('finance.tpl.statement_export_unknown_why_row', jsonb_build_object(
+                        'name', COALESCE(u->>'name', u->>'type'), 'type', u->>'type',
+                        'date', core.fn_ui_date((u->>'date')::date),
+                        'why', CASE u->>'reason'
+                                   WHEN 'crypto_transfer' THEN core.fn_ui_tpl('finance.tpl.statement_export_reason_crypto_transfer', '{}'::jsonb)
+                                   WHEN 'not_completed' THEN core.fn_ui_tpl('finance.tpl.statement_export_reason_not_completed', '{}'::jsonb)
+                                   ELSE core.fn_ui_tpl('finance.tpl.statement_export_reason_foreign_currency', '{}'::jsonb) END))
+                    ELSE core.fn_ui_tpl('finance.tpl.statement_export_unknown_row', jsonb_build_object(
                         'name', COALESCE(u->>'name', u->>'type'), 'type', u->>'type',
                         'amount', core.fn_ui_money((u->>'cash_amount')::numeric, v_acct.currency),
-                        'date', core.fn_ui_date((u->>'date')::date)))) ORDER BY (u->>'row_no')::int)
+                        'date', core.fn_ui_date((u->>'date')::date))) END) ORDER BY (u->>'row_no')::int)
                 FROM jsonb_array_elements(v_file_unk) u);
     END IF;
     -- Schlussteil (Zinskorrektur, Kleinbetraege, Hinweise zum Rest, Rest, Abgleich-Satz): steht davor ein Block mit
@@ -1427,7 +1479,10 @@ BEGIN
                'trades', v_trades, 'trades_blocked', v_tblocked, 'export_unknown', v_file_unk,
                'late_count', (SELECT count(*) FROM jsonb_array_elements(v_lines) l WHERE (l->>'late')::boolean),
                'seen_refs', (SELECT COALESCE(jsonb_agg(DISTINCT l->>'ext_ref'), '[]'::jsonb)
-                             FROM jsonb_array_elements(v_lines) l WHERE l->>'ext_ref' IS NOT NULL))
+                             -- ein noch offener Vorgang (not_completed) gilt nie als gesehen: kommt er spaeter abgeschlossen
+                             -- mit derselben Kennung, zaehlt er als spaete Zeile statt still zu fehlen
+                             FROM jsonb_array_elements(v_lines) l WHERE l->>'ext_ref' IS NOT NULL
+                               AND l->>'reason' IS DISTINCT FROM 'not_completed'))
            ELSE '{}'::jsonb END;
 END;
 $$;

@@ -23,7 +23,7 @@
 --   (fn_recurring_valid_from) — fruehere Vorkommen stecken im Saldo;
 --   der Monats-Check schneidet dort ab (derselbe Auszug -> already_covered, der naechste schliesst ohne Abweichung an).
 --   settlement_id ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
---   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (nur Depot/P2P, P2P -> Girokonto).
+--   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (Depot, P2P, Boersen-Geldkonto; P2P/Geldkonto -> Girokonto).
 --   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
 --   emoji (optional, Listen-Zeichen, VS16 wird bereinigt; leer = Zeichen der Kontoart): sonst {ok:false, code:'invalid_emoji'};
 --   name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}, vor der Namens-Dublette.
@@ -169,9 +169,10 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A depot has no cash balance of its own - put the cash balance on its settlement account and record the positions as holdings.');
     END IF;
-    -- Verrechnungskonto: nur Depot/P2P, muss Geld tragen koennen (Kaeufe buchen dort; Depot/Kredit -> Trigger-RAISE beim
+    -- Verrechnungskonto: nur Depot/P2P/Boersen-Geldkonto, muss Geld tragen koennen (Kaeufe buchen dort; Depot/Kredit -> Trigger-RAISE beim
     -- ersten Kauf), bei P2P ein Girokonto; die Waehrung prueft der Block weiter unten (ein Depot erbt sie).
-    v_reason := finance.fn_settlement_account_reason(v_acct_type::text, NULL, NULLIF(p->>'settlement_id', '')::int);
+    v_reason := finance.fn_settlement_account_reason(v_acct_type::text, NULL, NULLIF(p->>'settlement_id', '')::int, NULL,
+                                                    COALESCE(NULLIF(btrim(p->>'bank'), ''), p->>'name'));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;

@@ -460,12 +460,26 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: hook-path-lint
+        name: hook_path_lint (every hook command in .claude/settings.json is anchored on CLAUDE_PROJECT_DIR or absolute and names an existing file; the test runs the lint on fixtures and on the real tree; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_path_lint_test.ps1
+        pass_filenames: false
+        files: ^(\.claude/(settings\.json|hooks/.*)|scripts/(hook_path_lint|dev/hook_path_lint_test)\.ps1)$
+
       - id: ci-wait-test
         name: ci_wait_test (check_ci_status -Wait verdict - green, red, pending, no run, rerun after red; no network)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ci_wait_test.ps1
         pass_filenames: false
-        files: ^scripts/(check_ci_status|lib/ci_wait|dev/ci_wait_test)\.ps1$
+        files: ^scripts/(check_ci_status|lib/ci_wait|lib/github_runs|dev/ci_wait_test)\.ps1$
+
+      - id: main-push-guard-test
+        name: main_push_guard_test (push to main blocked without green GitHub runs of the workflows it would trigger; throwaway repo, no network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/main_push_guard_test.ps1
+        pass_filenames: false
+        files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/main_push_guard_test|scripts/main_push_guard|scripts/lib/(main_push|ci_wait|github_runs|owner_machine|git_sandbox))\.ps1$
 
       - id: cron-toggle-lint-test
         name: cron_toggle_lint_test (a sending cron without budget path turns rule k red; no Docker)

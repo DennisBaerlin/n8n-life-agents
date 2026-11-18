@@ -28,7 +28,7 @@
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
 --   Bank-Export-Datei: Zeilen mit kind (fn_bank_export_normalize) treffen nur passende Kandidaten: buy nur einen
 --   Sparplan bzw. gebuchten Kauf derselben Position (ISIN, Krypto per Symbol), cash/fee nie einen Sparplan oder Kauf,
---   interest den Zins ohne Textsuche, sell/dividend/tax/corporate/unknown nichts (die Prepare behandelt sie selbst).
+--   interest den Zins ohne Textsuche, sell/dividend/reward/tax/corporate/unknown nichts (die Prepare behandelt sie selbst).
 --   Gedruckter Auszug = kind NULL = keine kind-Filter.
 --   Bank-Import-Modul (Transfers zwischen eigenen Konten, beide Import-Reihenfolgen):
 --     0 (Gruppe, ckey 'g:') = schon gebuchter Ad-hoc-Transfer dieses Kontos (von Hand oder aus dem Auszug des
@@ -38,7 +38,7 @@
 --         amount; die Prepare bucht die Gebuehr als eigene Buchung nach, nie in die fremde Gruppe).
 --     T = Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos, kein Dauerauftrag getroffen -> neuer Transfer
 --         (other_account_id; Buchbarkeit/Abgleich/pending_pair prueft die Prepare).
---         Eine Ein-/Auszahlungs-Zeile ohne Gegen-IBAN (sub_kind deposit|withdrawal, Bondora-Datei) trifft das
+--         Eine Ein-/Auszahlungs-Zeile ohne Gegen-IBAN (sub_kind deposit|withdrawal, Bondora-/Krypto-Boersen-Datei) trifft das
 --         Verrechnungskonto (settlement_account_id) dieses Kontos. kind interest_line | legacy_return (Datei mit
 --         gedrucktem Endstand) trifft nie etwas: die Prepare bucht sie als je eine Summe.
 --   Lernen: ein Treffer eines Nicht-Transfer-Dauerauftrags schlaegt die Schluessel der Zeile vor, die die Kette noch
@@ -201,7 +201,7 @@ BEGIN
         FROM lines l
         JOIN finance.accounts a ON a.status = 'active' AND a.id <> p_account_id
              AND (a.account_number = l.iban
-                  -- Ein-/Auszahlung ohne Gegen-IBAN (Bondora-Datei): das Verrechnungskonto dieses Kontos
+                  -- Ein-/Auszahlung ohne Gegen-IBAN (Bondora-/Krypto-Boersen-Datei): das Verrechnungskonto dieses Kontos
                   OR (l.iban IS NULL AND l.sub_kind IN ('deposit', 'withdrawal')
                       AND a.id = (SELECT s.settlement_account_id FROM finance.accounts s WHERE s.id = p_account_id)))
         WHERE l.amt <> 0 AND (l.kind IS NULL OR l.kind = 'cash')

@@ -57,6 +57,32 @@
 --   ihren eigenen Return, reichen die Note nicht durch); ein getaggter (manuell oder per Sparplan vererbter)
 --   Kauf -> keine Note.
 -- ============================================================
+
+-- Hilfs-fn: Position eines Depots suchen (ISIN; Krypto ohne ISIN per Symbol) und mit p_create (nicht NULL) anlegen,
+-- wenn sie fehlt. Die eine Adresse fuer Kauf (fn_book_stock_buy) und Staking-Ertrag (fn_book_reward).
+-- p_create: {name, currency (Default EUR), asset_class?, provider_symbol?, quote_currency?}; nur beim Anlegen gesetzt,
+-- eine bestehende Position behaelt ihre Werte. Rueckgabe: holding_id | NULL (nicht gefunden, p_create NULL).
+CREATE OR REPLACE FUNCTION finance.fn_depot_holding_id(p_depot int, p_isin text, p_symbol text, p_create jsonb DEFAULT NULL)
+RETURNS int LANGUAGE plpgsql AS $$
+DECLARE
+    v_id INT;
+BEGIN
+    SELECT id INTO v_id FROM finance.depot_holdings
+    WHERE account_id = p_depot
+      AND ((p_isin IS NOT NULL AND isin = p_isin) OR (p_isin IS NULL AND isin IS NULL AND symbol = p_symbol))
+    ORDER BY id LIMIT 1;
+    IF v_id IS NULL AND p_create IS NOT NULL THEN
+        INSERT INTO finance.depot_holdings
+            (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class, provider_symbol, quote_currency)
+        VALUES (p_depot, p_isin, p_symbol, COALESCE(NULLIF(p_create->>'name', ''), p_symbol), 0, NULL,
+                COALESCE(NULLIF(p_create->>'currency', ''), 'EUR'), NULLIF(p_create->>'asset_class', ''),
+                NULLIF(p_create->>'provider_symbol', ''), NULLIF(p_create->>'quote_currency', ''))
+        RETURNING id INTO v_id;
+    END IF;
+    RETURN v_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION finance.fn_book_stock_buy(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
@@ -272,14 +298,7 @@ BEGIN
     END IF;
 
     -- ISIN-Lookup fuer Aktien/ETFs; Symbol-Lookup fuer Krypto (v_isin IS NULL).
-    SELECT id INTO v_holding
-    FROM finance.depot_holdings
-    WHERE account_id = v_depot
-      AND (
-          (v_isin IS NOT NULL AND isin = v_isin)
-          OR (v_isin IS NULL AND isin IS NULL AND symbol = v_symbol)
-      )
-    LIMIT 1;
+    v_holding := finance.fn_depot_holding_id(v_depot, v_isin, v_symbol);
 
     -- Bestandsuebernahme auf eine schon gehaltene Position verdoppelt sie (erneuter Depotauszug) -> {ok:false}.
     IF v_existing AND v_holding IS NOT NULL THEN
@@ -298,14 +317,10 @@ BEGIN
         -- Holding-Waehrung = Depot-Waehrung (CLP-Depot -> CLP-Holding), nicht hartkodiert EUR.
         -- asset_class/provider_symbol/quote_currency werden beim Anlegen gesetzt; eine bestehende Position
         -- behaelt ihre Werte (Korrektur via set_holding) -> ein wiederholter Kauf ueberschreibt sie nie.
-        INSERT INTO finance.depot_holdings
-            (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class,
-             provider_symbol, quote_currency)
-        VALUES (v_depot, v_isin, v_symbol, v_name, 0, NULL, COALESCE(v_depot_ccy, 'EUR'), v_asset_cls,
-                v_provider_sym,
-                -- echter Kauf mit Abbuchungsbetrag: genannte Waehrung ist die des Kurses, die Kurs-Pruefung lief in Kontowaehrung
-                CASE WHEN NOT v_existing AND v_total IS NOT NULL THEN v_listing_ccy ELSE COALESCE(v_listing_ccy, v_quote_ccy) END)
-        RETURNING id INTO v_holding;
+        v_holding := finance.fn_depot_holding_id(v_depot, v_isin, v_symbol, jsonb_build_object(
+            'name', v_name, 'currency', COALESCE(v_depot_ccy, 'EUR'), 'asset_class', v_asset_cls, 'provider_symbol', v_provider_sym,
+            -- echter Kauf mit Abbuchungsbetrag: genannte Waehrung ist die des Kurses, die Kurs-Pruefung lief in Kontowaehrung
+            'quote_currency', CASE WHEN NOT v_existing AND v_total IS NOT NULL THEN v_listing_ccy ELSE COALESCE(v_listing_ccy, v_quote_ccy) END));
     END IF;
 
     SELECT balance INTO v_bal_before FROM finance.account_balances WHERE account_id = v_settle;

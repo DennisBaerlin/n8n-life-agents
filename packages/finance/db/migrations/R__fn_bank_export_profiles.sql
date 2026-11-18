@@ -17,7 +17,9 @@
 --   interest_source: Quelle der Zinsen eines neuen Kontos: web (Konditionen nachschlagen), export (echte Zinszeilen der Datei), none.
 --   is_broker: Datei kann Wertpapierzeilen tragen (Ersteinrichtung mit Depot); default_account_type: Typ eines neuen Kontos.
 --   counterparty_pattern: Gegenpart-Name des Anbieter-Sammelkontos (Pool-Regel in fn_statement_prepare: Ein-/Auszahlungen
---   auf einem Bankkonto ohne eigene Gegen-IBAN werden einem P2P-Konto dieses Profils zugeordnet).
+--   auf einem Bankkonto ohne eigene Gegen-IBAN werden dem Konto dieses Profils zugeordnet); ein Geld-Konto (cash) eines
+--   solchen Profils darf ein Verrechnungskonto tragen (fn_settlement_account_reason).
+--   Krypto-Boerse (bitvavo_v1, CSV): Gebuehr steckt im bezahlten Betrag, Staking -> reward (Leser-Kopf).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_profiles()
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
@@ -37,5 +39,10 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
         jsonb_build_object('key', 'n26_v1', 'bank', 'N26', 'bank_pattern', '(^|[^[:alnum:]])n[[:space:]-]*26([^[:alnum:]]|$)',
                            'required', jsonb_build_array('booking date', 'value date', 'partner name', 'type', 'amount (eur)'),
                            'interest_source', 'none', 'is_broker', false, 'default_account_type', 'cash',
-                           'printed_balance', false));
+                           'printed_balance', false),
+        jsonb_build_object('key', 'bitvavo_v1', 'bank', 'Bitvavo', 'bank_pattern', 'bitvavo',
+                           'required', jsonb_build_array('timezone', 'type', 'currency', 'amount', 'received / paid amount',
+                                                         'fee amount', 'status', 'transaction id'),
+                           'interest_source', 'none', 'is_broker', true, 'default_account_type', 'cash',
+                           'printed_balance', false, 'counterparty_pattern', 'bitvavo'));
 $$;

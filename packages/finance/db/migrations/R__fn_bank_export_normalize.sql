@@ -9,8 +9,8 @@
 --   preamble (davor), header_row_no}.
 --   Kanonische Importzeile (Vertrag fuer fn_statement_prepare; der gedruckte Auszug liefert dieselben Felder als lines):
 --   {row_no, date, kind, cash_amount (signiert, Cent), counterparty, counterparty_iban, purpose, name, ext_ref, reason,
---   + Wertpapier-Felder isin/symbol/shares/price/gross/fee/tax (TR)}; kind cash|fee|interest|buy|sell|dividend|tax|
---   corporate|unknown, unknown nie still verworfen (unknown_rows).
+--   + Wertpapier-Felder isin/symbol/shares/price/gross/fee/tax (TR, Krypto-Boerse)}; kind cash|fee|interest|buy|sell|dividend|tax|
+--   corporate|reward (Staking-Ertrag: Stueck ohne Geld)|unknown, unknown nie still verworfen (unknown_rows).
 --   plpgsql (late-bound): die Profil-fns und fn_bank_export_profiles liegen alphabetisch spaeter.
 --   Rueckgabe: Profil-Rueckgabe || {profile, printed_balance (Registry; dann traegt die Profil-Rueckgabe statement)}
 --   | {ok:false, code:'export_profile_unknown'|'export_invalid', reason, row_no?}.
@@ -57,6 +57,7 @@ BEGIN
         WHEN 'trade_republic_v1' THEN finance.fn_bank_export_normalize_trade_republic(v_in)
         WHEN 'bondora_go_grow_v1' THEN finance.fn_bank_export_normalize_bondora(v_in)
         WHEN 'n26_v1' THEN finance.fn_bank_export_normalize_n26(v_in)
+        WHEN 'bitvavo_v1' THEN finance.fn_bank_export_normalize_bitvavo(v_in)
     END;
     IF v_res IS NULL THEN
         RAISE EXCEPTION 'fn_bank_export_normalize: profile % has no reader', v_prof->>'key';

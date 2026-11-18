@@ -30,7 +30,8 @@
 #
 # Zweig (D): jede fn, die ein Workflow unter einer engen Rolle aufruft (auch _rw), hat einen SET-ROLE-Test in tests/db oder
 # steht in scripts/build/role_test_gap_allowlist.json (schrumpfend, Orphan = Fehler); die Rolle/fn-Paare stehen erzeugt in
-# tests/db/cross/test_role_catalog_exec.sql (Ausfuehrungsrechte samt Helfern), -WriteCatalog schreibt sie neu.
+# tests/db/cross/test_role_catalog_exec.sql (Ausfuehrungsrechte samt Helfern) und test_role_call_probe.sql (Aufruf unter der
+# Rolle, Tabellenrechte im Koerper), -WriteCatalog schreibt sie neu.
 #
 # Aufruf: .\scripts\role_test_lint.ps1 [-Verbose] [-WriteCatalog]
 # Kein LLM, kein Netz, kein Substrat. Exit-Code = Anzahl Fehler.
@@ -280,22 +281,23 @@ else {
     if ($gal.entries) { foreach ($p in $gal.entries.PSObject.Properties) { $gapAllow[$p.Name] = [string]$p.Value } }
 }
 foreach ($e in (Compare-RoleGap -Pairs $gapPairs -Tested $gapTested -Allow $gapAllow).Errors) { Fail "(D) $e" }
-$catPath = Join-Path $RepoRoot 'tests\db\cross\test_role_catalog_exec.sql'
 $catBlock = Get-RoleCatalogBlock -Pairs $gapPairs
 $catRx = [regex]'(?s)(-- BEGIN GENERATED PAIRS\r?\n)(.*?)(\r?\n?-- END GENERATED PAIRS)'
-if (-not (Test-Path $catPath)) { Fail "(D) Katalog-Test fehlt: tests/db/cross/test_role_catalog_exec.sql" }
-else {
+# Zwei Tests tragen dieselbe erzeugte Paar-Liste: Ausfuehrungsrechte (Katalog) und Aufruf-Probe unter der Rolle samt Tabellenrechten.
+foreach ($catName in 'test_role_catalog_exec.sql', 'test_role_call_probe.sql') {
+    $catPath = Join-Path $RepoRoot "tests\db\cross\$catName"
+    if (-not (Test-Path $catPath)) { Fail "(D) Test fehlt: tests/db/cross/$catName"; continue }
     $catText = [System.IO.File]::ReadAllText($catPath, $u8)
     $cm = $catRx.Match($catText)
-    if (-not $cm.Success) { Fail "(D) Marker '-- BEGIN/END GENERATED PAIRS' fehlen in test_role_catalog_exec.sql" }
-    elseif ($WriteCatalog -and $fails -gt 0) { Write-Host "  (D) Katalog nicht geschrieben: erst die $fails Fehler oben beheben" -ForegroundColor Yellow }
+    if (-not $cm.Success) { Fail "(D) Marker '-- BEGIN/END GENERATED PAIRS' fehlen in $catName" }
+    elseif ($WriteCatalog -and $fails -gt 0) { Write-Host "  (D) $catName nicht geschrieben: erst die $fails Fehler oben beheben" -ForegroundColor Yellow }
     elseif ($WriteCatalog) {
         $new = $catRx.Replace($catText, { param($m) $m.Groups[1].Value + $catBlock + "`n" + '-- END GENERATED PAIRS' }, 1)
         [System.IO.File]::WriteAllText($catPath, $new, $u8)
-        Write-Host "  (D) Katalog neu geschrieben: $($gapPairs.Count) Paare" -ForegroundColor Cyan
+        Write-Host "  (D) $catName neu geschrieben: $($gapPairs.Count) Paare" -ForegroundColor Cyan
     }
     elseif (($cm.Groups[2].Value.Trim() -replace '\r', '') -ne ($catBlock.Trim() -replace '\r', '')) {
-        Fail "(D) Paar-Liste in test_role_catalog_exec.sql ist nicht aktuell (Workflow-Aufrufe geaendert) -> .\scripts\role_test_lint.ps1 -WriteCatalog"
+        Fail "(D) Paar-Liste in $catName ist nicht aktuell (Workflow-Aufrufe geaendert) -> .\scripts\role_test_lint.ps1 -WriteCatalog"
     }
 }
 

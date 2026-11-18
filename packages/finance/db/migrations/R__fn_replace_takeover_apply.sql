@@ -5,7 +5,8 @@
 --   (eingetippte Liste, alle Uebernahme-Gruppen einer Position). Plan, Fingerabdruck, Pruefungen und Karte bleiben beim
 --   Aufrufer; dieser Baustein bekommt schon geprueft-berechnete Lots und schreibt nur.
 --   Bewusst positionale Argumente, kein jsonb-Payload (kein LLM-/Staging-Zugang, wie fn_book_takeover_pair).
---   Eingabe: p_holding, p_settle (Verrechnungskonto des Depots), p_lots = jsonb-Array [{date, shares, price, fee, cash}]
+--   Eingabe: p_holding, p_settle (Verrechnungskonto des Depots), p_lots = jsonb-Array [{date, shares, price, fee, cash, reward?}]
+--   (reward=true: Staking-Ertrag ohne Kurs -> fn_book_reward in dieselbe Gruppe, kein Uebernahme-Paar)
 --   (cash=true: echter Kauf ohne Gegenbuchung = Cash-Abfluss, nur der Export-Weg fuer Kaeufe nach dem bestaetigten
 --   Kontostand-Tag; false: cash-neutrales Uebernahme-Paar), p_old_group_ids = die alten Uebernahme-Gruppen, die vorher
 --   ermittelt wurden (vor dem ersten Write, sonst fiele die neue Gruppe mit hinein), p_label = Kennung fuer den Buchungstext.
@@ -27,6 +28,14 @@ DECLARE
     v_void   JSONB;
 BEGIN
     FOR v_lot IN SELECT e FROM jsonb_array_elements(p_lots) e LOOP
+        IF (v_lot->>'reward')::boolean THEN
+            -- Staking-Ertrag aus dem Export: Stueck ohne Geld, dieselbe Gruppe (ein Void nimmt ihn mit)
+            v_r := finance.fn_book_reward((SELECT h.account_id FROM finance.depot_holdings h WHERE h.id = p_holding), p_settle,
+                       (SELECT h.isin FROM finance.depot_holdings h WHERE h.id = p_holding),
+                       (SELECT h.symbol FROM finance.depot_holdings h WHERE h.id = p_holding), p_label,
+                       (v_lot->>'shares')::numeric, (v_lot->>'date')::date, v_group);
+            CONTINUE;
+        END IF;
         v_r := finance.fn_book_takeover_pair(p_holding, p_settle, (v_lot->>'shares')::numeric,
                    (v_lot->>'price')::numeric, (v_lot->>'fee')::numeric, (v_lot->>'date')::date, v_group,
                    p_label, NOT (v_lot->>'cash')::boolean);

@@ -310,7 +310,8 @@ BEGIN
         IF v_eff_target - v_saved <= 0 THEN
             v_covered := true;   -- gedeckt: Datum/Betrag aendern ist ok, eine Rate gibt es nicht neu zu rechnen
         -- Laeuft schon eine Rate, rechnet nur ein abweichender Wert neu: dieselbe Eingabe darf eine vom Nutzer genannte
-        -- Rate nicht veraendern (ein mit Rate angelegtes Ziel hat bis zum Zieldatum einen Termin mehr, als die Rate braucht).
+        -- Rate nicht veraendern (das Zieldatum eines mit Rate angelegten Ziels ist der Tag der letzten Rate, dieselbe
+        -- Zaehlung "Raten bis einschliesslich Zieldatum" wie beim Anlegen).
         -- Eine gestoppte oder beendete Rate laeuft nicht: beim Reaktivieren wird ueber die Rest-Termine neu gerechnet.
         ELSIF v_row.recurring_payment_id IS NULL
               OR NOT EXISTS (SELECT 1 FROM finance.recurring_payments r

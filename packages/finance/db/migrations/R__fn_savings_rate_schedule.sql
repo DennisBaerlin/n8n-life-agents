@@ -3,7 +3,9 @@
 --   Berechnet die fehlende Groesse eines Sparziels deterministisch, damit das LLM nicht rechnet. Zwei Richtungen:
 --     - Ziel-getrieben: target_amount + target_date gegeben -> monthly_rate = Ziel / Anzahl Abbuchungstermine bis einschliesslich
 --       Zieldatum (kein Termin -> {ok:false}); months = diese Anzahl.
---     - Raten-getrieben: target_amount + monthly_savings_rate gegeben -> target_date = first + ceil(Ziel/Rate) Monate.
+--     - Raten-getrieben: target_amount + monthly_savings_rate gegeben -> target_date = Tag der n-ten (letzten) Rate im Raster,
+--       n = ceil(Ziel/Rate); bei n = 1 erste Rate + 1 Tag. months = n. Gegenprobe: die Zaehlung der Ziel-getriebenen Richtung
+--       liefert fuer dieses Datum wieder n.
 --   Die Rate wird auf den Cent aufgerundet: 1000 / 3 = 333.34, damit die Raten das Ziel
 --   erreichen (gerundet 333.33 -> 999.99, "erreicht" feuerte nie). Sparziele sind EUR -> Cent.
 --   Anker der Monatszaehlung ist first_payment_date. Wird vom Tool read-only fuer den HITL-Preview
@@ -20,7 +22,8 @@
 --   core.fn_resolve_input_dates auf.
 --   Rueckgabe: {ok:true, monthly_rate, target_date, months, first_payment_date (wirksam)} oder {ok:false, reason}:
 --   Ziel <= 0, Zieldatum fehlt bei gedecktem Ziel, Zieldatum nicht in der Zukunft bzw. nicht nach dem ersten Termin,
---   kein Termin im Zeitraum, Rate <= 0, weder Datum noch Rate; nicht aufloesbares Datum -> code:'invalid_date'.
+--   kein Termin im Zeitraum, Raten-getrieben ohne n-ten Rasterpunkt ab dem ersten Termin, Rate <= 0, Rate so klein, dass das Ziel erst nach mehr als 1200 Raten (100 Jahren) erreicht
+--   wuerde, weder Datum noch Rate; nicht aufloesbares Datum -> code:'invalid_date'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_savings_rate_schedule(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -88,10 +91,29 @@ BEGIN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Monthly savings rate must be a positive number, got ' || v_rate || '.');
         END IF;
+        -- Obergrenze: die Terminliste wird bis zur n-ten Rate aufgezaehlt; eine Rate, die erst nach 100 Jahren reicht, ist ein
+        -- Eingabefehler (Rate/Ziel verwechselt), keine Vorschau
+        IF v_rest / v_rate > 1200 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'The monthly savings rate (' || v_rate || ') is too small to reach the target within 100 years - '
+                       || 'ask the user to check the target amount and the rate.');
+        END IF;
         v_months := CEIL(v_rest / v_rate)::int;
+        -- Zieldatum = Tag der letzten (n-ten) Rate im Raster; dieselbe Zaehlung wie oben (Ziel-getrieben), daher bleibt die
+        -- Rate beim spaeteren Aendern (fn_set_savings_goal) stabil. n = 1: erste Rate + 1 Tag (das Datum muss nach der ersten
+        -- Rate liegen; die zweite Rate liegt einen Monat spaeter, die Zahl der Raten bis dahin bleibt 1).
+        SELECT d INTO v_date
+        FROM finance.fn_schedule_occurrences(v_first, 1, 'month', NULLIF(p->>'schedule_day_of_month', '')::smallint, NULL,
+                                             v_first, (v_first + make_interval(months => v_months + 1))::date) d
+        ORDER BY d OFFSET v_months - 1 LIMIT 1;
+        IF v_date IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'No payment dates could be derived for the first payment date (' || v_first || ') - ask the user for a different first payment date.');
+        END IF;
+        IF v_months = 1 THEN v_date := v_date + 1; END IF;
         RETURN jsonb_build_object('ok', true,
             'monthly_rate', v_rate,
-            'target_date', (v_first + (v_months || ' months')::interval)::date,
+            'target_date', v_date,
             'months', v_months,
             'first_payment_date', v_first);
     ELSE

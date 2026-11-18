@@ -5,7 +5,7 @@
 --   Alte Zeile endet zum Stichtag (valid_to = p_eff_from, exklusiv); neue Zeile gilt ab p_eff_from und erbt
 --   von der alten: account_id, target_account_id (Transfer bleibt Transfer), status (pausiert bleibt
 --   pausiert), das bisherige Ende (wenn kein neues), den Rhythmus-Anker first_payment_date (bei gleicher
---   Kadenz; sonst Neu-Anker am Stichtag). Vorkommen vor valid_from blendet fn_recurring_due_open aus ->
+--   Kadenz; sonst Neu-Anker = erster Termin ab Stichtag, fn_schedule_first_occurrence). Vorkommen vor valid_from blendet fn_recurring_due_open aus ->
 --   am Stichtag ist nie alte und neue Rate faellig.
 --   Positionale Args (fn-intern): p_amount signed (NULL = alter Betrag), p_interval/p_unit/p_dom/p_name/p_notes
 --   (NULL = alter Wert), p_valid_to = neues Ende exklusiv gespeichert (Aufrufer rechnet die inklusive
@@ -159,8 +159,8 @@ BEGIN
         RAISE EXCEPTION 'Recurring payment % not found.', p_rp_id;
     END IF;
     -- Neuer Buchungstag ohne Kadenzwechsel: Stichtag/Ende so, dass jeder Monat genau einen Termin behaelt (vor den Guards)
-    -- Nicht bei p_days ('{}' inklusive): fn_set_savings_plan nennt mit dem Depot-Kalender die erste Ausfuehrung selbst als
-    -- Stichtag, die Karte zeigt sie (test_fn_set_savings_plan_day_shift)
+    -- Nicht bei p_days ('{}' inklusive: Kadenzwechsel mit Depot-Kalender, der Aufrufer nennt den Stichtag selbst); die reine
+    -- Tag-Verlegung eines Sparplans uebergibt NULL und laeuft so ueber diesen Helfer (test_fn_set_savings_plan_day_shift_later)
     IF p_days IS NULL
        AND (p_unit IS NULL OR p_unit = v_old.schedule_unit)
        AND (p_interval IS NULL OR p_interval = v_old.schedule_interval) THEN
@@ -231,7 +231,8 @@ BEGIN
         v_dom,
         CASE WHEN v_interval = v_old.schedule_interval AND v_unit = v_old.schedule_unit
                   AND v_days IS NOT DISTINCT FROM v_old.schedule_days_of_month
-             THEN COALESCE(v_anchor, v_old.first_payment_date) ELSE p_eff_from END,
+             THEN COALESCE(v_anchor, v_old.first_payment_date)
+             ELSE finance.fn_schedule_first_occurrence(p_eff_from, v_interval, v_unit, v_dom, v_days) END,
         p_eff_from,
         COALESCE(p_valid_to, v_old.valid_to),
         v_old.status,

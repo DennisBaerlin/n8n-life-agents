@@ -492,7 +492,7 @@ _seed_context_renderers() {
 # Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(text,text,jsonb)->jsonb (domain, person_id, opts).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-review_fn).
 _seed_advisors() {
-  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn xfn xsql gaps_sql ready_sql rollout_sql
+  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn xfn xsql gaps_sql ready_sql rollout_sql pv_sql
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
@@ -504,8 +504,8 @@ _seed_advisors() {
            | [$pkg, $domain, (.plan_context // ""), (.review_fn // ""), (.advisor_agent // ""),
               (if .learn_notes == true then "true" else "false" end),
               (if .own_review_cron == true then "true" else "false" end),
-              (if .plan_step == true then "true" else "false" end), (.gaps_fn // "-"), (.readiness_fn // "-"), (.rollout_fn // "-")] | @tsv' "$mf" |
-    while IFS=$'\t' read -r pkg domain plan_ctx fn agent learn owncron planstep gapsfn readyfn rolloutfn; do
+              (if .plan_step == true then "true" else "false" end), (.gaps_fn // "-"), (.readiness_fn // "-"), (.rollout_fn // "-"), (.plan_validate_fn // "-")] | @tsv' "$mf" |
+    while IFS=$'\t' read -r pkg domain plan_ctx fn agent learn owncron planstep gapsfn readyfn rolloutfn pvfn; do
       [ -n "$domain" ] || continue
       [ -n "$plan_ctx" ] && [ -n "$fn" ] || { warn "advisor '$domain' ($pkg): plan_context/review_fn fehlt — uebersprungen."; continue; }
       if [ "$pkg" = core ]; then
@@ -521,19 +521,32 @@ _seed_advisors() {
       # gaps_fn/readiness_fn (optional, Signatur (text,text)): Boundary wie review_fn (eigenes Paket-Schema), leer -> NULL.
       # Fehlt ein Feld, liefert jq "-" statt "": Tab ist IFS-Whitespace, read wuerde leere Felder zusammenziehen und
       # readiness_fn in gapsfn schieben.
-      [ "$gapsfn" = "-" ] && gapsfn=""; [ "$readyfn" = "-" ] && readyfn=""; [ "$rolloutfn" = "-" ] && rolloutfn=""
-      gaps_sql='NULL'; ready_sql='NULL'; rollout_sql='NULL'
-      for xfn in "$gapsfn" "$readyfn" "$rolloutfn"; do
+      [ "$gapsfn" = "-" ] && gapsfn=""; [ "$readyfn" = "-" ] && readyfn=""; [ "$rolloutfn" = "-" ] && rolloutfn=""; [ "$pvfn" = "-" ] && pvfn=""
+      gaps_sql='NULL'; ready_sql='NULL'; rollout_sql='NULL'; pv_sql='NULL'
+      for xfn in "$gapsfn" "$readyfn" "$rolloutfn" "$pvfn"; do
         [ -n "$xfn" ] || continue
         case "$xfn" in "$pkg".*) : ;; *) warn "advisor '$domain' -> '$xfn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue 2 ;; esac
       done
       [ -n "$gapsfn" ] && gaps_sql="$(_sql_str "$gapsfn")"
       [ -n "$readyfn" ] && ready_sql="$(_sql_str "$readyfn")"
       [ -n "$rolloutfn" ] && rollout_sql="$(_sql_str "$rolloutfn")"
-      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, rollout_fn, package, updated_at)\n'
-      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
-        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$rollout_sql" "$(_sql_str "$pkg")"
-      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, rollout_fn=EXCLUDED.rollout_fn, package=EXCLUDED.package, updated_at=now();\n'
+      [ -n "$pvfn" ] && pv_sql="$(_sql_str "$pvfn")"
+      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, rollout_fn, plan_validate_fn, package, updated_at)\n'
+      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
+        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$rollout_sql" "$pv_sql" "$(_sql_str "$pkg")"
+      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, rollout_fn=EXCLUDED.rollout_fn, plan_validate_fn=EXCLUDED.plan_validate_fn, package=EXCLUDED.package, updated_at=now();\n'
+      # Plan-Pruefung (fn(jsonb) -> text): fehlt die fn, WARNING; danach die Anzahl gespeicherter Plaene, die sie nicht bestehen
+      # (nur Anzahl, nie Werte). Gekapselt: der Seed ist eine Transaktion, ein werfender Validator darf das Update nicht kippen.
+      # Zeilen-Auswahl ohne LIKE-Wildcard ('_' ist eine): Basisname oder Basisname||'__'||person.
+      if [ -n "$pvfn" ]; then
+        # shellcheck disable=SC2016  # $da$ ist ein literales SQL-Dollar-Quote-Tag, keine Shell-Expansion.
+        printf 'DO $da$ DECLARE v_bad int; BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; ELSE EXECUTE format(%s, %s, %s, %s, %s) INTO v_bad; IF v_bad > 0 THEN RAISE WARNING %s, v_bad; END IF; END IF; EXCEPTION WHEN OTHERS THEN RAISE WARNING %s; END $da$;\n' \
+          "$(_sql_str "$pvfn(jsonb)")" "$(_sql_str "advisor $domain -> $pvfn(jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")" \
+          "$(_sql_str "SELECT count(*) FROM agent.core_contexts WHERE (name = %L OR left(name, length(%L) + 2) = %L) AND %s(metadata->'facts') IS NOT NULL")" \
+          "$(_sql_str "$plan_ctx")" "$(_sql_str "$plan_ctx")" "$(_sql_str "${plan_ctx}__")" "$(_sql_str "$pvfn")" \
+          "$(_sql_str "advisor $domain: % gespeicherte Plaene bestehen die Plan-Pruefung nicht (Veroeffentlichen/Wiederherstellen lehnt sie ab, bis korrigiert)")" \
+          "$(_sql_str "advisor $domain: Plan-Pruefung beim Seed nicht auswertbar")"
+      fi
       # shellcheck disable=SC2016  # $da$ ist ein literales SQL-Dollar-Quote-Tag, KEINE Shell-Expansion.
       for xsql in "$gapsfn" "$readyfn"; do
         [ -n "$xsql" ] || continue

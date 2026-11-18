@@ -935,6 +935,18 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "64b9c7c2-696f-5b35-9885-b18d1c1aa04e",
+                                                                                     "name":  "balance_at_period_end",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_at_period_end }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "096c564d-a769-5d33-ac43-7adf52e6069a",
+                                                                                     "name":  "after_period",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.after_period || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ceda563b-1115-5fa4-b117-1b868cf2ae33",
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
@@ -1377,12 +1389,24 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "e0147948-1851-57fc-882a-a3223cf58b00",
+                                                                                     "name":  "balance_at_period_end",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_at_period_end }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "53923630-3d37-54a9-99c7-ef83b278535f",
+                                                                                     "name":  "after_period",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.after_period || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bb3f8935-35db-54e5-b240-f8ff139adfa4",
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "53923630-3d37-54a9-99c7-ef83b278535f",
+                                                                                     "id":  "324f772d-dd71-5548-abc3-16cfbb79917f",
                                                                                      "name":  "recurring",
                                                                                      "value":  "={{ $(\u0027Stage after check\u0027).item.json.r || {} }}",
                                                                                      "type":  "object"

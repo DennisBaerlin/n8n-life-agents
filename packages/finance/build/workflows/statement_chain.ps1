@@ -101,6 +101,9 @@ function New-StatementGateChain {
         ,@('savings_plan_estimated', "={{ $A.savings_plan_estimated || [] }}", 'array')
         ,@('unknown_direct_debits', "={{ $A.unknown_mandates || [] }}", 'array')
         ,@('balance_after', "={{ $A.balance_after }}", 'number')
+        # Stand am period_end und Datei-Zeilen danach (z. B. von heute): beide aus fn_apply_bank_statement, nie die App-Zahl
+        ,@('balance_at_period_end', "={{ $A.balance_at_period_end }}", 'number')
+        ,@('after_period', "={{ $A.after_period || 0 }}", 'number')
         ,@('outlook', "={{ $A.outlook || {} }}", 'object')
     ) + $ReturnExtra
     $recNodes = @()

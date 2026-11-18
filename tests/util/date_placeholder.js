@@ -2,9 +2,8 @@
 // (Grammatik dort), beide gegen tests/util/date_placeholder_vectors.json geprueft (scripts/dev/date_placeholder_test.ps1).
 // Eine Kopie fuer beide Attrappen: tests/mock_llm/server.js (Szenarien) und tests/mock_telegram/server.js (Test-Dateien mit
 // Zeilen relativ zu heute); die enable_mock_*-Skripte kopieren die Datei neben den jeweiligen server.js.
-// "Heute" = UTC-Datum, wie im Harness. Ein verfehlter Platzhalter wirft.
+// Ein verfehlter Platzhalter wirft.
 'use strict';
-// "Heute" = UTC-Datum, wie im Harness. Ein verfehlter Platzhalter wirft (das Laden faengt es: Szenarien bleiben dann unaufgeloest).
 function utcDate(y, m, d) { return new Date(Date.UTC(y, m, d)); }
 function addMonthsClamped(d, n) {
   const first = utcDate(d.getUTCFullYear(), d.getUTCMonth() + n, 1);
@@ -33,8 +32,9 @@ function datePlaceholderValue(expr, today) {
   }
   return d.toISOString().slice(0, 10);
 }
-// Bezugstag: MOCK_LLM_TODAY (YYYY-MM-DD, setzt enable_mock_llm.ps1 und schreibt ihn in den State) haelt Harness und Mock auf
-// demselben Tag, auch wenn ein Lauf ueber 00:00 UTC geht; ohne die Variable gilt die aktuelle UTC-Zeit.
+// Bezugstag: MOCK_LLM_TODAY (YYYY-MM-DD) haelt einen Lauf auf einem Tag, auch ueber 00:00 UTC; ohne die Variable gilt die
+// aktuelle UTC-Zeit. Mock-LLM: der Tag des Harness (enable_mock_llm.ps1 schreibt ihn in den State); Mock-Telegram: der Tag der
+// Datenbank (core.fn_today, enable_mock_telegram.ps1), mit dem Prepare und setup_sql/verify_sql rechnen.
 function referenceDay() {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(process.env.MOCK_LLM_TODAY || '');
   return m ? utcDate(+m[1], +m[2] - 1, +m[3]) : new Date();

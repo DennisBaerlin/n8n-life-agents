@@ -57,8 +57,9 @@ const { resolveDatePlaceholders } = (() => {
   catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; return require('../util/date_placeholder.js'); }
 })();
 function docBytes(doc) {
-  if (doc.ext !== 'csv') return fs.readFileSync(doc.p);
-  return Buffer.from(resolveDatePlaceholders(fs.readFileSync(doc.p, 'utf8')), 'utf8');
+  const raw = fs.readFileSync(doc.p);
+  if (doc.ext !== 'csv' || raw.indexOf('{{date:') === -1) return raw;
+  return Buffer.from(resolveDatePlaceholders(raw.toString('utf8')), 'utf8');
 }
 function docFor(fid) {
   for (const ext of ['pdf', 'png', 'csv', 'xlsx']) {

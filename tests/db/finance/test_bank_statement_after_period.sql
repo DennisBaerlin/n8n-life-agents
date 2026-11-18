@@ -4,7 +4,7 @@
 --   Zeile von heute bucht erst der naechste Export. Der Ausgang muss beide Tage nennen, damit das Modell nie den
 --   gebuchten Stand (gestern) mit der Owner-Zahl (heute) vergleicht: period_end (schon im Ausgang der Kette),
 --   balance_at_period_end = bestaetigter Stand, after_period = Summe der Datei-Zeilen danach (DB-Rechnung der Prepare).
---   Die App-Zahl selbst kommt nicht zurueck (kein Echo einer Eingabe). Gedruckter Auszug: after_period = 0.
+--   Die App-Zahl selbst kommt nicht zurueck (kein Echo einer Eingabe). Gedruckter Auszug: beide Felder NULL (test_bank_statement B1).
 --   Werte erfunden, Daten relativ zu core.fn_today().
 -- ============================================================
 BEGIN;

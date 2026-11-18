@@ -751,7 +751,7 @@ function Get-TestPersonaFact {
     return (@($q.Output | ForEach-Object { "$_".Trim() }) | Select-Object -First 1)
 }
 
-# Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der letzte Lauf von n8n_test oder orch_test) —
+# Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der letzte Lauf von n8n_test, orch_test oder e2e_test mit Rubrik-Faellen) —
 # die eine Adresse fuer Pfad + Format, die judge_eval.ps1 liest.
 function Write-JudgeBundle {
     param([Parameter(Mandatory)][AllowEmptyCollection()][array]$Entries, [Parameter(Mandatory)][string]$RepoRoot, [string]$Suite)
@@ -1235,11 +1235,12 @@ function Test-IsWriteTool([string]$Name) {
 }
 # Rueckgaben der Lese-Aufrufe (Werkzeuge, die nicht Schreib-Werkzeug sind) aus dem runData des Agenten, aeltester zuerst, fuer den Bewerter:
 # "<tool>: <Rueckgabe>" je Zeile. Je Aufruf auf $PerCall Zeichen gekuerzt, insgesamt auf $Total (Rest als "... (N weitere Aufrufe gekuerzt)"),
-# damit das Bewerter-Buendel klein bleibt.
-function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total = 6000) {
+# damit das Bewerter-Buendel klein bleibt. -Write: stattdessen die Schreib-Werkzeuge (e2e_test: nach einer zugestimmten Karte steht dort
+# das Ergebnis des Writes, z. B. der Ausgang des Monats-Checks; groessere Grenzen, die Felder stehen am Ende).
+function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total = 6000, [switch]$Write) {
     $runs = @()
     foreach ($p in $RunData.PSObject.Properties) {
-        if (Test-IsWriteTool $p.Name) { continue }
+        if ((Test-IsWriteTool $p.Name) -ne [bool]$Write) { continue }
         foreach ($r in @($p.Value)) {
             $j = $null; try { $j = $r.data.ai_tool[0][0].json } catch { }
             if ($null -eq $j) { continue }
@@ -1255,22 +1256,6 @@ function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total 
     }
     if ($cut -gt 0) { $lines += "... ($cut weitere Aufrufe gekuerzt)" }
     return ($lines -join "`n")
-}
-# Rueckgaben der Schreib-Werkzeuge aus dem runData des Agenten, aeltester zuerst, fuer den Bewerter (e2e_test: nach einer
-# zugestimmten Karte steht dort das Ergebnis des Writes, z. B. der Ausgang des Monats-Checks). Format wie Get-ReadToolOutput.
-function Get-WriteToolOutput([object]$RunData, [int]$PerCall = 3000) {
-    $runs = @()
-    foreach ($p in $RunData.PSObject.Properties) {
-        if (-not (Test-IsWriteTool $p.Name)) { continue }
-        foreach ($r in @($p.Value)) {
-            $j = $null; try { $j = $r.data.ai_tool[0][0].json } catch { }
-            if ($null -eq $j) { continue }
-            $txt = ($j | ConvertTo-Json -Depth 6 -Compress)
-            if ($txt.Length -gt $PerCall) { $txt = $txt.Substring(0, $PerCall) + ' ...' }
-            $runs += [pscustomobject]@{ start = [double]$r.startTime; line = "$($p.Name): $txt" }
-        }
-    }
-    return (@($runs | Sort-Object start | ForEach-Object { $_.line }) -join "`n")
 }
 function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
     foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }

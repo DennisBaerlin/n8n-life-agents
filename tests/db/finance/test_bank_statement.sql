@@ -120,6 +120,9 @@ BEGIN
      -- Rest getrennt nach Richtung: negativ = Ausgang, kein Eingang
      OR (v_res->>'rest_outflow')::numeric IS DISTINCT FROM 130.09 OR (v_res->>'rest_inflow')::numeric IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL apply Rueckgabe: %', v_res; END IF;
+  -- B1 gedruckter Auszug: kein Stand am period_end und keine Zeilen danach im Ausgang (waere die eingegebene Endzahl)
+  IF v_res->'balance_at_period_end' <> 'null'::jsonb OR v_res->'after_period' <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [B1 PDF ohne balance_at_period_end/after_period]: %', v_res; END IF;
   IF NOT EXISTS (SELECT 1 FROM finance.transactions WHERE recurring_payment_id = r_miete AND recurring_due_date = ps
                  AND transaction_date = ps + 2 AND bank_statement_id IS NOT NULL) THEN
     RAISE EXCEPTION 'FAIL Miete am Ist-Datum mit Auszugs-Herkunft'; END IF;

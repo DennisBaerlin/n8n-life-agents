@@ -253,7 +253,7 @@ try {
                 det_pass = ($actual -eq $exp -and $strictOk)
                 actual_tool = $(if ($wCalls.Count) { $wCalls[0].tool } else { $null })
                 actual_tool_input = (@($wCalls | ForEach-Object { $_.input }) -join "`n")
-                actual_tool_output = (Get-WriteToolOutput $rd)
+                actual_tool_output = (Get-ReadToolOutput $rd -Write -PerCall 12000 -Total 24000)
                 read_tools = (@($calls | Where-Object { -not (Test-IsWriteTool $_.tool) } | ForEach-Object { $_.tool } | Select-Object -Unique) -join ', ')
                 read_tool_outputs = (Get-ReadToolOutput $rd)
                 actual_output = (Split-NextStepMarker (Get-AgentOutput $rd $AgentNodeName)).text

@@ -162,9 +162,13 @@ $nodeBin = ((Invoke-Native docker @('exec',$Container,'sh','-c','command -v node
 if (-not $nodeBin) { throw "node im Container nicht gefunden (n8n bringt Node mit — Substrat ok?)." }
 Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
 Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
+# Bezugstag der Datums-Platzhalter in Test-Dateien = Kalendertag der Datenbank (core.fn_today, Haushalts-Zeitzone): Prepare,
+# setup_sql und verify_sql rechnen damit; der UTC-Tag wiche nachts ab (Zeile von heute laege auf period_end).
+$dbToday = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'SELECT core.fn_today();')).Output -join '').Trim()
+if ($dbToday -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "core.fn_today() im Substrat nicht lesbar: '$dbToday'" }
 Write-Host "Starte Mock-Telegram (systemd-unit $Unit, 127.0.0.1:$MockPort) ..."
 $r = Invoke-Native docker @('exec',$Container,'systemd-run',"--unit=$Unit",'--collect',
-    "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog",
+    "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog","--setenv=MOCK_LLM_TODAY=$dbToday",
     $nodeBin,$ServerInC)
 if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join "`n")" }
 

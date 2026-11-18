@@ -8,7 +8,7 @@
 --   closing_balance, lines:[{date, amount (signiert), counterparty, counterparty_iban, creditor_id, mandate_ref, purpose}].
 --   Ablauf:
 --     1. Konto (fn_resolve_account_by_number bzw. Name), buchbar, Waehrung, Zeitraum nicht in der Zukunft, nicht schon
---        bestaetigt (last_reconciled_at >= period_end -> already_covered mit covered_until + useful_from = ab wann ein
+--        bestaetigt (fn_account_confirmed_until >= period_end -> already_covered mit covered_until + useful_from = ab wann ein
 --        Auszug weiterhilft), Saldo-Probe Anfang + Summe = Ende (0,00).
 --     2. Schnitt cut = spaetester bestaetigter Tag: GREATEST(period_start-1, fn_account_confirmed_until).
 --        Zeilen bis cut stecken im bestaetigten Saldo und werden ignoriert (Ueberlappung ok). drift = Stand laut
@@ -262,7 +262,7 @@ BEGIN
         SELECT COALESCE(sum((l->>'amount')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
         v_balance_ok := (v_open + v_sum = v_close);
         ELSE
-        IF v_acct.last_reconciled_at IS NULL AND v_acct.opening_balance_date IS NULL
+        IF finance.fn_account_confirmed_until(v_acct.id) IS NULL
            AND round(finance.fn_parse_numeric_or_null(p->>'closing_balance', true), 2) IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'code', 'no_starting_point', 'account_name', v_acct.name,
                 'reason','The account "' || v_acct.name || '" has no confirmed balance date yet - confirm its balance once '

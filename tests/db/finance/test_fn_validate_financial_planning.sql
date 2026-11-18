@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_validate_financial_planning.sql
 -- Plan-Fakten-Validator (partial-tolerant + rekursiver Derived-Guard),
--- paket-besessen in finance.fn_validate_financial_planning(jsonb), via core.context_validators-Registry
+-- paket-besessen in finance.fn_validate_financial_planning(jsonb), via core.advisors.plan_validate_fn
 -- vom Core-Trigger generisch dispatcht. db_test seedet die Registry NICHT -> der Test seedet die Zeile
 -- selbst (self-seedend, BEGIN..ROLLBACK), wie seed_data.sh es aus dem Manifest tut.
 BEGIN;
@@ -183,12 +183,13 @@ BEGIN
 END $$;
 
 -- TEST 10 (Trigger-Dispatch via Registry): kaputtes financial_planning per Direkt-UPDATE -> Exception.
--- Beweist, dass der Core-Trigger die finance-fn ueber core.context_validators dispatcht (Backstop).
+-- Beweist, dass der Core-Trigger die finance-fn ueber den Berater-Eintrag (core.advisors.plan_validate_fn) dispatcht (Backstop).
+-- Der Plan hat bewusst keine context_validators-Zeile (sonst Fakten-Kontext, contract_lint 41).
 DO $$
 BEGIN
-  INSERT INTO core.context_validators (context_name, validate_fn, package)
-  VALUES ('financial_planning', 'finance.fn_validate_financial_planning', 'finance')
-  ON CONFLICT (context_name) DO UPDATE SET validate_fn = EXCLUDED.validate_fn, package = EXCLUDED.package;
+  INSERT INTO core.advisors (domain, plan_context, review_fn, plan_validate_fn, package)
+  VALUES ('finance', 'financial_planning', 'finance.fn_advisor_review', 'finance.fn_validate_financial_planning', 'finance')
+  ON CONFLICT (domain) DO UPDATE SET plan_context = EXCLUDED.plan_context, plan_validate_fn = EXCLUDED.plan_validate_fn;
 
   BEGIN
     INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)

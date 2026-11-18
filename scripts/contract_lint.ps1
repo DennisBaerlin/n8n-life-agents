@@ -39,7 +39,7 @@
 #       -- weder direkt (INSERT/UPDATE/DELETE) noch ueber eine fn, die es transitiv tut. Der einzige
 #       core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok), nie ein Cron.
 #   (9b) CALLBACK-PREFIX-KOLLISION: ein Manifest-callback_handlers-Prefix doppelt keinen hartkodierten Switch-Arm (Ausnahme member_permeable).
-#   (10) CONTEXT-SCOPE-PARITAET: facts-Context mit context_validators braucht context_scopes (bidirektional).
+#   (10) CONTEXT-SCOPE-PARITAET: facts-Context mit context_validators braucht context_scopes (bidirektional; ein Plan-Kontext mit advisors.*.plan_validate_fn gilt nicht als ORPHAN).
 #   (11) ONBOARDING-PARITAET: provides.onboarding.agent <-> onboarding/sections.json (bidirektional, Core ausgenommen).
 #   (12) CREDENTIALS-BLOCK (docs/package-contract.md §3.8): (a) Schema + type-/validator-Enum + env-Key-Bezeichner-
 #       Pin (^[A-Z_][A-Z0-9_]*$ — der Name fliesst in eval/grep) + httpHeaderAuth=genau-1-env-Key,
@@ -110,7 +110,8 @@
 #   (38) WERKZEUG-EINGABEN STIMMEN: die Input-Zeile einer Tool-Description nennt genau die $fromAI-Felder. Selbst-Asserts.
 #   (39) Telegram nur ueber die Helfer: Bot-API-URLs in provisioning/ nur in tg_api_curl/_tg_post; Ausnahmeliste scripts/build/telegram_direct_allowlist.json (Ratchet). Selbst-Asserts.
 #   (40) Lese-Knoten ohne Zeile: ein Werkzeug-Lese-Knoten mit WHERE braucht alwaysOutputData (New-RequiredRowGate); Ausnahmeliste scripts/build/read_gate_allowlist.json (Ratchet). Selbst-Asserts.
-#   (41) Pruef-fn ohne Registry: jede <pkg>.fn_validate_<x>(p_facts jsonb) ist im context_validators-Block ihres Manifests gebunden;
+#   (41) Pruef-fn ohne Registry: jede <pkg>.fn_validate_<x>(p_facts jsonb) ist im context_validators-Block oder als advisors.*.plan_validate_fn
+#       ihres Manifests gebunden; ein Kontext hat nur eine der beiden Pruefungen;
 #       Ausnahmeliste scripts/build/validator_registry_allowlist.json (Ratchet). Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
@@ -867,6 +868,7 @@ foreach ($w in $workflows.Values) {
 # ---------------------------------------------------------------
 $validatorCtx = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<context>"
 $scopeCtx     = New-Object System.Collections.Generic.HashSet[string]
+$planCtxScope = New-Object System.Collections.Generic.HashSet[string]   # per_user-Plan-Kontexte mit plan_validate_fn: brauchen die Scope-Zeile fuer den Basisnamen, aber keinen context_validators-Eintrag
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
     $mf  = Read-Manifest $pkg
@@ -874,9 +876,23 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($mf.PSObject.Properties.Name -contains 'context_validators' -and $null -ne $mf.context_validators) {
         foreach ($p in $mf.context_validators.PSObject.Properties) { if ($p.Name -ne '_comment') { [void]$validatorCtx.Add("$pkg|$($p.Name)") } }
     }
+    if ($mf.PSObject.Properties.Name -contains 'advisors' -and $null -ne $mf.advisors) {
+        foreach ($p in $mf.advisors.PSObject.Properties) {
+            if ($p.Name -ne '_comment' -and $p.Value.PSObject.Properties.Name -contains 'plan_validate_fn') { [void]$planCtxScope.Add("$pkg|$([string]$p.Value.plan_context)") }
+        }
+    }
     if ($mf.PSObject.Properties.Name -contains 'context_scopes' -and $null -ne $mf.context_scopes) {
         foreach ($p in $mf.context_scopes.PSObject.Properties) { if ($p.Name -ne '_comment') { [void]$scopeCtx.Add("$pkg|$($p.Name)") } }
     }
+}
+# -c: der DB-CHECK ist case-sensitiv. Gebraucht von Check 16c (Manifest-advisors) weiter unten.
+function Test-PlanValidateFnName($Pkg, $Fn) { return ($Fn -cmatch "^$([regex]::Escape($Pkg))\.[a-z][a-z0-9_]*$") }
+foreach ($sa in @(
+    @{ n = 'eigenes Schema';  p = 'x'; f = 'x.fn_validate_a'; want = $true },
+    @{ n = 'fremdes Schema';  p = 'x'; f = 'y.fn_validate_a'; want = $false },
+    @{ n = 'Grossbuchstaben'; p = 'x'; f = 'x.Fn_Validate_a'; want = $false },
+    @{ n = 'ohne Schema';     p = 'x'; f = 'fn_validate_a';   want = $false })) {
+    if ((Test-PlanValidateFnName $sa.p $sa.f) -ne $sa.want) { $errors.Add("PLAN-VALIDATE Selbst-Assert '$($sa.n)': erwartet $($sa.want) -- Check 16c ist defekt.") }
 }
 foreach ($v in $validatorCtx) {
     if (-not $scopeCtx.Contains($v)) {
@@ -885,10 +901,13 @@ foreach ($v in $validatorCtx) {
     }
 }
 foreach ($s in $scopeCtx) {
-    if (-not $validatorCtx.Contains($s)) {
+    if (-not $validatorCtx.Contains($s) -and -not $planCtxScope.Contains($s)) {
         $p = $s -split '\|', 2
         $errors.Add("CONTEXT-SCOPE ORPHAN: packages/$($p[0])/manifest.json context_scopes deklariert '$($p[1])', aber kein context_validators-Eintrag dazu -- tote Scope-Deklaration (Context umbenannt/entfernt?).")
     }
+}
+if (-not $planCtxScope.Contains('career|career_planning') -or $validatorCtx.Contains('career|career_planning')) {
+    $errors.Add("CONTEXT-SCOPE Selbst-Assert 'Plan-Kontext': career_planning muss ueber advisors.career.plan_validate_fn (nicht context_validators) gebunden erkannt werden -- Check 10 liest die advisors-Bloecke falsch.")
 }
 
 # ---------------------------------------------------------------
@@ -1484,6 +1503,12 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                 }
                 if ($p.Value.plan_step -ne $true) {
                     $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent ohne plan_step=true -- der Uebergabe-Arm haengt am Plan-Weg und wuerde nie gebaut.")
+                }
+            }
+            # plan_validate_fn braucht kein plan_step (liest nur die Pruefstelle); ein Tippfehler liesse den Seeder die ganze Zeile ueberspringen.
+            if ($p.Value.PSObject.Properties.Name -contains 'plan_validate_fn') {
+                if (-not (Test-PlanValidateFnName $pkg ([string]$p.Value.plan_validate_fn))) {
+                    $errors.Add("PLAN-VALIDATE: packages/$pkg/manifest.json advisors '$($p.Name)'.plan_validate_fn '$($p.Value.plan_validate_fn)' muss eine fn im eigenen Schema sein ($pkg.<fn>, lowercase) -- der Seeder ueberspringt die Zeile sonst (Boundary).")
                 }
             }
             foreach ($fk in @('gaps_fn', 'readiness_fn', 'rollout_fn')) {
@@ -2788,8 +2813,10 @@ else {
 
 # ---------------------------------------------------------------
 # (41) Pruef-fn ohne Registry: eine Paket-fn <pkg>.fn_validate_<x>(p_facts jsonb) prueft Fakten nur, wenn ein
-#      manifest-context_validators-Eintrag desselben Pakets sie bindet; der Core-Trigger dispatcht allein ueber
-#      core.context_validators, sonst laeuft sie im Betrieb nie und nur ihre Tests rufen sie. Bestehende Luecken stehen in
+#      manifest-context_validators-Eintrag desselben Pakets oder ein advisors.<d>.plan_validate_fn sie bindet; die Pruefstelle
+#      agent.fn_validate_context_facts dispatcht allein ueber core.context_validators und core.advisors, sonst laeuft sie im
+#      Betrieb nie und nur ihre Tests rufen sie. Ein Plan-Kontext traegt nur eine der beiden Bindungen (nur eine gaelte,
+#      context_validators hat Vorrang und macht ihn zum Fakten-Kontext). Bestehende Luecken stehen in
 #      scripts/build/validator_registry_allowlist.json (Ratchet: nur schrumpfend; Eintrag ohne Grund, fuer eine gebundene
 #      oder fehlende fn ist ein Fehler). Core-Validatoren (agent.*) ruft der Trigger direkt und sind nicht Gegenstand.
 # ---------------------------------------------------------------
@@ -2798,7 +2825,7 @@ function Get-ValidatorRegistryIssues($Defined, $Bound, $Allow) {
     foreach ($fn in $Defined) {
         if ($Bound -contains $fn) { continue }
         if (@($Allow | Where-Object { $_.fn -eq $fn }).Count) { continue }
-        $iss.Add("$fn ist definiert, aber kein manifest-context_validators-Eintrag bindet sie -- die Pruefung laeuft im Betrieb nie (Eintrag im Manifest des Pakets oder fn loeschen; neue Ausnahmen sind verboten).")
+        $iss.Add("$fn ist definiert, aber weder ein manifest-context_validators-Eintrag noch ein advisors.<d>.plan_validate_fn bindet sie -- die Pruefung laeuft im Betrieb nie (Eintrag im Manifest des Pakets oder fn loeschen; neue Ausnahmen sind verboten).")
     }
     foreach ($a in $Allow) {
         if ([string]::IsNullOrWhiteSpace([string]$a.reason)) { $iss.Add("Ausnahmeliste: '$($a.fn)' ohne reason.") }
@@ -2806,6 +2833,13 @@ function Get-ValidatorRegistryIssues($Defined, $Bound, $Allow) {
         elseif ($Defined -notcontains $a.fn) { $iss.Add("Ausnahmeliste: '$($a.fn)' ist nicht mehr definiert -- Eintrag streichen (Ratchet).") }
     }
     return , $iss
+}
+function Test-DoublePlanCheck($ContextValidatorKeys, $PlanContext) { return (@($ContextValidatorKeys) -contains $PlanContext) }
+foreach ($sa in @(
+    @{ n = 'nur Berater-Eintrag';    k = @('finance_profile');                 c = 'financial_planning'; want = $false },
+    @{ n = 'beide Wege';             k = @('finance_profile', 'financial_planning'); c = 'financial_planning'; want = $true },
+    @{ n = 'keine Validatoren';      k = @();                                  c = 'financial_planning'; want = $false })) {
+    if ((Test-DoublePlanCheck $sa.k $sa.c) -ne $sa.want) { $errors.Add("Pruef-fn Selbst-Assert '$($sa.n)': erwartet $($sa.want) -- Check 41 (zwei Pruefungen je Kontext) ist defekt.") }
 }
 $vrDefined = New-Object System.Collections.Generic.List[string]
 $vrBound   = New-Object System.Collections.Generic.List[string]
@@ -2824,6 +2858,19 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     $mf = Read-Manifest $pkg
     if ($null -ne $mf -and $mf.PSObject.Properties.Name -contains 'context_validators' -and $null -ne $mf.context_validators) {
         foreach ($p in $mf.context_validators.PSObject.Properties) { if ($p.Name -ne '_comment') { $vrBound.Add(([string]$p.Value).ToLower()) } }
+    }
+    if ($null -ne $mf -and $mf.PSObject.Properties.Name -contains 'advisors' -and $null -ne $mf.advisors) {
+        $cvKeys = @()
+        if ($mf.PSObject.Properties.Name -contains 'context_validators' -and $null -ne $mf.context_validators) {
+            $cvKeys = @($mf.context_validators.PSObject.Properties | Where-Object { $_.Name -ne '_comment' } | ForEach-Object { $_.Name })
+        }
+        foreach ($p in $mf.advisors.PSObject.Properties) {
+            if ($p.Name -eq '_comment' -or $p.Value.PSObject.Properties.Name -notcontains 'plan_validate_fn') { continue }
+            $vrBound.Add(([string]$p.Value.plan_validate_fn).ToLower())
+            if (Test-DoublePlanCheck $cvKeys ([string]$p.Value.plan_context)) {
+                $errors.Add("Pruef-fn ohne Registry: packages/$pkg/manifest.json fuehrt '$($p.Value.plan_context)' zugleich in context_validators und als advisors.$($p.Name).plan_validate_fn -- zwei Pruefungen, nur eine gilt (context_validators hat Vorrang und macht den Plan zum Fakten-Kontext).")
+            }
+        }
     }
 }
 $vrAllow = @(([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build\validator_registry_allowlist.json'), $Utf8NoBom) | ConvertFrom-Json).allow)

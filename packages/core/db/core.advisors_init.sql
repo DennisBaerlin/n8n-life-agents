@@ -83,6 +83,17 @@ DO $$ BEGIN
             CHECK (readiness_fn IS NULL OR readiness_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
     END IF;
 END $$;
+-- plan_validate_fn = optionale Paket-fn(jsonb) -> text (Fehlertext | NULL), die die Fakten des Plan-Dokuments (plan_context,
+-- auch per_user-Basisname) prueft. Der dritte Anlauf in agent.fn_validate_context_facts, nach core.context_validators: der
+-- Plan wird so nicht zum Fakten-Kontext (Reset, Lern-Vorfilter, Frische-Waechter lesen nur context_validators). Muster
+-- review_fn; installer-geschrieben, CHECK wie review_fn.
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS plan_validate_fn text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_plan_validate_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_plan_validate_fn_check
+            CHECK (plan_validate_fn IS NULL OR plan_validate_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
+    END IF;
+END $$;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_advisor_agent_check') THEN
         ALTER TABLE core.advisors ADD CONSTRAINT advisors_advisor_agent_check

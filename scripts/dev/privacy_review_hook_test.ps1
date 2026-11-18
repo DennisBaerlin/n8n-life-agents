@@ -249,6 +249,26 @@ Assert-Stamp 'Mit -AllTags: Stempel' $true @('-AllTags')
 Assert-Case 'Mit --tags frei'                 $false "$publish feat/b --tags"
 Assert-Case 'Derselbe Push ohne Tags frei'    $false "$publish feat/b"
 Invoke-SandboxGit @('tag', '-d', 'v2.0.0')
+# Ein Tag (Name, Tagger, ganzer Text) ist eine Einheit der Deckung: umgestellte, gekuerzte oder aus einem anderen Tag desselben
+# Stempels geliehene Textzeilen sind nicht geprueft.
+Write-Host 'Tag-Text als Einheit:'
+Invoke-SandboxGit @('tag', '-a', 'v4.0.0', '-m', 'Zeile-A', '-m', 'Zeile-B')
+Invoke-SandboxGit @('tag', '-a', 'v4.1.0', '-m', 'Zeile-C')
+$allTags = @('-Ref', 'feat/b', '-Remote', 'origin', '-DestRef', 'feat/b', '-AllTags')
+Remove-Item $stampDir -Recurse -Force
+Add-Stamp $allTags
+Assert-True 'Tags gestempelt: gedeckt'          ((Invoke-Outgoing (@('-Check') + $allTags)).code -eq 0)
+foreach ($case in @(
+        @{ name = 'Tag-Zeilen umgestellt: nicht gedeckt'; msg = @('-m', 'Zeile-B', '-m', 'Zeile-A') },
+        @{ name = 'Tag-Text gekuerzt: nicht gedeckt'; msg = @('-m', 'Zeile-B') },
+        @{ name = 'Zeile eines anderen Tags: nicht gedeckt'; msg = @('-m', 'Zeile-A', '-m', 'Zeile-C') })) {
+    Invoke-SandboxGit (@('tag', '-f', '-a', 'v4.0.0') + $case.msg)
+    Assert-True $case.name ((Invoke-Outgoing (@('-Check') + $allTags)).code -eq 1)
+}
+Invoke-SandboxGit @('tag', '-f', '-a', 'v4.0.0', '-m', 'Zeile-A', '-m', 'Zeile-B')
+Assert-True 'Tag-Text wiederhergestellt: gedeckt' ((Invoke-Outgoing (@('-Check') + $allTags)).code -eq 0)
+Invoke-SandboxGit @('tag', '-d', 'v4.0.0')
+Invoke-SandboxGit @('tag', '-d', 'v4.1.0')
 # Die Leitung pusht den Sammel-Branch, nachdem die Session ihren Branch gestempelt hat: das Remote kennt dann einen Teil der
 # Commits, das Ausgehende schrumpft, der Hash aendert sich. Der Stempel deckt weiter, was nur Gepruefftes enthaelt.
 Write-Host 'Remote kennt einen Teil schon:'

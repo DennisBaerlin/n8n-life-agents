@@ -60,15 +60,20 @@ else {
 
 $remoteRefs = @(Invoke-Git @('ls-remote', '--refs', $Remote) | ForEach-Object { ($_ -split "`t")[-1] })
 $header = @()
-if ($dest -and $remoteRefs -notcontains "refs/heads/$dest") { $header += "Branch-Name: $dest" }
+# $headerUnits: dieselben Kopfzeilen als Einheiten der Deckung (Test-StampCovers): der Branch-Name allein, je Tag Name + Tagger +
+# ganzer Text in einem Stueck. Zeilenweise waeren umgestellte, gekuerzte oder aus einem anderen Tag geliehene Zeilen gedeckt.
+$headerUnits = @()
+if ($dest -and $remoteRefs -notcontains "refs/heads/$dest") { $header += "Branch-Name: $dest"; $headerUnits += "Branch-Name: $dest" }
 $wanted = @($tagName) + $(if ($AllTags) { Invoke-Git @('tag') } else { @() })
 $newTags = @($wanted | Where-Object { $_ } | Sort-Object -Unique | Where-Object { $remoteRefs -notcontains "refs/tags/$_" })
 $revs = @($tip)
 foreach ($t in $newTags) {
-    $header += "Tag-Name: $t"
+    $block = @("Tag-Name: $t")
     $type = (Invoke-Git @('for-each-ref', "refs/tags/$t", '--format=%(objecttype)')) -join ''
     if ($type) { $revs += "refs/tags/$t" }
-    if ($type -eq 'tag') { $header += Invoke-Git @('for-each-ref', "refs/tags/$t", '--format=%(taggername) %(taggeremail)%0a%(contents)') }
+    if ($type -eq 'tag') { $block += Invoke-Git @('for-each-ref', "refs/tags/$t", '--format=%(taggername) %(taggeremail)%0a%(contents)') }
+    $header += $block
+    $headerUnits += ($block -join "`n")
 }
 $revs += @('--not', "--remotes=$Remote")
 
@@ -104,11 +109,11 @@ $sha = [System.Security.Cryptography.SHA256]::Create()
 $hash = -join ($sha.ComputeHash((Join-Bytes @($headerBytes, $fullBytes))) | ForEach-Object { $_.ToString('x2') })
 
 # Deckung: Ein Commit-Hash legt Text, Identitaeten und Aenderung fest (bei Merges auch --cc, die Eltern stecken im Hash). Ein Stempel
-# deckt darum auch einen spaeteren Push, dessen Commits und Kopfzeilen eine Teilmenge der gestempelten sind: Das Remote kennt
-# inzwischen einen Teil (Sammel-Branch gepusht), der Hash ist anders, Neues ist nicht dazugekommen. Kopfzeilen (Branch-/Tag-Name,
-# Tag-Text) stehen nur als Hash im Stempel. Test: scripts/dev/privacy_review_hook_test.ps1 (Abschnitt "Remote kennt einen Teil schon").
+# deckt darum auch einen spaeteren Push, dessen Commits und Kopf-Einheiten eine Teilmenge der gestempelten sind: Das Remote kennt
+# inzwischen einen Teil (Sammel-Branch gepusht), der Hash ist anders, Neues ist nicht dazugekommen. Kopf-Einheiten (Branch-Name; je Tag
+# Name, Tagger und Text als ein Block) stehen nur als Hash im Stempel. Test: scripts/dev/privacy_review_hook_test.ps1 (Abschnitt "Remote kennt einen Teil schon").
 $commits = @(Invoke-Git (@('rev-list') + $revs) | Where-Object { $_ })
-$headerHashes = @($header | ForEach-Object { -join ($sha.ComputeHash($u8.GetBytes([string]$_)) | ForEach-Object { $_.ToString('x2') }) })
+$headerHashes = @($headerUnits | ForEach-Object { -join ($sha.ComputeHash($u8.GetBytes([string]$_)) | ForEach-Object { $_.ToString('x2') }) })
 function Test-StampCovers([string]$StampFile) {
     try { $s = [System.IO.File]::ReadAllText($StampFile, $u8) | ConvertFrom-Json } catch { return $false }
     if (-not $s.PSObject.Properties['commits'] -or -not $s.PSObject.Properties['header']) { return $false }

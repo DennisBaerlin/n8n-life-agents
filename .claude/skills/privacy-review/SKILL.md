@@ -7,7 +7,7 @@ description: Vor jedem Push (auch Branches) – ein Modell liest, was der Push �
 
 Eine Liste findet feste Wörter. Sachverhalte findet sie nicht: „wohnt zur Miete“, ein Beruf, ein Plan mit Jahreszahl. Dafür gibt es diese Prüfung. Sie ist nicht deterministisch und übersieht einen Teil. Deshalb ergänzt sie die festen Sperren und ersetzt sie nie.
 
-Der Stempel gilt für die geprüften Commits und Namen. Ein neuer Commit, ein geänderter Commit- oder Tag-Text oder ein anderer Zielname verlangen eine neue Prüfung. Kennt das Remote später einen Teil davon (Sammel-Branch oder `main` gepusht), deckt der Stempel den Rest weiter. Beiträge von außen und die CI brauchen weder Stempel noch private Listen.
+Der Stempel gilt für die geprüften Commits und Namen. Ein neuer Commit, ein geänderter Commit- oder Tag-Text (auch nur umgestellte oder gekürzte Zeilen) oder ein anderer Zielname verlangen eine neue Prüfung. Kennt das Remote später einen Teil davon (Sammel-Branch oder `main` gepusht), deckt der Stempel den Rest weiter. Beiträge von außen und die CI brauchen weder Stempel noch private Listen.
 
 ## Harte Grenzen
 

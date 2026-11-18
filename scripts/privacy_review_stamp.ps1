@@ -2,7 +2,7 @@
 # privacy_review_stamp.ps1 -- schreibt den Pruefstempel der Modell-Pruefung (Skill /privacy-review) fuer genau einen Push nach
 # .local/privacy_review_stamps/<hash>.json im Haupt-Checkout. Der Hash kommt aus scripts/privacy_outgoing.ps1, je Hash eine Datei:
 # parallele Sessions ueberschreiben sich nicht. Die Sperre .claude/hooks/dev_cycle_guard.ps1 und prek pre-push verlangen ihn.
-# Der Stempel enthaelt nur Hashes (Push, Commits, Kopfzeilen) und den Zeitpunkt, nie einen Fund oder Text. Das Skript prueft, was es pruefen kann: Der Arbeitsbaum ist
+# Der Stempel enthaelt nur Hashes (Push, Commits, Kopf-Einheiten) und den Zeitpunkt, nie einen Fund oder Text. Das Skript prueft, was es pruefen kann: Der Arbeitsbaum ist
 # sauber (bis auf ungestagte Vorschau-Eintraege in .claude/launch.json), privacy_lint und owner_fact_lint sind gruen.
 # Ob die Pruefung wirklich gelaufen ist, kann es nicht sehen; der Skill schreibt vor, wann es laufen darf.
 # Mit -AllTags gilt der Stempel auch fuer denselben Push ohne Tags (prek sieht --tags nicht; der Text ist eine Teilmenge des Gepruefften).

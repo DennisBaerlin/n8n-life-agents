@@ -6,6 +6,7 @@
 # Dot-sourcen; Test: scripts/dev/n8ntest_state_file_test.ps1.
 function Get-TestN8nStateFile {
     param([string]$Container = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }))
+    # Haupt-Checkout = Elternordner des gemeinsamen .git; stimmt nicht bei Bare-Repo oder --separate-git-dir (hier nicht genutzt).
     $common = [string](& git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir)
     return (Join-Path (Split-Path $common -Parent) ".local\n8ntest_state.$Container.json")
 }

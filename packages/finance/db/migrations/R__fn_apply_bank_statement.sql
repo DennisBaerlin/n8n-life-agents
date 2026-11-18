@@ -53,7 +53,8 @@
 --   (= closing_balance der Prepare, Stand am period_end), after_period (Summe der Datei-Zeilen nach period_end,
 --   0 ohne solche Zeilen; die App-Zahl des Nutzers enthaelt sie schon, kein Echo der App-Zahl),
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang),
---   trades_by_kind {buy|sell|dividend: {count, amount (Cash-Wirkung, signiert)}, reward: {count, names[] (Muenzen, ohne Geld)}}
+--   trades_by_kind {buy|sell|dividend: {count, amount (Betrag laut Export inkl. Gebuehr, signiert; einbehaltene Steuer ist
+--   eine eigene Buchung und fehlt darin)}, reward: {count, names[] (Muenzen, ohne Geld)}}
 --   (die gebuchten Trades je Art; trades_booked = Summe der counts),
 --   statements_due [{name, covered_until|null}] (= finance.fn_statements_due nach diesem Abgleich, Reihenfolge wie dort;
 --   null = nie abgeglichen)} | {ok:false, code?, reason}
@@ -504,8 +505,9 @@ BEGIN
                                           'amount', COALESCE(sum(amt) FILTER (WHERE k = 'buy'), 0)),
                 'sell', jsonb_build_object('count', count(*) FILTER (WHERE k = 'sell'),
                                            'amount', COALESCE(sum(amt) FILTER (WHERE k = 'sell'), 0)),
-                'dividend', jsonb_build_object('count', count(*) FILTER (WHERE k NOT IN ('buy', 'sell', 'reward')),
-                                               'amount', COALESCE(sum(amt) FILTER (WHERE k NOT IN ('buy', 'sell', 'reward')), 0)),
+                -- wie die Buchungs-Schleife: jede andere Art (auch ohne kind) bucht fn_book_dividend
+                'dividend', jsonb_build_object('count', count(*) FILTER (WHERE COALESCE(k, '') NOT IN ('buy', 'sell', 'reward')),
+                                               'amount', COALESCE(sum(amt) FILTER (WHERE COALESCE(k, '') NOT IN ('buy', 'sell', 'reward')), 0)),
                 'reward', jsonb_build_object('count', count(*) FILTER (WHERE k = 'reward'),
                                              'names', COALESCE(jsonb_agg(DISTINCT nm ORDER BY nm) FILTER (WHERE k = 'reward'), '[]'::jsonb)))
             FROM (SELECT x->>'kind' AS k, (x->>'amount')::numeric AS amt, COALESCE(x->>'name', x->>'symbol') AS nm

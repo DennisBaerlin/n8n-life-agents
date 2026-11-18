@@ -17,9 +17,9 @@
 --   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'); sonst ohne erwarteten Abgang 0
 --   (buffer_source 'none': ein Konto, von dem nichts abgeht, z. B. ein Verrechnungskonto ohne Sparplan, braucht keinen;
 --   ein Minus bleibt ein Fehlbetrag); sonst core.config finance.coverage_buffer_eur (Default 250) in die Kontowaehrung
---   umgerechnet (buffer_source 'default'). outflow_expected = geplante Abbuchung (Dauerauftrag, Sparplan, Uebertrag weg,
---   Kreditrate) in den naechsten 400 Tagen oder Alltagsausgaben aus Auszuegen (everyday_per_day < 0), unabhaengig vom
---   Horizont.
+--   umgerechnet (buffer_source 'default'). outflow_expected = Abgang in der Reihe bis zum Horizont (planned_out < 0),
+--   Alltagsausgaben aus Auszuegen (everyday_per_day < 0) oder eine laufende bzw. erfasste kuenftige Abbuchung von diesem
+--   Konto (Dauerauftrag, Sparplan, Uebertrag weg, Kreditrate; active_/upcoming_recurring_payments), auch hinter dem Horizont.
 --   Bruecke = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
 --   weicht er vom bestaetigten Stand ab, steht eine rueckdatierte Buchung dazwischen) + booked + out + in + everyday
 --   = min_projected exakt. confirmed = bestaetigter Stand (NULL ohne Abgleich).
@@ -111,11 +111,13 @@ BEGIN
     FROM finance.fn_account_planned_flows(p_account_id, v_inc_date, v_inc_date) pf
     WHERE v_inc_date IS NOT NULL AND pf.recurring_payment_id = v_inc_rp;
 
-    -- Abgang erwartet: geplante Abbuchung in 400 Tagen (dieselbe Quelle wie die Reihe) oder Alltag aus Auszuegen.
-    -- Bewusst nicht planned_out: das reicht nur bis zum Horizont, beim Verrechnungskonto liegt die Sparplan-Abbuchung
-    -- oft einen Tag nach dem Zubringer -> der Puffer spraenge im Monat zwischen 0 und Standard.
-    v_outx := COALESCE(v_per_day, 0) < 0
-              OR EXISTS (SELECT 1 FROM finance.fn_account_planned_flows(p_account_id, v_today, v_today + 400) pf WHERE pf.amount < 0);
+    -- Abgang erwartet: Abgang in der Reihe bis zum Horizont (inkl. ueberfaelliger und gebuchter seit d0), Alltag aus
+    -- Auszuegen, oder eine laufende bzw. erfasste kuenftige Abbuchung von diesem Konto. Die Reihe allein reicht nicht:
+    -- beim Verrechnungskonto liegt die Sparplan-Abbuchung oft einen Tag nach dem Zubringer (= Horizont) -> der Puffer
+    -- spraenge im Monat zwischen 0 und Standard. Views statt Vorkommen-Hochrechnung: dieselbe Frage ohne Zeitfenster.
+    v_outx := COALESCE(v_out, 0) < 0 OR COALESCE(v_per_day, 0) < 0
+              OR EXISTS (SELECT 1 FROM finance.active_recurring_payments r WHERE r.account_id = p_account_id AND r.amount < 0)
+              OR EXISTS (SELECT 1 FROM finance.upcoming_recurring_payments r WHERE r.account_id = p_account_id AND r.amount < 0);
 
     IF v_acct.min_balance IS NOT NULL THEN
         v_buffer := v_acct.min_balance;

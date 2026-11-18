@@ -31,7 +31,7 @@
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
       "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",
-      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "import_setup", "send_bank_todos", "send_account_emoji_picker",
+      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "get_bank_export_facts", "import_setup", "send_bank_todos", "send_account_emoji_picker",
       "set_onboarding_section"
     ],
     "crons": ["cron_refresh_fx_rates", "cron_refresh_market_prices", "cron_remind_interest", "cron_reconcile_accounts", "cron_remind_pension_statement", "cron_remind_missing_prices", "cron_remind_bank_end", "cron_remind_bank_todo", "cron_networth_snapshot"],

@@ -128,10 +128,10 @@ BEGIN
     PERFORM pg_temp.sd_expect(DATE '2031-01-03', '__t_sd_pdf_q3__', true, 'SD5 Quartal Q3 am 03.01.');
     PERFORM pg_temp.sd_expect(DATE '2030-09-03', '__t_sd_pdf_q2__', false, 'SD5 Quartal Q2 am 03.09.');
     PERFORM pg_temp.sd_expect(DATE '2030-10-03', '__t_sd_pdf_q2__', true, 'SD5 Quartal Q2 am 03.10.');
-    -- SD6 Reihenfolge: never zuerst, dann nach covered_until, dann Name
+    -- SD6 Reihenfolge: never zuerst, dann nach covered_until, dann Name (Q2 ist am 03.11. faellig: Q3 fehlt)
     IF (SELECT string_agg(e->>'name', ',' ORDER BY o) FROM jsonb_array_elements(v_r->'accounts') WITH ORDINALITY x(e, o)
         WHERE e->>'name' LIKE '\_\_t\_sd\_%')
-       IS DISTINCT FROM '__t_sd_never__,__t_sd_pdf_sep__,__t_sd_profile_qtr__,__t_sd_opened__,__t_sd_short__' THEN
+       IS DISTINCT FROM '__t_sd_never__,__t_sd_pdf_q2__,__t_sd_pdf_sep__,__t_sd_profile_qtr__,__t_sd_opened__,__t_sd_short__' THEN
         RAISE EXCEPTION 'FAIL [SD6 Reihenfolge]: %', v_r->'accounts';
     END IF;
     RAISE NOTICE 'PASS [SD1-SD6 eine Regel Auszug faellig]';

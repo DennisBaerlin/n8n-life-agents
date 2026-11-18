@@ -24,6 +24,13 @@
 --   Kalender ein Kalendertag sein); andere Tage = Kadenzwechsel = Split. depot_execution_days (rohe Nutzer-Antwort)
 --   korrigiert den Depot-Kalender (nur zusammen mit einem Rhythmus) und wird im selben Write am Depot gespeichert.
 --   Eine reine Betrags-Aenderung erbt die Tage (fn_split_recurring_payment).
+--   Reine Tag-Verlegung (Monatsrhythmus, Einzeltag -> anderer Einzeltag, auch auf einen SPAETEREN Tag im selben Monat):
+--   jeder Monat behaelt genau eine Ausfuehrung; im Uebergangsmonat laeuft nur die am genannten neuen Tag, die am alten
+--   entfaellt (Wechselpunkt aus fn_recurring_day_shift, dieselbe Adresse wie set_recurring_payment; ein genanntes Ende
+--   wandert mit). Ist die alte Ausfuehrung des Uebergangsmonats schon gebucht/uebersprungen oder die erste des Plans:
+--   {ok:false, code:'day_shift_booked', first_free_date} (erste Ausfuehrung am neuen Tag im Folgemonat), keine
+--   Doppelung. Grenzen: Plaene mit festen Monatstagen oder Wochen-Rhythmus sind nicht betroffen (mehrere Ausfuehrungen
+--   je Monat sind dort gewollt); die Karte nennt die entfallende Ausfuehrung nicht, nur das neue Datum.
 --   Eingabe jsonb: savings_plan_name, new_amount (opt, pos), schedule_unit (opt, day|week|month|year),
 --   schedule_interval (opt, pos), depot_execution_days (opt), status (opt, paused|active),
 --   valid_from (opt, Stichtag des Splits; default heute), notes (opt),
@@ -46,7 +53,8 @@
 --   Nutzer-Rhythmus week/1 bzw. week/2) -> kein Split; ohne weitere Felder {ok:false, code:'no_change', rhythm,
 --   amount_per_execution, monthly_amount} (geprueft vor den Split-Vorbedingungen).
 --   Korrigierbar (nicht gefunden, mehrdeutig (hit_count), new_amount<=0, Stichtag<=aktueller valid_from, ueberfaellige
---   Ausfuehrung (open_due_date), depot_execution_days ohne Rhythmus, nicht aufloesbares Datum (code invalid_date),
+--   Ausfuehrung (open_due_date), reine Tag-Verlegung bei schon gebuchter/uebersprungener alter Ausfuehrung des Uebergangsmonats
+--   oder im Anlagemonat (code day_shift_booked, first_free_date), depot_execution_days ohne Rhythmus, nicht aufloesbares Datum (code invalid_date),
 --   asset_class-Format, Ablehnungen von fn_resolve_plan_schedule/fn_split_recurring_payment/
 --   fn_reopen_recurring_payment) -> {ok:false}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
@@ -81,6 +89,9 @@ DECLARE
     v_cmp       finance.recurring_payments%ROWTYPE;
     v_cmp_unit  finance.schedule_unit;
     v_cmp_int   SMALLINT;
+    v_shift     RECORD;
+    v_pure      BOOLEAN           := false;   -- reine Tag-Verlegung (siehe Block nach fn_resolve_plan_schedule)
+    v_last      DATE;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
@@ -213,6 +224,33 @@ BEGIN
             v_dom          := (v_sched->>'schedule_day_of_month')::smallint;
             v_days         := COALESCE(finance.fn_jsonb_smallint_array(v_sched->'schedule_days_of_month'),
                                        '{}');   -- '{}' = Tage der alten Zeile leeren
+            -- Reine Tag-Verlegung im Monatsrhythmus (Einzeltag -> anderer Einzeltag): jeder Monat behaelt genau EINE
+            -- Ausfuehrung. Der Helfer fn_recurring_day_shift (derselbe wie bei set_recurring_payment) liefert den Wechsel-
+            -- punkt; die alte Zeile endet vor ihrer Ausfuehrung im Uebergangsmonat, die neue beginnt dort mit dem genannten Tag.
+            IF v_dom IS NOT NULL AND cardinality(v_days) = 0 AND v_unit_new = 'month' AND v_rp.schedule_unit = 'month'
+               AND v_rp.schedule_days_of_month IS NULL AND v_interval_new = v_rp.schedule_interval THEN
+                SELECT * INTO v_shift FROM finance.fn_recurring_day_shift(v_rp.id, date_trunc('month', v_from)::date, v_dom);
+                IF v_shift.start_date IS NOT NULL THEN
+                    v_pure := true;
+                    SELECT max(d) INTO v_last FROM (
+                        SELECT max(recurring_due_date) AS d FROM finance.transactions WHERE recurring_payment_id = v_rp.id
+                        UNION ALL
+                        SELECT max(due_date) FROM finance.recurring_payment_skips WHERE recurring_payment_id = v_rp.id
+                    ) x;
+                    IF v_shift.start_date <= v_rp.valid_from OR v_last >= v_shift.start_date THEN
+                        -- Alte Ausfuehrung des Uebergangsmonats schon gebucht/uebersprungen (oder der Plan beginnt in
+                        -- diesem Monat): beide Ausfuehrungen im selben Monat gaebe es dann doch -> der neue Tag gilt ab dem
+                        -- Folgemonat. Korrigierbare Ablehnung, keine stille Doppelung.
+                        RETURN jsonb_build_object('ok', false, 'code', 'day_shift_booked',
+                            'reason', 'The execution of this month at the old day is already booked, skipped or is the first one '
+                                   || 'of the plan, so the new day cannot apply in the same month without a second execution. '
+                                   || 'Choose the first execution in the next month as effective date.',
+                            'first_free_date', finance.fn_schedule_first_occurrence(
+                                (date_trunc('month', GREATEST(v_last, v_shift.start_date)) + interval '1 month')::date,
+                                1, 'month', v_dom, NULL));
+                    END IF;
+                END IF;
+            END IF;
         END IF;
     END IF;
 
@@ -225,8 +263,11 @@ BEGIN
         v_signed := CASE WHEN v_amount IS NOT NULL
                          THEN (CASE WHEN v_rp.amount < 0 THEN -1 ELSE 1 END) * v_amount
                          ELSE v_rp.amount END;
+        -- Reine Tag-Verlegung: Stichtag = Monatserster, p_days NULL -> der Split rechnet Wechselpunkt und Anker selbst
+        -- (fn_recurring_day_shift); sonst der genannte Stichtag mit den Tagen aus dem Depot-Kalender.
         v_split_res := finance.fn_split_recurring_payment(
-            v_rp.id, v_from, v_signed, v_interval_new, v_unit_new, v_dom, NULL, NULL, NULL, v_days);
+            v_rp.id, CASE WHEN v_pure THEN date_trunc('month', v_from)::date ELSE v_from END,
+            v_signed, v_interval_new, v_unit_new, v_dom, NULL, NULL, NULL, CASE WHEN v_pure THEN NULL ELSE v_days END);
         IF (v_split_res->>'ok')::boolean IS DISTINCT FROM true THEN
             RETURN v_split_res;
         END IF;

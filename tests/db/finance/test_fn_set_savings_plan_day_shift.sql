@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_set_savings_plan_day_shift.sql
--- Waechter: fn_set_savings_plan aendert den Ausfuehrungstag nur mit einem Rhythmus + Depot-Kalender; der Stichtag ist dann die
--- erste Ausfuehrung zu den neuen Bedingungen (ein Kalendertag). Liegt sie im selben Monat vor dem alten Tag, behaelt jeder Monat
--- genau eine Ausfuehrung (12 im Jahr). Bewusst nicht auf fn_recurring_day_shift umgestellt: der Nutzer nennt die erste neue
--- Ausfuehrung selbst und die Karte zeigt sie.
+-- Waechter: fn_set_savings_plan aendert den Ausfuehrungstag nur mit einem Rhythmus + Depot-Kalender; der genannte Stichtag ist
+-- die erste Ausfuehrung zu den neuen Bedingungen (ein Kalendertag, die Karte zeigt ihn). Liegt sie im selben Monat vor dem
+-- alten Tag, behaelt jeder Monat genau eine Ausfuehrung (12 im Jahr); den Wechselpunkt der Zeilen liefert fn_recurring_day_shift.
+-- Gegenstueck fuer den spaeteren Tag: test_fn_set_savings_plan_day_shift_later.sql.
 BEGIN;
 
 DO $$

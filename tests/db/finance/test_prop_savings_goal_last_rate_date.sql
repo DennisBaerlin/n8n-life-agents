@@ -37,6 +37,21 @@ BEGIN
   SELECT abs(amount) INTO v_new FROM finance.recurring_payments
    WHERE id = (SELECT recurring_payment_id FROM finance.savings_goals WHERE id = v_goal);
   IF v_new IS DISTINCT FROM 125.00 THEN v_bad := v_bad || format(' [E3 Ziel 1200 -> 1500 bei 12 Raten: Rate %s statt 125.00]', v_new); END IF;
+  -- (E4) eine einzige Rate reicht (Ziel <= Rate): Zieldatum = Tag der ersten Rate + 1 Tag (muss nach der ersten Rate und in
+  --      der Zukunft liegen), bis dahin genau 1 Rate
+  FOREACH v_months IN ARRAY ARRAY[1, 15, -1] LOOP
+    v_n := v_n + 1;
+    v_res := finance.fn_create_savings_goal(jsonb_build_object('name','__lrd_goal_e4_'||v_n||'__','goal_type','other','target_amount',80,
+      'monthly_savings_rate',100,'account_id',v_giro,'reserve_account_id',v_pot,'schedule_day_of_month',v_months));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL E4 Tag %: %', v_months, v_res; END IF;
+    v_goal := (v_res->>'goal_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    SELECT target_date INTO v_td FROM finance.savings_goals WHERE id = v_goal;
+    SELECT first_payment_date INTO v_first FROM finance.recurring_payments WHERE id = v_rp;
+    SELECT count(*) INTO v_cnt FROM finance.fn_schedule_occurrences(v_first, 1, 'month', v_months::smallint, NULL, v_first, v_td);
+    IF v_td IS DISTINCT FROM v_first + 1 OR v_cnt <> 1 THEN
+      v_bad := v_bad || format(' [E4 Tag %s: Zieldatum %s (erwartet %s), %s Raten bis dahin statt 1]', v_months, v_td, v_first + 1, v_cnt);
+    END IF;
+  END LOOP;
   IF v_bad <> '' THEN RAISE EXCEPTION 'FAIL Zieldatum = Tag der letzten Rate:%', v_bad; END IF;
   RAISE NOTICE 'PASS Zieldatum = Tag der letzten Rate';
 END $$;

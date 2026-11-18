@@ -31,6 +31,7 @@ Checkliste — was nicht zutrifft, kurz als „n/a" nennen:
 ## 3. Umsetzung
 
 - **TDD Red:** neue oder geänderte `fn_*` → `tests/db/<pkg>/test_fn_*.sql` zuerst; Inner Loop `db_apply` → `db_test.ps1 -Filter '*<subject>*'`.
+- **Nachweis eines Fixes = der echte Weg:** Der rote Test läuft über den Weg, auf dem der Fehler passiert ist (Antwort an den Nutzer → E2E-/Golden-Case mit Bewerter), und ein Gegenlauf auf dem alten Stand muss rot sein. Eine erweiterte Attrappe (`tests/mock_*`) beweist nur die Attrappe; sie zählt allein dort, wo der echte Weg im Test nicht erreichbar ist, und das steht dann im Plan.
 - **Build & Deploy:** `build.ps1` → Stickies gegen den neuen Graphen gegenlesen → Substrat `bootstrap_test_n8n.ps1 -Reset` mit eigenen Container-Namen/Ports. `infra_test.ps1`, wenn Infra berührt ist. LLM-Suiten nur im Owner-Fenster, sonst das exakte Kommando empfehlen.
 - **Doku:** CLAUDE.md-Familie nur Deltas (ein Fakt, eine Adresse); nutzer-sichtbare Änderung ⟹ `docs/site` (deutsch) + `README.md` (englisch, OSS-Doku wie `AGENTS.md`/`CONTRIBUTING.md`), dann `build_site.ps1`.
 

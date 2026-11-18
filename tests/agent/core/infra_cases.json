@@ -698,24 +698,24 @@
   },
   {
     "id": "ic46a", "name": "Tabellen-Datei vor dem Modell: erkannter Export -> Vorab-Ergebnis im Auftrag", "requires": ["mock_telegram", "mock_llm"],
-    "harness_path": "finance-test", "target_name": "agent.finance",
-    "body": { "task": "Kannst du das bitte einlesen? [attachment file_id=mock_photo_083 type=document ext=csv]", "chat_id": "test_ic46a", "call_depth": 0 },
+    "harness_path": "finance-test", "target_name": "agent.finance", "agent_state": true,
+    "body": { "task": "Kannst du das bitte einlesen? [attachment file_id=mock_photo_083 type=document ext=csv]", "chat_id": "__OWNER_CHAT_ID__", "call_depth": 0 },
     "check_node": "Build Agent Input", "check_field": "system_prompt",
     "must_be_nonempty": null, "must_contain": "\"bank\":\"Trade Republic\"", "must_not_contain": null, "must_equal": null,
     "notes": "Befund 2026-11-17 (Eigenschaft: Tabellen-Datei ohne Werkzeug beantwortet, Bank geraten). agent.finance liest die erste Datei mit ext=csv/xlsx/xls vor dem Modell (tool_get_bank_export_facts -> fn_bank_export_facts) und haengt das Ergebnis als Abschnitt ## Bank export file in this message (JSON) ans Ende des System-Prompts: Bank, Konto bzw. Kandidaten kommen aus der DB, nicht aus dem Chat-Gedaechtnis. Fixture mock_photo_083.csv (Trade Republic). Routing danach: finance_cases tc164."
   },
   {
     "id": "ic46b", "name": "Tabellen-Datei vor dem Modell: unbrauchbare Datei -> Auftrag unveraendert, kein Abbruch", "requires": ["mock_telegram", "mock_llm"],
-    "harness_path": "finance-test", "target_name": "agent.finance",
-    "body": { "task": "Hier ist mein Export [attachment file_id=mock_xlsname_ole type=document ext=xls]", "chat_id": "test_ic46b", "call_depth": 0 },
+    "harness_path": "finance-test", "target_name": "agent.finance", "agent_state": true,
+    "body": { "task": "Hier ist mein Export [attachment file_id=mock_xlsname_ole type=document ext=xls]", "chat_id": "__OWNER_CHAT_ID__", "call_depth": 0 },
     "check_node": "Build Agent Input", "check_field": "system_prompt",
     "must_be_nonempty": true, "must_contain": null, "must_not_contain": "## Bank export file", "must_equal": null,
     "notes": "Gegenstueck zu ic46a: echtes altes .xls (OLE) liest der Tabellen-Leser nicht -> kein Abschnitt, der Agent laeuft weiter wie heute (mt03 Turn 1). Bleibt auch vor dem Fix gruen (Waechter gegen einen Abbruch im Fehler-Ende des Lesers)."
   },
   {
     "id": "ic46c", "name": "Tabellen-Datei vor dem Modell: Nachricht ohne Anhang -> Build Agent Input laeuft, kein Abschnitt", "requires": ["mock_llm"],
-    "harness_path": "finance-test", "target_name": "agent.finance",
-    "body": { "task": "Tier-4-Infra-Test ohne Anhang - bitte ignorieren", "chat_id": "test_ic46c", "call_depth": 0 },
+    "harness_path": "finance-test", "target_name": "agent.finance", "agent_state": true,
+    "body": { "task": "Tier-4-Infra-Test ohne Anhang - bitte ignorieren", "chat_id": "__OWNER_CHAT_ID__", "call_depth": 0 },
     "check_node": "Build Agent Input", "check_field": "system_prompt",
     "must_be_nonempty": true, "must_contain": null, "must_not_contain": "## Bank export file", "must_equal": null,
     "notes": "Zweig ohne Tabellen-Marker: der Vorab-Knoten laeuft nicht, Build Agent Input darf ihn nur ueber isExecuted lesen (sonst bricht jede Finance-Nachricht ohne Datei mit Referenced node is unexecuted ab). Bleibt auch vor dem Fix gruen."

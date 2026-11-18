@@ -202,7 +202,7 @@ mod tests {
             )
             .on(&cmd(DockerCall::Master(crate::contract::MasterCmd::ReleaseWebhook)), CmdOut::ok(""))
             .on(
-                "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+                "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down",
                 CmdOut::ok(""),
             )
             .on(&cmd(DockerCall::ImageRemove("ghcr.io/example/lifeagents-master@sha256:bbbb")), CmdOut::ok(""))
@@ -233,9 +233,9 @@ mod tests {
         let o = run(&h, &mut j, Some(&d()), &p, Choices::default());
         assert!(o.failed.is_empty(), "{:?}", o.failed);
         assert!(o.deviations.is_empty(), "{:?}", o.deviations);
-        assert!(
-            h.called("docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down")
-        );
+        assert!(h.called(
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down"
+        ));
         assert!(h.called(&cmd(DockerCall::ImageRemove("ghcr.io/example/lifeagents-master@sha256:bbbb"))));
         assert!(h.calls_starting("docker --context desktop-linux volume rm").is_empty(), "Daten nur nach Ja");
         assert!(h.calls_starting("/usr/bin/osascript").is_empty(), "Energie nur nach Ja");

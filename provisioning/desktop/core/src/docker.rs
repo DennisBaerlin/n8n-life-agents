@@ -48,7 +48,8 @@ pub enum DockerCall<'a> {
         file: &'a str,
         env_file: &'a str,
     },
-    /// Entfernen (Nr. 17): Container und Netz des Projekts, nie Volumes (die sind `external`).
+    /// Entfernen (Nr. 17): Container und Netz des Projekts, nie Volumes (die sind `external`); alle Profile aktiv,
+    /// sonst blieben tailscale/wan stehen (wie `rt_stack_down` in runtime.sh).
     ComposeDown {
         file: &'a str,
         env_file: &'a str,
@@ -157,7 +158,7 @@ impl Docker {
             }
             DockerCall::ComposeDown { file, env_file } => {
                 compose(&mut a, file, env_file);
-                p(&mut a, &["down"]);
+                p(&mut a, &["--profile", "*", "down"]);
             }
             DockerCall::ProbeWrite { image } => {
                 probe_run(&mut a, &format!("type=volume,src={PROBE_VOLUME},dst=/v"));
@@ -342,6 +343,17 @@ mod tests {
                 assert_eq!(a[i + 1], PROJECT);
             }
         }
+    }
+
+    // Dienste aus Profilen (tunnel, fritzbox) erfasst `down` nur, wenn ihr Profil aktiv ist; runtime.sh `rt_stack_down`
+    // aktiviert alle. Ohne das bliebe nach dem Entfernen ein laufender tailscale/wan zurück.
+    #[test]
+    fn down_covers_the_services_of_every_profile() {
+        let d = Docker { bin: "docker".into(), context: "default".into() };
+        let a = d.args(&DockerCall::ComposeDown { file: "c.yml", env_file: "e.env" });
+        let i = a.iter().position(|x| x == "--profile").expect("--profile fehlt vor down");
+        assert_eq!(a[i + 1], "*");
+        assert!(i < a.iter().position(|x| x == "down").unwrap(), "--profile gehört vor den Unterbefehl");
     }
 
     #[test]

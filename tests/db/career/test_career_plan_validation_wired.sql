@@ -47,6 +47,22 @@ BEGIN
     RAISE NOTICE 'PASS [Karriere-Plan: Trigger-Netz lehnt ab]';
   END;
 
+  -- Mitglied (own_user_only) mit ungueltigem eigenem Plan: gleiche Ablehnung, kein Write fuer seine Zeile
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}',
+      (metadata->'facts'->'persons') || jsonb_build_array(jsonb_build_object('person_id','lena','first_name','Lena','last_name','B',
+        'role','partner','birth_date','1985-06-21','telegram_user_id',222,'as_of','2026-06-11')))
+   WHERE name = 'family';
+  v_res := agent.fn_advisor_save_section(jsonb_build_object('domain','career','chat_id','222','plan_name','__test_career_m__',
+    'section_key','s1','section_content','x','section_data', jsonb_build_object('target_roles', jsonb_build_array(
+      jsonb_build_object('title','Data Analyst','salary_expectation_eur',5000,'salary_basis','netto')))));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [setup Mitglied]: save_section %', v_res; END IF;
+  v_res := agent.fn_advisor_publish_plan(jsonb_build_object('domain','career','chat_id','222','plan_md','# Plan'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE 'plan facts invalid:%' THEN
+    RAISE EXCEPTION 'FAIL [career Mitglied ungueltig]: erwartet ok:false "plan facts invalid", got %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM agent.core_contexts WHERE name = 'career_planning__lena') THEN
+    RAISE EXCEPTION 'FAIL [career Mitglied ungueltig]: Plan-Dokument trotz Ablehnung geschrieben'; END IF;
+  RAISE NOTICE 'PASS [Karriere-Plan eines Mitglieds: ungueltiger Plan abgelehnt]';
+
   -- gueltig -> veroeffentlicht
   v_res := agent.fn_advisor_save_section(jsonb_build_object('domain','career','chat_id','111','section_key','s1',
     'section_content','x','section_data', jsonb_build_object('target_roles', jsonb_build_array(

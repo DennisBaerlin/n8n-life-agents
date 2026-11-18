@@ -42,9 +42,9 @@ These are the mechanisms already in place — understanding them helps when repo
   download from the public repo, SHA256-verified). The backup encryption key lives in `core.backup_key`
   (database), set out-of-band — never through the chat or the repo. Installer secrets on the instance
   live in `/etc/lifeagents/<pkg>.env` (`core.env` = host; one file per package, removed on `--purge`).
-- **PII redaction.** The pull pipeline rewrites the owner's Telegram chat id to `__OWNER_CHAT_ID__`
-  before anything is tracked; the personal-data contexts mirror stays local (`.local/`). The tracked
-  tree contains no PII.
+- **PII redaction.** The workflow build rewrites the owner's Telegram chat id to `__OWNER_CHAT_ID__`
+  before it writes any workflow file; personal-data contexts are created only by onboarding on the
+  instance and are never seeded from the repo. The tracked tree contains no PII.
 - **`detect-private-key`** runs as a commit-stage hook (see
   [.pre-commit-config.yaml](.pre-commit-config.yaml)) and blocks committed private keys.
 - **`gitleaks`** is the broader secret scanner (hundreds of token/credential patterns) — a second

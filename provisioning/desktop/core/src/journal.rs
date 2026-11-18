@@ -356,7 +356,7 @@ mod tests {
     #[test]
     fn rollback_with_own_docker_counts_as_rolled_back() {
         let h = FakeHost::mac().on(
-            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down",
             CmdOut::ok(""),
         );
         let mut j = Journal::default();
@@ -408,7 +408,7 @@ mod tests {
             for interrupted in [false, true] {
                 let h = FakeHost::mac()
                     .on(
-                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down",
                         CmdOut::ok(""),
                     )
                     .on("docker --context desktop-linux image rm busybox@sha256:aa", CmdOut::ok(""))
@@ -435,7 +435,7 @@ mod tests {
                 let has = |f: fn(&Step) -> bool| reached.iter().any(|s| f(s));
                 assert_eq!(
                     h.called(
-                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down"
+                        "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down"
                     ),
                     has(|s| matches!(s, Step::CoreStarted { .. })),
                     "Stufe {stop}"
@@ -466,7 +466,7 @@ mod tests {
     #[test]
     fn rollback_stops_at_first_failure_and_can_resume() {
         let h = FakeHost::mac().on(
-            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down",
             CmdOut::fail(1, "Docker antwortet nicht"),
         );
         let mut j = Journal::default();
@@ -477,7 +477,7 @@ mod tests {
         assert!(rollback(&h, &mut j, Some(&docker())).is_err());
         assert_eq!(j.status(), Status::InProgress, "nichts als zurückgenommen markiert");
         h.set(
-            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env down",
+            "docker --context desktop-linux compose --project-name lifeagents --file /c/compose.yml --env-file /c/app.env --profile * down",
             CmdOut::ok(""),
         );
         rollback(&h, &mut j, Some(&docker())).unwrap();

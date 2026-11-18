@@ -4,7 +4,8 @@
 # Gruen wird ein Stand ueber den Integrations-Branch: pushen, 'gh workflow run <name>.yml --ref <branch>', warten mit
 # scripts/check_ci_status.ps1 -Wait. Regel: Skill /coordinate Abschnitt 3 *Push-Regeln*.
 # Ausnahme Pin-Commit: aendert der Stand gegenueber seinem einen Elternteil nur provisioning/compose/compose.yml, zaehlen
-# die Laeufe des Elternteils (der Pin entsteht erst aus dem gruenen Stand, docs/reference/provisioning.md *Docker-Verbund*).
+# die Laeufe des Elternteils (der Pin entsteht erst aus dem gruenen Stand, docs/reference/provisioning.md *Docker-Verbund*);
+# dort entscheidet je Workflow der juengste abgeschlossene Lauf (nur success), Laeufe des main-Push, die noch laufen, zaehlen nicht.
 # Aufrufer: .claude/hooks/dev_cycle_guard.ps1 (git push). Gilt nur auf der Owner-Maschine und nur fuer ein GitHub-Remote;
 # ein Push des Owners im Terminal laeuft nicht durch den Hook und bleibt frei (Ausweg, wenn GitHub nicht abrufbar ist).
 # Usage:
@@ -83,7 +84,7 @@ if ($parents.Count -eq 1) {
     $changed = @(& git -C $RepoRoot -c core.quotepath=off diff --name-only --no-renames $parents[0] $tip)
     if ($changed.Count -eq 1 -and $changed[0] -eq $PinFile) {
         $parentNeed = @(Get-RequiredWorkflows $remoteMain $parents[0])
-        if (@(Get-MainPushProblems $parentNeed (Get-Runs $parents[0]) $parents[0]).Count -eq 0) {
+        if (@(Get-PinParentProblems $parentNeed (Get-Runs $parents[0]) $parents[0]).Count -eq 0) {
             Write-Host '  [OK] Pin-Commit auf gruenem Stand' -ForegroundColor Green; exit 0
         }
     }

@@ -352,7 +352,7 @@
 <ul>
 <li>Leite <strong>ausschließlich</strong> diese Adress-Pfade an n8n weiter — alles andere soll der Proxy abweisen oder anderswohin schicken:
 <ul>
-<li><code>/webhook/*</code>, <code>/webhook-test/*</code>, <code>/webhook-waiting/*</code>, <code>/webhook-waiting-telegram</code></li>
+<li><code>/webhook/*</code>, <code>/webhook-waiting/*</code>, <code>/webhook-waiting-telegram</code></li>
 <li><code>/webhook-waiting/*</code> und <code>/webhook-waiting-telegram</code> sind <strong>Pflicht</strong> — darüber laufen die Bestätigungs-Knöpfe. Mit <code>/webhook-waiting-telegram</code> antworten die Knöpfe direkt im Chat (ein Tipp, kein Browserfenster); fehlt die Route, öffnen sie stattdessen eine Webseite. Ob alles passt, zeigt <code>lifeagents doctor</code>; hast du die Route nachträglich ergänzt, schaltet <code>lifeagents update</code> das Bestätigen im Chat ein.</li>
 </ul>
 </li>

@@ -234,6 +234,7 @@ CY="$ROOT/provisioning/compose/compose.yml"
 rm -rf "$REACH_CONF_DIR"; reach_edge_public_write && pass C_edge_block_written || fail C_edge_block_written "nicht geschrieben"
 blk="$(cat "$REACH_CONF_DIR/edge-public.caddy" 2>/dev/null)"
 eq C_edge_paths "$LA_PUBLIC_PATHS" "$(printf '%s\n' "$blk" | sed -n 's/^@lifeagents path //p')"
+printf '%s' "$blk" | grep -q '/webhook-test' && fail C_edge_test_path_closed "Baustein fuer edge laesst /webhook-test durch" || pass C_edge_test_path_closed
 printf '%s' "$blk" | grep -q 'reverse_proxy anchor:5678' && pass C_edge_upstream || fail C_edge_upstream "Upstream nicht anchor:5678"
 cli="$(render_template "$ROOT/provisioning/templates/Caddyfile.tpl" SITE_ADDRESS=x.example.org N8N_UPSTREAM=127.0.0.1:5678 PUBLIC_PATHS="$LA_PUBLIC_PATHS" | sed -n 's/^[[:space:]]*@lifeagents path //p')"
 eq C_cli_paths "$LA_PUBLIC_PATHS" "$cli"

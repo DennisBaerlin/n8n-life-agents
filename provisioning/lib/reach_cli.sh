@@ -155,11 +155,12 @@ reach_cli_funnel_eval() {
   local dns="$1" js="$2" want
   want="$(reach_cli_funnel_mounts "${3:-}" | jq -Rsc 'split("\n") | map(select(length > 0) | split("\t") | {key:.[0], value:.[1]}) | from_entries')"
   [ -n "$js" ] || js='{}'
-  printf '%s' "$js" | jq -r --arg k "$dns:443" --argjson want "$want" '
+  local old; old="$(printf '%s' "$LA_RETIRED_PUBLIC_PATHS" | jq -Rsc 'split(" ") | map(select(length > 0))')"
+  printf '%s' "$js" | jq -r --arg k "$dns:443" --argjson want "$want" --argjson old "$old" '
     ((.Web // {})[$k].Handlers // {}) as $h
     | ($h | to_entries | map({key, value:(.value.Proxy // "")}) | from_entries) as $got
     | if ($h | length) == 0 then "absent"
-      elif ([$got | keys[] | . as $x | select(($want | has($x)) | not)] | length) > 0 then "foreign"
+      elif ([$got | keys[] | . as $x | select((($want | has($x)) or ($old | index($x) != null)) | not)] | length) > 0 then "foreign"
       elif $got == $want and ((.AllowFunnel // {})[$k] // false) == true then "ours"
       else "partial" end' 2>/dev/null || printf 'absent'
 }
@@ -176,6 +177,11 @@ reach_cli_funnel_ensure() {
   REACH_CLI_FUNNEL_URL=''
   st="$(reach_cli_funnel_eval "$dns" "$(_reach_cli_funnel_status)" "$port")"
   case "$st" in ours) return 0 ;; foreign) return 3 ;; esac
+  # Zurueckgenommene Pfade zuerst weg: zu machen ist billig und gilt auch, wenn der Funnel im Konto noch nicht erlaubt ist.
+  for m in $LA_RETIRED_PUBLIC_PATHS; do
+    _reach_cli_funnel_status | jq -e --arg k "$dns:443" --arg m "$m" '((.Web // {})[$k].Handlers // {}) | has($m)' >/dev/null 2>&1 \
+      && { timeout 8 tailscale funnel --https=443 --set-path "$m" off >/dev/null 2>&1 || true; }
+  done
   while IFS=$'\t' read -r m t; do
     [ -n "$m" ] || continue
     out="$(timeout 8 tailscale funnel --bg --yes --set-path "$m" "$t" 2>&1 || true)"
@@ -195,6 +201,7 @@ reach_cli_funnel_off() {
     [ -n "$m" ] || continue
     timeout 8 tailscale funnel --https=443 --set-path "$m" off >/dev/null 2>&1 || true
   done <<<"$(reach_cli_funnel_mounts "$port")"
+  for m in $LA_RETIRED_PUBLIC_PATHS; do timeout 8 tailscale funnel --https=443 --set-path "$m" off >/dev/null 2>&1 || true; done
   return 0
 }
 

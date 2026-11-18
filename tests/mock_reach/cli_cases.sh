@@ -77,7 +77,10 @@ ours_json() {   # ours_json [extra-jq] -> Funnel-Status, wie Tailscale ihn mit g
 eq P_ours    ours    "$(reach_cli_funnel_eval "$DNS" "$(ours_json)" 5678)"
 eq P_absent  absent  "$(reach_cli_funnel_eval "$DNS" '{}' 5678)"
 eq P_empty   absent  "$(reach_cli_funnel_eval "$DNS" '' 5678)"
-eq P_partial partial "$(reach_cli_funnel_eval "$DNS" "$(ours_json 'del(.Web[].Handlers["/webhook-test"])')" 5678)"
+hasnt P_test_path_closed '/webhook-test' "$M"
+eq P_partial partial "$(reach_cli_funnel_eval "$DNS" "$(ours_json 'del(.Web[].Handlers["/webhook-waiting"])')" 5678)"
+# Ein aelterer Stand hat /webhook-test noch im Funnel: das ist unser Rest (partial, wird zurueckgenommen), nie fremd (busy).
+eq P_retired_partial partial "$(reach_cli_funnel_eval "$DNS" "$(ours_json '.Web[].Handlers["/webhook-test"]={Proxy:"http://127.0.0.1:5678/webhook-test"}')" 5678)"
 eq P_no_funnel partial "$(reach_cli_funnel_eval "$DNS" "$(ours_json '.AllowFunnel={}')" 5678)"
 eq P_root_foreign foreign "$(reach_cli_funnel_eval "$DNS" "$(ours_json '.Web[].Handlers["/"]={Proxy:"http://127.0.0.1:8123"}')" 5678)"
 eq P_other_port partial "$(reach_cli_funnel_eval "$DNS" "$(ours_json)" 9999)"
@@ -123,6 +126,12 @@ reach_cli_funnel_ensure "$DNS" 5678; eq E_on_rc 0 "$?"
 eq E_on_state ours "$(reach_cli_funnel_eval "$DNS" "$(cat "$TS_MOCK_DIR/funnel.json")" 5678)"
 : > "$TS_MOCK_DIR/calls.log"; reach_cli_funnel_ensure "$DNS" 5678
 hasnt E_idempotent 'funnel --bg' "$(cat "$TS_MOCK_DIR/calls.log")"
+ts_reset; echo 1 > "$TS_MOCK_DIR/allowed"
+ours_json '.Web[].Handlers["/webhook-test"]={Proxy:"http://127.0.0.1:5678/webhook-test"}' > "$TS_MOCK_DIR/funnel.json"
+rc=0; reach_cli_funnel_ensure "$DNS" 5678 || rc=$?
+eq E_retired_rc 0 "$rc"
+eq E_retired_gone ours "$(reach_cli_funnel_eval "$DNS" "$(cat "$TS_MOCK_DIR/funnel.json")" 5678)"
+hasnt E_retired_not_listed '/webhook-test' "$(jq -c --arg k "$DNS:443" '.Web[$k].Handlers | keys' "$TS_MOCK_DIR/funnel.json")"
 ts_reset; rc=0; reach_cli_funnel_ensure "$DNS" 5678 || rc=$?
 eq E_not_allowed_rc 1 "$rc"
 eq E_link "https://login.tailscale.com/f/funnel?node=nFantasy1" "$REACH_CLI_FUNNEL_URL"

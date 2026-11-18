@@ -4,7 +4,7 @@
 # Faehrt den ECHTEN Download-Code des Worktrees (<root>/provisioning/install.sh = Bootstrap, lib/fetch_release.sh =
 # `lifeagents update`) gegen den Mock tests/mock_github/server.js: immer anonym (auch mit altem GH_TOKEN in der Env nie
 # ein Auth-Header), Repo nicht oeffentlich / kein Release / falsches Tag ohne Frage, Abfragelimit, Netzfehler,
-# abgebrochener Download, Unterschrift + SHA256 (Fake-Releases mit Test-Schluessel signiert; ohne Bund das Sidecar; der
+# abgebrochener Download, Unterschrift + SHA256 (Fake-Releases mit Test-Schluessel signiert; ohne Bund Abbruch; der
 # echte Projekt-Schluessel lehnt die Test-Unterschrift ab), Redirect, Aufraeumen des Arbeitsverzeichnisses, drop_legacy_repo_token, Rueckweg auf nicht mehr ladbare Tags. Das
 # Fake-Release enthaelt einen Stub-provision.sh, der RELEASE_TAG + Args in eine Marker-Datei schreibt (= "Applier
 # gestartet").
@@ -24,7 +24,7 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 # Das Projekt signiert (provisioning/keys/release-signing.gpg, eingebettet in install.sh): die Fake-Releases tragen
 # wie echte SHA256SUMS + SHA256SUMS.sig, unterschrieben mit einem kurzlebigen TEST-Schluessel; jeder Lauf zeigt per
 # LIFEAGENTS_RELEASE_KEYRING auf dessen Bund (install.sh nimmt ein gesetztes Bund vor dem eingebetteten Schluessel).
-# Das .sha256-Sidecar bleibt im Release (install.sh-Pfad eines Projekts ohne Schluessel); ein Update ohne Bund bricht ab
+# Das .sha256-Sidecar bleibt im Release (fuer aeltere CLIs), wird aber nie mehr geprueft; ohne Bund bricht jeder Weg ab
 # (update_no_keyring_refused).
 rm -rf "$W"; mkdir -p "$REL/$TAG" "$REL/$BADSHA_TAG" "$W/gnupg"; chmod 700 "$W/gnupg"
 export GNUPGHOME="$W/gnupg"
@@ -169,6 +169,15 @@ else fail bad_sha_no_keyring "rc=$RC $(show)"; fi
 cfg '{}'; run install 0 LIFEAGENTS_RELEASE_KEYRING=
 if [ "$RC" != 0 ] && ! applied "$TAG" && has 'ist ungültig'; then pass install_project_key_rejects_foreign
 else fail install_project_key_rejects_foreign "rc=$RC $(show)"; fi
+
+# 12d ohne jeden Schluessel (weder /etc noch eingebettet) gibt es kein Ausweichen auf das .sha256-Sidecar: das prueft nur
+#     Unversehrtheit, nie Echtheit. Der Installer bricht vor dem Entpacken ab, obwohl das Sidecar im Release liegt.
+sed "s/^RELEASE_KEY_B64='.*'$/RELEASE_KEY_B64=''/" "$ROOT/provisioning/install.sh" > "$W/install_nokey.sh"
+grep -q "^RELEASE_KEY_B64=''$" "$W/install_nokey.sh" || fail install_no_key_setup "Schluessel liess sich nicht leeren"
+cfg '{}'; rm -f "$MARK"
+OUT="$(env "${BASE_ENV[@]}" LIFEAGENTS_RELEASE_KEYRING=/nonexistent/release-signing.gpg bash "$W/install_nokey.sh" --profile dev 2>&1 < /dev/null)"; RC=$?
+if [ "$RC" != 0 ] && ! applied "$TAG" && has 'Schlüssel'; then pass install_no_key_refused
+else fail install_no_key_refused "rc=$RC $(show)"; fi
 
 # 13 drop_legacy_repo_token: entfernt GH_TOKEN (nur die Zeile), warnt einmal, zweiter Lauf still; fehlende Datei egal
 envf="$W/core.env"; printf 'INSTALL_PROFILE=release\nGH_TOKEN=%s\nHOUSEHOLD_TIMEZONE=Europe/Berlin\n' "$OLDTOK" > "$envf"

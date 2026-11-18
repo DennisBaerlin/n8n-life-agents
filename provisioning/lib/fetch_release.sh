@@ -105,38 +105,30 @@ _asset_url() {
   printf '%s' "$u"
 }
 
-# _release_fetch_verify <release-json> <dir> <tarball-name> <tag> <keyring|''> — Tarball + Pruefdaten laden und VOR dem
-#   Entpacken pruefen. Mit Schluesselbund (ab der ersten signierenden Version fest in /etc/lifeagents, nie aus dem Release
-#   selbst): SHA256SUMS muss per gpgv gegen GENAU dieses Bund gueltig unterschrieben sein (SHA256SUMS.sig, Muster Debian
-#   SecureApt), dann muss die exakte Zeile "<sha256>  <tarball-name>" darin stehen. Ohne Bund: das Sidecar
-#   <tarball>.sha256 (nur Unversehrtheit, keine Echtheit).
+# _release_fetch_verify <release-json> <dir> <tarball-name> <tag> <keyring> — Tarball + Pruefdaten laden und VOR dem
+#   Entpacken pruefen. Der Schluesselbund (ab der ersten signierenden Version fest in /etc/lifeagents, nie aus dem Release
+#   selbst) ist Pflicht: SHA256SUMS muss per gpgv gegen genau dieses Bund gueltig unterschrieben sein (SHA256SUMS.sig, Muster
+#   Debian SecureApt), dann muss die exakte Zeile "<sha256>  <tarball-name>" darin stehen. Ein Ausweichen auf eine blosse
+#   Pruefsumme aus demselben Release gibt es nicht (Unversehrtheit ohne Echtheit).
 _release_fetch_verify() {
   local rel="$1" dir="$2" name="$3" tag="$4" kr="$5" url sum
+  [ -n "$kr" ] || die_because signature "Kein Release-Schlüssel vorhanden — ohne Prüfung der Unterschrift wird nichts installiert, ABBRUCH vor dem Download."
   url="$(_asset_url "$rel" "$name")"
   [ -n "$url" ] || die "Asset '$name' fehlt im Release ${tag}."
   _gh_fetch 'application/octet-stream' "$url" "$dir/$name" 600 "$name"
-  if [ -n "$kr" ]; then
-    command -v gpgv >/dev/null 2>&1 || die_because signature "gpgv fehlt — ohne Prüfung der Unterschrift wird nichts installiert (apt-get install gpgv)."
-    for _f in SHA256SUMS SHA256SUMS.sig; do
-      url="$(_asset_url "$rel" "$_f")"
-      [ -n "$url" ] || die_because signature "Release ${tag} ist nicht unterschrieben (Asset '$_f' fehlt) — ABBRUCH vor dem Entpacken."
-      _gh_fetch 'application/octet-stream' "$url" "$dir/$_f" 60 "$_f"
-    done
-    mkdir -p "$dir/.gpgv"; chmod 0700 "$dir/.gpgv"
-    gpgv --homedir "$dir/.gpgv" --keyring "$kr" "$dir/SHA256SUMS.sig" "$dir/SHA256SUMS" >/dev/null 2>&1 \
-      || die_because signature "Die Unterschrift von Release ${tag} ist ungültig (nicht mit dem Projekt-Schlüssel signiert) — ABBRUCH vor dem Entpacken, es wurde nichts installiert."
-    sum="$(sha256sum "$dir/$name" | cut -d' ' -f1)"
-    grep -qxF "${sum}  ${name}" "$dir/SHA256SUMS" \
-      || die_because checksum "'${name}' passt nicht zur unterschriebenen Prüfsummenliste — ABBRUCH vor dem Entpacken (manipuliertes/korruptes Asset)."
-    ok "Unterschrift + SHA256 verifiziert: $name"
-  else
-    url="$(_asset_url "$rel" "${name}.sha256")"
-    [ -n "$url" ] || die "Asset '${name}.sha256' fehlt im Release ${tag}."
-    _gh_fetch 'application/octet-stream' "$url" "$dir/${name}.sha256" 60 "${name}.sha256"
-    ( cd "$dir" && sha256sum -c "${name}.sha256" ) >/dev/null 2>&1 \
-      || die_because checksum "SHA256-Verifikation fehlgeschlagen fuer '$name' — ABBRUCH vor dem Entpacken (manipuliertes/korruptes Asset)."
-    ok "SHA256 verifiziert: $name"
-  fi
+  command -v gpgv >/dev/null 2>&1 || die_because signature "gpgv fehlt — ohne Prüfung der Unterschrift wird nichts installiert (apt-get install gpgv)."
+  for _f in SHA256SUMS SHA256SUMS.sig; do
+    url="$(_asset_url "$rel" "$_f")"
+    [ -n "$url" ] || die_because signature "Release ${tag} ist nicht unterschrieben (Asset '$_f' fehlt) — ABBRUCH vor dem Entpacken."
+    _gh_fetch 'application/octet-stream' "$url" "$dir/$_f" 60 "$_f"
+  done
+  mkdir -p "$dir/.gpgv"; chmod 0700 "$dir/.gpgv"
+  gpgv --homedir "$dir/.gpgv" --keyring "$kr" "$dir/SHA256SUMS.sig" "$dir/SHA256SUMS" >/dev/null 2>&1 \
+    || die_because signature "Die Unterschrift von Release ${tag} ist ungültig (nicht mit dem Projekt-Schlüssel signiert) — ABBRUCH vor dem Entpacken, es wurde nichts installiert."
+  sum="$(sha256sum "$dir/$name" | cut -d' ' -f1)"
+  grep -qxF "${sum}  ${name}" "$dir/SHA256SUMS" \
+    || die_because checksum "'${name}' passt nicht zur unterschriebenen Prüfsummenliste — ABBRUCH vor dem Entpacken (manipuliertes/korruptes Asset)."
+  ok "Unterschrift + SHA256 verifiziert: $name"
 }
 
 # <<< gh-download

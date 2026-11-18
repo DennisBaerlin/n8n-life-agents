@@ -135,7 +135,7 @@ Diesen Abschnitt brauchst du nur beim FritzBox-Weg und beim eigenen Proxy; beim 
 **Für jeden Proxy gilt:**
 
 - Leite **ausschließlich** diese Adress-Pfade an n8n weiter — alles andere soll der Proxy abweisen oder anderswohin schicken:
-  - `/webhook/*`, `/webhook-test/*`, `/webhook-waiting/*`, `/webhook-waiting-telegram`
+  - `/webhook/*`, `/webhook-waiting/*`, `/webhook-waiting-telegram`
   - `/webhook-waiting/*` und `/webhook-waiting-telegram` sind **Pflicht** — darüber laufen die Bestätigungs-Knöpfe. Mit `/webhook-waiting-telegram` antworten die Knöpfe direkt im Chat (ein Tipp, kein Browserfenster); fehlt die Route, öffnen sie stattdessen eine Webseite. Ob alles passt, zeigt `lifeagents doctor`; hast du die Route nachträglich ergänzt, schaltet `lifeagents update` das Bestätigen im Chat ein.
 - Reiche die Header `X-Forwarded-For`, `X-Forwarded-Host` und `X-Forwarded-Proto` an n8n durch (Caddy macht das automatisch).
 - Sorge für ein gültiges HTTPS-Zertifikat (z. B. Let's Encrypt) auf deiner Domain.

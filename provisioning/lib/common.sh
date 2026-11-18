@@ -1487,7 +1487,10 @@ HITL_ROUTE_SUFFIX='/webhook-waiting-telegram'
 # Die eine Liste oeffentlicher Pfade fuer beide Installationswege (contract_lint 34): das Caddyfile der CLI
 # (templates/Caddyfile.tpl), die Hilfetexte fuer einen eigenen Proxy (owner_connect.sh) und der Rand des Docker-Verbunds
 # (lib/reach.sh schreibt denselben Baustein fuer edge). /webhook-waiting/* ist Pflicht fuer die Bestaetigungs-Knoepfe.
-LA_PUBLIC_PATHS='/webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram'
+LA_PUBLIC_PATHS='/webhook/* /webhook-waiting/* /webhook-waiting-telegram'
+# Nie oeffentlich: der Pfad /webhook-test startet Test-Laeufe aus dem Editor (contract_lint 34 haelt ihn aus der Liste). Ein aelterer Stand hat den Pfad noch im Funnel;
+# reach_cli_funnel_ensure nimmt ihn zurueck (er zaehlt dort als unser Rest, nicht als fremder Eintrag).
+LA_RETIRED_PUBLIC_PATHS='/webhook-test'
 # caddy_webhook_block <template-dir> <upstream> -> der Einfuege-Baustein aus Caddyfile.tpl (Block zwischen den
 #   lifeagents-webhooks-Markern, ohne Einrueckung): Pfad-Matcher + Weiterleitung an <upstream>.
 caddy_webhook_block() {

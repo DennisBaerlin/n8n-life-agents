@@ -488,6 +488,13 @@ repos:
         pass_filenames: false
         files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/main_push_guard_test|scripts/main_push_guard|scripts/lib/(main_push|ci_wait|github_runs|owner_machine|git_sandbox))\.ps1$
 
+      - id: probe-window-test
+        name: probe_window_test (monitor_probe_test computes its reminder window after waiting past the hour change; injected clock, no substrate)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/probe_window_test.ps1
+        pass_filenames: false
+        files: ^scripts/(dev/probe_window_test|lib/probe_window)\.ps1$
+
       - id: cron-toggle-lint-test
         name: cron_toggle_lint_test (a sending cron without budget path turns rule k red; no Docker)
         language: system

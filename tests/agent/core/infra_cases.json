@@ -719,5 +719,13 @@
     "check_node": "Build Agent Input", "check_field": "system_prompt",
     "must_be_nonempty": true, "must_contain": null, "must_not_contain": "## Bank export file", "must_equal": null,
     "notes": "Zweig ohne Tabellen-Marker: der Vorab-Knoten laeuft nicht, Build Agent Input darf ihn nur ueber isExecuted lesen (sonst bricht jede Finance-Nachricht ohne Datei mit Referenced node is unexecuted ab). Bleibt auch vor dem Fix gruen."
+  },
+  {
+    "id": "ic46d", "name": "Test-Datei mit Datums-Platzhaltern: Mock-Telegram liefert Zeilen relativ zu heute, der N26-Leser erkennt sie", "requires": ["mock_telegram", "mock_llm"],
+    "harness_path": "finance-test", "target_name": "agent.finance", "agent_state": true,
+    "body": { "task": "Infra-Test Export mit Zeilen von heute [attachment file_id=mock_photo_after_period type=document ext=csv]", "chat_id": "__OWNER_CHAT_ID__", "call_depth": 0 },
+    "check_node": "Build Agent Input", "check_field": "system_prompt",
+    "must_be_nonempty": null, "must_contain": "\"bank\":\"N26\"", "must_not_contain": null, "must_equal": null,
+    "notes": "Grundlage des E2E-Falls zu Teil b (Antwort nach dem Buchen): tests/mock_telegram/docs/mock_photo_after_period.csv traegt {{date:-10d}} und {{date:0d}}, der Mock loest sie beim Ausliefern auf (tests/util/date_placeholder.js). Ohne Aufloesung lehnt der N26-Leser die Datumszellen ab -> kein Abschnitt -> rot. Ohne N26-Konto in den Fixtures steht account_code account_unknown im Abschnitt; die Bank kommt trotzdem."
   }
 ]

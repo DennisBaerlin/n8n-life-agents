@@ -146,6 +146,9 @@ $r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_telegram')
 if ($r.Code -ne 0) { throw "mkdir /opt/mock_telegram fehlgeschlagen: $($r.Output -join "`n")" }
 $r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
 if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
+# Datums-Platzhalter (tests/util/date_placeholder.js, eine JS-Adresse fuer beide Attrappen) neben server.js
+$r = Invoke-Native docker @('cp',(Join-Path $RepoRoot 'tests\util\date_placeholder.js'),"${Container}:/opt/mock_telegram/date_placeholder.js")
+if ($r.Code -ne 0) { throw "docker cp date_placeholder.js fehlgeschlagen: $($r.Output -join "`n")" }
 # Echte Test-Dokumente (tests/mock_telegram/docs, make_doc_fixtures.ps1) -> /opt/mock_telegram/docs; der Mock liefert
 # sie fuer die passenden file_ids aus (Echt-LLM-Tier liest so ein lesbares Dokument statt des 1x1-PNG).
 $DocsHost = Join-Path $RepoRoot 'tests\mock_telegram\docs'

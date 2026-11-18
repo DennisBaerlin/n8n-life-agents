@@ -1256,6 +1256,22 @@ function Get-ReadToolOutput([object]$RunData, [int]$PerCall = 1200, [int]$Total 
     if ($cut -gt 0) { $lines += "... ($cut weitere Aufrufe gekuerzt)" }
     return ($lines -join "`n")
 }
+# Rueckgaben der Schreib-Werkzeuge aus dem runData des Agenten, aeltester zuerst, fuer den Bewerter (e2e_test: nach einer
+# zugestimmten Karte steht dort das Ergebnis des Writes, z. B. der Ausgang des Monats-Checks). Format wie Get-ReadToolOutput.
+function Get-WriteToolOutput([object]$RunData, [int]$PerCall = 3000) {
+    $runs = @()
+    foreach ($p in $RunData.PSObject.Properties) {
+        if (-not (Test-IsWriteTool $p.Name)) { continue }
+        foreach ($r in @($p.Value)) {
+            $j = $null; try { $j = $r.data.ai_tool[0][0].json } catch { }
+            if ($null -eq $j) { continue }
+            $txt = ($j | ConvertTo-Json -Depth 6 -Compress)
+            if ($txt.Length -gt $PerCall) { $txt = $txt.Substring(0, $PerCall) + ' ...' }
+            $runs += [pscustomobject]@{ start = [double]$r.startTime; line = "$($p.Name): $txt" }
+        }
+    }
+    return (@($runs | Sort-Object start | ForEach-Object { $_.line }) -join "`n")
+}
 function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
     foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }
     return $null

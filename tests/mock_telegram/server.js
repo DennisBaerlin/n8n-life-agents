@@ -50,17 +50,6 @@ function noExtBytes(kind) {
 // Grosse Dateien (Last-Test des Mehrfach-Lesers): file_id mock_big_<MB>_<x>, gueltige PDF-Kennung + Fuellbytes.
 function bigBytes(mb, tag) { const b = Buffer.alloc(mb * 1024 * 1024, tag); b.write('%PDF-1.4\n', 0, 'latin1'); return b; }
 
-// CSV-Test-Dateien duerfen Datums-Platzhalter {{date:...}} tragen (Zeilen relativ zu heute, z. B. eine Zahlung vom Importtag);
-// aufgeloest beim Ausliefern, Grammatik in tests/util/date_placeholder.js (enable_mock_telegram.ps1 kopiert sie hierher).
-const { resolveDatePlaceholders } = (() => {
-  try { return require('./date_placeholder.js'); }
-  catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; return require('../util/date_placeholder.js'); }
-})();
-function docBytes(doc) {
-  const raw = fs.readFileSync(doc.p);
-  if (doc.ext !== 'csv' || raw.indexOf('{{date:') === -1) return raw;
-  return Buffer.from(resolveDatePlaceholders(raw.toString('utf8')), 'utf8');
-}
 function docFor(fid) {
   for (const ext of ['pdf', 'png', 'csv', 'xlsx']) {
     const p = path.join(DOC_DIR, fid + '.' + ext);
@@ -277,7 +266,7 @@ const server = http.createServer((req, res) => {
     const doc = docFor(dd[1]);
     if (doc && doc.ext === dd[2]) {
       res.writeHead(200, { 'Content-Type': doc.ext === 'pdf' ? 'application/pdf' : doc.ext === 'csv' ? 'text/csv' : doc.ext === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'image/png' });
-      res.end(docBytes(doc));
+      res.end(fs.readFileSync(doc.p));
       return;
     }
   }

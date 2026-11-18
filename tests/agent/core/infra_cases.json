@@ -726,6 +726,6 @@
     "body": { "task": "Infra-Test Export mit Zeilen von heute [attachment file_id=mock_photo_after_period type=document ext=csv]", "chat_id": "__OWNER_CHAT_ID__", "call_depth": 0 },
     "check_node": "Build Agent Input", "check_field": "system_prompt",
     "must_be_nonempty": null, "must_contain": "\"bank\":\"N26\"", "must_not_contain": null, "must_equal": null,
-    "notes": "Grundlage des E2E-Falls zu Teil b (Antwort nach dem Buchen): tests/mock_telegram/docs/mock_photo_after_period.csv traegt {{date:-10d}} und {{date:0d}}, der Mock loest sie beim Ausliefern auf (tests/util/date_placeholder.js). Ohne Aufloesung lehnt der N26-Leser die Datumszellen ab -> kein Abschnitt -> rot. Ohne N26-Konto in den Fixtures steht account_code account_unknown im Abschnitt; die Bank kommt trotzdem."
+    "notes": "Grundlage des E2E-Falls zu Teil b (Antwort nach dem Buchen): tests/mock_telegram/docs/mock_photo_after_period.csv traegt {{date:-10d}} und {{date:0d}}, enable_mock_telegram.ps1 loest sie beim Kopieren in den Container auf (scripts/lib/date_placeholder.ps1, Tag der Datenbank). Ohne Aufloesung lehnt der N26-Leser die Datumszellen ab -> kein Abschnitt -> rot. Ohne N26-Konto in den Fixtures steht account_code account_unknown im Abschnitt; die Bank kommt trotzdem."
   }
 ]

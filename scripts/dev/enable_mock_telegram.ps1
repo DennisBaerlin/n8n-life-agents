@@ -146,15 +146,36 @@ $r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_telegram')
 if ($r.Code -ne 0) { throw "mkdir /opt/mock_telegram fehlgeschlagen: $($r.Output -join "`n")" }
 $r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
 if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
-# Datums-Platzhalter (tests/util/date_placeholder.js, eine JS-Adresse fuer beide Attrappen) neben server.js
-$r = Invoke-Native docker @('cp',(Join-Path $RepoRoot 'tests\util\date_placeholder.js'),"${Container}:/opt/mock_telegram/date_placeholder.js")
-if ($r.Code -ne 0) { throw "docker cp date_placeholder.js fehlgeschlagen: $($r.Output -join "`n")" }
 # Echte Test-Dokumente (tests/mock_telegram/docs, make_doc_fixtures.ps1) -> /opt/mock_telegram/docs; der Mock liefert
 # sie fuer die passenden file_ids aus (Echt-LLM-Tier liest so ein lesbares Dokument statt des 1x1-PNG).
 $DocsHost = Join-Path $RepoRoot 'tests\mock_telegram\docs'
 if (Test-Path $DocsHost) {
     $r = Invoke-Native docker @('cp',(Join-Path $DocsHost '.'),"${Container}:/opt/mock_telegram/docs")
     if ($r.Code -ne 0) { throw "docker cp docs/ fehlgeschlagen: $($r.Output -join "`n")" }
+    # CSV-Test-Dateien mit Datums-Platzhaltern {{date:...}} (Zeilen relativ zu heute, z. B. eine Zahlung vom Importtag): hier
+    # aufgeloest (scripts/lib/date_placeholder.ps1), Bezugstag = Kalendertag der Datenbank (core.fn_today), mit dem Prepare,
+    # setup_sql und verify_sql rechnen (der UTC-Tag wiche nachts ab). Der Mock selbst bleibt ohne Abhaengigkeit (jede Kopie von
+    # server.js laeuft allein; Waechter: date_placeholder_test). Ueberschreibt die eben kopierte Datei gleichen Namens.
+    . (Join-Path $RepoRoot 'scripts\lib\date_placeholder.ps1')
+    $phDocs = @(Get-ChildItem -LiteralPath $DocsHost -Filter '*.csv' | Where-Object {
+        [System.IO.File]::ReadAllText($_.FullName, (New-Object System.Text.UTF8Encoding($false))).Contains('{{date:') })
+    if ($phDocs.Count) {
+        $dbToday = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'SELECT core.fn_today();')).Output -join '').Trim()
+        if ($dbToday -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "core.fn_today() im Substrat nicht lesbar: '$dbToday'" }
+        $day = [datetime]::ParseExact($dbToday, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+        $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "mock_tg_docs_$PID"
+        New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+        try {
+            foreach ($doc in $phDocs) {
+                $txt = Resolve-DatePlaceholder -Text ([System.IO.File]::ReadAllText($doc.FullName, (New-Object System.Text.UTF8Encoding($false)))) -Today $day
+                $out = Join-Path $tmpDir $doc.Name
+                [System.IO.File]::WriteAllText($out, $txt, (New-Object System.Text.UTF8Encoding($false)))
+                $r = Invoke-Native docker @('cp',$out,"${Container}:/opt/mock_telegram/docs/$($doc.Name)")
+                if ($r.Code -ne 0) { throw "docker cp $($doc.Name) fehlgeschlagen: $($r.Output -join "`n")" }
+            }
+        } finally { Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+        Write-Host "Test-Dateien mit Datums-Platzhaltern aufgeloest (Bezugstag $dbToday): $(@($phDocs.Name) -join ', ')"
+    }
 }
 
 # --- 2) Mock als transiente systemd-unit starten (Reload: stop+start, um neue server.js zu ziehen) ---
@@ -162,13 +183,9 @@ $nodeBin = ((Invoke-Native docker @('exec',$Container,'sh','-c','command -v node
 if (-not $nodeBin) { throw "node im Container nicht gefunden (n8n bringt Node mit — Substrat ok?)." }
 Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
 Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
-# Bezugstag der Datums-Platzhalter in Test-Dateien = Kalendertag der Datenbank (core.fn_today, Haushalts-Zeitzone): Prepare,
-# setup_sql und verify_sql rechnen damit; der UTC-Tag wiche nachts ab (Zeile von heute laege auf period_end).
-$dbToday = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'SELECT core.fn_today();')).Output -join '').Trim()
-if ($dbToday -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "core.fn_today() im Substrat nicht lesbar: '$dbToday'" }
 Write-Host "Starte Mock-Telegram (systemd-unit $Unit, 127.0.0.1:$MockPort) ..."
 $r = Invoke-Native docker @('exec',$Container,'systemd-run',"--unit=$Unit",'--collect',
-    "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog","--setenv=MOCK_LLM_TODAY=$dbToday",
+    "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog",
     $nodeBin,$ServerInC)
 if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join "`n")" }
 

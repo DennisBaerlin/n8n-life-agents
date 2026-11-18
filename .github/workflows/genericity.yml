@@ -318,8 +318,13 @@ jobs:
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/core.sh"
+          # check laedt nichts (Pruef-Container aus dem eigenen Abbild): das Abbild des anchor fehlt auf dem frischen Runner
+          # und fehlt danach weiter, sonst stuende es auf der Merkliste und bliebe nach --delete-data liegen.
+          ai="$(LA_PG_SUPERPW=unused docker compose -f provisioning/compose/compose.yml config --format json | jq -r '.services.anchor.image')"
+          had=0; if docker image inspect "$ai" >/dev/null 2>&1; then had=1; fi
           core_run check check
           core_res check | jq -e '.ok == true and ([.checks[] | select(.ok)] | length) == 6'
+          if [ "$had" = 0 ] && docker image inspect "$ai" >/dev/null 2>&1; then echo "FAIL check hat $ai geladen"; exit 1; fi
           test -z "$(docker volume ls -q --filter "name=${LA_PROJECT}_probe")"   # Pruef-Volume wieder weg
           # Leeres Docker: up legt Werte und Volumes an. Beweist die Reihenfolge Volume vor Werte-Datei, die die Attrappe nicht
           # sieht (ein Lese-Container auf ein fehlendes Volume legte es ohne Etikett an).
@@ -577,6 +582,8 @@ jobs:
           docker rm -fv "$LA_PROJECT-tgmock" >/dev/null 2>&1 || true   # Test-Container am anchor, nicht Teil des Verbunds
           imgs="$(LA_PG_SUPERPW=unused docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox config --images | sort -u)"
           before="$(vol_cat var_la core-foreign-images)"
+          ai="$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-anchor")"
+          if printf '%s\n' "$before" | grep -qxF "$ai"; then echo "FAIL $ai auf der Merkliste (lag vor dem ersten up nicht da)"; exit 1; fi
           core_run del uninstall --delete-data
           core_res del | jq -e '.ok and (.removed.volumes | length) == 9 and (.removed.images | length) > 0'
           core_res del | jq -e --arg m "$MASTER_PIN" '[.kept[] | select(.what == $m)] | length == 1'   # nutzt der Kern gerade

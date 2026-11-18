@@ -42,7 +42,9 @@ err() {
   [ -n "$SC_LASTF" ] && printf '%s\n' "$*" >> "$SC_LASTF" 2>/dev/null
   return 0
 }
-_sc_line() { if [ "$SC_JSON" = 1 ]; then printf '%s\n' "$1"; fi; }
+# JSON-Zeilen ueber fd 9 = stdout beim Start (sc_main): ein Trap laeuft mitten in einem Schritt mit `>&2`, dessen Umleitung
+# dann noch gilt; ueber fd 1 landete das result sonst auf stderr.
+_sc_line() { if [ "$SC_JSON" = 1 ]; then printf '%s\n' "$1" >&9; fi; }
 sc_step() {
   _sc_line "$(jq -cn --arg verb "$SC_VERB" --arg step "$1" '{v:1,type:"progress",verb:$verb,step:$step}')"
   log "stack ${SC_VERB}: ${1}"
@@ -113,17 +115,45 @@ sc_init() {
 _sc_need_core() {
   [ "${LA_CORE:-}" = 1 ] || sc_fail in_master "stack ${SC_VERB} laeuft nur als eigener Kurzlauf-Container (docker run … stack ${SC_VERB}), nicht im master."
 }
-# sc_lock — kein laufender master-Wechsel; sonst legte der Helfer den master gleich neu an. Eine offene Zustandsdatei zaehlt
-#   nur, solange der master laeuft: nur sein Tick schliesst sie ab. Ohne master (Wechsel endete in rollback_failed, master
-#   gestorben) kaeme dieser Tick nie, und der Verbund liesse sich weder starten noch entfernen.
+# _sc_vget <kurzname> <datei> — Datei aus einem eigenen Volume nach SC_VREAD. rc 0 = gelesen, 1 = fehlt. Ein Lesefehler
+#   (rt_vol_get rc 2) bricht bei up/install ab, statt als „fehlt“ zu gelten (dort entstuenden neues Passwort, neue Ports,
+#   eine ueberschriebene Werte-Datei); die anderen Verben schreiben keine Werte und werten ihn als leer.
+_sc_vget() {
+  local rc=0
+  SC_VREAD="$(rt_vol_get "$1" "$2")" || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) SC_VREAD=''; return 1 ;;
+    *) SC_VREAD=''
+       case "$SC_VERB" in up|install) ;; *) warn "Datei ${2} im Volume ${LA_PROJECT}_${1} nicht lesbar — gilt hier als leer."; return 1 ;; esac
+       sc_fail internal "Die Datei ${2} im Volume ${LA_PROJECT}_${1} liess sich nicht lesen — nichts geaendert." ;;
+  esac
+}
+# sc_lock — kein laufender master-Wechsel; sonst legte der Helfer den master gleich neu an. Gegenstueck: master_swap_begin
+#   prueft den Kern nach dem Schreiben der Zustandsdatei ein zweites Mal (lib/master_swap.sh).
+#   Eine offene Zustandsdatei zaehlt fuer Anlegen/Starten/Einrichten nur, solange der master laeuft: nur sein Tick schliesst
+#   sie ab; ohne master kaeme dieser Tick nie. Den Abbau sperrt sie nur als frische Uebergabe (PHASE=handoff, juenger als
+#   10 Min laut STARTED, der Helfer startet gleich): ein laufender, aber kaputter master (rollback_failed) liesse sich sonst
+#   nie entfernen.
 sc_lock() {
+  local phase started age
   if rt_swap_helper_running; then sc_fail busy "Gerade laeuft ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."; fi
-  if [ -n "$(rt_vol_get var_la master-swap/state || true)" ]; then
-    if rt_container_running "$(rt_master_container)"; then
-      sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
+  _sc_vget var_la master-swap/state || return 0
+  [ -n "$SC_VREAD" ] || return 0
+  if [ "$SC_VERB" = uninstall ]; then
+    phase="$(sed -n 's/^PHASE=//p' <<<"$SC_VREAD" | head -n1)"
+    started="$(sed -n 's/^STARTED=//p' <<<"$SC_VREAD" | head -n1)"
+    age=$(( $(date +%s) - $(date -d "${started:-1970-01-01T00:00:00Z}" +%s 2>/dev/null || echo 0) ))
+    if [ "$phase" = handoff ] && [ "$age" -lt 600 ]; then
+      sc_fail busy "Gerade beginnt ein Update (master-Wechsel) — danach erneut versuchen. Nichts geaendert."
     fi
-    warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
+    warn "Ein master-Wechsel ist offen (Phase ${phase:-?}) — der Abbau geht trotzdem."
+    return 0
   fi
+  if rt_container_running "$(rt_master_container)"; then
+    sc_fail busy "Ein master-Wechsel ist noch offen — er wird beim naechsten Tick abgeschlossen; danach erneut versuchen. Nichts geaendert."
+  fi
+  warn "Ein master-Wechsel ist offen, aber kein master laeuft — der naechste master entscheidet nach seinem Abbild."
   return 0
 }
 # sc_delegate — laeuft die Installation mit einem anderen Abbild, macht deren eigener Kern die Arbeit (ein neuerer oder
@@ -138,9 +168,13 @@ sc_delegate() {
       [ -z "${LA_CORE_DELEGATED:-}" ] || sc_fail internal "Weitergabe: der master laeuft mit ${img}, nicht mit diesem Abbild."
       log "Die Installation laeuft mit ${img} — dessen Kern uebernimmt."
       rt_core_delegate "$img" "${SC_ARGS[@]}" || rc=$?
-      case "$rc" in 125|126|127) sc_fail internal "Weitergabe an ${img} lief nicht (Docker-Exit ${rc})." ;; esac
-      SC_DONE=1
-      exit "$rc"
+      # Der innere Kern endet nur mit 0/1 und hat dann sein result geschrieben; alles andere (Docker 125–127, Signal 137/143)
+      # heisst: kein result -> dieser Kern schreibt eines.
+      case "$rc" in
+        0|1) SC_DONE=1; exit "$rc" ;;
+        125|126|127) sc_fail internal "Weitergabe an ${img} lief nicht (Docker-Exit ${rc})." ;;
+        *) sc_fail internal "Die Weitergabe an ${img} endete unerwartet (Exit ${rc})." ;;
+      esac
     fi
     # Starten, Ansehen und Entfernen haengen nicht an den Pins dieses Abbilds; Anlegen und Einrichten schon.
     case "$SC_VERB" in
@@ -149,7 +183,8 @@ sc_delegate() {
     sc_fail legacy_installation "Diese Installation stammt von vor dem Kern (${img}); zuerst im Chat aktualisieren. Nichts geaendert."
   fi
   if [ -z "$img" ]; then
-    inst="$(rt_vol_get rt_tree VERSION | tr -d '[:space:]' || true)"
+    _sc_vget rt_tree VERSION || true
+    inst="$(tr -d '[:space:]' <<<"$SC_VREAD")"
     # Ohne master liefen sonst die eigenen Pins ueber Daten einer anderen Fassung: neuere Daten verstuende dieses Programm
     # nicht, aeltere bekaemen neue Pins (z. B. eine neue Postgres-Hauptversion) ohne Sicherung vorher (upgrade_guard).
     if is_release_tag "$inst" && is_release_tag "$own" && [ "$inst" != "$own" ]; then
@@ -175,7 +210,8 @@ _sc_any_container() {
 sc_values_read() {
   local line k v m src
   SV=()
-  SC_VALUES_STORED="$(rt_vol_get var_la "$SC_VALUES_FILE" || true)"
+  _sc_vget var_la "$SC_VALUES_FILE" || true
+  SC_VALUES_STORED="$SC_VREAD"
   m="$(rt_master_container)"
   src="$SC_VALUES_STORED"
   if [ -n "$(rt_container_id "$m" || true)" ]; then src="${src}"$'\n'"$(rt_container_env "$m" || true)"; fi
@@ -203,7 +239,8 @@ sc_values_complete() {
   local k p
   if [ -z "${SV[LA_PG_SUPERPW]:-}" ]; then
     # Initialisiert = PG_VERSION liegt im Volume; ein leeres pgdata (erster Lauf vor dem Start abgebrochen) ist keine Datenbank.
-    if [ -n "$(rt_vol_get pgdata PG_VERSION || true)" ]; then
+    _sc_vget pgdata PG_VERSION || true
+    if [ -n "$SC_VREAD" ]; then
       sc_fail values_lost "Die Datenbank ist da, ihr Passwort aber nirgends mehr gespeichert — ein neues Passwort sperrte die Daten aus. Nichts geaendert."
     fi
     SV[LA_PG_SUPERPW]="$(rand_hex 32)"
@@ -256,6 +293,9 @@ _sc_probe_subpath() {
 # sc_checks — setzt SC_CHECKS (JSON-Liste), SC_WARNINGS (JSON-Liste) und SC_CHECK_REASON (erster rote Grund, leer = alles gut).
 sc_checks() {
   local rows=() warns=() v avail mem sp=0
+  # Pruef-Container aus dem eigenen Abbild (liegt schon vor), nicht aus busybox: check laedt so nichts. Ein von check
+  # geladenes busybox stuende sonst auf der Merkliste des ersten up und bliebe nach --delete-data liegen.
+  local LA_PROBE_IMAGE="$SC_SELF"
   SC_CHECK_REASON=''
   _sc_chk() {
     rows+=("$(jq -cn --arg id "$1" --arg r "${2:-}" 'if $r == "" then {id:$id,ok:true} else {id:$id,ok:false,reason:$r} end')")
@@ -498,7 +538,12 @@ sc_main() {
     esac
   done
   SC_LASTF="$(mktemp)"
+  exec 9>&1
   trap _sc_on_exit EXIT
+  # Als PID 1 des Kern-Containers ignoriert bash SIGTERM ohne eigenen Handler: `docker stop` toetete ihn erst nach 10 s per
+  # SIGKILL, ohne result. Mit Handler endet er sofort nach dem laufenden Schritt, der EXIT-Trap schreibt das result.
+  trap 'err "Abgebrochen (Signal TERM)."; exit 143' TERM
+  trap 'err "Abgebrochen (Signal INT)."; exit 130' INT
   case "$SC_VERB" in
     check) sc_check ;; up) sc_up ;; start) sc_start ;; status) sc_status ;; wizard-url) sc_wizard_url ;;
     install) sc_install ;; uninstall) sc_uninstall ;;

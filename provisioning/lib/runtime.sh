@@ -308,8 +308,6 @@ rt_master_write() {
 }
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
-# rt_master_exec_in <befehl…> — wie rt_master_exec, reicht aber stdin weiter (Antwort-Datei fuer provision.sh).
-rt_master_exec_in() { docker exec -i "$(rt_master_container)" "$@"; }
 
 # --- Kern (lib/stack_core.sh): Kurzlauf aus dem master-Abbild, der den Verbund anlegt, prueft und entfernt -------------
 # Fester Name = Sperre gegen einen zweiten Kern (Docker lehnt den Namen ab, bevor etwas geschieht); die Weitergabe an das
@@ -363,10 +361,14 @@ rt_volume_label() { docker volume inspect -f "{{index .Labels \"${LA_LABEL}\"}}"
 #   Volume legte es still ohne Label an, und rt_volumes_ensure braeche danach ab.
 rt_vol_own() { [ "$(rt_volume_label "${LA_PROJECT}_$1")" = "$LA_PROJECT" ]; }
 # rt_vol_get <kurzname> <datei> -> Inhalt einer Datei im eigenen Volume (busybox, ohne Netz, nur lesend gemountet).
-#   rc 1 = Volume oder Datei fehlt.
+#   rc 1 = Volume oder Datei fehlt, rc 2 = Lesen gescheitert (Container lief nicht, Abbild fehlt ohne Netz, …). Der Kern
+#   wertet rc 2 nie als „fehlt“: sonst erzeugte er ein neues Passwort ueber einer Datenbank mit altem.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
 rt_vol_get() {
+  local rc=0
   rt_vol_own "$1" || return 1
-  _rt_host_run "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" cat "/$1/$2" 2>/dev/null
+  _rt_host_run "type=volume,src=${LA_PROJECT}_$1,dst=/$1,readonly" sh -c '[ -e "$1" ] || exit 3; cat "$1"' _ "/$1/$2" 2>/dev/null || rc=$?
+  case "$rc" in 0) return 0 ;; 3) return 1 ;; *) return 2 ;; esac
 }
 # rt_vol_put <kurzname> <datei> — stdin als Datei (0600 root) ins eigene Volume: erst .part, dann umbenannt.
 # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
@@ -419,9 +421,9 @@ rt_image_rm_own() {
 # --- Laufzeit im Verbund: Image-Wechsel, Messung, Rechner-Ordner, Abbau -------------------------------------------------
 # rt_container_image <container> -> das Image (Name@Digest wie in compose.yml), mit dem der Container angelegt wurde.
 rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
-# rt_container_running <container> — 0 = laeuft.
 # rt_container_health <container> -> Zustand des Healthchecks (healthy|unhealthy|starting), leer ohne Healthcheck.
 rt_container_health() { docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$1" 2>/dev/null; }
+# rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das diese Datei selbst nennt (Release-Pin:
 #   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt

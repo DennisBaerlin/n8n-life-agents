@@ -15,7 +15,7 @@
 --   ein alter Auszug drueckt die Vorschau also beliebig tief -> fn_advisor_review warnt ab finance.statement_stale_days
 --   nicht mehr vor Unterdeckung, sondern meldet den veralteten Auszug.
 --   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'); sonst 0 (buffer_source 'none') ohne
---   erwarteten Abgang oder mit Alltag laut Auszuegen bekannt 0 (has_history, everyday_per_day = 0), auch wenn Sparplaene
+--   erwarteten Abgang oder mit Alltag laut Auszuegen bekannt 0 (gezaehlte Auszugstage > 0, everyday_per_day = 0), auch wenn Sparplaene
 --   oder Dauerauftraege abgehen: der Puffer faengt nur die Alltags-Schaetzung ab, ein Minus bleibt ein Fehlbetrag; ohne
 --   Auszug (Alltag unbekannt) mit Abgang core.config finance.coverage_buffer_eur (Default 250) in die Kontowaehrung
 --   umgerechnet (buffer_source 'default'). outflow_expected = Abgang in der Reihe bis zum Horizont (planned_out < 0),
@@ -123,9 +123,13 @@ BEGIN
     IF v_acct.min_balance IS NOT NULL THEN
         v_buffer := v_acct.min_balance;
         v_bsrc   := 'account';
-    ELSIF NOT v_outx OR (COALESCE(v_hist, false) AND COALESCE(v_per_day, 0) = 0) THEN
+    ELSIF NOT v_outx
+          OR (COALESCE(v_per_day, 0) = 0
+              AND (SELECT COALESCE(sum(b.days) FILTER (WHERE b.counted), 0) > 0
+                   FROM finance.fn_account_everyday_basis(p_account_id) b)) THEN
         -- nichts geht ab, oder Alltag laut Auszuegen bekannt 0: der Standard-Puffer faengt nur die Alltags-Schaetzung ab,
-        -- geplante Abgaenge stehen exakt in der Reihe; ein Minus bleibt ein Fehlbetrag (shortfall > 0)
+        -- geplante Abgaenge stehen exakt in der Reihe; ein Minus bleibt ein Fehlbetrag (shortfall > 0). „Bekannt“ heisst
+        -- gezaehlte Auszugstage > 0: has_history allein gilt auch fuer einen Auszug ohne neuen Tag (per_day dann 0)
         v_buffer := 0;
         v_bsrc   := 'none';
     ELSE

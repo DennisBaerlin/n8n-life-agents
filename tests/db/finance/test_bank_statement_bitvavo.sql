@@ -92,7 +92,7 @@ BEGIN
        OR (v_app->'trades_by_kind'->'dividend'->>'count')::int IS DISTINCT FROM 0
        OR (v_app->'trades_by_kind'->'reward'->>'count')::int IS DISTINCT FROM 3
        OR v_app->'trades_by_kind'->'reward'->'names' IS DISTINCT FROM '["BTC", "ETH"]'::jsonb
-       OR (v_app->>'trades_booked')::int IS DISTINCT FROM 6 THEN
+       OR v_app ? 'trades_booked' THEN
         RAISE EXCEPTION 'FAIL [B6b trades_by_kind]: %', v_app; END IF;
     RAISE NOTICE 'PASS [B4-B6 Buchung]';
 

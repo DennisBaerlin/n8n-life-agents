@@ -139,7 +139,7 @@ BEGIN
     -- ---------- Buchung ----------
     v_app := finance.fn_apply_bank_statement(v_p || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [C15 apply]: %', v_app; END IF;
-    IF (v_app->>'trades_booked')::int <> 5 OR (v_app->>'balance_after')::numeric <> 1040.25
+    IF v_app ? 'trades_booked' OR (v_app->>'balance_after')::numeric <> 1040.25
        OR (v_app->>'lump_amount')::numeric <> 57.00 OR jsonb_array_length(v_app->'savings_plan_estimated') <> 0 THEN
         RAISE EXCEPTION 'FAIL [C16 apply Zahlen]: %', v_app;
     END IF;

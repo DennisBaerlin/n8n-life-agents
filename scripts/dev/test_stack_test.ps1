@@ -22,10 +22,17 @@ $n = Get-TestStackNames 's4t0'
 Assert-That ($n.Image -eq 's4t0-master:wt' -and $n.Master -eq 's4t0-master' -and $n.Core -eq 's4t0-core' -and $n.Bridge -eq 's4t0-testbridge' -and $n.Postgres -eq 's4t0-postgres') 'Namen aus dem Projekt'
 Assert-That ((& $n.Volume 'pgdata') -eq 's4t0_pgdata' -and (& $n.Snapshot 'pgdata') -eq 's4t0snap_pgdata') 'Volume- und Schnappschuss-Namen'
 
-# --- Ports: Bruecke = N8NTEST_PORT, der Kern sucht in den neun Ports danach ---------------------------------------------
-$p = Get-TestStackPorts '57500'
-Assert-That ($p.Bridge -eq 57500 -and $p.CoreRange -eq '57501-57509') 'Ports aus N8NTEST_PORT'
-foreach ($bad in @('', 'x', '80', '65530')) { Assert-That (Test-Throws { Get-TestStackPorts $bad }) "Port '$bad' wird abgelehnt" }
+# Ein Projekt, das auf 'snap' endet, haette als Daten-Volume den Namen eines Schnappschusses (x + snap_pgdata = xsnap_pgdata).
+Assert-That (Test-Throws { Assert-TestStackProject 's4t0snap' }) "Projekt 's4t0snap' wird abgelehnt (Schnappschuss-Namen)"
+
+# --- Ports: Bruecke = N8NTEST_PORT, die Spanne des Kerns ausdruecklich (N8NTEST_STACK_PORTS), nie abgeleitet -------------
+# Abgeleitet (Port+1…) traefe den Port eines Nachbarn oder den des -b-Substrats von run_free_gates -Parallel.
+$p = Get-TestStackPorts -Port '57500' -CoreRange '57510-57519'
+Assert-That ($p.Bridge -eq 57500 -and $p.CoreRange -eq '57510-57519') 'Bruecke und Kern-Spanne aus den Umgebungswerten'
+foreach ($bad in @('', 'x', '80', '65530')) { Assert-That (Test-Throws { Get-TestStackPorts -Port $bad -CoreRange '57510-57519' }) "Port '$bad' wird abgelehnt" }
+foreach ($bad in @('', '57510', '57510-57510', '57519-57510', '57499-57501', 'a-b')) {
+    Assert-That (Test-Throws { Get-TestStackPorts -Port '57500' -CoreRange $bad }) "Kern-Spanne '$bad' wird abgelehnt (fehlt, zu klein, verkehrt oder mit dem Bruecken-Port)"
+}
 
 # --- Daten-Volumes: aus runtime.sh gelesen, nicht abgeschrieben ----------------------------------------------------------
 $rt = [System.IO.File]::ReadAllText((Join-Path $repo 'provisioning\lib\runtime.sh'))
@@ -82,13 +89,24 @@ Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0x-master') 'Nachbar-Projekt m
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after + 's4t0_pgdata' + 's4t0-testbridge') -Labeled $labeled)
 Assert-That ($f.Count -eq 2 -and ($f -match 'blieb').Count -eq 2) 'eigener Rest nach dem Abbau (Volume, etikettierter Container) = Fund'
 
+# --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
+Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'
+Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('null') -Label 'x') -eq '') 'Volume ohne Etiketten = leer'
+Assert-That ($null -eq (ConvertFrom-TestStackLabelResult -Code 1 -Output @('Error response from daemon: get s4t0_pgdata: no such volume') -Label 'x')) 'fehlendes Volume = $null'
+Assert-That (Test-Throws { ConvertFrom-TestStackLabelResult -Code 1 -Output @('error during connect: The system cannot find the file specified.') -Label 'x' }) 'Docker-Fehler = Abbruch, nicht „fehlt“'
+
+# --- Platz-Zaehlung: nur der eigene Name zaehlt nicht mit, Substrate mit gleichem Anfang schon ------------------------------
+$others = @(Select-TestStackOtherSubstrates -Running @('s4t0', 's4t0-b', 's4w-n8ntest') -Own 's4t0')
+Assert-That ($others.Count -eq 2 -and $others -contains 's4t0-b') 'Substrat s4t0-b (run_free_gates -Parallel) zaehlt als anderer Platz'
+
 # --- PS 5.1 reicht ein " innerhalb eines Arguments nicht an native Programme weiter (Vorlage/Skript zerfaellt still) ------
 # Darum in test_stack.ps1 kein " in einem Literal, das als Docker-Argument geht: weder `" noch '…"…'. Ausnahme: der eine
 # Quoter in Invoke-TestStackProcess (Start-Process bekommt eine fertige Zeile).
 $text = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\lib\test_stack.ps1'))
 $src = $text -split "`r?`n"
 $argLines = @{}
-for ($i = 0; $i -lt $src.Count; $i++) { if ($src[$i] -match 'Invoke-TestStackNative|^\s*\$sh = |^\s*\$a \+= ') { $argLines[$i + 1] = $true } }
+for ($i = 0; $i -lt $src.Count; $i++) { if ($src[$i] -match 'Invoke-Native docker|^\s*\$sh = |^\s*\$a \+= ') { $argLines[$i + 1] = $true } }
+Assert-That ($argLines.Count -ge 15)"Pruefung sieht die Docker-Aufrufe ($($argLines.Count) Zeilen)"
 $bad = @([System.Management.Automation.PSParser]::Tokenize($text, [ref]$null) |
     Where-Object { $_.Type -eq 'String' -and $argLines.ContainsKey($_.StartLine) -and $_.Content.Contains('"') } |
     ForEach-Object { $_.StartLine } | Sort-Object -Unique)

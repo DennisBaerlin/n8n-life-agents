@@ -21,6 +21,8 @@ $script:TestStackUtf8 = New-Object System.Text.UTF8Encoding($false)
 function Assert-TestStackProject([string]$Project) {
     if ($Project -cnotmatch '^[a-z0-9][a-z0-9-]{1,39}$') { throw "Projektname '$Project' ungueltig (klein, Ziffern, '-', 2-40 Zeichen; Quelle `$env:N8NTEST_CONTAINER)." }
     if ($Project -eq 'lifeagents') { throw "Projektname 'lifeagents' gehoert einer echten Installation, nie einem Test-Verbund." }
+    # <x>snap_<vol> ist der Schnappschuss von x; ein Projekt xsnap haette genau diese Namen als Daten-Volumes.
+    if ($Project -like '*snap') { throw "Projektname '$Project' endet auf 'snap' (Namensraum der Schnappschuss-Volumes)." }
 }
 
 function Get-TestStackNames([string]$Project) {
@@ -39,12 +41,17 @@ function Get-TestStackNames([string]$Project) {
     }
 }
 
-# Get-TestStackPorts <N8NTEST_PORT> -- der Port ist die REST-Bruecke; der Kern sucht seine zwei Ports (edge, wizard) in den neun
-# folgenden (LA_CORE_PORTS), damit ein Verbund im eigenen Bereich der Session bleibt.
-function Get-TestStackPorts([string]$Port) {
+# Get-TestStackPorts -Port <N8NTEST_PORT> -CoreRange <N8NTEST_STACK_PORTS> -- Port = REST-Bruecke; in der Spanne (LA_CORE_PORTS)
+# sucht der Kern seine zwei Ports (edge, wizard). Die Spanne wird nie abgeleitet: Port+1… gehoert oft einem Nachbarn oder dem
+# -b-Substrat von run_free_gates -Parallel. Mindestens zwei Ports, ohne den Bruecken-Port.
+function Get-TestStackPorts([string]$Port, [string]$CoreRange) {
     if ($Port -notmatch '^\d{4,5}$' -or [int]$Port -lt 1024 -or [int]$Port -gt 65520) { throw "N8NTEST_PORT '$Port' ungueltig (1024-65520)." }
     $b = [int]$Port
-    return [pscustomobject]@{ Bridge = $b; CoreRange = "$($b + 1)-$($b + 9)" }
+    if ($CoreRange -notmatch '^(\d{4,5})-(\d{4,5})$' -or [int]$Matches[1] -ge [int]$Matches[2] -or [int]$Matches[1] -lt 1024 -or [int]$Matches[2] -gt 65535) {
+        throw "N8NTEST_STACK_PORTS '$CoreRange' ungueltig (von-bis, mindestens zwei Ports, z. B. 57510-57519)."
+    }
+    if ($b -ge [int]$Matches[1] -and $b -le [int]$Matches[2]) { throw "N8NTEST_STACK_PORTS '$CoreRange' enthaelt den Bruecken-Port $b." }
+    return [pscustomobject]@{ Bridge = $b; CoreRange = $CoreRange }
 }
 
 # Get-TestStackStateVolumes <runtime.sh-Text> -- die Daten-Volumes (LA_STATE_VOLUMES) aus derselben Datei, die ins Abbild geht.
@@ -151,13 +158,29 @@ function Compare-TestStackTeardown([string]$Project, [string[]]$Before, [string[
     return $f
 }
 
-# --- Docker-Schritte (bewiesen auf dem echten Weg: bootstrap_test_stack.ps1 kalt, -Reset, -Down) ----------------------------
-# Invoke-TestStackNative -- kurzer Docker-Aufruf, Ausgabe + Exit; EAP lokal Continue (PS 5.1: native stderr unter Stop wirft).
-function Invoke-TestStackNative([string[]]$DockerArgs) {
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try { $out = & docker @DockerArgs 2>&1; $code = $LASTEXITCODE } finally { $ErrorActionPreference = $prev }
-    return [pscustomobject]@{ Code = $code; Output = @($out | ForEach-Object { "$_" }) }
+# ConvertFrom-TestStackLabelResult -- Ergebnis von `docker volume inspect -f '{{json .Labels}}'`: Wert, '' ohne dieses Etikett,
+# $null nur bei „no such volume“. Jeder andere Fehler wirft: ein gestoertes Docker darf nicht wie ein fehlendes Volume aussehen
+# (sonst liefe -Reset kalt und ein Abbau liesse Volumes still stehen; dieselbe Trennung wie rt_volume_label in runtime.sh).
+function ConvertFrom-TestStackLabelResult([int]$Code, [string[]]$Output, [string]$Label) {
+    $text = ($Output -join "`n")
+    if ($Code -ne 0) {
+        if ($text -match '(?i)no such volume') { return $null }
+        throw "docker volume inspect fehlgeschlagen: $text"
+    }
+    $labels = $text | ConvertFrom-Json
+    if ($null -eq $labels -or $null -eq $labels.$Label) { return '' }
+    return [string]$labels.$Label
 }
+
+# Select-TestStackOtherSubstrates -- laufende Substrate ausser genau dem eigenen (ein s4t0-b von run_free_gates -Parallel
+# belegt einen eigenen Platz).
+function Select-TestStackOtherSubstrates([string[]]$Running, [string]$Own) {
+    return @($Running | Where-Object { $_ -and $_ -ne $Own })
+}
+
+# --- Docker-Schritte (bewiesen auf dem echten Weg: bootstrap_test_stack.ps1 kalt, -Reset, -Down) ----------------------------
+# Kurze Aufrufe ueber Invoke-Native (scripts/lib/test_common.ps1).
+. (Join-Path $PSScriptRoot 'test_common.ps1')
 
 # Invoke-TestStackProcess -- langer Docker-Aufruf mit stdin aus einer Datei (UTF-8 ohne BOM; Pipe aus PS 5.1 kodiert nach
 # $OutputEncoding um) und stdout/stderr in <LogBase>.out/.err. Start-Process quotet nicht: Argumente hier selbst quoten.
@@ -206,7 +229,7 @@ function New-TestStackImage {
         '-t', $Names.Image, '-') -StdinFile $ctx -LogBase (Join-Path $LogDir 'image-build')
     Remove-Item $ctx -Force -ErrorAction SilentlyContinue
     if ($r.Code -ne 0) { throw "docker build des master-Abbilds fehlgeschlagen:`n$(Get-TestStackErrTail $r.ErrFile)" }
-    $id = ((Invoke-TestStackNative @('image', 'inspect', '-f', '{{.Id}}', $Names.Image)).Output -join '').Trim()
+    $id = ((Invoke-Native docker @('image', 'inspect', '-f', '{{.Id}}', $Names.Image)).Output -join '').Trim()
     if ($id -notmatch '^sha256:[0-9a-f]{64}$') { throw "Abbild $($Names.Image) nach dem Bau nicht lesbar ($id)." }
     return [pscustomobject]@{ ImageId = $id; Tree = $tree }
 }
@@ -235,7 +258,8 @@ function Assert-TestStackCoreOk($Result, [string]$Verb) {
 function Get-TestStackAnswers {
     param([Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$BackupDir,
           [string]$ExtraText = '', [Parameter(Mandatory)][string]$LogDir)
-    $js = Join-Path $RepoRoot 'tests\wizard\render_ci_answers.js'
+    # Vollpfad mit \ (RepoRoot kommt von git mit /): Docker Desktop haengt so einen Windows-Pfad sicher ein.
+    $js = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot 'tests\wizard\render_ci_answers.js'))
     $base = @('run', '--rm', '-i', '--network', 'none', '-v', "${js}:/tmp/render_ci_answers.js:ro", $Names.Image,
         'node', '/tmp/render_ci_answers.js', '--reach', 'tunnel', '--backup', $BackupDir, '--profile', 'dev')
     $in = Join-Path $LogDir 'answers-extra.stdin'
@@ -256,13 +280,13 @@ function Get-TestStackAnswers {
 # Node aus dem eigenen Abbild (kein socat darin, kein weiteres Abbild aus dem Netz).
 $script:TestStackBridgeJs = "const n=require('net');n.createServer(c=>{const u=n.connect(5678,'anchor');c.pipe(u);u.pipe(c);u.on('error',()=>c.destroy());c.on('error',()=>u.destroy());}).listen(5680,'0.0.0.0');"
 function Remove-TestStackBridge($Names) {
-    $id = ((Invoke-TestStackNative @('ps', '-aq', '--filter', "name=^/$($Names.Bridge)$")).Output -join '').Trim()
-    if ($id) { [void](Invoke-TestStackNative @('rm', '-fv', $Names.Bridge)) }
+    $id = ((Invoke-Native docker @('ps', '-aq', '--filter', "name=^/$($Names.Bridge)$")).Output -join '').Trim()
+    if ($id) { [void](Invoke-Native docker @('rm', '-fv', $Names.Bridge)) }
 }
 function Start-TestStackBridge {
     param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)]$Ports, [Parameter(Mandatory)][string]$RepoRoot)
     Remove-TestStackBridge $Names
-    $r = Invoke-TestStackNative @('run', '-d', '--name', $Names.Bridge, '--network', $Names.Network,
+    $r = Invoke-Native docker @('run', '-d', '--name', $Names.Bridge, '--network', $Names.Network,
         '-p', "127.0.0.1:$($Ports.Bridge):5680",
         '--label', "io.lifeagents.install=$($Names.Project)", '--label', 'lifeagents.substrate=n8n-bridge',
         '--label', "lifeagents.bridge-of=$($Names.Project)", '--label', "lifeagents.worktree=$RepoRoot",
@@ -284,15 +308,15 @@ function Wait-TestStackReady([string]$Url, [int]$TimeoutSec = 180) {
 }
 
 function Get-TestStackApiKey($Names) {
-    $r = Invoke-TestStackNative @('exec', $Names.Master, 'sh', '-c', "grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
+    $r = Invoke-Native docker @('exec', $Names.Master, 'sh', '-c', "grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
     return (($r.Output -join '').Trim())
 }
 
 # Stop-TestStackContainers -- alle Container des Projekts anhalten (Daten-Volumes konsistent fuer Kopie und Rueckspiel).
 function Stop-TestStackContainers($Names) {
-    $ids = @((Invoke-TestStackNative @('ps', '-q', '--filter', "label=io.lifeagents.install=$($Names.Project)")).Output | Where-Object { $_ })
+    $ids = @((Invoke-Native docker @('ps', '-q', '--filter', "label=io.lifeagents.install=$($Names.Project)")).Output | Where-Object { $_ })
     if ($ids.Count) {
-        $r = Invoke-TestStackNative (@('stop', '-t', '20') + $ids)
+        $r = Invoke-Native docker (@('stop', '-t', '20') + $ids)
         if ($r.Code -ne 0) { throw "Container von $($Names.Project) liessen sich nicht anhalten: $($r.Output -join "`n")" }
     }
 }
@@ -300,11 +324,8 @@ function Stop-TestStackContainers($Names) {
 # Get-TestStackVolumeLabel -> Wert des Etiketts, '' ohne dieses Etikett, $null ohne Volume. Als JSON gelesen: eine Vorlage
 # {{index .Labels "x"}} kaeme ohne ihre Anfuehrungszeichen bei Docker an (Pruefung in test_stack_test.ps1).
 function Get-TestStackVolumeLabel([string]$Volume, [string]$Label) {
-    $r = Invoke-TestStackNative @('volume', 'inspect', '-f', '{{json .Labels}}', $Volume)
-    if ($r.Code -ne 0) { return $null }
-    $labels = ($r.Output -join '') | ConvertFrom-Json
-    if ($null -eq $labels -or $null -eq $labels.$Label) { return '' }
-    return [string]$labels.$Label
+    $r = Invoke-Native docker @('volume', 'inspect', '-f', '{{json .Labels}}', $Volume)
+    return (ConvertFrom-TestStackLabelResult -Code $r.Code -Output $r.Output -Label $Label)
 }
 
 # New-TestStackPgdata -- <p>_pgdata vor dem ersten `stack up` mit den Etiketten des Platz-Zaehlers anlegen; rt_volumes_ensure
@@ -316,7 +337,7 @@ function New-TestStackPgdata($Names, [string]$RepoRoot) {
         if ($own -ne $Names.Project) { throw "Volume $v gehoert nicht zu $($Names.Project) - nichts geaendert." }
         return
     }
-    $r = Invoke-TestStackNative @('volume', 'create', '--label', "io.lifeagents.install=$($Names.Project)",
+    $r = Invoke-Native docker @('volume', 'create', '--label', "io.lifeagents.install=$($Names.Project)",
         '--label', 'lifeagents.substrate=n8n', '--label', "lifeagents.worktree=$RepoRoot", $v)
     if ($r.Code -ne 0) { throw "Volume $v liess sich nicht anlegen: $($r.Output -join "`n")" }
 }
@@ -329,7 +350,7 @@ function Remove-TestStackStateVolumes($Names, [string[]]$Volumes) {
         $own = Get-TestStackVolumeLabel $v 'io.lifeagents.install'
         if ($null -eq $own) { continue }
         if ($own -ne $Names.Project) { throw "Volume $v traegt nicht das Etikett von $($Names.Project) - bleibt unangetastet." }
-        $r = Invoke-TestStackNative @('volume', 'rm', $v)
+        $r = Invoke-Native docker @('volume', 'rm', $v)
         if ($r.Code -ne 0) { throw "Volume $v liess sich nicht entfernen: $($r.Output -join "`n")" }
     }
 }
@@ -353,7 +374,7 @@ function Remove-TestStackSnapshot($Names, [string[]]$Volumes) {
         $of = Get-TestStackVolumeLabel $v 'lifeagents.snapshot-of'
         if ($null -eq $of) { continue }
         if ($of -ne $Names.Project) { throw "Volume $v ist kein Schnappschuss von $($Names.Project) - bleibt unangetastet." }
-        $r = Invoke-TestStackNative @('volume', 'rm', $v)
+        $r = Invoke-Native docker @('volume', 'rm', $v)
         if ($r.Code -ne 0) { throw "Schnappschuss-Volume $v liess sich nicht entfernen: $($r.Output -join "`n")" }
     }
 }
@@ -367,13 +388,13 @@ function Invoke-TestStackVolumeCopy($Names, [string[]]$Volumes, [switch]$Restore
     # cp -a haelt Besitzer, Rechte und Zeiten (postgres verlangt pgdata 0700 und seinen uid). Ohne Anfuehrungszeichen: die
     # Volume-Namen sind feste Bezeichner aus runtime.sh ([a-z0-9_]).
     $sh = 'set -e; for v in ' + ($Volumes -join ' ') + '; do find /to/$v -mindepth 1 -delete; cp -a /from/$v/. /to/$v/; done'
-    $r = Invoke-TestStackNative ($a + @($Names.Image, 'sh', '-c', $sh))
+    $r = Invoke-Native docker ($a + @($Names.Image, 'sh', '-c', $sh))
     if ($r.Code -ne 0) { throw "Volume-Kopie ($(if ($Restore) { 'zurueckspielen' } else { 'Schnappschuss' })) fehlgeschlagen: $($r.Output -join "`n")" }
 }
 function New-TestStackSnapshot($Names, [string[]]$Volumes, [string]$Key, [string]$RepoRoot) {
     Remove-TestStackSnapshot $Names $Volumes
     foreach ($s in $Volumes) {
-        $r = Invoke-TestStackNative @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
+        $r = Invoke-Native docker @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
             '--label', "lifeagents.snapshot-of=$($Names.Project)", '--label', "lifeagents.snapshot-key=$Key",
             '--label', "lifeagents.worktree=$RepoRoot", (& $Names.Snapshot $s))
         if ($r.Code -ne 0) { throw "Schnappschuss-Volume $(& $Names.Snapshot $s) liess sich nicht anlegen: $($r.Output -join "`n")" }
@@ -386,11 +407,11 @@ function Restore-TestStackSnapshot($Names, [string[]]$Volumes, [string]$RepoRoot
 
 # Get-TestStackDockerNames -- alle Container-, Volume- und Abbild-Namen des Rechners (fuer Compare-TestStackTeardown).
 function Get-TestStackDockerNames {
-    $c = (Invoke-TestStackNative @('ps', '-a', '--format', '{{.Names}}')).Output
-    $v = (Invoke-TestStackNative @('volume', 'ls', '--format', '{{.Name}}')).Output
+    $c = (Invoke-Native docker @('ps', '-a', '--format', '{{.Names}}')).Output
+    $v = (Invoke-Native docker @('volume', 'ls', '--format', '{{.Name}}')).Output
     # Mit Digest: die Abbilder der compose.yml sind per Digest geladen und haben keinen Tag (Repository:<none>); ohne Repository
     # (namenlose Bau-Reste) zaehlt ein Abbild nicht.
-    $i = (Invoke-TestStackNative @('images', '--digests', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}')).Output | Where-Object { $_ -notmatch '^<none>:' }
+    $i = (Invoke-Native docker @('images', '--digests', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}')).Output | Where-Object { $_ -notmatch '^<none>:' }
     return @(@($c) + @($v) + @($i) | Where-Object { $_ } | Sort-Object -Unique)
 }
 
@@ -401,7 +422,7 @@ function Wait-TestStackSlot([string]$Own) {
     $wait = if ($env:N8NTEST_WAIT_MIN)     { [int]$env:N8NTEST_WAIT_MIN }     else { 15 }
     $deadline = (Get-Date).AddMinutes($wait)
     while ($true) {
-        $running = @(Get-RunningSubstrates | Where-Object { $_.Name -ne $Own -and $_.Name -notlike "$Own-*" } | ForEach-Object { $_.Name })
+        $running = Select-TestStackOtherSubstrates -Running @(Get-RunningSubstrates | ForEach-Object { $_.Name }) -Own $Own
         $slot = Get-SlotAvailability -Running $running -Reservations @(Read-SlotReservations) -Own $Own -Max $max
         if ($slot.Free) { return }
         $msg = Format-SlotBlockedMessage -Availability $slot -Own $Own -Max $max

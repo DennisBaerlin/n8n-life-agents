@@ -87,3 +87,14 @@ test('CI-Antwort-Datei --profile dev: kaputte Zusatz-Zeilen brechen ab und nenne
     }, JSON.stringify(extra));
   }
 });
+
+// Profil dev läuft ohne Attrappen gegen echte Dienste: die erfundenen CI-Schlüssel dürfen dort nie stehen. Ohne .env-Wert
+// bleibt der Schlüssel leer (der Installer überspringt den Zugang wie im klassischen Unterbau), mit Wert gilt der Wert.
+test('CI-Antwort-Datei --profile dev: keine erfundenen Zugänge, nur leer oder der Wert aus .env', () => {
+  const m = flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' }));
+  assert.equal(m.get('TELEGRAM_BOT_TOKEN'), '');
+  assert.equal(m.get('ANTHROPIC_API_KEY'), '');
+  const r = flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev', extra: 'ANTHROPIC_API_KEY=sk-ant-invented-dev\n' }));
+  assert.equal(r.get('ANTHROPIC_API_KEY'), 'sk-ant-invented-dev');
+  assert.equal(r.get('TELEGRAM_BOT_TOKEN'), '');
+});

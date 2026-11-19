@@ -81,7 +81,9 @@ function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'rel
     const k = flow.envOf(Q, id);
     const q = flow.question(Q, id);
     if (!q || Object.prototype.hasOwnProperty.call(A, k)) continue;
-    if (Object.prototype.hasOwnProperty.call(SECRETS, k)) continue;   // geht über die Geheimnis-Tabelle
+    // Geheimnisse: release aus der Tabelle der erfundenen Werte (die Attrappen nehmen jedes Token); dev läuft ohne Attrappen
+    // gegen echte Dienste, dort bleibt der Zugang leer, bis --extra-stdin den .env-Wert bringt.
+    if (Object.prototype.hasOwnProperty.call(SECRETS, k)) { if (profile === 'dev') A[k] = ''; continue; }
     if (Object.prototype.hasOwnProperty.call(INVENTED, k)) A[k] = INVENTED[k];
     else if (k === 'OWNER_PERSONA') A[k] = (Q.personas && Q.personas[0] && Q.personas[0].code) || '';
     else if (id.startsWith('c:')) A[k] = '';                           // optionale Zugänge der Pakete bleiben leer
@@ -91,7 +93,7 @@ function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'rel
     else A[k] = '';
   }
   if (what === 'packages') return flow.packagesArg(Q, A);
-  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, SECRETS));
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, profile === 'dev' ? {} : SECRETS));
   if (profile !== 'dev') return txt;
   return withExtra(flow, withExtra(flow, txt, DEV_KEYS.map(([k, v]) => `${k}=${v}\n`).join('')), extra);
 }

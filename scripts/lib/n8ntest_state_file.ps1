@@ -11,8 +11,9 @@ function Get-TestN8nStateFile {
     return (Join-Path (Split-Path $common -Parent) ".local\n8ntest_state.$Container.json")
 }
 
-# Write-TestN8nState -- die eine Schreibstelle der Zustandsdatei (Datei des Containers, UTF-8 ohne BOM). runtime sagt jedem
-# Treiber, welcher Unterbau laeuft: classic = systemd-Container (bootstrap_test_n8n.ps1), compose = Docker-Verbund
+# Write-TestN8nState -- schreibt die Zustandsdatei (Datei des Containers, UTF-8 ohne BOM) fuer den Verbund; der klassische
+# Bootstrap schreibt dieselben Felder ohne runtime/project noch selbst (faellt in P6). runtime sagt dem Treiber (Get-TestN8nRuntime),
+# welcher Unterbau laeuft: classic = systemd-Container (bootstrap_test_n8n.ps1), compose = Docker-Verbund
 # (bootstrap_test_stack.ps1, dann project = LA_PROJECT und container = <project>-master). Schreibt die Datei neu, also ohne
 # die mock_*-Felder der enable_mock_*-Skripte: die setzen sich nach einem Neuaufbau wieder (Substrat-Neuaufbau = Mocks neu).
 $script:TestN8nRuntimes = @('classic', 'compose')

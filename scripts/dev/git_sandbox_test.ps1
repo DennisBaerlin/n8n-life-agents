@@ -41,12 +41,16 @@ try {
         'nur GIT_DIR'        = @{ GIT_DIR = $admin }
         'nur GIT_WORK_TREE'  = @{ GIT_WORK_TREE = $wt }
         'nur GIT_INDEX_FILE' = @{ GIT_INDEX_FILE = (Join-Path $admin 'index') }
+        'nur GIT_COMMON_DIR' = @{ GIT_COMMON_DIR = $common }
+        'nur GIT_OBJECT_DIRECTORY' = @{ GIT_OBJECT_DIRECTORY = (Join-Path $common 'objects') }
+        'nur GIT_NAMESPACE'  = @{ GIT_NAMESPACE = 'fremd' }
     }
+    $envNames = @($envs.Values | ForEach-Object { $_.Keys } | Sort-Object -Unique)
     Write-Host 'Initialize-GitSandbox mit gesetzter Hook-Umgebung bricht ab, bevor etwas geschrieben wird:'
     foreach ($case in $envs.Keys) {
-        $cfgBefore = Get-Hash (Join-Path $common 'config'); $idxBefore = Get-Hash (Join-Path $admin 'HEAD')
+        $cfgBefore = Get-Hash (Join-Path $common 'config'); $headBefore = Get-Hash (Join-Path $admin 'HEAD')
         $log = Join-Path $box 'probe.log'
-        $saved = @{}; foreach ($k in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE') { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
+        $saved = @{}; foreach ($k in $envNames) { $saved[$k] = [Environment]::GetEnvironmentVariable($k) }
         foreach ($k in $envs[$case].Keys) { [Environment]::SetEnvironmentVariable($k, $envs[$case][$k]) }
         $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         try {
@@ -63,6 +67,7 @@ try {
         Assert-That "${case}: Abbruch (Exit != 0)" ($code -ne 0) "(Exit $code)"
         Assert-That "${case}: Meldung nennt Clear-GitEnvironment" ($msg -match 'Clear-GitEnvironment')
         Assert-That "${case}: gemeinsame Config unveraendert, kein core.worktree" ((Get-Hash (Join-Path $common 'config')) -eq $cfgBefore -and -not $cw)
+        Assert-That "${case}: HEAD des Worktrees unveraendert" ((Get-Hash (Join-Path $admin 'HEAD')) -eq $headBefore)
         Assert-That "${case}: kein Repo im Zielordner angelegt" (-not (Test-Path (Join-Path $target '.git')))
     }
 
@@ -80,9 +85,13 @@ try {
 Write-Host 'Aufrufer: Clear-GitEnvironment steht vor dem ersten Initialize-GitSandbox:'
 $callers = @(Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1 |
     Where-Object { $_.FullName -ne $SandboxLib -and $_.Name -ne 'git_sandbox_test.ps1' } |
-    ForEach-Object { [pscustomobject]@{ File = $_; Text = [System.IO.File]::ReadAllText($_.FullName) } } |
+    ForEach-Object {
+        # Ganzzeilen-Kommentare zaehlen nicht: ein Kopf, der die Namen nur erwaehnt, ruft nichts auf.
+        $code = ([System.IO.File]::ReadAllLines($_.FullName) | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        [pscustomobject]@{ File = $_; Text = $code }
+    } |
     Where-Object { $_.Text -match 'Initialize-GitSandbox' })
-Assert-That 'Aufrufer gefunden (der Test sieht die Dateien)' ($callers.Count -ge 5) "(gefunden: $($callers.Count))"
+Assert-That 'Aufrufer gefunden (der Test sieht die Dateien)' ($callers.Count -ge 1) "(gefunden: $($callers.Count))"
 foreach ($c in $callers) {
     $clear = $c.Text.IndexOf('Clear-GitEnvironment', [StringComparison]::Ordinal)
     $init = $c.Text.IndexOf('Initialize-GitSandbox', [StringComparison]::Ordinal)

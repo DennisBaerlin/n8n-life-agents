@@ -11,10 +11,12 @@ function Clear-GitEnvironment {
 }
 
 # Legt in $Dir ein Repo an und bricht ab, wenn git danach woanders arbeitet. Weitere Schritte schreiben erst nach dieser Pruefung.
-# Gesetzte GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE brechen schon VOR dem `git init` ab: Die Pruefung unten kaeme zu spaet, das init
+# Gesetzte Variablen, die git auf ein anderes Repo lenken (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR, GIT_OBJECT_DIRECTORY,
+# GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE), brechen schon VOR dem `git init` ab: Die Pruefung unten kaeme zu spaet, das init
 # hat dann core.worktree in die gemeinsame Config des echten Repos geschrieben (unter prek: Worktree-Pfad, alle Worktrees treffen ihn).
 function Initialize-GitSandbox([string]$Dir) {
-    $set = @('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE') | Where-Object { [Environment]::GetEnvironmentVariable($_) }
+    $redirect = 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'
+    $set = $redirect | Where-Object { [Environment]::GetEnvironmentVariable($_) }
     if ($set) { throw "Initialize-GitSandbox: $($set -join ', ') gesetzt (Commit-Hook) -- vor dem Wegwerf-Repo Clear-GitEnvironment aufrufen." }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try { & git -C $Dir init -q -b main *> $null } finally { $ErrorActionPreference = $prev }

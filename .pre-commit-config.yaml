@@ -521,7 +521,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/git_sandbox_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/git_sandbox|dev/(git_sandbox_test|app_window_hook_test|comment_lint_test|docker_volume_cleanup_test|main_push_guard_test|n8ntest_state_file_test|owner_window_hook_test|privacy_lint_test|privacy_review_hook_test|release_images_test|release_pin_guard_test|substrate_reservation_test))\.ps1$
+        files: ^scripts/(lib/git_sandbox\.ps1|dev/[a-z0-9_]+_test\.ps1)$
 
       - id: docker-cleanup-test
         name: docker_cleanup_test (docker_cleanup selects only own stopped containers, anonymous volumes, own dangling images; WhatIf deletes nothing)

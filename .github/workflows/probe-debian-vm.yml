@@ -1,0 +1,215 @@
+# Probe (Paket A0): Traegt ein GitHub-Runner ubuntu-24.04 eine Debian-12-VM per KVM, und laeuft darin provisioning/setup.sh bis
+# zum Fragebogen-Link? Misst Zeiten und Plattenbedarf je Schritt; das Ergebnis entscheidet, ob ein woechentlicher Debian-Lauf
+# (L2) lohnt. Nur von Hand (workflow_dispatch), kein Required Check, keine Secrets.
+#
+# Ablauf: Master-Abbild auf dem Runner bauen und ueber crane (Registry ohne Docker) bereitstellen; Debian-Cloud-Image (feste Version,
+# SHA512 geprueft) per cloud-init (NoCloud-Seed, LANG=C wie eine Proxmox-Vorlage) als KVM-VM starten; setup.sh in der VM mit --yes;
+# das Abbild holt die VM ueber einen umgekehrten SSH-Tunnel (-R) aus der crane-Registry am Runner, die VM sieht sie als 127.0.0.1:5001
+# (nur Loopback ist fuer Docker ohne TLS erlaubt). Der Erfolgsweg von --answers ist nicht Ziel (Grenze aus P2a).
+name: probe-debian-vm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CRANE_VERSION: v0.22.1
+      CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+      DEBIAN_BUILD: 20261117-2665
+      DEBIAN_SHA512: d597a8b422a0fa7f7cf1a0477d23be7f7514f32e57ccb8d0c69156e1be4a7e1712fb64aee6298520d70aa573b801d0cfe3392ab5de39829728760c0cf99ef4ec
+      VM_DISK_GB: '20'
+      VM_MEM: 10G
+      VM_CPUS: '4'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Runner facts and KVM (the central question of the probe)
+        run: |
+          set -euo pipefail
+          # Hilfsfunktionen fuer alle Schritte: mark haelt Zeitpunkte fest (Auswertung am Ende), vm fuehrt einen Befehl in der VM aus.
+          # -F /dev/null: sonst reicht der Client LANG=C.UTF-8 des Runners per SendEnv aus /etc/ssh/ssh_config durch und ueberschreibt die Sprache der Vorlage.
+          cat > "$RUNNER_TEMP/lib.sh" <<'LIB'
+          W="$RUNNER_TEMP/vm"
+          mark() { printf '%s %s\n' "$(date +%s)" "$1" >> "$RUNNER_TEMP/marks.txt"; }
+          SSH_O=(-F /dev/null -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=15 -p 2222)
+          vm() { ssh "${SSH_O[@]}" debian@127.0.0.1 "$@"; }
+          LIB
+          mkdir -p "$RUNNER_TEMP/vm"
+          . "$RUNNER_TEMP/lib.sh"
+          mark start
+          echo "--- CPU / RAM / Platte"
+          lscpu | grep -E 'Model name|Virtualization|Hypervisor|^CPU\(s\)' || true
+          echo "vmx/svm-Zeilen in /proc/cpuinfo: $(grep -c -E 'vmx|svm' /proc/cpuinfo || true)"
+          free -m | head -2
+          df -h / /mnt 2>/dev/null || true
+          echo "--- /dev/kvm"
+          ls -l /dev/kvm || true
+          # Empfohlene udev-Regel (GitHub Changelog 2024-04-02): /dev/kvm fuer den Runner-Nutzer nutzbar machen.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -l /dev/kvm
+          [ -c /dev/kvm ] && [ -w /dev/kvm ] || { echo "VERDIKT: kein nutzbares /dev/kvm auf diesem Runner"; exit 1; }
+          echo "KVM da und beschreibbar."
+          mark kvm_ok
+
+      - name: Build the master image from the release tree and serve it from a registry without Docker (crane)
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/lib.sh"
+          git archive --format=tar HEAD provisioning packages .gitattributes \
+            | docker build -q -f provisioning/compose/master.Dockerfile --build-arg RELEASE_TAG=v9.0.0 -t ci/master:ci -
+          docker save -o "$RUNNER_TEMP/master.tar" ci/master:ci
+          ls -lh "$RUNNER_TEMP/master.tar"
+          mkdir -p "$RUNNER_TEMP/crane" "$RUNNER_TEMP/registry"
+          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" -o "$RUNNER_TEMP/crane.tgz"
+          echo "${CRANE_SHA256}  $RUNNER_TEMP/crane.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/crane.tgz" -C "$RUNNER_TEMP/crane" crane
+          nohup "$RUNNER_TEMP/crane/crane" registry serve --address 127.0.0.1:5001 --disk "$RUNNER_TEMP/registry" > "$RUNNER_TEMP/crane.log" 2>&1 &
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:5001/v2/ >/dev/null 2>&1 && break; sleep 1; done
+          "$RUNNER_TEMP/crane/crane" push --insecure "$RUNNER_TEMP/master.tar" 127.0.0.1:5001/ci/master:ci
+          digest="$("$RUNNER_TEMP/crane/crane" digest --insecure 127.0.0.1:5001/ci/master:ci)"
+          echo "SETUP_IMAGE=127.0.0.1:5001/ci/master@$digest" >> "$GITHUB_ENV"
+          # Platz fuer die VM-Platte: Abbilder und Tar werden nicht mehr gebraucht (die Registry haelt eine Kopie).
+          docker system prune -af >/dev/null
+          rm -f "$RUNNER_TEMP/master.tar"
+          df -h / /mnt 2>/dev/null || true
+          mark master_ready
+
+      - name: Download the pinned Debian 12 cloud image (SHA512 checked) and prepare disk and cloud-init seed
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/lib.sh"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils genisoimage >/dev/null
+          # Die groessere freie Platte nehmen: die VM-Platte waechst beim Docker-Verbund um mehrere GB.
+          free_root="$(df --output=avail -k "$RUNNER_TEMP" | tail -1)"
+          free_mnt="$(df --output=avail -k /mnt 2>/dev/null | tail -1 || echo 0)"
+          echo "frei unter RUNNER_TEMP: ${free_root} kB, frei unter /mnt: ${free_mnt} kB"
+          if [ "${free_mnt:-0}" -gt "$free_root" ]; then sudo mkdir -p /mnt/vm && sudo chown "$USER" /mnt/vm; V=/mnt/vm; else V="$RUNNER_TEMP/vmdisk"; mkdir -p "$V"; fi
+          echo "VM_DIR=$V" >> "$GITHUB_ENV"
+          base="debian-12-generic-amd64-${DEBIAN_BUILD}.qcow2"
+          curl -fsSL "https://cloud.debian.org/images/cloud/bookworm/${DEBIAN_BUILD}/${base}" -o "$V/base.qcow2"
+          echo "${DEBIAN_SHA512}  $V/base.qcow2" | sha512sum -c -
+          mark image_downloaded
+          qemu-img info "$V/base.qcow2" | grep -E 'virtual size|disk size'
+          # Overlay auf dem unveraenderten Abbild; cloud-init (growpart) vergroessert in der VM das Dateisystem.
+          qemu-img create -q -f qcow2 -b base.qcow2 -F qcow2 "$V/disk.qcow2" "${VM_DISK_GB}G"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/vm/key"
+          # LANG=C wie eine Proxmox-Vorlage: das cloud-init-Modul locale schreibt den Vorgabewert der Distribution nach
+          # /etc/default/locale, deshalb setzt runcmd (laeuft spaeter) die Datei erst danach auf LANG=C.
+          cat > "$RUNNER_TEMP/vm/user-data" <<EOF
+          #cloud-config
+          ssh_authorized_keys:
+            - $(cat "$RUNNER_TEMP/vm/key.pub")
+          runcmd:
+            - [sh, -c, "echo LANG=C > /etc/default/locale"]
+          EOF
+          printf 'instance-id: probe-debian-1\nlocal-hostname: debian-probe\n' > "$RUNNER_TEMP/vm/meta-data"
+          genisoimage -quiet -output "$V/seed.iso" -volid cidata -joliet -rock "$RUNNER_TEMP/vm/user-data" "$RUNNER_TEMP/vm/meta-data"
+          cat "$RUNNER_TEMP/vm/user-data" | sed 's/ssh-ed25519 .*/ssh-ed25519 <key>/'
+
+      - name: Boot the VM with KVM and wait for SSH and cloud-init
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/lib.sh"
+          qemu-system-x86_64 -machine q35,accel=kvm -cpu host -smp "$VM_CPUS" -m "$VM_MEM" \
+            -drive "file=$VM_DIR/disk.qcow2,if=virtio,format=qcow2" \
+            -drive "driver=raw,file=$VM_DIR/seed.iso,if=virtio,readonly=on" \
+            -netdev user,id=n0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=n0 \
+            -display none -serial "file:$RUNNER_TEMP/vm/console.log" -pidfile "$RUNNER_TEMP/vm/qemu.pid" -daemonize
+          mark vm_started
+          for i in $(seq 1 120); do
+            if vm true 2>/dev/null; then echo "SSH nach ~$((i * 3)) s"; break; fi
+            [ "$i" -lt 120 ] || { echo "FAIL: kein SSH in 6 Minuten"; tail -40 "$RUNNER_TEMP/vm/console.log"; exit 1; }
+            sleep 3
+          done
+          mark ssh_up
+          vm 'cloud-init status --wait' || { vm 'sudo tail -60 /var/log/cloud-init.log' || true; exit 1; }
+          mark cloud_init_done
+          vm 'bash -s' <<'VM'
+          echo "--- Debian"; grep -E '^(PRETTY_NAME|VERSION_ID)=' /etc/os-release
+          echo "--- /etc/default/locale"; cat /etc/default/locale
+          echo "--- locale in dieser Sitzung"; locale 2>&1 | head -3
+          echo "--- virt / CPU / RAM / Platte"; systemd-detect-virt; nproc; free -m | head -2; df -h /
+          echo "--- Docker vorab?"; if command -v docker >/dev/null 2>&1; then echo "JA (unerwartet)"; else echo "nein (kalter Rechner)"; fi
+          VM
+
+      - name: setup.sh --yes in the VM with LANG=C (installs Docker from the repo, starts the core, prints the link)
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/lib.sh"
+          scp -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P 2222 provisioning/setup.sh debian@127.0.0.1:setup.sh
+          # Das Abbild kommt ueber -R aus der crane-Registry am Runner; ohne den Tunnel scheitert der Pull in der VM.
+          ssh -f -N -R 127.0.0.1:5001:127.0.0.1:5001 -o ExitOnForwardFailure=yes "${SSH_O[@]}" debian@127.0.0.1
+          mark setup_start
+          rc=0
+          vm "sudo env -u LC_ALL LANG=C bash setup.sh --yes --image '$SETUP_IMAGE'" > "$RUNNER_TEMP/setup1.out" 2> >(tee "$RUNNER_TEMP/setup1.err" >&2) || rc=$?
+          mark setup_done
+          cat "$RUNNER_TEMP/setup1.out"
+          [ "$rc" = 0 ] || { echo "FAIL: setup.sh Exit $rc"; exit 1; }
+          vm 'dpkg -s docker-ce | grep -E "^(Status|Version):"; grep -h Suites /etc/apt/sources.list.d/docker.sources; df -h /; sudo docker system df'
+          vm 'sudo docker ps --format "{{.Names}} {{.Status}}"'
+
+      - name: Check the questionnaire link end to end (ssh -L from the runner, like an owner's laptop) and the stack state
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/lib.sh"
+          grep -q 'ssh -L 5881:127.0.0.1:5881 debian@' "$RUNNER_TEMP/setup1.out"
+          url="$(grep -o 'http://127.0.0.1:5881/start?t=[^[:space:]]*' "$RUNNER_TEMP/setup1.out" | head -1)"
+          [ -n "$url" ] || { echo "FAIL: kein Fragebogen-Link in der Ausgabe"; exit 1; }
+          echo "::add-mask::${url#*t=}"
+          ssh -f -N -L 5881:127.0.0.1:5881 -o ExitOnForwardFailure=yes "${SSH_O[@]}" debian@127.0.0.1
+          # /start tauscht den Einmal-Wert gegen ein Cookie (303 nach /); danach liefert / die Seite des Fragebogens.
+          code=''
+          for _ in $(seq 1 20); do code="$(curl -sS -c "$RUNNER_TEMP/jar" -o /dev/null -w '%{http_code}' "$url" || true)"; [ "$code" = 303 ] && break; sleep 3; done
+          echo "Fragebogen ueber den Tunnel: /start -> HTTP $code"
+          [ "$code" = 303 ] || exit 1
+          page="$(curl -sS -b "$RUNNER_TEMP/jar" -o /dev/null -w '%{http_code}' http://127.0.0.1:5881/)"
+          echo "Fragebogen ueber den Tunnel: / -> HTTP $page"
+          [ "$page" = 200 ] || exit 1
+          vm 'sudo docker exec lifeagents-master stack status --json | tail -n1 | jq -c "{running, services: [.services[] | {name, health}]}"'
+          vm 'test "$(systemctl is-enabled lifeagents-stack.service)" = enabled && systemctl is-active lifeagents-stack.service'
+          mark link_checked
+
+      - name: Summary (times per phase, disk)
+        if: always()
+        run: |
+          . "$RUNNER_TEMP/lib.sh" || true
+          {
+            echo "## Probe Debian-VM"
+            echo "| Phase | Sekunden seit der vorigen Marke |"
+            echo "|---|---|"
+            prev=''; while read -r t name; do [ -z "$prev" ] || echo "| $name | $((t - prev)) |"; prev="$t"; done < "$RUNNER_TEMP/marks.txt" || true
+            [ -z "$prev" ] || echo "| **gesamt** | $(( prev - $(head -1 "$RUNNER_TEMP/marks.txt" | cut -d' ' -f1) )) |"
+            echo
+            echo '```'
+            df -h / /mnt 2>/dev/null || true
+            [ -z "${VM_DIR:-}" ] || du -h "$VM_DIR"/*.qcow2 2>/dev/null || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnostics on failure (VM console, containers, journal)
+        if: failure()
+        run: |
+          . "$RUNNER_TEMP/lib.sh" || true
+          echo "=== console.log (Ende)"; tail -40 "$RUNNER_TEMP/vm/console.log" 2>/dev/null || true
+          echo "=== crane.log"; tail -20 "$RUNNER_TEMP/crane.log" 2>/dev/null || true
+          vm 'sudo docker ps -a --format "{{.Names}} {{.Status}}"; sudo journalctl -u docker -n 40 --no-pager; df -h /' 2>/dev/null || true
+
+      - name: Stop the VM
+        if: always()
+        run: |
+          [ ! -s "$RUNNER_TEMP/vm/qemu.pid" ] || sudo kill "$(cat "$RUNNER_TEMP/vm/qemu.pid")" || true
+          pkill -f 'ssh -f' || true

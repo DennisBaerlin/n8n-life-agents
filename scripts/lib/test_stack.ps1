@@ -85,41 +85,11 @@ function Read-TestStackCoreResult([string[]]$Lines) {
     return $res[0]
 }
 
-# Get-TestInstallEnvMap <repo> -- .env-Schluessel TEST_<x> -> Kern-Schluessel, dieselbe Zuordnung wie bootstrap_test_n8n.ps1
-# (feste Liste + je Paket die env-Namen aus manifest.json credentials). Zwei Kopien bis P6, dann faellt der klassische Bootstrap.
-function Get-TestInstallEnvMap([string]$RepoRoot) {
-    $map = [ordered]@{
-        'TEST_N8N_OWNER_EMAIL'    = 'N8N_OWNER_EMAIL'
-        'TEST_N8N_OWNER_PASSWORD' = 'N8N_OWNER_PASSWORD'
-        'TEST_N8N_ENCRYPTION_KEY' = 'N8N_ENCRYPTION_KEY'
-        'TEST_PG_PASSWORD'        = 'N8N_DB_PASSWORD'
-        'TEST_TELEGRAM_BOT_TOKEN' = 'TELEGRAM_BOT_TOKEN'
-        'TEST_TELEGRAM_CHAT_ID'   = 'OWNER_CHAT_ID'
-        'TEST_GOOGLE_API_KEY'     = 'GOOGLE_API_KEY'
-        'TEST_ANTHROPIC_API_KEY'  = 'ANTHROPIC_API_KEY'
-        'TEST_HARNESS_SECRET'     = 'TEST_HARNESS_SECRET'
-        'TEST_OWNER_FIRST_NAME'   = 'OWNER_FIRST_NAME'
-        'TEST_OWNER_LAST_NAME'    = 'OWNER_LAST_NAME'
-        'TEST_OWNER_BIRTH_DATE'   = 'OWNER_BIRTH_DATE'
-        'TEST_OWNER_LANGUAGE'     = 'OWNER_LANGUAGE'
-    }
-    foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | Sort-Object Name)) {
-        $mfPath = Join-Path $pkgDir.FullName 'manifest.json'
-        if (-not (Test-Path $mfPath)) { continue }
-        $mf = [System.IO.File]::ReadAllText($mfPath, $script:TestStackUtf8) | ConvertFrom-Json
-        if ($null -eq $mf.credentials) { continue }
-        foreach ($credProp in ($mf.credentials.PSObject.Properties | Where-Object { $_.Name -notlike '_*' })) {
-            if ($null -eq $credProp.Value.env) { continue }
-            foreach ($envKeyProp in $credProp.Value.env.PSObject.Properties) {
-                if (-not $map.Contains("TEST_$($envKeyProp.Name)")) { $map["TEST_$($envKeyProp.Name)"] = [string]$envKeyProp.Name }
-            }
-        }
-    }
-    return $map
-}
+# TEST_*-Zuordnung und Test-Schalter: eine Adresse fuer beide Unterbauten.
+. (Join-Path $PSScriptRoot 'test_install_env.ps1')
 
 # ConvertTo-TestStackExtra -- Zusatz-Zeilen fuer render_ci_answers.js --extra-stdin: gesetzte TEST_*-Werte als Kern-Schluessel und
-# die Schalter des Bootstraps. Ohne Schalter keine Zeile: die Vorgaben (Link-Knoepfe, nur Geaendertes) stehen in DEV_KEYS dort.
+# danach immer die Test-Schalter (Get-TestDevSwitches) mit ihren Werten.
 function ConvertTo-TestStackExtra {
     param([Parameter(Mandatory)]$Map, [Parameter(Mandatory)][hashtable]$Values, [switch]$HitlChatApproval, [switch]$FullDeploy, [string]$SerialTools = '')
     $out = New-Object System.Text.StringBuilder
@@ -129,12 +99,8 @@ function ConvertTo-TestStackExtra {
         if ($v -match '[\x00-\x1f\x7f]') { throw ".env: Wert von $k enthaelt ein Steuerzeichen." }
         [void]$out.Append("$($Map[$k])=$v`n")
     }
-    if ($HitlChatApproval) { [void]$out.Append("LIFEAGENTS_HITL_CHAT_APPROVAL=true`n") }
-    if ($FullDeploy) { [void]$out.Append("LIFEAGENTS_DEPLOY_FULL=1`n") }
-    if ($SerialTools) {
-        if ($SerialTools -notin @('0', '1')) { throw "LLM_GATEWAY_SERIAL_TOOLS nur 0 oder 1, nicht '$SerialTools'." }
-        [void]$out.Append("LLM_GATEWAY_SERIAL_TOOLS=$SerialTools`n")
-    }
+    $sw = Get-TestDevSwitches -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools $SerialTools
+    foreach ($k in $sw.Keys) { [void]$out.Append("$k=$($sw[$k])`n") }
     return $out.ToString()
 }
 

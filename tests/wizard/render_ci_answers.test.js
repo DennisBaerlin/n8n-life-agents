@@ -48,18 +48,15 @@ test('CI-Antwort-Datei: --print packages = alle Pakete mit Fragen, wie der Assis
   assert.equal(arg, Q.packages.map((p) => p.id).join(','));
 });
 
-// Profil dev (Test-Unterbau, scripts/dev/bootstrap_test_stack.ps1): dieselbe Datei plus die festen Test-Schalter; Zusatz-Zeilen
-// (stdin, z. B. TEST_*-Werte aus .env) ersetzen einen Schlüssel an seiner Stelle oder kommen dazu. Der echte Leser nimmt sie an.
-test('CI-Antwort-Datei --profile dev: Test-Schalter stehen drin, Zusatz-Zeilen ersetzen und ergänzen, echter Leser nimmt sie an', () => {
+// Profil dev (Test-Unterbau, scripts/dev/bootstrap_test_stack.ps1): dieselbe Datei; Zusatz-Zeilen (stdin: TEST_*-Werte aus .env und
+// die Test-Schalter aus scripts/lib/test_install_env.ps1) ersetzen einen Schlüssel an seiner Stelle oder kommen dazu.
+test('CI-Antwort-Datei --profile dev: Zusatz-Zeilen ersetzen und ergänzen, echter Leser nimmt sie an, eigene Schalter keine', () => {
+  assert.equal(flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' })).has('TEST_HARNESS_HEADER'), false);
   const release = render({ flow, Q, reach: 'tunnel', backup: '/x' });
   const txt = render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev',
-    extra: 'TELEGRAM_BOT_TOKEN=2000002:inventedDevToken\nLIFEAGENTS_DEPLOY_FULL=1\nTEST_HARNESS_SECRET=invented-harness\n' });
+    extra: 'TELEGRAM_BOT_TOKEN=2000002:inventedDevToken\nTEST_HARNESS_HEADER=X-Test-Auth\nLIFEAGENTS_DEPLOY_FULL=1\nTEST_HARNESS_SECRET=invented-harness\n' });
   const m = flow.parseAnswers(txt);
   assert.equal(m.get('TEST_HARNESS_HEADER'), 'X-Test-Auth');
-  assert.equal(m.get('LLM_GATEWAY_KEEPALIVE_HOURS'), '0');
-  assert.equal(m.get('BOT_PROFILE_PHOTO'), '0');
-  assert.equal(m.get('TELEGRAM_WEBHOOK_TAKEOVER'), '1');
-  assert.equal(m.get('LIFEAGENTS_HITL_CHAT_APPROVAL'), 'false');
   assert.equal(m.get('LIFEAGENTS_DEPLOY_FULL'), '1');
   assert.equal(m.get('TELEGRAM_BOT_TOKEN'), '2000002:inventedDevToken');
   assert.equal(m.get('TEST_HARNESS_SECRET'), 'invented-harness');

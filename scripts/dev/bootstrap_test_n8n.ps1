@@ -20,9 +20,8 @@
 # REST-API). Loesung: eine test-only socat-Bruecke (0.0.0.0:<bridge> -> 127.0.0.1:5678) im Container,
 # auf den Host publiziert. Der provision.sh-Kern bleibt dadurch byte-identisch (keine Listener-Aenderung).
 #
-# Warum TEST_HARNESS_HEADER=X-Test-Auth: die Harness-Webhooks nutzen httpHeaderAuth; alle Test-Skripte
-# senden den Header `X-Test-Auth`. inject_credentials.sh defaultet auf `x-harness-secret` -> ohne den
-# Override wuerde die Credential mit falschem Header-Namen angelegt -> infra_test bekaeme 403.
+# Test-Schalter der Installation (Harness-Header, Keep-Alive aus, Webhook-Uebernahme …) und die TEST_*-Zuordnung samt
+# Begruendung: scripts/lib/test_install_env.ps1, dieselben fuer den Docker-Verbund (bootstrap_test_stack.ps1).
 #
 # Verbindungswerte (URL + frisch geminteter N8N_API_KEY) landen in .local/n8ntest_state.<container>.json; die
 # Tier-Skripte lesen sie ueber scripts/dev/test_n8n_state.ps1 (Prod-.env-Keys werden nie gelesen).
@@ -463,69 +462,20 @@ if ($SkipInstall) {
     return
 }
 
-# --- Install-Env-Block bauen (TEST_* -> Kern-Env) ---------------------------
-$envMap = [ordered]@{
-    'TEST_N8N_OWNER_EMAIL'        = 'N8N_OWNER_EMAIL'
-    'TEST_N8N_OWNER_PASSWORD'     = 'N8N_OWNER_PASSWORD'
-    'TEST_N8N_ENCRYPTION_KEY'     = 'N8N_ENCRYPTION_KEY'
-    'TEST_PG_PASSWORD'            = 'N8N_DB_PASSWORD'
-    'TEST_TELEGRAM_BOT_TOKEN'     = 'TELEGRAM_BOT_TOKEN'
-    'TEST_TELEGRAM_CHAT_ID'       = 'OWNER_CHAT_ID'
-    'TEST_GOOGLE_API_KEY'         = 'GOOGLE_API_KEY'
-    'TEST_ANTHROPIC_API_KEY'      = 'ANTHROPIC_API_KEY'
-    'TEST_HARNESS_SECRET'         = 'TEST_HARNESS_SECRET'
-    'TEST_OWNER_FIRST_NAME'       = 'OWNER_FIRST_NAME'
-    'TEST_OWNER_LAST_NAME'        = 'OWNER_LAST_NAME'
-    'TEST_OWNER_BIRTH_DATE'       = 'OWNER_BIRTH_DATE'
-    'TEST_OWNER_LANGUAGE'         = 'OWNER_LANGUAGE'
-}
-# Paket-Secret-Keys manifest-getrieben: jedes packages/<pkg>/manifest.json
-# deklariert seine Fremd-API-Creds im `credentials`-Block (§3.8, env[].field = der Kern-Env-Name);
-# das Substrat reicht je Feld TEST_<field> -> <field> als Prozess-Env (der Stage-4-Wizard skippt ohne
-# TTY, _inject_manifest_credentials liest env-override-first). doc_lint 7b prueft die abgeleiteten
-# TEST_*-Keys gegen .env.example (manifest-getrieben, dieselbe Ableitung).
-foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | Sort-Object Name)) {
-    $mfPath = Join-Path $pkgDir.FullName 'manifest.json'
-    if (-not (Test-Path $mfPath)) { continue }
-    $mf = [System.IO.File]::ReadAllText($mfPath, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
-    if ($null -eq $mf.credentials) { continue }
-    foreach ($credProp in ($mf.credentials.PSObject.Properties | Where-Object { $_.Name -notlike '_*' })) {
-        if ($null -eq $credProp.Value.env) { continue }
-        foreach ($envKeyProp in $credProp.Value.env.PSObject.Properties) {
-            # env-Objekt: Property-NAME = der Kern-Env-Key (z. B. ADZUNA_APP_ID); .field ist das
-            # n8n-Credential-Datenfeld (nicht der Env-Name).
-            if (-not $envMap.Contains("TEST_$($envKeyProp.Name)")) {
-                $envMap["TEST_$($envKeyProp.Name)"] = [string]$envKeyProp.Name
-            }
-        }
-    }
-}
+# --- Install-Env-Block bauen (TEST_* -> Kern-Env, Test-Schalter) ------------
+# Zuordnung und Schalter samt Begruendung: scripts/lib/test_install_env.ps1 (eine Adresse fuer beide Unterbauten).
+. "$PSScriptRoot\..\lib\test_install_env.ps1"
+$envMap = Get-TestInstallEnvMap $RepoRoot
 function ConvertTo-ShellQuote([string]$v) { "'" + ($v -replace "'", "'\''") + "'" }
 $envLines = New-Object System.Collections.Generic.List[string]
 foreach ($k in $envMap.Keys) {
     $val = Get-EnvValue $k
     if ($val) { $envLines.Add("$($envMap[$k])=$(ConvertTo-ShellQuote $val)") }
 }
-# Harness-Header-Name fix auf das, was alle Test-Skripte senden (sonst 403 — s. Kopf).
-$envLines.Add("TEST_HARNESS_HEADER=$(ConvertTo-ShellQuote 'X-Test-Auth')")
-# -HitlChatApproval: Bestaetigungs-Knoepfe im Chat (callback_data) erzwingen — das Substrat hat keine echte Domain, die
-# Selbst-Probe in deploy_workflows.sh (_hitl_chat_approval) bliebe sonst immer bei Link-Knoepfen. Nur fuer
-# Chat-Knopf-Tests; hitl_gate_test erkennt den Modus selbst; Standard bleibt der Prod-gleiche Weg ohne Domain (Link-Knoepfe).
-$envLines.Add("LIFEAGENTS_HITL_CHAT_APPROVAL=$(if ($HitlChatApproval) { 'true' } else { 'false' })")
-# -FullDeploy: Not-Schalter von deploy_workflows.sh (sonst spielt es nur neue/geaenderte Workflows ein).
-$envLines.Add("LIFEAGENTS_DEPLOY_FULL=$(if ($FullDeploy) { '1' } else { '0' })")
-# Cache-Keep-Alive des LLM-Gateways aus: ein stundenlang laufendes Substrat wuerde den Cache sonst bis zu 24 h auf dem
-# Entwickler-Schluessel anstupsen (kostet ohne Nutzen). Die Mechanik prueft llm_gateway_test (k) mit eigener Unit.
-$envLines.Add('LLM_GATEWAY_KEEPALIVE_HOURS=0')
-# Probelauf "parallele Werkzeug-Aufrufe": $env:LLM_GATEWAY_SERIAL_TOOLS=0 vor -Reset schaltet das Erzwingen "ein Werkzeug je
-# Antwort" im Gateway des Substrats ab (nur 0 oder 1; ungesetzt = Standard an).
-if ($env:LLM_GATEWAY_SERIAL_TOOLS -in @('0', '1')) { $envLines.Add("LLM_GATEWAY_SERIAL_TOOLS=$($env:LLM_GATEWAY_SERIAL_TOOLS)") }
-# Bot-Profilbild aus: das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN, ein -Reset wuerde dem Test-Bot sonst
-# ein Bild setzen. Die Mechanik prueft bot_profile_photo_test gegen den Mock.
-$envLines.Add('BOT_PROFILE_PHOTO=0')
-# Webhook-Uebernahme ausdruecklich: der Test-Bot ist vom vorigen Substrat (oder einem parallelen) noch verbunden; ohne den
-# Schalter bricht die Erstinstallation vor jeder Aenderung ab (telegram_webhook_preflight, Pruefliste Nr. 10).
-$envLines.Add('TELEGRAM_WEBHOOK_TAKEOVER=1')
+# $env:LLM_GATEWAY_SERIAL_TOOLS: nur 0 oder 1 zaehlt, jeder andere Wert bleibt ungesetzt (Standard an).
+$serial = if ($env:LLM_GATEWAY_SERIAL_TOOLS -in @('0', '1')) { [string]$env:LLM_GATEWAY_SERIAL_TOOLS } else { '' }
+$switches = Get-TestDevSwitches -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools $serial
+foreach ($k in $switches.Keys) { $envLines.Add("$k=$(ConvertTo-ShellQuote $switches[$k])") }
 
 # Release-Pin (-Version): install.sh --version laedt anonym aus dem oeffentlichen Repo (kein Token).
 if ($Version) {

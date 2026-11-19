@@ -4,9 +4,9 @@
 //   docker cp tests/wizard/render_ci_answers.js <master>:/tmp/ && docker exec <master> node /tmp/render_ci_answers.js --reach tunnel|fritzbox --backup <eltern-ordner> > answers.env
 // --packages none|all wählt die Module (Standard all). --print packages gibt stattdessen das Argument für `provision.sh --packages` aus (flow.packagesArg).
 // Optionen: --wizard-dir <ordner> (Standard /opt/lifeagents/provisioning/wizard), --questions-file <json> (statt bridge.sh).
-// --profile dev (Test-Unterbau scripts/dev/bootstrap_test_stack.ps1; Standard release = die Datei wie oben, byte-gleich): hängt
-// die festen Test-Schalter DEV_KEYS an; --extra-stdin liest danach SCHLÜSSEL=Wert-Zeilen von stdin (die TEST_*-Werte aus .env
-// und Schalter wie LIFEAGENTS_DEPLOY_FULL), die einen Schlüssel an seiner Stelle ersetzen oder ans Ende kommen. Über stdin, damit
+// --profile dev (Test-Unterbau scripts/dev/bootstrap_test_stack.ps1; Standard release = die Datei wie oben, byte-gleich): ohne
+// erfundene Zugänge; --extra-stdin liest SCHLÜSSEL=Wert-Zeilen von stdin (die TEST_*-Werte aus .env
+// und die Test-Schalter, beide aus scripts/lib/test_install_env.ps1), die einen Schlüssel an seiner Stelle ersetzen oder ans Ende kommen. Über stdin, damit
 // kein Geheimnis in einer Befehlszeile steht (docker exec, Prozessliste). Diese Schlüssel kennt flow.allowedKeys nicht (keine
 // Frage des Assistenten); welche der Installer sperrt, entscheidet sein Leser (release_inputs.sh _answers_load_wizard).
 // Nur erfundene Werte (öffentliches Repo). Eine Pflichtfrage ohne erfundenen Wert bricht ab: eine neue Frage zwingt dazu, hier
@@ -27,18 +27,6 @@ const SECRETS = {
   TELEGRAM_BOT_TOKEN: '1000001:CIinventedTokenForMockTelegram0000',
   ANTHROPIC_API_KEY: 'sk-ant-api03-ci-invented-key-00000000000000000000',
 };
-
-// Feste Test-Schalter des Profils dev, Gründe je Schalter im Kopf von scripts/dev/bootstrap_test_n8n.ps1 (dieselben Werte):
-// Harness-Header aller Test-Skripte, kein Cache-Keep-Alive, kein Bot-Profilbild, Webhook-Übernahme des Test-Bots,
-// Link-Knöpfe statt Chat-Knöpfe, nur geänderte Workflows einspielen.
-const DEV_KEYS = [
-  ['TEST_HARNESS_HEADER', 'X-Test-Auth'],
-  ['LLM_GATEWAY_KEEPALIVE_HOURS', '0'],
-  ['BOT_PROFILE_PHOTO', '0'],
-  ['TELEGRAM_WEBHOOK_TAKEOVER', '1'],
-  ['LIFEAGENTS_HITL_CHAT_APPROVAL', 'false'],
-  ['LIFEAGENTS_DEPLOY_FULL', '0'],
-];
 
 // withExtra(flow, txt, extraText) -> txt mit ersetzten bzw. angehängten Schlüsseln; Fehler nennen Zeile und Schlüssel, nie den Wert.
 function withExtra(flow, txt, extraText) {
@@ -95,7 +83,7 @@ function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'rel
   if (what === 'packages') return flow.packagesArg(Q, A);
   const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, profile === 'dev' ? {} : SECRETS));
   if (profile !== 'dev') return txt;
-  return withExtra(flow, withExtra(flow, txt, DEV_KEYS.map(([k, v]) => `${k}=${v}\n`).join('')), extra);
+  return withExtra(flow, txt, extra);
 }
 
 if (require.main === module) {

@@ -285,7 +285,7 @@ foreach ($ps in (Get-ChildItem -Path $psScanDirs -Recurse -Filter '*.ps1' -Error
 
 # ---------------------------------------------------------------
 # 7) Env-Template-Konvention: genau eine Vorlagen-Datei (.env.example); jeder
-#    $envMap-Quell-Key im Docker-Test-Substrat-Treiber (bootstrap_test_n8n.ps1) ist TEST_-praefixt
+#    Quell-Key der Test-Installation (Get-TestInstallEnvMap, scripts/lib/test_install_env.ps1) ist TEST_-praefixt
 #    und in .env.example dokumentiert. Grund: ein zweites Template (.env.template) driftet still;
 #    unpraefixte Test-Keys sind von den Kern-Prozess-Env-Namen (OWNER_*) nicht unterscheidbar.
 # ---------------------------------------------------------------
@@ -301,22 +301,20 @@ if (($tmplFiles -join ',') -ne '.env.example') {
     }
 }
 
-# 7b) $envMap-Quell-Keys aus dem [ordered]@{...}-Literal in bootstrap_test_n8n.ps1: TEST_-praefixt + dokumentiert.
-$driver     = Join-Path $RepoRoot 'scripts\dev\bootstrap_test_n8n.ps1'
+# 7b) Quell-Keys der Test-Installation (Get-TestInstallEnvMap, beide Unterbauten): TEST_-praefixt + dokumentiert. Die Test-Schalter
+#     (Get-TestDevSwitches, z. B. TEST_HARNESS_HEADER) sind feste Werte, kein .env-Input, und zaehlen hier nicht.
+$envLib     = Join-Path $RepoRoot 'scripts\lib\test_install_env.ps1'
 $exampleEnv = Join-Path $RepoRoot '.env.example'
-if ((Test-Path $driver) -and (Test-Path $exampleEnv)) {
-    $driverText  = [System.IO.File]::ReadAllText($driver)
+if ((Test-Path $envLib) -and (Test-Path $exampleEnv)) {
     $exampleText = [System.IO.File]::ReadAllText($exampleEnv)
-    # Nur das ordered-Hashtable-Literal betrachten; TEST_HARNESS_HEADER wird ausserhalb mit festem
-    # Wert ($envLines.Add(...)) gesetzt und ist als Nicht-TEST_-Input ausgenommen.
-    $m = [regex]::Match($driverText, '\$envMap\s*=\s*\[ordered\]@\{(.+?)\}', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-    if (-not $m.Success) {
-        Fail 'scripts/dev/bootstrap_test_n8n.ps1' "envMap-Literal ([ordered]@{ ... }) nicht gefunden -- Env-Konventions-Check kann nicht greifen."
+    . $envLib
+    $envMapLib = Get-TestInstallEnvMap $RepoRoot
+    if ($envMapLib.Count -eq 0) {
+        Fail 'scripts/lib/test_install_env.ps1' 'Get-TestInstallEnvMap liefert keine Zuordnung -- Env-Konventions-Check kann nicht greifen.'
     } else {
-        $srcKeys = [regex]::Matches($m.Groups[1].Value, "(?m)^\s*'([A-Za-z0-9_]+)'\s*=") | ForEach-Object { $_.Groups[1].Value }
-        # Manifest-abgeleitete Paket-Secret-Keys: der Treiber ergaenzt die Map zur Laufzeit generisch um
-        # TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property (Property-Name = Kern-Env-Key).
-        # Dieselbe Ableitung hier: jeder Paket-Secret-Key muss in .env.example dokumentiert sein.
+        $srcKeys = @($envMapLib.Keys)
+        # Gegenprobe mit eigener Ableitung: TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property
+        # (Property-Name = Kern-Env-Key) muss in der Zuordnung stehen und in .env.example dokumentiert sein.
         $pkgKeys = New-Object System.Collections.Generic.List[string]
         foreach ($mfPath in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object { Join-Path $_.FullName 'manifest.json' })) {
             if (-not (Test-Path $mfPath)) { continue }
@@ -336,9 +334,14 @@ if ((Test-Path $driver) -and (Test-Path $exampleEnv)) {
         if ($hasCredBlock -and $pkgKeys.Count -eq 0) {
             Fail 'scripts/doc_lint.ps1' 'Selbst-Assert 7b: credentials-Block vorhanden, aber 0 abgeleitete TEST_*-Paket-Keys (Manifest-Ableitung gebrochen).'
         }
+        foreach ($k in @($pkgKeys)) {
+            if ($srcKeys -notcontains $k) {
+                Fail 'scripts/lib/test_install_env.ps1' "Paket-Zugang '$k' (Manifest credentials) fehlt in Get-TestInstallEnvMap."
+            }
+        }
         foreach ($k in (@($srcKeys) + @($pkgKeys) | Select-Object -Unique)) {
             if ($k -notmatch '^TEST_') {
-                Fail 'scripts/dev/bootstrap_test_n8n.ps1' "envMap-Quell-Key '$k' ist nicht TEST_-praefixt (Substrat-Test-Input -> TEST_*; Kern-Zielname bleibt rechts unveraendert)."
+                Fail 'scripts/lib/test_install_env.ps1' "envMap-Quell-Key '$k' ist nicht TEST_-praefixt (Substrat-Test-Input -> TEST_*; Kern-Zielname bleibt rechts unveraendert)."
             }
             if ($exampleText -notmatch ("(?m)^\s*#?\s*" + [regex]::Escape($k) + "=")) {
                 Fail '.env.example' "envMap-Quell-Key '$k' fehlt in .env.example (Vorlage muss jeden Test-Substrat-Schluessel dokumentieren)."

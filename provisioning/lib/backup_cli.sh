@@ -32,6 +32,7 @@
 #   alles zurueck, die alte Welt bleibt intakt. Decrypt/Header-/Pre-Flight-Checks und der Abgleich des Aufbaus
 #   (_bkp_schema_check) passieren vor dem Wipe. Fehlt ein Bundle-Paket mit backup-Block -> Auto-Install
 #   `pkg_install_one --no-seed` (der Restore bringt die Daten), dann Pre-Flight-Recheck; Fehlschlag = Abbruch vor jedem Wipe.
+#   Nach der TX gleicht _bkp_converge die Code-Fakten an diese Version an (wie ein Update).
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 # BACKUP_KEY_NAME, Schluessel-Lesen und gpg-Ver-/Entschluesselung leben in common.sh (geteilt mit der Upgrade-Sicherung).
@@ -843,9 +844,12 @@ _bkp_schema_check() {
       printf '%s\tb:%s\n' "$t" "$c" >> "$bside.part"
     done < <(printf '%s\n' "$cols" | sed 's/, /\n/g')   # mit Zeilenende, sonst verwirft read die letzte Spalte
   done <<<"$copies"
-  jq -r '(.verify_counts // {}) | keys[] | . + "\t"' "$tmp/manifest.json" >> "$bside.part" 2>/dev/null
-  jq -r 'to_entries[] | .key as $t | ($t + "\t"), ((.value // []) | if type == "array" then (map(keys[]) | unique[] | $t + "\tf:" + .) else empty end)' \
-    "$tmp/shared.json" >> "$bside.part" 2>/dev/null
+  # Unlesbar = beschaedigt: ein still abgebrochenes jq liesse Tabellen weg und den Abgleich durch.
+  if ! { jq -r '(.verify_counts // {}) | keys[] | . + "\t"' "$tmp/manifest.json" >> "$bside.part" 2>/dev/null \
+         && jq -r 'to_entries[] | .key as $t | ($t + "\t"), ((.value // []) | if type == "array" then (map(keys[]) | unique[] | $t + "\tf:" + .) else empty end)' \
+              "$tmp/shared.json" >> "$bside.part" 2>/dev/null; }; then
+    _bkp_rdie corrupt "Die Sicherung ist beschädigt (Inhaltsliste unlesbar). Es wurde NICHTS geaendert."
+  fi
   mv "$bside.part" "$bside"
   fi
   # Ziel-Menge: aktive Pakete plus die erst einzuschaltenden (deren Tabellen gibt es schon).
@@ -892,7 +896,11 @@ _bkp_schema_check() {
       # Ziel hat Spalten, die die Sicherung nicht liefert.
       while IFS=$'\t' read -r kind c tnn tdef tgen tid; do
         [ "$kind" = "$tt" ] || continue
-        [ "$tgen" = 1 ] && continue
+        # Im Ziel berechnet, im Abzug noch gespeichert (pg_dump laesst berechnete Spalten im COPY weg): COPY scheitert in der TX.
+        if [ "$tgen" = 1 ]; then
+          [ "$has_b" = 1 ] && printf '%s\n' "$bcols" | grep -qxF -- "$c" && diff_old+="Spalte ${tt}.${c} (jetzt berechnet); "
+          continue
+        fi
         if [ "$has_b" = 1 ]; then
           printf '%s\n' "$bcols" | grep -qxF -- "$c" && continue
           [ "$tnn" = 1 ] && [ "$tdef" = 0 ] && [ "$tid" = 0 ] && diff_old+="Spalte ${tt}.${c} (Pflicht); "
@@ -1044,14 +1052,15 @@ backup_cmd_list() {
 }
 
 # backup_cmd_restore_status --json — Stand des letzten Hintergrund-Laufs: {ok:true, state: idle|running|ok|fail|unfinished,
-#   code, release, name, created, foreign, started}; release nur bei fail (Release der Sicherung, fuer die Versions-Codes);
+#   code, converged, release, name, created, foreign, started}; release nur bei fail (Release der Sicherung, fuer die
+#   Versions-Codes); converged nur bei ok (false = Daten eingespielt, Abgleich mit dieser Version brach ab, _bkp_converge);
 #   unfinished = gestartet, ohne Ergebnis und die Restore-Sperre ist frei (Rechner aus, Container neu, Lauf abgebrochen) — die
 #   TX hat dann nichts geaendert.
 backup_cmd_restore_status() {
   [ "${1:-}" = --json ] || die "Usage: lifeagents backup restore-status --json"
-  local st okt flt rs nm cr fg rl state=idle v
+  local st okt flt rs nm cr fg rl cv state=idle v
   for v in st:LAST_RESTORE_START okt:LAST_RESTORE_OK flt:LAST_RESTORE_FAIL rs:LAST_RESTORE_REASON nm:LAST_RESTORE_NAME \
-           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN rl:LAST_RESTORE_RELEASE; do
+           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN rl:LAST_RESTORE_RELEASE cv:LAST_RESTORE_CONVERGE; do
     printf -v "${v%%:*}" '%s' "$(read_env_value "$BACKUP_STATE_FILE" "${v#*:}" 2>/dev/null || true)"
   done
   case "$st" in ''|*[!0-9]*) st=0 ;; esac; case "$okt" in ''|*[!0-9]*) okt=0 ;; esac; case "$flt" in ''|*[!0-9]*) flt=0 ;; esac
@@ -1070,8 +1079,9 @@ backup_cmd_restore_status() {
     fi
   fi
   jq -cn --arg state "$state" --arg code "$rs" --arg name "$nm" --arg created "$cr" --arg foreign "$fg" --argjson started "$st" \
-    --arg release "$rl" \
+    --arg release "$rl" --arg cv "$cv" \
     '{ok: true, state: $state, code: (if $state == "fail" then $code else null end),
+      converged: (if $state == "ok" then $cv != "fail" else null end),
       release: (if $state == "fail" and $release != "" then $release else null end), name: (if $name == "" then null else $name end),
       created: (if $created == "" then null else $created end), foreign: ($foreign == "1"), started: $started}'
 }
@@ -1080,9 +1090,9 @@ backup_cmd_restore_status() {
 # restore
 # ============================================================
 # backup_cmd_restore [<datei>|<name>] [--from-host] [--key-stdin] [--in-stdin] [--yes] [--plan] [--detach] [--json]
-#   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann eine TX. Start-App:
+#   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann eine TX und der Abgleich mit dieser Version. Start-App:
 #   --plan --json  Probelauf: oeffnen, pruefen, nichts schreiben (auch kein Paket, kein backup.state) -> ein JSON-Objekt.
-#   --detach --json  (mit --yes) pruefen wie der Probelauf, dann im Hintergrund: Pakete einrichten, Vorab-Sicherung, TX;
+#   --detach --json  (mit --yes) pruefen wie der Probelauf, dann im Hintergrund: Pakete einrichten, Vorab-Sicherung, TX, Abgleich;
 #                  Ergebnis in backup.state (backup restore-status). Der Aufrufer bekommt sofort {ok:true, started}.
 #   --in-stdin     die Sicherung kommt ueber stdin (Rahmen _bkp_read_in_stdin, mit Blatt-Block) statt aus einem Ordner.
 backup_cmd_restore() {
@@ -1298,12 +1308,15 @@ backup_cmd_restore() {
     _bkp_state_set LAST_RESTORE_CREATED "$created"; _bkp_state_set LAST_RESTORE_FOREIGN "$([ -n "$brought" ] && printf 1 || printf 0)"
     _bkp_state_set LAST_RESTORE_TMP "$tmp"
     _bkp_state_set LAST_RESTORE_OK ''; _bkp_state_set LAST_RESTORE_FAIL ''; _bkp_state_set LAST_RESTORE_REASON ''
-    _bkp_state_set LAST_RESTORE_RELEASE ''
+    _bkp_state_set LAST_RESTORE_RELEASE ''; _bkp_state_set LAST_RESTORE_CONVERGE ''
     (
       exec </dev/null >"$log_f" 2>&1
       # shellcheck disable=SC2064  # bewusst JETZT expandieren (local $tmp)
       trap "rm -rf -- '$tmp'" EXIT
-      _BKP_CHILD=1; _BKP_JSON=0
+      # shellcheck disable=SC2030  # gilt bewusst nur in dieser Unterschale (der Aufrufer endet gleich danach)
+      _BKP_CHILD=1
+      # shellcheck disable=SC2030  # ebenso
+      _BKP_JSON=0
       # UNATTENDED: ein Hintergrund-Lauf fragt nie, auch wenn er aus einem Terminal kam (/dev/tty bliebe sonst nutzbar und
       # die Paket-Einrichtung wartete dort auf Zugangsdaten, mit beiden Sperren in der Hand).
       # shellcheck disable=SC2034  # UNATTENDED liest ui_interactive (common.sh) in dieser Shell
@@ -1316,14 +1329,19 @@ backup_cmd_restore() {
     jq -cn --argjson started "$(date +%s)" '{ok: true, started: $started}'
     return 0
   fi
+  # --json ohne --detach (Aufrufer wartet auf ein JSON-Objekt): der Pre-Flight hat ohne Terminal entschieden, also fragt
+  # auch die Paket-Einrichtung nicht.
+  # shellcheck disable=SC2034,SC2031  # UNATTENDED liest ui_interactive (common.sh); _BKP_JSON aendert nur der Hintergrund-Zweig
+  [ "$_BKP_JSON" != 1 ] || UNATTENDED=1
   _BKP_JSON=0
   _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip"
 }
 
 # _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten>
 #   <pakete-uebersprungen> — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
-#   einschalten, Aufbau ihrer Tabellen pruefen, Vorab-Sicherung der jetzigen Daten, dann eine TX. Jeder Abbruch ueber
-#   _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
+#   einschalten, Aufbau ihrer Tabellen pruefen, Vorab-Sicherung der jetzigen Daten, eine TX, danach _bkp_converge. Jeder
+#   Abbruch bis einschliesslich der TX ueber _bkp_rdie (ein vorher eingerichtetes Paket bleibt); ein gescheiterter Abgleich
+#   danach warnt nur, die Daten sind dann schon eingespielt.
 _bkp_rs_apply() {
   local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" pkg
   _pkg_menus_defer   # Menue einmal nach den Paketen (jeder Statuswechsel setzt es sonst neu)
@@ -1430,6 +1448,31 @@ _bkp_rs_apply() {
       && _bkp_rdie busy "Restore wartete zu lange auf eine Sperre — Transaktion zurueckgerollt, nichts geaendert."
     _bkp_rdie internal "Restore fehlgeschlagen — Transaktion zurueckgerollt, die alte Welt ist intakt."
   fi
+  # Ein Abbruch hier ist kein gescheiterter Restore: die Daten sind schon eingespielt, und die App sagt bei jedem Fehlschlag
+  #   „Deine Daten sind unverändert“. Darum Warnung, im Hintergrund-Lauf zusaetzlich LAST_RESTORE_CONVERGE (restore-status:
+  #   converged:false); Terminal und --json ohne --detach sehen nur die Warnung.
+  log "Gleiche die eingespielten Daten mit dieser Version ab (Schema-Inits + Seed wie beim Update) ..."
+  if ! _bkp_converge; then
+    warn "Die Daten sind eingespielt, aber der Abgleich mit dieser Version brach ab: Bezeichnungen und Rollen-Zuordnungen können bis dahin aus dem Stand der Sicherung stammen. Abhilfe: lifeagents update"
+    # shellcheck disable=SC2031  # _BKP_CHILD=1 setzt die Hintergrund-Unterschale, in der diese Funktion dann laeuft
+    [ "$_BKP_CHILD" != 1 ] || _bkp_state_set LAST_RESTORE_CONVERGE fail
+  fi
+}
+
+# _bkp_converge — nach dem Einspielen fuer Core und jedes aktive Paket dieselben Schritte wie ein Update (apply_schema, dann
+#   seed_data). Grund: eingespielte Tabellen tragen Code-Fakten im Stand der Sicherung (for_roles eines Onboarding-Abschnitts,
+#   Katalog-Zeilen der *_init.sql, system_tables), die sonst bis zum naechsten Update falsch blieben. Beide Schritte laufen bei
+#   jedem Update ueber Live-Daten und lassen Nutzer-Werte stehen (Seed-Guards: seed_data.sh, Kopf und _seed_onboarding_sections).
+#   Core zuerst wie in provision.sh, sonst saehe ein Paket-R__ den Core nicht. Je Paket eine Teilschale: ein `die` endet dort.
+#   Auch eben eingerichtete Pakete laufen voll: der Restore hat ihre system_tables danach aus der Sicherung ueberschrieben.
+#   Rueckgabe 0 = alle abgeglichen; 1 beim ersten gescheiterten Paket, die folgenden bleiben dann unabgeglichen (der Aufrufer
+#   verweist auf `lifeagents update`, das alle neu anwendet). Setzt die Globals von _pkg_resolve_env.
+_bkp_converge() {
+  local pkg
+  _pkg_resolve_env
+  for pkg in core $(_bkp_active_names | tr ' ' '\n' | grep -vx core | sort); do
+    ( apply_schema "$pkg" && SEED_PKG="$pkg" seed_data ) || { err "Abgleich '$pkg' fehlgeschlagen."; return 1; }
+  done
 }
 
 # ============================================================

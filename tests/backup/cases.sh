@@ -11,6 +11,7 @@
 #   L  Leck-Probe: kein Schluessel in Ausgaben, /proc/*/cmdline|environ waehrend eines Restores, Resten im tmpfs.
 #   P  Start-App: Probelauf, Blatt ueber stdin, Hintergrund-Lauf, Sperre, Abbruch.
 #   V  Aufbau der Sicherung gegen diese Version (Versions-Sperre): neuer/aelter/vertraeglich, Release im Kopf.
+#   S  Abgleich nach dem Einspielen: Code-Fakten im Stand dieser Version, Nutzer-Werte aus der Sicherung.
 #   N  Fehlende Pakete ohne Terminal: ohne backup-Block uebersprungen, mit Daten ohne freiwillige Zugaenge eingerichtet.
 # Schluessel: der echte Test-Schluessel des Substrats (zufaellig) + erfundene. Meldungen nennen nie einen Schluesselwert.
 # Am Ende steht core.backup_key wieder wie vorher.
@@ -61,8 +62,11 @@ restore_orig() {
 }
 new_backups() { local f; for f in /var/backups/lifeagents/lifeagents-backup-*.nla.enc; do [ -e "$f" ] && ! grep -qxF "$f" "$W/bk_before" && printf '%s\n' "$f"; done; return 0; }
 cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS public.bk_leer, public.bk_voll" >/dev/null 2>&1; pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1; pg_su_exec dropdb --if-exists bk_carry >/dev/null 2>&1
-  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS finance.bk_neu, finance.bk_ziel; ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_ziel, DROP COLUMN IF EXISTS bk_pflicht, DROP COLUMN IF EXISTS bk_alt, DROP COLUMN IF EXISTS bk_dev; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_std; DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'; DELETE FROM finance.accounts WHERE name = 'bk Testkonto'" >/dev/null 2>&1
-  [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"; rm -rf "$W"; }
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS finance.bk_neu, finance.bk_ziel; ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_ziel, DROP COLUMN IF EXISTS bk_pflicht, DROP COLUMN IF EXISTS bk_alt, DROP COLUMN IF EXISTS bk_dev, DROP COLUMN IF EXISTS bk_ber; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_std; DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'; DELETE FROM finance.accounts WHERE name = 'bk Testkonto'" >/dev/null 2>&1
+  [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"
+  [ ! -s "$W/career.manifest" ] || cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
+  [ ! -s "$W/career.sections" ] || cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
+  rm -rf "$W"; }
 trap cleanup EXIT
 if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein 64-Hex"; exit "$fails"; fi
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
@@ -296,6 +300,12 @@ jq '. + {"agent.bk_neu": []}' "$W/v/hand/shared.json" > "$W/v/hand/s2" && mv "$W
 tar -czf "$W/v/hand/n.tgz" -C "$W/v/hand" manifest.json data.dump shared.json
 V4="$W/v/hand/${V0##*/}"; rm -f "$V4"; gpg_sym_encrypt "$KA" "$V4" "$W/v/hand/n.tgz"
 vblock V.neuer-schluessel "$V4" version_newer
+# hand-injected: eine gefilterte Zeile, die kein Objekt ist, erzeugt kein Export; die Inhaltsliste ist dann unlesbar.
+mkdir -p "$W/v/kaputt"; cp "$W/v/hand/manifest.json" "$W/v/hand/data.dump" "$W/v/kaputt/"
+jq '. + {"agent.monitor_triggers": [1]}' "$W/v/hand/shared.json" > "$W/v/kaputt/shared.json"
+tar -czf "$W/v/kaputt/n.tgz" -C "$W/v/kaputt" manifest.json data.dump shared.json
+V10="$W/v/kaputt/${V0##*/}"; rm -f "$V10"; gpg_sym_encrypt "$KA" "$V10" "$W/v/kaputt/n.tgz"
+vblock V.inhalt-unlesbar "$V10" corrupt
 
 # Aelter + vertraeglich: das Ziel bekommt nach dem Export eine leer erlaubte Spalte und eine Tabelle -> einspielen.
 v0="$(fin)"
@@ -307,6 +317,12 @@ q "ALTER TABLE finance.accounts DROP COLUMN bk_ziel; DROP TABLE finance.bk_ziel"
 q "ALTER TABLE finance.accounts ADD COLUMN bk_pflicht int NOT NULL DEFAULT 0; ALTER TABLE finance.accounts ALTER COLUMN bk_pflicht DROP DEFAULT"
 vblock V.aelter-pflichtspalte "$V0" version_older v0.2.0
 q "ALTER TABLE finance.accounts DROP COLUMN bk_pflicht"
+# Aelter + Spalte im Ziel jetzt berechnet: der Abzug liefert sie noch gespeichert, COPY wuerde erst in der TX scheitern.
+q "ALTER TABLE finance.accounts ADD COLUMN bk_ber text"
+V9="$(vexp berechnet)"
+q "ALTER TABLE finance.accounts DROP COLUMN bk_ber; ALTER TABLE finance.accounts ADD COLUMN bk_ber text GENERATED ALWAYS AS (name) STORED"
+vblock V.aelter-berechnet "$V9" version_older
+q "ALTER TABLE finance.accounts DROP COLUMN bk_ber"
 # Nachweislich neuere Sicherung (v0.3.0 > v0.2.0), der eine Ziel-Spalte fehlt (dort entfernt): das hilft nur ein Update.
 setver v0.3.0; V8="$(vexp neuer-ohne-spalte)"; setver v0.2.0
 q "ALTER TABLE finance.accounts ADD COLUMN bk_pflicht int NOT NULL DEFAULT 0; ALTER TABLE finance.accounts ALTER COLUMN bk_pflicht DROP DEFAULT"
@@ -351,6 +367,40 @@ cli package deactivate estate
 vplan "$V0"
 ok_if V.paket-aus '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"estate\") | .state")" = activate ]' "$(js .code)"
 cli package activate estate
+
+# ---------------------------------------------------------------------------- S: Abgleich mit dieser Version nach dem Einspielen
+# Eingespielte Tabellen tragen auch Code-Fakten (Rollen eines Onboarding-Abschnitts aus sections.json, Katalog-Zeilen einer
+# *_init.sql); eine Sicherung aus einem aelteren Stand bringt dort ihren alten Wert mit. Nach dem Einspielen muessen sie dem
+# Stand dieser Version entsprechen, Nutzer-Werte (Status eines Abschnitts) aber denen der Sicherung.
+cro() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) || ':' || md5(COALESCE(string_agg(section_key || person_id || COALESCE(for_roles::text, '-'), ',' ORDER BY section_key, person_id), '')) FROM career.onboarding_state"; }
+dlab() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT label FROM estate.directive_types WHERE doc_type = 'testament'"; }
+cst() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT status FROM career.onboarding_state WHERE section_key = 'profile_basics' ORDER BY person_id LIMIT 1"; }
+S_RO="$(cro)"; S_LAB="$(dlab)"; S_ST="$(cst)"
+ok_if S.vorbereitet '[ "${S_RO%%:*}" -gt 0 ] && [ "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM career.onboarding_state WHERE for_roles IS NULL")" = 0 ] && [ -n "$S_LAB" ] && [ -n "$S_ST" ]' \
+  "Abschnitte=$S_RO Bezeichnung=$S_LAB Status=$S_ST"
+# hand-injected: kein Export eines frueheren Release im Substrat; den aelteren Stand stellt ein UPDATE vor dem Export nach
+# (Rollen leer wie vor ihrer Einfuehrung, alte Katalog-Bezeichnung), dazu ein Nutzer-Status (skipped). Danach geht der Status
+# im Ziel auf unknown, damit nur die Sicherung skipped zurueckbringen kann.
+q "UPDATE career.onboarding_state SET for_roles = NULL; UPDATE career.onboarding_state SET status = 'skipped' WHERE section_key = 'profile_basics'; UPDATE estate.directive_types SET label = 'bk alt' WHERE doc_type = 'testament'"
+S1="$(vexp abgleich)"
+q "UPDATE career.onboarding_state SET status = 'unknown' WHERE section_key = 'profile_basics'"
+vyes "$S1"; rc=$?
+ok_if S.rollen '[ "$rc" -eq 0 ] && [ "$(cro)" = "$S_RO" ]' "rc=$rc $(js .code) / Abschnitte $(cro) statt $S_RO / $(tail -n2 "$W/err.$n")"
+ok_if S.katalog '[ "$(dlab)" = "$S_LAB" ]' "Bezeichnung '$(dlab)'"
+ok_if S.nutzerwert '[ "$(cst)" = skipped ]' "Status '$(cst)' statt skipped aus der Sicherung"
+# Bricht der Abgleich ab, sind die Daten trotzdem eingespielt: der Hintergrund-Lauf endet ok, restore-status meldet
+# converged:false (die App sagt bei fail „Deine Daten sind unverändert“).
+# hand-injected: kein ausgeliefertes Paket laesst den Seed scheitern; eine Rolle ausserhalb des CHECK erzwingt es.
+cp "$ROOT/packages/career/onboarding/sections.json" "$W/career.sections"
+jq '.[0].for_roles = ["bk_keine_rolle"]' "$W/career.sections" > "$ROOT/packages/career/onboarding/sections.json"
+q "UPDATE career.onboarding_state SET status = 'unknown' WHERE section_key = 'profile_basics'"
+n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$S1" --yes --detach --json > "$W/out.$n" 2>/dev/null < /dev/null
+for _ in $(seq 1 600); do case "$(rs_state)" in running:|idle:|"") sleep 0.5 ;; *) break ;; esac; done
+cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
+rcv() { BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore-status --json 2>/dev/null | jq -r '.converged'; }
+ok_if S.abgleich-scheitert '[ "$(rs_state)" = ok: ] && [ "$(rcv)" = false ] && [ "$(cst)" = skipped ] && grep -q "Abhilfe: lifeagents update" "$W/log/restore.log"' \
+  "$(rs_state) converged=$(rcv) Status=$(cst) / $(tail -n2 "$W/log/restore.log" 2>/dev/null)"
+q "UPDATE career.onboarding_state SET status = '${S_ST}' WHERE section_key = 'profile_basics'"
 
 # ---------------------------------------------------------------------------- N: fehlende Pakete, Start-App (ohne Terminal)
 # Neuer Rechner ohne Karriere und Paperless. Paperless sichert keine Daten (kein backup-Block) -> uebersprungen; Karriere hat

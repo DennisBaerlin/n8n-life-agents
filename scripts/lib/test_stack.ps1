@@ -131,19 +131,22 @@ function ConvertTo-TestStackExtra {
     return $out.ToString()
 }
 
-# Compare-TestStackTeardown -- Abgleich der Docker-Namen (Container, Volumes, Abbilder) vor und nach dem Abbau: fehlen darf nur
-# Eigenes (<p>, <p>-…, <p>_…, <p>snap_…), Eigenes darf nicht bleiben. Rueckgabe = Funde als Text, leer = sauber.
-function Test-TestStackOwnName([string]$Project, [string]$Name) {
+# Compare-TestStackTeardown -- Abgleich der Docker-Namen (Container, Volumes, Abbilder) vor und nach dem Abbau. Zum Verbund
+# gehoeren nur die Container mit seinem Install-Etikett (-Labeled, vom Aufrufer vor dem Abbau gelesen), die Volumes <p>_* und
+# <p>snap_* und das Abbild <p>-master:wt; andere Objekte mit demselben Anfang gehoeren der Session (s4t0-dbtest …). Fehlen darf
+# nur, was zum Verbund gehoert, und davon darf nichts bleiben. Rueckgabe = Funde als Text, leer = sauber.
+function Test-TestStackOwnName([string]$Project, [string]$Name, [string[]]$Labeled) {
+    if ($Labeled -contains $Name) { return $true }
     $q = [regex]::Escape($Project)
-    return ($Name -match "^$q(-|_|snap_|$)")
+    return ($Name -match "^$q(_|snap_)[a-z0-9_]+$" -or $Name -match "^$q-master:wt@")
 }
-function Compare-TestStackTeardown([string]$Project, [string[]]$Before, [string[]]$After) {
+function Compare-TestStackTeardown([string]$Project, [string[]]$Before, [string[]]$After, [string[]]$Labeled = @()) {
     $f = @()
     foreach ($n in $Before) {
-        if (($After -notcontains $n) -and -not (Test-TestStackOwnName $Project $n)) { $f += "fremdes Objekt fehlt nach dem Abbau: $n" }
+        if (($After -notcontains $n) -and -not (Test-TestStackOwnName $Project $n $Labeled)) { $f += "fremdes Objekt fehlt nach dem Abbau (oder ein Nachbar baute zugleich ab): $n" }
     }
     foreach ($n in $After) {
-        if (Test-TestStackOwnName $Project $n) { $f += "eigenes Objekt blieb nach dem Abbau: $n" }
+        if (Test-TestStackOwnName $Project $n $Labeled) { $f += "eigenes Objekt blieb nach dem Abbau: $n" }
     }
     return $f
 }
@@ -294,10 +297,14 @@ function Stop-TestStackContainers($Names) {
     }
 }
 
+# Get-TestStackVolumeLabel -> Wert des Etiketts, '' ohne dieses Etikett, $null ohne Volume. Als JSON gelesen: eine Vorlage
+# {{index .Labels "x"}} kaeme ohne ihre Anfuehrungszeichen bei Docker an (Pruefung in test_stack_test.ps1).
 function Get-TestStackVolumeLabel([string]$Volume, [string]$Label) {
-    $r = Invoke-TestStackNative @('volume', 'inspect', '-f', "{{index .Labels `"$Label`"}}", $Volume)
+    $r = Invoke-TestStackNative @('volume', 'inspect', '-f', '{{json .Labels}}', $Volume)
     if ($r.Code -ne 0) { return $null }
-    return (($r.Output -join '').Trim())
+    $labels = ($r.Output -join '') | ConvertFrom-Json
+    if ($null -eq $labels -or $null -eq $labels.$Label) { return '' }
+    return [string]$labels.$Label
 }
 
 # New-TestStackPgdata -- <p>_pgdata vor dem ersten `stack up` mit den Etiketten des Platz-Zaehlers anlegen; rt_volumes_ensure
@@ -357,8 +364,9 @@ function Invoke-TestStackVolumeCopy($Names, [string[]]$Volumes, [switch]$Restore
         $from = if ($Restore) { $snap } else { $data }; $to = if ($Restore) { $data } else { $snap }
         $a += @('--mount', "type=volume,src=$from,dst=/from/$s,readonly", '--mount', "type=volume,src=$to,dst=/to/$s")
     }
-    # cp -a haelt Besitzer, Rechte und Zeiten (postgres verlangt pgdata 0700 und seinen uid).
-    $sh = 'set -e; for v in ' + ($Volumes -join ' ') + '; do find "/to/$v" -mindepth 1 -delete; cp -a "/from/$v/." "/to/$v/"; done'
+    # cp -a haelt Besitzer, Rechte und Zeiten (postgres verlangt pgdata 0700 und seinen uid). Ohne Anfuehrungszeichen: die
+    # Volume-Namen sind feste Bezeichner aus runtime.sh ([a-z0-9_]).
+    $sh = 'set -e; for v in ' + ($Volumes -join ' ') + '; do find /to/$v -mindepth 1 -delete; cp -a /from/$v/. /to/$v/; done'
     $r = Invoke-TestStackNative ($a + @($Names.Image, 'sh', '-c', $sh))
     if ($r.Code -ne 0) { throw "Volume-Kopie ($(if ($Restore) { 'zurueckspielen' } else { 'Schnappschuss' })) fehlgeschlagen: $($r.Output -join "`n")" }
 }
@@ -380,7 +388,9 @@ function Restore-TestStackSnapshot($Names, [string[]]$Volumes, [string]$RepoRoot
 function Get-TestStackDockerNames {
     $c = (Invoke-TestStackNative @('ps', '-a', '--format', '{{.Names}}')).Output
     $v = (Invoke-TestStackNative @('volume', 'ls', '--format', '{{.Name}}')).Output
-    $i = (Invoke-TestStackNative @('images', '--format', '{{.Repository}}:{{.Tag}}')).Output | Where-Object { $_ -notmatch '<none>' }
+    # Mit Digest: die Abbilder der compose.yml sind per Digest geladen und haben keinen Tag (Repository:<none>); ohne Repository
+    # (namenlose Bau-Reste) zaehlt ein Abbild nicht.
+    $i = (Invoke-TestStackNative @('images', '--digests', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}')).Output | Where-Object { $_ -notmatch '^<none>:' }
     return @(@($c) + @($v) + @($i) | Where-Object { $_ } | Sort-Object -Unique)
 }
 

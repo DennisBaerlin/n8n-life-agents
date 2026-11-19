@@ -70,6 +70,7 @@ function Remove-OwnStack([switch]$WithSnapshot) {
 
 if ($Down) {
     $before = Get-TestStackDockerNames
+    $labeled = @((Invoke-TestStackNative @('ps', '-a', '--filter', "label=io.lifeagents.install=$($Names.Project)", '--format', '{{.Names}}')).Output | Where-Object { $_ })
     Write-Step "Abbau $($Names.Project) ..."
     Remove-OwnStack -WithSnapshot
     if ((Invoke-TestStackNative @('image', 'inspect', $Names.Image)).Code -eq 0) {
@@ -82,7 +83,7 @@ if ($Down) {
     if ($old.Count) { [void](Invoke-TestStackNative (@('image', 'rm') + $old)) }
     Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
     Remove-Item $LogDir -Recurse -Force -ErrorAction SilentlyContinue
-    $finds = @(Compare-TestStackTeardown -Project $Names.Project -Before $before -After (Get-TestStackDockerNames))
+    $finds = @(Compare-TestStackTeardown -Project $Names.Project -Before $before -After (Get-TestStackDockerNames) -Labeled $labeled)
     if ($finds.Count) { throw "Abbau-Abgleich:`n$($finds -join "`n")" }
     Write-Step "Abgebaut: keine Reste, nichts Fremdes entfernt."
     return

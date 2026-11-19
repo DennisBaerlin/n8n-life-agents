@@ -66,15 +66,33 @@ Assert-That (Test-Throws { ConvertTo-TestStackExtra -Map $map -Values @{} -Seria
 Assert-That (Test-Throws { ConvertTo-TestStackExtra -Map $map -Values @{ TEST_TELEGRAM_BOT_TOKEN = "a`nB=1" } }) 'Zeilenumbruch im Wert = Abbruch'
 
 # --- Abbau-Abgleich: nur Eigenes darf fehlen -----------------------------------------------------------------------------
-$before = @('s4t0-master', 's4t0_pgdata', 's4t0snap_pgdata', 'fremd-n8n', 'n8nio/n8n:2.45.7', 's4t0-master:wt', 's4t0x-master')
-$after  = @('fremd-n8n', 'n8nio/n8n:2.45.7', 's4t0x-master')
-Assert-That (@(Compare-TestStackTeardown -Project 's4t0' -Before $before -After $after).Count -eq 0) 'nur eigene Objekte weg = kein Fund'
-$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After @('fremd-n8n', 's4t0x-master'))
-Assert-That ($f.Count -eq 1 -and $f[0] -match 'n8nio/n8n') 'fehlendes fremdes Abbild = Fund'
-$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After @('fremd-n8n', 'n8nio/n8n:2.45.7'))
-Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0x-master') 'Nachbar mit gleichem Anfang (s4t0x) zaehlt als fremd'
-$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after + 's4t0_pgdata'))
-Assert-That ($f.Count -eq 1 -and $f[0] -match 'blieb') 'eigener Rest nach dem Abbau = Fund'
+# Eigen = Container mit dem Install-Etikett (vom Aufrufer gelesen) + Volumes <p>_* / <p>snap_* + Abbild <p>-master:wt; andere
+# Objekte mit demselben Anfang (s4t0-dbtest, s4t0-wizardtest:…) gehoeren der Session, nicht dem Verbund.
+$img = 's4t0-master:wt@<none>'
+$before = @('s4t0-master', 's4t0-testbridge', 's4t0_pgdata', 's4t0snap_pgdata', 'fremd-n8n', 'n8nio/n8n:<none>@sha256:aa', $img, 's4t0x-master', 's4t0-dbtest', 's4t0-wizardtest:x@sha256:bb')
+$labeled = @('s4t0-master', 's4t0-testbridge')
+$after  = @('fremd-n8n', 'n8nio/n8n:<none>@sha256:aa', 's4t0x-master', 's4t0-dbtest', 's4t0-wizardtest:x@sha256:bb')
+Assert-That (@(Compare-TestStackTeardown -Project 's4t0' -Before $before -After $after -Labeled $labeled).Count -eq 0) 'nur Objekte des Verbunds weg, Session-Objekte bleiben = kein Fund'
+$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -notmatch 'n8nio' }) -Labeled $labeled)
+Assert-That ($f.Count -eq 1 -and $f[0] -match 'n8nio/n8n') 'fehlendes fremdes Abbild (per Digest, ohne Tag) = Fund'
+$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -ne 's4t0-dbtest' }) -Labeled $labeled)
+Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0-dbtest') 'Session-Container mit gleichem Anfang zaehlt als fremd'
+$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -ne 's4t0x-master' }) -Labeled $labeled)
+Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0x-master') 'Nachbar-Projekt mit gleichem Anfang (s4t0x) zaehlt als fremd'
+$f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after + 's4t0_pgdata' + 's4t0-testbridge') -Labeled $labeled)
+Assert-That ($f.Count -eq 2 -and ($f -match 'blieb').Count -eq 2) 'eigener Rest nach dem Abbau (Volume, etikettierter Container) = Fund'
+
+# --- PS 5.1 reicht ein " innerhalb eines Arguments nicht an native Programme weiter (Vorlage/Skript zerfaellt still) ------
+# Darum in test_stack.ps1 kein " in einem Literal, das als Docker-Argument geht: weder `" noch '…"…'. Ausnahme: der eine
+# Quoter in Invoke-TestStackProcess (Start-Process bekommt eine fertige Zeile).
+$text = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\lib\test_stack.ps1'))
+$src = $text -split "`r?`n"
+$argLines = @{}
+for ($i = 0; $i -lt $src.Count; $i++) { if ($src[$i] -match 'Invoke-TestStackNative|^\s*\$sh = |^\s*\$a \+= ') { $argLines[$i + 1] = $true } }
+$bad = @([System.Management.Automation.PSParser]::Tokenize($text, [ref]$null) |
+    Where-Object { $_.Type -eq 'String' -and $argLines.ContainsKey($_.StartLine) -and $_.Content.Contains('"') } |
+    ForEach-Object { $_.StartLine } | Sort-Object -Unique)
+Assert-That ($bad.Count -eq 0) "kein doppeltes Anfuehrungszeichen in Docker-Argumenten von test_stack.ps1 (Zeilen: $($bad -join ', '))"
 
 Write-Host "test_stack_test: $failed Fehler."
 exit $failed

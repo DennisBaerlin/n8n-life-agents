@@ -338,7 +338,7 @@ jobs:
           # Kein Geheimnis im Aufruf des Kerns (docker inspect zeigt seine Umgebung dauerhaft) und keines in seiner Ausgabe.
           core_args; docker create "${CORE_A[@]}" up --json >/dev/null
           if docker inspect "$LA_PROJECT-core" | grep -qF "$pw"; then echo "FAIL Passwort in docker inspect des Kerns"; exit 1; fi
-          docker rm "$LA_PROJECT-core" >/dev/null
+          docker rm -v "$LA_PROJECT-core" >/dev/null
           if grep -qF "$pw" "$RUNNER_TEMP"/core-*; then echo "FAIL Passwort in der Ausgabe des Kerns"; exit 1; fi
           # master aus dem Pin (Digest), und er kennt sein eigenes Image (master_swap, upgrade_guard brauchen es)
           test "$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-master")" = "$MASTER_PIN"
@@ -480,9 +480,13 @@ jobs:
         if: matrix.reach == 'tunnel'
         run: |
           set -euo pipefail
+          . "$RUNNER_TEMP/core.sh"
           edge_id="$(docker inspect -f '{{.Id}}' "$LA_PROJECT-edge")"
           test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$LA_PROJECT-tailscale")" = "container:$edge_id"
-          docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LA_PROJECT-tailscale" | grep -qx 'TS_HOSTNAME=bot'
+          # Erstinstallation ohne ts_state: der Kern zieht einen neutralen Namen aus lib/ts_names.json und legt ihn ab.
+          ts="$(vol_cat var_la stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')"
+          [[ "$ts" =~ ^[a-z]+-[a-z]+$ ]] || { echo "FAIL kein gezogener Rechnername: '$ts'"; exit 1; }
+          docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LA_PROJECT-tailscale" | grep -qx "TS_HOSTNAME=$ts"
           # Wizard und App fragen den Stand ueber reach_ctl.sh status (eine JSON-Zeile).
           st=''
           for _ in $(seq 1 45); do
@@ -605,6 +609,10 @@ jobs:
           for c in master n8n postgres gateway edge tailscale wan; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
           tail -n 40 "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" 2>&1 || true
           tail -n 20 "$RUNNER_TEMP"/core-*.err 2>&1 || true
+          # Startfehler je Container (Exit 128 = Docker konnte ihn nicht starten, der Grund steht in State.Error) und was der
+          # Daemon beim Wiederanlauf dazu meldete.
+          docker ps -aq --filter "label=io.lifeagents.install=$LA_PROJECT" | xargs -r docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}} started={{.State.StartedAt}}' 2>&1 || true
+          sudo journalctl -u docker --since '-20min' --no-pager 2>&1 | grep -iE 'error|fail' | tail -n 30 || true
 
       - name: Teardown (only our project + the neighbour)
         if: always()

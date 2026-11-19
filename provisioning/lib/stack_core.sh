@@ -78,10 +78,21 @@ _sc_fg() {
   SC_CHILD=''
   return "$rc"
 }
+# _sc_kids <pid> — direkte Kinder, aus /proc gelesen statt mit pgrep: ohne procps (Test-Substrat) fand pgrep nichts, und das
+#   Signal erreichte still keinen Nachfahren.
+_sc_kids() {
+  local f r
+  for f in /proc/[0-9]*/stat; do
+    read -r r 2>/dev/null < "$f" || continue
+    r="${r##*) }"   # hinter dem Prozessnamen (der darf Leerzeichen und Klammern enthalten): "<zustand> <ppid> …"
+    r="${r#* }"
+    if [ "${r%% *}" = "$1" ]; then f="${f#/proc/}"; printf '%s\n' "${f%/stat}"; fi
+  done
+}
 # _sc_kill_below <pid> — TERM an alle Nachfahren (der docker-Client kann Enkel sein, z. B. unter _sc_ro), nicht an <pid>.
 _sc_kill_below() {
   local c
-  for c in $(pgrep -P "$1" 2>/dev/null); do _sc_kill_below "$c"; kill -TERM "$c" 2>/dev/null || true; done
+  for c in $(_sc_kids "$1"); do _sc_kill_below "$c"; kill -TERM "$c" 2>/dev/null || true; done
 }
 # _sc_on_signal <exit> <name> — TERM/INT. Der laufende lange Schritt ist eine Subshell (_sc_fg) mit dem docker-Client
 #   darunter: das Signal geht an diesen Client. Was er ausserhalb dieses Containers angestossen hat, endet damit nicht von

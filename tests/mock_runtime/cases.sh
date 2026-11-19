@@ -862,6 +862,8 @@ eq SC.status-lesefehler-update-laeuft 'true|true' "$(res .ok)|$(res .update_runn
 STUB_DELEGATE_RC=137 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
 eq SC.weitergabe-signal-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$SC_RC"
 
+# _procs <regex> — Anzahl laufender Prozesse, deren Aufruf passt (aus /proc: das Substrat hat kein procps, pgrep fehlt dort).
+_procs() { local f c n=0; for f in /proc/[0-9]*/cmdline; do c="$(tr "\0" " " 2>/dev/null < "$f")" || continue; [[ "$c" =~ $1 ]] && n=$((n + 1)); done; printf '%s\n' "$n"; }
 # docker stop schickt SIGTERM: der Kern endet mit einem result (internal), nicht stumm.
 : > "$STUB_LOG"; : > "${STUB_LOG}.vols"
 ( cd "$W" && exec env -u LA_EDGE_PORT -u LA_WIZARD_PORT -u LA_PG_SUPERPW -u LA_PROBE_IMAGE -u LIFEAGENTS_RUNTIME \
@@ -874,7 +876,7 @@ _gone=0; for _ in $(seq 1 50); do kill -0 "$_pid" 2>/dev/null || { _gone=1; brea
 [ "$_gone" = 1 ] || kill -KILL "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null || true
 eq SC.signal-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$_gone"
 # Der unterbrochene Schritt (hier der docker-Client fuer compose up) endet mit, statt weiterzulaufen.
-sleep 0.3; eq SC.signal-kind-beendet 0 "$(pgrep -fc "$W/bin/docker compose .*up -d --wait" || true)"
+sleep 0.3; eq SC.signal-kind-beendet 0 "$(_procs "$W/bin/docker compose .*up -d --wait")"
 # sc_sig <verb-args…> — Kern im Hintergrund wie in einem Container starten, nach dem Schritt <step> TERM senden.
 sc_sig() {
   local step="$1"; shift
@@ -899,7 +901,7 @@ STUB_DELEGATE_SLEEP=30 STUB_DELEGATE_DEAF=1 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTIN
 eq SC.signal-weitergabe-taub-result 'internal|1|1' "$(res .reason)|$(jq -s '[.[] | select(.type == "result")] | length' "$SCO")|$_gone"
 # Abbau: der compose-Client unter _sc_ro (Enkel des Hintergrund-Schritts) endet mit.
 STUB_SLOW_DOWN=30 STUB_VOLS="$SC_ALLVOLS" sc_sig containers uninstall --json
-sleep 0.3; eq SC.signal-enkel-beendet 'internal|0' "$(res .reason)|$(pgrep -fc "$W/bin/docker compose .*down --remove-orphans" || true)"
+sleep 0.3; eq SC.signal-enkel-beendet 'internal|0' "$(res .reason)|$(_procs "$W/bin/docker compose .*down --remove-orphans")"
 
 # check laedt nichts: alle Pruef-Container laufen aus dem eigenen Abbild (ein von check geladenes busybox stuende sonst
 # auf der Merkliste des ersten up und bliebe nach --delete-data liegen).

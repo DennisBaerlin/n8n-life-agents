@@ -38,6 +38,13 @@ done
 eq M.nur-die-drei "$P-mock-llm $P-mock-pl $P-tgmock" "$(docker ps --filter "label=io.lifeagents.install=$P" --format '{{.Names}}' | sort | tr '\n' ' ' | sed 's/ $//')"
 # Wiederholung (nach einem Schnappschuss-Reset): idempotent, wieder erreichbar.
 if bash "$HERE/start_mocks.sh" "$P" "$LOG" llm && inpod curl -sf http://127.0.0.1:8088/__health >/dev/null 2>&1; then pass M.wiederholung; else fail M.wiederholung "zweiter Start scheitert"; fi
+# Neustart des anchor (Schnappschuss-Resume, `stack start`): die Attrappen haengen am alten Namensraum und sind tot; master wird wie
+# im Verbund mit neu angehaengt. Erst der Beweis, dass sie wirklich tot sind, dann ersetzt start_mocks.sh sie.
+docker restart "$P-anchor" >/dev/null && docker restart "$P-master" >/dev/null
+if inpod curl -sf --max-time 2 http://127.0.0.1:8088/__health >/dev/null 2>&1; then fail M.neustart-attrappe-tot "die Attrappe antwortet nach dem anchor-Neustart noch (Vorbedingung des Falls fehlt)"; else pass M.neustart-attrappe-tot; fi
+if bash "$HERE/start_mocks.sh" "$P" "$LOG" \
+   && inpod curl -sf http://127.0.0.1:8089/__health >/dev/null 2>&1 && inpod curl -sf http://127.0.0.1:8088/__health >/dev/null 2>&1 \
+   && inpod curl -sf http://127.0.0.1:8092/__health >/dev/null 2>&1; then pass M.neustart-ersetzt; else fail M.neustart-ersetzt "nach start_mocks.sh antworten nicht alle drei"; fi
 down
 eq M.abbau-leer "" "$(docker ps -a --filter "label=io.lifeagents.install=$P" --format '{{.Names}}')"
 exit "$fails"

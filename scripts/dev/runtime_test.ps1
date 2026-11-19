@@ -5,7 +5,8 @@
 #   - Antwort-Datei fuer --unattended wird gelesen, nie ausgefuehrt ('…', $(), Backticks, Zeilenumbruch, gesperrte Schluessel);
 #   - Wrapper: systemd-Zweig = runuser/systemctl-Aufrufe, compose-Zweig = docker exec mit festem Container
 #     (stdin nur, wenn psql liest), Compose-Aufrufe nur mit festem Projekt; Volumes nur mit eigenem Label;
-#   - Telegram-Pruefung vor der Aktivierung (frei / eigener / fremder Webhook / Long-Polling / nicht pruefbar).
+#   - Telegram-Pruefung vor der Aktivierung (frei / eigener / fremder Webhook / Long-Polling / nicht pruefbar);
+#   - Daten-Seed (tests/mock_runtime/seed_pipe_cases.sh): keine Pipe mit fruehem Leser, die unter pipefail mit 141 abbricht.
 # docker, systemctl und runuser sind dort Attrappen (PATH): nichts wird wirklich gestartet. Braucht kein n8n und kein Netz.
 # Usage:  .\scripts\dev\runtime_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -32,18 +33,23 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages\core\locales'
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
 
-$r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_runtime/cases.sh", $root)
-$lines = @($r.Output)
-foreach ($l in $lines) {
-    if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
-    elseif ($l -match '^FAIL ') { Write-Host "    [FAIL] $($l.Substring(5))" -ForegroundColor Red }
-    elseif ($Verbose) { Write-Host "    $l" -ForegroundColor DarkGray }
+# cases.sh = die Betriebsart-Naht; seed_pipe_cases.sh = der Daten-Seed bricht an keiner Pipe mit fruehem Leser ab (141).
+$passed = 0; $failed = 0
+foreach ($caseFile in @('cases.sh', 'seed_pipe_cases.sh')) {
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_runtime/$caseFile", $root)
+    $lines = @($r.Output)
+    foreach ($l in $lines) {
+        if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
+        elseif ($l -match '^FAIL ') { Write-Host "    [FAIL] $($l.Substring(5))" -ForegroundColor Red }
+        elseif ($Verbose) { Write-Host "    $l" -ForegroundColor DarkGray }
+    }
+    $p = @($lines | Where-Object { $_ -match '^PASS ' }).Count
+    $f = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
+    # Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
+    if ($r.Code -ne 0 -and $f -eq 0) { $f = 1; Write-Host "    [FAIL] $caseFile brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
+    if ($p -eq 0 -and $f -eq 0) { $f = 1; Write-Host "    [FAIL] $caseFile lieferte keine Faelle" -ForegroundColor Red }
+    $passed += $p; $failed += $f
 }
-$passed = @($lines | Where-Object { $_ -match '^PASS ' }).Count
-$failed = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
-# Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
-if ($r.Code -ne 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] cases.sh brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
-if ($passed -eq 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] cases.sh lieferte keine Faelle" -ForegroundColor Red }
 Invoke-Native docker @('exec', $Container, 'rm', '-rf', $root) | Out-Null
 
 Write-Host ("-" * 64)

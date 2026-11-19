@@ -47,3 +47,43 @@ test('CI-Antwort-Datei: --print packages = alle Pakete mit Fragen, wie der Assis
   const arg = render({ flow, Q, reach: 'tunnel', backup: '/x', what: 'packages' });
   assert.equal(arg, Q.packages.map((p) => p.id).join(','));
 });
+
+// Profil dev (Test-Unterbau, scripts/dev/bootstrap_test_stack.ps1): dieselbe Datei plus die festen Test-Schalter; Zusatz-Zeilen
+// (stdin, z. B. TEST_*-Werte aus .env) ersetzen einen Schlüssel an seiner Stelle oder kommen dazu. Der echte Leser nimmt sie an.
+test('CI-Antwort-Datei --profile dev: Test-Schalter stehen drin, Zusatz-Zeilen ersetzen und ergänzen, echter Leser nimmt sie an', () => {
+  const release = render({ flow, Q, reach: 'tunnel', backup: '/x' });
+  const txt = render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev',
+    extra: 'TELEGRAM_BOT_TOKEN=2000002:inventedDevToken\nLIFEAGENTS_DEPLOY_FULL=1\nTEST_HARNESS_SECRET=invented-harness\n' });
+  const m = flow.parseAnswers(txt);
+  assert.equal(m.get('TEST_HARNESS_HEADER'), 'X-Test-Auth');
+  assert.equal(m.get('LLM_GATEWAY_KEEPALIVE_HOURS'), '0');
+  assert.equal(m.get('BOT_PROFILE_PHOTO'), '0');
+  assert.equal(m.get('TELEGRAM_WEBHOOK_TAKEOVER'), '1');
+  assert.equal(m.get('LIFEAGENTS_HITL_CHAT_APPROVAL'), 'false');
+  assert.equal(m.get('LIFEAGENTS_DEPLOY_FULL'), '1');
+  assert.equal(m.get('TELEGRAM_BOT_TOKEN'), '2000002:inventedDevToken');
+  assert.equal(m.get('TEST_HARNESS_SECRET'), 'invented-harness');
+  // Ersetzt an Ort und Stelle: die Reihenfolge der Release-Zeilen bleibt, neue Schlüssel kommen ans Ende.
+  const relKeys = [...flow.parseAnswers(release).keys()];
+  assert.deepEqual([...m.keys()].slice(0, relKeys.length), relKeys);
+  const r = installerReads(txt, ['TEST_HARNESS_HEADER', 'TELEGRAM_BOT_TOKEN', 'LIFEAGENTS_DEPLOY_FULL']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^TELEGRAM_BOT_TOKEN=2000002:inventedDevToken$/m);
+  assert.match(r.stdout, /^LIFEAGENTS_DEPLOY_FULL=1$/m);
+});
+
+test('CI-Antwort-Datei: ohne --profile bleibt sie byte-gleich (genericity liest sie), Zusatz-Zeilen nur mit dev', () => {
+  assert.equal(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'release' }), render({ flow, Q, reach: 'tunnel', backup: '/x' }));
+  assert.throws(() => render({ flow, Q, reach: 'tunnel', backup: '/x', extra: 'A=1\n' }), /--profile dev/);
+  assert.throws(() => render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'qa' }), /--profile/);
+});
+
+test('CI-Antwort-Datei --profile dev: kaputte Zusatz-Zeilen brechen ab und nennen nie den Wert', () => {
+  const bad = ['kleinschreibung=1', 'OHNE_GLEICH', 'A=wert mit cr\r', 'A=1\nA=2', 'B= führendes-leerzeichen'];
+  for (const extra of bad) {
+    assert.throws(() => render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev', extra }), (e) => {
+      assert.doesNotMatch(e.message, /wert mit cr|führendes/);
+      return true;
+    }, JSON.stringify(extra));
+  }
+});

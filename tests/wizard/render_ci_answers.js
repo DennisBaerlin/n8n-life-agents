@@ -4,6 +4,11 @@
 //   docker cp tests/wizard/render_ci_answers.js <master>:/tmp/ && docker exec <master> node /tmp/render_ci_answers.js --reach tunnel|fritzbox --backup <eltern-ordner> > answers.env
 // --packages none|all wählt die Module (Standard all). --print packages gibt stattdessen das Argument für `provision.sh --packages` aus (flow.packagesArg).
 // Optionen: --wizard-dir <ordner> (Standard /opt/lifeagents/provisioning/wizard), --questions-file <json> (statt bridge.sh).
+// --profile dev (Test-Unterbau scripts/dev/bootstrap_test_stack.ps1; Standard release = die Datei wie oben, byte-gleich): hängt
+// die festen Test-Schalter DEV_KEYS an; --extra-stdin liest danach SCHLÜSSEL=Wert-Zeilen von stdin (die TEST_*-Werte aus .env
+// und Schalter wie LIFEAGENTS_DEPLOY_FULL), die einen Schlüssel an seiner Stelle ersetzen oder ans Ende kommen. Über stdin, damit
+// kein Geheimnis in einer Befehlszeile steht (docker exec, Prozessliste). Diese Schlüssel kennt flow.allowedKeys nicht (keine
+// Frage des Assistenten); welche der Installer sperrt, entscheidet sein Leser (release_inputs.sh _answers_load_wizard).
 // Nur erfundene Werte (öffentliches Repo). Eine Pflichtfrage ohne erfundenen Wert bricht ab: eine neue Frage zwingt dazu, hier
 // einen Wert zu ergänzen, statt dass der Lauf sie still leer lässt.
 'use strict';
@@ -23,14 +28,49 @@ const SECRETS = {
   ANTHROPIC_API_KEY: 'sk-ant-api03-ci-invented-key-00000000000000000000',
 };
 
+// Feste Test-Schalter des Profils dev, Gründe je Schalter im Kopf von scripts/dev/bootstrap_test_n8n.ps1 (dieselben Werte):
+// Harness-Header aller Test-Skripte, kein Cache-Keep-Alive, kein Bot-Profilbild, Webhook-Übernahme des Test-Bots,
+// Link-Knöpfe statt Chat-Knöpfe, nur geänderte Workflows einspielen.
+const DEV_KEYS = [
+  ['TEST_HARNESS_HEADER', 'X-Test-Auth'],
+  ['LLM_GATEWAY_KEEPALIVE_HOURS', '0'],
+  ['BOT_PROFILE_PHOTO', '0'],
+  ['TELEGRAM_WEBHOOK_TAKEOVER', '1'],
+  ['LIFEAGENTS_HITL_CHAT_APPROVAL', 'false'],
+  ['LIFEAGENTS_DEPLOY_FULL', '0'],
+];
+
+// withExtra(flow, txt, extraText) -> txt mit ersetzten bzw. angehängten Schlüsseln; Fehler nennen Zeile und Schlüssel, nie den Wert.
+function withExtra(flow, txt, extraText) {
+  const m = flow.parseAnswers(txt);
+  const seen = new Set();
+  const lines = extraText.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  lines.forEach((l, i) => {
+    const eq = l.indexOf('=');
+    const k = eq > 0 ? l.slice(0, eq) : '';
+    if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(k)) throw new Error(`extra line ${i + 1}: expected KEY=value`);
+    if (seen.has(k)) throw new Error(`extra line ${i + 1}: duplicate key ${k}`);
+    seen.add(k);
+    const pr = flow.valueProblem(l.slice(eq + 1));
+    if (pr) throw new Error(`extra line ${i + 1}: bad value for ${k} (${pr})`);
+    m.set(k, l.slice(eq + 1));
+  });
+  let out = '# lifeagents-answers v1\n';
+  for (const [k, v] of m) out += `${k}=${v}\n`;
+  return out;
+}
+
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 }
 
-function render({ flow, Q, reach, backup, what, packages = 'all' }) {
+function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'release', extra = '' }) {
   if (!['tunnel', 'fritzbox'].includes(reach)) throw new Error('--reach tunnel|fritzbox');
   if (!backup) throw new Error('--backup <eltern-ordner>');
+  if (!['release', 'dev'].includes(profile)) throw new Error('--profile release|dev');
+  if (extra && profile !== 'dev') throw new Error('--extra-stdin only with --profile dev');
   const A = {
     __tg_have: 'both', __voice: 'no', __backup_choice: 'other', __backup_dir: backup,
     __packages: packages === 'none' ? [] : Q.packages.map((p) => p.id), __reach: reach,
@@ -51,7 +91,9 @@ function render({ flow, Q, reach, backup, what, packages = 'all' }) {
     else A[k] = '';
   }
   if (what === 'packages') return flow.packagesArg(Q, A);
-  return flow.renderAnswers(Q, flow.answerLines(Q, A, SECRETS));
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, SECRETS));
+  if (profile !== 'dev') return txt;
+  return withExtra(flow, withExtra(flow, txt, DEV_KEYS.map(([k, v]) => `${k}=${v}\n`).join('')), extra);
 }
 
 if (require.main === module) {
@@ -59,6 +101,8 @@ if (require.main === module) {
   const flow = require(path.join(wiz, 'flow.js'));
   const qf = arg('questions-file', '');
   const Q = JSON.parse(qf ? fs.readFileSync(qf, 'utf8') : execFileSync('bash', [path.join(wiz, 'bridge.sh'), 'questions'], { encoding: 'utf8' }).trim().split('\n').pop());
-  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers'), packages: arg('packages', 'all') }));
+  const extra = process.argv.includes('--extra-stdin') ? fs.readFileSync(0, 'utf8') : '';
+  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers'),
+    packages: arg('packages', 'all'), profile: arg('profile', 'release'), extra }));
 }
 module.exports = { render };

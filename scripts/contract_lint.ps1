@@ -99,6 +99,7 @@
 #       (Mengengleichheit; der DB-Test prueft die Spalten gegen information_schema).
 #   (32) BETRIEBSART-WRAPPER: rohe runuser/systemctl und jedes docker nur in provisioning/lib/runtime.sh, dort Docker nur
 #       laut Positivliste (fester Projektname, nie prune/--all/ps -q ...). Lexer erkennt die Befehls-Stellung. Selbst-Asserts.
+#       Einzige Ausnahme: provisioning/setup.sh (eigenstaendiges Asset ohne lib/) mit eigener, enger Positivliste.
 #   (33) COMPOSE-PINS: compose.yml/master.Dockerfile per Digest, n8n, Postgres und Node = Pins aus provision.sh, mem_limit +
 #       Label + Namens-Vorsatz je Dienst, externe Volumes = LA_STATE_VOLUMES, Patch-Mount je n8n-Korrektur. Selbst-Asserts.
 #   (34) RAND-PFADE: eine Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS) fuer CLI und Rand, keine zweite; Editor/Wizard aus
@@ -2189,10 +2190,23 @@ $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 $dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+stop\s+"\$\{LA_PROJECT\}-swap"\s|^\s+ps\s+--format\s+''\{"image":|^\s+info\s+--format\s+''\{\{\.MemTotal\}\}''|^\s+(image|volume)\s+(inspect|create)\b|^\s+(volume|image)\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
+# Einzige Ausnahme von der Regel "docker/systemctl nur in runtime.sh": der Linux-Einrichter setup.sh. Er ist ein eigenstaendiges
+# Release-Asset ohne Baum (kein Sourcing, es gibt noch keine lib/), muss Docker einrichten und den Kern starten. Erlaubt sind nur
+# die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
+$setupRel = 'provisioning/setup.sh'
+$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json'
+$setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|"\$UNIT_NAME")\s+>&2|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
     foreach ($c in (Get-ShellCommandWords $Text $rtTargets)) {
         $at = "${Rel}:$($c.Line)"
+        if ($Rel -eq $setupRel) {
+            if ($c.Word -eq 'docker' -and $c.Rest -notmatch $setupDockerAllow) { $iss.Add("$at -- docker-Aufruf in setup.sh ausserhalb der Ausnahme: 'docker$($c.Rest.TrimEnd())'.") }
+            elseif ($c.Word -eq 'systemctl' -and $c.Rest -notmatch $setupSystemctlAllow) { $iss.Add("$at -- systemctl-Aufruf in setup.sh ausserhalb der Ausnahme: 'systemctl$($c.Rest.TrimEnd())'.") }
+            elseif ($c.Word -in @('runuser', '_rt_compose')) { $iss.Add("$at -- '$($c.Word)' hat in setup.sh nichts zu suchen.") }
+            if ($c.Word -eq 'docker' -and $c.Rest -match $dockerBanned) { $iss.Add("$at -- breiter Docker-Schalter '$($Matches[2])' (traefe fremde Objekte).") }
+            continue
+        }
         if ($Rel -ne $rtRel) {
             if ($c.Word -eq '_rt_compose') { $iss.Add("$at -- _rt_compose ist intern in lib/runtime.sh (dort eine rt_*-Funktion anlegen).") }
             else { $iss.Add("$at -- '$($c.Word)' ausserhalb von lib/runtime.sh: Wrapper nutzen (pg_su_psql/pg_su_exec, svc_*, n8n_cli_env, rt_*).") }
@@ -2243,7 +2257,18 @@ foreach ($sa in @(
     @{ n = 'runtime: info frei';     r = $rtRel; t = "  docker info`n";                                              want = 1 },
     @{ n = 'runtime: image rm ok';   r = $rtRel; t = "  docker image rm `"`$1`" >/dev/null 2>&1`n";               want = 0 },
     @{ n = 'runtime: image rm -f';   r = $rtRel; t = "  docker image rm -f `"`$1`"`n";                             want = 1 },
-    @{ n = 'runtime: image rm frei'; r = $rtRel; t = "  docker image rm `"`$img`"`n";                              want = 1 })) {
+    @{ n = 'runtime: image rm frei'; r = $rtRel; t = "  docker image rm `"`$img`"`n";                              want = 1 },
+    @{ n = 'setup: version ok';      r = $setupRel; t = "  docker version >/dev/null 2>&1 || die x`n";           want = 0 },
+    @{ n = 'setup: Kern-Aufruf ok';  r = $setupRel; t = "  docker `"`${a[@]}`" < `"`$in`" | tee `"`$OUT`" | jq x`n";  want = 0 },
+    @{ n = 'setup: image rm ok';     r = $setupRel; t = "  docker image rm `"`$img`" >/dev/null 2>&1`n";          want = 0 },
+    @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec `"`$P-master`" stack wizard-url --json`n"; want = 0 },
+    @{ n = 'setup: enable Docker ok'; r = $setupRel; t = "  systemctl enable --now docker >&2`n";                 want = 0 },
+    @{ n = 'setup: rm frei';         r = $setupRel; t = "  docker rm -f `"`$P-core`"`n";                           want = 1 },
+    @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },
+    @{ n = 'setup: compose';         r = $setupRel; t = "  docker compose down`n";                                  want = 1 },
+    @{ n = 'setup: prune';           r = $setupRel; t = "  docker system prune -f`n";                               want = 2 },
+    @{ n = 'setup: systemctl stop';  r = $setupRel; t = "  systemctl stop docker`n";                                want = 1 },
+    @{ n = 'setup: runuser';         r = $setupRel; t = "  runuser -u x -- id`n";                                   want = 1 })) {
     $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count
     if ($got -ne $sa.want) { $errors.Add("BETRIEBSART-WRAPPER SELBST-ASSERT '$($sa.n)': erwartet $($sa.want) Treffer, gefunden $got -- Check 32 ist defekt.") }
 }
@@ -2341,6 +2366,19 @@ foreach ($sa in @(
     @{ n = 'static-Form';      t = "pub const STATE_VOLUMES: [&'static str; 1] = [`n  `"pgdata`",`n];"; want = 'pgdata' })) {
     $got = ((Get-AppStateVolumes $sa.t) | Sort-Object) -join ' '
     if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet '$($sa.want)', gefunden '$got' -- Check 33 ist defekt.") }
+}
+# Linux-Einrichter: im Baum nur der Platzhalter MASTER_IMAGE_PIN='' (das master-Image traegt die neutrale Form, den Pin setzt erst
+# das Release-Asset ein: scripts/release_setup_asset.ps1, geprueft von sign_release.ps1).
+$setupPath = Join-Path $provDir 'setup.sh'
+if (Test-Path $setupPath) {
+    try { if ((Get-SetupPin ([System.IO.File]::ReadAllText($setupPath, $Utf8NoBom))) -ne '') { $errors.Add("COMPOSE-PINS: provisioning/setup.sh traegt im Baum einen Abbild-Pin -- erwartet MASTER_IMAGE_PIN='' (den Pin setzt das Release-Asset).") } }
+    catch { $errors.Add("COMPOSE-PINS: provisioning/setup.sh: $($_.Exception.Message)") }
+}
+foreach ($sa in @(
+    @{ n = 'Platzhalter';     t = "MASTER_IMAGE_PIN=''`n";                        want = '' },
+    @{ n = 'Pin gesetzt';     t = "MASTER_IMAGE_PIN='r.example/o/m@sha256:$('a' * 64)'`n"; want = "r.example/o/m@sha256:$('a' * 64)" })) {
+    $got = Get-SetupPin $sa.t
+    if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT 'setup.sh $($sa.n)': erwartet '$($sa.want)', gefunden '$got' -- Check 33 ist defekt.") }
 }
 $cPatches = @([regex]::Matches([System.IO.File]::ReadAllText((Join-Path $provDir 'lib\n8n_patches.sh'), $Utf8NoBom), '(?m)^\s+"([a-z0-9-]+)\|([^|]+)\|') |
     ForEach-Object { @{ Id = $_.Groups[1].Value; Path = $_.Groups[2].Value } })

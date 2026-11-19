@@ -4,10 +4,10 @@
 #
 # Warum lokal und nicht in der CI: ein Signierschluessel als Actions-Secret schuetzte nicht gegen ein gekapertes
 # GitHub-Konto (wer das Konto hat, laesst die CI signieren). Darum unterschreibt der Owner selbst — aber nie blind:
-#   1. Entwurfs-Assets laden (Tarball, install.sh, compose.yml, DMG, EXE, SHA256SUMS) und SHA256SUMS gegen die Dateien pruefen.
+#   1. Entwurfs-Assets laden (Tarball, install.sh, setup.sh, compose.yml, DMG, EXE, SHA256SUMS) und SHA256SUMS gegen die Dateien pruefen.
 #   2. Den Inhalt mit dem lokalen Tag vergleichen: der entpackte Tar-Strom muss byte-gleich mit `git archive` des Tags
 #      sein (gzip-Bytes duerfen je git-Version abweichen, der Tar-Strom nicht); sonst Datei fuer Datei per Blob-Hash.
-#      install.sh und compose.yml muessen genau die Dateien des Tags sein. Das master-Image aus dem Release-Pin muss anonym
+#      install.sh und compose.yml muessen genau die Dateien des Tags sein, setup.sh die des Tags mit dem Pin der compose.yml. Das master-Image aus dem Release-Pin muss anonym
 #      als Index fuer linux/amd64 + linux/arm64 im Register liegen und aus diesem Tag gebaut sein (Label revision, nur die
 #      Pin-Zeile darf seither anders sein; scripts/lib/release_images.ps1). DMG/EXE brauchen den Herkunftsnachweis von
 #      GitHub aus release.yml fuer dieses Tag (`gh attestation verify`).
@@ -99,6 +99,10 @@ try {
     $blobWant = (& git -C $RepoRoot rev-parse "${Tag}:provisioning/install.sh").Trim()
     $blobHave = (& git -C $RepoRoot hash-object --no-filters (Join-Path $work 'install.sh')).Trim()
     if ($blobWant -ne $blobHave) { throw 'install.sh im Release weicht von provisioning/install.sh des Tags ab — NICHT unterschreiben.' }
+
+    # 2a') setup.sh = provisioning/setup.sh des Tags mit dem Pin der compose.yml desselben Tags (sonst nichts anders)
+    $ss = Test-ReleaseSetup $RepoRoot $Tag (Join-Path $work 'setup.sh')
+    if ($ss.Count) { throw "setup.sh im Release nicht in Ordnung — NICHT unterschreiben:`n$($ss -join "`n")" }
 
     # 2b) Tarball-Inhalt = git archive des Tags (gleiche Pathspec + Prefix wie .github/workflows/release.yml)
     $localTar = Join-Path $work 'local.tar'

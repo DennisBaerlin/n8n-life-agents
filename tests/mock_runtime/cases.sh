@@ -15,6 +15,8 @@
 #   D  doctor im Docker-Verbund: Alter von Release-Check und Sicherungs-Versuch, Tunnel (Tailscale).
 #   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
 #   H  doctor-Warnung: ein Dienst laeuft noch mit dem alten Node (ersetzte Binary in /proc).
+#   SU Linux-Einrichter provisioning/setup.sh (Pruefungen vor jeder Aenderung, Docker-Einrichtung, Kern-Aufruf, Befehl + Systemd-Einheit,
+#      Abbau); eigene Datei setup_cases.sh, hier eingebunden.
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
@@ -1974,5 +1976,8 @@ rh_not RH.verbund-alt-ohne-journalctl "$RHG" 'journalctl'
 rh_has RH.verbund-alt-kein-rueckweg "$RHG" 'KEIN RÜCKWEG'
 RHK="$(rh_case 0 v0.40.0 -)"
 rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
+
+# ---------------------------------------------------------------------------- SU: Linux-Einrichter (setup.sh)
+. "$(dirname "${BASH_SOURCE[0]}")/setup_cases.sh"
 
 exit "$fails"

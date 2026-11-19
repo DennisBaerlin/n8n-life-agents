@@ -45,6 +45,21 @@ Check 'freie Vorgabe = Abbruch' (Throws { Get-MasterPin ($base.Replace($MasterPi
 $real = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "..\..\$MasterComposeRel"), $u8)
 Check 'echte compose.yml lesbar' (-not (Throws { Get-MasterPin $real }))
 
+Write-Host 'A: Pin in setup.sh (Get-/Set-SetupPin)' -ForegroundColor Cyan
+$sNeutral = "#!/usr/bin/env bash`nset -e`nMASTER_IMAGE_PIN=''`nR=1`n"
+$sPin = "ghcr.io/o/r/master@$D"
+Check 'Platzhalter neutral' ((Get-SetupPin $sNeutral) -ceq '')
+$sSet = Set-SetupPin $sNeutral $sPin
+Check 'Pin gesetzt' ((Get-SetupPin $sSet) -ceq $sPin)
+Check 'nur die Pin-Zeile geaendert' ((($sSet -split "`n") | Where-Object { ($sNeutral -split "`n") -notcontains $_ }).Count -eq 1)
+Check 'zurueck auf neutral = Ausgangstext' ((Set-SetupPin $sSet '') -ceq $sNeutral)
+Check 'CRLF bleibt erhalten' ((Set-SetupPin ($sNeutral -replace "`n", "`r`n") $sPin) -match "@$D'`r`n")
+Check 'Tag statt Digest = Abbruch' (Throws { Set-SetupPin $sNeutral 'ghcr.io/o/r/master:v1' })
+Check 'Grossbuchstaben = Abbruch' (Throws { Set-SetupPin $sNeutral "ghcr.io/O/r/master@$D" })
+Check 'fehlende Zeile = Abbruch' (Throws { Get-SetupPin "#!/bin/bash`n" })
+Check 'doppelte Zeile = Abbruch' (Throws { Get-SetupPin ($sNeutral + "MASTER_IMAGE_PIN=''`n") })
+Check 'echte setup.sh traegt den Platzhalter' ((Get-SetupPin ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "..\..\$SetupRel"), $u8))) -ceq '')
+Check 'setup.sh steht in der Liste der Release-Dateien' ($ReleaseSumAssets -contains 'setup.sh')
 Write-Host 'A: Herkunft (Test-MasterRevision) im Wegwerf-Repo' -ForegroundColor Cyan
 Clear-GitEnvironment
 $repo = Join-Path ([System.IO.Path]::GetTempPath()) ('rit_' + [guid]::NewGuid().ToString('N').Substring(0, 12))
@@ -72,6 +87,19 @@ try {
     Check 'HEAD = origin/main = gruen' ((Test-HeadIsRemoteMain $repo).Count -eq 0)
     TGit update-ref refs/remotes/origin/main t-code | Out-Null
     Check 'HEAD nicht origin/main = rot' ((Test-HeadIsRemoteMain $repo).Count -eq 1)
+    # Asset setup.sh (Test-ReleaseSetup): Tag-Datei mit dem Pin der compose.yml desselben Tags
+    TGit checkout -q -b setupside t-ok | Out-Null
+    Put $SetupRel $sNeutral; TGit add -A | Out-Null; TGit commit -q -m setup | Out-Null; TGit tag t-setup | Out-Null
+    $assetFile = Join-Path $repo 'asset-setup.sh'
+    [System.IO.File]::WriteAllText($assetFile, (Set-SetupPin $sNeutral "ghcr.io/o/r/master@$D"), $u8)
+    Check 'setup.sh mit dem Pin der compose.yml = gruen' ((Test-ReleaseSetup $repo 't-setup' $assetFile).Count -eq 0) ((Test-ReleaseSetup $repo 't-setup' $assetFile) -join '; ')
+    [System.IO.File]::WriteAllText($assetFile, $sNeutral, $u8)
+    Check 'setup.sh ohne Pin = rot' ((Test-ReleaseSetup $repo 't-setup' $assetFile).Count -eq 1)
+    [System.IO.File]::WriteAllText($assetFile, (Set-SetupPin $sNeutral ('ghcr.io/o/r/master@sha256:' + ('1' * 64))), $u8)
+    Check 'setup.sh mit fremdem Pin = rot' ((Test-ReleaseSetup $repo 't-setup' $assetFile).Count -eq 1)
+    [System.IO.File]::WriteAllText($assetFile, ((Set-SetupPin $sNeutral "ghcr.io/o/r/master@$D") + "echo boese`n"), $u8)
+    Check 'setup.sh mit zusaetzlicher Zeile = rot' ((Test-ReleaseSetup $repo 't-setup' $assetFile).Count -eq 1)
+    Check 'Tag ohne setup.sh = rot' ((Test-ReleaseSetup $repo 't-ok' $assetFile).Count -eq 1)
 } finally { Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host 'A: SHA256SUMS (Test-ReleaseSums)' -ForegroundColor Cyan
@@ -182,7 +210,7 @@ Check 'Dockerfile: ARG RELEASE_TAG=dev, dann ENV RELEASE_TAG=$RELEASE_TAG' ($doc
 Check 'build_master_image.ps1 gibt RELEASE_TAG=$Version als Build-Argument mit' ($buildPs1 -match "'--build-arg',\s*`"RELEASE_TAG=\`$Version`"")
 Check 'CI: kein von Hand eingespritztes RELEASE_TAG beim Installieren' ($genericity -notmatch 'docker exec -e RELEASE_TAG=')
 $ciBuilds = [regex]::Matches($genericity, 'docker build -q -f provisioning/compose/master\.Dockerfile[^\r\n]*')
-Check 'CI: beide master-Bauten (Installations- und Update-Lauf) tragen das Build-Argument' ($ciBuilds.Count -eq 2 -and @($ciBuilds | Where-Object { $_.Value -match '--build-arg RELEASE_TAG=v\d+\.\d+\.\d+' }).Count -eq 2) "($($ciBuilds.Count) Bauten)"
+Check 'CI: alle drei master-Bauten (Installations-, Update- und Linux-Einrichter-Lauf) tragen das Build-Argument' ($ciBuilds.Count -eq 3 -and @($ciBuilds | Where-Object { $_.Value -match '--build-arg RELEASE_TAG=v\d+\.\d+\.\d+' }).Count -eq 3) "($($ciBuilds.Count) Bauten)"
 Check 'CI: der Verbund startet nur ueber den Kern (docker run … stack), nie ueber stack.sh auf dem Rechner' ($genericity -notmatch 'bash provisioning/compose/stack\.sh' -and $genericity -match 'docker run --rm -i "\$\{CORE_A\[@\]\}"' -and $genericity -match '(?m)^\s+core_run up1 up\s*$' -and $genericity -match '(?m)^\s+core_run take up\s*$')
 Check 'CI: Installations-Lauf prueft die VERSION nach der Installation' ($genericity -match '(?s)name: Assert the stack.*?lifeagents version.*?= v9\.0\.0.*?name: Second run')
 $masterBlock = [regex]::Match($real, '(?ms)^  master:\r?\n(.*?)(?=^  \S|^\S)').Groups[1].Value

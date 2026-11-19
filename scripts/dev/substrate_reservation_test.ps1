@@ -127,6 +127,17 @@ Assert-That 'Netze: nur die des Projekts' (($t.Networks -join ',') -eq 's4t5a_in
 Assert-That 'Volumes: Projekt-Volumes plus Schnappschuss, nichts Fremdes' ((($t.Volumes | Sort-Object) -join ',') -eq 's4t5a_pgdata,s4t5a_shared,s4t5a_var_la,s4t5asnap_pgdata')
 $t = Get-WorktreeComposeTargets -Worktree $R -VolumeLines ($vols + "helfer_data|lifeagents.worktree=$R") -ContainerLines ($cons + "helfer-db|lifeagents.worktree=$R") -NetworkLines ($nets + "helfer_net|lifeagents.worktree=$R")
 Assert-That 'Objekt nur mit Worktree-Etikett (z. B. ein db_test-Helfer) wird nie gewaehlt' ($t.Containers -notcontains 'helfer-db' -and $t.Volumes -notcontains 'helfer_data' -and $t.Networks -notcontains 'helfer_net')
+$bridge = "s4t5a-testbridge|io.lifeagents.install=s4t5a,lifeagents.worktree=$R,lifeagents.substrate=n8n-bridge,lifeagents.bridge-of=s4t5a"
+$snapKey = "s4t5asnap_n8n_home|lifeagents.worktree=$R,lifeagents.snapshot-key=0123abcd"
+$t = Get-WorktreeComposeTargets -Worktree $R -VolumeLines ($vols + $snapKey) -ContainerLines ($cons + $bridge) -NetworkLines $nets
+Assert-That 'Test-Bruecke des Projekts wird mit abgebaut' ($t.Containers -contains 's4t5a-testbridge')
+Assert-That 'Schnappschuss-Volume (nur worktree + snapshot-key, kein Install-Etikett) wird mit abgebaut' ($t.Volumes -contains 's4t5asnap_n8n_home')
+$t = Get-WorktreeComposeTargets -Worktree $R -VolumeLines @() -ContainerLines @($bridge) -NetworkLines @()
+Assert-That 'Test-Bruecke ohne Verbund-Volume wird ebenfalls abgebaut (Worktree-Etikett + n8n-bridge)' ($t.Containers -contains 's4t5a-testbridge')
+$c = @(ConvertFrom-ComposeSubstrateRows -VolumeLines @($volA) -ContainerLines @('s4t5a-testbridge|Up 1 minute|io.lifeagents.install=s4t5a,lifeagents.substrate=n8n-bridge,lifeagents.bridge-of=s4t5a'))
+Assert-That 'laufende Test-Bruecke allein (Verbund angehalten) belegt keinen Platz' ($c.Count -eq 0)
+$c = @(ConvertFrom-ComposeSubstrateRows -VolumeLines @($volA) -ContainerLines @('s4t5a-testbridge|Up 9 minutes|io.lifeagents.install=s4t5a,lifeagents.substrate=n8n-bridge', $conA))
+Assert-That 'Bruecke neben laufendem Verbund: ein Substrat, Status vom Verbund-Container' ($c.Count -eq 1 -and $c[0].Status -eq 'Up 3 minutes')
 $wc = 'C:\wt\a,b'
 $volC = "s4t5c_pgdata|io.lifeagents.install=s4t5c,lifeagents.substrate=n8n,lifeagents.worktree=$wc,com.docker.compose.config-hash=x"
 $t = Get-WorktreeComposeTargets -Worktree $wc -VolumeLines @($volC) -ContainerLines @() -NetworkLines @()

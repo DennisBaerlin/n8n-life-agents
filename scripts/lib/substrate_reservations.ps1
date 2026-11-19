@@ -167,7 +167,10 @@ function ConvertFrom-ComposeSubstrateRows {
     foreach ($line in @($ContainerLines | Where-Object { $_ })) {
         $p = "$line" -split '\|', 3
         if ($p.Count -ne 3) { continue }
-        $proj = (ConvertFrom-LabelString $p[2])['io.lifeagents.install']
+        $cl = ConvertFrom-LabelString $p[2]
+        $proj = $cl['io.lifeagents.install']
+        # Die Test-Bruecke (lifeagents.substrate=n8n-bridge) laeuft auch, wenn der Verbund angehalten ist: sie belegt keinen Platz.
+        if ($cl['lifeagents.substrate'] -eq 'n8n-bridge') { continue }
         if ($proj -and $projects.ContainsKey($proj) -and -not $seen.ContainsKey($proj)) {
             $seen[$proj] = [pscustomobject]@{ Name = $proj; Status = $p[1]; Worktree = $projects[$proj] }
         }
@@ -237,10 +240,12 @@ function Get-WorktreeComposeTargets {
     })
     $pick = {
         param($rows)
-        # Allein das Worktree-Etikett genuegt nicht (db_test-Helfer o. ae. duerfen nie mitgehen): Substrat-Etikett oder Install-Etikett dazu.
+        # Allein das Worktree-Etikett genuegt nicht (db_test-Helfer o. ae. duerfen nie mitgehen): Substrat-, Install- oder
+        # Schnappschuss-Etikett dazu (Schnappschuss-Volumes tragen bewusst kein Install-Etikett, der Kern fasst sie nie an).
         @($rows | Where-Object {
             $projects -contains $_.L['io.lifeagents.install'] -or
-            ($_.L['lifeagents.worktree'] -eq $Worktree -and ($_.L['lifeagents.substrate'] -like 'n8n*' -or $_.L['io.lifeagents.install']))
+            ($_.L['lifeagents.worktree'] -eq $Worktree -and
+                ($_.L['lifeagents.substrate'] -like 'n8n*' -or $_.L['io.lifeagents.install'] -or $_.L['lifeagents.snapshot-key']))
         } | ForEach-Object Name | Sort-Object -Unique)
     }
     return [pscustomobject]@{

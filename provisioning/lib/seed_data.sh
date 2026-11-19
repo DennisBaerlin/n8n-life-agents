@@ -104,16 +104,16 @@ _seed_package_config() {
   done
 }
 
-# --- Markdown-Context-Seed (capabilities_catalog + packages/*/contexts/*.md) -----
-# Frontmatter (--- … ---) + Body trennen; Body via Dollar-Quoting (beliebiger Inhalt, inkl.
-# '---' im Body). managed_by wird vom Aufrufer gesetzt (build|seed).
-#
 # _seed_fm_value <key> <frontmatter>  -> Wert der ersten Zeile "<key>:" (ohne fuehrende Leerzeichen), sonst leer. Liest die
 # ganze Eingabe (kein `head`/`exit`): ein frueh aussteigender Leser liesse den Schreiber unter pipefail mit 141 sterben.
 _seed_fm_value() {
   printf '%s\n' "$2" | awk -v k="$1:" 'index($0, k) == 1 && !seen { v = substr($0, length(k) + 1); sub(/^[[:space:]]+/, "", v); print v; seen = 1 }'
 }
 
+# --- Markdown-Context-Seed (capabilities_catalog + packages/*/contexts/*.md) -----
+# Frontmatter (--- … ---) + Body trennen; Body via Dollar-Quoting (beliebiger Inhalt, inkl.
+# '---' im Body). managed_by wird vom Aufrufer gesetzt (build|seed).
+#
 # _seed_context_md <file> <managed_by> [package]
 #   package = besitzendes Paket (Lifecycle-/Uninstall-Purge-Key) und managed_by = Sync-Provenienz
 #   (seed|build|agent) sind typisierte Spalten auf agent.core_contexts.

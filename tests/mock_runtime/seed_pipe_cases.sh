@@ -27,8 +27,8 @@ mkdir -p "$REPO/packages/core/workflows"
 printf '%s\n' '{"name":"core","provides":{"services":{"svc_a":"wf.first.a","svc_b":"wf.first.b"}}}' > "$REPO/packages/core/manifest.json"
 printf '%s\n' '{"name":"wf.first.a","id":"id-first-a"}' > "$REPO/packages/core/workflows/0001.json"
 printf '%s\n' '{"name":"wf.first.b","id":"id-first-b"}' > "$REPO/packages/core/workflows/0002.json"
-pad="$(printf 'x%.0s' $(seq 1 80))"
-for i in $(seq 1 1200); do
+pad="$(printf 'x%.0s' $(seq 1 240))"
+for i in $(seq 1 400); do
   printf '{"name":"wf.filler.%s.%s","id":"id-filler-%s"}\n' "$pad" "$i" "$i" > "$REPO/packages/core/workflows/f$(printf '%05d' "$i").json"
 done
 
@@ -39,6 +39,11 @@ _run() {
   REPO_ROOT="$REPO" bash -euo pipefail -c '. "$1/provisioning/lib/common.sh"; . "$1/provisioning/lib/seed_data.sh"; shift; "$@"' _ "$ROOT" "$@" \
     > "$W/out" 2> "$W/err" || rc=$?
 }
+
+# Vorbedingung: die Liste liegt ueber dem Pipe-Puffer (64 KiB), sonst gewinnt der Schreiber das Rennen und der Fall belegt nichts.
+nameids_bytes="$(REPO_ROOT="$REPO" bash -c '. "$1/provisioning/lib/common.sh"; . "$1/provisioning/lib/seed_data.sh"; _collect_workflow_name_ids | wc -c' _ "$ROOT")"
+if [ "${nameids_bytes:-0}" -gt 65536 ]; then pass "S0 Vorbedingung: Workflow-Liste ${nameids_bytes} Byte (> 64 KiB)"
+else fail "S0 Vorbedingung: Workflow-Liste" "nur ${nameids_bytes:-0} Byte, der Test braucht > 65536"; fi
 
 # S1: core.services — der Lesezugriff auf die Name->id-Liste steigt nach dem ersten Treffer nicht aus der Pipe aus.
 _run _seed_services
@@ -51,9 +56,10 @@ fi
 # S2: Kopf eines Context — description/agent_name/load_strategy lesen nach dem ersten Treffer nicht aus der Pipe aus.
 {
   printf -- '---\n'
-  for _ in $(seq 1 4000); do printf 'description: %s\n' "$pad"; done
+  for _ in $(seq 1 1200); do printf 'description: %s\n' "$pad"; done
   printf 'agent_name: guide\nload_strategy: static\n---\nBody\n'
 } > "$W/ctx.md"
+if [ "$(wc -c < "$W/ctx.md")" -gt 262144 ]; then pass "S0 Vorbedingung: Context-Kopf > 256 KiB"; else fail "S0 Vorbedingung: Context-Kopf" "zu klein"; fi
 _run _seed_context_md "$W/ctx.md" seed core
 if [ "$rc" -eq 0 ] && grep -q "'guide'" "$W/out" && grep -q "'static'" "$W/out"; then
   pass "S2 Context-Kopf: erster Treffer ohne Pipe-Abbruch"

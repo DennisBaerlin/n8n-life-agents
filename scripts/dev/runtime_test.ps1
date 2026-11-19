@@ -22,7 +22,7 @@ $Container = $conn.Container
 . "$PSScriptRoot\..\lib\test_common.ps1"
 
 Write-Host ""
-Write-Host "Betriebsart-Naht (Antwort-Datei, Wrapper systemd/compose, Telegram-Prüfung) — Container $Container"
+Write-Host "Betriebsart-Naht (Antwort-Datei, Wrapper systemd/compose, Telegram-Prüfung) + Daten-Seed ohne Pipe-Abbruch — Container $Container"
 Write-Host ("-" * 64)
 
 $root = '/opt/runtime_test'

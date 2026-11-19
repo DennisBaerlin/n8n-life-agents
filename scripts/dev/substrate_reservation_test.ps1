@@ -246,6 +246,9 @@ if (-not $haveDocker) {
         $hook = Join-Path $repo '.claude\hooks\stop_own_substrate.ps1'
         $exe = (Get-Process -Id $PID).Path
         New-Probe 's4t5h' $wtTop $mainState        # Verbund dieses Worktrees
+        # Mock wie T1: im Netz-Namensraum des anchor, Etiketten install + worktree, kein lifeagents.substrate
+        [void](Invoke-D @('run', '-d', '--name', 's4t5h-mock-tg', '--network', 'container:s4t5h-anchor', '--label', 'io.lifeagents.install=s4t5h', '--label', "lifeagents.worktree=$wtTop", 'busybox:latest', 'sleep', '600'))
+        Assert-That 'Probe: Mock-Container laeuft im Namensraum des anchor' (Test-DExists 'container' 's4t5h-mock-tg')
         New-Probe 's4t5i' 'C:\s4t5-fremder-worktree' $mainState
         New-Probe 's4t5k' $mainTop $mainState      # Verbund des Haupt-Checkouts (dort raeumt jede Session selbst auf)
         (@{ cwd = $main } | ConvertTo-Json -Compress) | & $exe -NoProfile -ExecutionPolicy Bypass -File $hook *> $null
@@ -256,10 +259,12 @@ if (-not $haveDocker) {
         (@{ cwd = $hwt } | ConvertTo-Json -Compress) | & $exe -NoProfile -ExecutionPolicy Bypass -File $hook *> $null
         Assert-That 'Haken im Worktree: Container, Netz und Volumes des eigenen Verbunds weg' (-not (Test-DExists 'container' 's4t5h-anchor') -and -not (Test-DExists 'network' 's4t5h_internal') -and
             -not (Test-DExists 'volume' 's4t5h_pgdata') -and -not (Test-DExists 'volume' 's4t5h_var_la'))
+        Assert-That 'Haken: Mock-Container (nur install + worktree, kein substrate) wird mit abgeraeumt' (-not (Test-DExists 'container' 's4t5h-mock-tg'))
         Assert-That 'Haken: State-Datei des eigenen Verbunds im Haupt-Checkout weg' (-not (Test-Path (Join-Path $mainState 'n8ntest_state.s4t5h.json')))
         Assert-That 'Haken: Verbund eines anderen Checkouts bleibt' ((Test-DExists 'container' 's4t5i-anchor') -and (Test-DExists 'volume' 's4t5i_pgdata') -and (Test-Path (Join-Path $mainState 'n8ntest_state.s4t5i.json')))
         Assert-That 'Haken: Verbund des Haupt-Checkouts bleibt' ((Test-DExists 'container' 's4t5k-anchor') -and (Test-DExists 'volume' 's4t5k_pgdata'))
     } finally {
+        [void](Invoke-D @('rm', '-fv', 's4t5h-mock-tg'))
         foreach ($p in 's4t5h', 's4t5i', 's4t5k') { Remove-Probe $p }
     }
 }

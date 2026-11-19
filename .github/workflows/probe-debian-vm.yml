@@ -1,6 +1,6 @@
 # Probe (Paket A0): Traegt ein GitHub-Runner ubuntu-24.04 eine Debian-12-VM per KVM, und laeuft darin provisioning/setup.sh bis
 # zum Fragebogen-Link? Misst Zeiten und Plattenbedarf je Schritt; das Ergebnis entscheidet, ob ein woechentlicher Debian-Lauf
-# (L2) lohnt. Nur von Hand (workflow_dispatch), kein Required Check, keine Secrets.
+# (L2) lohnt. Nur Probe-Branch-Push oder von Hand, kein Required Check, keine Secrets.
 #
 # Ablauf: Master-Abbild auf dem Runner bauen und ueber crane (Registry ohne Docker) bereitstellen; Debian-Cloud-Image (feste Version,
 # SHA512 geprueft) per cloud-init (NoCloud-Seed, LANG=C wie eine Proxmox-Vorlage) als KVM-VM starten; setup.sh in der VM mit --yes;
@@ -8,8 +8,13 @@
 # (nur Loopback ist fuer Docker ohne TLS erlaubt). Der Erfolgsweg von --answers ist nicht Ziel (Grenze aus P2a).
 name: probe-debian-vm
 
+# Der push-Ausloeser nur fuer den Probe-Branch: workflow_dispatch startet nur Dateien, die auf dem Default-Branch liegen
+# (API-Antwort 404), diese Datei liegt dort nicht. Er faellt beim Merge/Loeschen des Branches weg.
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/s4-a0-debian-probe-c72b87]
+    paths: ['.github/workflows/probe-debian-vm.yml']
 
 permissions:
   contents: read

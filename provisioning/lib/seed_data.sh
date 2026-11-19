@@ -104,6 +104,12 @@ _seed_package_config() {
   done
 }
 
+# _seed_fm_value <key> <frontmatter>  -> Wert der ersten Zeile "<key>:" (ohne fuehrende Leerzeichen), sonst leer. Liest die
+# ganze Eingabe (kein `head`/`exit`): ein frueh aussteigender Leser liesse den Schreiber unter pipefail mit 141 sterben.
+_seed_fm_value() {
+  printf '%s\n' "$2" | awk -v k="$1:" 'index($0, k) == 1 && !seen { v = substr($0, length(k) + 1); sub(/^[[:space:]]+/, "", v); print v; seen = 1 }'
+}
+
 # --- Markdown-Context-Seed (capabilities_catalog + packages/*/contexts/*.md) -----
 # Frontmatter (--- … ---) + Body trennen; Body via Dollar-Quoting (beliebiger Inhalt, inkl.
 # '---' im Body). managed_by wird vom Aufrufer gesetzt (build|seed).
@@ -126,9 +132,9 @@ _seed_context_md() {
   fm="$(printf '%s\n' "$clean"  | awk '/^---[[:space:]]*$/{c++; next} c==1{print}')"
   body="$(printf '%s\n' "$clean" | awk 'c>=2{print} /^---[[:space:]]*$/{c++}')"
 
-  desc="$(printf '%s\n' "$fm"  | grep -E '^description:'   | head -n1 | sed -E 's/^description:[[:space:]]*//')"
-  agent="$(printf '%s\n' "$fm" | grep -E '^agent_name:'    | head -n1 | sed -E 's/^agent_name:[[:space:]]*//')"
-  strat="$(printf '%s\n' "$fm" | grep -E '^load_strategy:' | head -n1 | sed -E 's/^load_strategy:[[:space:]]*//')"
+  desc="$(_seed_fm_value description "$fm")"
+  agent="$(_seed_fm_value agent_name "$fm")"
+  strat="$(_seed_fm_value load_strategy "$fm")"
   [ -n "$strat" ] || strat="lazy"
 
   local agent_sql='NULL'
@@ -923,7 +929,9 @@ _seed_services() {
       [ -n "$alias" ] || continue
       if [ "$pkg" = "core" ]; then row="$alias"; else row="$pkg:$alias"; fi
       aliases="${aliases:+$aliases, }$(_sql_str "$row")"
-      wid="$(printf '%s\n' "$nameids" | awk -F'\t' -v n="$wf_name" '$1==n {print $2; exit}')"
+      # Kein `exit` im awk: ein Leser, der vor dem Ende der Eingabe aussteigt, toetet printf per SIGPIPE (pipefail -> 141, set -e
+      # bricht den Seed ohne Fehlerzeile ab; Test: tests/mock_runtime/seed_pipe_cases.sh).
+      wid="$(printf '%s\n' "$nameids" | awk -F'\t' -v n="$wf_name" '$1==n && !seen {print $2; seen=1}')"
       if [ -z "$wid" ]; then
         warn "core.services: $pkg provides.services '$alias' -> Workflow '$wf_name' nicht im getrackten Baum — Zeile uebersprungen (Manifest-Typo/Build-Drift)."
         continue

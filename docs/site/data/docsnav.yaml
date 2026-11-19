@@ -42,6 +42,8 @@
       title: Datenschutz & Sicherheit
 - group: Betrieb & Erweitern
   pages:
+    - slug: linux
+      title: Auf einem Linux-Server
     - slug: start-app
       title: Installation mit der Start-App
     - slug: tunnel

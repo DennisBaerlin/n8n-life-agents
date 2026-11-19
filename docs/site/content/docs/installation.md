@@ -6,10 +6,10 @@ title: "Installation, Update & Betrieb"
 
 Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: **Hast du einen eigenen Server?**
 
-- **Ja, ich habe einen eigenen Server** (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: **Installation per Befehl.** Ein Befehl im Terminal, die Fragen kommen im Terminal. Ins Internet kommt der Bot per Tunnel (empfohlen), FritzBox-Freigabe oder deinem eigenen Reverse Proxy. Anleitung: diese Seite, ab [Bevor du startest](#bevor-du-startest).
+- **Ja, ich habe einen eigenen Linux-Server** (am besten eine virtuelle Maschine) und etwas Technik-Wissen: **Einrichter für Linux.** Ein Befehl im Terminal startet ihn, die Fragen beantwortest du in einem Fragebogen im Browser deines Laptops. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: [Auf einem Linux-Server](linux.html).
 - **Nein, ich habe einen Mac oder Windows-PC**, der durchlaufen kann, und kein Technik-Wissen: **Start-App.** Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: [Installation mit der Start-App](start-app.html).
 
-Der Rest dieser Seite beschreibt die **Installation per Befehl**. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das **Grundsystem** ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Wie Telegram deinen Server erreicht, ist die erste Frage des Installers (siehe [„Erreichbarkeit"](#erreichbarkeit)): am einfachsten über einen **Tunnel**, den der Installer selbst einrichtet. Hast du schon einen **Reverse Proxy** (die meisten Heim-Server haben einen), nimmst du ihn; der Installer gibt dir dafür eine **fertige, direkt eintragbare Konfiguration** aus.
+Diese Seite sammelt, was für beide Wege gilt: was du vorher brauchst, wie der Bot ins Internet kommt, wie du Telegram verbindest, wie du Funktionen dazunimmst und welche Befehle es danach gibt. Den Ablauf der Einrichtung selbst beschreiben die Seiten der beiden Wege. Der Bot läuft auf beiden in Docker. Die Einrichtung bringt das **Grundsystem** mit (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen); die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Wie Telegram deinen Rechner erreicht, ist eine der Fragen (siehe [„Erreichbarkeit"](#erreichbarkeit)): am einfachsten über einen **Tunnel**, den die Einrichtung selbst einrichtet.
 
 ## Bevor du startest
 
@@ -18,7 +18,7 @@ Diese Dinge brauchst du vorher:
 - Einen **Telegram-Bot-Token** von @BotFather (dem offiziellen Telegram-Werkzeug zum Anlegen eines Bots — Schritt-für-Schritt weiter unten unter [„Telegram-Bot anlegen"](#telegram-bot-anlegen)).
 - **Einen Weg ins Internet**, eins von beiden:
   - ein kostenloses **Tailscale-Konto** für den Tunnel (empfohlen, geht mit jedem Anschluss, am Router ist nichts einzustellen). Das Konto kannst du auch erst während der Installation anlegen.
-  - oder eine **Domain, die auf deinen Anschluss zeigt** (eigene Domain, DynDNS oder MyFRITZ!), eine **Port-Weiterleitung (443)** und einen **HTTPS-Reverse-Proxy**, auf dem Server selbst oder auf einem anderen Rechner im Heimnetz.
+  - oder eine **FritzBox** mit eigener IPv4-Adresse, in der du zwei Freigaben einrichtest (siehe [FritzBox einrichten](fritzbox.html)).
 
   Wie das zusammenspielt, steht unten unter [„Erreichbarkeit"](#erreichbarkeit).
 - Einen **Anthropic-API-Key** (Pflicht) — alle Agenten denken mit Claude: Weiterleiten, Buchen, Hilfe, Belege lesen, Websuche und Beratung. Anthropic nutzt Daten aus der API nicht zum Training (mehr auf der Seite [Datenschutz](datenschutz.html)).
@@ -26,43 +26,27 @@ Diese Dinge brauchst du vorher:
 
 Das Projekt selbst ist kostenlos (MIT-Lizenz) und braucht kein GitHub-Konto. Laufende Kosten entstehen nur für deinen Rechner und die KI-Nutzung nach Verbrauch, die Anthropic (und für Sprachnachrichten Google) direkt mit dir abrechnet.
 
-## Der eine Installations-Befehl
+## So läuft die Einrichtung
 
-Auf der frischen Debian-Maschine lädt dieser eine Befehl (als root, wie im frischen Container üblich) den Installer `install.sh` aus dem neuesten Release und startet ihn (mit `&&` verkettet, damit bei einem fehlgeschlagenen Download nichts Halbes ausgeführt wird):
+Auf beiden Wegen kommen **alle Fragen zuerst**, in einem Fragebogen (auf dem Linux-Server im Browser deines Laptops, bei der Start-App im Fenster): Weg ins Internet, Angaben über dich, Telegram-Bot, Anthropic- und (optional) Google-Schlüssel, welche Funktionen du willst und wohin gesichert wird. Vor jeder Frage erklärt ein kurzer Text, wofür die Angabe gebraucht wird, wo du sie bekommst und was passiert, wenn du sie überspringst. **Pflicht** sind Vorname, Nachname, Geburtsdatum, das Telegram-Bot-Token und der Anthropic-Schlüssel — ohne sie kann der Bot nicht mit dir sprechen. Jede Antwort wird sofort gespeichert: Brichst du ab, verlierst du nichts und machst beim nächsten Mal dort weiter.
 
-```bash
-curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh
+Nach der letzten Frage zeigt eine **Übersicht** alle Antworten (Geheimes nur als „gesetzt"). Erst mit deinem Ja geht die Installation los, vorher kannst du einzelne Angaben ändern oder abbrechen. Etwas später ändern oder nachtragen (z. B. ein neues Bot-Token) geht jederzeit mit `lifeagents reconfigure`.
 
-# oder eine bestimmte, fest gepinnte Version:
-#   ... -o install.sh && bash install.sh --version vX.Y.Z
-```
+Hast du den Tunnel gewählt, richtet die Installation Tailscale ein und zeigt dir den Anmelde-Link (siehe [„Weg 1: Tunnel"](#tunnel)). Zum Schluss kommt der [Telegram-Schritt](#mit-telegram-verbinden).
 
-Die Internet-Adresse fragt der Installer selbst, je nach Weg. Wer schon eine eigene Domain hat, kann sie auch gleich mitgeben (`--domain n8n.example.com`); dann gilt der Weg „eigener Reverse Proxy“.
-
-Der Start-Befehl (`install.sh`) lädt das passende Release herunter, prüft eine Prüfsumme (SHA256 — ein digitaler Fingerabdruck der Datei), bevor überhaupt etwas entpackt oder ausgeführt wird, und übergibt danach an den eigentlichen Einrichter (`provision.sh`). Bricht die Prüfsumme nicht auf, läuft nichts — so kann keine manipulierte Datei unbemerkt zur Ausführung kommen. (Eine normale Installation ist immer „release" — du musst dafür kein Profil angeben.)
-
-Die eigentliche Einrichtung ist **geführt**, und **alle Fragen kommen zuerst**: Weg ins Internet (Tunnel, FritzBox oder eigener Proxy, je nach Weg mit Internet-Adresse) → Anmeldung an der n8n-Oberfläche → Angaben über dich → Telegram-Bot, Anthropic- und (optional) Google-Schlüssel. Vor **jeder** Frage erklärt ein kurzer Kasten, wofür die Angabe gebraucht wird, wo du sie bekommst und was passiert, wenn du sie überspringst. Schlüssel prüft der Installer sofort online („prüfe …"); das selbst gewählte Passwort gibst du zur Sicherheit zweimal ein. **Pflicht** sind Vorname, Nachname, Geburtsdatum, das Telegram-Bot-Token und der Anthropic-Schlüssel — ohne sie kann der Bot nicht mit dir sprechen; ein versehentliches Enter fragt hier einfach noch einmal nach. Optionale Felder überspringst du mit Enter — das wird sichtbar bestätigt. Jede Antwort wird sofort gespeichert: Brichst du mit **Strg+C** ab, fragt ein neuer Aufruf nur noch den Rest; ein zweiter Lauf fragt nichts doppelt.
-
-Nach der letzten Frage zeigt der Installer eine **Übersicht** aller Antworten (Geheimes nur als „gesetzt"). Hier wählst du **„Stimmt so — Installation starten"**, **„Eine Angabe ändern …"** (genau diese eine Frage kommt dann noch einmal; Enter behält den bisherigen Wert) oder **„Abbrechen"** (auch Esc) — dann wird nichts installiert, und deine Antworten bleiben gespeichert (nur Paket-Einstellungen wie das Bundesland fragt der nächste Aufruf noch einmal). Dieselbe Übersicht erscheint auch bei `lifeagents package install` und bei einem Update, das etwas Neues fragt. Etwas später ändern oder nachtragen (z. B. ein neues Bot-Token oder die Internet-Adresse) geht jederzeit mit `lifeagents reconfigure`.
-
-Hast du den Tunnel gewählt, richtet der Installer direkt nach der Übersicht Tailscale ein und zeigt dir den Anmelde-Link samt QR-Code (siehe [„Weg 1: Tunnel"](#tunnel)). Danach meldet der Installer „Ab hier läuft alles ohne Rückfrage" und zeigt nur noch **eine Zeile je Schritt** (✓ PostgreSQL eingerichtet, ✓ n8n installiert …). Die ausführliche technische Ausgabe landet in einer Protokolldatei unter `/var/log/lifeagents/install.log`; geht etwas schief, zeigt der Installer dir direkt die letzten Zeilen daraus. Wer alles live sehen möchte, startet mit `--verbose`.
-
-Zum Schluss kommt der [Telegram-Schritt](#mit-telegram-verbinden), danach fasst eine Übersicht zusammen, was eingerichtet wurde, was du übersprungen hast (mit dem passenden Nachtrag-Weg) und welche Zusatz-Funktionen du noch installieren kannst. Ein vom Installer erzeugtes n8n-Passwort zeigt sie **einmalig** an; interne Datenbank-Passwörter druckt sie nicht aus — die liegen nur für Wartungszwecke geschützt unter `/etc/lifeagents/`.
-
-## Was der Lauf installiert
+## Was eingerichtet wird
 
 Ein einziger Durchlauf richtet alles ein:
 
-- **PostgreSQL 17** (die Datenbank) — die Hauptversion bleibt fest, Sicherheits-Updates innerhalb von 17 spielt `lifeagents update` ein.
-- **Node.js 24** (die Laufzeit, auf der n8n läuft).
+- **PostgreSQL 17** (die Datenbank) — die Hauptversion bleibt fest.
 - **n8n 2.45.7** (die Workflow-Engine, auf der Orchestrator und alle Agenten laufen).
-- Beim **Tunnel**: **Tailscale** aus der offiziellen Paketquelle. Es lässt nach außen ausschließlich den Telegram-Nachrichtenweg durch.
-- Beim **FritzBox-Weg** und beim **eigenen Proxy** wird der HTTPS-Zugang **nicht** mitinstalliert: den stellt **dein** Reverse Proxy bereit (siehe [„Reverse Proxy"](#reverse-proxy)). Der Installer gibt dafür eine fertige Konfiguration aus, die nach außen ausschließlich den Telegram-Nachrichtenweg durchlässt und alles andere sperrt.
+- Beim **Tunnel**: **Tailscale**. Es lässt nach außen ausschließlich den Telegram-Nachrichtenweg durch.
+- Beim **FritzBox-Weg** bringt der Verbund seinen eigenen Türsteher (HTTPS-Zugang) mit; er lässt nach außen ausschließlich den Telegram-Nachrichtenweg durch und sperrt alles andere.
 - Das komplette **Datenbank-Schema** samt Grunddaten (Modell-Liste, zentrale Einstellungen, die englischen Verhaltens-Anweisungen der Agenten — keine persönlichen Daten).
 - Die **Owner-Einrichtung:** dein n8n-Zugang wird angelegt, ein interner Zugriffsschlüssel erzeugt, Lese-Rollen für die Datenbank eingerichtet und der Telegram-Bot vorbereitet.
 - Die **Workflows des Grundsystems** (Orchestrator, Hilfe, Einrichtungs-Assistent, Erinnerungen, Werkzeuge) werden eingespielt und aktiviert.
-- Die Betriebs-Befehlszeile **`lifeagents`** wird auf der Maschine bereitgestellt.
-- Die **Fach-Funktionen** (Finanzen, Karriere, Nachlass & Vorsorge, Dokumente) sind eigene Pakete. Welche davon gleich mitkommen sollen, fragt der Installer bei der Erstinstallation zusammen mit den anderen Fragen — als Auswahl-Liste mit einem Satz je Funktion; „Nur Grundsystem" heißt: später. Das Grundsystem läuft auch ganz ohne sie: Fragst du den Bot nach etwas aus einem nicht installierten Bereich, sagt er dir freundlich, dass die Funktion fehlt, und (dir als Besitzer) mit welchem Befehl du sie nachinstallierst.
+- Die Betriebs-Befehlszeile **`lifeagents`** (siehe [unten](#betrieb-danach-die-lifeagents-befehlszeile)).
+- Die **Fach-Funktionen** (Finanzen, Karriere, Nachlass & Vorsorge, Dokumente) sind eigene Pakete. Welche davon gleich mitkommen sollen, fragt der Fragebogen bei der Erstinstallation — als Auswahl-Liste mit einem Satz je Funktion; „Nur Grundsystem" heißt: später. Das Grundsystem läuft auch ganz ohne sie: Fragst du den Bot nach etwas aus einem nicht installierten Bereich, sagt er dir freundlich, dass die Funktion fehlt, und (dir als Besitzer) mit welchem Befehl du sie nachinstallierst.
 
 ## Funktionen hinzufügen
 

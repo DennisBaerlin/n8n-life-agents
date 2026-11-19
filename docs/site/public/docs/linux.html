@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auf einem Linux-Server · lifeagents</title>
+<link rel="stylesheet" href="../css/site.css">
+
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="../index.html">
+      
+<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+  <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+      lifeagents
+    </a>
+    <span class="nav-links">
+      <a class="ghost" href="../index.html#agenten">Agenten</a>
+      <a class="ghost" href="../index.html#sicherheit">Sicherheit</a>
+      <a class="ghost" href="../index.html#faq">FAQ</a>
+      <a class="btn btn-soft" href="../docs/ueberblick.html">Docs</a>
+      <a class="btn btn-primary" href="../docs/installation.html">Jetzt installieren</a>
+    </span>
+  </div>
+</nav>
+
+
+<div class="docs-wrap">
+  <aside class="docs-sidebar">
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation</a></li>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/uebersicht-app.html">Übersicht (Mini-App)</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/linux.html" class="active">Auf einem Linux-Server</a></li>
+      
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
+        <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
+      
+        <li><a href="../docs/sicherung.html">Sicherung &amp; neuer Rechner</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </aside>
+  <details class="docs-mobile-nav">
+    <summary>📚 Docs-Navigation</summary>
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation</a></li>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/uebersicht-app.html">Übersicht (Mini-App)</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/linux.html" class="active">Auf einem Linux-Server</a></li>
+      
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
+        <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
+      
+        <li><a href="../docs/sicherung.html">Sicherung &amp; neuer Rechner</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </details>
+  <article class="docs-content">
+    <h1>Auf einem Linux-Server</h1>
+    <p>Dieser Weg ist für dich, wenn du <strong>einen eigenen Linux-Server</strong> hast, zum Beispiel einen kleinen Heimserver oder eine virtuelle Maschine (VM), und dich im Terminal ein wenig auskennst. Du startest einen Einrichter, der dir den Rest abnimmt: Er prüft deinen Server, richtet bei Bedarf Docker ein (die Technik, in der der Bot läuft) und startet alles. Die Fragen beantwortest du danach <strong>in einem Fragebogen im Browser</strong> deines Laptops, nicht im Terminal. Der Bot kann danach genau dasselbe wie auf den anderen Wegen (siehe <a href="installation.html#weg">Welcher Weg passt zu dir?</a>).</p>
+<h2 id="voraussetzungen">Bevor du startest</h2>
+<ul>
+<li><strong>Ein Server, der durchlaufen darf:</strong> Debian 12 oder 13 oder Ubuntu 22.04 oder 24.04, 64-Bit (Intel/AMD oder ARM). Du brauchst Zugriff als <strong>root</strong> (oder einen Benutzer, der mit <code>sudo</code> arbeiten darf). 4 GB Arbeitsspeicher sind empfohlen, 10 GB freier Platz sind Pflicht.</li>
+<li><strong>Ein Laptop oder PC</strong> mit Browser und einem SSH-Zugang zum Server. Warum, steht in <a href="#fragebogen">Schritt 2</a>.</li>
+<li><strong>Docker</strong> musst du nicht vorher einrichten. Läuft es schon, nimmt der Einrichter es mit. Fehlt es, fragt der Einrichter vorher und holt es aus Dockers offizieller Paketquelle. Steht dabei ein Paket aus der Debian- oder Ubuntu-Paketquelle im Weg (zum Beispiel <code>docker.io</code>, <code>containerd</code> oder <code>runc</code>), bricht er ab und nennt dir das Paket, das du vorher entfernen musst. Nicht unterstützt sind Docker aus dem Snap-Paket und Docker ohne root-Rechte: Der FritzBox-Weg braucht die Ports 80 und 443, und die gibt Docker ohne root nicht ohne Weiteres frei.</li>
+<li><strong>Die Zugänge für den Bot:</strong> ein Telegram-Bot-Token und ein Anthropic-Schlüssel (Pflicht), ein Google-Schlüssel nur für Sprachnachrichten (freiwillig). Was das ist und wo du es bekommst, steht unter <a href="installation.html#bevor-du-startest">Bevor du startest</a> und <a href="installation.html#telegram-bot-anlegen">Telegram-Bot anlegen</a>.</li>
+<li><strong>Für den Weg ins Internet</strong> ein kostenloses Tailscale-Konto (der Tunnel, empfohlen) oder Zugang zur FritzBox. Der Fragebogen bietet genau diese zwei Wege an; einen eigenen Reverse Proxy mit eigener Domain bietet er nicht an (siehe <a href="#internet">unten</a>).</li>
+</ul>
+<p><strong>Läuft auf dem Server schon eine ältere Installation</strong> (n8n als Systemdienst), richtet der Einrichter nichts ein und ändert nichts. Er meldet das und bricht ab.</p>
+<h2 id="einzeiler">Schritt 1: Einrichter laden und starten</h2>
+<p>Auf dem Server, als root, lädt dieser eine Befehl den Einrichter <code>setup.sh</code> aus dem neuesten Release und startet ihn. Die zwei Teile sind mit <code>&amp;&amp;</code> verkettet, damit bei einem fehlgeschlagenen Download nichts Halbes ausgeführt wird:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/setup.sh -o setup.sh <span style="color:#f92672">&amp;&amp;</span> bash setup.sh
+</span></span></code></pre></div><p>Fehlt auf dem Server <code>curl</code>, installierst du es vorher mit <code>apt-get install -y curl</code>. Arbeitest du nicht als root, setz bei <code>bash</code> ein <code>sudo</code> davor: <code>... &amp;&amp; sudo bash setup.sh</code>. Den Einrichter lädst du bewusst <strong>erst in eine Datei</strong>, statt ihn direkt in <code>bash</code> zu leiten: Bricht der Download ab, läuft nichts Halbes.</p>
+<p><strong>Die Prüfsumme von Hand prüfen (freiwillig):</strong> Zu jedem Release gehört eine Liste mit den Prüfsummen der Dateien (SHA256, ein digitaler Fingerabdruck). Willst du vor dem Start wissen, ob die Datei vollständig und unverändert angekommen ist, lade die Liste und vergleiche:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/SHA256SUMS -o SHA256SUMS
+</span></span><span style="display:flex;"><span>sha256sum -c SHA256SUMS --ignore-missing
+</span></span></code></pre></div><p><em>Erwartet:</em> Eine Zeile <code>setup.sh: OK</code>. Steht dort <code>FAILED</code>, starte die Datei nicht, sondern lade sie neu. Die Prüfsumme erkennt einen beschädigten Download. Dass ein Release echt vom Projekt kommt, prüft dein Assistent später bei jedem Update selbst über die digitale Unterschrift (siehe <a href="installation.html#funktionen-hinzuf%C3%BCgen">Installation</a>).</p>
+<p>Danach passiert Folgendes:</p>
+<ol>
+<li>Der Einrichter <strong>prüft deinen Server</strong>, bevor er etwas ändert: Betriebssystem, Rechte, Docker.</li>
+<li>Fehlt Docker, <strong>fragt er vorher</strong> („Jetzt aus Dockers offizieller Paketquelle einrichten?“). Ohne dein Ja geht es nicht weiter. Mit <code>bash setup.sh --yes</code> beantwortest du solche Fragen gleich mit Ja, etwa auf einem Server ohne Tastatur.</li>
+<li>Er <strong>startet den Bot-Verbund</strong> und lädt dabei die Bausteine herunter. Das dauert beim ersten Mal ein paar Minuten.</li>
+<li>Er legt auf dem Server zwei Dinge an: den Befehl <code>lifeagents</code> (für alles, was du danach brauchst, siehe <a href="#befehle">unten</a>) und eine Systemdienst-Einheit, die den Bot nach einem Neustart wieder hochholt (siehe <a href="#autostart">Start beim Hochfahren</a>).</li>
+<li>Er zeigt dir, wie du den Fragebogen öffnest.</li>
+</ol>
+<p>Du kannst <code>setup.sh</code> jederzeit noch einmal starten. Läuft alles schon, meldet er „Nichts zu tun“ und ändert nichts.</p>
+<h2 id="fragebogen">Schritt 2: Den Fragebogen am Laptop öffnen</h2>
+<p>Der Fragebogen läuft auf dem Server und ist <strong>von außen nicht erreichbar</strong>: Er lauscht nur auf dem Server selbst. Damit du ihn trotzdem an deinem Laptop sehen kannst, baust du eine verschlüsselte SSH-Verbindung auf, die den Fragebogen zu deinem Laptop „weiterleitet“ (Fachwort: Port-Weiterleitung). Der Einrichter druckt dir beides fertig aus, ungefähr so (Adresse, Name und Port sind hier erfunden, bei dir stehen deine):</p>
+<pre tabindex="0"><code>So öffnest du den Fragebogen (am eigenen Laptop):
+  1. Verbindung aufbauen und das Terminal offen lassen:
+       ssh -L 5881:127.0.0.1:5881 erika@192.168.178.20
+  2. Im Browser am Laptop öffnen:
+       http://127.0.0.1:5881/start?t=…
+Der Link gilt 10 Minuten. Einen neuen Link gibt es mit: lifeagents wizard-url
+</code></pre><ol>
+<li><strong>Terminal am Laptop öffnen</strong> (Mac: Programm „Terminal“, Windows: „PowerShell“) und den <code>ssh</code>-Befehl <strong>genau so einfügen</strong>, mit demselben Port. Der Fragebogen prüft die Adresse, über die du ihn aufrufst; mit einem anderen Port am Laptop lehnt er dich ab. Melde dich mit deinem Server-Passwort bzw. Schlüssel an. <strong>Lass dieses Fenster offen</strong>, solange du den Fragebogen benutzt. Als Benutzername druckt der Einrichter den Benutzer, der ihn mit <code>sudo</code> gestartet hat (sonst <code>root</code>). Ist die SSH-Anmeldung als root bei dir gesperrt, was oft so ist, nimm deinen eigenen Benutzernamen.</li>
+<li><strong>Den Link im Browser öffnen.</strong> Der Link steht in der Ausgabe. Er gilt <strong>10 Minuten</strong>. Ist er abgelaufen oder verloren, gibt dir <code>lifeagents wizard-url</code> auf dem Server einen neuen.</li>
+<li><strong>Die Fragen beantworten</strong>, eine je Seite. Es sind dieselben wie bei der <a href="start-app.html#schritt-4-die-app-f%C3%BChrt-dich-durch-den-rest">Start-App</a>: Name, Geburtsdatum, Telegram-Bot, Anthropic-Schlüssel, welche Funktionen du willst, der Weg ins Internet und wohin gesichert wird. Jede Antwort wird sofort gespeichert, brichst du ab, geht nichts verloren. Am Ende zeigt eine Übersicht alle Antworten; erst mit dem Ja darauf geht die Installation los. Zum Schluss verbindest du Telegram mit deinem Bot.</li>
+</ol>
+<p>Ist die Einrichtung abgeschlossen, endet der Fragebogen von selbst. Einen Link gibt es dann nicht mehr, und das ist normal.</p>
+<h3 id="internet">Der Weg ins Internet</h3>
+<p>Damit Telegram deinem Bot Nachrichten zustellen kann, muss dein Server aus dem Internet erreichbar sein. Der Fragebogen bietet zwei Wege an:</p>
+<ul>
+<li><strong>Über einen sicheren Tunnel (empfohlen, vorausgewählt):</strong> ein kostenloses Tailscale-Konto, am Router änderst du nichts. Anleitung: <a href="tunnel.html">Tunnel einrichten</a>.</li>
+<li><strong>Über meine FritzBox:</strong> Du richtest zwei Freigaben in der FritzBox ein, dafür brauchst du kein fremdes Konto. Anleitung: <a href="fritzbox.html">FritzBox einrichten</a>.</li>
+</ul>
+<p>Hast du bisher einen eigenen Reverse Proxy mit eigener Domain benutzt: Diesen Weg bietet der neue Fragebogen nicht an.</p>
+<h2 id="abbruch">Wenn der Einrichter abbricht</h2>
+<p>Der Einrichter sagt in einfachen Worten, woran es liegt, und hat bis dahin nichts Halbes hinterlassen. Die häufigsten Gründe:</p>
+<ul>
+<li><strong>Docker aus dem Snap-Paket:</strong> Entferne das Snap, dann nimmt der Einrichter Docker aus der Paketquelle.</li>
+<li><strong>Ein Paket steht im Weg</strong> (zum Beispiel <code>docker.io</code>): Entferne es mit dem Befehl, den der Einrichter nennt.</li>
+<li><strong>Zu wenig Platz oder Docker zu alt:</strong> Platz schaffen bzw. Docker aus der offiziellen Paketquelle aktualisieren.</li>
+<li><strong>Von den Ports 5880 bis 5899 sind nicht zwei frei:</strong> Beende, was dort lauscht, und starte noch einmal.</li>
+</ul>
+<p>Dann <code>bash setup.sh</code> einfach noch einmal ausführen.</p>
+<h2 id="sicherung">Der Sicherungs-Ordner auf einer anderen Platte</h2>
+<p>Jede Nacht legt dein Assistent eine verschlüsselte Sicherung deiner Daten ab. Der Fragebogen fragt darum: „Wohin sollen deine Daten jeden Tag gesichert werden?“ Auf einem Server gibt es dafür nur die Antwort <strong>Anderer Ordner</strong>; danach tippst du den <strong>vollen Pfad</strong> auf dem Server ein.</p>
+<p><strong>Wähle einen Ordner auf einer anderen Platte als der des Servers</strong>, zum Beispiel auf einer zweiten Festplatte, einer USB-Platte oder einer eingebundenen Netzwerk-Freigabe (NAS). Dann ist die Sicherung auch dann noch da, wenn die Platte des Servers kaputtgeht. Zwei Dinge sind wichtig:</p>
+<ul>
+<li>Die Platte muss <strong>auf dem Server eingebunden</strong> sein, und der Ordner muss <strong>schon existieren</strong>, zum Beispiel <code>/mnt/sicherung</code>. Sonst meldet der Fragebogen: „Diesen Ordner gibt es auf dem Rechner nicht.“</li>
+<li>In diesem Ordner legt der Assistent selbst einen Unterordner „Life Agents Sicherungen“ an und sichert dorthin.</li>
+</ul>
+<p>Ist die Platte einmal nicht eingebunden oder voll, versucht der Assistent es jede Stunde wieder und schreibt dir nach zwei Tagen im Chat. Den <strong>Schlüssel</strong> zum Öffnen der Sicherung bekommst du am Ende auf einem Notfallblatt. Heb ihn getrennt von der Sicherung auf. Wie du auf einem neuen Rechner zurückholst, steht unter <a href="sicherung.html">Sicherung &amp; neuer Rechner</a>.</p>
+<p><strong>Ordner später ändern:</strong> Auf dem Server, mit deinem Ordner statt des Beispiels:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>lifeagents backup host-dir /mnt/sicherung --create
+</span></span></code></pre></div><p>Neue Sicherungen gehen danach in den neuen Ordner, die bisherigen bleiben im alten liegen.</p>
+<h2 id="rechte">Das Steuer-Programm hat volle Rechte über Docker</h2>
+<p>Der Bot besteht aus mehreren Teilen, die in Docker laufen. Ein <strong>Steuer-Programm</strong> (der Container <code>lifeagents-master</code>) hält sie zusammen: Es startet und stoppt sie und spielt Updates ein. Dafür bekommt es den <strong>Docker-Anschluss des Servers</strong> (den „Socket“), und <strong>wer Docker steuern darf, hat auf dem Server praktisch Administrator-Rechte (root)</strong>. Das ist bei jedem Programm so, das Docker verwaltet.</p>
+<p>Für dich heißt das:</p>
+<ul>
+<li>Du vertraust dem Steuer-Programm wie einem Administrator deines Servers. Updates spielt es nur ein, wenn sie digital vom Projekt unterschrieben sind (siehe <a href="installation.html#funktionen-hinzuf%C3%BCgen">Installation</a>).</li>
+<li>Beim Abbau entfernt der Einrichter nur, was er selbst angelegt hat. Andere Docker-Programme auf demselben Server, zum Beispiel Paperless, bleiben unberührt.</li>
+<li>Wie das Steuer-Programm zusammenspielt, steht unter <a href="so-funktionierts.html">So funktioniert’s</a>.</li>
+</ul>
+<h2 id="proxmox">Proxmox: besser eine VM</h2>
+<p>Läuft dein Server unter Proxmox: <strong>Proxmox empfiehlt für Docker eine virtuelle Maschine (VM).</strong> Ein Debian-LXC-Container geht, aber <strong>auf eigene Verantwortung</strong>, und nur mit den Container-Eigenschaften <code>nesting=1,keyctl=1</code> (in Proxmox: Container → Optionen → Features). Erkennt der Einrichter einen LXC und Docker kommt dort nicht zurecht, nennt er dir dieselben Zeilen. Einen eigenen Proxmox-Weg gibt es nicht.</p>
+<h2 id="befehle">Die Befehle danach</h2>
+<p>Nach der Einrichtung steht auf dem Server der Befehl <code>lifeagents</code>. Er reicht deine Eingaben an das Steuer-Programm weiter, du tippst sie wie gewohnt:</p>
+<table>
+	<thead>
+			<tr>
+					<th>Befehl</th>
+					<th>Wofür</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td><code>lifeagents wizard-url</code></td>
+					<td>Einen neuen Link zum Fragebogen, wenn der alte abgelaufen ist (nur solange die Einrichtung noch nicht abgeschlossen ist).</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents update</code></td>
+					<td>Holt die neueste Version und spielt sie ein, mit Sicherung vorher. Dasselbe passiert, wenn du im Chat auf <strong>Jetzt aktualisieren</strong> tippst.</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents doctor</code></td>
+					<td>Prüft den Zustand der Installation, ohne etwas zu verändern. Der erste Schritt bei jedem Problem.</td>
+			</tr>
+			<tr>
+					<td><code>lifeagents backup …</code></td>
+					<td>Sicherung ansehen, anlegen oder zurückspielen, auch das Notfallblatt (<code>lifeagents backup key</code>).</td>
+			</tr>
+	</tbody>
+</table>
+<p>Tippst du nur <code>lifeagents</code>, öffnet sich ein Menü. Die vollständige Liste zeigt <code>lifeagents help</code>; was die Befehle genau tun, steht unter <a href="installation.html#betrieb-danach-die-lifeagents-befehlszeile">Installation → Betrieb danach</a>.</p>
+<h2 id="autostart">Start beim Hochfahren</h2>
+<p>Der Einrichter legt die Systemdienst-Einheit <strong><code>lifeagents-stack.service</code></strong> an. Sie startet nach jedem Hochfahren des Servers und nach jedem Neustart von Docker einmal alle Teile des Bots. Das ist nötig, weil Docker die Teile nach einem Neustart manchmal in der falschen Reihenfolge hochholt und einzelne dann stehen bleiben.</p>
+<p>Ob die Einheit da ist, zeigt:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>systemctl status lifeagents-stack.service
+</span></span></code></pre></div><p><em>Erwartet:</em> <code>active (exited)</code>. Das ist richtig, die Einheit startet den Verbund einmal und beendet sich dann. Wenn etwas hakt, zeigt <code>journalctl -u lifeagents-stack.service</code> das Protokoll. Läuft auf dem Server kein systemd, weist der Einrichter darauf hin; dann holst du den Bot nach einem Neustart von Hand mit <code>lifeagents boot-start</code> hoch.</p>
+<h2 id="entfernen">Entfernen</h2>
+<p>Den Bot entfernst du mit demselben Einrichter. Lade ihn wie in <a href="#einzeiler">Schritt 1</a>, starte ihn aber so:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>bash setup.sh --uninstall
+</span></span></code></pre></div><p>Das entfernt den Bot-Verbund, den Befehl <code>lifeagents</code> und die Einheit. <strong>Deine Daten bleiben erhalten</strong>, und Docker bleibt installiert. Startest du <code>setup.sh</code> später wieder, findet der Bot seine Daten wieder.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>bash setup.sh --uninstall --delete-data
+</span></span></code></pre></div><p>Das löscht <strong>zusätzlich alle Daten</strong> (Datenbank, Dokumente, Schlüssel) und die Docker-Abbilder, die der Einrichter selbst geladen hat. Es lässt sich nicht rückgängig machen, darum fragt der Einrichter vorher („Wirklich löschen?“). Dein Sicherungs-Ordner liegt außerhalb von Docker und bleibt unberührt. Vorher löst der Einrichter noch die Verbindung deines Bots zu Telegram. Mit <code>--yes</code> entfällt die Rückfrage.</p>
+<h2 id="answers">Für Fortgeschrittene: ohne Fragebogen</h2>
+<p>Wer den Fragebogen nicht nutzen will, etwa zum Automatisieren, übergibt eine fertige Antwort-Datei: <code>bash setup.sh --answers antworten.env</code>. Sie hat dieselbe Form wie die Datei für <code>--unattended</code>. Dieser Weg ist noch wenig erprobt, im Zweifel nimm den Fragebogen.</p>
+
+  </article>
+</div>
+
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <span class="wordmark">
+        
+<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+  <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+        lifeagents
+      </span>
+      <p class="tagline">Hilfe für die ganze Familie: dein Assistent in Telegram, dahinter die passenden Spezialisten, auf eurem eigenen Rechner.</p>
+    </div>
+    <div>
+      <h4>Erkunden</h4>
+      <ul>
+        <li><a href="../docs/ueberblick.html">Docs</a></li>
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+        <li><a href="../docs/installation.html">Installation</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Projekt</h4>
+      <ul>
+        <li><a href="https://github.com/DennisBaerlin/n8n-life-agents">GitHub</a></li>
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="legal">
+    <span>Persönliches Open-Source-Projekt · MIT-Lizenz · kein offizielles n8n-Projekt · keine Finanz-, Steuer- oder Rechtsberatung.</span>
+    <span>n8n 2.45.7 · PostgreSQL 17 · Reverse Proxy (Caddy empfohlen)</span>
+  </div>
+</footer>
+
+</body>
+</html>

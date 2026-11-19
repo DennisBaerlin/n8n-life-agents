@@ -125,6 +125,20 @@ Assert-That 'Projekt aus Traeger-Volume dieses Checkouts' (($t.Projects -join ',
 Assert-That 'Container: Projekt-Container und Mock mit Worktree-Etikett, nichts Fremdes' ((($t.Containers | Sort-Object) -join ',') -eq 's4t5a-anchor,s4t5a-mock-tg,s4t5a-n8n')
 Assert-That 'Netze: nur die des Projekts' (($t.Networks -join ',') -eq 's4t5a_internal')
 Assert-That 'Volumes: Projekt-Volumes plus Schnappschuss, nichts Fremdes' ((($t.Volumes | Sort-Object) -join ',') -eq 's4t5a_pgdata,s4t5a_shared,s4t5a_var_la,s4t5asnap_pgdata')
+$t = Get-WorktreeComposeTargets -Worktree $R -VolumeLines ($vols + "helfer_data|lifeagents.worktree=$R") -ContainerLines ($cons + "helfer-db|lifeagents.worktree=$R") -NetworkLines ($nets + "helfer_net|lifeagents.worktree=$R")
+Assert-That 'Objekt nur mit Worktree-Etikett (z. B. ein db_test-Helfer) wird nie gewaehlt' ($t.Containers -notcontains 'helfer-db' -and $t.Volumes -notcontains 'helfer_data' -and $t.Networks -notcontains 'helfer_net')
+$wc = 'C:\wt\a,b'
+$volC = "s4t5c_pgdata|io.lifeagents.install=s4t5c,lifeagents.substrate=n8n,lifeagents.worktree=$wc,com.docker.compose.config-hash=x"
+$t = Get-WorktreeComposeTargets -Worktree $wc -VolumeLines @($volC) -ContainerLines @() -NetworkLines @()
+Assert-That 'Komma im Worktree-Pfad: Projekt wird gefunden' (($t.Projects -join ',') -eq 's4t5c')
+$c = @(ConvertFrom-ComposeSubstrateRows -VolumeLines @($volC) -ContainerLines @('s4t5c-anchor|Up 1 minute|io.lifeagents.install=s4t5c'))
+Assert-That 'Komma im Worktree-Pfad: Substrat nennt den ganzen Pfad' ($c.Count -eq 1 -and $c[0].Worktree -eq $wc)
+$vA = 's4t5d_pgdata|io.lifeagents.install=s4t5d,lifeagents.substrate=n8n,lifeagents.worktree=C:\wt\a'
+$vB = 's4t5d_var_la|io.lifeagents.install=s4t5d,lifeagents.substrate=n8n,lifeagents.worktree=C:\wt\b'
+$con = 's4t5d-anchor|Up 1 minute|io.lifeagents.install=s4t5d'
+$w1 = (@(ConvertFrom-ComposeSubstrateRows -VolumeLines @($vA, $vB) -ContainerLines @($con)))[0].Worktree
+$w2 = (@(ConvertFrom-ComposeSubstrateRows -VolumeLines @($vB, $vA) -ContainerLines @($con)))[0].Worktree
+Assert-That 'widerspruechliche Worktree-Etiketten: Ergebnis haengt nicht von der Zeilenfolge ab' ($w1 -eq $w2 -and $w1 -eq 'C:\wt\a')
 $t = Get-WorktreeComposeTargets -Worktree 'C:\wt\zz' -VolumeLines $vols -ContainerLines $cons -NetworkLines $nets
 Assert-That 'anderer Checkout: nichts' ($t.Projects.Count -eq 0 -and $t.Containers.Count -eq 0 -and $t.Networks.Count -eq 0 -and $t.Volumes.Count -eq 0)
 $t = Get-WorktreeComposeTargets -Worktree $R -VolumeLines ($vols + 's4t5a_x|io.lifeagents.install=s4t5a,lifeagents.worktree=C:\wt\other') -ContainerLines $cons -NetworkLines $nets
@@ -298,6 +312,9 @@ Assert-Rejected '-List -By x (-By gehoert nicht zu -List): Fehler' @('-List', '-
 Assert-Rejected 'ueberzaehlige Angabe (-Container a b): Fehler' @('-Container', 'cli-a', 'ueberzaehlig')
 Assert-Rejected '-Container mit Wert -By (Wert beginnt mit -): Fehler' @('-Container', '-By', 'x')
 Assert-Rejected 'unbekannter Parameter -Name: Fehler' @('-Name', 'x')
+Reset-File
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$cli' -List:`$false -Container cli-sw -ListFile '$file'" 2>$null
+Assert-That 'Schalter mit :$false zaehlt nicht als Modus (-List:$false -Container x reserviert x)' ($LASTEXITCODE -eq 0 -and (Get-Content $file -Raw) -match 'cli-sw')
 
 Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "substrate_reservation_test: $failed Fehler."

@@ -42,7 +42,10 @@ foreach ($p in 'Container', 'Release') {
     $v = (Get-Variable $p).Value
     if ($v -and $v.StartsWith('-')) { throw "Wert '$v' fuer -$p sieht nach einem Parameter-Namen aus; Name fehlt?" }
 }
-$modes = @(@('Container', 'Release', 'DbPort', 'FreeDbPort', 'List') | Where-Object { $PSBoundParameters.ContainsKey($_) })
+# Schalter zaehlen nur mit Wert $true (-List:$false ist kein Modus); die String-/Zahl-Parameter, sobald sie gebunden sind.
+$modes = @(@('Container', 'Release', 'DbPort', 'FreeDbPort', 'List') | Where-Object {
+    $PSBoundParameters.ContainsKey($_) -and ((Get-Variable $_).Value -isnot [System.Management.Automation.SwitchParameter] -or (Get-Variable $_).Value.IsPresent)
+})
 if ($modes.Count -gt 1) { throw ('Nur ein Modus je Aufruf, angegeben: -' + ($modes -join ', -') + '.') }
 if ($PSBoundParameters.ContainsKey('By') -and $modes -and @('Container', 'DbPort', 'FreeDbPort') -notcontains $modes[0]) {
     throw "-By gehoert nur zu -Container, -DbPort oder -FreeDbPort, nicht zu -$($modes[0])."

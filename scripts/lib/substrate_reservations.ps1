@@ -136,7 +136,8 @@ function ConvertFrom-SubstrateLine([string]$Line) {
 # `{{.Labels}}`-Text ("a=b,c=d") -> Hashtable. Ein Label-Wert mit Komma wird zerschnitten (Docker liefert keine Maskierung).
 function ConvertFrom-LabelString([string]$Labels) {
     $h = @{}
-    foreach ($kv in ($Labels -split ',')) {
+    # Komma nur vor `schluessel=` trennt: ein Komma im Wert (Pfad des Checkouts) bleibt drin.
+    foreach ($kv in [regex]::Split("$Labels", ',(?=[A-Za-z0-9_.\-/]+=)')) {
         $i = $kv.IndexOf('=')
         if ($i -gt 0) { $h[$kv.Substring(0, $i)] = $kv.Substring($i + 1) }
     }
@@ -152,12 +153,14 @@ function ConvertFrom-LabelString([string]$Labels) {
 function ConvertFrom-ComposeSubstrateRows {
     param([string[]]$VolumeLines = @(), [string[]]$ContainerLines = @())
     $projects = @{}
-    foreach ($line in @($VolumeLines | Where-Object { $_ })) {
+    foreach ($line in @($VolumeLines | Where-Object { $_ } | Sort-Object)) {
         $p = "$line" -split '\|', 2
         if ($p.Count -ne 2) { continue }
         $l = ConvertFrom-LabelString $p[1]
-        if ($l['lifeagents.substrate'] -eq 'n8n' -and $l['io.lifeagents.install']) {
-            $projects[$l['io.lifeagents.install']] = [string]$l['lifeagents.worktree']
+        $proj = $l['io.lifeagents.install']
+        # Erste Zeile nach Name gewinnt: widerspruechliche Worktree-Etiketten (Veto im Aufraeumen) sollen nicht von der Docker-Reihenfolge abhaengen.
+        if ($l['lifeagents.substrate'] -eq 'n8n' -and $proj -and -not $projects.ContainsKey($proj)) {
+            $projects[$proj] = [string]$l['lifeagents.worktree']
         }
     }
     $seen = @{}
@@ -234,7 +237,11 @@ function Get-WorktreeComposeTargets {
     })
     $pick = {
         param($rows)
-        @($rows | Where-Object { $projects -contains $_.L['io.lifeagents.install'] -or $_.L['lifeagents.worktree'] -eq $Worktree } | ForEach-Object Name | Sort-Object -Unique)
+        # Allein das Worktree-Etikett genuegt nicht (db_test-Helfer o. ae. duerfen nie mitgehen): Substrat-Etikett oder Install-Etikett dazu.
+        @($rows | Where-Object {
+            $projects -contains $_.L['io.lifeagents.install'] -or
+            ($_.L['lifeagents.worktree'] -eq $Worktree -and ($_.L['lifeagents.substrate'] -like 'n8n*' -or $_.L['io.lifeagents.install']))
+        } | ForEach-Object Name | Sort-Object -Unique)
     }
     return [pscustomobject]@{
         Projects   = $projects

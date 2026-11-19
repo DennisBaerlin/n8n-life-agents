@@ -107,7 +107,7 @@ Der Finanzberater spammt dich nicht. Er meldet sich proaktiv nur, wenn sich etwa
 
 Fehlt für ein Konto der Wechselkurs, sagt er bei einem Sparziel nicht „hinter Plan“. Er nennt das Konto einmal und schreibt beim Ziel „mindestens“.
 
-Aus dem [Monats-Check](monats-check.html) kommen zwei Warnungen dazu: **Konto knapp**, wenn ein Konto bis zum nächsten Geldeingang voraussichtlich unter deinen Puffer (Standard 250 €) fällt, mit einem Umbuchungs-Vorschlag (Betrag, bis wann, von welchem Konto; nie von einem Kinderkonto), und **Zahlung fehlt**, wenn ein Dauerauftrag zweimal in Folge nicht vom Konto ging.
+Aus dem [Monats-Check](monats-check.html) kommen zwei Warnungen dazu: **Konto knapp**, wenn ein Konto bis zum nächsten Geldeingang voraussichtlich unter deinen Puffer fällt (Standard 250 €, solange die Alltagsausgaben noch unbekannt sind; zeigen die Kontoauszüge keine, braucht das Konto keinen Puffer, und nur ein Minus warnt; ein selbst gesetzter Puffer gilt immer), mit einem Umbuchungs-Vorschlag (Betrag, bis wann, von welchem Konto; nie von einem Kinderkonto), und **Zahlung fehlt**, wenn ein Dauerauftrag zweimal in Folge nicht vom Konto ging.
 
 Für Immobilien meldet er sich, wenn die **Instandhaltungsrücklage** unter der Empfehlung nach II. BV liegt (zum Beispiel, weil das Haus in eine ältere Altersstufe gerutscht ist oder die Sätze angepasst wurden) oder wenn eine Immobilie noch gar keine Rücklage hat. Jeder dieser Hinweise kommt nur einmal, bis sich etwas ändert.
 

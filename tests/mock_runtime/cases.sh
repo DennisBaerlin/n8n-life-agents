@@ -370,20 +370,23 @@ elif [ -e "$LW/gw" ]; then fail L.systemd-lehnt-ab "es wurde schon geschrieben";
 # Antwort-Datei: die Weiche setzt nur die Umgebung des Aufrufers, nie eine Antwort (Sperrliste).
 printf '%s\n' 'LIFEAGENTS_LLM_UPSTREAM=http://127.0.0.1:8088' > "$W/a"; ok_ans L.antwortdatei-sperrt '[ "${LIFEAGENTS_LLM_UPSTREAM:-}" != http://127.0.0.1:8088 ]'
 # Echter Weg: gateway.env -> echter Gateway (provisioning/llm_gateway/server.js) -> echte KI-Attrappe (tests/mock_llm/server.js).
-# hand-injected: die Ports 18188/18197 sind frei gewaehlt (der Standard 8090 koennte im Substrat belegt sein); gateway.env wird sonst unveraendert gelesen
+# hand-injected: die Ports 18188/18197 (zweiter Lauf 18189/18198) sind frei gewaehlt (der Standard 8090 koennte im Substrat belegt sein); gateway.env wird sonst unveraendert gelesen
 LMOCK=18188; LGW=18197; LLOG="$W/mock_llm.jsonl"
 lstart() {   # lstart <gateway.env> : KI-Attrappe + Gateway starten (Hintergrund), auf beide warten
   : > "$LLOG"
-  MOCK_LLM_PORT=$LMOCK MOCK_LLM_LOG="$LLOG" MOCK_LLM_SCENARIOS="$ROOT/tests/mock_llm/scenarios.json" node "$ROOT/tests/mock_llm/server.js" >/dev/null 2>&1 & LPID1=$!
+  MOCK_LLM_PORT=$LMOCK MOCK_LLM_LOG="$LLOG" MOCK_LLM_SCENARIOS="$ROOT/tests/mock_llm/scenarios.json" node "$ROOT/tests/mock_llm/server.js" >"$W/l_mock.log" 2>&1 & LPID1=$!
   # shellcheck disable=SC2046  # gateway.env: ein Paar je Zeile, Werte ohne Leerzeichen (Hex, Zahlen, Pfade)
-  env -i PATH="$PATH" $(cat "$1") LLM_GATEWAY_PORT=$LGW STATE_DIRECTORY="$LW/st" node "$LW/gw/server.js" >/dev/null 2>&1 & LPID2=$!
+  env -i PATH="$PATH" $(cat "$1") LLM_GATEWAY_PORT=$LGW STATE_DIRECTORY="$LW/st" node "$LW/gw/server.js" >"$W/l_gw.log" 2>&1 & LPID2=$!
   # Beide Prozesse muessen leben: sonst koennte ein fremder Listener auf dem Port die Gesundheitsprobe beantworten.
-  local _; for _ in $(seq 1 30); do
+  local _; for _ in $(seq 1 100); do
     kill -0 "$LPID1" 2>/dev/null && kill -0 "$LPID2" 2>/dev/null || return 1
     curl -sf "http://127.0.0.1:$LGW/__health" >/dev/null 2>&1 && curl -sf "http://127.0.0.1:$LMOCK/__health" >/dev/null 2>&1 && return 0; sleep 0.3
   done
   return 1
 }
+# Grund eines gescheiterten Starts (Prozesse und Protokolle), eine Zeile.
+lwhy() { printf 'mock=%s gateway=%s | %s | %s' "$(kill -0 "$LPID1" 2>/dev/null && echo lebt || echo tot)" "$(kill -0 "$LPID2" 2>/dev/null && echo lebt || echo tot)" \
+  "$(tr '\n' ' ' < "$W/l_mock.log" | head -c 200)" "$(tr '\n' ' ' < "$W/l_gw.log" | head -c 200)"; }
 lstop() { kill "${LPID1:-0}" "${LPID2:-0}" 2>/dev/null; wait "${LPID1:-0}" "${LPID2:-0}" 2>/dev/null; return 0; }
 trap 'lstop; rm -rf "$W"' EXIT
 if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
@@ -397,13 +400,15 @@ if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
         -d '{"model":"claude-haiku-latest","max_tokens":16,"messages":[{"role":"user","content":"hallo"}]}'
       if jq -e 'select(.url == "/v1/messages" and .dialect == "anthropic")' "$LLOG" >/dev/null 2>&1; then pass L.echter-weg; else fail L.echter-weg "kein Aufruf kam in der KI-Attrappe an"; fi
     else fail L.echter-weg "Ziel ist nicht die KI-Attrappe, kein Aufruf geschickt"; fi
-  else fail L.echter-weg "Gateway oder KI-Attrappe starten nicht"; fi
+  else fail L.echter-weg "Gateway oder KI-Attrappe starten nicht: $(lwhy)"; fi
   lstop
   # Ohne Weiche zeigt der Gateway auf api.anthropic.com; es wird hier bewusst kein Aufruf geschickt (er ginge an den echten Dienst).
+  # Eigene Ports: der Standort des ersten Laufs ist erst nach dem Beenden der Prozesse frei.
+  LMOCK=18189; LGW=18198
   gwrun compose - && mkdir -p "$LW/st"
   if lstart "$LW/gw/gateway.env"; then
     eq L.ohne-weiche-kein-loopback https://api.anthropic.com "$(curl -sf "http://127.0.0.1:$LGW/__health" | jq -r .upstream)"
-  else fail L.ohne-weiche-kein-loopback "Gateway oder KI-Attrappe starten nicht"; fi
+  else fail L.ohne-weiche-kein-loopback "Gateway oder KI-Attrappe starten nicht: $(lwhy)"; fi
   lstop
 else
   fail L.echter-weg "node oder curl fehlt im Container"

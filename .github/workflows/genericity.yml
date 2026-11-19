@@ -582,7 +582,8 @@ jobs:
           core_run status2 status
           core_res status2 | jq -e '.running and ([.services[] | select(.name == "postgres") | .health] == ["healthy"])'
           # Danach laeuft jeder Container des Verbunds wieder (nicht nur die, die die Pruefung oben anfragt).
-          if docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --filter status=exited --format '{{.Names}}' | grep -v -- '-core$'; then
+          # Die Attrappen tragen das Etikett fuer den Abbau, gehoeren aber nicht zum Verbund (ohne Neustart-Regel, nach dem Docker-Neustart immer beendet).
+          if docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --filter status=exited --format '{{.Names}}' | grep -Ev -- '-(core|tgmock|mock-llm|mock-pl)$'; then
             echo "FAIL Container nach stack start nicht gestartet"; exit 1
           fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
@@ -1260,7 +1261,8 @@ jobs:
           done
           [ -n "$ready" ] || { sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --format '{{.Names}} {{.Status}}'; exit 1; }
           sudo docker exec lifeagents-master stack status --json | tail -n1 | jq -e '.running and ([.services[] | select(.name == "postgres") | .health] == ["healthy"])'
-          if sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --filter status=exited --format '{{.Names}}' | grep -v -- '-core$'; then
+          # Die Attrappen tragen das Etikett fuer den Abbau, gehoeren aber nicht zum Verbund (ohne Neustart-Regel, nach dem Docker-Neustart immer beendet).
+          if sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --filter status=exited --format '{{.Names}}' | grep -Ev -- '-(core|tgmock|mock-llm|mock-pl)$'; then
             echo "FAIL Container nach dem Neustart nicht gestartet"; exit 1
           fi
           sudo docker exec lifeagents-master bash /opt/lifeagents/provisioning/doctor.sh

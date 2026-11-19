@@ -37,7 +37,7 @@ When you write, a router (the "orchestrator") reads the message and hands it to 
 
 The system has a fixed core (router, approval logic, memory, onboarding) plus one pluggable **package** per area of life — today finance, career, estate planning and documents. A new area plugs in without touching the core.
 
-**Who it is for:** families who want an AI assistant for everyday life whose data stays at home. Everyone you invite needs nothing but Telegram. The one person who sets it up today needs a small home server and should be comfortable with a terminal and a reverse proxy (a start app for a Mac or Windows PC is in the works, see [Installation](#installation)).
+**Who it is for:** families who want an AI assistant for everyday life whose data stays at home. Everyone you invite needs nothing but Telegram. The one person who sets it up today needs a small Linux server and should be comfortable with a terminal (a start app for a Mac or Windows PC is in the works, see [Installation](#installation)).
 
 **Good to know before you start:** this is built for a household in **Germany**. Several features assume German conditions — German tax and estate-planning terms, deadlines computed with the public holidays of your federal state (*Bundesland*), and the job scan via the German Federal Employment Agency (*Bundesagentur für Arbeit*). The bot talks in any language, but the documentation site is German.
 
@@ -55,8 +55,8 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 
 ## Requirements and running costs
 
-- A fresh **Debian 12** LXC container or VM.
-- **A way in from the internet**, chosen by the installer's first question: a free **Tailscale** account for a Funnel tunnel (recommended, works with any connection, nothing to set up on the router), or a **FritzBox** share, or your **own domain** with port forwarding (443) and an HTTPS **reverse proxy** (NPM, Traefik, nginx, Caddy — on the host or elsewhere in your network). For the last two the installer prints a ready-made configuration.
+- A **Linux server** (Debian 12/13 or Ubuntu 22.04/24.04, amd64 or arm64, 4 GB RAM recommended, 10 GB free), preferably a VM. Docker is installed by the setup script if it is missing.
+- **A way in from the internet**, chosen in the questionnaire: a free **Tailscale** account for a Funnel tunnel (recommended, works with any connection, nothing to set up on the router), or a **FritzBox** share.
 - A **Telegram bot token** from @BotFather.
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
@@ -65,24 +65,28 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 
 ## Installation
 
-On the fresh Debian machine, as root, this one command downloads and starts the installer:
+On a Linux server (Debian 12/13 or Ubuntu 22.04/24.04), as root, this one command downloads and starts the setup script (the `&&` keeps a failed download from running half a script):
 
 ```bash
-curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh
+curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
 ```
 
-The installer then guides you **step by step**, and **all questions come first**: how Telegram reaches your server (tunnel, FritzBox or own reverse proxy, with the internet address where needed), n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
+To verify the file by hand first, fetch the release's `SHA256SUMS` next to it and run `sha256sum -c SHA256SUMS --ignore-missing` (it should print `setup.sh: OK`).
 
-With the tunnel, the installer sets up Tailscale right after the summary and shows the sign-in link plus a QR code in the terminal. At the end it checks whether Telegram can reach your server — if not, you get what is still missing (for a reverse proxy a **ready-made Caddyfile**) and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
+`setup.sh` checks the machine before it changes anything, installs Docker from Docker's official apt repository if it is missing (after asking; `--yes` answers yes), starts the stack through its control container and installs the `lifeagents` command plus a systemd unit (`lifeagents-stack.service`) that brings the stack back after a reboot or a Docker restart. It then prints an SSH command that forwards the **questionnaire** to your laptop and a link to open in the browser (valid for 10 minutes; a new one: `lifeagents wizard-url`).
 
-Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
+The questionnaire asks **everything first**: how Telegram reaches your server (tunnel or FritzBox), details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, which packages to install and where the nightly backup goes (a folder on another disk is best). Every answer is saved immediately, and a final **summary** lets you confirm, change a single answer or cancel. With the tunnel, the setup sets up Tailscale and shows the sign-in link; it then pairs you with the bot through a link in Telegram.
+
+Remove it again with `bash setup.sh --uninstall` (data and Docker stay) or `--uninstall --delete-data` (asks first). On Proxmox a VM is recommended for Docker; a Debian LXC with `nesting=1,keyctl=1` works at your own risk. The control container holds the Docker socket, which means root on the server — the guide explains what that implies.
+
+Step-by-step guide: **[Linux server page](https://dennisbaerlin.github.io/n8n-life-agents/docs/linux.html)** (German); Telegram bot setup and the way into the internet: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German).
 
 **No server of your own?** A second, equivalent way is in the works: a desktop start app for a Mac or a Windows PC (tests on real machines are still open) that installs Docker if needed and walks you through every question in a window, no terminal. Telegram reaches the computer through a Tailscale Funnel tunnel (recommended) or a FritzBox share. Guide: **[Start app](https://dennisbaerlin.github.io/n8n-life-agents/docs/start-app.html)** (German).
 
 <details>
 <summary><strong>What the run does in detail</strong></summary>
 
-`install.sh` downloads the release, verifies its SHA256 checksum and hands over to the actual installer (`provision.sh`). It installs PostgreSQL 17 and n8n 2.45.7, loads the database schema and seeds, sets up the owner, injects the credentials, deploys the core workflows and installs the operations CLI (packages: `--packages all|a,b`, or later `lifeagents package install`). HTTPS is provided by your own reverse proxy. Pin a specific version with `--version vX.Y.Z`. Schedules and "today" run in the household time zone (default Europe/Berlin, configurable via `HOUSEHOLD_TIMEZONE`), never in the container clock. Flow and release process: [provisioning/CLAUDE.md](provisioning/CLAUDE.md).
+`setup.sh` is a self-contained script (a release asset listed in `SHA256SUMS`) that carries the pinned digest of the control image. It starts the stack through that control container (`stack up`); inside it the actual installer (`provision.sh`) installs PostgreSQL 17 and n8n 2.45.7, loads the database schema and seeds, sets up the owner, injects the credentials, deploys the core workflows and installs the operations CLI (packages: chosen in the questionnaire, or later `lifeagents package install`). Schedules and "today" run in the household time zone (default Europe/Berlin, configurable via `HOUSEHOLD_TIMEZONE`), never in the container clock. For automation, `setup.sh --answers <file>` replaces the questionnaire (little exercised so far). Flow and release process: [provisioning/CLAUDE.md](provisioning/CLAUDE.md).
 
 </details>
 
@@ -105,7 +109,7 @@ lifeagents version                   # installed release version
 lifeagents help                      # THE complete reference (per area: lifeagents <command> help)
 ```
 
-The help output is the **one** command reference (lint-checked against the code — `contract_lint` check 13); this list is only an overview. Installer flags (including `--unattended`): `install.sh --help` or `provision.sh --help`.
+The help output is the **one** command reference (lint-checked against the code — `contract_lint` check 13); this list is only an overview. Setup flags: `setup.sh --help`; the installer inside the stack (including `--unattended`): `provision.sh --help`.
 
 </details>
 

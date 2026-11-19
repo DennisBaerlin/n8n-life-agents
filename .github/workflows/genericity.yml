@@ -559,14 +559,20 @@ jobs:
           state > "$RUNNER_TEMP/neighbour.after"
           diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
 
-      - name: Docker restart (like a reboot of a Linux server) — the stack comes back by its restart rule, the core sees it
+      - name: Docker restart (like a reboot of a Linux server) — one stack start afterwards brings everything back
         # Nach dem Nachbar-Vergleich: der Nachbar hat keine Neustart-Regel und bliebe danach stehen.
+        # Die Neustart-Regel allein reicht nicht (docs/reference/provisioning.md, Kern *Nach einem Neustart von Docker*); die
+        # Ausgabe vor dem Start haelt fest, was Docker allein schaffte.
         timeout-minutes: 10
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/core.sh"
           sudo systemctl restart docker
           for _ in $(seq 1 60); do docker version >/dev/null 2>&1 && break; sleep 2; done
+          sleep 20
+          docker ps -aq --filter "label=io.lifeagents.install=$LA_PROJECT" | xargs -r docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}'
+          core_run start1 start
+          core_res start1 | jq -e '.ok'
           ready=""
           for _ in $(seq 1 120); do
             if curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness"; then ready=1; break; fi
@@ -575,8 +581,10 @@ jobs:
           [ -n "$ready" ] || { docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.Status}}'; exit 1; }
           core_run status2 status
           core_res status2 | jq -e '.running and ([.services[] | select(.name == "postgres") | .health] == ["healthy"])'
-          core_run start1 start
-          core_res start1 | jq -e '.ok'
+          # Danach laeuft jeder Container des Verbunds wieder (nicht nur die, die die Pruefung oben anfragt).
+          if docker ps -a --filter "label=io.lifeagents.install=$LA_PROJECT" --filter status=exited --format '{{.Names}}' | grep -v -- '-core$'; then
+            echo "FAIL Container nach stack start nicht gestartet"; exit 1
+          fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
       - name: Uninstall with data through the core — only the images it loaded itself go (first run on an empty Docker)
@@ -725,18 +733,28 @@ jobs:
           }
           state > "$RUNNER_TEMP/neighbour.before"; cat "$RUNNER_TEMP/neighbour.before"
 
-      - name: Stack of the desktop app before the core, then the core takes it over (no container recreated, values kept)
+      - name: Stack of the desktop app before the core, then the core takes it over (values and data kept, second run a no-op)
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/core.sh"
           app_start ci-ops-master:a
-          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/app.ids"
+          docker exec "$LA_PROJECT-postgres" psql -U postgres -qAtc 'CREATE TABLE app_data (v text); INSERT INTO app_data VALUES ($$von-der-app$$)'
+          # Ein einmaliges Neuanlegen ist erlaubt: Compose auf dem Rechner und im Kern merken sich die Abbild-Kennung je nach
+          # Version verschieden (Label com.docker.compose.image) und legen darum neu an, auch bei gleicher Konfiguration.
           core_run take up
-          core_res take | jq -e '.ok and (.changed | not) and .ports.edge == 5890 and .ports.wizard == 5891'
-          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/app.ids" -
-          # Die Werte der App stehen jetzt im Volume (kein neues Passwort, die Daten bleiben erreichbar).
+          core_res take | jq -e '.ok and .ports.edge == 5890 and .ports.wizard == 5891'
+          # Die Werte der App stehen jetzt im Volume und im neuen master (kein neues Passwort), die alten Daten sind noch da.
+          # Kein Passwort-Login als Beleg: pg_hba vertraut 127.0.0.1 (trust), auch ein falsches Passwort kaeme durch.
           test "$(vol_cat var_la stack.env | sed -n 's/^LA_PG_SUPERPW=//p')" = "$APP_PW"
+          test "$(docker exec "$LA_PROJECT-master" printenv LA_PG_SUPERPW)" = "$APP_PW"
           test "$(vol_cat var_la stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')" = bot
+          test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -qAtc 'SELECT v FROM app_data')" = von-der-app
+          docker exec "$LA_PROJECT-postgres" psql -U postgres -qc 'DROP TABLE app_data'
+          # Der zweite Lauf aendert nichts mehr.
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/take.ids"
+          core_run take2 up
+          core_res take2 | jq -e '.ok and (.changed | not)'
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort | diff "$RUNNER_TEMP/take.ids" -
           # Ohne Merkliste (die App hatte keine) bleibt beim Abbau jedes Abbild; genau das prueft der letzte Schritt.
           if vol_cat var_la core-foreign-images 2>/dev/null; then echo "FAIL Merkliste ohne ersten Lauf des Kerns"; exit 1; fi
           if grep -qF "$APP_PW" "$RUNNER_TEMP"/core-*; then echo "FAIL Passwort in der Ausgabe des Kerns"; exit 1; fi

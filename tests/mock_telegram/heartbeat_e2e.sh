@@ -31,8 +31,9 @@ case "$RT" in
            # Die Schleife im master ruft die CLI nur, wenn sie ausfuehrbar ist (provisioning/compose/compose.yml).
            loop_stop()  { docker exec "$M" chmod a-x /usr/local/bin/lifeagents; }
            loop_start() { docker exec "$M" chmod 0755 /usr/local/bin/lifeagents; }
-           sleep_on()   { docker compose -p "$T" pause >/dev/null; }
-           sleep_off()  { docker compose -p "$T" unpause >/dev/null; } ;;
+           # Nur die Container des Verbunds (Etikett von Compose), der Telegram-Mock am anchor laeuft weiter.
+           sleep_on()   { docker ps -q --filter "label=com.docker.compose.project=$T" | xargs -r docker pause >/dev/null; }
+           sleep_off()  { docker ps -q --filter "label=com.docker.compose.project=$T" --filter status=paused | xargs -r docker unpause >/dev/null; } ;;
   *) echo "FAIL setup: Betriebsart '$RT' unbekannt"; exit 1 ;;
 esac
 # Die n8n-Datenbank heisst im Substrat und im Verbund 'n8n' (Installer-Standard).

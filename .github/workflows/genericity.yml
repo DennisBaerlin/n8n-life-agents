@@ -797,6 +797,10 @@ jobs:
         timeout-minutes: 15
         run: bash tests/mock_telegram/pair_and_finalize.sh "$LA_PROJECT" "$RUNNER_TEMP/tgmock"
 
+      - name: Watcher — a stopped master loop reaches the owner, the all-clear follows, a paused stack stays silent
+        timeout-minutes: 20
+        run: bash tests/mock_telegram/heartbeat_e2e.sh compose "$LA_PROJECT" "$RUNNER_TEMP/tgmock/mock_telegram.jsonl"
+
       - name: Backup to a folder on the host + restore (Fund 7)
         run: |
           set -euo pipefail

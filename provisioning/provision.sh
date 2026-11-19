@@ -645,6 +645,10 @@ main() {
     { printf '  Protokoll dieser Installation: %s\n\n' "$UI_LOG_FILE" >&3; } 2>/dev/null || true
   fi
 
+  # Erstes Lebenszeichen nach der Einrichtung: legt die Zeilen aller Signale an, damit der Waechter auch einen
+  # Hintergrund-Teil meldet, der danach nie lief. Nicht im Chat-Update: dort haelt der Runner `loop busy`, bis er fertig ist.
+  if [ "${LIFEAGENTS_UPDATE_REQUESTED:-0}" != 1 ]; then heartbeat_record loop ok; fi
+
   # Ergebnis fuer den Chat-Runner (common.sh result_set): ok, oder partial, wenn ein Paket bzw. der Workflow-Deploy
   # ausfiel (beides nicht fatal fuer den Lauf). Rote doctor-Punkte allein sind kein partial (oft Umgebung, z. B. Proxy).
   if [ -n "$FAILED_PACKAGES" ] || [ "$_DEPLOY_SKIPPED" -eq 1 ]; then
@@ -890,7 +894,7 @@ install_cli() {
   local staging="$libdir/.staging.$$"
   rm -rf "$staging"; mkdir -p "$staging"
   cp -a "$REPO_ROOT/provisioning" "$staging/provisioning"
-  rm -f "$staging/provisioning/install.sh"   # Bootstrap-Launcher gehoert nicht in die Runtime
+  rm -f "$staging/provisioning/install.sh" "$staging/provisioning/setup.sh"   # Bootstrap-Einrichter gehoeren nicht in die Runtime
   [ -d "$REPO_ROOT/packages" ] && cp -a "$REPO_ROOT/packages" "$staging/packages"   # Paket-Baum (Core + Pakete)
   # Installierte Version: fetch_release/Bootstrap exportieren RELEASE_TAG vor dem exec des gepinnten Kerns
   # (`--version <tag>`/`latest`); ein direkter dev-Lauf hat keinen Tag -> 'dev' (im Release-Profil ersetzt release_tag_resolve das vorher).

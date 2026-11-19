@@ -2,7 +2,7 @@
 # reproduzierbares tar.gz + SHA256-Sidecar und laedt beide als Release-Assets hoch, dazu den Bootstrap-
 # Launcher provisioning/install.sh als Asset `install.sh` (stabiler Einstieg .../releases/latest/download/
 # install.sh, nicht main). Oeffentliches Repo: install.sh / provisioning/lib/fetch_release.sh laden die Assets
-# anonym (kein Token).
+# anonym (kein Token). Dazu der Linux-Einrichter als Asset `setup.sh` (provisioning/setup.sh mit dem Abbild-Pin der compose.yml).
 #
 # "Was kommt ins Release" = EINE Wahrheit: die git-archive-Pathspec unten (provisioning packages
 # .gitattributes) — genau die Pfade, die provision.sh zur Laufzeit liest (REPO_ROOT/packages = Core-Paket +
@@ -66,6 +66,9 @@ jobs:
           # Start-App traegt dieselbe compose.yml eingebaut). SHA256SUMS entsteht erst im Job desktop-assets, wenn auch
           # DMG und EXE vorliegen.
           cp provisioning/install.sh install.sh
+          # Linux-Einrichter: provisioning/setup.sh mit dem Abbild-Pin der compose.yml dieses Tags (der Baum traegt nur den Platzhalter,
+          # das master-Image die neutrale Form). sign_release.ps1 prueft das Asset gegen Tag-Datei + Pin (Test-ReleaseSetup).
+          pwsh -NoProfile -File scripts/release_setup_asset.ps1 -Out setup.sh
           cp provisioning/compose/compose.yml compose.yml
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
           echo "--- Asset-Inhalt (Top-Ebene) ---"
@@ -115,7 +118,7 @@ jobs:
             exit 1
           fi
           # .sha256-Sidecar bleibt fuer Installationen ohne Schluesselbund (und aeltere CLIs); SHA256SUMS ist die signierte Liste.
-          gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh compose.yml --clobber
+          gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh setup.sh compose.yml --clobber
 
   # Start-App (Plan docker-installer-freunde, Paket 6): DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup, gebaut im selben
   # Lauf aus dem Tag-Commit (die eingebaute compose.yml prueft desktop-build.yml gegen die Datei des Tags). Eigene Pruefkette:
@@ -162,10 +165,10 @@ jobs:
           ls -l desktop
           TARBALL="n8n-life-agents-${TAG}.tar.gz"
           mkdir -p sums
-          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" -D sums -p "${TARBALL}" -p install.sh -p compose.yml
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" -D sums -p "${TARBALL}" -p install.sh -p setup.sh -p compose.yml
           cp desktop/lifeagents.dmg desktop/lifeagents-setup.exe sums/
           # Reihenfolge = Erwartung in scripts/sign_release.ps1
-          ( cd sums && sha256sum "${TARBALL}" install.sh compose.yml lifeagents.dmg lifeagents-setup.exe ) > SHA256SUMS
+          ( cd sums && sha256sum "${TARBALL}" install.sh setup.sh compose.yml lifeagents.dmg lifeagents-setup.exe ) > SHA256SUMS
           cat SHA256SUMS
           gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
             desktop/lifeagents.dmg desktop/lifeagents.dmg.sha256 \

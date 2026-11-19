@@ -9,6 +9,9 @@
 #   * llm_expect     — Crons mit Umformulier-/Extraktions-Modell: der Mock-LLM-Request enthaelt die festen Stuecke der
 #                      Keys (Grundtext in Empfaenger-Sprache) und die Sprachangabe '<code> (' (Mock antwortet 'done').
 #   * taps           — Bestaetigungs-Fragen: Tipp simulieren (Invoke-HitlResume), Folge-Frage/Ergebnis-Zeile pruefen.
+#   * expect_sql     — nach dem Lauf: [{sql, expect}], die erste Ergebniszeile muss genau expect sein (z. B. was gemerkt wurde).
+#   * tg_fail        — Bot-API-Methode, die waehrend des Falls scheitert (Mock-Schalter /__fail); der Versuch steht trotzdem im Log.
+#   * stop_units     — systemd-Units des Substrats, die waehrend des Falls ruhen (z. B. die Timer, die sonst seed_sql ueberschreiben).
 # Paket-neutral: Faelle aus tests/agent/<pkg>/cron_text_cases.json (kind cron_text). Je Fall nacheinander: reset_sql ->
 # seed_sql -> ggf. cron_enable an -> Cron sofort starten (Start-TestCron: Test-Eingang core.cron_run.test_harness ->
 # 'Test run'-Einstieg) -> auf die neue Execution warten -> pruefen -> finally: wartende Executions stoppen, cron_enable zurueck, reset_sql.
@@ -125,6 +128,12 @@ function Restore-MockScenarios([string]$Raw) {
     & docker cp $tmp "${Container}:$ScnInC" | Out-Null
     Remove-Item $tmp -Force
 }
+# Kommando im Substrat, Ausgabe und Fehler verworfen (Mock-Schalter, Timer anhalten/starten).
+function Invoke-ContainerQuiet([string]$Cmd) {
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & docker exec $Container sh -c $Cmd 2>$null | Out-Null
+    $ErrorActionPreference = $prev
+}
 function Resolve-Sql([object[]]$Lines) { @($Lines | ForEach-Object { ([string]$_).Replace('__OWNER_UID__', $OwnerUid) }) }
 
 # --- Fixtures + Pairing (Muster hitl_gate_test/real_ingress_test) ----------------------------------------------------
@@ -199,7 +208,10 @@ try {
         if (-not $chat) { throw "$($c.id): unbekannter recipient '$($c.recipient)'" }
         $recLang = if ([string]$c.recipient -eq 'owner') { $lang } else { 'en' }
         $errs = @(); $wfId = $null; $scnBackup = $null
+        $mockPort = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { 8089 }
         try {
+            foreach ($u in @($c.stop_units | Where-Object { $_ })) { Invoke-ContainerQuiet "systemctl stop '$u'" }
+            if ($c.tg_fail) { Invoke-ContainerQuiet "curl -s 'http://127.0.0.1:$mockPort/__fail?method=$($c.tg_fail)'" }
             Set-OwnerLanguage -Container $Container -Code $lang
             Invoke-Sql 'DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;' | Out-Null   # jeder Fall mit freiem Tagesbudget
             foreach ($s in (Resolve-Sql $c.reset_sql)) { Invoke-Sql $s | Out-Null }
@@ -257,6 +269,11 @@ try {
                 }
                 if ($c.llm_expect.language -and -not $tasks.Contains("$recLang (")) { $errs += "LLM-Request ohne Sprachangabe '$recLang ('" }
             }
+            foreach ($x in @($c.expect_sql | Where-Object { $_ })) {
+                $q = @(Resolve-Sql @($x.sql))[0]
+                $got = [string](@(Invoke-Sql $q) | Select-Object -First 1)
+                if ($got.Trim() -ne [string]$x.expect) { $errs += "SQL '$($x.sql)': erwartet '$($x.expect)', ist '$($got.Trim())'" }
+            }
 
             # Tipps nacheinander: jeweils die zuletzt gesendete Bestaetigungs-Frage beantworten, danach die neuen Sends pruefen.
             foreach ($tap in @($c.taps | Where-Object { $_ })) {
@@ -277,6 +294,8 @@ try {
             if ($c.cron_enable) { try { Invoke-LifeagentsConfig @('reset', 'cron_enable', [string]$c.cron_enable) } catch { } }
             if ($null -ne $scnBackup) { try { Restore-MockScenarios $scnBackup } catch { } }
             foreach ($s in (Resolve-Sql $c.reset_sql)) { try { Invoke-Sql $s | Out-Null } catch { } }
+            if ($c.tg_fail) { Invoke-ContainerQuiet "curl -s 'http://127.0.0.1:$mockPort/__fail?method=$($c.tg_fail)&off=1'" }
+            foreach ($u in @($c.stop_units | Where-Object { $_ })) { Invoke-ContainerQuiet "systemctl start '$u'" }
         }
         if ($Verbose) { Get-Sends $chat | ForEach-Object { Write-Host "    > $((Get-RequestText $_) -replace "`n", ' / ')" -ForegroundColor DarkGray } }
         if ($errs.Count -eq 0) { $passed++; Write-Host '    [PASS]' -ForegroundColor Green }

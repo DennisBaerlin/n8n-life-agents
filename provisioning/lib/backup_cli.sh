@@ -437,11 +437,20 @@ _bkp_auto_local_run() {
   kid="$(printf '%s' "$key" | backup_key_id)"
   _bkp_local_rotate "$dir" "$kid"
 }
+# _bkp_heartbeat <current|attempted|nofolder> — Lebenszeichen der Sicherung (core.heartbeats) am Ende jedes Laufs, mit der
+#   letzten eigenen Sicherungs-Meldung (LAST_NOTIFY): der Waechter schweigt dann, statt doppelt zu melden. Ein von der
+#   Zeitgrenze abgebrochener Lauf erreicht diese Zeile nie und schreibt darum keins.
+_bkp_heartbeat() {
+  local n
+  n="$(read_env_value "$BACKUP_STATE_FILE" LAST_NOTIFY 2>/dev/null || true)"; case "$n" in ''|*[!0-9]*) n='' ;; esac
+  heartbeat_record backup "$1" '' "$(jq -nc --arg n "$n" 'if $n == "" then {} else {notified_at: ($n | tonumber)} end')"
+}
 # _bkp_auto_local <scheduled 0|1> — ein Versuch; danach in jedem Fall der Chat-Hinweis (prueft selbst, ob die Sicherung veraltet ist).
 _bkp_auto_local() {
-  if [ "$1" = 1 ] && ! _bkp_auto_due; then return 0; fi
+  if [ "$1" = 1 ] && ! _bkp_auto_due; then _bkp_heartbeat current; return 0; fi
   _bkp_auto_local_run
   _bkp_resolve_db; _bkp_stale_notify
+  _bkp_heartbeat attempted
   return 0
 }
 # backup_cmd_auto [--scheduled] — taegliche Sicherung.
@@ -458,14 +467,17 @@ backup_cmd_auto() {
     case "$a" in --scheduled) scheduled=1 ;; *) die "Unbekannte Option: $a" ;; esac
   done
   if ! rt_is_compose; then _bkp_auto_local "$scheduled"; return 0; fi
-  if [ "$scheduled" = 1 ] && ! _bkp_auto_due; then return 0; fi
+  if [ "$scheduled" = 1 ] && ! _bkp_auto_due; then _bkp_heartbeat current; return 0; fi
+  local st=attempted
   if [ -z "$(_bkp_host_dir)" ]; then
     _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
+    st=nofolder
   else
     ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch in einer Stunde."
   fi
   _bkp_resolve_db
   _bkp_stale_notify
+  _bkp_heartbeat "$st"
   return 0
 }
 

@@ -18,20 +18,20 @@
 #     core.fn_backup_restore_filtered (protected Contexts nur UPDATE, family vor finance_profile, monitor entdoppelt).
 # pg_dump ignoriert -n (Schema), sobald -t gesetzt ist -> alle bulk-Tabellen werden explizit per -t enumeriert.
 #
-# Bundle = verschluesseltes Tarball {manifest.json (Header: bundle_format/packages/versions/verify_counts),
+# Bundle = verschluesseltes Tarball {manifest.json (Header: bundle_format/release/packages/versions/migrations/verify_counts),
 #   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen)}, gpg --symmetric AES256, Passphrase = aktiver Schluessel
 #   aus core.backup_key (Lebenszyklus: common.sh *Sicherungs-Verschluesselung*). Klartext nur transient in /dev/shm.
 #   Dateiname lifeagents-backup-<ts>-k<schluessel-id>-v<release>.nla.enc: die ID trennt "falscher Schluessel" von
-#   "beschaedigt" und begrenzt das Aufraeumen auf eigene Sicherungen, die Version sagt, was ein Restore braucht.
+#   "beschaedigt" und begrenzt das Aufraeumen auf eigene Sicherungen; die Release waehlt nur den Hinweis-Satz bei einem Aufbau-Unterschied.
 # Notfallblatt: `backup key` zeigt den Schluessel (common.sh backup_kit_text); ein Restore, den kein gespeicherter
 #   Schluessel oeffnet, nimmt ihn vom Blatt an (TTY verdeckt oder --key-stdin, nie argv) und macht ihn in derselben
 #   Restore-TX zum aktiven.
 #
 # Restore ist atomar: pg_restore -f - erzeugt SQL-Text (kein eigener DB-Connect); TRUNCATE + Restore-SQL +
 #   fn_backup_restore_filtered + Count-Verify laufen als ein `psql -1`-Skript (eine TX) -> jeder Fehler rollt
-#   alles zurueck, die alte Welt bleibt intakt. Decrypt/Header-/Pre-Flight-Checks passieren vor dem Wipe. Fehlt
-#   ein Bundle-Paket -> Auto-Install `pkg_install_one --no-seed` (der Restore bringt die Daten), dann
-#   Pre-Flight-Recheck; Fehlschlag = Abbruch vor jedem Wipe.
+#   alles zurueck, die alte Welt bleibt intakt. Decrypt/Header-/Pre-Flight-Checks und der Abgleich des Aufbaus
+#   (_bkp_schema_check) passieren vor dem Wipe. Fehlt ein Bundle-Paket mit backup-Block -> Auto-Install
+#   `pkg_install_one --no-seed` (der Restore bringt die Daten), dann Pre-Flight-Recheck; Fehlschlag = Abbruch vor jedem Wipe.
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 # BACKUP_KEY_NAME, Schluessel-Lesen und gpg-Ver-/Entschluesselung leben in common.sh (geteilt mit der Upgrade-Sicherung).
@@ -82,13 +82,13 @@ _bkp_active_names() { _bkp_psql_scalar "SELECT string_agg(package, ' ') FROM cor
 # _bkp_is_active <pkg> <active-list> -> 0 wenn pkg in der Liste.
 _bkp_is_active() { case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# _bkp_bulk_tables -> qualifizierte Tabellen (eine/Zeile, sortiert/unique), die pg_dump per -t sichert:
+# _bkp_bulk_tables [weitere-pakete] -> qualifizierte Tabellen (eine/Zeile, sortiert/unique), die pg_dump per -t sichert:
 #   schema_dump-Pakete = alle BASE TABLEs des Paket-Schemas minus exclude_tables; + full_tables.
 #   (filtered_tables sind nicht dabei — die laufen ueber jsonb/fn.) Eine Quelle fuer Export-Args,
 #   Restore-TRUNCATE und Count-Verify -> kein Drift.
 _bkp_bulk_tables() {
   local active mf pkg schema t out=""
-  active="$(_bkp_active_names)"
+  active="$(_bkp_active_names) ${1:-}"   # $1: weitere Pakete (Restore: erst einzuschaltende, ihre Tabellen gibt es schon)
   for mf in "$(_pkg_dir)"/*/manifest.json; do
     [ -r "$mf" ] || continue
     pkg="$(jq -r '.name // empty' "$mf" 2>/dev/null)" || continue
@@ -117,10 +117,10 @@ _bkp_bulk_tables() {
   printf '%s' "$out" | grep -v '^$' | sort -u
 }
 
-# _bkp_filtered -> "qualified<TAB>condition"-Zeilen aller aktiven Pakete (filtered_tables).
+# _bkp_filtered [weitere-pakete] -> "qualified<TAB>condition"-Zeilen aller aktiven Pakete (filtered_tables).
 _bkp_filtered() {
   local active mf pkg
-  active="$(_bkp_active_names)"
+  active="$(_bkp_active_names) ${1:-}"   # $1 wie _bkp_bulk_tables
   for mf in "$(_pkg_dir)"/*/manifest.json; do
     [ -r "$mf" ] || continue
     pkg="$(jq -r '.name // empty' "$mf" 2>/dev/null)" || continue
@@ -150,7 +150,7 @@ _bkp_tmpdir() {
 # den gepairten Owner-Chat. Der Text kommt aus dem Textkatalog (core.backup.notify.doc_first/doc_next: das erste Mal
 # erklaert, danach kurz; Merker NOTIFY_EXPLAINED in backup.state). Nur die neueste Kopie bleibt im Chat: die Nachricht
 # wird als NOTIFY_DOC=<chat>:<message_id> gemerkt und erst nach einem geglueckten neuen Versand per deleteMessage entfernt.
-# Der Dateiname bleibt: Schluessel-ID und Version im Namen traegt die Restore-Pruefung (_bkp_rotate_victims, Version-Gate).
+# Der Dateiname bleibt: die Schluessel-ID traegt _bkp_rotate_victims, die Release den Rueckfall von _bkp_bundle_release.
 # Best-effort: jeder Pfad endet mit `return 0` (die lokale Sicherung ist hier bereits sicher geschrieben -> der Versand
 # darf den Export nie kippen; der von der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Token nie
 # ins argv (tg_api_curl, curl-Config ueber stdin). Token + Owner ueber owner_tg_token/owner_tg_chat_id (common.sh; der
@@ -250,7 +250,7 @@ _bkp_host_rotate() {
   [ "${#v[@]}" -gt 0 ] && [ -n "${v[0]}" ] || return 0
   rt_host_rm "$hd" "${v[@]}" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."
 }
-# _bkp_release_tag -> Release der laufenden CLI (VERSION), sonst "dev" — fuer den Dateinamen.
+# _bkp_release_tag -> Release der laufenden CLI (VERSION, leer ohne Marker) — Dateiname, Kopf-Feld release, Restore-Vergleich.
 _bkp_release_tag() { cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true; }
 # _bkp_file_name <ts> <schluessel-id> <release> -> Dateiname einer Sicherung; kein stabiles Release -> "vdev".
 _bkp_file_name() {
@@ -573,11 +573,17 @@ backup_cmd_export() {
   pkgs_json="$(_bkp_psql_scalar "SELECT COALESCE(jsonb_agg(jsonb_build_object('name',package,'version',version) ORDER BY package), '[]'::jsonb) FROM core.package_registry WHERE status='active'")"
   # Defaults als eigene Guards (nicht inline ${x:-{}} — bash matcht dort die erste '}' als Expansions-Ende
   # und haengt bei nicht-leerem Wert ein Streu-'}' an -> ungueltiges JSON fuer jq --argjson).
+  # release + migrations (angewandte V__ je Paket): Felder nur dazu, bundle_format bleibt 2 (Leser pruefen nur das Format).
+  #   release waehlt beim Restore den Satz; migrations hat noch keinen Leser: Voraussetzung fuer das Vorwaerts-Wiederherstellen
+  #   (Kopf *Versions-Sperre*), sonst wuesste eine Sicherung nicht, welche Migrationen sie schon hatte.
+  local mig_json
+  mig_json="$(_bkp_psql_scalar "SELECT COALESCE(jsonb_object_agg(package, vs), '{}'::jsonb) FROM (SELECT package, jsonb_agg(version ORDER BY version) AS vs FROM core.schema_version WHERE kind = 'versioned' GROUP BY package) x")"
   [ -n "$pkgs_json" ]   || pkgs_json='[]'
   [ -n "$verify_json" ] || verify_json='{}'
-  jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg cv "$core_ver" \
-        --argjson pkgs "$pkgs_json" --argjson vc "$verify_json" \
-        '{bundle_format:2, created_at:$ts, core_version:$cv, packages:$pkgs, verify_counts:$vc}' \
+  [ -n "$mig_json" ]    || mig_json='{}'
+  jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg cv "$core_ver" --arg rel "$(_bkp_release_tag)" \
+        --argjson pkgs "$pkgs_json" --argjson vc "$verify_json" --argjson mig "$mig_json" \
+        '{bundle_format:2, created_at:$ts, core_version:$cv, release:$rel, packages:$pkgs, migrations:$mig, verify_counts:$vc}' \
         > "$tmp/manifest.json" || _bkp_fail dump "manifest.json-Bau fehlgeschlagen."
 
   # --- (5) Tarball -> gpg (Passphrase via fd, nie argv) ---
@@ -766,19 +772,166 @@ _bkp_pick_lines() {
   done
 }
 
+# --- Aufbau der Sicherung gegen diese Version (Versions-Sperre) ---------------------------------------------------------
+# Verglichen wird der Aufbau, nicht eine Nummer: Paket-Versionen aendert kein Release, eine Sperre an der Release machte jede
+# Sicherung nach dem naechsten Update wertlos. Muster wie Discourse/Nextcloud (Schema-Stand). Was der Abgleich nicht sieht:
+# Migrationen, die bestehende Zeilen umformen, und Gesetze nur als Trigger/Fremdschluessel (pg_restore --disable-triggers);
+# beides braucht ein Vorwaerts-Wiederherstellen ueber das Schema der Sicherungs-Version.
+
+# _bkp_rel_pure <v> -> 0 bei einer reinen Release vX.Y.Z (dev, vdev und Vorab-Versionen wie -rc1 sind „unbekannt“:
+#   sort -V ordnet v0.50.0-rc1 hinter v0.50.0).
+_bkp_rel_pure() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+# _bkp_rel_older <a> <b> -> 0, wenn beide rein sind und a aelter als b.
+_bkp_rel_older() {
+  _bkp_rel_pure "$1" && _bkp_rel_pure "$2" && [ "$1" != "$2" ] \
+    && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]
+}
+# _bkp_bundle_release <tmp> <dateiname> -> Release der Sicherung: Kopf-Feld release, sonst aus dem Dateinamen (Sicherungen
+#   ohne Kopf-Feld), sonst leer. Nur die Form vX.Y.Z[-suffix] (Anzeige); verglichen wird nur die reine Form.
+_bkp_bundle_release() {
+  local r; r="$(jq -r '.release // empty' "$1/manifest.json" 2>/dev/null)"
+  if [[ ! "$r" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    r=''; [[ "$2" =~ -(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.nla\.enc$ ]] && r="${BASH_REMATCH[1]}"
+  fi
+  printf '%s' "$r"
+}
+# _bkp_deferred_tables <pakete…> -> Schema-Praefixe ("schema.") und Tabellen der Pakete, die der Lauf erst einrichtet:
+#   ihre Tabellen gibt es hier noch nicht, _bkp_rs_apply prueft sie nach dem Einrichten.
+_bkp_deferred_tables() {
+  local pkg mf schema
+  for pkg in "$@"; do
+    mf="$(_pkg_dir)/$pkg/manifest.json"; [ -r "$mf" ] || continue
+    schema="$(jq -r '.schema // empty' "$mf" 2>/dev/null)"
+    [ -z "$schema" ] || printf '%s.\n' "$schema"
+    jq -r '.backup.full_tables[]?, ((.backup.filtered_tables // {}) | keys[])' "$mf" 2>/dev/null
+  done
+}
+
+# _bkp_schema_check <tmp> <aufgeschoben> [weitere-pakete] — Aufbau der Sicherung gegen die Ziel-Menge (aktive Pakete plus
+#   weitere-pakete: bulk + gefiltert). rc 0 = vertraeglich; sonst _BKP_SC_CODE (version_newer|version_older) und _BKP_SC_DIFF
+#   (Tabellen/Spalten, fuers Protokoll). <aufgeschoben> = Zeilen aus _bkp_deferred_tables ("schema." oder volle Tabelle),
+#   die nicht geprueft werden. Bricht selbst ueber _bkp_rdie ab (corrupt/format/internal), wenn sich ein Aufbau nicht lesen
+#   laesst — fail-closed, kein stiller Durchlass. Quellen der Sicherung: COPY-Kopfzeilen des Abzugs (pg_restore -f - nennt
+#   Tabelle + Spaltenliste, auch in alten Sicherungen), Schluessel von shared.json und verify_counts, die Zeilen-Schluessel der
+#   gefilterten Tabellen. Schreibt $tmp/sc.bundle (haengt nur am Bundle: einmal je Lauf, die Nachpruefung nutzt es wieder)
+#   und $tmp/sc.target.
+_BKP_SC_CODE=''; _BKP_SC_DIFF=''
+_bkp_schema_check() {
+  local tmp="$1" deferred="$2" extra="${3:-}" copies rc t cols c
+  _BKP_SC_CODE=''; _BKP_SC_DIFF=''
+  local bside="$tmp/sc.bundle" line
+  if [ ! -f "$bside" ]; then
+  # COPY-Kopf nur ausserhalb eines Datenblocks (ein Datenwert kann mit "COPY " beginnen); Block-Ende ist "\.".
+  copies="$(pg_su_stdin pg_restore -a -f - < "$tmp/data.dump" \
+    | awk 'inb { if ($0 == "\\.") inb = 0; next } /^COPY .* FROM stdin;$/ { print; inb = 1 }'; exit "${PIPESTATUS[0]}")"; rc=$?
+  [ "$rc" -eq 0 ] || _bkp_rdie corrupt "Die Sicherung lässt sich nicht lesen (pg_restore). Es wurde NICHTS geaendert."
+  local want_bulk
+  # jq wertet bei "a - b" b zuerst aus -> beide Eingaben vorher binden, sonst vertauscht `input` die Dateien.
+  want_bulk="$(jq -n 'input as $m | input as $s | ((($m.verify_counts // {}) | keys) - ($s | keys)) | length' "$tmp/manifest.json" "$tmp/shared.json" 2>/dev/null)"
+  if [ -z "$copies" ] && [ "${want_bulk:-0}" != 0 ]; then
+    _bkp_rdie corrupt "Die Sicherung ist unvollständig (Abzug ohne Tabellen). Es wurde NICHTS geaendert."
+  fi
+  # Sicherungs-Seite: "tabelle<TAB>b:spalte" (COPY), "tabelle<TAB>f:schluessel" (gefiltert) bzw. "tabelle<TAB>" (nur Name).
+  : > "$bside.part"
+  while IFS= read -r line; do
+    [[ "$line" =~ ^COPY\ ([^ ]+)\ \((.*)\)\ FROM\ stdin\;$ ]] \
+      || _bkp_rdie corrupt "Die Sicherung ist beschädigt (Tabellenkopf unlesbar). Es wurde NICHTS geaendert."
+    t="${BASH_REMATCH[1]//\"/}"; cols="${BASH_REMATCH[2]}"
+    printf '%s\t\n' "$t" >> "$bside.part"
+    while IFS= read -r c; do
+      c="${c#\"}"; c="${c%\"}"; c="${c//\"\"/\"}"
+      printf '%s\tb:%s\n' "$t" "$c" >> "$bside.part"
+    done < <(printf '%s\n' "$cols" | sed 's/, /\n/g')   # mit Zeilenende, sonst verwirft read die letzte Spalte
+  done <<<"$copies"
+  jq -r '(.verify_counts // {}) | keys[] | . + "\t"' "$tmp/manifest.json" >> "$bside.part" 2>/dev/null
+  jq -r 'to_entries[] | .key as $t | ($t + "\t"), ((.value // []) | if type == "array" then (map(keys[]) | unique[] | $t + "\tf:" + .) else empty end)' \
+    "$tmp/shared.json" >> "$bside.part" 2>/dev/null
+  mv "$bside.part" "$bside"
+  fi
+  # Ziel-Menge: aktive Pakete plus die erst einzuschaltenden (deren Tabellen gibt es schon).
+  local target
+  target=$'\n'"$(_bkp_bulk_tables "$extra")"$'\n'"$(_bkp_filtered "$extra" | cut -f1)"$'\n'
+  # Gefiltert: Regel je Spalte folgt dem Schreibweg in core.fn_backup_restore_filtered. monitor_triggers schreibt alle Spalten
+  #   per jsonb_populate_recordset (fehlender Schluessel = NULL, der Standard greift nicht) -> Pflicht oder Standard ist
+  #   unvertraeglich. core_contexts schreibt description/agent_name/load_strategy/content ausdruecklich (ebenso streng), den
+  #   Rest per COALESCE bzw. INSERT-Standard (nur Pflicht ohne Standard). Unbekannte kuenftige Tabellen: streng.
+  local diff_new='' diff_old='' tt
+  local tabs; tabs="$(cut -f1 "$bside" | sort -u)"
+  local q_in=''
+  while IFS= read -r tt; do
+    [ -n "$tt" ] || continue
+    _bkp_qual_ok "$tt" || _bkp_rdie format "Ungueltiger Tabellenname in der Sicherung: $tt"
+    if printf '%s\n' "$deferred" | grep -qxF -e "$tt" -e "${tt%%.*}."; then continue; fi
+    if [[ "$target" != *$'\n'"$tt"$'\n'* ]]; then diff_new+="Tabelle ${tt}; "; continue; fi
+    q_in+="${q_in:+,}'${tt}'"
+  done <<<"$tabs"
+  if [ -n "$q_in" ]; then
+    # Ziel-Seite: je Spalte notnull, Standard, generiert, Identity (ohne geloeschte und Systemspalten).
+    local tside="$tmp/sc.target" kind tnn tdef tgen tid
+    _bkp_psql_scalar "SELECT n.nspname || '.' || c.relname || E'\t' || a.attname || E'\t' || a.attnotnull::int || E'\t'
+                             || (a.atthasdef AND a.attgenerated = '')::int || E'\t' || (a.attgenerated <> '')::int || E'\t'
+                             || (a.attidentity <> '')::int
+                        FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE a.attnum > 0 AND NOT a.attisdropped AND (n.nspname || '.' || c.relname) IN (${q_in})" > "$tside" \
+      || _bkp_rdie internal "Der Aufbau dieser Version ließ sich nicht lesen. Es wurde NICHTS geaendert."
+    local filt_mode
+    while IFS= read -r tt; do
+      [ -n "$tt" ] || continue
+      case ",${q_in}," in *",'${tt}',"*) ;; *) continue ;; esac
+      local bcols fcols has_b=0 has_f=0
+      bcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^b:/ { print substr($2, 3) }' "$bside" | sort -u)"
+      fcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^f:/ { print substr($2, 3) }' "$bside" | sort -u)"
+      [ -n "$bcols" ] && has_b=1; [ -n "$fcols" ] && has_f=1
+      [ "$has_b$has_f" != 00 ] || continue   # leeres gefiltertes Array: keine Spalten-Aussage
+      filt_mode=alle; [ "$tt" = agent.core_contexts ] && filt_mode=liste
+      # Sicherung bringt Spalten, die das Ziel nicht hat (to_jsonb nimmt generierte Spalten mit; die gibt es im Ziel ja).
+      while IFS= read -r c; do
+        [ -n "$c" ] || continue
+        awk -F'\t' -v t="$tt" -v c="$c" '$1 == t && $2 == c { f = 1 } END { exit !f }' "$tside" || diff_new+="Spalte ${tt}.${c}; "
+      done <<<"$(printf '%s\n%s\n' "$bcols" "$fcols")"
+      # Ziel hat Spalten, die die Sicherung nicht liefert.
+      while IFS=$'\t' read -r kind c tnn tdef tgen tid; do
+        [ "$kind" = "$tt" ] || continue
+        [ "$tgen" = 1 ] && continue
+        if [ "$has_b" = 1 ]; then
+          printf '%s\n' "$bcols" | grep -qxF -- "$c" && continue
+          [ "$tnn" = 1 ] && [ "$tdef" = 0 ] && [ "$tid" = 0 ] && diff_old+="Spalte ${tt}.${c} (Pflicht); "
+        else
+          printf '%s\n' "$fcols" | grep -qxF -- "$c" && continue
+          if [ "$filt_mode" = alle ] || [[ " description agent_name load_strategy content " == *" $c "* ]]; then
+            { [ "$tnn" = 1 ] || [ "$tdef" = 1 ]; } && diff_old+="Spalte ${tt}.${c} (Pflicht oder Standard); "
+          else
+            [ "$tnn" = 1 ] && [ "$tdef" = 0 ] && diff_old+="Spalte ${tt}.${c} (Pflicht); "
+          fi
+        fi
+      done < "$tside"
+    done <<<"$tabs"
+  fi
+  if [ -n "$diff_new" ]; then _BKP_SC_CODE=version_newer; _BKP_SC_DIFF="neu in der Sicherung: ${diff_new% }"; fi
+  if [ -n "$diff_old" ]; then
+    _BKP_SC_DIFF="${_BKP_SC_DIFF:+$_BKP_SC_DIFF / }fehlt in der Sicherung: ${diff_old% }"
+    _BKP_SC_CODE=version_older
+  fi
+  [ -z "$_BKP_SC_CODE" ]
+}
+
 # --- Restore fuer die Start-App: feste Codes, Probelauf, Hintergrund-Lauf -------------------------------------------------
 # Im JSON-Modus (--json) endet jeder Restore-Weg mit genau einem JSON-Objekt auf stdout ({ok:true,…} bzw. {ok:false, code,…});
 # der Satz geht auf stderr. Codes (die App uebersetzt sie, report::ERROR_CODES): key_needed key_line key_format key_foreign
 # key_no_open corrupt corrupt_stored bundle_incomplete format package_unknown version_older version_newer needs_setup no_tables
 # unreadable safety folder nofolder busy internal. Eigene Funktion statt die_because: die schreibt die Ergebnis-Datei eines
 # Updates, hier liest die App stdout bzw. backup.state.
-_BKP_JSON=0; _BKP_CHILD=0; _BKP_SHEET=''; _BKP_SHEET_SET=0
+_BKP_JSON=0; _BKP_CHILD=0; _BKP_SHEET=''; _BKP_SHEET_SET=0; _BKP_RELEASE=''
 BACKUP_RESTORE_LOCK="${BACKUP_RESTORE_LOCK:-/run/lifeagents-restore.lock}"
-# _bkp_rdie <code> <satz> [jq-argumente…] — Restore abbrechen: im Hintergrund-Lauf LAST_RESTORE_FAIL + Grund in backup.state,
-#   im JSON-Modus das Fehler-Objekt (weitere Felder per --arg/--argjson), sonst `die`. Immer exit 1.
+# _bkp_rdie <code> <satz> [jq-argumente…] — Restore abbrechen: im Hintergrund-Lauf LAST_RESTORE_FAIL + Grund (+ Release der
+#   Sicherung, die Texte der Versions-Codes nennen sie) in backup.state, im JSON-Modus das Fehler-Objekt (weitere Felder per
+#   --arg/--argjson), sonst `die`. Immer exit 1.
 _bkp_rdie() {
   local code="$1" msg="$2"; shift 2
-  if [ "$_BKP_CHILD" = 1 ]; then _bkp_state_set LAST_RESTORE_FAIL "$(date +%s)"; _bkp_state_set LAST_RESTORE_REASON "$code"; fi
+  if [ "$_BKP_CHILD" = 1 ]; then
+    _bkp_state_set LAST_RESTORE_FAIL "$(date +%s)"; _bkp_state_set LAST_RESTORE_REASON "$code"
+    _bkp_state_set LAST_RESTORE_RELEASE "$_BKP_RELEASE"
+  fi
   if [ "$_BKP_JSON" = 1 ]; then
     err "$msg"
     jq -cn --arg code "$code" "$@" '{ok: false} + $ARGS.named' 2>/dev/null || printf '{"ok":false,"code":"%s"}\n' "$code"
@@ -822,12 +975,37 @@ _bkp_has_data() {
   [ -n "$q" ] || return 1
   [ "$(_bkp_psql_scalar "SELECT (${q})::int")" = 1 ]
 }
-# _bkp_pkg_needs_setup <pkg> -> 0, wenn das Paket Zugangsdaten verlangt (credentials im Manifest): ohne Terminal entstuende es
-#   halb eingerichtet -> die App installiert es nicht selbst (Code needs_setup).
+# _bkp_pkg_needs_setup <pkg> -> 0, wenn das Paket einen Pflicht-Zugang hat (credentials mit required:true): ohne Terminal
+#   bricht die Einrichtung daran ab -> die App installiert es nicht selbst (Code needs_setup).
 _bkp_pkg_needs_setup() {
   local mf; mf="$(_pkg_dir)/$1/manifest.json"
   [ -r "$mf" ] || return 1
+  jq -e '(.credentials // {}) | [to_entries[] | select(.key != "_comment" and .value.required == true)] | length > 0' "$mf" >/dev/null 2>&1
+}
+# _bkp_pkg_has_access <pkg> -> 0, wenn das Paket ueberhaupt Zugaenge kennt (ohne Terminal eingerichtet fehlen sie danach).
+_bkp_pkg_has_access() {
+  local mf; mf="$(_pkg_dir)/$1/manifest.json"
+  [ -r "$mf" ] || return 1
   jq -e '(.credentials // {}) | [to_entries[] | select(.key != "_comment")] | length > 0' "$mf" >/dev/null 2>&1
+}
+# _bkp_version_die [schluss-satz] — Abbruch nach einem Unterschied aus _bkp_schema_check (liest _BKP_SC_CODE/_BKP_SC_DIFF,
+#   endet immer ueber _bkp_rdie mit exit 1). Sind beide Releases rein und verschieden, bestimmt die Release der Sicherung
+#   (_BKP_RELEASE) gegen die laufende (_bkp_release_tag) Satz und Code: neuer -> erst updaten, aelter -> die Version der
+#   Sicherung (ein Update hilft dann nicht; eine entfernte Spalte sieht der Abgleich als „neu in der Sicherung“). Sonst
+#   (unbekannt, dev, gleiche Release) bleibt der Code aus dem Abgleich und der Satz nennt beide Wege. schluss-satz ersetzt
+#   „nichts geaendert“, wenn vorher schon ein Paket eingerichtet wurde.
+_bkp_version_die() {
+  local rel="$_BKP_RELEASE" cur code="$_BKP_SC_CODE" tail="${1:-Es wurde NICHTS geaendert.}"
+  cur="$(_bkp_release_tag)"
+  log "Unterschied zum Aufbau dieser Version: ${_BKP_SC_DIFF}"
+  local old_way="Life Agents ${rel:-in der Version der Sicherung} installieren, dort wiederherstellen, dann aktualisieren (Anleitung: ${BACKUP_GUIDE_URL})."
+  if _bkp_rel_older "$rel" "$cur"; then
+    _bkp_rdie version_older "Versions-Konflikt: die Sicherung ist älter (${rel}) und passt nicht mehr zum Aufbau dieser Version. Ein Update hilft hier nicht: ${old_way} ${tail}" --arg release "$rel"
+  fi
+  if _bkp_rel_older "$cur" "$rel"; then
+    _bkp_rdie version_newer "Versions-Konflikt: die Sicherung ist neuer (${rel}) — erst 'lifeagents update', dann erneut wiederherstellen. ${tail}" --arg release "$rel"
+  fi
+  _bkp_rdie "$code" "Versions-Konflikt: die Sicherung passt nicht zum Aufbau dieser Version${rel:+ (Sicherung ${rel})}. Ist sie neuer: erst 'lifeagents update', dann erneut wiederherstellen. Ist sie älter: ${old_way} ${tail}" --arg release "$rel"
 }
 # _bkp_read_in_stdin <ziel> — --in-stdin (Start-App, 'Andere Datei waehlen'): erste Zeile "sheet <base64>" (Blatt-Text, leer =
 #   kein Blatt), danach die Sicherung base64-codiert bis zum Ende. base64, weil `read` Zeichen der Locale zaehlt (Blatt UTF-8,
@@ -866,13 +1044,14 @@ backup_cmd_list() {
 }
 
 # backup_cmd_restore_status --json — Stand des letzten Hintergrund-Laufs: {ok:true, state: idle|running|ok|fail|unfinished,
-#   code, name, created, foreign, started}; unfinished = gestartet, ohne Ergebnis und die Restore-Sperre ist frei (Rechner aus,
-#   Container neu, Lauf abgebrochen) — die TX hat dann nichts geaendert.
+#   code, release, name, created, foreign, started}; release nur bei fail (Release der Sicherung, fuer die Versions-Codes);
+#   unfinished = gestartet, ohne Ergebnis und die Restore-Sperre ist frei (Rechner aus, Container neu, Lauf abgebrochen) — die
+#   TX hat dann nichts geaendert.
 backup_cmd_restore_status() {
   [ "${1:-}" = --json ] || die "Usage: lifeagents backup restore-status --json"
-  local st okt flt rs nm cr fg state=idle v
+  local st okt flt rs nm cr fg rl state=idle v
   for v in st:LAST_RESTORE_START okt:LAST_RESTORE_OK flt:LAST_RESTORE_FAIL rs:LAST_RESTORE_REASON nm:LAST_RESTORE_NAME \
-           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN; do
+           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN rl:LAST_RESTORE_RELEASE; do
     printf -v "${v%%:*}" '%s' "$(read_env_value "$BACKUP_STATE_FILE" "${v#*:}" 2>/dev/null || true)"
   done
   case "$st" in ''|*[!0-9]*) st=0 ;; esac; case "$okt" in ''|*[!0-9]*) okt=0 ;; esac; case "$flt" in ''|*[!0-9]*) flt=0 ;; esac
@@ -891,7 +1070,9 @@ backup_cmd_restore_status() {
     fi
   fi
   jq -cn --arg state "$state" --arg code "$rs" --arg name "$nm" --arg created "$cr" --arg foreign "$fg" --argjson started "$st" \
-    '{ok: true, state: $state, code: (if $state == "fail" then $code else null end), name: (if $name == "" then null else $name end),
+    --arg release "$rl" \
+    '{ok: true, state: $state, code: (if $state == "fail" then $code else null end),
+      release: (if $state == "fail" and $release != "" then $release else null end), name: (if $name == "" then null else $name end),
       created: (if $created == "" then null else $created end), foreign: ($foreign == "1"), started: $started}'
 }
 
@@ -1013,44 +1194,43 @@ backup_cmd_restore() {
   [ "$fmt" = "2" ] || _bkp_rdie format "Nicht unterstuetztes Backup-Format (bundle_format='${fmt:-?}', erwartet 2). Alt-/.enc-Bundles der frueheren In-DB-Engine sind inkompatibel. Nichts geaendert."
 
   # --- (2) Pre-Flight je Bundle-Paket gegen Registry bzw. Paket-Manifest — prueft nur, aendert nichts. Ein fehlendes Paket
-  #     wird spaeter eingerichtet (--no-seed, der Restore bringt die Daten), ein ausgeschaltetes eingeschaltet; beides erst
+  #     wird spaeter eingerichtet (--no-seed, der Restore bringt die Daten; eines ohne backup-Block nur gemeldet), ein
+  #     ausgeschaltetes eingeschaltet; beides erst
   #     nach der Bestaetigung, vor der TX. ---
-  local rel_hint=''
-  [[ "$src_name" =~ -(v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)\.nla\.enc$ ]] && rel_hint="${BASH_REMATCH[1]}"
-  local pkg ver inst_status inst_ver to_install='' to_activate='' pkgs_json='[]' pstate
+  local rel_hint; rel_hint="$(_bkp_bundle_release "$tmp" "$src_name")"; _BKP_RELEASE="$rel_hint"
+  local pkg ver inst_status to_install='' to_activate='' to_skip='' missing_access='[]' pkgs_json='[]' pstate
   while IFS=$'\t' read -r pkg ver; do
     [ -n "$pkg" ] || continue
     printf '%s' "$pkg" | grep -qE '^[a-z][a-z0-9_]*$' || _bkp_rdie format "Ungueltiger Paketname im Bundle: $pkg"
     inst_status="$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg}'")"
     if [ -z "$inst_status" ]; then
       [ -r "$(_pkg_dir)/$pkg/manifest.json" ] || _bkp_rdie package_unknown "Die Sicherung enthält das Paket '$pkg', das diese Version nicht kennt. Es wurde NICHTS geaendert." --arg pkg "$pkg"
-      inst_ver="$(jq -r '.version // empty' "$(_pkg_dir)/$pkg/manifest.json" 2>/dev/null)"
-      # Terminal: Pakete mit Zugangsdaten fragt pkg_install_one am Terminal; ohne Terminal (App) entstuende es halb eingerichtet.
-      if { [ "$_BKP_JSON" = 1 ] || ! tty_usable; } && _bkp_pkg_needs_setup "$pkg"; then
-        _bkp_rdie needs_setup "Paket '$pkg' braucht Zugangsdaten — erst einrichten, dann erneut wiederherstellen. Es wurde NICHTS geaendert." --arg pkg "$pkg"
+      if ! jq -e 'has("backup")' "$(_pkg_dir)/$pkg/manifest.json" >/dev/null 2>&1; then
+        # Kein backup-Block = keine Daten in der Sicherung (der Kopf nennt nur alle damals aktiven Pakete): nichts einzuspielen,
+        # und Einstellungen wie die Paperless-Adresse kommen ohnehin nicht mit -> nicht einrichten, nur melden.
+        pstate=skip; to_skip="${to_skip}${pkg} "
+      else
+        # Ohne Terminal (App) entstuende ein Paket mit Pflicht-Zugang halb eingerichtet; freiwillige Zugaenge laesst die
+        # Einrichtung dann aus (wie Enter im Terminal), sie sind spaeter nachtragbar.
+        if { [ "$_BKP_JSON" = 1 ] || ! tty_usable; }; then
+          if _bkp_pkg_needs_setup "$pkg"; then
+            _bkp_rdie needs_setup "Paket '$pkg' braucht Zugangsdaten — erst einrichten, dann erneut wiederherstellen. Es wurde NICHTS geaendert." --arg pkg "$pkg"
+          fi
+          _bkp_pkg_has_access "$pkg" && missing_access="$(jq -c --arg p "$pkg" '. + [$p]' <<<"$missing_access")"
+        fi
+        pstate=install; to_install="${to_install}${pkg} "
       fi
-      pstate=install; to_install="${to_install}${pkg} "
     elif [ "$inst_status" = active ]; then
-      inst_ver="$(_bkp_psql_scalar "SELECT version FROM core.package_registry WHERE package = '${pkg}'")"; pstate=ok
+      pstate=ok
     else
-      inst_ver="$(_bkp_psql_scalar "SELECT version FROM core.package_registry WHERE package = '${pkg}'")"; pstate=activate
-      to_activate="${to_activate}${pkg} "
-    fi
-    if [ -n "$ver" ] && [ "$ver" != "$inst_ver" ]; then
-      # Versions-Gate (fail-closed vor jedem Wipe): pg_restore -a passt Daten nicht an ein per Migration
-      # veraendertes Ziel-Schema an -> bewusst kein Cross-Version-Restore (pg_restore/Borg/restic verweigern
-      # Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette zwischen >=2 Versionen
-      # (vertagt, Trigger: ein Restore scheitert real an der Versionssperre).
-      # Aelteres Bundle: ein Update hilft nicht (es geht nur vorwaerts) -> die Version aus dem Dateinamen nennen.
-      if [ "$(printf '%s\n%s\n' "$ver" "$inst_ver" | sort -V | head -n1)" = "$ver" ]; then
-        _bkp_rdie version_older "Versions-Konflikt fuer '$pkg': die Sicherung ist älter (Bundle=$ver, installiert=$inst_ver). Ein Update hilft hier nicht — die Sicherung lässt sich nur in genau ihre Version zurückspielen: Life Agents ${rel_hint:-in der Version der Sicherung} neu installieren, dann erneut restoren (Anleitung: ${BACKUP_GUIDE_URL}). Es wurde NICHTS geaendert." \
-          --arg pkg "$pkg" --arg release "$rel_hint"
-      fi
-      _bkp_rdie version_newer "Versions-Konflikt fuer '$pkg': die Sicherung ist neuer (Bundle=$ver, installiert=$inst_ver) — erst 'lifeagents update'${rel_hint:+ (mindestens ${rel_hint})}, dann erneut restoren. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt. Es wurde NICHTS geaendert." \
-        --arg pkg "$pkg" --arg release "$rel_hint"
+      pstate=activate; to_activate="${to_activate}${pkg} "
     fi
     pkgs_json="$(jq -c --arg n "$pkg" --arg v "$ver" --arg s "$pstate" '. + [{name: $n, version: $v, state: $s}]' <<<"$pkgs_json")"
   done < <(jq -r '.packages[]? | [.name, .version] | @tsv' "$tmp/manifest.json")
+  # Versions-Sperre am Aufbau (vor jedem Wipe und jeder Vorab-Sicherung). Erst einzuschaltende Pakete zaehlen gleich mit (ihre
+  # Tabellen gibt es schon), erst einzurichtende prueft _bkp_rs_apply nach dem Einrichten.
+  # shellcheck disable=SC2086  # Paketlisten sind Namen ^[a-z][a-z0-9_]*$, bewusst wortgetrennt
+  _bkp_schema_check "$tmp" "$(_bkp_deferred_tables $to_install)" "$to_activate" || _bkp_version_die
 
   # --- (3) Wipe-Menge (heute aktive Pakete) + eigene Daten. Nach dem Einrichten fehlender Pakete wird die Menge in
   #     _bkp_rs_apply neu bestimmt (deren Tabellen kommen dazu). ---
@@ -1067,9 +1247,9 @@ backup_cmd_restore() {
 
   if [ "$plan" = 1 ]; then
     jq -cn --arg created "$created" --arg release "$rel_hint" --argjson packages "$pkgs_json" --arg adopt "$adopt_id" \
-      --argjson has_data "$has_data" --arg name "$src_name" \
+      --argjson has_data "$has_data" --arg name "$src_name" --argjson missing_access "$missing_access" \
       '{ok: true, name: $name, created: (if $created == "" then null else $created end),
-        release: (if $release == "" then null else $release end), packages: $packages,
+        release: (if $release == "" then null else $release end), packages: $packages, missing_access: $missing_access,
         has_data: ($has_data == 1), safety_backup: ($has_data == 1),
         adopt_key_id: (if $adopt == "" then null else $adopt end)}'
     return 0
@@ -1089,6 +1269,7 @@ backup_cmd_restore() {
   log "  Pakete (Bundle): ${pkg_summary:-?}"
   [ -z "$to_install" ] || log "  Wird vorher eingerichtet (--no-seed): ${to_install% }"
   [ -z "$to_activate" ] || log "  Wird vorher eingeschaltet: ${to_activate% }"
+  [ -z "$to_skip" ] || log "  Nicht eingerichtet (sichert keine Daten, bei Bedarf neu einrichten): ${to_skip% }"
   log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): $(printf '%s' "$bulk" | tr '\n' ' ')"
   log "  Zeilen-gefiltert, ${filt_n} Tabelle(n): ${filt_disp:-(keine)}"
   [ "$has_data" = 1 ] && log "  Vorher wird eine Sicherung der jetzigen Daten geschrieben."
@@ -1117,13 +1298,18 @@ backup_cmd_restore() {
     _bkp_state_set LAST_RESTORE_CREATED "$created"; _bkp_state_set LAST_RESTORE_FOREIGN "$([ -n "$brought" ] && printf 1 || printf 0)"
     _bkp_state_set LAST_RESTORE_TMP "$tmp"
     _bkp_state_set LAST_RESTORE_OK ''; _bkp_state_set LAST_RESTORE_FAIL ''; _bkp_state_set LAST_RESTORE_REASON ''
+    _bkp_state_set LAST_RESTORE_RELEASE ''
     (
       exec </dev/null >"$log_f" 2>&1
       # shellcheck disable=SC2064  # bewusst JETZT expandieren (local $tmp)
       trap "rm -rf -- '$tmp'" EXIT
       _BKP_CHILD=1; _BKP_JSON=0
+      # UNATTENDED: ein Hintergrund-Lauf fragt nie, auch wenn er aus einem Terminal kam (/dev/tty bliebe sonst nutzbar und
+      # die Paket-Einrichtung wartete dort auf Zugangsdaten, mit beiden Sperren in der Hand).
+      # shellcheck disable=SC2034  # UNATTENDED liest ui_interactive (common.sh) in dieser Shell
+      UNATTENDED=1
       _bkp_state_set LAST_RESTORE_PID "$BASHPID"
-      _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate"
+      _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip"
       _bkp_state_set LAST_RESTORE_OK "$(date +%s)"
     ) &
     trap - EXIT
@@ -1131,31 +1317,40 @@ backup_cmd_restore() {
     return 0
   fi
   _BKP_JSON=0
-  _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate"
+  _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip"
 }
 
-# _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten> — der
-#   aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/einschalten, Vorab-Sicherung der
-#   jetzigen Daten, dann eine TX. Jeder Abbruch ueber _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
+# _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten>
+#   <pakete-uebersprungen> — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
+#   einschalten, Aufbau ihrer Tabellen pruefen, Vorab-Sicherung der jetzigen Daten, dann eine TX. Jeder Abbruch ueber
+#   _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
 _bkp_rs_apply() {
-  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" pkg
+  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" pkg
   _pkg_menus_defer   # Menue einmal nach den Paketen (jeder Statuswechsel setzt es sonst neu)
   for pkg in $to_install; do
     log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
     # Subshell: ein internes `die` beendet nur den Install, dann sauberer Abbruch HIER (vor dem Wipe).
     ( pkg_install_one "$pkg" --no-seed ) || _bkp_rdie internal "Auto-Install '$pkg' fehlgeschlagen -> Abbruch VOR jedem Wipe (alte Welt intakt)."
+    if ! ui_interactive && _bkp_pkg_has_access "$pkg"; then
+      log "Paket '$pkg' ist ohne seine freiwilligen Zugänge eingerichtet — nachtragen: lifeagents package reconfigure $pkg"
+    fi
   done
   for pkg in $to_activate; do
     ( _pkg_set_status "$pkg" active ) || _bkp_rdie internal "Paket '$pkg' ließ sich nicht einschalten -> Abbruch vor dem Wipe."
   done
   _pkg_menus_flush
-  # Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
+  # Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket ausser den uebersprungenen (to_skip, ohne backup-Block)
+  # muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
   # Restore-Menge) zaehlt nur aktive Pakete, ein inaktives wuerde nicht truncatet (UNIQUE/PK-Konflikte, Rollback).
   while IFS= read -r pkg; do
     [ -n "$pkg" ] || continue
+    _bkp_is_active "$pkg" "$to_skip" && continue
     [ "$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg}'")" = active ] \
       || _bkp_rdie internal "Paket '$pkg' ist nach dem Einrichten nicht aktiv -> Abbruch vor dem Wipe."
   done < <(jq -r '.packages[]?.name' "$tmp/manifest.json")
+  if [ -n "$to_install" ]; then
+    _bkp_schema_check "$tmp" "" || _bkp_version_die "Eingerichtet wurde: ${to_install% }; deine Daten sind unverändert."
+  fi
   local bulk; bulk="$(_bkp_bulk_tables)"
   [ -n "$bulk" ] || _bkp_rdie no_tables "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
 
@@ -1315,9 +1510,11 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
   restore <datei> [--key-stdin] [--yes]
                            Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
                            zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Ein fehlendes Bundle-Paket wird
-                           nach der Rückfrage eingerichtet (--no-seed), ein ausgeschaltetes eingeschaltet; dann
-                           versionsgleich restoren (sonst sauberer Abbruch). Sind eigene Daten da, wird vorher
-                           gesichert. --yes überspringt die Rückfrage.
+                           nach der Rückfrage eingerichtet (--no-seed), ein ausgeschaltetes eingeschaltet. Eine
+                           Sicherung aus einer anderen Version wird eingespielt, wenn ihre Tabellen zu dieser
+                           passen; sonst Abbruch vor jeder Änderung (neuer: erst update; älter: die Version der
+                           Sicherung installieren). Sind eigene Daten da, wird vorher gesichert. --yes überspringt
+                           die Rückfrage.
                            Öffnet kein gespeicherter Schlüssel die Datei (neuer Rechner), fragt restore verdeckt nach
                            dem Schlüssel vom Notfallblatt; --key-stdin liest ihn (oder die Notfallblatt-Datei) aus stdin.
                            Danach gilt dieser Schlüssel, der bisherige bleibt für ältere Sicherungen gespeichert.

@@ -9,6 +9,9 @@
 #   U  Rueckweg nach Update: _upg_carry_backup_keys behaelt den uebernommenen Schluessel.
 #   F  `backup auto` (klassisch): Ordner, 14 behalten (Fremdes bleibt), --scheduled nur einmal am Tag, doctor ROT/gruen.
 #   L  Leck-Probe: kein Schluessel in Ausgaben, /proc/*/cmdline|environ waehrend eines Restores, Resten im tmpfs.
+#   P  Start-App: Probelauf, Blatt ueber stdin, Hintergrund-Lauf, Sperre, Abbruch.
+#   V  Aufbau der Sicherung gegen diese Version (Versions-Sperre): neuer/aelter/vertraeglich, Release im Kopf.
+#   N  Fehlende Pakete ohne Terminal: ohne backup-Block uebersprungen, mit Daten ohne freiwillige Zugaenge eingerichtet.
 # Schluessel: der echte Test-Schluessel des Substrats (zufaellig) + erfundene. Meldungen nennen nie einen Schluesselwert.
 # Am Ende steht core.backup_key wieder wie vorher.
 #
@@ -57,7 +60,9 @@ restore_orig() {
     printf 'COMMIT;\n'; } | psql_superuser_driver -q >/dev/null 2>&1
 }
 new_backups() { local f; for f in /var/backups/lifeagents/lifeagents-backup-*.nla.enc; do [ -e "$f" ] && ! grep -qxF "$f" "$W/bk_before" && printf '%s\n' "$f"; done; return 0; }
-cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS public.bk_leer, public.bk_voll" >/dev/null 2>&1; pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1; pg_su_exec dropdb --if-exists bk_carry >/dev/null 2>&1; rm -rf "$W"; }
+cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS public.bk_leer, public.bk_voll" >/dev/null 2>&1; pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1; pg_su_exec dropdb --if-exists bk_carry >/dev/null 2>&1
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS finance.bk_neu, finance.bk_ziel; ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_ziel, DROP COLUMN IF EXISTS bk_pflicht, DROP COLUMN IF EXISTS bk_alt, DROP COLUMN IF EXISTS bk_dev; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_std; DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'; DELETE FROM finance.accounts WHERE name = 'bk Testkonto'" >/dev/null 2>&1
+  [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"; rm -rf "$W"; }
 trap cleanup EXIT
 if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein 64-Hex"; exit "$fails"; fi
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
@@ -201,16 +206,6 @@ ok_if P.probe-falsches-blatt '[ "$(js .code)" = key_foreign ] && [ "$(js .id)" =
 printf 'Einkaufsliste: Milch\n' > "$W/keinblatt"; frame "$W/keinblatt" "$A"
 n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"
 ok_if P.probe-kein-blatt '[ "$(js .code)" = key_format ]' "$(js .code)"
-# Version: dieselbe Sicherung mit verstellter Paket-Version (aelter/neuer) -> Code + Release, nichts geaendert.
-mkdir -p "$W/ver"; gpg_sym_decrypt "$KA" "$A" > "$W/ver/b.tgz" < /dev/null; tar -xzf "$W/ver/b.tgz" -C "$W/ver"
-for v in 0.0.1:version_older 999.0.0:version_newer; do
-  jq --arg v "${v%%:*}" '.packages[0].version = $v' "$W/ver/manifest.json" > "$W/ver/m2" && cp "$W/ver/m2" "$W/ver/manifest.json"
-  tar -czf "$W/ver/n.tgz" -C "$W/ver" manifest.json data.dump shared.json
-  rm -f "$W/ver/$fa"; gpg_sym_encrypt "$KA" "$W/ver/$fa" "$W/ver/n.tgz"
-  frame "$W/ka" "$W/ver/$fa"; n=$((n + 1)); "$CLI" backup restore "$fa" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"
-  want_rel="$(printf '%s' "$fa" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+[^.]*' | head -n1)"; got_rel="$(js '.release // ""')"
-  ok_if "P.probe-${v#*:}" '[ "$(js .code)" = "${v#*:}" ] && [ "$got_rel" = "$want_rel" ] && [ "$(fp)" = "$F0" ]' "$(js .code)/${got_rel}"
-done
 # Sperre: laeuft schon eine Wiederherstellung, startet keine zweite.
 ( flock "$BACKUP_RESTORE_LOCK_T" sleep 4 ) & lk=$!; sleep 1
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
@@ -250,6 +245,146 @@ hd() { ( for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credenti
          _bkp_has_data "$1" && echo ja || echo nein ) 2>/dev/null; }
 ok_if P.eigene-daten '[ "$(hd public.bk_leer)" = nein ] && [ "$(hd public.bk_voll)" = ja ] && [ "$(hd public.bk_voll public.bk_voll)" = nein ]' "$(hd public.bk_leer)/$(hd public.bk_voll)/$(hd public.bk_voll public.bk_voll)"
 pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS public.bk_leer, public.bk_voll" >/dev/null 2>&1
+
+# ---------------------------------------------------------------------------- V: Aufbau der Sicherung gegen diese Version
+# Die Sperre vergleicht Tabellen und Spalten der Sicherung (COPY-Kopf des Abzugs, shared.json, verify_counts) mit dem Aufbau
+# hier, nicht Paket-Nummern. Den Unterschied erzeugt echtes DDL im Substrat vor bzw. nach einem echten Export; jede Ablehnung
+# muss vor jeder Aenderung kommen (Fingerabdruck gleich, keine Vorab-Sicherung). VERSION steuert die Release im Kopf.
+set_active "$KA"
+VER0="$(cat "$ROOT/VERSION")"
+# hand-injected: das Substrat hat keinen Release-Build; VERSION ist die Quelle von _bkp_release_tag, der Export laeuft echt.
+setver() { printf '%s\n' "$1" > "$ROOT/VERSION"; }
+# q <sql> — Aufbau-Schritt des Tests; Fehler landen in q.err und erscheinen in der Fall-Meldung (sonst sucht man blind).
+q() { pg_su_psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c "$1" >/dev/null 2>>"$W/q.err" || { printf 'q: %s\n' "${1:0:80}" >> "$W/q.err"; return 1; }; }
+fin() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) || ':' || md5(COALESCE(string_agg(t::text, ',' ORDER BY t.id), '')) FROM (SELECT id, name, account_type FROM finance.accounts) t"; }
+# vfp -> Fingerabdruck fuer „nichts geaendert“: Kontexte/Schluessel/Pakete/backup.state (fp) | Konten (fin) | neue Sicherungsdateien.
+vfp() { printf '%s|%s|%s' "$(fp)" "$(fin)" "$(new_backups | wc -l)"; }
+# vexp <ordner> -> Pfad der frischen Sicherung (Standard-Name, traegt die Release aus VERSION)
+vexp() { mkdir -p "$W/v/$1"; ( cd "$W/v/$1" && "$CLI" backup export > "$W/out.v$1" 2>&1 < /dev/null ); ls -1 "$W/v/$1"/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1; }
+vplan() { n=$((n + 1)); "$CLI" backup restore "$1" --plan --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
+vyes() { n=$((n + 1)); "$CLI" backup restore "$1" --yes --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
+# vblock <fall> <bundle> <code> [release] — Probelauf und echter Lauf lehnen mit <code> ab, nichts geaendert.
+vblock() {
+  local f="$1" b="$2" want="$3" rel="${4:-}" v0 c1 r1 c2
+  v0="$(vfp)"
+  vplan "$b"; c1="$(js .code)"; r1="$(js '.release // ""')"
+  vyes "$b"; c2="$(js .code)"
+  ok_if "$f" '[ "$c1" = "$want" ] && [ "$c2" = "$want" ] && { [ -z "$rel" ] || [ "$r1" = "$rel" ]; } && [ "$(vfp)" = "$v0" ]' \
+    "Probelauf=$c1 echt=$c2 release=$r1 / $( [ "$(vfp)" = "$v0" ] && echo unveraendert || echo GEAENDERT) / $(tail -n2 "$W/q.err" 2>/dev/null)"
+}
+# Ein Nutzer-Trigger, damit agent.monitor_triggers in shared.json Zeilen (und damit Spalten) traegt.
+trg="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT agent.fn_create_monitor_trigger('{\"label\": \"bk Testfrist\", \"trigger_type\": \"date\", \"due_date\": \"2030-01-01\", \"action_note\": \"Testfrist\", \"check_interval\": \"1 day\"}'::jsonb)" 2>&1)"
+ntr="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'")"
+ok_if V.vorbereitet-trigger '[ "$ntr" = 1 ]' "n=$ntr $trg"
+# Eine erfundene Konto-Zeile, damit „Daten vorher = nachher“ etwas vergleicht (das Substrat hat ohne Fixtures keine).
+q "INSERT INTO finance.accounts (name, account_type) VALUES ('bk Testkonto', 'cash')"
+setver v0.2.0
+
+q "CREATE TABLE finance.bk_neu (id int PRIMARY KEY); INSERT INTO finance.bk_neu VALUES (1)"
+V1="$(vexp neu-tabelle)"; q "DROP TABLE finance.bk_neu"
+vblock V.neuer-tabelle "$V1" version_newer v0.2.0
+q "ALTER TABLE finance.accounts ADD COLUMN bk_neu text"
+V2="$(vexp neu-spalte)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_neu"
+vblock V.neuer-spalte "$V2" version_newer
+q "ALTER TABLE agent.monitor_triggers ADD COLUMN bk_neu text"
+V3="$(vexp neu-spalte-gefiltert)"; q "ALTER TABLE agent.monitor_triggers DROP COLUMN bk_neu"
+vblock V.neuer-spalte-gefiltert "$V3" version_newer
+# hand-injected: kein Export erzeugt heute einen fremden shared.json-Schluessel (neue gefilterte Tabelle eines neueren Stands).
+V0="$(vexp basis)"
+mkdir -p "$W/v/hand"; gpg_sym_decrypt "$KA" "$V0" > "$W/v/hand/b.tgz" < /dev/null; tar -xzf "$W/v/hand/b.tgz" -C "$W/v/hand"
+jq '. + {"agent.bk_neu": []}' "$W/v/hand/shared.json" > "$W/v/hand/s2" && mv "$W/v/hand/s2" "$W/v/hand/shared.json"
+tar -czf "$W/v/hand/n.tgz" -C "$W/v/hand" manifest.json data.dump shared.json
+V4="$W/v/hand/${V0##*/}"; rm -f "$V4"; gpg_sym_encrypt "$KA" "$V4" "$W/v/hand/n.tgz"
+vblock V.neuer-schluessel "$V4" version_newer
+
+# Aelter + vertraeglich: das Ziel bekommt nach dem Export eine leer erlaubte Spalte und eine Tabelle -> einspielen.
+v0="$(fin)"
+q "ALTER TABLE finance.accounts ADD COLUMN bk_ziel text; CREATE TABLE finance.bk_ziel (id int)"; qa=$?
+vplan "$V0"; c1="$(js .ok)"; vyes "$V0"; rc=$?
+ok_if V.aelter-vertraeglich '[ "$qa" -eq 0 ] && [ "$c1" = true ] && [ "$rc" -eq 0 ] && [ "$(fin)" = "$v0" ]' "Aufbau=$qa Probelauf=$c1/$(js .code) echt rc=$rc / $(fin) vs $v0 / $(tail -n2 "$W/q.err" 2>/dev/null)"
+q "ALTER TABLE finance.accounts DROP COLUMN bk_ziel; DROP TABLE finance.bk_ziel"
+# Aelter + Pflicht-Spalte ohne Standard (an einer Tabelle mit Zeilen: erst mit Standard anlegen, dann den Standard entfernen).
+q "ALTER TABLE finance.accounts ADD COLUMN bk_pflicht int NOT NULL DEFAULT 0; ALTER TABLE finance.accounts ALTER COLUMN bk_pflicht DROP DEFAULT"
+vblock V.aelter-pflichtspalte "$V0" version_older v0.2.0
+q "ALTER TABLE finance.accounts DROP COLUMN bk_pflicht"
+# Nachweislich neuere Sicherung (v0.3.0 > v0.2.0), der eine Ziel-Spalte fehlt (dort entfernt): das hilft nur ein Update.
+setver v0.3.0; V8="$(vexp neuer-ohne-spalte)"; setver v0.2.0
+q "ALTER TABLE finance.accounts ADD COLUMN bk_pflicht int NOT NULL DEFAULT 0; ALTER TABLE finance.accounts ALTER COLUMN bk_pflicht DROP DEFAULT"
+vblock V.neuer-release-entscheidet "$V8" version_newer v0.3.0
+q "ALTER TABLE finance.accounts DROP COLUMN bk_pflicht"
+# Gefilterte Tabelle: die fn schreibt fehlende Schluessel als NULL (Standard greift nicht) -> Spalte mit Standard = unvertraeglich.
+q "ALTER TABLE agent.monitor_triggers ADD COLUMN bk_std text DEFAULT 'x'"
+vblock V.aelter-gefiltert-standard "$V0" version_older
+q "ALTER TABLE agent.monitor_triggers DROP COLUMN bk_std"
+# ... aber ohne Nutzer-Trigger traegt die Sicherung keine Spalten dieser Tabelle -> kein Abbruch.
+q "DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'"
+V5="$(vexp ohne-trigger)"
+q "ALTER TABLE agent.monitor_triggers ADD COLUMN bk_std text DEFAULT 'x'"
+vplan "$V5"; ok_if V.gefiltert-leer '[ "$(js .ok)" = true ]' "$(js .code)"
+q "ALTER TABLE agent.monitor_triggers DROP COLUMN bk_std"
+
+# Entfernte Spalte: die Sicherung ist nachweislich aelter (v0.1.0 < v0.2.0) -> "aelter", nicht "erst aktualisieren".
+setver v0.1.0; q "ALTER TABLE finance.accounts ADD COLUMN bk_alt text"
+V6="$(vexp entfernt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_alt"; setver v0.2.0
+vblock V.aelter-entfernt "$V6" version_older v0.1.0
+# Release unbekannt (dev): Code version_newer, der Satz nennt beide Wege.
+setver dev; q "ALTER TABLE finance.accounts ADD COLUMN bk_dev text"
+V7="$(vexp unbekannt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_dev"
+vplan "$V7"
+ok_if V.release-unbekannt '[ "$(js .code)" = version_newer ] && grep -q "lifeagents update" "$W/err.$n" && grep -qF "$BACKUP_GUIDE_URL" "$W/err.$n"' "$(js .code): $(tail -n1 "$W/err.$n")"
+setver v0.2.0
+
+# Die Paket-Nummer entscheidet nichts: gleiche Tabellen, Paket-Version von Hand verstellt -> Probelauf ok.
+# hand-injected: kein Export schreibt eine fremde Paket-Version.
+for pv in 0.0.1 999.0.0; do
+  mkdir -p "$W/v/pn$pv"; tar -xzf "$W/v/hand/b.tgz" -C "$W/v/pn$pv"
+  jq --arg v "$pv" '.packages[0].version = $v' "$W/v/pn$pv/manifest.json" > "$W/v/pn$pv/m2" && mv "$W/v/pn$pv/m2" "$W/v/pn$pv/manifest.json"
+  tar -czf "$W/v/pn$pv/n.tgz" -C "$W/v/pn$pv" manifest.json data.dump shared.json
+  rm -f "$W/v/pn$pv/${V0##*/}"; gpg_sym_encrypt "$KA" "$W/v/pn$pv/${V0##*/}" "$W/v/pn$pv/n.tgz"
+  vplan "$W/v/pn$pv/${V0##*/}"; ok_if "V.paketnummer-egal-$pv" '[ "$(js .ok)" = true ]' "$(js .code)"
+done
+# Kopf: neue Sicherungen tragen Release und angewandte Migrationen.
+ok_if V.kopf '[ "$(jq -r .release "$W/v/hand/manifest.json")" = v0.2.0 ] && [ "$(jq -r "(.migrations // {}) | has(\"core\")" "$W/v/hand/manifest.json")" = true ]' \
+  "release=$(jq -r .release "$W/v/hand/manifest.json") migrations=$(jq -c '.migrations | keys?' "$W/v/hand/manifest.json")"
+# Ausgeschaltetes Paket: seine Tabellen zaehlen erst nach dem Einschalten -> keine falsche Sperre im Probelauf.
+cli package deactivate estate
+vplan "$V0"
+ok_if V.paket-aus '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"estate\") | .state")" = activate ]' "$(js .code)"
+cli package activate estate
+
+# ---------------------------------------------------------------------------- N: fehlende Pakete, Start-App (ohne Terminal)
+# Neuer Rechner ohne Karriere und Paperless. Paperless sichert keine Daten (kein backup-Block) -> uebersprungen; Karriere hat
+# Daten und nur freiwillige Zugaenge -> ohne sie eingerichtet, Daten eingespielt, fehlender Zugang gemeldet.
+NB="$(vexp pakete)"
+cli package uninstall career --purge --yes; cli package uninstall paperless --purge --yes
+reg() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT COALESCE(string_agg(package || ':' || status, ',' ORDER BY package), '') FROM core.package_registry WHERE package IN ('career', 'paperless')"; }
+ok_if N.vorbereitet '[ -z "$(reg)" ]' "$(reg)"
+# hand-injected: kein ausgeliefertes Paket hat einen Pflicht-Zugang; das Manifest wird nur fuer diesen Fall umgestellt.
+cp "$ROOT/packages/career/manifest.json" "$W/career.manifest"
+jq '.credentials.jsearch.required = true' "$W/career.manifest" > "$ROOT/packages/career/manifest.json"
+vplan "$NB"; ok_if N.pflicht-zugang '[ "$(js .code)" = needs_setup ] && [ "$(js .pkg)" = career ]' "$(js .code)/$(js .pkg)"
+cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
+vplan "$NB"
+ok_if N.probelauf '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"career\") | .state")" = install ] && [ "$(js ".packages[] | select(.name == \"paperless\") | .state")" = skip ] && [ "$(js ".missing_access | tojson")" = "[\"career\"]" ] && [ -z "$(reg)" ]' \
+  "$(js .code) / $(js ".packages | tojson") / $(js ".missing_access | tojson") / $(reg)"
+n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$NB" --yes --detach --json > "$W/out.$n" 2>/dev/null < /dev/null
+for _ in $(seq 1 600); do case "$(rs_state)" in running:|idle:|"") sleep 0.5 ;; *) break ;; esac; done
+ok_if N.eingespielt '[ "$(rs_state)" = ok: ] && [ "$(reg)" = career:active ] && grep -q "package reconfigure career" "$W/log/restore.log"' "$(rs_state) / $(reg) / $(tail -c 300 "$W/out.$n") / $(tail -n3 "$W/log/restore.log" 2>/dev/null)"
+# Erst eingerichtetes Paket mit abweichendem Aufbau: der Probelauf kann es nicht pruefen, der Hintergrund-Lauf prueft nach dem
+# Einrichten und bricht vor der Vorab-Sicherung ab; restore-status nennt die Release fuer den App-Text.
+ct="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'career' AND table_type = 'BASE TABLE' ORDER BY table_name LIMIT 1")"
+q "ALTER TABLE career.${ct} ADD COLUMN bk_neu text"
+NB2="$(vexp pakete-neu)"; q "ALTER TABLE career.${ct} DROP COLUMN bk_neu"
+cli package uninstall career --purge --yes
+nb0="$(new_backups | wc -l)"
+n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$NB2" --yes --detach --json > "$W/out.$n" 2>/dev/null < /dev/null
+for _ in $(seq 1 600); do case "$(rs_state)" in running:|idle:|"") sleep 0.5 ;; *) break ;; esac; done
+rsr() { BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore-status --json 2>/dev/null | jq -r '.release // ""'; }
+ok_if V.status-release '[ "$(rs_state)" = fail:version_newer ] && [ "$(rsr)" = v0.2.0 ] && [ "$(new_backups | wc -l)" = "$nb0" ]' "$(rs_state) release=$(rsr)"
+# Paperless fuer die folgenden Faelle wieder einrichten (wie die Einrichtung ohne Terminal; Ergebnis nicht Teil der Pruefung).
+cli package install paperless
+setver "$VER0"
+set_active "$KB"
 
 # ---------------------------------------------------------------------------- K: backup key
 # Stand fuer K wie nach R: Blatt-Schluessel KA aktiv, KB als prev.

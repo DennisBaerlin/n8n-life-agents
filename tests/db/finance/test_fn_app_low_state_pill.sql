@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_app_low_state_pill.sql
 -- finance.fn_app_low_state_pill(p_ls jsonb) — die EINE Pille zum Urteil „Tiefster Stand" (fn_account_low_state), die
 -- Konten-Zeile (fn_app_screen_accounts) und Spiegel-Pille am Sparplan (fn_app_screen_goals) gleich zeigen.
---   1) verdict buffer: warn „knapp ueber dem Puffer ({buffer})", alert „{amount} unter dem Puffer" mit short_by.
+--   1) verdict buffer (nur ok/alert): alert „{amount} unter dem Puffer" mit short_by.
 --   2) verdict goals: warn „wird knapp", alert „Luecke" (Monat und Datum nur in der Erklaerzeile).
 --   3) ok / neutral (Kurs fehlt) / ohne state / {ok:false} / NULL -> keine Pille.
 --   4) p_month_row (Konten-Zeile „Reicht bis“): „{amount} im Monat mehr ab als rein“; ohne Netto-Abfluss normal.
@@ -12,9 +12,6 @@ DECLARE
   b jsonb := '{"ok":true,"currency":"EUR","source":"outlook","verdict":"buffer","amount":140,"buffer":250,"short_by":110,"gap":false,"on_date":"2026-11-27"}';
   g jsonb := '{"ok":true,"currency":"EUR","source":"funding","verdict":"goals","amount":-50,"buffer":null,"short_by":null,"gap":false,"on_date":"2027-04-01"}';
 BEGIN
-  IF finance.fn_app_low_state_pill(b || '{"state":"warn"}') <> jsonb_build_object('state', 'warn', 'icon', 'clock',
-       'text', core.fn_ui_tpl('finance.app.accounts.pill_tight')) THEN
-    RAISE EXCEPTION 'FAIL [1a] buffer warn, got %', finance.fn_app_low_state_pill(b || '{"state":"warn"}'); END IF;
   IF finance.fn_app_low_state_pill(b || '{"state":"alert"}') <> jsonb_build_object('state', 'alert', 'icon', 'alert',
        'text', core.fn_ui_tpl('finance.app.accounts.pill_short')) THEN
     RAISE EXCEPTION 'FAIL [1b] buffer alert mit short_by, got %', finance.fn_app_low_state_pill(b || '{"state":"alert"}'); END IF;

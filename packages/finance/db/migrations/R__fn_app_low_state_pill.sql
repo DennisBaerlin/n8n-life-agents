@@ -4,7 +4,7 @@
 --   Spiegel-Pille am Sparplan (fn_app_screen_goals) zeigen dasselbe Urteil mit demselben Text, deshalb eine Adresse.
 --   Nur warn/alert (Handlungsbedarf), Kontowaehrung aus dem Urteil:
 --     verdict stale:  warn „neuer Kontoauszug"
---     verdict buffer: warn „knapp ueber Puffer" · alert „unter Puffer" (Betraege: fn_app_low_state_explain)
+--     verdict buffer: alert „unter Puffer" (das Urteil kennt hier nur ok/alert; Betraege: fn_app_low_state_explain)
 --     verdict goals:  warn „wird knapp" · alert „Luecke" (Monat und Tag: fn_app_low_state_explain; Pille traegt keine Daten)
 --   p_month_row = true: Konten-Zeile „Reicht bis" einer Quelle funding: die Pille nennt, warum es nicht reicht:
 --     warn/alert „Monatsminus" (-(monthly_out + monthly_in) > 0); ohne Netto-Abfluss (eine einzelne Abbuchung)
@@ -37,9 +37,6 @@ BEGIN
                                 ELSE core.fn_ui_tpl('finance.app.accounts.pill_gap') END);
     END IF;
     RETURN CASE
-        WHEN p_ls ->> 'verdict' = 'buffer' AND p_ls ->> 'state' = 'warn'
-        THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                 'text', core.fn_ui_tpl('finance.app.accounts.pill_tight'))
         WHEN p_ls ->> 'verdict' = 'buffer'
         THEN jsonb_build_object('state', 'alert', 'icon', 'alert',
                  'text', core.fn_ui_tpl('finance.app.accounts.pill_short'))

@@ -167,6 +167,9 @@ BEGIN
       (v_src, 900000, CURRENT_DATE - 10, 'other'), (v_short, 10, CURRENT_DATE - 10, 'other');
     INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
       VALUES ('rp adv Zubringer', v_src, v_dst, -50, 'month', CURRENT_DATE + 1, CURRENT_DATE + 1);
+    -- ein Abgang hinter dem Horizont: ohne ihn bekaeme __rp_adv_short__ Puffer 0 und der Vorschlags-Zweig liefe nicht
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from)
+      VALUES ('rp adv Abo', v_short, -5, 1, 'year', CURRENT_DATE + 60, CURRENT_DATE + 60);
     -- fn_advisor_snapshot: je Bereich eine Zeile, damit unter finance_ro auch die teuren Zweige laufen (Kredit-Simulation,
     -- Sparplan-Kette, Ziel-Ampel, Renteninformation, Depot-Rendite, Alltag aus einem Auszug)
     UPDATE finance.accounts SET opening_balance_date = CURRENT_DATE - 60 WHERE id = v_src;
@@ -278,6 +281,9 @@ BEGIN
                 'lines', jsonb_build_array(jsonb_build_object('date', CURRENT_DATE - 20, 'amount', -12.5, 'counterparty', 'X')),
                 'fingerprint', v_prep->>'fingerprint'));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_apply_bank_statement]: %', v_res; END IF;
+    -- faellige Auszuege nach dem Abgleich (fn_statements_due unter finance_rw)
+    IF jsonb_typeof(v_res->'statements_due') IS DISTINCT FROM 'array' THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_apply_bank_statement statements_due]: %', v_res; END IF;
     v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_a));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw -> fn_void_bank_statement]: %', v_res; END IF;
     -- Hilfs-Lesen des Monats-Checks: Sammelbetrag des Gegenkontos, Buchungen mit gleichem Betrag

@@ -30,10 +30,6 @@ BEGIN
     IF p_ls ->> 'verdict' = 'stale' THEN
         v_info := core.fn_ui_tpl(CASE WHEN v_plan THEN 'finance.app.goals.i_plan_stale' ELSE 'finance.app.accounts.i_stale' END, v_acc);
         v_todo := 'finance.app.accounts.todo_stale';
-    ELSIF p_ls ->> 'verdict' = 'buffer' AND p_ls ->> 'state' = 'warn' THEN
-        v_info := core.fn_ui_tpl(CASE WHEN v_plan THEN 'finance.app.goals.i_plan_tight' ELSE 'finance.app.accounts.i_tight' END,
-                      v_acc || jsonb_build_object('buffer', core.fn_ui_money((p_ls ->> 'buffer')::numeric, v_cur)));
-        v_todo := 'finance.app.accounts.todo_low';
     ELSIF p_ls ->> 'verdict' = 'buffer' THEN
         v_info := core.fn_ui_tpl(CASE WHEN v_plan THEN 'finance.app.goals.i_plan_short' ELSE 'finance.app.accounts.i_short' END, v_acc || jsonb_build_object(
                       'amount', core.fn_ui_money((p_ls ->> 'short_by')::numeric, v_cur),

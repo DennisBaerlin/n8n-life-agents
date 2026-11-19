@@ -7,8 +7,8 @@
 --   Export-Profil, kein Auszug): faellig, wenn fn_account_confirmed_until vor dem Stichtag liegt; ohne jedes Datum (never)
 --   nur, wenn das Konto spaetestens am Stichtag angelegt wurde (sonst fragte die Erinnerung nach einem Monat vor der Anlage). Beim
 --   Datei-Export endet der Zeitraum am Importtag-1, seine Laenge sagt nichts ueber den Takt.
---   Leser: cron.reconcile_accounts (finance_ro) und der Finance-Agent per postgres_select (Beschreibung
---   tool_reconcile_bank_statement). Test: tests/db/finance/test_fn_statements_due.sql.
+--   Leser: cron.reconcile_accounts (finance_ro), fn_apply_bank_statement (Feld statements_due nach dem Abgleich) und der
+--   Finance-Agent per postgres_select (Block STATEMENTS DUE der Beschreibung). Test: tests/db/finance/test_fn_statements_due.sql.
 --   Eingabe: p_today (NULL = core.fn_today()).
 --   Rueckgabe: {cut_date, accounts:[{account_id, name, label, covered_until|null, file_export, never}]} -- nur faellige
 --   Konten, never zuerst, dann covered_until, dann Name.

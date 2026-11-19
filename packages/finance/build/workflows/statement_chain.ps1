@@ -105,6 +105,8 @@ function New-StatementGateChain {
         ,@('balance_at_period_end', "={{ $A.balance_at_period_end }}", 'number')
         ,@('after_period', "={{ $A.after_period || 0 }}", 'number')
         ,@('outlook', "={{ $A.outlook || {} }}", 'object')
+        # faellige Auszuege nach diesem Abgleich (fn_statements_due): ersetzt eine aeltere Liste aus dem Chat-Gedaechtnis
+        ,@('statements_due', "={{ $A.statements_due || [] }}", 'array')
     ) + $ReturnExtra
     $recNodes = @()
     if ($RecurringParams) {

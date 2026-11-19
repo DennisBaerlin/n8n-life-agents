@@ -1,6 +1,6 @@
 -- tests/db\finance/test_fn_app_low_state_explain.sql
 -- finance.fn_app_low_state_explain(p_ls, p_account, p_month_row) — Erklaerzeile + „Das kannst du tun“ zur Pille des Urteils.
---   1) buffer alert/warn, 2) goals mit und ohne p_month_row, 3) alter Auszug ohne Tu-Zeile, 4) Spiegel am Sparplan nennt
+--   1) buffer alert (das Urteil buffer kennt nur ok/alert), 2) goals mit und ohne p_month_row, 3) alter Auszug ohne Tu-Zeile, 4) Spiegel am Sparplan nennt
 --   das Konto, 5) ohne Pille keine Zeilen.
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
@@ -16,8 +16,6 @@ BEGIN
      OR (v->0->'label'->'params'->'amount'->>'value')::numeric <> 110
      OR (v->0->'label'->'params'->'buffer'->>'value')::numeric <> 250 THEN
     RAISE EXCEPTION 'FAIL [1a] buffer alert, got %', v; END IF;
-  v := finance.fn_app_low_state_explain(b || '{"state":"warn"}');
-  IF v->0->'label'->>'value' <> 'finance.app.accounts.i_tight' OR v->1->>'kind' <> 'todo' THEN RAISE EXCEPTION 'FAIL [1b] tight, got %', v; END IF;
   RAISE NOTICE 'PASS [1] buffer';
 
   v := finance.fn_app_low_state_explain(g || '{"state":"warn"}', NULL, true);

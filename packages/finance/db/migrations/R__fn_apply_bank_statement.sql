@@ -27,7 +27,7 @@
 --   interest_skips -> fn_skip_interest_occurrence (in skipped, der Void holt sie zurueck).
 --   Rueckgabe-Vertrag: booked_count = neue Buchungs-Vorgaenge dieses Abgleichs, je einer:
 --   jeder matched-Treffer (Dauerauftrag, Sparplan, Zins, Transfer inkl. seines Gebuehr-Beins), jede nachgebuchte Gebuehr
---   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_booked), Drift, Rest, Trade-Steuern,
+--   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_by_kind), Drift, Rest, Trade-Steuern,
 --   Umdatierungen. transfers[] = jede neu oder schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
 --   amount (Transfer-Bein dieses Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
 --   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) ohne
@@ -46,13 +46,18 @@
 --   Startbetrag des Gegenkontos (Prepare, matched.other_in_opening): fn_book_transfer mit skip_opening_leg bucht nur das Bein dieses
 --   Kontos, die Gruppe haengt daran (auch die Gebuehr), transfers[].account_name kommt dann aus der Zuordnung, transfers[].other_in_opening = true. export_gap = Luecke
 --   App-Stand/Export (nur Datei mit App-Stand, sonst NULL).
---   Rueckgabe: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, unmatched_in, unmatched_out, rest_other, rest_unexplained, rest_kind, export_gap, difference_candidates[], lump_offsets[], transfers_unclear[], pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   Rueckgabe: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, unmatched_in, unmatched_out, rest_other, rest_unexplained, rest_kind, export_gap, difference_candidates[], lump_offsets[], transfers_unclear[], pending_settled, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
 --   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   nur Datei-Import (source file, beim gedruckten Auszug NULL: dort waere es die eingegebene Endzahl): balance_at_period_end
 --   (= closing_balance der Prepare, Stand am period_end), after_period (Summe der Datei-Zeilen nach period_end,
 --   0 ohne solche Zeilen; die App-Zahl des Nutzers enthaelt sie schon, kein Echo der App-Zahl),
---   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
+--   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang),
+--   trades_by_kind {buy|sell|dividend: {count, amount (Betrag laut Export inkl. Gebuehr, signiert; einbehaltene Steuer ist
+--   eine eigene Buchung und fehlt darin)}, reward: {count, names[] (Muenzen, ohne Geld)}}
+--   (die gebuchten Trades je Art),
+--   statements_due [{name, covered_until|null}] (= finance.fn_statements_due nach diesem Abgleich, Reihenfolge wie dort;
+--   null = nie abgeglichen)} | {ok:false, code?, reason}
 --   (code stale_preview | booking_failed, sonst ok:false der Prepare unveraendert)
 --   Tests: tests/db/finance/test_bank_statement.sql
 -- ============================================================
@@ -77,7 +82,6 @@ DECLARE
     v_spe      JSONB := '[]'::jsonb;
     v_stmt     INT;
     v_redated  INT := 0;
-    v_trades   INT := 0;
     v_hold     INT;
     v_fee      JSONB;
     v_tg       JSONB := '[]'::jsonb;   -- Transfer-Gruppen dieses Auszugs {g, d (Zeilendatum), b (schon gebucht), fa (fee_add)}
@@ -337,7 +341,6 @@ BEGIN
             END IF;
             v_ids := v_ids || ARRAY_REMOVE(ARRAY[NULLIF(v_r->>'buy_tx_id', '')::int, NULLIF(v_r->>'sell_tx_id', '')::int,
                                                  NULLIF(v_r->>'transaction_id', '')::int], NULL);
-            v_trades := v_trades + 1;
             -- einbehaltene Steuer auf Kauf/Verkauf: eigene Buchung (die Buch-fns kennen keine Steuer), nie im Rest
             IF COALESCE((v_m->>'tax')::numeric, 0) <> 0 THEN
                 v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
@@ -477,7 +480,6 @@ BEGIN
                                   ORDER BY (m->>'line_idx')::int), '[]'::jsonb)
                               FROM jsonb_array_elements(v_prep->'blocked') m WHERE m->>'reason' = 'partner_lump_possible'),
         'pending_settled', v_settled,
-        'trades_booked', v_trades,
         'trades_blocked', COALESCE(v_prep->'trades_blocked', '[]'::jsonb),
         'export_unknown', COALESCE(v_prep->'export_unknown', '[]'::jsonb),
         'booked_tx_ids', to_jsonb(v_ids),
@@ -493,6 +495,23 @@ BEGIN
         'balance_after', (SELECT balance FROM finance.account_balances WHERE account_id = v_acct),
         'balance_at_period_end', CASE WHEN p->>'source' = 'file' THEN (v_prep->>'closing_balance')::numeric END,
         'after_period', CASE WHEN p->>'source' = 'file' THEN COALESCE((v_prep->>'after_period')::numeric, 0) END,
-        'outlook', finance.fn_account_outlook(v_acct));
+        'outlook', finance.fn_account_outlook(v_acct),
+        -- jede Zeile in v_prep->'trades' ist oben gebucht (sonst RAISE)
+        'trades_by_kind', (SELECT jsonb_build_object(
+                'buy', jsonb_build_object('count', count(*) FILTER (WHERE k = 'buy'),
+                                          'amount', COALESCE(sum(amt) FILTER (WHERE k = 'buy'), 0)),
+                'sell', jsonb_build_object('count', count(*) FILTER (WHERE k = 'sell'),
+                                           'amount', COALESCE(sum(amt) FILTER (WHERE k = 'sell'), 0)),
+                -- wie die Buchungs-Schleife: jede andere Art (auch ohne kind) bucht fn_book_dividend
+                'dividend', jsonb_build_object('count', count(*) FILTER (WHERE COALESCE(k, '') NOT IN ('buy', 'sell', 'reward')),
+                                               'amount', COALESCE(sum(amt) FILTER (WHERE COALESCE(k, '') NOT IN ('buy', 'sell', 'reward')), 0)),
+                'reward', jsonb_build_object('count', count(*) FILTER (WHERE k = 'reward'),
+                                             'names', COALESCE(jsonb_agg(DISTINCT nm ORDER BY nm) FILTER (WHERE k = 'reward' AND nm IS NOT NULL), '[]'::jsonb)))
+            FROM (SELECT x->>'kind' AS k, (x->>'amount')::numeric AS amt, COALESCE(x->>'name', x->>'symbol') AS nm
+                  FROM jsonb_array_elements(COALESCE(v_prep->'trades', '[]'::jsonb)) x) t),
+        -- nach dem Buchen gelesen: last_reconciled_at dieses Kontos ist schon neu
+        'statements_due', (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', e->>'name', 'covered_until', e->'covered_until')
+                                                     ORDER BY o), '[]'::jsonb)
+                           FROM jsonb_array_elements(finance.fn_statements_due()->'accounts') WITH ORDINALITY d(e, o)));
 END;
 $$;

@@ -107,6 +107,10 @@ BEGIN
   ON CONFLICT (base_currency, quote_currency, as_of) DO UPDATE SET rate = EXCLUDED.rate;
   v_clp := (finance.fn_create_account('{"name":"__t_ol_clp__","account_type":"cash","currency":"CLP","opening_balance":1000000}'::jsonb)->>'account_id')::int;
   v_jpy := (finance.fn_create_account('{"name":"__t_ol_jpy__","account_type":"cash","currency":"JPY","opening_balance":100000}'::jsonb)->>'account_id')::int;
+  -- ein Abgang weit hinter dem Horizont: ohne ihn waere der Puffer 0 (buffer_source none) und die Umrechnung ungeprueft
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from)
+  VALUES ('CLP Abo', v_clp, -1000, 1, 'year', CURRENT_DATE + 60, CURRENT_DATE + 60),
+         ('JPY Abo', v_jpy, -1000, 1, 'year', CURRENT_DATE + 60, CURRENT_DATE + 60);
   v_res := finance.fn_account_outlook(v_clp);
   IF (v_res->>'buffer')::numeric IS DISTINCT FROM 362500 THEN RAISE EXCEPTION 'FAIL outlook CLP-Puffer: %', v_res; END IF;
   v_res := finance.fn_account_outlook(v_jpy);
@@ -189,6 +193,9 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ol_adult__', 'cash', 'EUR', 'active') RETURNING id INTO v_adult;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
     (v_giro, 100, t - 40, 'other'), (v_kid, 900000, t - 40, 'other'), (v_adult, 800000, t - 40, 'other');
+  -- Abgang hinter dem Horizont (t+31): Standard-Puffer 250 bleibt, der tiefste Stand bleibt 100
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from)
+  VALUES ('Short Abo', v_giro, -10, 1, 'year', t + 60, t + 60);
 
   v_res := finance.fn_account_outlook(v_giro);
   IF (v_res->>'shortfall')::numeric IS DISTINCT FROM 150 OR v_res->'suggestion'->>'from_account' IS DISTINCT FROM '__t_ol_adult__' THEN
@@ -285,6 +292,131 @@ BEGIN
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'statement_stale:' || v_new) THEN
     RAISE EXCEPTION 'FAIL advisor: frischer Auszug warnt weiter mit account_coverage, ohne statement_stale: %', v_alerts; END IF;
   RAISE NOTICE 'PASS outlook/advisor: Auszug 60 Tage alt -> statement_stale statt account_coverage; frischer Auszug warnt normal';
+END $$;
+
+-- Puffer nur, wenn etwas abgeht: geplante Abbuchung (Dauerauftrag, Sparplan, Uebertrag weg) in 400 Tagen oder Alltag
+-- aus Auszuegen. Sonst Puffer 0 (buffer_source none); ein Minus meldet weiter, ein eigener Puffer gilt weiter. Die
+-- Abbuchung darf hinter dem Horizont liegen (Verrechnungskonto: Zubringer am Tag X, Sparplan am Tag X+1), sonst
+-- spraenge der Puffer im Monat zwischen 0 und 250. N4/N5 haben keinen Auszug (Alltag unbekannt). Werte erfunden.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_zero INT; v_neg INT; v_own INT; v_src INT; v_vor INT; v_nach INT; v_alltag INT; v_res JSONB;
+BEGIN
+  v_zero := (finance.fn_create_account('{"name":"__t_ol_none_zero__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_neg  := (finance.fn_create_account('{"name":"__t_ol_none_neg__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_own  := (finance.fn_create_account('{"name":"__t_ol_none_own__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_src  := (finance.fn_create_account('{"name":"__t_ol_none_src__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_vor  := (finance.fn_create_account('{"name":"__t_ol_none_vor__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_nach := (finance.fn_create_account('{"name":"__t_ol_none_nach__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_alltag := (finance.fn_create_account('{"name":"__t_ol_none_alltag__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+    (v_neg, -40, t - 10, 'other'), (v_src, 5000, t - 40, 'other'), (v_alltag, 1000, t - 40, 'other');
+  UPDATE finance.accounts SET min_balance = 20 WHERE id = v_own;
+
+  v_res := finance.fn_account_outlook(v_zero);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 0 OR v_res->>'buffer_source' IS DISTINCT FROM 'none'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 0 OR jsonb_typeof(v_res->'suggestion') <> 'null'
+     OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL [N1] Saldo 0 ohne Abgang -> Puffer 0, none, kein Vorschlag: %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_neg);
+  IF v_res->>'buffer_source' IS DISTINCT FROM 'none' OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 40
+     OR (v_res->'suggestion'->>'amount')::numeric IS DISTINCT FROM 50 THEN
+    RAISE EXCEPTION 'FAIL [N2] Minus ohne Abgang meldet weiter (shortfall 40, Vorschlag 50): %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_own);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 20 OR v_res->>'buffer_source' IS DISTINCT FROM 'account'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'FAIL [N3] eigener Puffer gilt auch ohne Abgang: %', v_res; END IF;
+
+  -- Verrechnungskonto: Zubringer vom Girokonto, Sparplan-Abbuchung vor bzw. nach dem Zubringer
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('None Zubringer vor',  v_src, v_vor,  -100, 30, 'day', t + 5, t + 5),
+         ('None Sparplan vor',   v_vor, NULL,   -100, 30, 'day', t + 3, t + 3),
+         ('None Zubringer nach', v_src, v_nach, -100, 30, 'day', t + 2, t + 2),
+         ('None Sparplan nach',  v_nach, NULL,  -100, 30, 'day', t + 3, t + 3);
+  v_res := finance.fn_account_outlook(v_vor);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 250 OR v_res->>'buffer_source' IS DISTINCT FROM 'default'
+     OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [N4] Sparplan vor dem Zubringer -> Standard-Puffer: %', v_res; END IF;
+  v_res := finance.fn_account_outlook(v_nach);
+  IF (v_res->>'horizon_end')::date IS DISTINCT FROM t + 2 OR (v_res->>'planned_out')::numeric IS DISTINCT FROM 0
+     OR (v_res->>'buffer')::numeric IS DISTINCT FROM 250 OR v_res->>'buffer_source' IS DISTINCT FROM 'default'
+     OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [N5] Sparplan hinter dem Horizont -> Standard-Puffer, kein Springen: %', v_res; END IF;
+  -- die Zubringer-Quelle selbst hat einen Abgang (Uebertrag weg)
+  IF finance.fn_account_outlook(v_src)->>'buffer_source' IS DISTINCT FROM 'default' THEN
+    RAISE EXCEPTION 'FAIL [N6] Uebertrag weg zaehlt als Abgang: %', finance.fn_account_outlook(v_src); END IF;
+
+  -- nur Alltag aus einem Auszug, kein Dauerauftrag
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_alltag, 'confirmed_balance', 1000, 'reconciliation_date', (t - 5)::text));
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_alltag, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -300, 0, NULL);
+  v_res := finance.fn_account_outlook(v_alltag);
+  IF (v_res->>'everyday_per_day')::numeric >= 0 OR v_res->>'buffer_source' IS DISTINCT FROM 'default'
+     OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [N7] Alltag aus dem Auszug zaehlt als Abgang: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook Puffer nur mit Abgang: 0 ohne (Minus meldet, eigener Puffer gilt), Sparplan vor/nach Horizont, Alltag';
+END $$;
+
+-- Alltag bekannt 0 (Auszug ohne freie Abgaenge): kein Standard-Puffer, auch wenn ein Sparplan abgeht; der Puffer
+-- faengt nur die Schaetzung des Alltags ab. Alltag unbekannt (kein Auszug, N4/N5) behaelt den Standard; ein eigener
+-- Puffer gilt; ein Tief unter 0 meldet weiter. Werte erfunden.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_plan INT; v_own INT; v_neg INT; v_res JSONB;
+BEGIN
+  v_plan := (finance.fn_create_account('{"name":"__t_ol_k0_plan__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_own  := (finance.fn_create_account('{"name":"__t_ol_k0_own__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_neg  := (finance.fn_create_account('{"name":"__t_ol_k0_neg__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+    (v_plan, 100, t - 40, 'other'), (v_own, 100, t - 40, 'other'), (v_neg, 30, t - 40, 'other');
+  UPDATE finance.accounts SET min_balance = 80 WHERE id = v_own;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('K0 Sparplan',     v_plan, NULL, -50, 1, 'month', t + 3, t + 3),
+         ('K0 Sparplan own', v_own,  NULL, -50, 1, 'month', t + 3, t + 3),
+         ('K0 Sparplan neg', v_neg,  NULL, -50, 1, 'month', t + 3, t + 3);
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', a, 'confirmed_balance', b, 'reconciliation_date', (t - 5)::text))
+  FROM (VALUES (v_plan, 100), (v_own, 100), (v_neg, 30)) x(a, b);
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  SELECT a, t - 34, t - 5, b, b, 'EUR', 1, 1, 0, 0, NULL FROM (VALUES (v_plan, 100), (v_own, 100), (v_neg, 30)) x(a, b);
+
+  v_res := finance.fn_account_outlook(v_plan);
+  IF (v_res->>'has_history')::boolean IS DISTINCT FROM true OR (v_res->>'everyday_per_day')::numeric IS DISTINCT FROM 0
+     OR (v_res->>'planned_out')::numeric IS DISTINCT FROM -50 OR (v_res->>'min_projected')::numeric IS DISTINCT FROM 50
+     OR (v_res->>'buffer')::numeric IS DISTINCT FROM 0 OR v_res->>'buffer_source' IS DISTINCT FROM 'none'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 0 OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [K1] Alltag bekannt 0 + Sparplan -> Puffer 0 (none), Tief 50 reicht: %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_own);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 80 OR v_res->>'buffer_source' IS DISTINCT FROM 'account'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'FAIL [K2] Alltag bekannt 0: eigener Puffer 80 gilt (Tief 50 -> 30 fehlen): %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_neg);
+  IF v_res->>'buffer_source' IS DISTINCT FROM 'none' OR (v_res->>'min_projected')::numeric IS DISTINCT FROM -20
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'FAIL [K3] Alltag bekannt 0: Tief unter 0 meldet weiter (shortfall 20): %', v_res; END IF;
+
+  -- ein Auszug ohne neuen Tag (Schnitt = Auszugsende) misst keinen Alltag: unbekannt, nicht 0 -> Standard-Puffer
+  v_plan := (finance.fn_create_account('{"name":"__t_ol_k0_nodays__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_plan, 100, t - 40, 'other');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('K0 Sparplan nodays', v_plan, NULL, -50, 1, 'month', t + 3, t + 3);
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_plan, t - 34, t - 5, 100, 100, 'EUR', 1, 1, 0, 0, t - 5);
+  v_res := finance.fn_account_outlook(v_plan);
+  IF (v_res->>'has_history')::boolean IS DISTINCT FROM true OR v_res->>'buffer_source' IS DISTINCT FROM 'default' THEN
+    RAISE EXCEPTION 'FAIL [K4] Auszug ohne gezaehlten Tag -> Alltag unbekannt, Standard-Puffer: %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook Alltag bekannt 0: Puffer 0 trotz Sparplan, eigener Puffer gilt, Minus meldet';
 END $$;
 
 ROLLBACK;

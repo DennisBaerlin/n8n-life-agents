@@ -510,10 +510,11 @@ button.row:active, button.banner:active { opacity: .6; }
   // Sprungziel (target) hat Vorrang. Beim Umschalten kurz kein aria-live, sonst liest der Screenreader alles vor.
   // Zeile „Das kannst du tun“: legt die Nachricht ins Eingabefeld des Bot-Chats, abschicken bleibt beim Nutzer. Seit Bot API 7.0
   // schliesst openTelegramLink die App nicht mehr, darum selbst schliessen; kurz warten, sonst geht der Link verloren.
-  function askButton(ask, R) {
+  // label (optional, Feld ask_label): eigener Link-Text einer Zeile ohne „Das kannst du tun“, sonst „Im Chat fragen“.
+  function askButton(ask, R, label) {
     if (!botName || !TG || typeof TG.openTelegramLink !== 'function' || !R.has('core.app.ask_chat')) return null;
     if (typeof TG.isVersionAtLeast === 'function' && !TG.isVersionAtLeast('6.1')) return null;
-    const b = el('button', 'ask', R.t('core.app.ask_chat'));
+    const b = el('button', 'ask', label ? txt(R, label) : R.t('core.app.ask_chat'));
     b.type = 'button';
     b.addEventListener('click', () => {
       TG.openTelegramLink('https://t.me/' + botName + '?text=' + encodeURIComponent(txt(R, ask).slice(0, 1000)));
@@ -540,7 +541,7 @@ button.row:active, button.banner:active { opacity: .6; }
         const kv = el('li', 'kv');
         const label = el('span', 'kv-k', (d.kind === 'info' ? INFO + ' ' : '') + txt(R, d.label));
         kv.appendChild(label);
-        if (d.kind === 'todo' && d.ask) { const a = askButton(d.ask, R); if (a) label.appendChild(a); }
+        if (d.ask && (d.kind === 'todo' || d.ask_label)) { const a = askButton(d.ask, R, d.ask_label); if (a) label.appendChild(a); }
         if (!R.isEmpty(d.value)) kv.appendChild(el('span', 'kv-v', txt(R, d.value)));
         list.appendChild(kv);
         // d.more (optional): Erklaerung einer einzelnen Zeile, erst nach Tipp auf ihr Info-Zeichen

@@ -78,9 +78,8 @@
   }
   function mark() {
     var a = L.contentDocument, b = R.contentDocument, ia = items(a), ib = items(b);
-    var n = markItems(ib, ia, false) + markHeads(b, a, 'cmp-chg');
-    markItems(ia, ib, true); markHeads(a, b, 'cmp-old');
-    return n;
+    // beide Seiten zaehlen: eine Aenderung, die nur etwas entfernt, markiert nur links und hiesse sonst „(keine)“
+    return markItems(ib, ia, false) + markHeads(b, a, 'cmp-chg') + markItems(ia, ib, true) + markHeads(a, b, 'cmp-old');
   }
   async function show(i) {
     cur = i;

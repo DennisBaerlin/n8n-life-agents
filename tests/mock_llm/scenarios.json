@@ -1404,6 +1404,18 @@
     "final": "Fuer __E2E__ SD Kurz fehlt noch ein Auszug bis zum Monatsende."
   },
   {
+    "_comment": "tc167 Gedaechtnis nennt ein abgeglichenes Konto als offen -> kein Write; ob die Antwort fn_statements_due folgt, prueft der bezahlte Tier.",
+    "match": "Fehlen noch Auszuege?",
+    "calls": [],
+    "final": "Nein, fuer __E2E__ SA Alt ist der Auszug bis zum Monatsende abgeglichen."
+  },
+  {
+    "_comment": "tc168 Nach einem Monats-Check (statements_due leer im Gedaechtnis) -> kein Write; die Antwort prueft der bezahlte Tier.",
+    "match": "Danke, ist damit alles da?",
+    "calls": [],
+    "final": "Ja, es fehlt kein Kontoauszug mehr."
+  },
+  {
     "_comment": "tc86 Befund 2026-10-30: Export-CSV fuer ein genanntes Konto einer anderen Bank -> export_account_mismatch -> Rueckfrage mit dem Kandidaten.",
     "match": "Hier ist der Umsatz-Export fuer mein Lindenbank Giro",
     "calls": [
@@ -1645,6 +1657,12 @@
       { "tool": "tool_set_account", "args": { "account_name": "Lindenbank Giro", "remove_account_number": "true" } }
     ],
     "final": "Die Karte zum Entfernen der IBAN beim Lindenbank Giro ist unterwegs."
+  },
+  {
+    "_comment": "tc169 Puffer aendern aus der App (Satz ohne Betrag) -> kein Write, Rueckfrage nach dem Betrag.",
+    "match": "Ich möchte den Puffer für Lindenbank Giro ändern",
+    "calls": [],
+    "final": "Gern. Wie viel soll auf dem Lindenbank Giro mindestens bleiben?"
   },
   {
     "_comment": "tc102 Puffer je Konto: tool_set_account mit min_balance.",

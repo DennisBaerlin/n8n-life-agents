@@ -6,7 +6,7 @@
 --   Quelle:
 --     outlook  Konto mit Kontoauszug (finance.fn_coverage_accounts, cash): finance.fn_account_outlook bis zum naechsten
 --              Geldeingang mit Puffer; Zustand wie die Berater-Warnung (Kurs fehlt -> neutral, shortfall > 0 -> alert,
---              tiefster Stand < finance.coverage_warn_factor x Puffer -> warn). Ist das Konto zugleich Deckungs-Konto
+--              sonst ok; kein gelbes „knapp“ ueber dem Puffer). Ist das Konto zugleich Deckungs-Konto
 --              (finance.fn_funding_accounts), rechnet zusaetzlich finance.fn_account_funding (Ziel-Geld, 24 Monate) und
 --              das schlechtere Urteil gilt (verdict sagt welches: 'buffer' oder 'goals').
 --     funding  sonst Deckungs-Konto mit bekannten Alltagsausgaben (everyday <> 'unknown': Sparkonto, Broker-Cash,
@@ -29,7 +29,6 @@ CREATE OR REPLACE FUNCTION finance.fn_account_low_state(p_account_id int, p_aler
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_acct    finance.accounts%ROWTYPE;
-    v_factor  numeric;
     v_stale   int;
     v_o       jsonb;
     v_f       jsonb;
@@ -49,7 +48,6 @@ BEGIN
     IF NOT FOUND OR v_acct.account_type::text IN ('loan', 'stocks_depot', 'crypto_depot') THEN
         RETURN jsonb_build_object('ok', false);
     END IF;
-    v_factor := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_warn_factor'), '')::numeric, 2);
     v_stale  := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::int, 45);
 
     IF EXISTS (SELECT 1 FROM finance.fn_coverage_accounts() c(id) WHERE c.id = p_account_id) THEN
@@ -72,7 +70,6 @@ BEGIN
         v_out    := COALESCE((v_o->>'planned_out')::numeric, 0) < 0 OR COALESCE((v_o->>'everyday_per_day')::numeric, 0) < 0;
         v_state  := CASE WHEN v_gap THEN 'neutral'
                          WHEN (v_o->>'shortfall')::numeric > 0 THEN 'alert'
-                         WHEN v_amount < v_factor * v_buffer THEN 'warn'
                          ELSE 'ok' END;
         IF NOT v_gap AND EXISTS (SELECT 1 FROM finance.fn_funding_accounts() fa WHERE fa.account_id = p_account_id) THEN
             v_f := finance.fn_account_funding(p_account_id, p_alert_only);

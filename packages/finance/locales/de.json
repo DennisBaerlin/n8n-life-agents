@@ -232,6 +232,8 @@
   "finance.app.overview.todo_fx_missing": "Das kannst du tun: Warte bis morgen. Fehlt er dann noch, frag im Chat nach.",
   "finance.app.overview.ask_fx_missing": "Für {account} fehlt der Wechselkurs. Woran liegt das?",
   "finance.app.accounts.ask_low": "Auf {account} wird es knapp. Welche Zahlung lässt sich verschieben?",
+  "finance.app.accounts.ask_buffer": "Ich möchte den Puffer für {account} ändern.",
+  "finance.app.accounts.change_buffer": "Puffer ändern ›",
   "finance.app.accounts.ask_gap": "Auf {account} wird es knapp. Welche Rate kann ich verringern?",
   "finance.app.accounts.ask_net_out": "Von {account} fließt mehr ab als rein. Welchen Dauerauftrag kann ich verringern?",
   "finance.app.accounts.ask_overcommitted": "Welches Sparziel von {account} kann ich auf ein anderes Konto umziehen?",

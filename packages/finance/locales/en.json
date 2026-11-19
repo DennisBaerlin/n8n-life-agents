@@ -232,6 +232,8 @@
   "finance.app.overview.todo_fx_missing": "What you can do: wait until tomorrow. If it is still missing, ask in the chat.",
   "finance.app.overview.ask_fx_missing": "The exchange rate for {account} is missing. Why is that?",
   "finance.app.accounts.ask_low": "My account {account} is getting tight. Which payment can I move?",
+  "finance.app.accounts.ask_buffer": "I would like to change the buffer for {account}.",
+  "finance.app.accounts.change_buffer": "Change buffer ›",
   "finance.app.accounts.ask_gap": "My account {account} is getting tight. Which instalment can I reduce?",
   "finance.app.accounts.ask_net_out": "More is leaving {account} than coming in. Which standing order can I reduce?",
   "finance.app.accounts.ask_overcommitted": "Which savings goal on {account} can I move to another account?",

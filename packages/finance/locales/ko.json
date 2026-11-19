@@ -232,6 +232,8 @@
   "finance.app.overview.todo_fx_missing": "할 수 있는 일: 내일까지 기다려 주세요. 그래도 없으면 채팅에서 물어보세요.",
   "finance.app.overview.ask_fx_missing": "계좌 {account}의 환율이 없어요. 왜 그런가요?",
   "finance.app.accounts.ask_low": "내 계좌 {account}의 잔액이 빠듯해요. 어떤 결제를 미룰 수 있나요?",
+  "finance.app.accounts.ask_buffer": "{account}의 완충액을 바꾸고 싶어요.",
+  "finance.app.accounts.change_buffer": "완충액 변경 ›",
   "finance.app.accounts.ask_gap": "내 계좌 {account}의 잔액이 빠듯해요. 어떤 납입금을 줄일 수 있나요?",
   "finance.app.accounts.ask_net_out": "이 계좌 {account}에서 들어오는 돈보다 나가는 돈이 많아요. 어떤 자동이체를 줄일 수 있나요?",
   "finance.app.accounts.ask_overcommitted": "계좌 {account}의 저축 목표 중 어떤 것을 다른 계좌로 옮길 수 있나요?",

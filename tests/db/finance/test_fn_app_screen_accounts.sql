@@ -218,7 +218,22 @@ BEGIN
                                jsonb_array_elements(COALESCE(it->'details', '[]'::jsonb)) d
                  WHERE s->'title'->'params'->>'account' = 'Girokonto Jonas' AND d->'label'->>'value' = ANY (k_buf)) THEN
     RAISE EXCEPTION 'FAIL [9b] Girokonto mit Abbuchungen zeigt seinen Puffer'; END IF;
-  RAISE NOTICE 'PASS [9] Puffer-Zeile nur bei Konten mit Puffer';
+  -- die Puffer-Zeile traegt den Chat-Link „Puffer aendern“ (Standard- und eigener Puffer gleich)
+  FOR i IN 1..2 LOOP
+    IF i = 2 THEN
+      UPDATE finance.accounts SET min_balance = 300 WHERE id = (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas');
+      v := finance.fn_app_screen_accounts(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') it,
+                                 jsonb_array_elements(COALESCE(it->'details', '[]'::jsonb)) d
+                   WHERE s->'title'->'params'->>'account' = 'Girokonto Jonas'
+                     AND d->'label'->>'value' = k_buf[i]
+                     AND d->'ask' = core.fn_ui_tpl('finance.app.accounts.ask_buffer', jsonb_build_object('account', 'Girokonto Jonas'))
+                     AND d->'ask_label' = core.fn_ui_tpl('finance.app.accounts.change_buffer')) THEN
+      RAISE EXCEPTION 'FAIL [9c] Puffer-Zeile (%) ohne Link „Puffer aendern“, got %', k_buf[i],
+        (SELECT s FROM jsonb_array_elements(v->'sections') s WHERE s->'title'->'params'->>'account' = 'Girokonto Jonas'); END IF;
+  END LOOP;
+  RAISE NOTICE 'PASS [9] Puffer-Zeile nur bei Konten mit Puffer, mit Link „Puffer aendern“';
 END $$;
 
 -- [8] Frei-SQL-Rollen: kein EXECUTE; selbst MIT Test-Grant -> forbidden (Muster test_fn_app_screen_overview)

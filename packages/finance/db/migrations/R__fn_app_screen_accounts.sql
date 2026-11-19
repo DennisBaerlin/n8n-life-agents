@@ -229,7 +229,10 @@ BEGIN
                     v_det := v_det || jsonb_build_object(
                         'label', core.fn_ui_tpl(CASE WHEN v_o->>'buffer_source' = 'account' THEN 'finance.app.accounts.b_buffer_account'
                                                      ELSE 'finance.app.accounts.b_buffer_default' END),
-                        'value', core.fn_ui_money((v_o->>'buffer')::numeric, v_cur));
+                        'value', core.fn_ui_money((v_o->>'buffer')::numeric, v_cur),
+                        -- Puffer setzt der Buchhalter im Chat (tool_set_account min_balance); der Link legt die Bitte vor
+                        'ask', core.fn_ui_tpl('finance.app.accounts.ask_buffer', jsonb_build_object('account', v_acc.name)),
+                        'ask_label', core.fn_ui_tpl('finance.app.accounts.change_buffer'));
                 END IF;
                 IF v_o->>'next_income_date' IS NOT NULL THEN
                     v_det := v_det || jsonb_build_object(

@@ -452,6 +452,7 @@ update_run_requested() {
   id="$(jq -r '.claimed.id' <<<"$claim")"; tag="$(jq -r '.claimed.tag' <<<"$claim")"; kind="$(jq -r '.claimed.kind' <<<"$claim")"
   heartbeat_record loop busy "$(_ur_busy_s "$UPDATE_RUN_TIMEOUT_S")"   # ein Update haelt die Schleife bis zu 2 h an
   _ur_run_one "$id" "$tag" "$kind" "$installed"   # ein Update setzt am Ende ohnehin alle Menues (und schliesst den Auftrag)
+  heartbeat_record loop ok   # busy nur, solange der Schritt laeuft (sonst zaehlte der Waechter bis zur Zeitgrenze nicht)
   return 0
 }
 
@@ -513,6 +514,7 @@ _ur_swap_continue() {
       master_swap_close
       if [ -n "$id" ]; then _ur_conclude "$id" "$rc" "$rf" "$log"; else rm -f -- "$rf"; fi
       if [ "$rc" -eq 0 ]; then _ur_notice "Update auf ${tag} abgeschlossen."; else _ur_alert "Update auf ${tag} gescheitert (Exit ${rc}) — Protokoll ${log}"; fi
+      heartbeat_record loop ok
       ;;
     rolled_back|interrupted)
       master_swap_close
@@ -542,7 +544,7 @@ _ur_swap_continue() {
 #   jede Minute als frischen Prozess): Auftraege wie lifeagents-update-run, alle UPDATE_CHECK_EVERY_S
 #   Sekunden (2 h) der Release-Check wie lifeagents-update-check (`update_check scheduled`: Karte nur im Erinnerungs-Fenster).
 #   Vor der ersten Installation (keine VERSION) still. Zustand in UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
-#   Ein neuer langer Schritt bekommt vorher `heartbeat_record loop busy` mit seiner Zeitgrenze, sonst meldet der Waechter
+#   Ein neuer langer Schritt bekommt vorher `heartbeat_record loop busy` mit seiner Zeitgrenze und danach `loop ok`, sonst meldet der Waechter
 #   (core.cron_heartbeat_watch) nach 15 Minuten eine stehende Schleife.
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
@@ -620,6 +622,7 @@ update_tick() {
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
     heartbeat_record loop busy "$(_ur_busy_s "$BACKUP_TIMEOUT_S")"
     _ur_step "$BACKUP_TIMEOUT_S" backup auto --scheduled
+    heartbeat_record loop ok
   fi
   return 0
 }

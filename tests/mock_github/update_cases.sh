@@ -57,6 +57,8 @@ mk_release() {   # mk_release <tag> <body> [flags]
 sc="$(cat /tmp/upd_test/scenario 2>/dev/null || printf ok)"
 result_set status running; result_set stage preflight
 printf '%s' "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" > /tmp/upd_test/request_id
+# Lebenszeichen der Schleife WAEHREND des Updates (hb_loop_busy_update): der Runner meldet busy vor dem Update
+runuser -u postgres -- psql -X -tA -d "${N8N_DB_NAME:-n8n}" -c "SELECT status || '|' || round(extract(epoch FROM busy_until - beat_at)) FROM core.heartbeats WHERE signal = 'loop'" > /tmp/upd_test/hb_during 2>/dev/null || true
 case "$sc" in
   steps)   for s in base postgres n8n workflows final; do result_set stage "$s"; sleep 2; done
            printf '%s\n' "$RELEASE_TAG" > /usr/local/lib/lifeagents/VERSION; result_set status ok ;;
@@ -160,13 +162,15 @@ if [ "$n1" = 0 ] && [ "$(sql "SELECT count(*) FROM core.notification_state WHERE
   pass card_latch_after_send; else fail card_latch_after_send "nach Fehler gemerkt=$n1 $(show "$OUT")"; fi
 
 # 4 Runner: Erfolg -> Start- + Fertig-Meldung, VERSION neu
-installed v9.9.8; reset_db; scenario ok; tg_clear; id="$(request v9.9.10)"; cli --run-requested
+installed v9.9.8; reset_db; scenario ok; tg_clear; rm -f "$W/hb_during"; id="$(request v9.9.10)"; cli --run-requested
 o="$(outcome "$id")"
 if [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ] && [ "$(tg_n)" = 2 ]; then pass run_succeeded
 else fail run_succeeded "outcome=$o ver=$(cat "$VER") sends=$(tg_n) $(show "$OUT")"; fi
-# Waehrend eines Updates steht die Schleife bis zu 2 h: busy = Zeitgrenze 7200 s + KILL-Frist 60 s
-h="$(hb loop)"
-if [ "$h" = 'busy|7260|true' ]; then pass hb_loop_busy_update; else fail hb_loop_busy_update "loop=[$h]"; fi
+# Waehrend eines Updates steht die Schleife bis zu 2 h: busy = Zeitgrenze 7200 s + KILL-Frist 60 s; danach sofort wieder ok
+# (sonst zaehlte der Waechter nach einem kurzen Update bis zum Ende der Zeitgrenze nicht).
+hd="$(cat "$W/hb_during" 2>/dev/null)"; h="$(hb loop)"
+if [ "$hd" = 'busy|7260' ] && [ "$h" = 'ok||true' ]; then pass hb_loop_busy_update
+else fail hb_loop_busy_update "waehrend=[$hd] danach=[$h]"; fi
 
 # 5 schon aktuell (alter Knopf) -> nichts installiert, eine Meldung
 installed v9.9.10; reset_db; tg_clear; id="$(request v9.9.10)"; cli --run-requested

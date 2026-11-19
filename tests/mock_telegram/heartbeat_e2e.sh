@@ -60,8 +60,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Kurze Schwellen: 60 s beobachtet, jede Minute ein Lauf (step_cap = Takt), Luecken ueber 150 s zaehlen nicht.
-if ! { cfg set watch step_cap_s 60 && cfg set watch gap_s 150 && cfg set watch loop_s 60 \
+# Kurze Schwellen: 180 s beobachtet (ein Durchlauf der Docker-Schleife dauert 60 s Pause + Tick, also ueber 60 s), jede
+# Minute ein Lauf (step_cap = Takt), Luecken ueber 150 s zaehlen nicht.
+if ! { cfg set watch step_cap_s 60 && cfg set watch gap_s 150 && cfg set watch loop_s 180 \
         && cfg set general reminders_from 0 && cfg set general reminders_until 24 \
         && cfg set schedule heartbeat_watch '* * * * *'; }; then echo "FAIL setup: config set"; exit 1; fi
 q "DELETE FROM core.notification_state WHERE source = 'heartbeat'" >/dev/null

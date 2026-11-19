@@ -43,7 +43,7 @@
         "finance.app.accounts.free_of": "davon {amount} frei",
         "finance.app.accounts.d_reserved": "Zurückgelegt für Ziele",
         "finance.app.accounts.low": "Tiefster Stand",
-        "finance.app.accounts.pill_tight": "knapp über dem Puffer ({buffer})",
+        "finance.app.accounts.pill_short": "unter Puffer",
         "finance.app.depot.gain": "{amount} · {pct} %",
         "finance.app.depot.price_missing": "Kurs fehlt",
         "finance.enum.asset_bucket.cash": "Konten & Tagesgeld",
@@ -114,9 +114,9 @@
             {
               "label": { "kind": "tpl", "value": "finance.app.accounts.low", "params": {} },
               "sub": null,
-              "value": { "kind": "money", "value": 412.80, "currency": "EUR" },
+              "value": { "kind": "money", "value": 180.20, "currency": "EUR" },
               "gap": false,
-              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_tight", "params": { "buffer": { "kind": "money", "value": 250.00, "currency": "EUR" } } } },
+              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_short", "params": {} } },
               "progress": null,
               "target": null
             },
@@ -164,9 +164,9 @@
     "empty": false,
     "banners": [
       {
-        "state": "warn",
-        "icon": "clock",
-        "text": { "kind": "tpl", "value": "finance.app.accounts.banner_tight", "params": { "account": "Girokonto Beispielbank", "min": { "kind": "money", "value": 412.80, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-18" } } },
+        "state": "alert",
+        "icon": "alert",
+        "text": { "kind": "tpl", "value": "finance.app.accounts.banner_short", "params": { "account": "Girokonto Beispielbank", "min": { "kind": "money", "value": 180.20, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-18" } } },
         "target": { "screen": "accounts", "params": {} }
       }
     ]

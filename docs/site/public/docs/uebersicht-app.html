@@ -261,7 +261,7 @@
 <ul>
 <li>Ohne Kontoauszug steht beim Girokonto „Tiefster Stand —“; aufgeklappt steht, was fehlt: „Für eine Vorschau fehlt noch ein Kontoauszug – schick einen im Chat.“</li>
 <li>Geht von einem Sparkonto nichts ab, steht dort „Reicht · nichts geht ab“.</li>
-<li>Für Konten mit Kontoauszug (siehe <a href="monats-check.html">Monats-Check</a>): der tiefste Stand vor dem nächsten Geldeingang. Gelb „knapp über Puffer ⓘ“ oder rot „unter Puffer ⓘ“, sonst nichts. Ist der letzte Auszug älter als 45 Tage, steht statt einer Zahl „–“ und gelb „neuer Kontoauszug ⓘ“, denn mit einem so alten Auszug wäre die Rechnung falsch. Aufgeklappt steht zuerst die Erklärung und was du tun kannst, dann die Rechnung, die genau den tiefsten Stand ergibt: Stand am …, gebucht seit …, feste Abgänge, feste Eingänge, Alltag geschätzt („≈ 62 € pro Tag × 29 Tage“), „Tiefster Stand am 24.11.“ als Ergebnis, der Puffer, der nächste Geldeingang und bei einem roten Konto ein Umbuchungs-Vorschlag. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“</li>
+<li>Für Konten mit Kontoauszug (siehe <a href="monats-check.html">Monats-Check</a>): der tiefste Stand vor dem nächsten Geldeingang. Rot „unter Puffer ⓘ“, sonst nichts. Ein Konto, von dem nichts abgeht oder auf dem laut Kontoauszügen keine Alltagsausgaben anfallen (etwa ein Verrechnungskonto, von dem nur ein Sparplan abbucht), braucht keinen Puffer: Dort warnt nur ein Minus, und die Puffer-Zeile entfällt. Ist der letzte Auszug älter als 45 Tage, steht statt einer Zahl „–“ und gelb „neuer Kontoauszug ⓘ“, denn mit einem so alten Auszug wäre die Rechnung falsch. Aufgeklappt steht zuerst die Erklärung und was du tun kannst, dann die Rechnung, die genau den tiefsten Stand ergibt: Stand am …, gebucht seit …, feste Abgänge, feste Eingänge, Alltag geschätzt („≈ 62 € pro Tag × 29 Tage“), „Tiefster Stand am 24.11.“ als Ergebnis, der Puffer, der nächste Geldeingang und bei einem roten Konto ein Umbuchungs-Vorschlag. Den Puffer stellst du je Konto im Chat ein: „Auf dem Girokonto sollen immer mindestens 400 € bleiben.“</li>
 <li>Für Spar- und Verrechnungskonten, von denen Sparpläne oder Daueraufträge abgehen: <strong>„Reicht bis 04.2027“</strong>, der Monat, in dem das <strong>freie</strong> Geld aufgebraucht ist, darunter, was im Monat abgeht und reinkommt. Geld, das dort für Sparziele zurückliegt, zählt nicht als frei. Daneben gelb (oder rot, wenn es schon in den nächsten Monaten so weit ist) „Monatsminus ⓘ“; aufgeklappt steht, wie viel im Monat mehr abgeht als reinkommt. Reicht das Geld länger als die geprüften zwei Jahre, steht dort „Reicht über 10.2028 hinaus“ ohne Markierung. Dasselbe Urteil steht auf der Seite Ziele am Sparplan, der von diesem Konto abbucht.</li>
 </ul>
 </li>
@@ -367,7 +367,7 @@
 	</tbody>
 </table>
 <p>Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es nach zehn Minuten erneut, nach dem dritten Fehlschlag in Folge erst beim nächsten Anlass oder Update wieder; <code>lifeagents doctor</code> meldet es.</p>
-<p>Ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:</p>
+<p>Weitere Grenzen der Seiten stellst du ebenfalls ein:</p>
 <table>
 	<thead>
 			<tr>
@@ -376,10 +376,6 @@
 			</tr>
 	</thead>
 	<tbody>
-			<tr>
-					<td><code>lifeagents config set finance coverage_warn_factor 2</code></td>
-					<td>Gelb, wenn der tiefste vorausgesagte Kontostand unter dem Doppelten des Puffers liegt; rot unter dem Puffer selbst (<code>coverage_buffer_eur</code>).</td>
-			</tr>
 			<tr>
 					<td><code>lifeagents config set finance everyday_oneoff_eur 250</code></td>
 					<td>Ab diesem Einzelbetrag gilt eine Ausgabe im Kontoauszug als einmalig und zählt nicht zu den geschätzten Alltagsausgaben (gilt ab dem nächsten Auszug).</td>

@@ -297,7 +297,7 @@ END $$;
 -- Puffer nur, wenn etwas abgeht: geplante Abbuchung (Dauerauftrag, Sparplan, Uebertrag weg) in 400 Tagen oder Alltag
 -- aus Auszuegen. Sonst Puffer 0 (buffer_source none); ein Minus meldet weiter, ein eigener Puffer gilt weiter. Die
 -- Abbuchung darf hinter dem Horizont liegen (Verrechnungskonto: Zubringer am Tag X, Sparplan am Tag X+1), sonst
--- spraenge der Puffer im Monat zwischen 0 und 250. Werte erfunden.
+-- spraenge der Puffer im Monat zwischen 0 und 250. N4/N5 haben keinen Auszug (Alltag unbekannt). Werte erfunden.
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
@@ -360,6 +360,50 @@ BEGIN
      OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL [N7] Alltag aus dem Auszug zaehlt als Abgang: %', v_res; END IF;
   RAISE NOTICE 'PASS outlook Puffer nur mit Abgang: 0 ohne (Minus meldet, eigener Puffer gilt), Sparplan vor/nach Horizont, Alltag';
+END $$;
+
+-- Alltag bekannt 0 (Auszug ohne freie Abgaenge): kein Standard-Puffer, auch wenn ein Sparplan abgeht; der Puffer
+-- faengt nur die Schaetzung des Alltags ab. Alltag unbekannt (kein Auszug, N4/N5) behaelt den Standard; ein eigener
+-- Puffer gilt; ein Tief unter 0 meldet weiter. Werte erfunden.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_plan INT; v_own INT; v_neg INT; v_res JSONB;
+BEGIN
+  v_plan := (finance.fn_create_account('{"name":"__t_ol_k0_plan__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_own  := (finance.fn_create_account('{"name":"__t_ol_k0_own__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_neg  := (finance.fn_create_account('{"name":"__t_ol_k0_neg__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+    (v_plan, 100, t - 40, 'other'), (v_own, 100, t - 40, 'other'), (v_neg, 30, t - 40, 'other');
+  UPDATE finance.accounts SET min_balance = 80 WHERE id = v_own;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+                                          first_payment_date, valid_from)
+  VALUES ('K0 Sparplan',     v_plan, NULL, -50, 1, 'month', t + 3, t + 3),
+         ('K0 Sparplan own', v_own,  NULL, -50, 1, 'month', t + 3, t + 3),
+         ('K0 Sparplan neg', v_neg,  NULL, -50, 1, 'month', t + 3, t + 3);
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', a, 'confirmed_balance', b, 'reconciliation_date', (t - 5)::text))
+  FROM (VALUES (v_plan, 100), (v_own, 100), (v_neg, 30)) x(a, b);
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  SELECT a, t - 34, t - 5, b, b, 'EUR', 1, 1, 0, 0, NULL FROM (VALUES (v_plan, 100), (v_own, 100), (v_neg, 30)) x(a, b);
+
+  v_res := finance.fn_account_outlook(v_plan);
+  IF (v_res->>'has_history')::boolean IS DISTINCT FROM true OR (v_res->>'everyday_per_day')::numeric IS DISTINCT FROM 0
+     OR (v_res->>'planned_out')::numeric IS DISTINCT FROM -50 OR (v_res->>'min_projected')::numeric IS DISTINCT FROM 50
+     OR (v_res->>'buffer')::numeric IS DISTINCT FROM 0 OR v_res->>'buffer_source' IS DISTINCT FROM 'none'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 0 OR (v_res->>'outflow_expected')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [K1] Alltag bekannt 0 + Sparplan -> Puffer 0 (none), Tief 50 reicht: %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_own);
+  IF (v_res->>'buffer')::numeric IS DISTINCT FROM 80 OR v_res->>'buffer_source' IS DISTINCT FROM 'account'
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 30 THEN
+    RAISE EXCEPTION 'FAIL [K2] Alltag bekannt 0: eigener Puffer 80 gilt (Tief 50 -> 30 fehlen): %', v_res; END IF;
+
+  v_res := finance.fn_account_outlook(v_neg);
+  IF v_res->>'buffer_source' IS DISTINCT FROM 'none' OR (v_res->>'min_projected')::numeric IS DISTINCT FROM -20
+     OR (v_res->>'shortfall')::numeric IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'FAIL [K3] Alltag bekannt 0: Tief unter 0 meldet weiter (shortfall 20): %', v_res; END IF;
+  RAISE NOTICE 'PASS outlook Alltag bekannt 0: Puffer 0 trotz Sparplan, eigener Puffer gilt, Minus meldet';
 END $$;
 
 ROLLBACK;

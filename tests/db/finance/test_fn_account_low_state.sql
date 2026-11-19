@@ -92,36 +92,29 @@ BEGIN
   RAISE NOTICE 'PASS [7] p_alert_only';
 END $$;
 
--- [8] Schwelle warn = coverage_warn_factor x Puffer, Grenze exklusiv: ein Puffer-Urteil ohne Fehlbetrag mit Faktor genau
---     tiefster Stand / Puffer ist noch ok, ein Faktor darueber macht es knapp (warn).
+-- [8] Puffer-Urteil zweistufig: ab dem Puffer ok (auch knapp darueber, kein gelbes „knapp“), darunter alert.
+--     Eigener Puffer, damit die Regel zum Alltag nicht mitspielt. Werte erfunden.
 DO $$
 DECLARE
-  v jsonb; v_id int; v_amt numeric; v_buf numeric;
+  v jsonb; v_id int;
 BEGIN
-  -- das Tagesgeld ohne Bewegung braucht einen Abgang hinter dem Horizont, sonst hat es Puffer 0 und kein Fixture-Konto
-  -- traegt ein Puffer-Urteil ohne Fehlbetrag; der tiefste Stand bleibt gleich
-  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from)
-  VALUES ('LS Abo', (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_savings_mira'), -1, 1, 'year',
-          core.fn_today() + 390, core.fn_today() + 390);
-  SELECT x.id INTO v_id FROM (SELECT id::int AS id FROM pg_temp.app_fx WHERE key LIKE 'acc\_%') x
-   WHERE finance.fn_account_low_state(x.id)->>'verdict' = 'buffer'
-     AND (finance.fn_account_low_state(x.id)->>'short_by')::numeric = 0
-     AND (finance.fn_account_low_state(x.id)->>'buffer')::numeric > 0
-     AND (finance.fn_account_low_state(x.id)->>'amount')::numeric > 0
-   ORDER BY x.id LIMIT 1;
-  IF v_id IS NULL THEN RAISE EXCEPTION 'SETUP [8] kein Fixture-Konto mit Puffer-Urteil ohne Fehlbetrag'; END IF;
+  v_id := (finance.fn_create_account('{"name":"__t_ls_two_step__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_id, 150, core.fn_today() - 40, 'other');
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_id, core.fn_today() - 34, core.fn_today() - 5, 150, 150, 'EUR', 0, 0, 0, 0, NULL);
+  UPDATE finance.accounts SET min_balance = 100 WHERE id = v_id;
   v := finance.fn_account_low_state(v_id);
-  v_amt := (v->>'amount')::numeric; v_buf := (v->>'buffer')::numeric;
-  IF trim_scale(v_amt / v_buf) * v_buf <> v_amt THEN RAISE EXCEPTION 'SETUP [8] Verhaeltnis nicht exakt: % / %', v_amt, v_buf; END IF;
-
-  INSERT INTO core.config (category, key, value, package) VALUES ('finance', 'coverage_warn_factor', trim_scale(v_amt / v_buf)::text, 'finance')
-    ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value;
+  IF v->>'verdict' IS DISTINCT FROM 'buffer' OR (v->>'amount')::numeric IS DISTINCT FROM 150 OR v->>'state' IS DISTINCT FROM 'ok' THEN
+    RAISE EXCEPTION 'FAIL [8a] tiefster Stand 150 knapp ueber Puffer 100 -> ok, got %', v; END IF;
+  UPDATE finance.accounts SET min_balance = 150 WHERE id = v_id;
   IF finance.fn_account_low_state(v_id)->>'state' IS DISTINCT FROM 'ok' THEN
-    RAISE EXCEPTION 'FAIL [8a] tiefster Stand = Faktor x Puffer -> ok, got %', finance.fn_account_low_state(v_id); END IF;
-  UPDATE core.config SET value = trim_scale(v_amt / v_buf + 1)::text WHERE category = 'finance' AND key = 'coverage_warn_factor';
-  IF finance.fn_account_low_state(v_id)->>'state' IS DISTINCT FROM 'warn' THEN
-    RAISE EXCEPTION 'FAIL [8b] tiefster Stand unter Faktor x Puffer -> warn, got %', finance.fn_account_low_state(v_id); END IF;
-  RAISE NOTICE 'PASS [8] warn-Schwelle Faktor x Puffer, Grenze exklusiv';
+    RAISE EXCEPTION 'FAIL [8b] tiefster Stand = Puffer -> ok, got %', finance.fn_account_low_state(v_id); END IF;
+  UPDATE finance.accounts SET min_balance = 151 WHERE id = v_id;
+  v := finance.fn_account_low_state(v_id);
+  IF v->>'state' IS DISTINCT FROM 'alert' OR (v->>'short_by')::numeric IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'FAIL [8c] tiefster Stand 1 unter dem Puffer -> alert, got %', v; END IF;
+  RAISE NOTICE 'PASS [8] Puffer-Urteil zweistufig: ab Puffer ok, darunter alert';
 END $$;
 
 -- [9] Auszug aelter als statement_stale_days: die Vorschau ist nicht verlaesslich -> warn, verdict stale, Auszug-Datum;

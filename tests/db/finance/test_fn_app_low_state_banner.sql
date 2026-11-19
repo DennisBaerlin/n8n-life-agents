@@ -3,7 +3,7 @@
 -- „Tiefster Stand" (Konten-probe fuer gelistete Konten, Ziele-probe fuer Kinder-Konten in der Haushalts-Sicht).
 --   1) verdict goals alert -> „{account}: Das Geld ... reicht nur bis {date}" (on_date).
 --   2) verdict buffer alert -> „... unter dem Puffer" mit tiefstem Stand + Tag des Tiefs; mit Vorschlag -> _suggest.
---   3) verdict buffer warn -> „Es wird knapp"; goals warn / ok / neutral / ohne state / {ok:false} / NULL -> NULL.
+--   3) buffer warn (kein Zustand des Urteils mehr) / goals warn / ok / neutral / ohne state / {ok:false} / NULL -> NULL.
 --   Das Ziel (target) setzt der Aufrufer.
 -- Self-contained (BEGIN..ROLLBACK).
 BEGIN;
@@ -30,18 +30,15 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2b] buffer alert mit Vorschlag'; END IF;
   RAISE NOTICE 'PASS [2] buffer alert (+ Vorschlag)';
 
-  IF finance.fn_app_low_state_banner(b || '{"state":"warn"}', 'Giro', NULL) <> jsonb_build_object(
-       'state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.accounts.banner_tight',
-         jsonb_build_object('account', 'Giro', 'min', core.fn_ui_money(140, 'EUR'), 'date', core.fn_ui_date('2026-11-27')))) THEN
-    RAISE EXCEPTION 'FAIL [3a] buffer warn'; END IF;
-  IF finance.fn_app_low_state_banner(g || '{"state":"warn"}', 'x', NULL) IS NOT NULL
+  IF finance.fn_app_low_state_banner(b || '{"state":"warn"}', 'Giro', NULL) IS NOT NULL
+     OR finance.fn_app_low_state_banner(g || '{"state":"warn"}', 'x', NULL) IS NOT NULL
      OR finance.fn_app_low_state_banner(b || '{"state":"ok"}', 'x', NULL) IS NOT NULL
      OR finance.fn_app_low_state_banner(b || '{"state":"neutral"}', 'x', NULL) IS NOT NULL
      OR finance.fn_app_low_state_banner(b, 'x', NULL) IS NOT NULL
      OR finance.fn_app_low_state_banner('{"ok":false}', 'x', NULL) IS NOT NULL
      OR finance.fn_app_low_state_banner(NULL, 'x', NULL) IS NOT NULL THEN
-    RAISE EXCEPTION 'FAIL [3b] goals warn / ok / neutral / ohne state / ok:false / NULL -> kein Banner'; END IF;
-  RAISE NOTICE 'PASS [3] knapp + keine Banner ohne Handlungsbedarf';
+    RAISE EXCEPTION 'FAIL [3] buffer warn / goals warn / ok / neutral / ohne state / ok:false / NULL -> kein Banner'; END IF;
+  RAISE NOTICE 'PASS [3] kein Banner ohne Handlungsbedarf';
 
   IF finance.fn_app_low_state_banner('{"ok":true,"currency":"EUR","verdict":"stale","state":"warn"}', 'Giro', NULL)
        IS DISTINCT FROM jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.accounts.banner_stale',

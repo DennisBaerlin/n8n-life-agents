@@ -14,9 +14,10 @@
 --   statement_age_days = Tage seit dem bestaetigten Stand (NULL ohne Abgleich): der Alltag laeuft ab d0 ohne Obergrenze,
 --   ein alter Auszug drueckt die Vorschau also beliebig tief -> fn_advisor_review warnt ab finance.statement_stale_days
 --   nicht mehr vor Unterdeckung, sondern meldet den veralteten Auszug.
---   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'); sonst ohne erwarteten Abgang 0
---   (buffer_source 'none': ein Konto, von dem nichts abgeht, z. B. ein Verrechnungskonto ohne Sparplan, braucht keinen;
---   ein Minus bleibt ein Fehlbetrag); sonst core.config finance.coverage_buffer_eur (Default 250) in die Kontowaehrung
+--   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'); sonst 0 (buffer_source 'none') ohne
+--   erwarteten Abgang oder mit Alltag laut Auszuegen bekannt 0 (has_history, everyday_per_day = 0), auch wenn Sparplaene
+--   oder Dauerauftraege abgehen: der Puffer faengt nur die Alltags-Schaetzung ab, ein Minus bleibt ein Fehlbetrag; ohne
+--   Auszug (Alltag unbekannt) mit Abgang core.config finance.coverage_buffer_eur (Default 250) in die Kontowaehrung
 --   umgerechnet (buffer_source 'default'). outflow_expected = Abgang in der Reihe bis zum Horizont (planned_out < 0),
 --   Alltagsausgaben aus Auszuegen (everyday_per_day < 0) oder eine laufende bzw. erfasste kuenftige Abbuchung von diesem
 --   Konto (Dauerauftrag, Sparplan, Uebertrag weg, Kreditrate; active_/upcoming_recurring_payments), auch hinter dem Horizont.
@@ -122,8 +123,9 @@ BEGIN
     IF v_acct.min_balance IS NOT NULL THEN
         v_buffer := v_acct.min_balance;
         v_bsrc   := 'account';
-    ELSIF NOT v_outx THEN
-        -- nichts geht ab: kein Puffer noetig; ein Minus bleibt ein Fehlbetrag (shortfall > 0)
+    ELSIF NOT v_outx OR (COALESCE(v_hist, false) AND COALESCE(v_per_day, 0) = 0) THEN
+        -- nichts geht ab, oder Alltag laut Auszuegen bekannt 0: der Standard-Puffer faengt nur die Alltags-Schaetzung ab,
+        -- geplante Abgaenge stehen exakt in der Reihe; ein Minus bleibt ein Fehlbetrag (shortfall > 0)
         v_buffer := 0;
         v_bsrc   := 'none';
     ELSE

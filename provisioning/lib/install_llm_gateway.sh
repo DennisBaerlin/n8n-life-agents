@@ -55,9 +55,12 @@ install_llm_gateway() {
   local upstream="${LIFEAGENTS_LLM_UPSTREAM:-}"
   if [ -n "$upstream" ]; then
     rt_is_compose || die "LIFEAGENTS_LLM_UPSTREAM gibt es nur im Docker-Verbund (Test-Weiche)."
-    if ! [[ "$upstream" =~ ^http://127\.0\.0\.1:([0-9]{1,5})$ ]] || [ "$((10#${BASH_REMATCH[1]}))" -lt 1 ] || [ "$((10#${BASH_REMATCH[1]}))" -gt 65535 ]; then
+    local up_port=0
+    [[ "$upstream" =~ ^http://127\.0\.0\.1:([0-9]{1,5})$ ]] && up_port=$((10#${BASH_REMATCH[1]}))
+    if [ "$up_port" -lt 1 ] || [ "$up_port" -gt 65535 ]; then
       die "LIFEAGENTS_LLM_UPSTREAM muss http://127.0.0.1:<port> sein (Test-Weiche); Inhalte gehen sonst nur an api.anthropic.com."
     fi
+    upstream="http://127.0.0.1:${up_port}"   # ohne fuehrende Nullen gespeichert
   fi
 
   # Cache-Keep-Alive (Kopf von server.js): Stunden 0-48, Standard 24, 0 = aus. Quelle: Install-Env (Test-Substrat

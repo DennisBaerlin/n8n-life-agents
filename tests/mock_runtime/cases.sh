@@ -354,6 +354,7 @@ gwrun() {
 }
 gwenv() { read_env_value "$LW/gw/gateway.env" "$1" 2>/dev/null || true; }
 gwrun compose http://127.0.0.1:8088;   eq L.weiche-schreibt-ziel http://127.0.0.1:8088 "$(gwenv LLM_GATEWAY_UPSTREAM)"
+gwrun compose http://127.0.0.1:08088;  eq L.fuehrende-null-normalisiert http://127.0.0.1:8088 "$(gwenv LLM_GATEWAY_UPSTREAM)"
 gwrun compose -
 if [ -f "$LW/gw/gateway.env" ] && ! grep -q '^LLM_GATEWAY_UPSTREAM' "$LW/gw/gateway.env"; then pass L.ohne-weiche-keine-zeile; else fail L.ohne-weiche-keine-zeile "Zeile vorhanden oder gateway.env fehlt"; fi
 for bad in https://api.anthropic.com http://example.org http://127.0.0.1.evil.test:80 http://localhost:8088 http://127.0.0.1:0 \
@@ -376,10 +377,15 @@ lstart() {   # lstart <gateway.env> : KI-Attrappe + Gateway starten (Hintergrund
   MOCK_LLM_PORT=$LMOCK MOCK_LLM_LOG="$LLOG" MOCK_LLM_SCENARIOS="$ROOT/tests/mock_llm/scenarios.json" node "$ROOT/tests/mock_llm/server.js" >/dev/null 2>&1 & LPID1=$!
   # shellcheck disable=SC2046  # gateway.env: ein Paar je Zeile, Werte ohne Leerzeichen (Hex, Zahlen, Pfade)
   env -i PATH="$PATH" $(cat "$1") LLM_GATEWAY_PORT=$LGW STATE_DIRECTORY="$LW/st" node "$LW/gw/server.js" >/dev/null 2>&1 & LPID2=$!
-  local _; for _ in $(seq 1 30); do curl -sf "http://127.0.0.1:$LGW/__health" >/dev/null 2>&1 && curl -sf "http://127.0.0.1:$LMOCK/__health" >/dev/null 2>&1 && return 0; sleep 0.3; done
+  # Beide Prozesse muessen leben: sonst koennte ein fremder Listener auf dem Port die Gesundheitsprobe beantworten.
+  local _; for _ in $(seq 1 30); do
+    kill -0 "$LPID1" 2>/dev/null && kill -0 "$LPID2" 2>/dev/null || return 1
+    curl -sf "http://127.0.0.1:$LGW/__health" >/dev/null 2>&1 && curl -sf "http://127.0.0.1:$LMOCK/__health" >/dev/null 2>&1 && return 0; sleep 0.3
+  done
   return 1
 }
-lstop() { kill "$LPID1" "$LPID2" 2>/dev/null; wait "$LPID1" "$LPID2" 2>/dev/null; return 0; }
+lstop() { kill "${LPID1:-0}" "${LPID2:-0}" 2>/dev/null; wait "${LPID1:-0}" "${LPID2:-0}" 2>/dev/null; return 0; }
+trap 'lstop; rm -rf "$W"' EXIT
 if command -v node >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
   gwrun compose "http://127.0.0.1:$LMOCK" && mkdir -p "$LW/st"
   if lstart "$LW/gw/gateway.env"; then

@@ -203,5 +203,111 @@
     "harness_body": {},
     "reset_sql": ["DELETE FROM agent.reminder_prefs WHERE person_id = 'lena';"],
     "expect_keys": ["core.reminders.title", "core.reminders.intro_member", "career.cron.score_jobs.label", "core.cron.onboarding_nudge.label"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctw01",
+    "name": "Waechter klassisch (Owner ko): Update-Schleife schweigt 20 min beobachtet -> T1 klassisch, Stufe 1 gemerkt",
+    "workflow": "core.cron_heartbeat_watch",
+    "schedule_key": "heartbeat_watch",
+    "recipient": "owner",
+    "stop_units": ["lifeagents-update-run.timer", "lifeagents-update-check.timer", "lifeagents-backup.timer"],
+    "reset_sql": [
+      "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer; DELETE FROM core.notification_state WHERE source = 'heartbeat';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO core.heartbeat_observer (seen_at, runtime, help_url) VALUES (now() - interval '10 minutes', 'systemd', 'https://example.org/hilfe');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since, stale_observed_s) VALUES ('loop', 'ok', now() - interval '20 minutes', now() - interval '1 day', 600), ('check', 'ok', now(), now(), 0), ('backup', 'current', now(), now(), 0);"
+    ],
+    "expect_keys": ["core.heartbeat.alert.loop.systemd", "core.heartbeat.since.minutes"],
+    "expect_sql": [{ "sql": "SELECT alert_stage FROM core.heartbeats WHERE signal = 'loop';", "expect": "1" }]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctw02",
+    "name": "Waechter Docker-Verbund (Kontrolle Owner de): Schleife steht -> T1 Docker, Pruefung und Sicherung schweigen (Ursache vor Folge)",
+    "workflow": "core.cron_heartbeat_watch",
+    "schedule_key": "heartbeat_watch",
+    "recipient": "owner",
+    "owner_lang": "de",
+    "stop_units": ["lifeagents-update-run.timer", "lifeagents-update-check.timer", "lifeagents-backup.timer"],
+    "reset_sql": [
+      "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer; DELETE FROM core.notification_state WHERE source = 'heartbeat';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO core.heartbeat_observer (seen_at, runtime, help_url) VALUES (now() - interval '10 minutes', 'compose', 'https://example.org/hilfe');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since, stale_observed_s) VALUES ('loop', 'ok', now() - interval '3 days', now() - interval '3 days', 1200), ('check', 'ok', now() - interval '3 days', now() - interval '3 days', 50000), ('backup', 'current', now() - interval '3 days', now() - interval '3 days', 100000);"
+    ],
+    "expect_keys": ["core.heartbeat.alert.loop.compose", "core.heartbeat.since.days"],
+    "expect_sql": [{ "sql": "SELECT string_agg(signal || '=' || alert_stage, ',' ORDER BY signal) FROM core.heartbeats;", "expect": "backup=0,check=0,loop=1" }]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctw03",
+    "name": "Waechter Entwarnung (Owner ko): alarmierte Schleife schlaegt wieder -> genau eine Entwarnung, Vorfall geschlossen",
+    "workflow": "core.cron_heartbeat_watch",
+    "schedule_key": "heartbeat_watch",
+    "recipient": "owner",
+    "stop_units": ["lifeagents-update-run.timer", "lifeagents-update-check.timer", "lifeagents-backup.timer"],
+    "reset_sql": [
+      "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer; DELETE FROM core.notification_state WHERE source = 'heartbeat';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO core.heartbeat_observer (seen_at, runtime, help_url) VALUES (now() - interval '10 minutes', 'systemd', 'https://example.org/hilfe');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since, incident_at, alert_stage, last_alert_at) VALUES ('loop', 'ok', now(), now() - interval '1 day', now() - interval '2 hours', 1, now() - interval '1 hour');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since) VALUES ('check', 'ok', now(), now()), ('backup', 'current', now(), now());"
+    ],
+    "expect_keys": ["core.heartbeat.clear.loop.systemd"],
+    "expect_sql": [{ "sql": "SELECT alert_stage || '|' || (incident_at IS NULL) || '|' || (last_clear_at IS NOT NULL) FROM core.heartbeats WHERE signal = 'loop';", "expect": "0|true|true" }]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctw04",
+    "name": "Waechter Rueckblick (Owner ko): eigene Luecke ueber 23 h -> einmal R, Luecke danach geschlossen",
+    "workflow": "core.cron_heartbeat_watch",
+    "schedule_key": "heartbeat_watch",
+    "recipient": "owner",
+    "stop_units": ["lifeagents-update-run.timer", "lifeagents-update-check.timer", "lifeagents-backup.timer"],
+    "reset_sql": [
+      "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer; DELETE FROM core.notification_state WHERE source = 'heartbeat';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO core.heartbeat_observer (seen_at, runtime, help_url) VALUES (now() - interval '26 hours', 'compose', 'https://example.org/hilfe');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since) VALUES ('loop', 'ok', now(), now()), ('check', 'ok', now(), now()), ('backup', 'current', now(), now());"
+    ],
+    "expect_keys": ["core.heartbeat.lookback", "core.heartbeat.about.day"],
+    "expect_sql": [{ "sql": "SELECT (lookback_from IS NULL)::text FROM core.heartbeat_observer;", "expect": "true" }]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctw05",
+    "name": "Waechter Sendefehler (Owner ko): Telegram lehnt ab -> nichts gemerkt, Sende-Abstand 30 min",
+    "workflow": "core.cron_heartbeat_watch",
+    "schedule_key": "heartbeat_watch",
+    "recipient": "owner",
+    "tg_fail": "sendMessage",
+    "stop_units": ["lifeagents-update-run.timer", "lifeagents-update-check.timer", "lifeagents-backup.timer"],
+    "reset_sql": [
+      "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer; DELETE FROM core.notification_state WHERE source = 'heartbeat';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "INSERT INTO core.heartbeat_observer (seen_at, runtime, help_url) VALUES (now() - interval '10 minutes', 'systemd', 'https://example.org/hilfe');",
+      "INSERT INTO core.heartbeats (signal, status, beat_at, status_since, stale_observed_s) VALUES ('loop', 'ok', now() - interval '20 minutes', now() - interval '1 day', 600), ('check', 'ok', now(), now(), 0), ('backup', 'current', now(), now(), 0);"
+    ],
+    "expect_keys": ["core.heartbeat.alert.loop.systemd"],
+    "expect_sql": [
+      { "sql": "SELECT (SELECT alert_stage FROM core.heartbeats WHERE signal = 'loop') || '|' || fail_count || '|' || (retry_after BETWEEN now() + interval '25 minutes' AND now() + interval '31 minutes') FROM core.heartbeat_observer;", "expect": "0|1|true" },
+      { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'heartbeat' AND state = 'fired';", "expect": "0" }
+    ]
   }
 ]

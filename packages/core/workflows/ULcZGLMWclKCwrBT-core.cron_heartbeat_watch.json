@@ -1,0 +1,353 @@
+{
+    "id":  "ULcZGLMWclKCwrBT",
+    "name":  "core.cron_heartbeat_watch",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_HEARTBEAT_WATCH__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "5c386174-3656-52f0-8f50-7dd6a281930c",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_package_active(\u0027core\u0027) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "7d3623fb-1c80-5d48-a6f9-31b79ba737cd",
+                      "name":  "Core active?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "118be425-aaf2-5a8d-8bc4-da93a6d1360b",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "490bd25c-b77d-5bf4-bd24-2b5d2eb3244c",
+                      "name":  "Active?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -660,
+                                       200
+                                   ],
+                      "id":  "01cd98c8-2958-59b8-af93-d0bd9fd23b0a",
+                      "name":  "Inactive"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH c AS MATERIALIZED (SELECT core.fn_heartbeat_claim(\u0027{}\u0027::jsonb) AS r) SELECT c.r::text AS r FROM c;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "3fe72a46-dd5a-5ae8-9ba7-ad227a1f8a2e",
+                      "name":  "Find messages",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let r = {};\ntry { r = JSON.parse($input.first().json.r || \u0027{}\u0027); } catch (e) { r = {}; }\nconst list = Array.isArray(r.messages) ? r.messages : [];\nreturn list.map(m =\u003e ({ json: { key: String(m.key), chat_id: String(m.chat_id), text: String(m.text || \u0027\u0027) } }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -220,
+                                       0
+                                   ],
+                      "id":  "8858c071-cece-5ded-b674-0a82a1b41422",
+                      "name":  "Split messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "dc5f3ebb-e27e-5995-8bd1-3dcf0ce1bbe1",
+                      "name":  "Send",
+                      "retryOnFail":  true,
+                      "maxTries":  1,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_heartbeat_finish($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ key: $(\u0027Split messages\u0027).item.json.key, sent: true }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -120
+                                   ],
+                      "id":  "de035d46-b5ca-5585-b2e4-3018991a8904",
+                      "name":  "Finish sent",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_heartbeat_finish($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ key: $(\u0027Split messages\u0027).item.json.key, sent: false }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       120
+                                   ],
+                      "id":  "857918a5-7652-53bf-8b8c-34e88cd36d4f",
+                      "name":  "Finish failed",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.cron_heartbeat_watch — Wächter über den Hintergrund-Teil (deterministisch, kein LLM)**\n\nRund um die Uhr (schedule.heartbeat_watch, Standard alle 10 Minuten); ob gerade gesendet werden darf (Erinnerungs-Fenster), entscheidet die DB, damit das Zählen nachts weiterläuft. Core active? (Paket core aus -\u003e Inactive, nichts passiert; Core-Crons haben keinen cron_enable-Schalter). Lebenszeichen schreibt der root-Teil selbst (core.fn_heartbeat_record: Minuten-Schleife bzw. Timer, Release-Check, Sicherung). Find messages = core.fn_heartbeat_claim (MATERIALIZED, ein Aufruf): zählt nur Zeit, in der dieser Wächter selbst lief (zugeklappter Rechner löst nichts aus), Schwellen watch.* aus core.config, nur an den Owner, Docker-Verbund: Ursache vor Folge. Split messages -\u003e Send (je Text ein Versuch) -\u003e Finish sent / Finish failed = core.fn_heartbeat_finish. Gemerkt wird erst nach dem Telegram-Erfolg; scheitert das Senden (Netz weg, Bot blockiert), wächst der Abstand bis zum nächsten Versuch (30 Minuten, verdoppelt, höchstens 24 Stunden). Kein Stop and Error beim Sendefehler: der Fehler-Alarm ginge über denselben kaputten Weg.",
+                                         "height":  420,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -440
+                                   ],
+                      "id":  "f6afa56f-bb43-559f-9166-a5eb94aa5e8d",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       180
+                                   ],
+                      "id":  "541150f5-76d1-506a-878f-99bc4b517c2b",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       300
+                                   ],
+                      "id":  "0a94d4b8-5d65-5f10-83c2-0936c73fa343",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Core active?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Core active?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Active?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Active?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Find messages",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Inactive",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Find messages":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Split messages",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Split messages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Send":  {
+                                     "main":  [
+                                                  [
+                                                      {
+                                                          "index":  0,
+                                                          "node":  "Finish sent",
+                                                          "type":  "main"
+                                                      }
+                                                  ],
+                                                  [
+                                                      {
+                                                          "index":  0,
+                                                          "node":  "Finish failed",
+                                                          "type":  "main"
+                                                      }
+                                                  ]
+                                              ]
+                                 },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Core active?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -112,11 +112,9 @@ _ur_send() {
     --data-urlencode "chat_id=${chat}" --data-urlencode "text=${text}" "${rm[@]}" >/dev/null 2>&1
 }
 
-# _ur_help_url -> die Hilfeseite "Wenn ein Update fehlschlaegt" (GitHub Pages des Repos; eine Adresse: der Slug).
-_ur_help_url() {
-  local owner="${PROVISION_REPO_SLUG%%/*}" repo="${PROVISION_REPO_SLUG#*/}"
-  printf 'https://%s.github.io/%s/docs/update-hilfe.html' "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" "$repo"
-}
+# _ur_busy_s <zeitgrenze_s> -> busy-Dauer fuer ein Lebenszeichen: Zeitgrenze des Schritts + KILL-Frist, hoechstens 4 h
+#   (CHECK in core.heartbeats). Danach zaehlt der Waechter wieder, falls der Schritt haengt oder starb.
+_ur_busy_s() { local s=$(( $1 + UPDATE_STEP_KILL_S )); [ "$s" -le 14400 ] || s=14400; printf '%s' "$s"; }
 
 # _ur_n8n_port -> Port aus Prozess-Env, sonst n8n.env, sonst 5678 (die CLI laedt n8n.env nicht).
 _ur_n8n_port() {
@@ -157,7 +155,7 @@ _ur_bot_up() {
 _ur_report() {
   local id="$1" phase="$2"; shift 2
   local p kv out
-  p="$(jq -nc --argjson id "$id" --arg ph "$phase" --arg h "$(_ur_help_url)" --arg s "$PROVISION_REPO_SLUG" \
+  p="$(jq -nc --argjson id "$id" --arg ph "$phase" --arg h "$(lifeagents_help_url)" --arg s "$PROVISION_REPO_SLUG" \
          --arg c "$(rt_cli_hint)" --arg ct "$(rt_cli_hint tty)" \
          '{request_id:$id, phase:$ph, help_url:$h, repo_slug:$s, cli:$c, cli_tty:$ct}')"
   for kv in "$@"; do
@@ -254,6 +252,10 @@ update_check() {
   installed="$(_ur_installed)"
   if ! _ur_is_tag "$installed"; then
     log "Release-Check: installiert ist keine Release-Version ('${installed:-keine}') — nichts zu tun."
+    # Release-Profil ohne Versionsnummer (leer/'dev') bekommt nie Update-Hinweise -> Waechter meldet es; ein benannter
+    # Entwickler-Stand dev-<rev> oder ein anderes Profil ist gewollt still.
+    if [ "$(_install_profile)" = release ] && ! version_is_named "$installed"; then heartbeat_record check not_release
+    else heartbeat_record check skipped; fi
     _ur_outcome decided
     return 0
   fi
@@ -278,6 +280,7 @@ _ur_check_in() {
                         assets:[.assets[]?.name]}]}' "$work/rel.json")" \
     || { log "Release-Check: Antwort nicht lesbar."; _ur_outcome undecided; return 0; }
   card="$(_ur_sql "$json" "SELECT core.fn_release_card(:'p'::jsonb);")" || { _ur_alert "Release-Check: DB nicht erreichbar."; _ur_outcome undecided; return 0; }
+  heartbeat_record check ok   # der Check selbst hat gearbeitet; ob die Karte ankommt, meldet _ur_alert
   if [ "$(jq -r '.due' <<<"$card")" != true ]; then
     local why; why="$(jq -r '.reason // "?"' <<<"$card")"
     log "Release-Check: keine Karte fällig (${why})."
@@ -420,6 +423,8 @@ _ur_conclude() {
 update_run_requested() {
   require_root
   lifeagents_db_name >/dev/null
+  # Lebenszeichen vor der Sperre: auch wenn ein Terminal-Update oder die Einrichtung die Sperre haelt, lebt die Schleife.
+  heartbeat_record loop ok
   # Sperre nehmen, bevor ein Auftrag angefasst wird: unter ihr laeuft sicher kein anderes Update (provision.sh main
   # nimmt dieselbe Sperre) -> haengende Auftraege duerfen als interrupted geschlossen werden.
   update_lock_acquire || { log "Update-Sperre belegt (anderes Update/Einrichtung läuft) — nächster Lauf."; return 0; }
@@ -445,6 +450,7 @@ update_run_requested() {
     return 0
   fi
   id="$(jq -r '.claimed.id' <<<"$claim")"; tag="$(jq -r '.claimed.tag' <<<"$claim")"; kind="$(jq -r '.claimed.kind' <<<"$claim")"
+  heartbeat_record loop busy "$(_ur_busy_s "$UPDATE_RUN_TIMEOUT_S")"   # ein Update haelt die Schleife bis zu 2 h an
   _ur_run_one "$id" "$tag" "$kind" "$installed"   # ein Update setzt am Ende ohnehin alle Menues (und schliesst den Auftrag)
   return 0
 }
@@ -487,6 +493,7 @@ _ur_swap_continue() {
   case "$what" in
     none|wait) return 0 ;;
     apply)
+      heartbeat_record loop busy "$(_ur_busy_s "$UPDATE_RUN_TIMEOUT_S")"
       _swap_set PHASE applying
       mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"; _ur_logs_prune
       log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -535,6 +542,8 @@ _ur_swap_continue() {
 #   jede Minute als frischen Prozess): Auftraege wie lifeagents-update-run, alle UPDATE_CHECK_EVERY_S
 #   Sekunden (2 h) der Release-Check wie lifeagents-update-check (`update_check scheduled`: Karte nur im Erinnerungs-Fenster).
 #   Vor der ersten Installation (keine VERSION) still. Zustand in UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
+#   Ein neuer langer Schritt bekommt vorher `heartbeat_record loop busy` mit seiner Zeitgrenze, sonst meldet der Waechter
+#   (core.cron_heartbeat_watch) nach 15 Minuten eine stehende Schleife.
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
@@ -609,6 +618,7 @@ update_tick() {
   [ "$try" -le "$nowe" ] || try=0   # Uhr zurueckgestellt
   if rt_is_compose && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
+    heartbeat_record loop busy "$(_ur_busy_s "$BACKUP_TIMEOUT_S")"
     _ur_step "$BACKUP_TIMEOUT_S" backup auto --scheduled
   fi
   return 0

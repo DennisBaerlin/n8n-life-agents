@@ -122,6 +122,12 @@ tg_n() { jq -r 'select(.method == "sendMessage") | .method' "$TGLOG" 2>/dev/null
 tg_all() { jq -r 'select(.method == "sendMessage") | .body' "$TGLOG" 2>/dev/null | while IFS= read -r b; do urldec "$b"; printf '\n'; done; }
 tg_has() { tg_all | grep -qF -- "$1"; }
 show() { printf '%s' "$1" | tr '\r\n' '  ' | cut -c1-300; }
+# Lebenszeichen (core.heartbeats): hb_reset leert sie; hb <signal> -> 'status|busy_s|frisch' (busy_s = Sekunden bis busy_until).
+hb_reset() { sql "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer;" >/dev/null; }
+hb() { sql "SELECT status || '|' || COALESCE(round(extract(epoch FROM busy_until - beat_at))::text, '') || '|' || (beat_at > now() - interval '60 seconds') FROM core.heartbeats WHERE signal = '$1'"; }
+gh_cfg() { curl -s -X POST -d "$(jq -cn --argjson o "$1" '{mode:"public", rate_limited:false, secondary_limit:false, no_latest:false, truncate_asset:false} + $o')" "$API/__config" >/dev/null; }
+# Profil-Kopie fuer die Faelle 'VERSION ohne Nummer': die CLI liest INSTALL_PROFILE aus $LIFEAGENTS_DIR/core.env.
+la_profile() { rm -rf "$W/etc_la"; cp -a /etc/lifeagents "$W/etc_la"; sed -i '/^INSTALL_PROFILE=/d' "$W/etc_la/core.env"; printf 'INSTALL_PROFILE=%s\n' "$1" >> "$W/etc_la/core.env"; }
 
 # 0 Knopf-Verdrahtung: der Installer hat 'upd' aus dem Manifest in die Registry geseedet (owner-only), und ein Tap des
 #   Owners ueber den echten Dispatcher (wie der Orchestrator ihn ruft) legt genau einen Auftrag an.
@@ -137,7 +143,10 @@ else fail callback_wired "registry=[$reg] tap=$tap open=$n owner=$owner_tg"; fi
 reset_db; latch_clear
 
 # 1-3 Release-Karte: faellig, genau einmal, erst nach erfolgreichem Senden gemerkt
-installed v9.9.8; reset_db; latch_clear; tg_clear; cli --check
+installed v9.9.8; reset_db; latch_clear; tg_clear; hb_reset; cli --check
+h="$(hb check)"
+if [ "$h" = 'ok||true' ] && [ "$(sql "SELECT runtime || ' ' || help_url FROM core.heartbeat_observer")" = 'systemd https://owner.github.io/repo/docs/update-hilfe.html' ]; then
+  pass hb_check_ok; else fail hb_check_ok "check=[$h] $(show "$OUT")"; fi
 if [ "$(tg_n)" = 1 ] && tg_has 'upd:now:v9.9.10' && tg_has 'Kurz zehn.' && tg_has 'Kurz neun.' && ! tg_has 'RC-Text' && ! tg_has 'Alt acht' \
    && [ "$(sql "SELECT state FROM core.notification_state WHERE source='release_update' AND key='v9.9.10'")" = fired ]; then
   pass card_due; else fail card_due "sends=$(tg_n) $(show "$(tg_all)") out=$(show "$OUT")"; fi
@@ -155,6 +164,9 @@ installed v9.9.8; reset_db; scenario ok; tg_clear; id="$(request v9.9.10)"; cli 
 o="$(outcome "$id")"
 if [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ] && [ "$(tg_n)" = 2 ]; then pass run_succeeded
 else fail run_succeeded "outcome=$o ver=$(cat "$VER") sends=$(tg_n) $(show "$OUT")"; fi
+# Waehrend eines Updates steht die Schleife bis zu 2 h: busy = Zeitgrenze 7200 s + KILL-Frist 60 s
+h="$(hb loop)"
+if [ "$h" = 'busy|7260|true' ]; then pass hb_loop_busy_update; else fail hb_loop_busy_update "loop=[$h]"; fi
 
 # 5 schon aktuell (alter Knopf) -> nichts installiert, eine Meldung
 installed v9.9.10; reset_db; tg_clear; id="$(request v9.9.10)"; cli --run-requested
@@ -192,7 +204,7 @@ o="$(outcome "$id2")"
 if [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ]; then pass run_retry_ok; else fail run_retry_ok "outcome=$o"; fi
 
 # 10 Sperre belegt (anderes Update laeuft) -> Auftrag bleibt unangetastet
-installed v9.9.8; reset_db; tg_clear; id="$(request v9.9.10)"
+installed v9.9.8; reset_db; tg_clear; hb_reset; id="$(request v9.9.10)"
 # Halter laeuft von selbst ab (kill traefe nur flock, das Kind `sleep` hielte die Sperre weiter).
 # Erst weiter, wenn UNSER Halter die Sperre hat (Marker aus dem Kind): sonst startet cli vor dem Hintergrund-Halter.
 LKMARK="/tmp/upd_lock_held.$$"; rm -f "$LKMARK"
@@ -203,6 +215,22 @@ rm -f "$LKMARK"
 claimed="$(sql "SELECT claimed_at IS NOT NULL FROM core.update_requests WHERE id = $id")"
 wait "$LOCKER" 2>/dev/null
 if [ "$claimed" = f ] && [ "$(tg_n)" = 0 ]; then pass run_lock_busy; else fail run_lock_busy "claimed=$claimed sends=$(tg_n)"; fi
+# Die Schleife lebt, auch wenn ein anderes Update die Sperre haelt (Lebenszeichen vor der Sperre)
+h="$(hb loop)"
+if [ "$h" = 'ok||true' ]; then pass hb_loop_before_lock; else fail hb_loop_before_lock "loop=[$h]"; fi
+
+# 10a Release-Check und Lebenszeichen: GitHub-Fehler -> keins; VERSION ohne Nummer nur im Release-Profil laut (not_release),
+#     ein benannter Entwickler-Stand und das Dev-Profil still (skipped)
+installed v9.9.8; latch_clear; tg_clear; hb_reset; gh_cfg '{"rate_limited":true}'; cli --check; gh_cfg '{}'
+if [ -z "$(hb check)" ]; then pass hb_check_gh_fail; else fail hb_check_gh_fail "check=[$(hb check)] $(show "$OUT")"; fi
+la_profile release
+installed dev; hb_reset; EXTRA_ENV="LIFEAGENTS_DIR=$W/etc_la"; cli --check; h1="$(hb check)"
+installed dev-abc123; hb_reset; cli --check; h2="$(hb check)"
+la_profile dev
+installed dev; hb_reset; cli --check; h3="$(hb check)"; EXTRA_ENV=
+if [ "$h1" = 'not_release||true' ] && [ "$h2" = 'skipped||true' ] && [ "$h3" = 'skipped||true' ]; then pass hb_check_not_release
+else fail hb_check_not_release "release/dev=[$h1] release/dev-abc=[$h2] dev/dev=[$h3] $(show "$OUT")"; fi
+installed v9.9.8; latch_clear; hb_reset
 
 # 10b Release-Check gegen die Sperre. Der Minuten-Runner haelt sie zur vollen Minute kurz, genau dann feuert auch der
 #     Check-Timer: der Check wartet und entscheidet. Ein echtes Update haelt sie laenger als die Wartezeit: ausgelassen.

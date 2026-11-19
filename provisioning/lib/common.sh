@@ -254,6 +254,32 @@ is_release_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 version_is_named() { is_release_tag "${1:-}" || [[ "${1:-}" =~ ^dev-[A-Za-z0-9._-]+$ ]]; }
 _install_profile() { read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true; }
 
+# lifeagents_help_url -> die Hilfeseite "Wenn ein Update fehlschlaegt" (GitHub Pages des Repos; eine Adresse: der Slug).
+lifeagents_help_url() {
+  local owner="${PROVISION_REPO_SLUG%%/*}" repo="${PROVISION_REPO_SLUG#*/}"
+  printf 'https://%s.github.io/%s/docs/update-hilfe.html' "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" "$repo"
+}
+
+# heartbeat_record <signal> <status> [busy_s] [extra-json] — Lebenszeichen des Hintergrund-Teils (core.fn_heartbeat_record,
+#   Waechter core.cron_heartbeat_watch). Signale: loop (update --run-requested), check (Release-Check), backup (backup auto).
+#   Nie fatal und nie lange: Verbindung 5 s, Sperre 2 s, Anweisung 5 s; ein Fehler steht nur im Log, denn ein Beat darf den
+#   Lauf, den er meldet, weder aufhalten noch abbrechen. Laufzeit und Hilfe-Link gehen mit jedem Beat mit. Immer rc 0.
+heartbeat_record() {
+  local sig="$1" status="$2" busy="${3:-}" extra="${4:-}" p
+  [ -n "$extra" ] || extra='{}'
+  lifeagents_db_name >/dev/null 2>&1 || return 0
+  p="$(jq -nc --arg s "$sig" --arg st "$status" --arg b "$busy" --arg rt "${LIFEAGENTS_RUNTIME:-systemd}" \
+         --arg h "$(lifeagents_help_url)" --argjson x "$extra" \
+         '{signal:$s, status:$st, runtime:$rt, help_url:$h} + (if $b == "" then {} else {busy_s:($b|tonumber)} end) + $x' \
+         2>/dev/null)" || { log "Lebenszeichen ${sig}/${status}: Eingabe nicht lesbar."; return 0; }
+  # connect_timeout in der Verbindungs-Zeichenkette: PGCONNECT_TIMEOUT erreicht psql im Docker-Verbund nicht (docker exec
+  # reicht die Umgebung nicht weiter).
+  printf '%s\n' "SET lock_timeout = '2s'; SET statement_timeout = '5s'; SELECT core.fn_heartbeat_record(:'p'::jsonb);" \
+    | pg_su_psql -X -tA -q -v ON_ERROR_STOP=1 -d "dbname=${N8N_DB_NAME} connect_timeout=5" -v p="$p" -f - >/dev/null 2>&1 \
+    || log "Lebenszeichen ${sig}/${status} nicht geschrieben (DB nicht erreichbar?)."
+  return 0
+}
+
 # lifeagents_version_heal — eine Adresse fuer alle Einstiege (update_cli: Tick, Release-Check, Auftrag, Hand-Update):
 #   Release-Profil, VERSION vorhanden, ohne Versionsnummer -> die des laufenden Abbilds atomar eintragen. Nicht heilbar ->
 #   rc 1, nichts geschrieben (kein Raten). Sonst rc 0. Nie waehrend eines Umbaus (Sperre), master-Wechsels oder

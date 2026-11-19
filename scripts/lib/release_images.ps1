@@ -214,7 +214,47 @@ function Test-MasterPinOffline([string]$RepoRoot, [string]$Rev) {
 }
 
 # --- Release-Pruefung (sign_release.ps1)--------------------------------------------------------------------------------------
-$ReleaseSumAssets = @('install.sh', 'compose.yml', 'lifeagents.dmg', 'lifeagents-setup.exe')   # nach dem Tarball, Reihenfolge = release.yml
+$ReleaseSumAssets = @('install.sh', 'setup.sh', 'compose.yml', 'lifeagents.dmg', 'lifeagents-setup.exe')   # nach dem Tarball, Reihenfolge = release.yml
+
+# --- Pin in setup.sh (Linux-Einrichter) --------------------------------------------------------------------------------------
+# provisioning/setup.sh traegt im Baum immer MASTER_IMAGE_PIN='' (es liegt im master-Image, das nur die neutrale Form tragen
+# darf, siehe oben). Das Release-Asset setzt dort denselben <register>/<pfad>@sha256:<digest> ein wie die Pin-Zeile der
+# compose.yml desselben Tags (scripts/release_setup_asset.ps1); sign_release.ps1 prueft das Asset mit Test-ReleaseSetup.
+$SetupRel = 'provisioning/setup.sh'
+$script:SetupPinLineRx = [regex]"(?m)^(?<pre>MASTER_IMAGE_PIN=')(?<val>[^'\r\n]*)(?<post>')[ \t]*(?=\r?$)"
+$script:SetupPinValRx = [regex]'^[a-z0-9.-]+(?::[0-9]+)?(?:/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}$'
+
+# Get-SetupPin <setup.sh-text> -> der Wert zwischen den Hochkommas ('' = neutral). Wirft bei fehlender oder doppelter Zeile.
+function Get-SetupPin([string]$Text) {
+    $m = $script:SetupPinLineRx.Matches($Text)
+    if ($m.Count -ne 1) { throw "setup.sh: $($m.Count) Zeilen MASTER_IMAGE_PIN='…' (erwartet genau 1)." }
+    return $m[0].Groups['val'].Value
+}
+# Set-SetupPin <setup.sh-text> <ref@digest | ''> -> Text mit eingesetztem Pin; '' stellt die neutrale Form her.
+function Set-SetupPin([string]$Text, [string]$Pin) {
+    $null = Get-SetupPin $Text
+    if ($Pin -and -not $script:SetupPinValRx.IsMatch($Pin)) { throw "Ungueltiger Pin '$Pin' (<register>/<pfad>@sha256:<64 hex>, klein)." }
+    return $script:SetupPinLineRx.Replace($Text, { param($mm) $mm.Groups['pre'].Value + $Pin + $mm.Groups['post'].Value }, 1)
+}
+# Test-ReleaseSetup -RepoRoot -Tag -SetupFile -> Abweichungen: das Asset ist provisioning/setup.sh des Tags, der Pin = der der
+#   compose.yml desselben Tags, sonst nichts anders (Text, nicht Blob-Hash: der Pin aendert die Datei).
+function Test-ReleaseSetup([string]$RepoRoot, [string]$Tag, [string]$SetupFile) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $u8 = [System.Text.UTF8Encoding]::new($false)
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $tagSetup = (& git -C $RepoRoot show "${Tag}:$SetupRel" 2>$null); $rc1 = $LASTEXITCODE
+    $tagCompose = (& git -C $RepoRoot show "${Tag}:$MasterComposeRel" 2>$null); $rc2 = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    if ($rc1 -ne 0 -or $rc2 -ne 0) { $iss.Add("$SetupRel oder $MasterComposeRel fehlt im Tag $Tag."); return , $iss }
+    try {
+        $pin = Get-MasterPin (($tagCompose -join "`n"))
+        if ($pin.Form -ne 'pinned') { $iss.Add('compose.yml des Tags traegt keinen Release-Pin.'); return , $iss }
+        $want = Set-SetupPin ((($tagSetup -join "`n")) + "`n") "$($pin.Ref)@$($pin.Digest)"
+        $have = [System.IO.File]::ReadAllText($SetupFile, $u8)
+        if ($have -cne $want) { $iss.Add("setup.sh im Release weicht ab: erwartet $SetupRel des Tags mit dem Pin $($pin.Ref)@$($pin.Digest), sonst nichts.") }
+    } catch { $iss.Add($_.Exception.Message) }
+    return , $iss
+}
 
 # Test-ReleaseSums -Dir -Tarball -> Abweichungen: SHA256SUMS muss genau Tarball + $ReleaseSumAssets in dieser Reihenfolge nennen,
 #   jede Pruefsumme passend zur geladenen Datei.

@@ -77,7 +77,14 @@ if ($Down) {
     Write-Step "Abbau $($Names.Project) ..."
     Remove-OwnStack -WithSnapshot
     if ((Invoke-Native docker @('image', 'inspect', $Names.Image)).Code -eq 0) {
-        $r = Invoke-Native docker @('image', 'rm', $Names.Image)
+        # Die Kurzlauf-Container des Kerns (docker run --rm) verschwinden nach ihrem Ende mit Verzoegerung; bis dahin meldet
+        # Docker das Abbild als benutzt (gemessen). Nur darauf warten, nie mit -f entfernen.
+        $deadline = (Get-Date).AddSeconds(30)
+        do {
+            $r = Invoke-Native docker @('image', 'rm', $Names.Image)
+            $busy = $r.Code -ne 0 -and ($r.Output -join ' ') -match 'is using its referenced image'
+            if ($busy) { Start-Sleep -Seconds 2 }
+        } while ($busy -and (Get-Date) -lt $deadline)
         if ($r.Code -ne 0) { throw "Abbild $($Names.Image) liess sich nicht entfernen: $($r.Output -join "`n")" }
     }
     # Namenlos gewordene Vorgaenger desselben Tags (jeder Bau mit neuem Arbeitsstand): nur mit eigenem Etikett + Worktree.
@@ -87,8 +94,10 @@ if ($Down) {
     Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
     Remove-Item $LogDir -Recurse -Force -ErrorAction SilentlyContinue
     $finds = @(Compare-TestStackTeardown -Project $Names.Project -Before $before -After (Get-TestStackDockerNames) -Labeled $labeled)
-    if ($finds.Count) { throw "Abbau-Abgleich:`n$($finds -join "`n")" }
-    Write-Step "Abgebaut: keine Reste, nichts Fremdes entfernt."
+    foreach ($h in @($finds | Where-Object { $_.Severity -eq 'hint' })) { Write-Warning $h.Text }
+    $errs = @($finds | Where-Object { $_.Severity -eq 'error' })
+    if ($errs.Count) { throw "Abbau-Abgleich:`n$(($errs | ForEach-Object { $_.Text }) -join "`n")" }
+    Write-Step "Abgebaut: keine Reste, kein fremdes Abbild entfernt."
     return
 }
 

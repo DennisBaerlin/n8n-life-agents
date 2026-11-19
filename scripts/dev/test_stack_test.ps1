@@ -81,13 +81,13 @@ $labeled = @('s4t0-master', 's4t0-testbridge')
 $after  = @('fremd-n8n', 'n8nio/n8n:<none>@sha256:aa', 's4t0x-master', 's4t0-dbtest', 's4t0-wizardtest:x@sha256:bb')
 Assert-That (@(Compare-TestStackTeardown -Project 's4t0' -Before $before -After $after -Labeled $labeled).Count -eq 0) 'nur Objekte des Verbunds weg, Session-Objekte bleiben = kein Fund'
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -notmatch 'n8nio' }) -Labeled $labeled)
-Assert-That ($f.Count -eq 1 -and $f[0] -match 'n8nio/n8n') 'fehlendes fremdes Abbild (per Digest, ohne Tag) = Fund'
+Assert-That ($f.Count -eq 1 -and $f[0].Text -match 'n8nio/n8n' -and $f[0].Severity -eq 'error') 'fehlendes fremdes Abbild (per Digest, ohne Tag) = Fehler'
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -ne 's4t0-dbtest' }) -Labeled $labeled)
-Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0-dbtest') 'Session-Container mit gleichem Anfang zaehlt als fremd'
+Assert-That ($f.Count -eq 1 -and $f[0].Text -match 's4t0-dbtest' -and $f[0].Severity -eq 'hint') 'Session-Container mit gleichem Anfang zaehlt als fremd (fehlt er, ein Hinweis: ein Nachbar baut oft zugleich ab)'
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after | Where-Object { $_ -ne 's4t0x-master' }) -Labeled $labeled)
-Assert-That ($f.Count -eq 1 -and $f[0] -match 's4t0x-master') 'Nachbar-Projekt mit gleichem Anfang (s4t0x) zaehlt als fremd'
+Assert-That ($f.Count -eq 1 -and $f[0].Text -match 's4t0x-master' -and $f[0].Severity -eq 'hint') 'Nachbar-Projekt mit gleichem Anfang (s4t0x) zaehlt als fremd'
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after + 's4t0_pgdata' + 's4t0-testbridge') -Labeled $labeled)
-Assert-That ($f.Count -eq 2 -and ($f -match 'blieb').Count -eq 2) 'eigener Rest nach dem Abbau (Volume, etikettierter Container) = Fund'
+Assert-That ($f.Count -eq 2 -and @($f | Where-Object { $_.Severity -eq 'error' -and $_.Text -match 'blieb' }).Count -eq 2) 'eigener Rest nach dem Abbau (Volume, etikettierter Container) = Fund'
 
 # --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'

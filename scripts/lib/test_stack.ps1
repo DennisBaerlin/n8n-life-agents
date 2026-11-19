@@ -141,7 +141,10 @@ function ConvertTo-TestStackExtra {
 # Compare-TestStackTeardown -- Abgleich der Docker-Namen (Container, Volumes, Abbilder) vor und nach dem Abbau. Zum Verbund
 # gehoeren nur die Container mit seinem Install-Etikett (-Labeled, vom Aufrufer vor dem Abbau gelesen), die Volumes <p>_* und
 # <p>snap_* und das Abbild <p>-master:wt; andere Objekte mit demselben Anfang gehoeren der Session (s4t0-dbtest …). Fehlen darf
-# nur, was zum Verbund gehoert, und davon darf nichts bleiben. Rueckgabe = Funde als Text, leer = sauber.
+# nur, was zum Verbund gehoert, und davon darf nichts bleiben. Rueckgabe = Funde @{Severity; Text}, leer = sauber.
+# Schwere: ein fehlendes fremdes Abbild (Eintrag mit @digest) und jeder eigene Rest sind Fehler; ein fehlender fremder
+# Container/Volume ist ein Hinweis, weil parallele Sessions ihre Substrate laufend abbauen (gemessen: ein Nachbar-Test
+# entfernte waehrend des Abbaus seine Objekte). Abbilder baut sonst kaum jemand ab, und genau dort lag der Schaden aus P1a.
 function Test-TestStackOwnName([string]$Project, [string]$Name, [string[]]$Labeled) {
     if ($Labeled -contains $Name) { return $true }
     $q = [regex]::Escape($Project)
@@ -150,10 +153,13 @@ function Test-TestStackOwnName([string]$Project, [string]$Name, [string[]]$Label
 function Compare-TestStackTeardown([string]$Project, [string[]]$Before, [string[]]$After, [string[]]$Labeled = @()) {
     $f = @()
     foreach ($n in $Before) {
-        if (($After -notcontains $n) -and -not (Test-TestStackOwnName $Project $n $Labeled)) { $f += "fremdes Objekt fehlt nach dem Abbau (oder ein Nachbar baute zugleich ab): $n" }
+        if (($After -notcontains $n) -and -not (Test-TestStackOwnName $Project $n $Labeled)) {
+            if ($n.Contains('@')) { $f += [pscustomobject]@{ Severity = 'error'; Text = "fremdes Abbild fehlt nach dem Abbau: $n" } }
+            else { $f += [pscustomobject]@{ Severity = 'hint'; Text = "fremdes Objekt fehlt nach dem Abbau (ein Nachbar baute zugleich ab? docker events --since 10m --filter event=destroy): $n" } }
+        }
     }
     foreach ($n in $After) {
-        if (Test-TestStackOwnName $Project $n $Labeled) { $f += "eigenes Objekt blieb nach dem Abbau: $n" }
+        if (Test-TestStackOwnName $Project $n $Labeled) { $f += [pscustomobject]@{ Severity = 'error'; Text = "eigenes Objekt blieb nach dem Abbau: $n" } }
     }
     return $f
 }

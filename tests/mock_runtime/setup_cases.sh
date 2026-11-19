@@ -285,16 +285,21 @@ su_has SU.einheit-bleibt-aktiv "$(cat "$UNIT" 2>/dev/null)" 'RemainAfterExit=yes
 su_has SU.einheit-start "$(cat "$UNIT" 2>/dev/null)" 'ExecStart=/usr/local/bin/lifeagents boot-start'
 su_has SU.einheit-boot "$(cat "$UNIT" 2>/dev/null)" 'WantedBy=multi-user.target'
 head -1 "$UNIT" 2>/dev/null | grep -q 'managed by lifeagents setup.sh' && pass SU.einheit-markierung || fail SU.einheit-markierung "ohne Markierung"
-su_has SU.einheit-aktiviert "$FIRSTLOG" 'systemctl|enable|lifeagents-stack.service'
-su_not SU.einheit-nicht-sofort "$(grep lifeagents-stack <<<"$FIRSTLOG")" '--now'
+# Die Einheit wird sofort gestartet (enable --now): nur eine aktive Einheit (RemainAfterExit) startet mit, wenn Docker allein neu startet.
+su_has SU.einheit-aktiviert "$FIRSTLOG" 'systemctl|enable|--now|lifeagents-stack.service'
 
 # Zweitlauf: nichts aendert sich (Dateien, daemon-reload, enable).
 sum1="$(su_changed)"
 : > "$SUL"
-su_run env STUB_ENABLED=1 bash "$SUS" --yes --image "$IMG"
+su_run env STUB_ENABLED=1 STUB_ACTIVE=1 bash "$SUS" --yes --image "$IMG"
 eq SU.zweitlauf-exit-0 0 "$SU_RC"
 eq SU.zweitlauf-dateien-gleich "$sum1" "$(su_changed)"
-grep -qE '^systemctl\|(daemon-reload|enable)' "$SUL" && fail SU.zweitlauf-kein-systemctl "$(grep systemctl "$SUL")" || pass SU.zweitlauf-kein-systemctl
+if grep -qE '^systemctl\|(daemon-reload|enable|start)\|' "$SUL"; then fail SU.zweitlauf-kein-systemctl "$(grep systemctl "$SUL")"; else pass SU.zweitlauf-kein-systemctl; fi
+# Zweitlauf mit inaktiver Einheit (nach einem Reboot-Test, von Hand gestoppt): wieder starten, nicht neu aktivieren.
+: > "$SUL"
+su_run env STUB_ENABLED=1 bash "$SUS" --yes --image "$IMG"
+su_has SU.zweitlauf-inaktive-einheit-wird-gestartet "$(cat "$SUL")" 'systemctl|start|lifeagents-stack.service'
+if grep -qE '^systemctl\|(daemon-reload|enable)\|' "$SUL"; then fail SU.zweitlauf-inaktiv-nicht-neu-aktiviert "$(grep systemctl "$SUL")"; else pass SU.zweitlauf-inaktiv-nicht-neu-aktiviert; fi
 # Ohne systemd: Befehl ja, Einheit nein, Warnung.
 su_root debian 12 bookworm; rmdir "$SUR/run/systemd/system"
 sux --yes --image "$IMG"

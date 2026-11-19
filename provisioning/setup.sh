@@ -341,7 +341,13 @@ ExecStart=/usr/local/bin/lifeagents boot-start
 WantedBy=multi-user.target
 TXT
   [ "$unit_new" = 0 ] || systemctl daemon-reload >&2
-  if [ "$unit_new" = 1 ] || ! systemctl is-enabled --quiet "$UNIT_NAME" 2>/dev/null; then systemctl enable "$UNIT_NAME" >&2; fi
+  # Sofort starten (--now): Nur eine aktive Einheit (RemainAfterExit) startet mit, wenn Docker allein neu startet (PartOf);
+  # eine inaktive bliebe nach `systemctl restart docker` aus.
+  if [ "$unit_new" = 1 ] || ! systemctl is-enabled --quiet "$UNIT_NAME" 2>/dev/null; then
+    systemctl enable --now "$UNIT_NAME" >&2 || warn "Die Einheit $UNIT_NAME ließ sich nicht starten (journalctl -u $UNIT_NAME)."
+  elif ! systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then
+    systemctl start "$UNIT_NAME" >&2 || warn "Die Einheit $UNIT_NAME ließ sich nicht starten (journalctl -u $UNIT_NAME)."
+  fi
 else
   warn "systemd läuft hier nicht: Nach einem Neustart von Docker startet der Verbund nicht von selbst (lifeagents boot-start von Hand)."
 fi

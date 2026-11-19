@@ -2195,7 +2195,7 @@ $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s
 # die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
 $setupRel = 'provisioning/setup.sh'
 $setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json'
-$setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|"\$UNIT_NAME")\s+>&2|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
+$setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|(--now\s+)?"\$UNIT_NAME")\s+>&2|^\s+start\s+"\$UNIT_NAME"\s+>&2|^\s+is-active\s+--quiet\s+"\$UNIT_NAME"|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
     foreach ($c in (Get-ShellCommandWords $Text $rtTargets)) {
@@ -2267,6 +2267,9 @@ foreach ($sa in @(
     @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },
     @{ n = 'setup: compose';         r = $setupRel; t = "  docker compose down`n";                                  want = 1 },
     @{ n = 'setup: prune';           r = $setupRel; t = "  docker system prune -f`n";                               want = 2 },
+    @{ n = 'setup: enable --now Einheit ok'; r = $setupRel; t = "  systemctl enable --now `"`$UNIT_NAME`" >&2 || warn x`n"; want = 0 },
+    @{ n = 'setup: start Einheit ok'; r = $setupRel; t = "  systemctl start `"`$UNIT_NAME`" >&2`n";             want = 0 },
+    @{ n = 'setup: start fremd';     r = $setupRel; t = "  systemctl start nginx`n";                                want = 1 },
     @{ n = 'setup: systemctl stop';  r = $setupRel; t = "  systemctl stop docker`n";                                want = 1 },
     @{ n = 'setup: runuser';         r = $setupRel; t = "  runuser -u x -- id`n";                                   want = 1 })) {
     $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count

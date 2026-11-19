@@ -17,7 +17,7 @@
 # jedem Start von Docker einmal `stack start` fuehrt: Startet Docker einen Container des Pods vor dem anchor, scheitert er
 # beim Wiederanlauf (Exit 128) und wird nicht wiederholt.
 set -euo pipefail
-export LANG=C.UTF-8 LC_ALL=C.UTF-8
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
 trap 'rc=$?; printf "\n[x] setup.sh: unerwarteter Abbruch bei Zeile %s (Exit %s).\n" "$LINENO" "$rc" >&2' ERR
 
 # Das Release setzt hier den Abbild-Pin ein (scripts/lib/release_images.ps1 Set-SetupPin); im Baum bleibt er leer, weil das
@@ -70,6 +70,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ "$DELETE_DATA" = 0 ] || [ "$UNINSTALL" = 1 ] || usage_err "--delete-data gibt es nur mit --uninstall."
 [ -z "$ANSWERS" ] || [ "$UNINSTALL" = 0 ] || usage_err "--answers und --uninstall schliessen sich aus."
+[ "${#PROV[@]}" -eq 0 ] || [ -n "$ANSWERS" ] || usage_err "Optionen nach -- gibt es nur zusammen mit --answers."
 # Eine Referenz, die mit - beginnt, wuerde Docker als Option lesen.
 [ -z "$IMAGE_ARG" ] || [[ "$IMAGE_ARG" =~ ^[a-z0-9][A-Za-z0-9._:/@-]*$ ]] || usage_err "--image: ungueltige Abbild-Referenz."
 [ -z "$ANSWERS" ] || [ -r "$ANSWERS" ] || die "Antwort-Datei nicht lesbar: $ANSWERS"
@@ -116,6 +117,7 @@ reason_text() {
 # --- Rechner pruefen (vor jeder Aenderung) --------------------------------------------------------------------------------
 [ "$(id -u)" -eq 0 ] || die "setup.sh muss als root laufen (sudo bash setup.sh …)."
 
+OS_ID='' OS_VER='' OS_CODE=''
 if [ -r "$R/etc/os-release" ]; then
   # shellcheck source=/dev/null  # os-release liegt im Test unter LA_SETUP_ROOT
   OS_ID="$(. "$R/etc/os-release"; echo "${ID:-}")"
@@ -142,9 +144,12 @@ if command -v snap >/dev/null 2>&1 && snap list docker >/dev/null 2>&1; then
 fi
 
 # Docker braucht curl und jq (JSON des Kerns lesen).
+apt_updated=0
 for t in curl jq; do
-  command -v "$t" >/dev/null 2>&1 && continue
+  "$t" --version >/dev/null 2>&1 && continue
   command -v apt-get >/dev/null 2>&1 || die "$t fehlt und apt-get ist nicht da."
+  # Frische Cloud-Abbilder haben keine Paketlisten: ohne update fände apt kein Paket.
+  if [ "$apt_updated" = 0 ]; then apt-get update -qq >&2; apt_updated=1; fi
   log "Installiere $t …"; apt-get install -y -qq "$t" >&2
 done
 
@@ -152,7 +157,8 @@ done
 install_docker() {
   local pkg src
   [ -d "$R/run/systemd/system" ] || die "Docker lässt sich hier nicht einrichten: systemd läuft nicht."
-  for pkg in docker.io docker-compose docker-doc docker-buildx podman-docker; do
+  # Dockers Anleitung nennt diese Pakete als Konflikt; apt -y entfernte sie ohne Nachfrage (auch containerd und runc anderer Programme).
+  for pkg in docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc; do
     ! dpkg -s "$pkg" >/dev/null 2>&1 || die "Das Paket $pkg steht im Weg (widerspricht Dockers Paketen). Bitte entfernen: apt-get remove $pkg"
   done
   ask "Docker ist nicht eingerichtet. Jetzt aus Dockers offizieller Paketquelle (download.docker.com) einrichten?" || die "Ohne Docker geht es nicht weiter."
@@ -203,7 +209,7 @@ core() {
   [ -z "${LA_CORE_PORTS:-}" ] || a+=(--env LA_CORE_PORTS)
   a+=(--mount "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock" "$IMAGE" stack "$@")
   set +e
-  docker "${a[@]}" < "$in" | tee "$OUT" | jq -Rr --unbuffered --argjson s "$STEPS" 'fromjson? | select(.type == "progress") | "    · " + ($s[.step] // .step)' >&2
+  docker "${a[@]}" < "$in" | tee "$OUT" | jq -Rr --unbuffered --argjson s "$STEPS" 'fromjson? | select(type == "object" and .type == "progress") | (.step // "" | tostring) as $k | "    · " + ($s[$k] // $k)' >&2
   rc="${PIPESTATUS[0]}"
   set -e
   return "$rc"
@@ -212,7 +218,7 @@ core() {
 RES=''
 core_verdict() {
   local rc="$1" reason
-  RES="$(jq -Rc 'fromjson? | select(.type == "result")' "$OUT" | tail -n1)"
+  RES="$(jq -Rc 'fromjson? | select(type == "object" and .type == "result")' "$OUT" | tail -n1)"
   if [ -z "$RES" ]; then
     err_core "Docker meldete einen Fehler (Exit $rc), bevor der Kern ein Ergebnis lieferte. Meist ist es das Laden des Abbilds ($IMAGE) oder der Docker-Dienst selbst."
     return 1
@@ -231,6 +237,7 @@ err_core() { printf '%s[x]%s %s\n' "$_RD" "$_N" "$1" >&2; }
 # mark_pulled — merkt sich, dass dieser Lauf das Abbild selbst geladen hat (nur dann raeumt --uninstall --delete-data es weg).
 mark_pulled() {
   [ ! -e "$PULLED_FILE" ] || return 0
+  docker image inspect "$IMAGE" >/dev/null 2>&1 || return 0   # Pull gescheitert: nichts geladen, nichts zu merken
   install -m 0755 -d "$STATE_DIR"
   printf '%s\n' "$IMAGE" > "$PULLED_FILE"
 }
@@ -252,14 +259,23 @@ if [ "$UNINSTALL" = 1 ]; then
   log "Entferne den Verbund …"
   uargs=(uninstall --json); [ "$DELETE_DATA" = 0 ] || uargs+=(--delete-data)
   rc=0; core /dev/null "${uargs[@]}" || rc=$?
-  core_verdict "$rc" || exit 1
   # Nur eigene Dateien (mit Markierung) entfernen.
-  if [ -e "$UNIT_FILE" ] && grep -q "$MARK" "$UNIT_FILE"; then
-    if [ -d "$R/run/systemd/system" ]; then systemctl disable "$UNIT_NAME" >&2 || true; fi
-    rm -f "$UNIT_FILE"
-    if [ -d "$R/run/systemd/system" ]; then systemctl daemon-reload >&2 || true; fi
+  remove_own_files() {
+    if [ -e "$UNIT_FILE" ] && grep -q "$MARK" "$UNIT_FILE"; then
+      if [ -d "$R/run/systemd/system" ]; then systemctl disable "$UNIT_NAME" >&2 || true; fi
+      rm -f "$UNIT_FILE"
+      if [ -d "$R/run/systemd/system" ]; then systemctl daemon-reload >&2 || true; fi
+    fi
+    if [ -e "$CMD_FILE" ] && grep -q "$MARK" "$CMD_FILE"; then rm -f "$CMD_FILE"; fi
+  }
+  if ! core_verdict "$rc"; then
+    # Der Verbund ist weg (oder war es schon), nur etwas blieb stehen: die eigenen Dateien gehen trotzdem, sonst startet die Einheit
+    # nach jedem Docker-Neustart einen Verbund, den es nicht mehr gibt. Bei busy, internal u. a. steht der Verbund noch: nichts anfassen.
+    [ -n "$RES" ] || RES='{}'
+    case "$(jq -r '.reason // ""' <<<"$RES")" in data_kept|foreign_objects|not_installed) remove_own_files ;; esac
+    exit 1
   fi
-  if [ -e "$CMD_FILE" ] && grep -q "$MARK" "$CMD_FILE"; then rm -f "$CMD_FILE"; fi
+  remove_own_files
   if [ "$DELETE_DATA" = 1 ] && [ -e "$PULLED_FILE" ]; then
     for img in "$(cat "$PULLED_FILE")" "$cur_master"; do
       [ -n "$img" ] || continue
@@ -289,7 +305,11 @@ set -euo pipefail
 P='@P@'
 case "${1:-}" in
   wizard-url)
-    docker exec "$P-master" stack wizard-url --json 2>/dev/null | tail -n1 | jq -r 'if .ok then .url else (.detail // "kein Link") end' ;;
+    r="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rc 'fromjson? | select(type == "object" and .type == "result")' | tail -n1 || true)"
+    [ -n "$r" ] || r='{}'
+    if [ "$(jq -r '.ok // false' <<<"$r")" = true ]; then jq -r '.url' <<<"$r"; else
+      printf 'Kein Link: %s\n' "$(jq -r '.detail // "der Verbund läuft nicht?"' <<<"$r")" >&2; exit 1
+    fi ;;
   boot-start)
     img="$(docker inspect -f '{{.Config.Image}}' "$P-master" 2>/dev/null || true)"
     a=(--env LA_CORE=1); [ "$P" = lifeagents ] || a+=(--env "LA_PROJECT=$P")
@@ -338,12 +358,13 @@ fi
 
 url=''
 for _ in $(seq 1 15); do
-  url="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rr 'fromjson? | select(.type == "result" and .ok) | .url' | tail -n1 || true)"
+  url="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
   [ -z "$url" ] || break
   sleep "${LA_SETUP_WAIT:-2}"
 done
 [ -n "$url" ] || die "Der Verbund läuft ($version), aber der Link zum Fragebogen fehlt noch. In einer Minute: lifeagents wizard-url"
-port="$(sed -E 's#^http://127\.0\.0\.1:([0-9]+)/.*#\1#' <<<"$url")"
+port="$(sed -nE 's#^http://127\.0\.0\.1:([0-9]+)/.*#\1#p' <<<"$url")"
+[ -n "$port" ] || die "Der Link zum Fragebogen hat eine unerwartete Form ($url). Neuer Versuch: lifeagents wizard-url"
 addr="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 if [ "$changed" = true ]; then ok "Der Verbund läuft ($version)."; else ok "Nichts zu tun: der Verbund läuft bereits ($version)."; fi
 cat <<TXT

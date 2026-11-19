@@ -43,7 +43,7 @@ case "${1:-}" in
   run)
     verb=''; seen=0
     for x in "$@"; do if [ "$seen" = 1 ]; then verb="$x"; break; fi; [ "$x" = stack ] && seen=1; done
-    : > "$STUB_LOG.pulled"
+    [ -n "${STUB_NO_PULL:-}" ] || : > "$STUB_LOG.pulled"
     if [ "$verb" = install ]; then { echo "== install"; cat; } >> "$STUB_LOG.put"; fi
     f="STUB_OUT_${verb//-/_}"; r="STUB_RC_${verb//-/_}"
     if [ -n "${!f:-}" ]; then cat "${!f}"; else
@@ -75,6 +75,7 @@ cat > "$SUB/apt-get" <<'STUB'
 #!/usr/bin/env bash
 { printf 'apt-get'; printf '|%s' "$@"; echo; } >> "$STUB_LOG"
 case "$*" in *docker-ce*) : > "$STUB_LOG.docker" ;; esac
+case "$*" in *jq*) : > "$STUB_LOG.jq" ;; esac
 exit 0
 STUB
 cat > "$SUB/curl" <<'STUB'
@@ -108,6 +109,13 @@ cat > "$SUB/systemd-detect-virt" <<'STUB'
 #!/usr/bin/env bash
 [ -n "${STUB_VIRT:-}" ] && { echo "$STUB_VIRT"; exit 0; }; echo none; exit 1
 STUB
+SU_REAL_JQ="$(command -v jq)"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf '# STUB_NO_JQ: jq fehlt, bis ein apt-get install jq die Marke setzt (setup.sh fragt mit jq --version, nicht mit command -v).\n'
+  printf 'if [ -n "${STUB_NO_JQ:-}" ] && [ ! -e "$STUB_LOG.jq" ]; then exit 127; fi\n'
+  printf 'exec %s "$@"\n' "$SU_REAL_JQ"
+} > "$SUB/jq"
 chmod +x "$SUB"/*
 
 # su_root <id> <version> <codename> [ubuntu_codename] — frischer Wurzel-Baum mit os-release und Systemd-Ordner.
@@ -393,5 +401,59 @@ su_root debian 12 bookworm
 su_run env STUB_MASTER_IMAGE='reg.example/master@sha256:cccc' bash "$SUS" --uninstall --yes
 eq SU.abbau-abbild-aus-master 0 "$SU_RC"
 su_has SU.abbau-abbild-aus-master-aufruf "$(grep '^docker|run' "$SUL" | head -1)" '|reg.example/master@sha256:cccc|stack|uninstall|'
+
+# --- Befunde der Code-Pruefung ----------------------------------------------------------------------------------------------
+# Werkzeuge (jq) fehlen: erst apt-get update (frische Cloud-Abbilder haben keine Paketlisten), dann install, ohne Rueckfragen.
+su_root debian 12 bookworm
+su_run env STUB_NO_JQ=1 bash "$SUS" --yes --image "$IMG"
+eq SU.werkzeug-fehlt-exit-0 0 "$SU_RC"
+upd="$(grep -n '^apt-get|update' "$SUL" | head -1 | cut -d: -f1)"; ins="$(grep -n '^apt-get|install.*jq' "$SUL" | head -1 | cut -d: -f1)"
+[ -n "$upd" ] && [ -n "$ins" ] && [ "$upd" -lt "$ins" ] && pass SU.werkzeug-erst-update-dann-install || fail SU.werkzeug-erst-update-dann-install "update=$upd install=$ins"
+# os-release fehlt: freundliche Meldung statt "unbound variable".
+su_root debian 12 bookworm; rm -f "$SUR/etc/os-release"
+sux --yes --image "$IMG"
+eq SU.os-release-fehlt-exit-1 1 "$SU_RC"
+su_has SU.os-release-fehlt-text "$(cat "$SUD/err")" 'Unterstützt sind'
+# Alte Docker-Pakete aus der Distribution (auch containerd, runc) stehen im Weg, bevor irgendetwas geaendert wird.
+for p in containerd runc docker-compose-v2; do
+  su_root debian 12 bookworm; STUB_DPKG="$p" STUB_NO_DOCKER=1 su_abort "konflikt-$p" "$p"
+done
+# Marke "selbst geladen" nur, wenn das Abbild danach wirklich da ist (Pull gescheitert = keine Marke).
+printf '%s\n' '{"v":1,"type":"result","verb":"up","ok":false,"reason":"pull_failed","detail":"x"}' > "$SUD/res.pull"
+su_root debian 12 bookworm
+su_run env STUB_IMG_ABSENT=1 STUB_NO_PULL=1 STUB_OUT_up="$SUD/res.pull" STUB_RC_up=1 bash "$SUS" --yes --image "$IMG"
+eq SU.pull-gescheitert-exit-1 1 "$SU_RC"
+[ ! -e "$SUR/var/lib/lifeagents-setup/pulled-image" ] && pass SU.pull-gescheitert-keine-marke || fail SU.pull-gescheitert-keine-marke "Marke gesetzt"
+# Abbau: meldet der Kern, dass der Verbund weg ist, aber etwas stehen blieb, raeumt setup.sh die eigenen Dateien trotzdem weg.
+for r in data_kept foreign_objects not_installed; do
+  printf '%s\n' "{\"v\":1,\"type\":\"result\",\"verb\":\"uninstall\",\"ok\":false,\"reason\":\"$r\",\"detail\":\"x\"}" > "$SUD/res.u_$r"
+  su_root debian 12 bookworm
+  sux --yes --image "$IMG"
+  su_run env STUB_OUT_uninstall="$SUD/res.u_$r" STUB_RC_uninstall=1 bash "$SUS" --uninstall --yes --image "$IMG"
+  eq "SU.abbau-$r-exit-1" 1 "$SU_RC"
+  [ ! -e "$SUR/usr/local/bin/lifeagents" ] && [ ! -e "$SUR/etc/systemd/system/lifeagents-stack.service" ] && pass "SU.abbau-$r-raeumt-auf" || fail "SU.abbau-$r-raeumt-auf" "Dateien noch da"
+done
+# Kern-Ausgabe mit fremden Zeilen (Zahl, Fortschritt ohne step, leere Zeile) bringt weder jq noch setup.sh aus dem Tritt.
+printf '%s\n' '5' '' '{"v":1,"type":"progress","verb":"up"}' '"text"' '{"v":1,"type":"progress","verb":"up","step":"unbekannt"}' \
+  '{"v":1,"type":"result","verb":"up","ok":true,"changed":true,"ports":{"edge":5880,"wizard":5881},"version":"v9.0.0"}' > "$SUD/res.wirr"
+su_root debian 12 bookworm
+su_run env STUB_OUT_up="$SUD/res.wirr" bash "$SUS" --yes --image "$IMG"
+eq SU.fremde-zeilen-exit-0 0 "$SU_RC"
+su_has SU.fremde-zeilen-ergebnis "$(cat "$SUD/err")" 'Der Verbund läuft'
+# Befehl lifeagents wizard-url: Zeilen ohne JSON davor/danach, Fehlermeldung statt Stille.
+su_root debian 12 bookworm; sux --yes --image "$IMG"
+printf 'Warnung ohne JSON\n{"v":1,"type":"result","verb":"wizard-url","ok":true,"url":"http://127.0.0.1:5881/start?t=zz"}\nnoch ein Text\n' > "$SUD/url.wirr"
+out="$(STUB_LOG="$SUL" STUB_URL_JSON="$(cat "$SUD/url.wirr")" PATH="$SUB:$PATH" "$SUR/usr/local/bin/lifeagents" wizard-url </dev/null 2>/dev/null)"
+eq SU.befehl-wizard-url-fremde-zeilen 'http://127.0.0.1:5881/start?t=zz' "$out"
+rc=0; out="$(STUB_LOG="$SUL" STUB_URL_JSON='{"v":1,"type":"result","verb":"wizard-url","ok":false,"reason":"master_not_running","detail":"master aus"}' PATH="$SUB:$PATH" "$SUR/usr/local/bin/lifeagents" wizard-url </dev/null 2>&1)" || rc=$?
+eq SU.befehl-wizard-url-fehler-exit-1 1 "$rc"
+su_has SU.befehl-wizard-url-fehler-text "$out" 'master aus'
+# Optionen fuer provision.sh nach -- ohne --answers werden nicht still verworfen; ein unbrauchbarer Link bricht ab.
+su_root debian 12 bookworm
+sux --yes --image "$IMG" -- --profile dev
+eq SU.prov-ohne-answers-exit-2 2 "$SU_RC"
+su_run env STUB_URL_JSON='{"v":1,"type":"result","verb":"wizard-url","ok":true,"url":"http://[::1]:9/x"}' bash "$SUS" --yes --image "$IMG"
+eq SU.link-ohne-port-exit-1 1 "$SU_RC"
+su_not SU.link-ohne-port-kein-ssh "$(cat "$SUD/out")" 'ssh -L'
 
 if [ -n "${SU_STANDALONE:-}" ]; then exit "$fails"; fi

@@ -91,7 +91,8 @@ function Remove-SlotReservation {
     return [bool]$hit
 }
 
-# Platz-Entscheidung (rein, ohne Docker): Running = Namen laufender fremder Substrate (ohne $Own), Reservations = gueltige
+# Platz-Entscheidung (rein, ohne Docker; zaehlt klassische Container und Docker-Verbuende gemeinsam, Name = $env:N8NTEST_CONTAINER bzw.
+# Projektname): Running = Namen laufender fremder Substrate (ohne $Own), Reservations = gueltige
 # Reservierungen. Hat $Own selbst eine Reservierung, darf er starten, solange weniger als $Max fremde laufen (Zusage der
 # Leitung; Reservierungen anderer zaehlen dann nicht). Sonst belegen laufende Fremde + Reservierungen fuer andere (ohne
 # die schon laufenden, sie zaehlen nur einmal) die Plaetze.
@@ -132,9 +133,59 @@ function ConvertFrom-SubstrateLine([string]$Line) {
     return [pscustomobject]@{ Name = $n; Status = $status; Worktree = [string]$wt }
 }
 
-# Laufende n8n-Test-Substrate (nur lesend, `docker ps`): Container-Label lifeagents.substrate, vom Basis-Image geerbtes Label
-# lifeagents.substrate-base oder -- mit $Image -- das nackte Image (Alt-Container ohne Label; kein ancestor= auf das Basis-Image:
-# BuildKit setzt dafuer keine verlaesslichen Eltern-Verweise). Eine Quelle fuer Wait-SubstrateSlot und `reserve_substrate_slot -List`.
+# `{{.Labels}}`-Text ("a=b,c=d") -> Hashtable. Ein Label-Wert mit Komma wird zerschnitten (Docker liefert keine Maskierung).
+function ConvertFrom-LabelString([string]$Labels) {
+    $h = @{}
+    foreach ($kv in ($Labels -split ',')) {
+        $i = $kv.IndexOf('=')
+        if ($i -gt 0) { $h[$kv.Substring(0, $i)] = $kv.Substring($i + 1) }
+    }
+    return $h
+}
+
+# Laufende Substrate des Docker-Verbunds (rein, ohne Docker). Compose setzt auf seine Container nur io.lifeagents.install=<Projekt>
+# (die ausgelieferte compose.yml bekommt kein Test-Etikett); den Substrat-Status traegt ein vom Bootstrap selbst angelegtes
+# Zustands-Volume (lifeagents.substrate=n8n + lifeagents.worktree=<Checkout>). Ein Projekt zaehlt nur, wenn ein solches Volume
+# da ist UND ein Container laeuft: so bleibt eine eigene Installation (gleiches Container-Etikett, kein Volume-Etikett) draussen.
+# Zeilen: Volume `Name|Labels`, Container `Name|Status|Labels` (docker volume ls / docker ps --format). Name im Ergebnis = Projekt,
+# wie $env:N8NTEST_CONTAINER des klassischen Weges.
+function ConvertFrom-ComposeSubstrateRows {
+    param([string[]]$VolumeLines = @(), [string[]]$ContainerLines = @())
+    $projects = @{}
+    foreach ($line in @($VolumeLines | Where-Object { $_ })) {
+        $p = "$line" -split '\|', 2
+        if ($p.Count -ne 2) { continue }
+        $l = ConvertFrom-LabelString $p[1]
+        if ($l['lifeagents.substrate'] -eq 'n8n' -and $l['io.lifeagents.install']) {
+            $projects[$l['io.lifeagents.install']] = [string]$l['lifeagents.worktree']
+        }
+    }
+    $seen = @{}
+    foreach ($line in @($ContainerLines | Where-Object { $_ })) {
+        $p = "$line" -split '\|', 3
+        if ($p.Count -ne 3) { continue }
+        $proj = (ConvertFrom-LabelString $p[2])['io.lifeagents.install']
+        if ($proj -and $projects.ContainsKey($proj) -and -not $seen.ContainsKey($proj)) {
+            $seen[$proj] = [pscustomobject]@{ Name = $proj; Status = $p[1]; Worktree = $projects[$proj] }
+        }
+    }
+    return @($seen.Values | Sort-Object Name)
+}
+
+# Zeilen eines nur lesenden docker-Aufrufs; Docker-Fehler (Daemon aus) = leere Liste. PS 5.1 mit ErrorActionPreference=Stop beim
+# Aufrufer: jede stderr-Zeile von docker waere trotz 2>$null ein Abbruch -> nur hier auf Continue.
+function Get-DockerLines([string[]]$DockerArgs) {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $out = & docker @DockerArgs 2>$null } finally { $ErrorActionPreference = $eap }
+    if ($LASTEXITCODE -ne 0) { return @() }
+    return @($out | Where-Object { $_ } | ForEach-Object { "$_" })
+}
+
+# Laufende n8n-Test-Substrate beider Unterbauten (nur lesend, `docker ps`/`docker volume ls`). Klassisch: Container-Label
+# lifeagents.substrate, vom Basis-Image geerbtes Label lifeagents.substrate-base oder -- mit $Image -- das nackte Image
+# (Alt-Container ohne Label; kein ancestor= auf das Basis-Image: BuildKit setzt dafuer keine verlaesslichen Eltern-Verweise).
+# Verbund: ConvertFrom-ComposeSubstrateRows. Eine Quelle fuer Wait-SubstrateSlot und `reserve_substrate_slot -List`; die Grenze
+# (Max in Get-SlotAvailability) gilt fuer beide zusammen.
 function Get-RunningSubstrates([string]$Image) {
     $filters = @('label=lifeagents.substrate=n8n', 'label=lifeagents.substrate-base=1')
     if ($Image) { $filters += "ancestor=$Image" }
@@ -150,8 +201,86 @@ function Get-RunningSubstrates([string]$Image) {
             if (-not $seen.ContainsKey($s.Name)) { $seen[$s.Name] = $s }
         }
     }
+    $vols = Get-DockerLines @('volume', 'ls', '--filter', 'label=lifeagents.substrate=n8n', '--format', '{{.Name}}|{{.Labels}}')
+    if ($vols.Count) {
+        $cons = Get-DockerLines @('ps', '--filter', 'label=io.lifeagents.install', '--format', '{{.Names}}|{{.Status}}|{{.Labels}}')
+        foreach ($s in (ConvertFrom-ComposeSubstrateRows -VolumeLines $vols -ContainerLines $cons)) {
+            if (-not $seen.ContainsKey($s.Name)) { $seen[$s.Name] = $s }
+        }
+    }
     return @($seen.Values | Sort-Object Name)
 }
+# --- Aufraeumen des Verbunds eines Worktrees (SessionEnd-Hook, stop_test_containers.ps1) ---
+# Rein (ohne Docker): was gehoert zum Verbund dieses Checkouts? Zeilen `Name|Labels` je Volume, Container und Netz. Ein Projekt
+# gehoert uns, wenn eines seiner Volumes lifeagents.substrate=n8n UND lifeagents.worktree=<Checkout> traegt; alles mit
+# io.lifeagents.install=<Projekt> geht dann mit (Compose-Container, -Netze, -Volumes). Zusaetzlich gehoert uns jedes Objekt mit
+# lifeagents.worktree=<Checkout> (Schnappschuss-Volumes, Mock-Container). Veto: traegt ein Volume des Projekts das Worktree-
+# Etikett eines anderen Checkouts, bleibt das Projekt stehen. Nie ein Projekt ohne Worktree-Etikett (eigene Installation).
+# Projektnamen gehen in einen Dateipfad (State-Datei) -> nur der Namensraum von reserve_substrate_slot.ps1.
+function Get-WorktreeComposeTargets {
+    param([Parameter(Mandatory)][string]$Worktree, [string[]]$VolumeLines = @(), [string[]]$ContainerLines = @(), [string[]]$NetworkLines = @())
+    function Read-Rows([string[]]$Lines) {
+        foreach ($line in @($Lines | Where-Object { $_ })) {
+            $p = "$line" -split '\|', 2
+            if ($p.Count -eq 2) { [pscustomobject]@{ Name = $p[0]; L = (ConvertFrom-LabelString $p[1]) } }
+        }
+    }
+    $vols = @(Read-Rows $VolumeLines); $cons = @(Read-Rows $ContainerLines); $nets = @(Read-Rows $NetworkLines)
+    $ours = @($vols | Where-Object { $_.L['lifeagents.substrate'] -eq 'n8n' -and $_.L['lifeagents.worktree'] -eq $Worktree -and $_.L['io.lifeagents.install'] } |
+        ForEach-Object { $_.L['io.lifeagents.install'] } | Sort-Object -Unique | Where-Object { $_ -match '^[A-Za-z0-9][A-Za-z0-9_.-]*$' })
+    $projects = @($ours | Where-Object {
+        $p = $_
+        -not @($vols | Where-Object { $_.L['io.lifeagents.install'] -eq $p -and $_.L['lifeagents.worktree'] -and $_.L['lifeagents.worktree'] -ne $Worktree }).Count
+    })
+    $pick = {
+        param($rows)
+        @($rows | Where-Object { $projects -contains $_.L['io.lifeagents.install'] -or $_.L['lifeagents.worktree'] -eq $Worktree } | ForEach-Object Name | Sort-Object -Unique)
+    }
+    return [pscustomobject]@{
+        Projects   = $projects
+        Containers = @(& $pick $cons)
+        Networks   = @(& $pick $nets)
+        Volumes    = @(& $pick $vols)
+    }
+}
+
+# Hauptcheckout/.local: dort liegen die State-Dateien (scripts/lib/n8ntest_state_file.ps1), von allen Worktrees geteilt.
+function Get-MainLocalDir {
+    $common = git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir
+    return (Join-Path (Split-Path $common -Parent) '.local')
+}
+
+# Verbund(e) dieses Checkouts abbauen: Container (`rm -fv`, wie jeder Abbau hier) -> Netze -> Volumes -> State-Datei je Projekt.
+# Fehlertolerant (Docker aus, Objekt schon weg = weiter). Liefert die Auswahl zurueck.
+function Remove-WorktreeComposeSubstrates {
+    param([Parameter(Mandatory)][string]$Worktree, [string]$StateDir = (Get-MainLocalDir))
+    $listing = {
+        param($kind, $format)
+        # Eigene Etiketten, zwei Abfragen: alles eines Installationsprojekts (Veto-Pruefung braucht auch fremd etikettierte Volumes) und alles dieses Checkouts.
+        $all = @()
+        foreach ($f in 'label=io.lifeagents.install', "label=lifeagents.worktree=$Worktree") {
+            $a = switch ($kind) {
+                'container' { @('ps', '-a', '--filter', $f, '--format', '{{.Names}}|{{.Labels}}') }
+                'network'   { @('network', 'ls', '--filter', $f, '--format', '{{.Name}}|{{.Labels}}') }
+                'volume'    { @('volume', 'ls', '--filter', $f, '--format', '{{.Name}}|{{.Labels}}') }
+            }
+            $all += Get-DockerLines $a
+        }
+        @($all | Sort-Object -Unique)
+    }
+    $t = Get-WorktreeComposeTargets -Worktree $Worktree -VolumeLines (& $listing 'volume') -ContainerLines (& $listing 'container') -NetworkLines (& $listing 'network')
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+        foreach ($c in $t.Containers) { & docker rm -fv $c 2>$null | Out-Null }
+        foreach ($n in $t.Networks)   { & docker network rm $n 2>$null | Out-Null }
+        foreach ($v in $t.Volumes)    { & docker volume rm $v 2>$null | Out-Null }
+    } finally { $ErrorActionPreference = $eap }
+    foreach ($p in $t.Projects) {
+        Remove-Item -LiteralPath (Join-Path $StateDir "n8ntest_state.$p.json") -Force -ErrorAction SilentlyContinue
+    }
+    return $t
+}
+
 # --- DB-Test-Ports (DBTEST_PG_PORT) ---
 # Gleiche Liste, Eintragsname `dbport-<port>`, `By` = DB-Container des Halters. Zwei Sessions mit demselben Port scheiterten
 # sonst erst beim `docker run`. Bei der Port-Wahl zaehlen belegte (InUse, aus `docker ps`) und fremd reservierte Ports.

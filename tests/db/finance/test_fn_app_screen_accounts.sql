@@ -199,6 +199,28 @@ BEGIN
   RAISE NOTICE 'PASS [7b] P2P hinter den Geld-Konten';
 END $$;
 
+-- [9] Puffer-Zeile im Aufklappen von „Tiefster Stand“ nur, wenn das Konto einen Puffer hat: Tagesgeld Mira (Auszug,
+--     nichts geht ab -> fn_account_outlook buffer_source none) zeigt keine, das Girokonto (Abbuchungen) weiter eine
+DO $$
+DECLARE
+  v jsonb; v_mira int := (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_savings_mira');
+  k_buf text[] := ARRAY['finance.app.accounts.b_buffer_default', 'finance.app.accounts.b_buffer_account'];
+BEGIN
+  IF finance.fn_account_outlook(v_mira)->>'buffer_source' IS DISTINCT FROM 'none' THEN
+    RAISE EXCEPTION 'SETUP [9] Tagesgeld Mira ohne Abgang erwartet, got %', finance.fn_account_outlook(v_mira); END IF;
+  v := finance.fn_app_screen_accounts(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb));
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') it,
+                           jsonb_array_elements(COALESCE(it->'details', '[]'::jsonb)) d
+             WHERE s->'title'->'params'->>'account' = 'Tagesgeld Mira' AND d->'label'->>'value' = ANY (k_buf)) THEN
+    RAISE EXCEPTION 'FAIL [9a] Konto ohne Abgang zeigt eine Puffer-Zeile, got %',
+      (SELECT s FROM jsonb_array_elements(v->'sections') s WHERE s->'title'->'params'->>'account' = 'Tagesgeld Mira'); END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s, jsonb_array_elements(s->'items') it,
+                               jsonb_array_elements(COALESCE(it->'details', '[]'::jsonb)) d
+                 WHERE s->'title'->'params'->>'account' = 'Girokonto Jonas' AND d->'label'->>'value' = ANY (k_buf)) THEN
+    RAISE EXCEPTION 'FAIL [9b] Girokonto mit Abbuchungen zeigt seinen Puffer'; END IF;
+  RAISE NOTICE 'PASS [9] Puffer-Zeile nur bei Konten mit Puffer';
+END $$;
+
 -- [8] Frei-SQL-Rollen: kein EXECUTE; selbst MIT Test-Grant -> forbidden (Muster test_fn_app_screen_overview)
 DO $$
 BEGIN

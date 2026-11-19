@@ -322,8 +322,20 @@ SU_USER='' sux --yes --image "$IMG"
 su_has SU.ausgabe-ohne-sudo-root "$(cat "$SUD/out")" 'root@192.0.2.10'
 su_root debian 12 bookworm
 su_run env STUB_URL_RC=1 STUB_URL_JSON='{"v":1,"type":"result","verb":"wizard-url","ok":false,"reason":"master_not_running","detail":"x"}' bash "$SUS" --yes --image "$IMG"
-eq SU.link-fehlt-exit-1 1 "$SU_RC"
+# Ohne Link (Einrichtung schon abgeschlossen: der Wizard laeuft nicht mehr, Zweitlauf nach der Installation): der Verbund laeuft, kein Fehler.
+eq SU.link-fehlt-exit-0 0 "$SU_RC"
 su_has SU.link-fehlt-hinweis "$(cat "$SUD/err")" 'lifeagents wizard-url'
+su_has SU.link-fehlt-verbund-laeuft "$(cat "$SUD/err")" "Der Verbund läuft"
+su_not SU.link-fehlt-kein-ssh "$(cat "$SUD/out")" "ssh -L"
+# Zweitlauf nach abgeschlossener Einrichtung (changed:false, kein Wizard mehr): "Nichts zu tun", Exit 0, ohne langes Warten.
+printf '%s\n' '{"v":1,"type":"result","verb":"up","ok":true,"changed":false,"ports":{"edge":5880,"wizard":5881},"version":"v9.0.0"}' > "$SUD/res.nochange"
+su_root debian 12 bookworm
+su_run env STUB_URL_RC=1 STUB_URL_JSON='{"v":1,"type":"result","verb":"wizard-url","ok":false,"reason":"internal","detail":"x"}' STUB_OUT_up="$SUD/res.nochange" bash "$SUS" --yes --image "$IMG"
+eq SU.zweitlauf-ohne-link-exit-0 0 "$SU_RC"
+su_has SU.zweitlauf-ohne-link-nichts-zu-tun "$(cat "$SUD/err")" 'Nichts zu tun'
+tries="$(grep -c 'stack|wizard-url' "$SUL")"
+eq SU.zweitlauf-ohne-link-wenige-versuche 3 "$tries"
+
 
 # --- --answers --------------------------------------------------------------------------------------------------------------
 su_root debian 12 bookworm

@@ -1159,16 +1159,22 @@ jobs:
       - name: Remove Docker from the runner (a cold server without Docker)
         run: |
           set -euo pipefail
+          echo "--- vorher:"; dpkg -l | awk '/^ii/ {print $2}' | grep -E 'docker|containerd|runc|podman' || true
           sudo systemctl disable --now docker.service docker.socket containerd.service || true
-          pk="$(dpkg -l | awk '/^ii/ {print $2}' | grep -E '^(docker-ce|docker-ce-cli|docker-ce-rootless-extras|docker-buildx-plugin|docker-compose-plugin|docker-model-plugin|containerd\.io)$' || true)"
+          # Auch containerd/runc der Distribution: ein kalter Server hat sie nicht, und setup.sh bricht bei ihnen bewusst ab.
+          pk="$(dpkg -l | awk '/^ii/ {print $2}' | grep -E '^(docker-ce|docker-ce-cli|docker-ce-rootless-extras|docker-buildx-plugin|docker-compose-plugin|docker-model-plugin|containerd\.io|containerd|runc|docker\.io|docker-compose-v2|podman-docker)$' || true)"
           # shellcheck disable=SC2086  # eine Paketliste
           [ -z "$pk" ] || sudo apt-get purge -y $pk
-          sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker /etc/systemd/system/docker.service.d
-          grep -rlsE 'download\.docker\.com' /etc/apt/sources.list.d | xargs -r sudo rm -f
+          # Docker-Plugins des Runner-Abbilds liegen als lose Dateien neben den Paketen.
+          sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker /etc/systemd/system/docker.service.d /usr/libexec/docker /usr/local/lib/docker /usr/local/bin/docker-compose
+          { grep -rlsE 'download\.docker\.com' /etc/apt/sources.list.d || true; } | xargs -r sudo rm -f
           sudo rm -f /etc/apt/keyrings/docker.* /usr/share/keyrings/docker*
           hash -r
+          echo "--- nachher:"; dpkg -l | awk '/^ii/ {print $2}' | grep -E 'docker|containerd|runc|podman' || true
           if command -v docker >/dev/null 2>&1; then echo "FAIL docker ist noch da: $(command -v docker)"; exit 1; fi
           if command -v dockerd >/dev/null 2>&1; then echo "FAIL dockerd ist noch da"; exit 1; fi
+          # Die Registry (ein Prozess ohne Docker) muss das Entfernen und die Schritte danach ueberleben.
+          curl -fsS http://127.0.0.1:5001/v2/ >/dev/null || { echo "FAIL die Registry laeuft nicht mehr"; tail -20 "$RUNNER_TEMP/crane.log"; exit 1; }
 
       - name: setup.sh on the cold server (installs Docker, starts the stack, prints the SSH command, unit enabled)
         run: |

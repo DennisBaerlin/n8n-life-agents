@@ -2263,7 +2263,7 @@ foreach ($sa in @(
     @{ n = 'setup: image rm ok';     r = $setupRel; t = "  docker image rm `"`$img`" >/dev/null 2>&1`n";          want = 0 },
     @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec `"`$P-master`" stack wizard-url --json`n"; want = 0 },
     @{ n = 'setup: enable Docker ok'; r = $setupRel; t = "  systemctl enable --now docker >&2`n";                 want = 0 },
-    @{ n = 'setup: rm frei';         r = $setupRel; t = "  docker rm -f `"`$P-core`"`n";                           want = 1 },
+    @{ n = 'setup: kill frei';       r = $setupRel; t = "  docker kill `"`$P-core`"`n";                             want = 1 },
     @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },
     @{ n = 'setup: compose';         r = $setupRel; t = "  docker compose down`n";                                  want = 1 },
     @{ n = 'setup: prune';           r = $setupRel; t = "  docker system prune -f`n";                               want = 2 },

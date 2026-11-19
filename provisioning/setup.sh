@@ -357,12 +357,18 @@ if [ -n "$ANSWERS" ]; then
 fi
 
 url=''
-for _ in $(seq 1 15); do
+# Ein laufender Verbund ohne Wizard (Einrichtung abgeschlossen, Zweitlauf) hat keinen Link: dann nicht lange warten.
+tries=15; [ "$changed" = true ] || tries=3
+for _ in $(seq 1 "$tries"); do
   url="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
   [ -z "$url" ] || break
   sleep "${LA_SETUP_WAIT:-2}"
 done
-[ -n "$url" ] || die "Der Verbund läuft ($version), aber der Link zum Fragebogen fehlt noch. In einer Minute: lifeagents wizard-url"
+if [ -z "$url" ]; then
+  if [ "$changed" = true ]; then ok "Der Verbund läuft ($version)."; else ok "Nichts zu tun: der Verbund läuft bereits ($version)."; fi
+  warn "Es gibt keinen Link zum Fragebogen. Ist die Einrichtung schon abgeschlossen, ist das normal. Sonst in einer Minute: lifeagents wizard-url"
+  exit 0
+fi
 port="$(sed -nE 's#^http://127\.0\.0\.1:([0-9]+)/.*#\1#p' <<<"$url")"
 [ -n "$port" ] || die "Der Link zum Fragebogen hat eine unerwartete Form ($url). Neuer Versuch: lifeagents wizard-url"
 addr="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"

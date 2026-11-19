@@ -510,11 +510,18 @@ repos:
         files: ^(scripts/(bootstrap_test_db|dev/bootstrap_test_n8n|dev/docker_volume_cleanup_test|lib/git_sandbox)|\.claude/hooks/stop_own_substrate)\.ps1$
 
       - id: substrate-reservation-test
-        name: substrate_reservation_test (substrate slot reservation - list, expiry, slot decision, CLI; no Docker)
+        name: substrate_reservation_test (substrate slot reservation, stack count + cleanup, SessionEnd hook, CLI; Docker part skips without Docker/busybox)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/substrate_reservation_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/substrate_reservations|reserve_substrate_slot|bootstrap_test_db|dev/substrate_reservation_test)\.ps1$
+        files: ^(scripts/(lib/substrate_reservations|reserve_substrate_slot|bootstrap_test_db|dev/(substrate_reservation_test|stop_test_containers))\.ps1|\.claude/hooks/stop_own_substrate\.ps1)$
+
+      - id: git-sandbox-test
+        name: git_sandbox_test (Initialize-GitSandbox aborts before git init under hook GIT_* variables and never touches the shared config; every caller clears first; throwaway repos, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/git_sandbox_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/git_sandbox|dev/(git_sandbox_test|app_window_hook_test|comment_lint_test|docker_volume_cleanup_test|main_push_guard_test|n8ntest_state_file_test|owner_window_hook_test|privacy_lint_test|privacy_review_hook_test|release_images_test|release_pin_guard_test|substrate_reservation_test))\.ps1$
 
       - id: docker-cleanup-test
         name: docker_cleanup_test (docker_cleanup selects only own stopped containers, anonymous volumes, own dangling images; WhatIf deletes nothing)

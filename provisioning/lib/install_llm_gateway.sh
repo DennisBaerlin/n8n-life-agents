@@ -49,6 +49,20 @@ install_llm_gateway() {
     die "Port ${LLM_GATEWAY_PORT} ist von einem anderen Programm belegt — der LLM-Gateway kann nicht starten (ss -ltnp zeigt, welches)."
   fi
 
+  # Test-Weiche LIFEAGENTS_LLM_UPSTREAM (nur Umgebung, in _ANSWER_DENY_EXACT gesperrt): biegt das Ziel auf die KI-Attrappe im
+  # Netz-Namensraum des Verbunds. Inhalte gehen nur an api.anthropic.com (Privacy-Regel) → nur http://127.0.0.1:<port>, jeder
+  # andere Wert bricht ab, bevor etwas geschrieben wird (die Meldung nennt den Wert nie). systemd: keine Unit-Aenderung.
+  local upstream="${LIFEAGENTS_LLM_UPSTREAM:-}"
+  if [ -n "$upstream" ]; then
+    rt_is_compose || die "LIFEAGENTS_LLM_UPSTREAM gibt es nur im Docker-Verbund (Test-Weiche)."
+    local up_port=0
+    [[ "$upstream" =~ ^http://127\.0\.0\.1:([0-9]{1,5})$ ]] && up_port=$((10#${BASH_REMATCH[1]}))
+    if [ "$up_port" -lt 1 ] || [ "$up_port" -gt 65535 ]; then
+      die "LIFEAGENTS_LLM_UPSTREAM muss http://127.0.0.1:<port> sein (Test-Weiche); Inhalte gehen sonst nur an api.anthropic.com."
+    fi
+    upstream="http://127.0.0.1:${up_port}"   # ohne fuehrende Nullen gespeichert
+  fi
+
   # Cache-Keep-Alive (Kopf von server.js): Stunden 0-48, Standard 24, 0 = aus. Quelle: Install-Env (Test-Substrat
   # setzt 0, sonst stupst ein stundenlang laufendes Substrat den Cache auf dem Entwickler-Schluessel an), sonst die
   # persistierte core.env (Owner-Schalter: LLM_GATEWAY_KEEPALIVE_HOURS=0 dort eintragen + lifeagents update).
@@ -90,6 +104,7 @@ install_llm_gateway() {
     install -d -m 0700 -o 1000 -g 1000 "${STATE_DIRECTORY:-/var/lib/${LLM_GATEWAY_UNIT_NAME}}"
     if printf '%s\n' "LLM_GATEWAY_PORT=${LLM_GATEWAY_PORT}" "LLM_GATEWAY_KEEPALIVE_HOURS=${ka_hours}" \
          "LLM_GATEWAY_SERIAL_TOOLS=${serial_tools}" "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
+         ${upstream:+"LLM_GATEWAY_UPSTREAM=${upstream}"} \
        | write_if_changed "$LLM_GATEWAY_DIR/gateway.env" 0644; then
       changed=0
     fi

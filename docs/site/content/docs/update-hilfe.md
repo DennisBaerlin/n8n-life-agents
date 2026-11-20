@@ -66,6 +66,28 @@ Das Update ist abgebrochen, und der Bot selbst läuft gerade nicht richtig. Die 
 1. `lifeagents update` ausführen. Das setzt das Update an der Abbruchstelle fort.
 2. Klappt das nicht: [Zurück zur vorherigen Version](#rollback).
 
+## Der Bot meldet: Hintergrund steht {#hintergrund-steht}
+
+Diese Meldung kommt nicht nach einem Update, sondern von selbst. Der Bot hat einen **Hintergrund-Teil**: Er nimmt Updates aus dem Chat entgegen, schaut nach neuen Versionen und macht die tägliche Sicherung. Dabei beobachtet er sich selbst und meldet sich, wenn einer dieser Teile zu lange nichts von sich hören lässt. Schreiben kannst du ihm in dieser Zeit meist trotzdem; es fehlen nur Updates aus dem Chat, Update-Hinweise und die frische Sicherung. Deine Daten sind nicht weg, aber die letzte Kopie wird älter.
+
+| Der Bot meldet sich nach … | wenn |
+|---|---|
+| 15 Minuten | der Hintergrund-Teil, der Updates aus dem Chat entgegennimmt, nicht mehr arbeitet |
+| 12 Stunden | er nicht nachsehen konnte, ob es eine neue Version gibt (meist ein Internet-Problem, das sich von selbst erledigt) |
+| 26 Stunden | die tägliche Sicherung nicht angelaufen ist |
+| 1 Stunde | er nicht weiß, welche Version er ist (dann bekommst du keine Update-Hinweise) |
+
+Gezählt wird nur die Zeit, in der der Bot selbst zugeschaut hat. Gemeldet wird nur zwischen 10 und 20 Uhr (die Zeiten stellst du bei den [Erinnerungen](so-funktionierts.html) ein) und nur an dich als Besitzer. Bleibt das Problem, erinnert er nach einem Tag und danach einmal pro Woche. Sobald alles wieder läuft, schreibt er „Läuft wieder“.
+
+**Was du tun kannst:**
+
+- **Start-App (Mac oder Windows-PC):** App über das Symbol mit **App beenden** schließen und neu öffnen. Beim Start bringt sie Docker und den Bot wieder hoch.
+- **Linux-Server mit `setup.sh` (Docker):** Auf dem Server `sudo systemctl restart lifeagents-stack.service` ausführen. Läuft dort kein systemd, startest du den Verbund mit `lifeagents boot-start`.
+- **Klassische Installation auf dem Server:** `lifeagents doctor` ausführen. Es zeigt, was fehlt. Dahinter stecken drei Zeitgeber (Timer): `lifeagents-update-run`, `lifeagents-update-check` und `lifeagents-backup`.
+- **Der Bot weiß seine Version nicht:** Einmal `lifeagents update` von Hand ausführen.
+
+**Eine Grenze:** Ist der Rechner aus, oder stehen n8n oder PostgreSQL still, kann der Bot nichts melden. Sobald er wieder da ist, sagt er einmal, wie lange er weg war; Nachrichten an ihn aus dieser Zeit sind vielleicht nicht angekommen, schick Wichtiges noch einmal.
+
 ## Zurück zur vorherigen Version {#rollback}
 
 ```bash

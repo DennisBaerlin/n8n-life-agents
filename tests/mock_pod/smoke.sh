@@ -28,6 +28,14 @@ done
 inpod curl -s -o /dev/null -X POST http://127.0.0.1:8088/v1/messages -H 'content-type: application/json' \
   -d '{"model":"claude-haiku-latest","max_tokens":16,"messages":[{"role":"user","content":"hallo"}]}'
 if grep -q '"url":"/v1/messages"' "$LOG/mock_llm.jsonl" 2>/dev/null; then pass M.ki-aufruf-im-log; else fail M.ki-aufruf-im-log "kein Eintrag in mock_llm.jsonl"; fi
+# Echte Test-Dokumente (tests/mock_telegram/docs): ohne sie lieferte die Attrappe fuer mock_photo_* nur das 1x1-PNG.
+if inpod curl -sf http://127.0.0.1:8089/file/botX/documents/mock_photo_051.pdf | head -c 4 | grep -q '%PDF'; then pass M.tg-dokument; else fail M.tg-dokument "mock_photo_051.pdf kommt nicht aus docs/"; fi
+# MOCK_TG_DOCS: ein eigener Ordner (aufgeloeste Datums-Platzhalter, enable_mock_telegram.ps1) ersetzt docs/.
+DOCS="$(mktemp -d)"; printf 'Datum;Betrag\n2026-01-02;1,00\n' > "$DOCS/mock_photo_083.csv"
+DOCS_ARG="$DOCS"; command -v cygpath >/dev/null 2>&1 && DOCS_ARG="$(cygpath -m "$DOCS")"
+if MOCK_TG_DOCS="$DOCS_ARG" bash "$HERE/start_mocks.sh" "$P" "$LOG" tg \
+   && [ "$(inpod curl -sf http://127.0.0.1:8089/file/botX/documents/mock_photo_083.csv | head -n 1)" = 'Datum;Betrag' ]; then pass M.tg-docs-ordner; else fail M.tg-docs-ordner "MOCK_TG_DOCS wird nicht eingehaengt"; fi
+rm -rf "$DOCS"
 # Etiketten-Vertrag: beide Etiketten, und nur die drei Attrappen tragen das Verbund-Etikett dieses Projekts.
 GIT_HERE="$HERE"; command -v cygpath >/dev/null 2>&1 && GIT_HERE="$(cygpath -m "$HERE")"   # git.exe versteht kein /c/...
 want_wt="$(git -C "$GIT_HERE" rev-parse --show-toplevel)"

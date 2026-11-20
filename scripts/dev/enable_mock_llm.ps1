@@ -25,6 +25,12 @@
 #   (falls gepatcht) Gemini-host zurueck auf https://generativelanguage.googleapis.com + State-Block entfernen.
 # -UpdateScenarios: nur scenarios.json neu kopieren (der Stub liest sie pro Request frisch -> kein Neustart).
 #
+# Im Docker-Verbund (Zustandsdatei runtime=compose, bootstrap_test_stack.ps1) setzt die Installation das Gateway-Ziel fest auf die
+# Attrappe (Test-Weiche LIFEAGENTS_LLM_UPSTREAM, scripts/lib/test_stack.ps1 TestStackMockSwitches); hier wird nichts umgebogen:
+# die Attrappe <p>-mock-llm startet neu (tests/mock_pod/start_mocks.sh llm, Bezugstag MOCK_LLM_TODAY), das Ziel wird geprueft,
+# Gemini wie oben (3b), Block mit dem Log-Pfad auf dem Rechner. -Down entfernt die Attrappe; das Ziel bleibt, KI-Aufrufe
+# scheitern dann (erfundener Schluessel, keine Kosten). -UpdateScenarios: tests/mock_llm ist eingehaengt, nichts zu tun.
+#
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json). TEST_GOOGLE_API_KEY ist optional (nur fuer 3b).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
@@ -63,16 +69,7 @@ $StateFile  = Get-TestN8nStateFile
 # -UpdateScenarios startet neu). Harness liest ihn aus mock_llm.today im State (scripts/lib/date_placeholder.ps1).
 $MockToday  = [datetime]::UtcNow.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
-
-# Invoke-Native — natives Tool, stdout+stderr + Exit-Code (EAP-Quirk wie die uebrigen dev-Treiber).
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
+$Target     = Get-TestN8nTarget -Container $Container
 
 # --- googlePalmApi-Credential-ID (Laufzeit-id; inject_credentials remappt die getrackte id) finden ----
 function Get-GeminiCredId {
@@ -114,25 +111,9 @@ function Set-GatewayUpstream {
 }
 
 # --- .env: TEST_GOOGLE_API_KEY optional (Credential-data verlangt apiKey beim PATCH; der Revert stellt ihn wieder her) ----
-. "$PSScriptRoot\..\lib\dotenv.ps1"
-function Get-EnvValue([string]$name) {
-    if (-not (Test-Path "$RepoRoot\.env")) { return $null }
-    $line = (Read-DotEnvLines "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
-    if (-not $line) { return $null }
-    $v = ($line -split '=', 2)[1].Trim()
-    if ([string]::IsNullOrWhiteSpace($v)) { return $null }
-    return $v
-}
-$GoogleKey = Get-EnvValue 'TEST_GOOGLE_API_KEY'   # optional: nur die Transkriptions-Credential (3b)
+$GoogleKey = Get-TestEnvValue 'TEST_GOOGLE_API_KEY'   # optional: nur die Transkriptions-Credential (3b)
 
-# --- State lesen/schreiben (mock_llm-Block additiv) --------------------------------------------------
 function Read-State { [System.IO.File]::ReadAllText($StateFile, $Utf8NoBom) | ConvertFrom-Json }
-function Write-StateMock([object]$state, [object]$mockBlock) {
-    $ordered = [ordered]@{}
-    foreach ($p in $state.PSObject.Properties) { if ($p.Name -ne 'mock_llm') { $ordered[$p.Name] = $p.Value } }
-    if ($null -ne $mockBlock) { $ordered['mock_llm'] = $mockBlock }
-    [System.IO.File]::WriteAllText($StateFile, ([pscustomobject]$ordered | ConvertTo-Json -Depth 10), $Utf8NoBom)
-}
 
 # --- Server/Scenarios in den Container kopieren (Helfer; -UpdateScenarios nutzt nur den Scenarios-Teil) ----
 function Copy-Scenarios {
@@ -144,6 +125,32 @@ function Copy-Scenarios {
 # Gemini-Credential optional (nur Transkription): nur wenn Key da und Credential vorhanden.
 $credId = $null
 if ($GoogleKey) { $credId = Get-GeminiCredId }
+
+# --- Docker-Verbund: Ziel steht seit der Installation, nur Attrappe + Pruefung + Block --------------------------------
+if ($Target.Runtime -eq 'compose') {
+    $MockUrl = $script:TestStackMockSwitches.LIFEAGENTS_LLM_UPSTREAM
+    $mockC   = "$($Target.Project)-mock-llm"
+    if ($UpdateScenarios) { Write-Host "Die Szenarien sind in $mockC eingehaengt; der Stub liest scenarios.json pro Request frisch."; return }
+    if ($Down) {
+        [void](Invoke-Native docker @('rm', '-fv', $mockC))
+        if ($credId) { Set-GeminiHost -CredId $credId -HostUrl $RealHost -ApiKeyVal $GoogleKey; Write-Host "Gemini-host -> $RealHost." }
+        Set-TestN8nStateBlock -Name 'mock_llm' -Block $null
+        Write-Host "Mock-LLM-Attrappe $mockC entfernt. Das Gateway zeigt laut Installation weiter auf ${MockUrl}: KI-Aufrufe scheitern jetzt (erfundener Schluessel), sie erreichen keine echte API."
+        return
+    }
+    Write-Host "Starte Mock-LLM-Attrappe $mockC (Bezugstag $MockToday) ..."
+    Start-TestStackMocks -Names (Get-TestStackNames $Target.Project) -RepoRoot $RepoRoot -LogDir (Get-TestStackLogDir $Target.Project) -Which llm -Env @{ MOCK_LLM_TODAY = $MockToday }
+    $h = Get-LlmGatewayHealth -Container $Container
+    if (-not $h -or [string]$h.upstream -ne $MockUrl) {
+        throw "LLM-Gateway im Verbund meldet Upstream '$(if ($h) { $h.upstream } else { '(keine Antwort)' })' statt $MockUrl - die Installation hat die Test-Weiche nicht gesetzt. Neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset"
+    }
+    if ($credId) { Set-GeminiHost -CredId $credId -HostUrl $MockUrl -ApiKeyVal $GoogleKey; Write-Host "Gemini-host -> $MockUrl (Transkriptions-Credential $credId)." }
+    $hostLog = Resolve-TestMockLogPath -Target $Target -LogFile $MockLog
+    Set-TestN8nStateBlock -Name 'mock_llm' -Block ([ordered]@{ port = ([uri]$MockUrl).Port; url = $MockUrl; log = $hostLog; container = $mockC
+        cred_id = $credId; gateway_upstream = $MockUrl; today = $MockToday })
+    Write-Host "Mock-LLM aktiv (Verbund): $mockC an 127.0.0.1:$(([uri]$MockUrl).Port), Gateway -> $MockUrl, Log $hostLog"
+    return
+}
 
 # --- -UpdateScenarios: nur Scenarios neu kopieren (Stub liest sie pro Request frisch) ---------------
 if ($UpdateScenarios) {
@@ -166,7 +173,7 @@ if ($Down) {
         # Beim Aktivieren wurde die Gemini-Credential gepatcht, jetzt fehlt der Key zum Revert -> nicht still lassen.
         Write-Host "[WARN] Gemini-Credential ($($stateBefore.mock_llm.cred_id)) konnte NICHT zurueckgesetzt werden (TEST_GOOGLE_API_KEY fehlt). Manuell auf $RealHost setzen." -ForegroundColor Yellow
     }
-    if ($stateBefore) { Write-StateMock $stateBefore $null }
+    if ($stateBefore) { Set-TestN8nStateBlock -Name 'mock_llm' -Block $null }
     Write-Host "Mock-LLM deaktiviert: Unit gestoppt, Endpunkte zurueckgesetzt, State-Block entfernt."
     return
 }
@@ -216,7 +223,7 @@ if ($credId) {
 
 # --- 4) State-Block schreiben -----------------------------------------------------------------------
 $mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId; gateway_upstream = $MockUrl; today = $MockToday }
-Write-StateMock (Read-State) $mockBlock
+Set-TestN8nStateBlock -Name 'mock_llm' -Block $mockBlock
 
 Write-Host ""
 Write-Host "============================================================"

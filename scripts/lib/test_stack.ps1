@@ -41,6 +41,13 @@ function Get-TestStackNames([string]$Project) {
     }
 }
 
+# Get-TestStackLogDir <projekt> -- Arbeits- und Log-Ordner des Verbunds auf dem Rechner (Kern-Ausgaben, Antworten, Attrappen-Logs
+# unter mocks\). Bootstrap und Treiber (scripts/dev/test_n8n_state.ps1) lesen die Attrappen-Logs hier; -Down loescht ihn.
+function Get-TestStackLogDir([string]$Project) {
+    Assert-TestStackProject $Project
+    return (Join-Path ([System.IO.Path]::GetTempPath()) "lifeagents-test-stack\$Project")
+}
+
 # Get-TestStackPorts -Port <N8NTEST_PORT> -CoreRange <N8NTEST_STACK_PORTS> -- Port = REST-Bruecke; in der Spanne (LA_CORE_PORTS)
 # sucht der Kern seine zwei Ports (edge, wizard). Die Spanne wird nie abgeleitet: Port+1… gehoert oft einem Nachbarn oder dem
 # -b-Substrat von run_free_gates -Parallel. Mindestens zwei Ports, ohne den Bruecken-Port.
@@ -439,13 +446,19 @@ function Get-TestStackBash {
     foreach ($c in @((Join-Path $gitRoot 'bin\bash.exe'), (Join-Path $gitRoot 'usr\bin\bash.exe'))) { if (Test-Path $c) { return $c } }
     throw "Git Bash nicht gefunden (gesucht unter $gitRoot)."
 }
-# Start-TestStackMocks -- alle drei Attrappen (neu) starten; nach jedem Start des anchor noetig, weil Container im Namensraum
-# eines neu gestarteten anchor ihr Netz verlieren. Logs nach <LogDir>\mocks.
-function Start-TestStackMocks($Names, [string]$RepoRoot, [string]$LogDir) {
+# Start-TestStackMocks -- Attrappen (neu) starten, ohne -Which alle drei; nach jedem Start des anchor noetig, weil Container im
+# Namensraum eines neu gestarteten anchor ihr Netz verlieren. Logs nach <LogDir>\mocks. -Env: Umgebung fuer start_mocks.sh
+# (MOCK_LLM_TODAY, MOCK_TG_DOCS), nur fuer diesen Aufruf gesetzt.
+function Start-TestStackMocks {
+    param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)][string]$LogDir,
+          [ValidateSet('tg', 'llm', 'pl')][string[]]$Which = @(), [hashtable]$Env = @{})
     $bash = Get-TestStackBash
     $script = (Join-Path $RepoRoot 'tests\mock_pod\start_mocks.sh') -replace '\\', '/'
     $logs = (Join-Path $LogDir 'mocks') -replace '\\', '/'
-    $r = Invoke-Native $bash @($script, $Names.Project, $logs)
+    $saved = @{}
+    foreach ($k in $Env.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, [string]$Env[$k]) }
+    try { $r = Invoke-Native $bash (@($script, $Names.Project, $logs) + $Which) }
+    finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
     if ($r.Code -ne 0) { throw "start_mocks.sh fehlgeschlagen (Exit $($r.Code)):`n$($r.Output -join "`n")" }
 }
 # Remove-TestStackSideContainers -- Attrappen und Bruecke (Select-TestStackSideContainers) entfernen, vor dem anchor.

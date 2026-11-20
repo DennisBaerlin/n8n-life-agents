@@ -18,6 +18,9 @@ Der Owner faehrt die Installation selbst (TTY-Dialog, Prompts, gum-Menues) — C
    (`-Verbose` = volles Abbau-Log). Zerstoert die Instanz-Daten bewusst (Owner-Entscheid: kein Backup) —
    deshalb nur im Owner-Fenster (Root-`CLAUDE.md` *Scripts*); sonst den Owner um das Fenster bitten und erneut starten.
    `-KeepInstance` (nichts wird abgebaut) ist vom Fenster ausgenommen.
+   **Ziel-Sperre:** Das Skript bricht ohne Schreiben ab, wenn auf dem Ziel die Merkdatei `/etc/lifeagents-dev-instance` fehlt
+   (oder `DEV_INSTANCE_HOST` = `LIVE_INSTANCE_HOST`). Die Datei legt nur der Owner von Hand an (Befehl in der Abbruch-Meldung und in
+   `docs/reference/scripts.md` *Entwickler-Instanz vs. Produktiv-System*); Claude legt sie nie an und umgeht die Sperre nie.
    **Update-Pfad testen** (z. B. „die bestehende Instanz soll das neu fragen"): `-KeepInstance` legt denselben Stand
    bereit, baut aber NICHTS ab (kein Abbau, kein Rest-Check) — `install-dev.sh` laeuft dann als Bestands-Lauf.
 3. **Auswerten:**
@@ -25,7 +28,7 @@ Der Owner faehrt die Installation selbst (TTY-Dialog, Prompts, gum-Menues) — C
      geaendert hat (1–3 Saetze, Owner-Sprache), und den Startbefehl im Container:
      `bash /root/lifeagents-dev/install-dev.sh` (Default `--profile release`, wie `install.sh`).
    - **FEHLER** → Ursache suchen, nicht raten: die `[x]`/`[!]`-Zeilen der Ausgabe lesen; bei Abbau-Fehlern
-     read-only per SSH `/root/lifeagents-dev/uninstall.log` ansehen (Ziel/Key aus `.env` `DEV_INSTANCE_*`).
+     read-only per SSH `/root/lifeagents-dev/uninstall.log` ansehen (Ziel/Key aus `.env` `DEV_INSTANCE_*`, nie `LIVE_INSTANCE_*`).
      Exit-Codes: 10 = Upload korrupt · 11 = Shell-Syntaxfehler im Baum · 12 = Abbau gescheitert ·
      13 = Reste nach dem Abbau. Fix im Repo → erneut `/reset-dev`.
 4. **Wenn der Owner danach einen Fehler meldet:** Logs read-only pruefen (`journalctl -u n8n`,

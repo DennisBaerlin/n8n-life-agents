@@ -8,7 +8,7 @@
 # (je Zeile ein Begriff, '#' = Kommentar, Gross-/Kleinschreibung egal).
 # Ablauf: wochenweise im Skill /live-findings und in der Tiefenpruefung (Skill /privacy-deep-review).
 #
-# Usage (Zugang aus der .env des Haupt-Checkouts: DEV_INSTANCE_HOST/_USER/_SSH_KEY):
+# Usage (Zugang zum Produktiv-System aus der .env des Haupt-Checkouts: LIVE_INSTANCE_HOST/_USER/_SSH_KEY):
 #   .\scripts\refresh_privacy_denylist.ps1 -Preview     # nichts schreiben, nur Treffer im getrackten Baum als Datei:Zeile melden
 #   .\scripts\refresh_privacy_denylist.ps1              # Liste aktualisieren
 #   .\scripts\refresh_privacy_denylist.ps1 -Container lifeagents-n8ntest-xx   # Test-Substrat statt Instanz
@@ -51,14 +51,15 @@ try {
         if ($LASTEXITCODE -ne 0) { Write-Host "Quelle nicht lesbar (docker cp nach $Container)." -ForegroundColor Red; exit 1 }
         $rows = @(& docker exec $Container bash -c "chmod 644 /tmp/lifeagents_privacy_terms.sql; $psql; rc=`$?; $rmSql; exit `$rc" 2>$null)
     } else {
-        $hostName = Get-MainEnvValue 'DEV_INSTANCE_HOST'
-        $user = Get-MainEnvValue 'DEV_INSTANCE_USER'; if (-not $user) { $user = 'root' }
-        $key = Get-MainEnvValue 'DEV_INSTANCE_SSH_KEY'
+        $hostName = Get-MainEnvValue 'LIVE_INSTANCE_HOST'
+        $user = Get-MainEnvValue 'LIVE_INSTANCE_USER'; if (-not $user) { $user = 'root' }
+        $key = Get-MainEnvValue 'LIVE_INSTANCE_SSH_KEY'
         if ($key -match '^~[\\/]') { $key = Join-Path $HOME $key.Substring(2) }
-        if (-not $hostName -or -not $key) { Write-Host 'DEV_INSTANCE_HOST oder DEV_INSTANCE_SSH_KEY fehlt in der .env des Haupt-Checkouts.' -ForegroundColor Red; exit 1 }
-        & scp -q -i $key -o BatchMode=yes $temp "${user}@${hostName}:/tmp/lifeagents_privacy_terms.sql" 2>$null | Out-Null
+        if (-not $hostName -or -not $key) { Write-Host 'LIVE_INSTANCE_HOST oder LIVE_INSTANCE_SSH_KEY fehlt in der .env des Haupt-Checkouts (kein Rueckfall auf DEV_INSTANCE_*: das ist die Entwickler-Instanz, siehe .env.example).' -ForegroundColor Red; exit 1 }
+        # StrictHostKeyChecking=yes ausdruecklich: eine Nutzer-Config mit "no" liesse sonst einen falschen Host (z. B. den Router) durch.
+        & scp -q -i $key -o BatchMode=yes -o StrictHostKeyChecking=yes $temp "${user}@${hostName}:/tmp/lifeagents_privacy_terms.sql" 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host 'Quelle nicht lesbar (scp).' -ForegroundColor Red; exit 1 }
-        $rows = @(& ssh -i $key -o BatchMode=yes "${user}@${hostName}" "chmod 644 /tmp/lifeagents_privacy_terms.sql; $psql; rc=`$?; $rmSql; exit `$rc" 2>$null)
+        $rows = @(& ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=yes "${user}@${hostName}" "chmod 644 /tmp/lifeagents_privacy_terms.sql; $psql; rc=`$?; $rmSql; exit `$rc" 2>$null)
     }
     $rc = $LASTEXITCODE
 } finally {

@@ -19,6 +19,8 @@
 #
 # Ziel aus .env (gitignored): DEV_INSTANCE_HOST (Pflicht), DEV_INSTANCE_USER (Default root),
 # DEV_INSTANCE_SSH_KEY (Pflicht; Pfad zum privaten Key; ~ erlaubt). Nur Key-Login (BatchMode).
+# Ziel-Sperre (Abschnitt 0): ohne Merkdatei /etc/lifeagents-dev-instance auf dem Ziel bricht das Skript vor jedem Schreiben ab;
+# Abbruch auch, wenn DEV_INSTANCE_HOST = LIVE_INSTANCE_HOST (Produktiv). Test: scripts/dev/reset_dev_guard_test.ps1.
 #
 # -KeepInstance: denselben Stand bereitlegen, aber die bestehende Instanz nicht abbauen (kein
 # Abbau, kein Rest-Check) — zum Testen des Update-Pfads (install-dev.sh laeuft dann als Bestands-Lauf).
@@ -80,10 +82,41 @@ if (-not $devKey)  { throw "DEV_INSTANCE_SSH_KEY fehlt in .env (siehe .env.examp
 if ($devKey.StartsWith('~')) { $devKey = Join-Path $HOME $devKey.Substring(1).TrimStart('/', '\') }
 if (-not (Test-Path $devKey)) { throw "SSH-Key nicht gefunden: $devKey" }
 $target  = "$devUser@$devHost"
-$sshOpts = @('-i', $devKey, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
+# StrictHostKeyChecking=yes steht ausdruecklich auf der Kommandozeile: eine Nutzer-Config mit "no" wuerde sonst einen
+# falschen Host (z. B. den Router hinter einem Namen, der auch auf ihn aufloest) still durchlassen. Der Host-Key des Ziels
+# muss darum einmal von Hand in known_hosts stehen (einmal per ssh verbinden und bestaetigen).
+$sshOpts = @('-i', $devKey, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10')
 
 function Invoke-Remote([string]$cmd) {
     return Invoke-Native ssh ($sshOpts + @($target, $cmd))
+}
+
+# --- (0) Ziel-Sperre: nur lesend, vor jedem Schreibzugriff (auch -KeepInstance laedt hoch) ------------------
+# Das Skript loescht und ueberschreibt auf dem Ziel. Es laeuft deshalb nur dort, wo der Owner per Hand die Merkdatei
+# angelegt hat (nie ein Skript). Zwei Kriterien: (a) DEV_INSTANCE_HOST ist nicht LIVE_INSTANCE_HOST (Produktiv);
+# (b) die Merkdatei traegt den eigenen Rechnernamen des Ziels (eine kopierte oder aus Sicherung/Klon zurueckgespielte Datei
+# passt auf der falschen Maschine nicht) und die Zusage "data: test-only".
+$DevMarker = '/etc/lifeagents-dev-instance'
+$createMarkerCmd = 'printf ''lifeagents-dev-instance: %s\ndata: test-only\n'' "$(hostname)" > ' + $DevMarker
+$liveHost = Get-EnvValue 'LIVE_INSTANCE_HOST'
+. "$PSScriptRoot\lib\dev_target.ps1"
+if ($liveHost) {
+    $sameName = $liveHost.Equals($devHost, [System.StringComparison]::OrdinalIgnoreCase)
+    $sameAddr = Test-SameTargetAddresses (Resolve-HostAddresses $devHost) (Resolve-HostAddresses $liveHost) (Get-RouterAddresses)
+    if ($sameName -or $sameAddr) {
+        throw "Abbruch, nichts geaendert: DEV_INSTANCE_HOST zeigt auf dasselbe Ziel wie LIVE_INSTANCE_HOST (das Produktiv-System; gleicher Name oder gleiche Adresse). DEV_INSTANCE_* muss auf die Entwickler-Instanz zeigen (siehe .env.example)."
+    }
+}
+$r = Invoke-Remote "if [ -f $DevMarker ]; then echo MARKER-FOUND; cat $DevMarker; else echo MARKER-MISSING; fi; echo HOST=`$(hostname)"
+if ($r.Code -ne 0) { throw "SSH zum Ziel fehlgeschlagen (Exit $($r.Code)): $($r.Output -join "`n")" }
+$markerLines = @($r.Output | ForEach-Object { "$_".Trim() })
+$targetName = ($markerLines | Where-Object { $_ -like 'HOST=*' } | Select-Object -Last 1)
+if ($targetName) { $targetName = $targetName.Substring(5) }
+if ($markerLines -notcontains 'MARKER-FOUND') {
+    throw "Abbruch, nichts geaendert: Auf dem Ziel fehlt die Merkdatei $DevMarker. Das Skript loescht dort Daten und laeuft nur auf einer Maschine, die der Owner als Entwickler-Instanz markiert hat. Stimmt DEV_INSTANCE_HOST, legt der Owner die Datei einmal von Hand als root auf der Entwickler-Instanz an: $createMarkerCmd"
+}
+if (-not $targetName -or ($markerLines -notcontains "lifeagents-dev-instance: $targetName") -or ($markerLines -notcontains 'data: test-only')) {
+    throw "Abbruch, nichts geaendert: Die Merkdatei $DevMarker hat nicht den erwarteten Inhalt (Zeile 'lifeagents-dev-instance: <Rechnername des Ziels>' und Zeile 'data: test-only'). Steht dort ein anderer Rechnername, stammt die Datei von einer anderen Maschine. Neu anlegen, nur auf der Entwickler-Instanz, als root: $createMarkerCmd"
 }
 
 # --- (1) Vorab-Pruefung ------------------------------------------------------

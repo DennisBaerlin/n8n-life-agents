@@ -9,7 +9,7 @@ Der Telegram-Befehl `/costs` zeigt 7 und 30 Tage. Diese Routine liefert volle Ka
 
 ## Harte Grenzen
 
-- **Nur lesend**, wie bei `/live-findings`: Zugang aus der `.env` des Haupt-Checkouts (`DEV_INSTANCE_*`), Rezept und Dauer-Erlaubnis in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission`; `SET default_transaction_read_only = on;`. Kein Import (`core.fn_import_llm_usage` schreibt) und keine Änderung am System.
+- **Nur lesend**, wie bei `/live-findings`: Zugang aus der `.env` des Haupt-Checkouts (`LIVE_INSTANCE_*`; `DEV_INSTANCE_*` ist die Entwickler-Instanz und hier tabu, fehlt `LIVE_INSTANCE_*`, den Owner bitten), Rezept und Dauer-Erlaubnis in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission`; `SET default_transaction_read_only = on;`. Kein Import (`core.fn_import_llm_usage` schreibt) und keine Änderung am System.
 - Der Bericht ist privat (Beträge): nie ins Repo, nur privates Artefakt/Dokument im Konto des Owners. Host und Zugangsdaten nie in den Bericht.
 
 ## Kosten-Politik

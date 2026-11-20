@@ -376,6 +376,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(lib/n8ntest_state_file|lib/date_placeholder|lib/git_sandbox|dev/test_n8n_state|dev/n8ntest_state_file_test)\.ps1$
 
+      - id: test-n8n-runtime-test
+        name: test_n8n_runtime_test (the test drivers pick their way from the state file - classic container or Docker stack - psql, gateway, mock logs; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_n8n_runtime_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test))\.ps1$
+
       - id: precondition-lint-test
         name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)
         language: system
@@ -487,6 +494,13 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/main_push_guard_test.ps1
         pass_filenames: false
         files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/main_push_guard_test|scripts/main_push_guard|scripts/lib/(main_push|ci_wait|github_runs|owner_machine|git_sandbox))\.ps1$
+
+      - id: reset-dev-guard-test
+        name: reset_dev_guard_test (dev-instance reset aborts without the marker file on the target; LIVE_/DEV_INSTANCE_ keys separated; ssh/scp dummies, no real target)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/reset_dev_guard_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(reset_dev_instance|refresh_privacy_denylist|dev/reset_dev_guard_test)\.ps1|scripts/lib/(dotenv|dev_target|privacy_terms)\.(ps1|sql)|\.claude/skills/(live-findings|cost-report|reset-dev)/SKILL\.md|docs/reference/scripts\.md|\.env\.example)$
 
       - id: probe-window-test
         name: probe_window_test (monitor_probe_test computes its reminder window after waiting past the hour change; injected clock, no substrate)

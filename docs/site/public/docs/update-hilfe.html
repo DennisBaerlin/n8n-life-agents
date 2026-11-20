@@ -306,6 +306,43 @@
 <li><code>lifeagents update</code> ausführen. Das setzt das Update an der Abbruchstelle fort.</li>
 <li>Klappt das nicht: <a href="#rollback">Zurück zur vorherigen Version</a>.</li>
 </ol>
+<h2 id="hintergrund-steht">Der Bot meldet: Hintergrund steht</h2>
+<p>Diese Meldung kommt nicht nach einem Update, sondern von selbst. Der Bot hat einen <strong>Hintergrund-Teil</strong>: Er nimmt Updates aus dem Chat entgegen, schaut nach neuen Versionen und macht die tägliche Sicherung. Dabei beobachtet er sich selbst und meldet sich, wenn einer dieser Teile zu lange nichts von sich hören lässt. Schreiben kannst du ihm in dieser Zeit meist trotzdem; es fehlen nur Updates aus dem Chat, Update-Hinweise und die frische Sicherung. Deine Daten sind nicht weg, aber die letzte Kopie wird älter.</p>
+<table>
+	<thead>
+			<tr>
+					<th>Der Bot meldet sich nach …</th>
+					<th>wenn</th>
+			</tr>
+	</thead>
+	<tbody>
+			<tr>
+					<td>15 Minuten</td>
+					<td>der Hintergrund-Teil, der Updates aus dem Chat entgegennimmt, nicht mehr arbeitet</td>
+			</tr>
+			<tr>
+					<td>12 Stunden</td>
+					<td>er nicht nachsehen konnte, ob es eine neue Version gibt (meist ein Internet-Problem, das sich von selbst erledigt)</td>
+			</tr>
+			<tr>
+					<td>26 Stunden</td>
+					<td>die tägliche Sicherung nicht angelaufen ist</td>
+			</tr>
+			<tr>
+					<td>1 Stunde</td>
+					<td>er nicht weiß, welche Version er ist (dann bekommst du keine Update-Hinweise)</td>
+			</tr>
+	</tbody>
+</table>
+<p>Gezählt wird nur die Zeit, in der der Bot selbst zugeschaut hat. Gemeldet wird nur zwischen 10 und 20 Uhr (die Zeiten stellst du bei den <a href="so-funktionierts.html">Erinnerungen</a> ein) und nur an dich als Besitzer. Bleibt das Problem, erinnert er nach einem Tag und danach einmal pro Woche. Sobald alles wieder läuft, schreibt er „Läuft wieder“.</p>
+<p><strong>Was du tun kannst:</strong></p>
+<ul>
+<li><strong>Start-App (Mac oder Windows-PC):</strong> App über das Symbol mit <strong>App beenden</strong> schließen und neu öffnen. Beim Start bringt sie Docker und den Bot wieder hoch.</li>
+<li><strong>Linux-Server mit <code>setup.sh</code> (Docker):</strong> Auf dem Server <code>sudo systemctl restart lifeagents-stack.service</code> ausführen. Läuft dort kein systemd, startest du den Verbund mit <code>lifeagents boot-start</code>.</li>
+<li><strong>Klassische Installation auf dem Server:</strong> <code>lifeagents doctor</code> ausführen. Es zeigt, was fehlt. Dahinter stecken drei Zeitgeber (Timer): <code>lifeagents-update-run</code>, <code>lifeagents-update-check</code> und <code>lifeagents-backup</code>.</li>
+<li><strong>Der Bot weiß seine Version nicht:</strong> Einmal <code>lifeagents update</code> von Hand ausführen.</li>
+</ul>
+<p><strong>Eine Grenze:</strong> Ist der Rechner aus, oder stehen n8n oder PostgreSQL still, kann der Bot nichts melden. Sobald er wieder da ist, sagt er einmal, wie lange er weg war; Nachrichten an ihn aus dieser Zeit sind vielleicht nicht angekommen, schick Wichtiges noch einmal.</p>
 <h2 id="rollback">Zurück zur vorherigen Version</h2>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>lifeagents rollback
 </span></span></code></pre></div><p>Der Befehl zeigt dir zuerst, auf welche Version er zurückgeht und von wann die Sicherung ist, und fragt dann nach. <strong>Alles, was seit dieser Sicherung gespeichert wurde, geht verloren</strong> (meist sind das nur die wenigen Minuten des Updates). Danach stellt er die Datenbank aus der Sicherung her und spielt den vorherigen Stand ein. Am Ende meldet sich der Bot im Chat.</p>

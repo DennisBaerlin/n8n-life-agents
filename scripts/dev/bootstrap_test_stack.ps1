@@ -157,7 +157,7 @@ if ($mode -eq 'reset') {
 }
 if ($mode -eq 'cold') {
     Remove-TestStackSnapshot $Names $StateVolumes
-    Wait-TestStackSlot $Names.Project
+    Wait-SubstrateSlot -Own $Names.Project
     New-TestStackPgdata $Names $RepoRoot
     Write-Step "stack up (kalt) ..."
     Start-Stack

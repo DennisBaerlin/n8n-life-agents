@@ -143,34 +143,7 @@ function Get-ContainerId {
     return (($r.Output -join "`n").Trim())
 }
 
-# Wait-SubstrateSlot — Parallel-Limit fuer n8n-Substrate (je 1-1,5 GB RAM; bei 16 GB Host + mehreren Sessions
-# lagert Windows sonst aus und alle Tests werden langsam). Zaehlt laufende Substrate (Container-Label
-# lifeagents.substrate, vom Basis-Image geerbtes Label lifeagents.substrate-base oder nacktes $Image -> auch
-# Alt-Container ohne Label; kein ancestor= auf das Basis-Image: BuildKit setzt dafuer keine verlaesslichen
-# Eltern-Verweise) ausser dem eigenen, dazu gueltige Reservierungen fuer andere Container (scripts/lib/substrate_reservations.ps1);
-# ab $env:N8NTEST_MAX_PARALLEL (Default 2)
-# wird gewartet (Poll 30 s, max. $env:N8NTEST_WAIT_MIN Minuten, Default 15), dann klarer Abbruch. Kein Deckel je
-# Container (ein harter --memory-Deckel koennte n8n mitten im Test beenden; die Summe begrenzt dieses Limit).
-function Get-OtherSubstrates {
-    return @(Get-RunningSubstrates -Image $Image | Where-Object { $_.Name -ne $Container })
-}
-function Wait-SubstrateSlot {
-    $max  = if ($env:N8NTEST_MAX_PARALLEL) { [int]$env:N8NTEST_MAX_PARALLEL } else { 2 }
-    $wait = if ($env:N8NTEST_WAIT_MIN)     { [int]$env:N8NTEST_WAIT_MIN }     else { 15 }
-    $deadline = (Get-Date).AddMinutes($wait)
-    while ($true) {
-        $running = @(Get-OtherSubstrates | ForEach-Object { $_.Name })
-        $slot = Get-SlotAvailability -Running $running -Reservations @(Read-SlotReservations) -Own $Container -Max $max
-        if ($slot.Free) { return }
-        $msg = Format-SlotBlockedMessage -Availability $slot -Own $Container -Max $max
-        if ((Get-Date) -ge $deadline) {
-            throw ("Parallel-Limit: $msg`nEin fremdes Substrat nicht abreissen -- warten, bis die besitzende Session es mit -Down " +
-                   "beendet, oder die Grenze bewusst per `$env:N8NTEST_MAX_PARALLEL anheben.")
-        }
-        Write-Host "Parallel-Limit: $msg -- warte auf einen freien Platz ..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 30
-    }
-}
+# Parallel-Grenze: Wait-SubstrateSlot -Own (scripts/lib/substrate_reservations.ps1, eine Funktion fuer beide Bootstraps).
 
 # --- Basis-Image (Schnellpfad, s. Kopf) --------------------------------------
 # Get-SubstratePins — die drei Versions-Pins aus provision.sh (eine Quelle; gleiches Lese-Muster wie doctor.sh).
@@ -415,7 +388,7 @@ if ($Reset -and $existing) {
 }
 
 if (-not (Get-ContainerId)) {
-    Wait-SubstrateSlot
+    Wait-SubstrateSlot -Own $Container -Image $Image
     # Nach dem Warten nur pruefen (ein paralleler Bau koennte aufgeraeumt haben); fehlt es, neu sicherstellen.
     if ($UseBase -and (Invoke-Native docker @('image', 'inspect', $RunImage)).Code -ne 0) { $RunImage = Initialize-SubstrateBaseImage }
     Write-Host "Starte $RunImage als $Container (systemd, 127.0.0.1:$HostPort -> Container:$BridgePort) ..."

@@ -144,12 +144,6 @@ function ConvertFrom-TestStackLabelResult([int]$Code, [string[]]$Output, [string
     return [string]$labels.$Label
 }
 
-# Select-TestStackOtherSubstrates -- laufende Substrate ausser genau dem eigenen (ein s4t0-b von run_free_gates -Parallel
-# belegt einen eigenen Platz).
-function Select-TestStackOtherSubstrates([string[]]$Running, [string]$Own) {
-    return @($Running | Where-Object { $_ -and $_ -ne $Own })
-}
-
 # --- Docker-Schritte (bewiesen auf dem echten Weg: bootstrap_test_stack.ps1 kalt, -Reset, -Down) ----------------------------
 # Kurze Aufrufe ueber Invoke-Native (scripts/lib/test_common.ps1).
 . (Join-Path $PSScriptRoot 'test_common.ps1')
@@ -385,21 +379,4 @@ function Get-TestStackDockerNames {
     # (namenlose Bau-Reste) zaehlt ein Abbild nicht.
     $i = (Invoke-Native docker @('images', '--digests', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}')).Output | Where-Object { $_ -notmatch '^<none>:' }
     return @(@($c) + @($v) + @($i) | Where-Object { $_ } | Sort-Object -Unique)
-}
-
-# Wait-TestStackSlot -- Parallel-Grenze wie Wait-SubstrateSlot in bootstrap_test_n8n.ps1 (dieselbe Zaehlung aus
-# substrate_reservations.ps1; die Zaehlung des Verbunds an pgdata liefert T5 dort nach), eigener Name = Projekt.
-function Wait-TestStackSlot([string]$Own) {
-    $max  = if ($env:N8NTEST_MAX_PARALLEL) { [int]$env:N8NTEST_MAX_PARALLEL } else { 2 }
-    $wait = if ($env:N8NTEST_WAIT_MIN)     { [int]$env:N8NTEST_WAIT_MIN }     else { 15 }
-    $deadline = (Get-Date).AddMinutes($wait)
-    while ($true) {
-        $running = Select-TestStackOtherSubstrates -Running @(Get-RunningSubstrates | ForEach-Object { $_.Name }) -Own $Own
-        $slot = Get-SlotAvailability -Running $running -Reservations @(Read-SlotReservations) -Own $Own -Max $max
-        if ($slot.Free) { return }
-        $msg = Format-SlotBlockedMessage -Availability $slot -Own $Own -Max $max
-        if ((Get-Date) -ge $deadline) { throw "Parallel-Limit: $msg`nEin fremdes Substrat nicht abreissen; warten oder `$env:N8NTEST_MAX_PARALLEL bewusst anheben." }
-        Write-Host "Parallel-Limit: $msg -- warte auf einen freien Platz ..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 30
-    }
 }

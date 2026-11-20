@@ -332,6 +332,21 @@ Reset-File
 $null = & powershell -NoProfile -ExecutionPolicy Bypass -Command "& '$cli' -List:`$false -Container cli-sw -ListFile '$file'" 2>$null
 Assert-That 'Schalter mit :$false zaehlt nicht als Modus (-List:$false -Container x reserviert x)' ($LASTEXITCODE -eq 0 -and (Get-Content $file -Raw) -match 'cli-sw')
 
+Write-Host 'Wait-SubstrateSlot (eine Funktion fuer beide Bootstraps, ohne Docker):'
+Reset-File
+$run2 = { param($img) @([pscustomobject]@{ Name = 'me' }, [pscustomobject]@{ Name = 'other-a' }, [pscustomobject]@{ Name = 'me-b' }) }
+$run1 = { param($img) @([pscustomobject]@{ Name = 'me' }, [pscustomobject]@{ Name = 'other-a' }) }
+$threw = $false; try { Wait-SubstrateSlot -Own 'me' -Max 2 -WaitMin 0 -ReservationFile $file -GetRunning $run1 } catch { $threw = $true }
+Assert-That 'ein fremdes Substrat laeuft, Grenze 2: Platz frei, der eigene Name zaehlt nicht' (-not $threw)
+$msg = ''; try { Wait-SubstrateSlot -Own 'me' -Max 2 -WaitMin 0 -ReservationFile $file -GetRunning $run2 } catch { $msg = $_.Exception.Message }
+Assert-That 'me-b (run_free_gates -Parallel) zaehlt als eigener Platz: zwei fremde = voll, Abbruch nach der Wartezeit' ($msg -match 'Parallel-Limit' -and $msg -match 'me-b')
+Add-SlotReservation -File $file -Container 'other-r' -By 'leitung'
+$threw = $false; try { Wait-SubstrateSlot -Own 'me' -Max 2 -WaitMin 0 -ReservationFile $file -GetRunning $run1 } catch { $threw = $true }
+Assert-That 'Reservierung fuer einen anderen belegt den zweiten Platz' $threw
+$img = ''; $null = Wait-SubstrateSlot -Own 'me' -Image 'jrei/x' -Max 5 -WaitMin 0 -ReservationFile $file -GetRunning { param($i) $script:img = $i; @() }
+Assert-That '-Image geht an die Zaehlung (Alt-Container ohne Etikett)' ($img -eq 'jrei/x')
+Reset-File
+
 Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "substrate_reservation_test: $failed Fehler."
 exit $failed

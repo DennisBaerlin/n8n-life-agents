@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Reservierung von n8n-Test-Substrat-Plaetzen: Liste, Frist und Platz-Entscheidung. Dot-Sourcing-Bibliothek fuer
-# scripts/reserve_substrate_slot.ps1 (Bedienung durch die Leitung) und Wait-SubstrateSlot in scripts/dev/bootstrap_test_n8n.ps1.
+# scripts/reserve_substrate_slot.ps1 (Bedienung durch die Leitung); Wait-SubstrateSlot (unten) rufen beide Bootstraps.
 # Test: scripts/dev/substrate_reservation_test.ps1.
 #
 # Warum: Wait-SubstrateSlot zaehlt nur laufende Substrate. Hat die Leitung einen Platz schon an eine wartende Session
@@ -215,6 +215,37 @@ function Get-RunningSubstrates([string]$Image) {
         }
     }
     return @($seen.Values | Sort-Object Name)
+}
+
+# Wait-SubstrateSlot -Own <name> [-Image <nacktes Abbild>] -- Parallel-Grenze fuer beide Bootstraps (klassisch: Container-Name,
+# Verbund: Projektname). Ein Substrat belegt 1-1,5 GB RAM; bei 16 GB und mehreren Sessions lagert Windows sonst aus und alle Tests
+# werden langsam. Zaehlt laufende Substrate (Get-RunningSubstrates) ausser genau $Own -- ein <Own>-b von run_free_gates -Parallel
+# belegt seinen eigenen Platz -- und gueltige Reservierungen fuer andere. Ab $Max (N8NTEST_MAX_PARALLEL, Vorgabe 2) wird gewartet
+# (Poll 30 s, hoechstens $WaitMin = N8NTEST_WAIT_MIN, Vorgabe 15 Min), dann Abbruch. Kein Deckel je Container: ein harter
+# --memory-Deckel koennte n8n mitten im Test beenden, die Summe begrenzt diese Grenze. -GetRunning/-ReservationFile nur fuer den
+# Test (scripts/dev/substrate_reservation_test.ps1).
+function Wait-SubstrateSlot {
+    param(
+        [Parameter(Mandatory)][string]$Own,
+        [string]$Image = '',
+        [int]$Max = $(if ($env:N8NTEST_MAX_PARALLEL) { [int]$env:N8NTEST_MAX_PARALLEL } else { 2 }),
+        [int]$WaitMin = $(if ($env:N8NTEST_WAIT_MIN) { [int]$env:N8NTEST_WAIT_MIN } else { 15 }),
+        [string]$ReservationFile = (Get-SlotReservationFile),
+        [scriptblock]$GetRunning = { param($img) Get-RunningSubstrates -Image $img }
+    )
+    $deadline = (Get-Date).AddMinutes($WaitMin)
+    while ($true) {
+        $running = @(& $GetRunning $Image | Where-Object { $_.Name -and $_.Name -ne $Own } | ForEach-Object { $_.Name })
+        $slot = Get-SlotAvailability -Running $running -Reservations @(Read-SlotReservations -File $ReservationFile) -Own $Own -Max $Max
+        if ($slot.Free) { return }
+        $msg = Format-SlotBlockedMessage -Availability $slot -Own $Own -Max $Max
+        if ((Get-Date) -ge $deadline) {
+            throw ("Parallel-Limit: $msg`nEin fremdes Substrat nicht abreissen -- warten, bis die besitzende Session es mit -Down " +
+                   "beendet, oder die Grenze bewusst per `$env:N8NTEST_MAX_PARALLEL anheben.")
+        }
+        Write-Host "Parallel-Limit: $msg -- warte auf einen freien Platz ..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 30
+    }
 }
 # --- Aufraeumen des Verbunds eines Worktrees (SessionEnd-Hook, stop_test_containers.ps1) ---
 # Rein (ohne Docker): was gehoert zum Verbund dieses Checkouts? Zeilen `Name|Labels` je Volume, Container und Netz. Ein Projekt

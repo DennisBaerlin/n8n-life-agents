@@ -106,10 +106,6 @@ Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('null') -Label 
 Assert-That ($null -eq (ConvertFrom-TestStackLabelResult -Code 1 -Output @('Error response from daemon: get s4t0_pgdata: no such volume') -Label 'x')) 'fehlendes Volume = $null'
 Assert-That (Test-Throws { ConvertFrom-TestStackLabelResult -Code 1 -Output @('error during connect: The system cannot find the file specified.') -Label 'x' }) 'Docker-Fehler = Abbruch, nicht „fehlt“'
 
-# --- Platz-Zaehlung: nur der eigene Name zaehlt nicht mit, Substrate mit gleichem Anfang schon ------------------------------
-$others = @(Select-TestStackOtherSubstrates -Running @('s4t0', 's4t0-b', 's4w-n8ntest') -Own 's4t0')
-Assert-That ($others.Count -eq 2 -and $others -contains 's4t0-b') 'Substrat s4t0-b (run_free_gates -Parallel) zaehlt als anderer Platz'
-
 # --- PS 5.1 reicht ein " innerhalb eines Arguments nicht an native Programme weiter (Vorlage/Skript zerfaellt still) ------
 # Darum in test_stack.ps1 kein " in einem Literal, das als Docker-Argument geht: weder `" noch '…"…'. Ausnahme: der eine
 # Quoter in Invoke-TestStackProcess (Start-Process bekommt eine fertige Zeile).

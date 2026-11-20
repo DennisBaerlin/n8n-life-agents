@@ -21,6 +21,12 @@
 #
 # -Down: Mock-Unit stoppen + baseUrl zurueck auf https://api.telegram.org patchen + Gateway-Drop-in weg + State-Block entfernen.
 #
+# Im Docker-Verbund (runtime=compose) setzt die Installation Bot-Token (erfunden) und Ziel fuer n8n und Gateway fest auf die
+# Attrappe (Test-Weiche LIFEAGENTS_TELEGRAM_API, scripts/lib/test_stack.ps1); hier wird nichts umgebogen: die Test-Dokumente
+# (Platzhalter aufgeloest) gehen in einen Ordner im Log-Ordner des Verbunds, die Attrappe <p>-tgmock startet mit ihm neu
+# (tests/mock_pod/start_mocks.sh tg, MOCK_TG_DOCS), das Gateway-Ziel wird geprueft; Trigger-Routen und Bot-Name wie unten.
+# -Down entfernt Attrappe und Block, die Ziele bleiben. TEST_TELEGRAM_BOT_TOKEN braucht der Verbund nicht.
+#
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json) + TEST_TELEGRAM_BOT_TOKEN in .env
 # (die Credential muss existieren — inject_credentials legt sie nur bei vorhandenem Token an; der Mock
 # selbst ignoriert den Token, aber der Telegram-Node braucht eine gebundene Credential).
@@ -52,16 +58,7 @@ $ServerHost = Join-Path $RepoRoot 'tests\mock_telegram\server.js'
 $ServerInC  = '/opt/mock_telegram/server.js'
 $StateFile  = Get-TestN8nStateFile
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
-
-# Invoke-Native — natives Tool, stdout+stderr + Exit-Code (EAP-Quirk wie die uebrigen dev-Treiber).
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
+$Target     = Get-TestN8nTarget -Container $Container
 
 # --- Telegram-Credential-ID (Laufzeit-id; inject_credentials remappt die getrackte id) finden -------
 function Get-TelegramCredId {
@@ -79,27 +76,10 @@ function Set-TelegramBaseUrl {
         -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
 }
 
-# --- .env: TEST_TELEGRAM_BOT_TOKEN (Credential-data verlangt accessToken beim PATCH) -----------------
-. "$PSScriptRoot\..\lib\dotenv.ps1"
-function Get-EnvValue([string]$name) {
-    $line = (Read-DotEnvLines "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
-    if (-not $line) { return $null }
-    $v = ($line -split '=', 2)[1].Trim()
-    if ([string]::IsNullOrWhiteSpace($v)) { return $null }
-    return $v
-}
-$Token = Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN'
+# --- Bot-Token (Credential-data verlangt accessToken beim PATCH): classic TEST_TELEGRAM_BOT_TOKEN, Verbund das der Installation --
+$Token = Get-TestBotToken -Target $Target
 if (-not $Token) {
     throw "TEST_TELEGRAM_BOT_TOKEN fehlt in .env — ohne Token existiert die 'Telegram account'-Credential nicht (inject_credentials ueberspringt sie) und das Gate kann nicht senden."
-}
-
-# --- State lesen/schreiben (mock_telegram-Block additiv) ---------------------------------------------
-function Read-State { [System.IO.File]::ReadAllText($StateFile, $Utf8NoBom) | ConvertFrom-Json }
-function Write-StateMock([object]$state, [object]$mockBlock) {
-    $ordered = [ordered]@{}
-    foreach ($p in $state.PSObject.Properties) { if ($p.Name -ne 'mock_telegram') { $ordered[$p.Name] = $p.Value } }
-    if ($null -ne $mockBlock) { $ordered['mock_telegram'] = $mockBlock }
-    [System.IO.File]::WriteAllText($StateFile, ([pscustomobject]$ordered | ConvertTo-Json), $Utf8NoBom)
 }
 
 # --- Gateway-Telegram-Relay per Laufzeit-Drop-in umbiegen ($Api = $null -> Drop-in weg = echtes Telegram) ------------
@@ -115,8 +95,7 @@ function Set-GatewayTelegramApi {
     }
     if ($r.Code -ne 0) { throw "Gateway-Drop-in (Telegram) schreiben/entfernen fehlgeschlagen: $($r.Output -join "`n")" }
     Invoke-Native docker @('exec',$Container,'systemctl','daemon-reload') | Out-Null
-    $r = Invoke-Native docker @('exec',$Container,'systemctl','restart',$GwUnit)
-    if ($r.Code -ne 0) { throw "Neustart $GwUnit fehlgeschlagen (Substrat mit Gateway gebaut? sonst -Reset): $($r.Output -join "`n")" }
+    Restart-TestLlmGateway -Container $Container
     $want = if ($Api) { $Api } else { 'https://api.telegram.org' }
     for ($i = 0; $i -lt 20; $i++) {
         $h = Get-LlmGatewayHealth -Container $Container
@@ -130,82 +109,115 @@ $credId = Get-TelegramCredId
 if (-not $credId) { throw "Keine telegramApi-Credential gefunden — wurde das Substrat mit TEST_TELEGRAM_BOT_TOKEN gebaut?" }
 
 # --- Teardown ---------------------------------------------------------------------------------------
+if ($Down -and $Target.Runtime -eq 'compose') {
+    [void](Invoke-Native docker @('rm', '-fv', "$($Target.Project)-tgmock"))
+    Set-TestN8nStateBlock -Name 'mock_telegram' -Block $null
+    Write-Host "Mock-Telegram-Attrappe $($Target.Project)-tgmock entfernt; die Ziele bleiben laut Installation auf der Attrappe (Aufrufe scheitern jetzt)."
+    return
+}
 if ($Down) {
     Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
     Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
     Set-TelegramBaseUrl -CredId $credId -BaseUrl 'https://api.telegram.org' -Token $Token
     Set-GatewayTelegramApi $null
-    if (Test-Path $StateFile) { Write-StateMock (Read-State) $null }
+    if (Test-Path $StateFile) { Set-TestN8nStateBlock -Name 'mock_telegram' -Block $null }
     Write-Host "Mock-Telegram deaktiviert: Unit gestoppt, baseUrl + Gateway-Relay -> https://api.telegram.org, State-Block entfernt."
     return
 }
 
-# --- 1) server.js in den Container kopieren ---------------------------------------------------------
-if (-not (Test-Path $ServerHost)) { throw "Mock-Server nicht gefunden: $ServerHost" }
-$r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_telegram')
-if ($r.Code -ne 0) { throw "mkdir /opt/mock_telegram fehlgeschlagen: $($r.Output -join "`n")" }
-$r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
-if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
-# Echte Test-Dokumente (tests/mock_telegram/docs, make_doc_fixtures.ps1) -> /opt/mock_telegram/docs; der Mock liefert
-# sie fuer die passenden file_ids aus (Echt-LLM-Tier liest so ein lesbares Dokument statt des 1x1-PNG).
+# Echte Test-Dokumente (tests/mock_telegram/docs, make_doc_fixtures.ps1): der Mock liefert sie fuer die passenden file_ids aus
+# (Echt-LLM-Tier liest so ein lesbares Dokument statt des 1x1-PNG). CSV-Test-Dateien mit Datums-Platzhaltern {{date:...}}
+# (Zeilen relativ zu heute, z. B. eine Zahlung vom Importtag) loest Write-ResolvedDocs auf (scripts/lib/date_placeholder.ps1),
+# Bezugstag = Kalendertag der Datenbank (core.fn_today), mit dem Prepare, setup_sql und verify_sql rechnen (der UTC-Tag wiche
+# nachts ab). Der Mock selbst bleibt ohne Abhaengigkeit (jede Kopie von server.js laeuft allein; Waechter: date_placeholder_test).
 $DocsHost = Join-Path $RepoRoot 'tests\mock_telegram\docs'
-if (Test-Path $DocsHost) {
-    $r = Invoke-Native docker @('cp',(Join-Path $DocsHost '.'),"${Container}:/opt/mock_telegram/docs")
-    if ($r.Code -ne 0) { throw "docker cp docs/ fehlgeschlagen: $($r.Output -join "`n")" }
-    # CSV-Test-Dateien mit Datums-Platzhaltern {{date:...}} (Zeilen relativ zu heute, z. B. eine Zahlung vom Importtag): hier
-    # aufgeloest (scripts/lib/date_placeholder.ps1), Bezugstag = Kalendertag der Datenbank (core.fn_today), mit dem Prepare,
-    # setup_sql und verify_sql rechnen (der UTC-Tag wiche nachts ab). Der Mock selbst bleibt ohne Abhaengigkeit (jede Kopie von
-    # server.js laeuft allein; Waechter: date_placeholder_test). Ueberschreibt die eben kopierte Datei gleichen Namens.
+# Write-ResolvedDocs <ordner> -- die Platzhalter-CSVs aufgeloest nach <ordner> schreiben; Rueckgabe = ihre Dateinamen.
+function Write-ResolvedDocs([string]$OutDir) {
     . (Join-Path $RepoRoot 'scripts\lib\date_placeholder.ps1')
     $phDocs = @(Get-ChildItem -LiteralPath $DocsHost -Filter '*.csv' | Where-Object {
-        [System.IO.File]::ReadAllText($_.FullName, (New-Object System.Text.UTF8Encoding($false))).Contains('{{date:') })
-    if ($phDocs.Count) {
-        $dbToday = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'SELECT core.fn_today();')).Output -join '').Trim()
-        if ($dbToday -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "core.fn_today() im Substrat nicht lesbar: '$dbToday'" }
-        $day = [datetime]::ParseExact($dbToday, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+        [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom).Contains('{{date:') })
+    if (-not $phDocs.Count) { return @() }
+    $dbToday = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', 'SELECT core.fn_today();')).Output -join '').Trim()
+    if ($dbToday -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "core.fn_today() im Substrat nicht lesbar: '$dbToday'" }
+    $day = [datetime]::ParseExact($dbToday, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    foreach ($doc in $phDocs) {
+        $txt = Resolve-DatePlaceholder -Text ([System.IO.File]::ReadAllText($doc.FullName, $Utf8NoBom)) -Today $day
+        [System.IO.File]::WriteAllText((Join-Path $OutDir $doc.Name), $txt, $Utf8NoBom)
+    }
+    Write-Host "Test-Dateien mit Datums-Platzhaltern aufgeloest (Bezugstag $dbToday): $(@($phDocs.Name) -join ', ')"
+    return @($phDocs.Name)
+}
+
+if ($Target.Runtime -eq 'compose') {
+    # --- Docker-Verbund: Dokumente-Ordner bauen, Attrappe damit neu starten, Ziel pruefen (gesetzt hat es die Installation) ----
+    $MockUrl = $script:TestStackMockSwitches.LIFEAGENTS_TELEGRAM_API
+    $MockPort = ([uri]$MockUrl).Port
+    $mockC = "$($Target.Project)-tgmock"
+    $stackLogDir = Get-TestStackLogDir $Target.Project
+    $docsDir = Join-Path $stackLogDir 'tgdocs'
+    Remove-Item -LiteralPath $docsDir -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $docsDir | Out-Null
+    if (Test-Path $DocsHost) {
+        Copy-Item -Path (Join-Path $DocsHost '*') -Destination $docsDir -Recurse -Force
+        [void](Write-ResolvedDocs $docsDir)
+    }
+    Write-Host "Starte Mock-Telegram-Attrappe $mockC (Dokumente aus $docsDir) ..."
+    Start-TestStackMocks -Names (Get-TestStackNames $Target.Project) -RepoRoot $RepoRoot -LogDir $stackLogDir -Which tg -Env @{ MOCK_TG_DOCS = ($docsDir -replace '\\', '/') }
+    $h = Get-LlmGatewayHealth -Container $Container
+    if (-not $h -or -not $h.telegram -or [string]$h.telegram.upstream -ne $MockUrl) {
+        throw "Gateway-Telegram-Relay im Verbund zeigt nicht auf $MockUrl - die Installation hat die Test-Weiche nicht gesetzt. Neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset"
+    }
+    $MockLog = Resolve-TestMockLogPath -Target $Target -LogFile $MockLog
+} else {
+    # --- 1) server.js + Dokumente in den Container kopieren -----------------------------------------------
+    if (-not (Test-Path $ServerHost)) { throw "Mock-Server nicht gefunden: $ServerHost" }
+    $r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_telegram')
+    if ($r.Code -ne 0) { throw "mkdir /opt/mock_telegram fehlgeschlagen: $($r.Output -join "`n")" }
+    $r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
+    if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
+    if (Test-Path $DocsHost) {
+        $r = Invoke-Native docker @('cp',(Join-Path $DocsHost '.'),"${Container}:/opt/mock_telegram/docs")
+        if ($r.Code -ne 0) { throw "docker cp docs/ fehlgeschlagen: $($r.Output -join "`n")" }
+        # Ueberschreibt die eben kopierten Dateien gleichen Namens.
         $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "mock_tg_docs_$PID"
-        New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
         try {
-            foreach ($doc in $phDocs) {
-                $txt = Resolve-DatePlaceholder -Text ([System.IO.File]::ReadAllText($doc.FullName, (New-Object System.Text.UTF8Encoding($false)))) -Today $day
-                $out = Join-Path $tmpDir $doc.Name
-                [System.IO.File]::WriteAllText($out, $txt, (New-Object System.Text.UTF8Encoding($false)))
-                $r = Invoke-Native docker @('cp',$out,"${Container}:/opt/mock_telegram/docs/$($doc.Name)")
-                if ($r.Code -ne 0) { throw "docker cp $($doc.Name) fehlgeschlagen: $($r.Output -join "`n")" }
+            foreach ($name in (Write-ResolvedDocs $tmpDir)) {
+                $r = Invoke-Native docker @('cp',(Join-Path $tmpDir $name),"${Container}:/opt/mock_telegram/docs/$name")
+                if ($r.Code -ne 0) { throw "docker cp $name fehlgeschlagen: $($r.Output -join "`n")" }
             }
         } finally { Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
-        Write-Host "Test-Dateien mit Datums-Platzhaltern aufgeloest (Bezugstag $dbToday): $(@($phDocs.Name) -join ', ')"
     }
-}
 
-# --- 2) Mock als transiente systemd-unit starten (Reload: stop+start, um neue server.js zu ziehen) ---
-$nodeBin = ((Invoke-Native docker @('exec',$Container,'sh','-c','command -v node')).Output -join '').Trim()
-if (-not $nodeBin) { throw "node im Container nicht gefunden (n8n bringt Node mit — Substrat ok?)." }
-Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
-Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
-Write-Host "Starte Mock-Telegram (systemd-unit $Unit, 127.0.0.1:$MockPort) ..."
-$r = Invoke-Native docker @('exec',$Container,'systemd-run',"--unit=$Unit",'--collect',
-    "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog",
-    $nodeBin,$ServerInC)
-if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join "`n")" }
+    # --- 2) Mock als transiente systemd-unit starten (Reload: stop+start, um neue server.js zu ziehen) ---
+    $nodeBin = ((Invoke-Native docker @('exec',$Container,'sh','-c','command -v node')).Output -join '').Trim()
+    if (-not $nodeBin) { throw "node im Container nicht gefunden (n8n bringt Node mit — Substrat ok?)." }
+    Invoke-Native docker @('exec',$Container,'systemctl','stop',$Unit) | Out-Null
+    Invoke-Native docker @('exec',$Container,'systemctl','reset-failed',$Unit) | Out-Null
+    Write-Host "Starte Mock-Telegram (systemd-unit $Unit, 127.0.0.1:$MockPort) ..."
+    $r = Invoke-Native docker @('exec',$Container,'systemd-run',"--unit=$Unit",'--collect',
+        "--setenv=N8NTEST_MOCK_TG_PORT=$MockPort","--setenv=N8NTEST_MOCK_TG_LOG=$MockLog",
+        $nodeBin,$ServerInC)
+    if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join "`n")" }
 
-# Health-Probe (im Container gegen die Loopback) -----------------------------------------------------
-$ready = $false
-for ($i = 0; $i -lt 20; $i++) {
-    $p = Invoke-Native docker @('exec',$Container,'sh','-c',"curl -sf http://127.0.0.1:$MockPort/__health >/dev/null 2>&1 && echo ok || echo no")
-    if ((($p.Output -join '').Trim()) -eq 'ok') { $ready = $true; break }
-    Start-Sleep -Milliseconds 400
-}
-if (-not $ready) {
-    $jr = Invoke-Native docker @('exec',$Container,'journalctl','-u',$Unit,'--no-pager','-n','20')
-    throw "Mock-Telegram wurde nicht bereit (Health-Probe Timeout). journalctl:`n$($jr.Output -join "`n")"
-}
+    # Health-Probe (im Container gegen die Loopback) -----------------------------------------------------
+    $ready = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        $p = Invoke-Native docker @('exec',$Container,'sh','-c',"curl -sf http://127.0.0.1:$MockPort/__health >/dev/null 2>&1 && echo ok || echo no")
+        if ((($p.Output -join '').Trim()) -eq 'ok') { $ready = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (-not $ready) {
+        $jr = Invoke-Native docker @('exec',$Container,'journalctl','-u',$Unit,'--no-pager','-n','20')
+        throw "Mock-Telegram wurde nicht bereit (Health-Probe Timeout). journalctl:`n$($jr.Output -join "`n")"
+    }
 
-# --- 3) Telegram-baseUrl auf den Mock umbiegen ------------------------------------------------------
-Set-TelegramBaseUrl -CredId $credId -BaseUrl $MockUrl -Token $Token
-Write-Host "Telegram-baseUrl -> $MockUrl (Credential $credId gepatcht)."
-Set-GatewayTelegramApi $MockUrl
-Write-Host "Gateway-Telegram-Relay -> $MockUrl (Drop-in $GwDropIn)."
+    # --- 3) Telegram-baseUrl auf den Mock umbiegen ------------------------------------------------------
+    Set-TelegramBaseUrl -CredId $credId -BaseUrl $MockUrl -Token $Token
+    Write-Host "Telegram-baseUrl -> $MockUrl (Credential $credId gepatcht)."
+    Set-GatewayTelegramApi $MockUrl
+    Write-Host "Gateway-Telegram-Relay -> $MockUrl (Drop-in $GwDropIn)."
+}
 
 # Ohne echten Bot (CI free-gates.yml, erfundener Token) lehnt Telegram beim Deploy setWebhook ab: n8n meldet den Workflow
 # trotzdem aktiv ("partially published"), seine Route fehlt aber. Darum zaehlt die Route, nicht das Feld active: ohne Secret
@@ -232,8 +244,9 @@ foreach ($wf in @($allWf | Where-Object { $_.nodes.type -contains 'n8n-nodes-bas
 }
 
 # --- 4) State-Block schreiben -----------------------------------------------------------------------
-$mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId }
-Write-StateMock (Read-State) $mockBlock
+$mockBlock = if ($Target.Runtime -eq 'compose') { [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; container = $mockC; cred_id = $credId } }
+             else { [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId } }
+Set-TestN8nStateBlock -Name 'mock_telegram' -Block $mockBlock
 
 Write-Host ""
 # Der Mock antwortet auf getMe mit diesem Namen; ohne echten Test-Bot bliebe sonst der Platzhalter und Einladungen scheiterten.
@@ -241,7 +254,8 @@ Write-Host ""
 
 Write-Host "============================================================"
 Write-Host "  Mock-Telegram aktiv"
-Write-Host "  Unit:      $Unit  (127.0.0.1:$MockPort, im Container)"
+if ($Target.Runtime -eq 'compose') { Write-Host "  Attrappe:  $mockC  (127.0.0.1:$MockPort im Verbund)" }
+else { Write-Host "  Unit:      $Unit  (127.0.0.1:$MockPort, im Container)" }
 Write-Host "  Log:       $MockLog  (lesen: Get-MockTelegramRequests)"
 Write-Host "  baseUrl:   Credential 'Telegram account' -> $MockUrl"
 Write-Host ""

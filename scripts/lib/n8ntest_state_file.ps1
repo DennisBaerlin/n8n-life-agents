@@ -10,3 +10,44 @@ function Get-TestN8nStateFile {
     $common = [string](& git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir)
     return (Join-Path (Split-Path $common -Parent) ".local\n8ntest_state.$Container.json")
 }
+
+# Write-TestN8nState -- schreibt die Zustandsdatei (Datei des Containers, UTF-8 ohne BOM) fuer den Verbund; der klassische
+# Bootstrap schreibt dieselben Felder ohne runtime/project noch selbst (faellt in P6). runtime sagt dem Treiber (Get-TestN8nRuntime),
+# welcher Unterbau laeuft: classic = systemd-Container (bootstrap_test_n8n.ps1), compose = Docker-Verbund
+# (bootstrap_test_stack.ps1, dann project = LA_PROJECT und container = <project>-master). Schreibt die Datei neu, also ohne
+# die mock_*-Felder der enable_mock_*-Skripte: die setzen sich nach einem Neuaufbau wieder (Substrat-Neuaufbau = Mocks neu).
+$script:TestN8nRuntimes = @('classic', 'compose')
+function Write-TestN8nState {
+    param(
+        [Parameter(Mandatory)][string]$Runtime,
+        [string]$Project = '',
+        [Parameter(Mandatory)][string]$Url,
+        [string]$ApiKey = '',
+        [Parameter(Mandatory)][string]$Container,
+        [string]$ContainerId = '',
+        [string]$StateContainer = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' })
+    )
+    if ($script:TestN8nRuntimes -notcontains $Runtime) { throw "Unbekannter Unterbau '$Runtime' (erlaubt: $($script:TestN8nRuntimes -join ', '))." }
+    if ($Runtime -eq 'compose' -and -not $Project) { throw 'Unterbau compose braucht -Project (LA_PROJECT).' }
+    $file = Get-TestN8nStateFile -Container $StateContainer
+    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+    $state = [ordered]@{
+        container    = $Container
+        container_id = $ContainerId
+        url          = $Url
+        api_key      = $ApiKey
+        runtime      = $Runtime
+        project      = $Project
+        built_at     = (Get-Date -Format 'o')
+    }
+    [System.IO.File]::WriteAllText($file, ($state | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+}
+# Get-TestN8nRuntime -State <gelesenes json> -> classic|compose; ein fehlendes Feld ist classic (der klassische Bootstrap
+# schreibt es nicht), ein unbekannter Wert ist ein Fehler statt eines stillen Rueckfalls auf den falschen Unterbau.
+function Get-TestN8nRuntime {
+    param([Parameter(Mandatory)]$State)
+    $r = [string]$State.runtime
+    if (-not $r) { return 'classic' }
+    if ($script:TestN8nRuntimes -notcontains $r) { throw "Zustandsdatei nennt unbekannten Unterbau '$r'." }
+    return $r
+}

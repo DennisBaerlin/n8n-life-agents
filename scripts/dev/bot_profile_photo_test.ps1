@@ -31,10 +31,12 @@ Write-Host ("-" * 64)
 
 $failed = 0
 # Das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN -> ohne Schalter bekaeme der Test-Bot bei jedem -Reset ein Bild.
-$bootstrap = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\dev\bootstrap_test_n8n.ps1'), [System.Text.UTF8Encoding]::new($false))
-if ($bootstrap -notmatch "envLines\.Add\('BOT_PROFILE_PHOTO=0'\)") {
+# Die Schalter stehen in scripts/lib/test_install_env.ps1 (beide Unterbauten); dass beide Bootstraps sie rufen, prueft
+# scripts/dev/test_stack_test.ps1.
+. (Join-Path $RepoRoot 'scripts\lib\test_install_env.ps1')
+if ((Get-TestDevSwitches)['BOT_PROFILE_PHOTO'] -ne '0') {
     $failed++
-    Write-Host "    [FAIL] bootstrap_test_n8n.ps1 setzt BOT_PROFILE_PHOTO=0 nicht" -ForegroundColor Red
+    Write-Host "    [FAIL] Get-TestDevSwitches (scripts/lib/test_install_env.ps1) setzt BOT_PROFILE_PHOTO=0 nicht" -ForegroundColor Red
 }
 
 # Frischer Stand im Container: alten Test-Baum leeren (docker cp mergt sonst), dann provisioning/ + Mock kopieren.

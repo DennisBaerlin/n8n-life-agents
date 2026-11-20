@@ -44,6 +44,20 @@ try {
     . (Join-Path $wt 'scripts\lib\date_placeholder.ps1')
     $day = Get-DatePlaceholderReferenceDay 3> $null
     Assert-That ($day.ToString('yyyy-MM-dd') -eq '2026-03-01') 'Bezugstag aus dem Worktree liest dieselbe Zustandsdatei'
+
+    # Unterbau-Feld: der klassische Bootstrap schreibt kein runtime (fehlt = classic); der Verbund schreibt runtime + project.
+    . (Join-Path $wt 'scripts\lib\n8ntest_state_file.ps1')
+    Assert-That ((Get-TestN8nRuntime -State ([System.IO.File]::ReadAllText($want) | ConvertFrom-Json)) -eq 'classic') 'State ohne runtime = classic'
+    Write-TestN8nState -Runtime compose -Project 'nsf-probe' -Url 'http://127.0.0.1:57501' -ApiKey 'invented-key' -Container 'nsf-probe-master' -ContainerId 'abc'
+    $s = [System.IO.File]::ReadAllText($want) | ConvertFrom-Json
+    Assert-That ($s.runtime -eq 'compose' -and $s.project -eq 'nsf-probe' -and $s.url -eq 'http://127.0.0.1:57501' -and $s.api_key -eq 'invented-key' -and $s.container -eq 'nsf-probe-master' -and $s.container_id -eq 'abc' -and $s.built_at) 'Write-TestN8nState schreibt alle Felder in die Datei des Containers'
+    Assert-That ((Get-TestN8nRuntime -State $s) -eq 'compose') 'State mit runtime=compose = compose'
+    $bad = $false; try { Write-TestN8nState -Runtime 'lxc' -Project 'x' -Url 'u' -ApiKey 'k' -Container 'c' } catch { $bad = $true }
+    Assert-That $bad 'unbekannter Unterbau beim Schreiben = Abbruch'
+    $bad = $false; try { Get-TestN8nRuntime -State ([pscustomobject]@{ runtime = 'lxc' }) | Out-Null } catch { $bad = $true }
+    Assert-That $bad 'unbekannter Unterbau beim Lesen = Abbruch'
+    $raw = [System.IO.File]::ReadAllBytes($want)
+    Assert-That (-not ($raw[0] -eq 0xEF -and $raw[1] -eq 0xBB)) 'State-Datei ohne BOM'
 } finally {
     $env:N8NTEST_CONTAINER = $savedContainer
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

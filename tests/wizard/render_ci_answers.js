@@ -4,6 +4,11 @@
 //   docker cp tests/wizard/render_ci_answers.js <master>:/tmp/ && docker exec <master> node /tmp/render_ci_answers.js --reach tunnel|fritzbox --backup <eltern-ordner> > answers.env
 // --packages none|all wählt die Module (Standard all). --print packages gibt stattdessen das Argument für `provision.sh --packages` aus (flow.packagesArg).
 // Optionen: --wizard-dir <ordner> (Standard /opt/lifeagents/provisioning/wizard), --questions-file <json> (statt bridge.sh).
+// --profile dev (Test-Unterbau scripts/dev/bootstrap_test_stack.ps1; Standard release = die Datei wie oben, byte-gleich): ohne
+// erfundene Zugänge; --extra-stdin liest SCHLÜSSEL=Wert-Zeilen von stdin (die TEST_*-Werte aus .env
+// und die Test-Schalter, beide aus scripts/lib/test_install_env.ps1), die einen Schlüssel an seiner Stelle ersetzen oder ans Ende kommen. Über stdin, damit
+// kein Geheimnis in einer Befehlszeile steht (docker exec, Prozessliste). Diese Schlüssel kennt flow.allowedKeys nicht (keine
+// Frage des Assistenten); welche der Installer sperrt, entscheidet sein Leser (release_inputs.sh _answers_load_wizard).
 // Nur erfundene Werte (öffentliches Repo). Eine Pflichtfrage ohne erfundenen Wert bricht ab: eine neue Frage zwingt dazu, hier
 // einen Wert zu ergänzen, statt dass der Lauf sie still leer lässt.
 'use strict';
@@ -23,14 +28,39 @@ const SECRETS = {
   ANTHROPIC_API_KEY: 'sk-ant-api03-ci-invented-key-00000000000000000000',
 };
 
+// withExtra(flow, txt, extraText) -> txt mit ersetzten bzw. angehängten Schlüsseln; Fehler nennen Zeile und Schlüssel, nie den Wert.
+function withExtra(flow, txt, extraText) {
+  const m = flow.parseAnswers(txt);
+  const seen = new Set();
+  const lines = extraText.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  lines.forEach((l, i) => {
+    const eq = l.indexOf('=');
+    const k = eq > 0 ? l.slice(0, eq) : '';
+    if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(k)) throw new Error(`extra line ${i + 1}: expected KEY=value`);
+    if (seen.has(k)) throw new Error(`extra line ${i + 1}: duplicate key ${k}`);
+    seen.add(k);
+    const pr = flow.valueProblem(l.slice(eq + 1));
+    if (pr) throw new Error(`extra line ${i + 1}: bad value for ${k} (${pr})`);
+    m.set(k, l.slice(eq + 1));
+  });
+  let out = '# lifeagents-answers v1\n';
+  for (const [k, v] of m) out += `${k}=${v}\n`;
+  return out;
+}
+
 function arg(name, dflt) {
   const i = process.argv.indexOf('--' + name);
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 }
 
-function render({ flow, Q, reach, backup, what, packages = 'all' }) {
+function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'release', extra = '' }) {
   if (!['tunnel', 'fritzbox'].includes(reach)) throw new Error('--reach tunnel|fritzbox');
   if (!backup) throw new Error('--backup <eltern-ordner>');
+  if (!['release', 'dev'].includes(profile)) throw new Error('--profile release|dev');
+  if (extra && profile !== 'dev') throw new Error('--extra-stdin only with --profile dev');
+  // dev ohne Zusatz-Zeilen liefe still ohne die Test-Schalter (Harness-Header, Webhook-Übernahme …), die nur dort kommen.
+  if (profile === 'dev' && !extra) throw new Error('--profile dev needs the test switches via --extra-stdin (scripts/lib/test_install_env.ps1)');
   const A = {
     __tg_have: 'both', __voice: 'no', __backup_choice: 'other', __backup_dir: backup,
     __packages: packages === 'none' ? [] : Q.packages.map((p) => p.id), __reach: reach,
@@ -41,7 +71,9 @@ function render({ flow, Q, reach, backup, what, packages = 'all' }) {
     const k = flow.envOf(Q, id);
     const q = flow.question(Q, id);
     if (!q || Object.prototype.hasOwnProperty.call(A, k)) continue;
-    if (Object.prototype.hasOwnProperty.call(SECRETS, k)) continue;   // geht über die Geheimnis-Tabelle
+    // Geheimnisse: release aus der Tabelle der erfundenen Werte (die Attrappen nehmen jedes Token); dev läuft ohne Attrappen
+    // gegen echte Dienste, dort bleibt der Zugang leer, bis --extra-stdin den .env-Wert bringt.
+    if (Object.prototype.hasOwnProperty.call(SECRETS, k)) { if (profile === 'dev') A[k] = ''; continue; }
     if (Object.prototype.hasOwnProperty.call(INVENTED, k)) A[k] = INVENTED[k];
     else if (k === 'OWNER_PERSONA') A[k] = (Q.personas && Q.personas[0] && Q.personas[0].code) || '';
     else if (id.startsWith('c:')) A[k] = '';                           // optionale Zugänge der Pakete bleiben leer
@@ -51,7 +83,9 @@ function render({ flow, Q, reach, backup, what, packages = 'all' }) {
     else A[k] = '';
   }
   if (what === 'packages') return flow.packagesArg(Q, A);
-  return flow.renderAnswers(Q, flow.answerLines(Q, A, SECRETS));
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, profile === 'dev' ? {} : SECRETS));
+  if (profile !== 'dev') return txt;
+  return withExtra(flow, txt, extra);
 }
 
 if (require.main === module) {
@@ -59,6 +93,8 @@ if (require.main === module) {
   const flow = require(path.join(wiz, 'flow.js'));
   const qf = arg('questions-file', '');
   const Q = JSON.parse(qf ? fs.readFileSync(qf, 'utf8') : execFileSync('bash', [path.join(wiz, 'bridge.sh'), 'questions'], { encoding: 'utf8' }).trim().split('\n').pop());
-  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers'), packages: arg('packages', 'all') }));
+  const extra = process.argv.includes('--extra-stdin') ? fs.readFileSync(0, 'utf8') : '';
+  process.stdout.write(render({ flow, Q, reach: arg('reach', ''), backup: arg('backup', ''), what: arg('print', 'answers'),
+    packages: arg('packages', 'all'), profile: arg('profile', 'release'), extra }));
 }
 module.exports = { render };

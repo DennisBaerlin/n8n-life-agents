@@ -105,6 +105,20 @@ Assert-That ($f.Count -eq 1 -and $f[0].Text -match 's4t0x-master' -and $f[0].Sev
 $f = @(Compare-TestStackTeardown -Project 's4t0' -Before $before -After ($after + 's4t0_pgdata' + 's4t0-testbridge') -Labeled $labeled)
 Assert-That ($f.Count -eq 2 -and @($f | Where-Object { $_.Severity -eq 'error' -and $_.Text -match 'blieb' }).Count -eq 2) 'eigener Rest nach dem Abbau (Volume, etikettierter Container) = Fund'
 
+# --- Attrappen (tests/mock_pod/start_mocks.sh): feste Ziele ersetzen .env-Werte, Weichen nur aus der Liste des Kerns ---------
+$ov = [ordered]@{ PAPERLESS_API_TOKEN = 'mock-paperless-token'; CONFIG_GENERAL_PAPERLESS_URL = 'http://127.0.0.1:8092' }
+$x = @((ConvertTo-TestStackExtra -Map $map -Values @{ TEST_PAPERLESS_API_TOKEN = 'invented-from-env'; TEST_HARNESS_SECRET = 'h' } -Override $ov) -split "`n" | Where-Object { $_ })
+Assert-That (@($x -match '^PAPERLESS_API_TOKEN=').Count -eq 1 -and $x -contains 'PAPERLESS_API_TOKEN=mock-paperless-token' -and $x -contains 'CONFIG_GENERAL_PAPERLESS_URL=http://127.0.0.1:8092' -and $x -contains 'TEST_HARNESS_SECRET=h') 'Override ersetzt den .env-Wert (ein Schluessel einmal) und ergaenzt neue'
+$core = [System.IO.File]::ReadAllText((Join-Path $repo 'provisioning\lib\stack_core.sh'))
+$sw = @(Get-TestStackSwitchNames $core)
+Assert-That ($sw -contains 'LIFEAGENTS_TELEGRAM_API' -and $sw -contains 'LIFEAGENTS_LLM_UPSTREAM') 'Weichen-Namen aus stack_core.sh (SC_TEST_SWITCHES)'
+Assert-That (Test-Throws { Get-TestStackSwitchNames 'kein solcher text' }) 'fehlende SC_TEST_SWITCHES-Zeile = Abbruch'
+Assert-That (Test-Throws { Assert-TestStackSwitches -Names @('LIFEAGENTS_DIR') -Allowed $sw }) 'Weiche ausserhalb der Liste = Abbruch, bevor etwas laeuft'
+$rows = @('s4t0-n8n|com.docker.compose.project=s4t0,io.lifeagents.install=s4t0', 's4t0-tgmock|io.lifeagents.install=s4t0,lifeagents.worktree=C:/x',
+          's4t0-testbridge|io.lifeagents.install=s4t0,lifeagents.substrate=n8n-bridge', 's4t0-core|io.lifeagents.install=s4t0', 'fremd|io.lifeagents.install=other')
+$side = @(Select-TestStackSideContainers -Rows $rows -Project 's4t0')
+Assert-That (($side -join ',') -eq 's4t0-testbridge,s4t0-tgmock') 'Neben-Container: eigenes Etikett ohne Compose-Projekt, nie der Kern, nie Fremdes'
+
 # --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('null') -Label 'x') -eq '') 'Volume ohne Etiketten = leer'

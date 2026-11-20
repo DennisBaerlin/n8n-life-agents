@@ -867,6 +867,21 @@ STUB_RUNNING=lifeagents-swap STUB_VOLS='' scr status --json
 eq SC.status-update-laeuft true "$(res .update_running)"
 STUB_VOLS="${_lp}pgdata" STUB_FAIL='|ps|--format|' scr status --json
 eq SC.status-ps-fehler-leere-liste 'true|0' "$(res .ok)|$(res '.services | length')"
+# install: nur die Test-Weichen der Positivliste (SC_TEST_SWITCHES) gehen an provision.sh, als Name (-e NAME, Wert aus der
+# Umgebung des Kerns, nie in einer Befehlszeile); andere Variablen, auch gesperrte LIFEAGENTS_*, kommen nie durch.
+SC_TEST_SWITCHES_EXP='LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM'
+eq SC.weichen-liste "$SC_TEST_SWITCHES_EXP" "$(sed -n 's/^SC_TEST_SWITCHES="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")"
+LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 LIFEAGENTS_LLM_UPSTREAM=http://127.0.0.1:8088 LIFEAGENTS_DIR=/fremd \
+  LIFEAGENTS_RESULT_FILE=/fremd/r LA_FREMD=1 FREMD_WEICHE=x STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master \
+  scr install --json -- --profile dev </dev/null
+_px="$(grep '^docker|exec|.*provision\.sh' "$STUB_LOG")"
+eq SC.install-ok 'true|0' "$(res .ok)|$SC_RC"
+case "$_px" in *'|exec|-e|LIFEAGENTS_TELEGRAM_API|-e|LIFEAGENTS_LLM_UPSTREAM|lifeagents-master|bash|'*'|--profile|dev|'*) pass SC.install-weichen-durch ;;
+  *) fail SC.install-weichen-durch "$_px" ;; esac
+case "$_px" in *LIFEAGENTS_DIR*|*RESULT_FILE*|*LA_FREMD*|*FREMD_WEICHE*) fail SC.install-fremdes-nie "$_px" ;; *) pass SC.install-fremdes-nie ;; esac
+if grep -qF '127.0.0.1:808' "$STUB_LOG"; then fail SC.install-wert-nie-im-argv "$(grep -F '127.0.0.1:808' "$STUB_LOG" | head -1)"; else pass SC.install-wert-nie-im-argv; fi
+LIFEAGENTS_TELEGRAM_API='' STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master scr install --json </dev/null
+case "$(grep '^docker|exec|.*provision\.sh' "$STUB_LOG")" in *'|-e|'*) fail SC.install-ohne-weichen "$(grep provision "$STUB_LOG")" ;; *) pass SC.install-ohne-weichen ;; esac
 # start: ohne Installation not_installed; nur vorhandene, stehende Container.
 STUB_VOLS='' scr start --json;  eq SC.start-ohne-installation not_installed "$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor scr start --json

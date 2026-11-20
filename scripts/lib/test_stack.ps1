@@ -88,20 +88,51 @@ function Read-TestStackCoreResult([string[]]$Lines) {
 # TEST_*-Zuordnung und Test-Schalter: eine Adresse fuer beide Unterbauten.
 . (Join-Path $PSScriptRoot 'test_install_env.ps1')
 
-# ConvertTo-TestStackExtra -- Zusatz-Zeilen fuer render_ci_answers.js --extra-stdin: gesetzte TEST_*-Werte als Kern-Schluessel und
-# danach immer die Test-Schalter (Get-TestDevSwitches) mit ihren Werten.
+# ConvertTo-TestStackExtra -- Zusatz-Zeilen fuer render_ci_answers.js --extra-stdin: gesetzte TEST_*-Werte als Kern-Schluessel,
+# danach immer die Test-Schalter (Get-TestDevSwitches), zuletzt -Override (feste Ziele der Attrappen): ein Schluessel aus
+# -Override ersetzt einen .env-Wert gleichen Namens (die Antwort-Datei duldet jeden Schluessel nur einmal).
 function ConvertTo-TestStackExtra {
-    param([Parameter(Mandatory)]$Map, [Parameter(Mandatory)][hashtable]$Values, [switch]$HitlChatApproval, [switch]$FullDeploy, [string]$SerialTools = '')
+    param([Parameter(Mandatory)]$Map, [Parameter(Mandatory)][hashtable]$Values, [switch]$HitlChatApproval, [switch]$FullDeploy,
+          [string]$SerialTools = '', $Override = @{})
     $out = New-Object System.Text.StringBuilder
     foreach ($k in $Map.Keys) {
         $v = [string]$Values[$k]
-        if (-not $v) { continue }
+        if (-not $v -or $Override.Contains($Map[$k])) { continue }
         if ($v -match '[\x00-\x1f\x7f]') { throw ".env: Wert von $k enthaelt ein Steuerzeichen." }
         [void]$out.Append("$($Map[$k])=$v`n")
     }
     $sw = Get-TestDevSwitches -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools $SerialTools
-    foreach ($k in $sw.Keys) { [void]$out.Append("$k=$($sw[$k])`n") }
+    foreach ($k in $sw.Keys) { if (-not $Override.Contains($k)) { [void]$out.Append("$k=$($sw[$k])`n") } }
+    foreach ($k in $Override.Keys) { [void]$out.Append("$k=$($Override[$k])`n") }
     return $out.ToString()
+}
+
+# Get-TestStackSwitchNames <stack_core.sh-Text> -- die Test-Weichen, die `stack install` an provision.sh reicht (SC_TEST_SWITCHES,
+# eine Adresse im Kern); Assert-TestStackSwitches bricht ab, bevor eine Weiche ausserhalb der Liste gesetzt wuerde (der Kern
+# liesse sie ohnehin fallen, der Lauf liefe dann still gegen echte Dienste).
+function Get-TestStackSwitchNames([string]$StackCoreText) {
+    $m = [regex]::Match($StackCoreText, '(?m)^SC_TEST_SWITCHES="([A-Z0-9_ ]+)"\r?$')
+    if (-not $m.Success) { throw 'SC_TEST_SWITCHES="…" in provisioning/lib/stack_core.sh nicht gefunden.' }
+    return @($m.Groups[1].Value -split ' ' | Where-Object { $_ })
+}
+function Assert-TestStackSwitches([string[]]$Names, [string[]]$Allowed) {
+    foreach ($n in $Names) { if ($Allowed -notcontains $n) { throw "Test-Weiche $n steht nicht in SC_TEST_SWITCHES (provisioning/lib/stack_core.sh)." } }
+}
+
+# Select-TestStackSideContainers -Rows <Name|Labels> -Project <p> -- Container mit dem Install-Etikett des Projekts, die nicht
+# Compose gehoeren (Attrappen aus tests/mock_pod/start_mocks.sh, REST-Bruecke): `stack uninstall` laesst sie stehen, sie haengen
+# am Netz bzw. Namensraum des anchor und muessen vor ihm weg. Der Kurzlauf-Container <p>-core zaehlt nie (er ist der Aufruf selbst).
+function Select-TestStackSideContainers([string[]]$Rows, [string]$Project) {
+    $out = @()
+    foreach ($r in $Rows) {
+        $name, $labels = "$r" -split '\|', 2
+        if (-not $name -or $name -eq "$Project-core") { continue }
+        $l = ",$labels,"
+        if ($l -notmatch (',io\.lifeagents\.install=' + [regex]::Escape($Project) + ',')) { continue }
+        if ($l -match ',com\.docker\.compose\.project=') { continue }
+        $out += $name
+    }
+    return @($out | Sort-Object)
 }
 
 # Compare-TestStackTeardown -- Abgleich der Docker-Namen (Container, Volumes, Abbilder) vor und nach dem Abbau. Zum Verbund
@@ -201,14 +232,20 @@ function New-TestStackImage {
 }
 
 # Invoke-TestStackCore -- der Kern in seiner einen Aufruf-Form, stdin aus Datei (Antwort-Datei bei install), Ergebnis = result.
+# -Switches: Test-Weichen (Name -> Wert) fuer `stack install`; nur Namen aus SC_TEST_SWITCHES. Der Wert steht nur in der Umgebung
+# des docker-Aufrufs (--env NAME liest ihn dort), nie in einer Befehlszeile; danach ist die Umgebung wie vorher.
 function Invoke-TestStackCore {
     param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)]$Ports, [Parameter(Mandatory)][string]$Verb,
-          [string[]]$Rest = @(), [string]$StdinFile = '', [Parameter(Mandatory)][string]$LogDir)
+          [string[]]$Rest = @(), [string]$StdinFile = '', [Parameter(Mandatory)][string]$LogDir, $Switches = @{})
     if (-not $StdinFile) { $StdinFile = Get-TestStackEmptyFile $LogDir }
     $a = @('run', '--rm', '-i', '--name', $Names.Core, '--label', "io.lifeagents.install=$($Names.Project)",
-        '--env', 'LA_CORE=1', '--env', "LA_PROJECT=$($Names.Project)", '--env', "LA_CORE_PORTS=$($Ports.CoreRange)",
-        '--mount', 'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock', $Names.Image, 'stack', $Verb, '--json') + $Rest
-    $r = Invoke-TestStackProcess -DockerArgs $a -StdinFile $StdinFile -LogBase (Join-Path $LogDir "core-$Verb")
+        '--env', 'LA_CORE=1', '--env', "LA_PROJECT=$($Names.Project)", '--env', "LA_CORE_PORTS=$($Ports.CoreRange)")
+    foreach ($k in $Switches.Keys) { $a += @('--env', $k) }
+    $a += @('--mount', 'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock', $Names.Image, 'stack', $Verb, '--json') + $Rest
+    $saved = @{}
+    foreach ($k in $Switches.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, [string]$Switches[$k]) }
+    try { $r = Invoke-TestStackProcess -DockerArgs $a -StdinFile $StdinFile -LogBase (Join-Path $LogDir "core-$Verb") }
+    finally { foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
     try { $res = Read-TestStackCoreResult $r.Output }
     catch { throw "stack $Verb (Exit $($r.Code)): $($_.Exception.Message)`n$(Get-TestStackErrTail $r.ErrFile)" }
     $res | Add-Member -NotePropertyName exit_code -NotePropertyValue $r.Code -Force
@@ -379,4 +416,40 @@ function Get-TestStackDockerNames {
     # (namenlose Bau-Reste) zaehlt ein Abbild nicht.
     $i = (Invoke-Native docker @('images', '--digests', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}')).Output | Where-Object { $_ -notmatch '^<none>:' }
     return @(@($c) + @($v) + @($i) | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+# --- Attrappen im Pod (tests/mock_pod/start_mocks.sh) ------------------------------------------------------------------------
+# Ziele der Attrappen = ihre festen Ports in start_mocks.sh (Telegram 8089, KI 8088, Paperless 8092), alle auf 127.0.0.1 des
+# anchor. Weichen gehen per `stack install` an provision.sh, Paperless als Antwort (Paket-Einstellung + erfundener Schluessel).
+$script:TestStackMockSwitches = [ordered]@{ LIFEAGENTS_TELEGRAM_API = 'http://127.0.0.1:8089'; LIFEAGENTS_LLM_UPSTREAM = 'http://127.0.0.1:8088' }
+# Erfundenes Bot-Token: Installer, n8n-Zugang (inject_credentials.sh baseUrl) und Gateway gehen ueber die Weiche an die Attrappe,
+# ein echtes Token aus .env braucht der Verbund nicht und bekommt es nie.
+$script:TestStackMockAnswers  = [ordered]@{ CONFIG_GENERAL_PAPERLESS_URL = 'http://127.0.0.1:8092'; PAPERLESS_API_TOKEN = 'mock-paperless-token'
+    TELEGRAM_BOT_TOKEN = '1000001:inventedTokenForTheMockTelegram00' }
+
+# Get-TestStackBash -- bash fuer start_mocks.sh: unter Windows das von Git (Git Bash, cygpath), nie das von WSL
+# (C:\Windows\System32\bash.exe kennt weder docker.exe noch die Windows-Pfade); sonst bash aus PATH.
+function Get-TestStackBash {
+    if ($env:OS -ne 'Windows_NT') { return 'bash' }
+    $exec = ([string](& git --exec-path)).Trim() -replace '/', '\'
+    $gitRoot = Split-Path (Split-Path (Split-Path $exec -Parent) -Parent) -Parent
+    foreach ($c in @((Join-Path $gitRoot 'bin\bash.exe'), (Join-Path $gitRoot 'usr\bin\bash.exe'))) { if (Test-Path $c) { return $c } }
+    throw "Git Bash nicht gefunden (gesucht unter $gitRoot)."
+}
+# Start-TestStackMocks -- alle drei Attrappen (neu) starten; nach jedem Start des anchor noetig, weil Container im Namensraum
+# eines neu gestarteten anchor ihr Netz verlieren. Logs nach <LogDir>\mocks.
+function Start-TestStackMocks($Names, [string]$RepoRoot, [string]$LogDir) {
+    $bash = Get-TestStackBash
+    $script = (Join-Path $RepoRoot 'tests\mock_pod\start_mocks.sh') -replace '\\', '/'
+    $logs = (Join-Path $LogDir 'mocks') -replace '\\', '/'
+    $r = Invoke-Native $bash @($script, $Names.Project, $logs)
+    if ($r.Code -ne 0) { throw "start_mocks.sh fehlgeschlagen (Exit $($r.Code)):`n$($r.Output -join "`n")" }
+}
+# Remove-TestStackSideContainers -- Attrappen und Bruecke (Select-TestStackSideContainers) entfernen, vor dem anchor.
+function Remove-TestStackSideContainers($Names) {
+    $rows = @((Invoke-Native docker @('ps', '-a', '--filter', "label=io.lifeagents.install=$($Names.Project)", '--format', '{{.Names}}|{{.Labels}}')).Output | Where-Object { $_ })
+    foreach ($c in (Select-TestStackSideContainers -Rows $rows -Project $Names.Project)) {
+        $r = Invoke-Native docker @('rm', '-fv', $c)
+        if ($r.Code -ne 0) { throw "Container $c liess sich nicht entfernen: $($r.Output -join "`n")" }
+    }
 }

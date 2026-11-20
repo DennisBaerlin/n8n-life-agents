@@ -310,6 +310,15 @@ rt_master_write() {
 }
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
+# rt_master_exec_env <name…> -- <befehl…> — wie rt_master_exec, dazu je Name `-e NAME`: den Wert liest Docker selbst aus der
+#   Umgebung dieses Prozesses, er steht also nie in einer Befehlszeile. Welche Namen, entscheidet der Aufrufer (Kern:
+#   SC_TEST_SWITCHES in lib/stack_core.sh).
+rt_master_exec_env() {
+  local e=()
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do e+=(-e "$1"); shift; done
+  [ "${1:-}" = -- ] && shift
+  docker exec "${e[@]}" "$(rt_master_container)" "$@"
+}
 
 # --- Kern (lib/stack_core.sh): Kurzlauf aus dem master-Abbild, der den Verbund anlegt, prueft und entfernt -------------
 # Fester Name = Sperre gegen einen zweiten Kern (Docker lehnt den Namen ab, bevor etwas geschieht); die Weitergabe an das

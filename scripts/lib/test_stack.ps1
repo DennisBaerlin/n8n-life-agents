@@ -119,15 +119,17 @@ function Assert-TestStackSwitches([string[]]$Names, [string[]]$Allowed) {
     foreach ($n in $Names) { if ($Allowed -notcontains $n) { throw "Test-Weiche $n steht nicht in SC_TEST_SWITCHES (provisioning/lib/stack_core.sh)." } }
 }
 
-# Select-TestStackSideContainers -Rows <Name|Labels> -Project <p> -- Container mit dem Install-Etikett des Projekts, die nicht
+# Select-TestStackSideContainers -Rows <Name|Labels> -Project <p> -- Container mit Install- und Worktree-Etikett, die nicht
 # Compose gehoeren (Attrappen aus tests/mock_pod/start_mocks.sh, REST-Bruecke): `stack uninstall` laesst sie stehen, sie haengen
-# am Netz bzw. Namensraum des anchor und muessen vor ihm weg. Der Kurzlauf-Container <p>-core zaehlt nie (er ist der Aufruf selbst).
+# am Netz bzw. Namensraum des anchor und muessen vor ihm weg. Kurzlaeufe des Kerns (<p>-core, -core-next, -patchsrc) tragen kein
+# Worktree-Etikett und verschwinden selbst (--rm); ein rm darauf liefe in einen Wettlauf mit Dockers eigenem Entfernen.
 function Select-TestStackSideContainers([string[]]$Rows, [string]$Project) {
     $out = @()
     foreach ($r in $Rows) {
         $name, $labels = "$r" -split '\|', 2
-        if (-not $name -or $name -eq "$Project-core") { continue }
+        if (-not $name) { continue }
         $l = ",$labels,"
+        if ($l -notmatch ',lifeagents\.worktree=') { continue }
         if ($l -notmatch (',io\.lifeagents\.install=' + [regex]::Escape($Project) + ',')) { continue }
         if ($l -match ',com\.docker\.compose\.project=') { continue }
         $out += $name
@@ -422,10 +424,11 @@ function Get-TestStackDockerNames {
 # Ziele der Attrappen = ihre festen Ports in start_mocks.sh (Telegram 8089, KI 8088, Paperless 8092), alle auf 127.0.0.1 des
 # anchor. Weichen gehen per `stack install` an provision.sh, Paperless als Antwort (Paket-Einstellung + erfundener Schluessel).
 $script:TestStackMockSwitches = [ordered]@{ LIFEAGENTS_TELEGRAM_API = 'http://127.0.0.1:8089'; LIFEAGENTS_LLM_UPSTREAM = 'http://127.0.0.1:8088' }
-# Erfundenes Bot-Token: Installer, n8n-Zugang (inject_credentials.sh baseUrl) und Gateway gehen ueber die Weiche an die Attrappe,
-# ein echtes Token aus .env braucht der Verbund nicht und bekommt es nie.
+# Erfundenes Bot-Token und erfundener KI-Schluessel: Installer, n8n-Zugang (inject_credentials.sh baseUrl) und Gateway gehen ueber die
+# Weichen an die Attrappen; echte Zugaenge aus .env braucht der Verbund nicht und bekommt sie nie (faellt die KI-Weiche bei einem
+# spaeteren Lauf ohne sie weg, scheitert der Aufruf an api.anthropic.com am erfundenen Schluessel statt Kosten zu machen).
 $script:TestStackMockAnswers  = [ordered]@{ CONFIG_GENERAL_PAPERLESS_URL = 'http://127.0.0.1:8092'; PAPERLESS_API_TOKEN = 'mock-paperless-token'
-    TELEGRAM_BOT_TOKEN = '1000001:inventedTokenForTheMockTelegram00' }
+    TELEGRAM_BOT_TOKEN = '1000001:inventedTokenForTheMockTelegram00'; ANTHROPIC_API_KEY = 'sk-ant-api03-invented-key-for-the-mock-llm-0000000000' }
 
 # Get-TestStackBash -- bash fuer start_mocks.sh: unter Windows das von Git (Git Bash, cygpath), nie das von WSL
 # (C:\Windows\System32\bash.exe kennt weder docker.exe noch die Windows-Pfade); sonst bash aus PATH.
@@ -450,6 +453,6 @@ function Remove-TestStackSideContainers($Names) {
     $rows = @((Invoke-Native docker @('ps', '-a', '--filter', "label=io.lifeagents.install=$($Names.Project)", '--format', '{{.Names}}|{{.Labels}}')).Output | Where-Object { $_ })
     foreach ($c in (Select-TestStackSideContainers -Rows $rows -Project $Names.Project)) {
         $r = Invoke-Native docker @('rm', '-fv', $c)
-        if ($r.Code -ne 0) { throw "Container $c liess sich nicht entfernen: $($r.Output -join "`n")" }
+        if ($r.Code -ne 0 -and ($r.Output -join ' ') -notmatch 'No such container|already in progress') { throw "Container $c liess sich nicht entfernen: $($r.Output -join "`n")" }
     }
 }

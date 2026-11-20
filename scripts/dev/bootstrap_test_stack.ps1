@@ -111,13 +111,14 @@ Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
     if ($_ -match '^\s*(TEST_[A-Z0-9_]+)=(.*)$') { $envValues[$Matches[1]] = $Matches[2].Trim() }
 }
 if (-not $envValues['TEST_HARNESS_SECRET']) { Write-Warning 'TEST_HARNESS_SECRET fehlt in .env - Harness-Webhooks antworten dann 403.' }
-if (-not $envValues['TEST_ANTHROPIC_API_KEY']) { Write-Warning 'TEST_ANTHROPIC_API_KEY fehlt in .env - LLM-Zugang bleibt leer (die Agenten-Suiten brauchen ihn).' }
 $extra = ConvertTo-TestStackExtra -Map (Get-TestInstallEnvMap $RepoRoot) -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS) -Override $script:TestStackMockAnswers
 Assert-TestStackSwitches -Names @($script:TestStackMockSwitches.Keys) -Allowed (Get-TestStackSwitchNames ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\lib\stack_core.sh'), $Utf8NoBom)))
 $answers = Get-TestStackAnswers -RepoRoot $RepoRoot -Names $Names -BackupDir $BackupDir -ExtraText $extra -LogDir $LogDir
 $extra = $null
 $composeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\compose\compose.yml'), $Utf8NoBom)
-$key = Get-TestStackSnapshotKey -ImageId $img.ImageId -AnswersText $answers.Text -ComposeText $composeText
+# Die Weichen landen im installierten Stand (Gateway-Ziel, Telegram-Adresse des n8n-Zugangs): sie gehoeren in den Schluessel.
+$switchText = (@($script:TestStackMockSwitches.Keys) | ForEach-Object { "$_=$($script:TestStackMockSwitches[$_])" }) -join "`n"
+$key = Get-TestStackSnapshotKey -ImageId $img.ImageId -AnswersText ($answers.Text + $switchText) -ComposeText $composeText
 
 function Install-Stack {
     $in = Join-Path $LogDir 'answers.stdin'
@@ -172,7 +173,7 @@ if ($mode -eq 'cold') {
     Resume-Stack
 } elseif ($mode -eq 'reset') {
     Write-Step 'Schnappschuss passt: anhalten, zurueckspielen, starten ...'
-    Remove-TestStackBridge $Names
+    Remove-TestStackSideContainers $Names
     Stop-TestStackContainers $Names
     Restore-TestStackSnapshot $Names $StateVolumes $RepoRoot
     Resume-Stack

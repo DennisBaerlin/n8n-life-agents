@@ -115,9 +115,11 @@ Assert-That ($sw -contains 'LIFEAGENTS_TELEGRAM_API' -and $sw -contains 'LIFEAGE
 Assert-That (Test-Throws { Get-TestStackSwitchNames 'kein solcher text' }) 'fehlende SC_TEST_SWITCHES-Zeile = Abbruch'
 Assert-That (Test-Throws { Assert-TestStackSwitches -Names @('LIFEAGENTS_DIR') -Allowed $sw }) 'Weiche ausserhalb der Liste = Abbruch, bevor etwas laeuft'
 $rows = @('s4t0-n8n|com.docker.compose.project=s4t0,io.lifeagents.install=s4t0', 's4t0-tgmock|io.lifeagents.install=s4t0,lifeagents.worktree=C:/x',
-          's4t0-testbridge|io.lifeagents.install=s4t0,lifeagents.substrate=n8n-bridge', 's4t0-core|io.lifeagents.install=s4t0', 'fremd|io.lifeagents.install=other')
+          's4t0-testbridge|io.lifeagents.install=s4t0,lifeagents.substrate=n8n-bridge,lifeagents.worktree=C:/x', 's4t0-core|io.lifeagents.install=s4t0',
+          's4t0-core-next|io.lifeagents.install=s4t0', 's4t0-patchsrc|io.lifeagents.install=s4t0', 'fremd|io.lifeagents.install=other,lifeagents.worktree=C:/x')
 $side = @(Select-TestStackSideContainers -Rows $rows -Project 's4t0')
-Assert-That (($side -join ',') -eq 's4t0-testbridge,s4t0-tgmock') 'Neben-Container: eigenes Etikett ohne Compose-Projekt, nie der Kern, nie Fremdes'
+Assert-That (($side -join ',') -eq 's4t0-testbridge,s4t0-tgmock') 'Neben-Container: Install- und Worktree-Etikett, ohne Compose-Projekt; nie Kurzlaeufe des Kerns, nie Fremdes'
+Assert-That ($script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -and $script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -match 'invented' -and $script:TestStackMockAnswers['TELEGRAM_BOT_TOKEN'] -match 'invented') 'Verbund: Bot-Token und KI-Schluessel erfunden (kein echter Zugang in der Installation)'
 
 # --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'

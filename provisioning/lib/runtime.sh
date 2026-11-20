@@ -347,10 +347,12 @@ rt_image_has_core() { [ "$(docker image inspect -f '{{index .Config.Labels "io.l
 rt_image_present() { docker image inspect "$1" >/dev/null 2>&1; }
 # rt_core_delegate <abbild> <verb> [args…] — denselben Aufruf im Abbild der Installation fahren (stdin, stdout, stderr und
 #   Exit durchgereicht). LA_CORE_DELEGATED verhindert eine zweite Weitergabe; Werte gehen nie ueber die Umgebung mit.
+#   Gesetzte Test-Weichen (SC_TEST_SWITCHES, lib/stack_core.sh) gehen als Name mit; der innere Kern prueft sie selbst.
 rt_core_delegate() {
-  local img="$1"; shift
+  local img="$1" k sw=(); shift
+  for k in ${SC_TEST_SWITCHES:-}; do [ -z "${!k:-}" ] || sw+=(--env "$k"); done
   docker run --rm -i --name "${LA_PROJECT}-core-next" --label "${LA_LABEL}=${LA_PROJECT}" \
-    --env LA_CORE=1 --env "LA_PROJECT=${LA_PROJECT}" --env "LA_CORE_DELEGATED=${LA_CORE_SELF_IMAGE:?}" --env LA_CORE_PORTS \
+    --env LA_CORE=1 --env "LA_PROJECT=${LA_PROJECT}" --env "LA_CORE_DELEGATED=${LA_CORE_SELF_IMAGE:?}" --env LA_CORE_PORTS "${sw[@]}" \
     --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock "$img" stack "$@"
 }
 # rt_docker_server <Version|Os> -> Feld des Docker-Daemons (nicht des Clients).

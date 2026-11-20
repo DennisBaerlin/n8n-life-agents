@@ -523,7 +523,12 @@ sc_wizard_url() {
 sc_install() {
   local rc=0 n sw=()
   _sc_need_core
-  for n in $SC_TEST_SWITCHES; do [ -z "${!n:-}" ] || sw+=("$n"); done
+  # Nur Ziele auf 127.0.0.1 (die Attrappen im Pod): setup.sh ist oeffentlich, eine liegengebliebene Weiche mit fremdem Ziel
+  # leitete sonst Bot-Aufrufe samt Token um. Sie faellt mit Warnung weg (Wert nie in der Meldung), die Installation laeuft normal.
+  for n in $SC_TEST_SWITCHES; do
+    [ -n "${!n:-}" ] || continue
+    if [[ "${!n}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}$ ]]; then sw+=("$n"); else warn "Test-Weiche ${n} ignoriert: nur http://127.0.0.1:<port> ist erlaubt."; fi
+  done
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   sc_lock

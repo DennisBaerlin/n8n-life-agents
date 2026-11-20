@@ -28,8 +28,9 @@
 # Im Docker-Verbund (Zustandsdatei runtime=compose, bootstrap_test_stack.ps1) setzt die Installation das Gateway-Ziel fest auf die
 # Attrappe (Test-Weiche LIFEAGENTS_LLM_UPSTREAM, scripts/lib/test_stack.ps1 TestStackMockSwitches); hier wird nichts umgebogen:
 # die Attrappe <p>-mock-llm startet neu (tests/mock_pod/start_mocks.sh llm, Bezugstag MOCK_LLM_TODAY), das Ziel wird geprueft,
-# Gemini wie oben (3b), Block mit dem Log-Pfad auf dem Rechner. -Down entfernt die Attrappe; das Ziel bleibt, KI-Aufrufe
-# scheitern dann (erfundener Schluessel, keine Kosten). -UpdateScenarios: tests/mock_llm ist eingehaengt, nichts zu tun.
+# Gemini wie oben (3b), Block mit dem Log-Pfad auf dem Rechner. -Down entfernt die Attrappe und stellt Gemini zurueck; das
+# Gateway-Ziel bleibt, Claude-Aufrufe scheitern dann (erfundener Schluessel, keine Kosten). -UpdateScenarios: tests/mock_llm ist
+# eingehaengt, nichts zu tun.
 #
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json). TEST_GOOGLE_API_KEY ist optional (nur fuer 3b).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
@@ -99,8 +100,7 @@ function Set-GatewayUpstream {
     }
     if ($r.Code -ne 0) { throw "Gateway-Drop-in schreiben/entfernen fehlgeschlagen: $($r.Output -join "`n")" }
     Invoke-Native docker @('exec',$Container,'systemctl','daemon-reload') | Out-Null
-    $r = Invoke-Native docker @('exec',$Container,'systemctl','restart',$GwUnit)
-    if ($r.Code -ne 0) { throw "Neustart $GwUnit fehlgeschlagen (Substrat mit Gateway gebaut? sonst -Reset): $($r.Output -join "`n")" }
+    Restart-TestLlmGateway -Container $Container
     $want = if ($Upstream) { $Upstream } else { 'https://api.anthropic.com' }
     for ($i = 0; $i -lt 20; $i++) {
         $h = Get-LlmGatewayHealth -Container $Container
@@ -133,9 +133,10 @@ if ($Target.Runtime -eq 'compose') {
     if ($UpdateScenarios) { Write-Host "Die Szenarien sind in $mockC eingehaengt; der Stub liest scenarios.json pro Request frisch."; return }
     if ($Down) {
         [void](Invoke-Native docker @('rm', '-fv', $mockC))
-        if ($credId) { Set-GeminiHost -CredId $credId -HostUrl $RealHost -ApiKeyVal $GoogleKey; Write-Host "Gemini-host -> $RealHost." }
+        # Wie classic: die Transkription geht danach wieder an Google (mit TEST_GOOGLE_API_KEY, den die Installation schon hat).
+        if ($credId) { Set-GeminiHost -CredId $credId -HostUrl $RealHost -ApiKeyVal $GoogleKey; Write-Host "Gemini-host -> $RealHost (Transkription geht wieder an Google)." }
         Set-TestN8nStateBlock -Name 'mock_llm' -Block $null
-        Write-Host "Mock-LLM-Attrappe $mockC entfernt. Das Gateway zeigt laut Installation weiter auf ${MockUrl}: KI-Aufrufe scheitern jetzt (erfundener Schluessel), sie erreichen keine echte API."
+        Write-Host "Mock-LLM-Attrappe $mockC entfernt. Das Gateway zeigt laut Installation weiter auf ${MockUrl}: Claude-Aufrufe scheitern jetzt (erfundener Schluessel) und erreichen keine echte API."
         return
     }
     Write-Host "Starte Mock-LLM-Attrappe $mockC (Bezugstag $MockToday) ..."

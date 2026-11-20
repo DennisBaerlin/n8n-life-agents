@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # test_n8n_runtime_test.ps1 -- die Treiber-Bibliothek (scripts/dev/test_n8n_state.ps1) waehlt den Weg je Unterbau aus der
-# Zustandsdatei: classic = alles im einen systemd-Container (Argumente byte-gleich zu vorher), compose = der Docker-Verbund
+# Zustandsdatei: classic = alles im einen systemd-Container (runuser, systemctl, Logs im Container), compose = der Docker-Verbund
 # (psql im Postgres-Container, Gateway als eigener Container, Attrappen-Logs als Datei auf dem Rechner).
 # Kein Docker, kein Netz: geprueft werden die reinen Bausteine und die Datei-Wege.
 # Usage:  .\scripts\dev\test_n8n_runtime_test.ps1     Exit-Code = Anzahl Fehler.
@@ -29,8 +29,9 @@ Assert-That ($t.Runtime -eq 'compose' -and $t.Master -eq 'probe-master' -and $t.
 Assert-That ($t.MockLogDir -eq (Join-Path (Get-TestStackLogDir 'probe') 'mocks')) 'compose: Attrappen-Logs im Log-Ordner des Verbunds (eine Adresse: Get-TestStackLogDir)'
 Assert-Throws { ConvertTo-TestN8nTarget -State ([pscustomobject]@{ url = 'u'; container = 'c'; runtime = 'compose' }) } 'compose ohne project = Abbruch'
 Assert-Throws { ConvertTo-TestN8nTarget -State ([pscustomobject]@{ url = 'u'; container = 'c'; runtime = 'lxc' }) } 'unbekannter Unterbau = Abbruch'
-$t = Get-TestN8nTarget -Container 'other-n8n' -State $compose
-Assert-That ($t.Runtime -eq 'classic' -and $t.Postgres -eq 'other-n8n') 'fremder Container (nicht der des Zustands) = classic auf genau diesem Container'
+$t = Get-TestN8nTarget -Container 'other-n8n' -State $classic
+Assert-That ($t.Runtime -eq 'classic' -and $t.Postgres -eq 'other-n8n') 'klassischer Zustand, anderer Container = classic auf genau diesem Container'
+Assert-Throws { Get-TestN8nTarget -Container 'probe-n8n' -State $compose } 'Verbund, Container nicht der master = Abbruch statt runuser im Verbund'
 $t = Get-TestN8nTarget -Container 'probe-master' -State $compose
 Assert-That ($t.Runtime -eq 'compose') 'Container des Zustands = Ziel aus dem Zustand'
 
@@ -50,7 +51,9 @@ $lines = @(
     '2026-11-20T10:00:01.000000000Z {"t":"x","ev":"usage","id":1,"model":"m","input_tokens":5}',
     '2026-11-20T10:00:02.000000000Z {"t":"x","ev":"usage","id":2,"model":"m","input_tokens":7}',
     '2026-11-20T10:00:03.000000000Z {"t":"x","ev":"other"}')
-Assert-That ((Get-LlmUsageCursorFromLogLines -Lines $lines) -eq '2026-11-20T10:00:03.000000000Z') 'compose: Cursor = Zeitstempel der letzten Zeile'
+Assert-That ((Get-LlmUsageCursorFromLogLines -Lines $lines) -eq '2026-11-20T10:00:03.000000000Z') 'compose: Cursor = neuester Zeitstempel'
+# stdout und stderr kommen ueber 2>&1 ungeordnet an: eine aeltere stderr-Zeile zuletzt darf den Cursor nicht zurueckstellen.
+Assert-That ((Get-LlmUsageCursorFromLogLines -Lines ($lines + '2026-11-20T09:59:59.000000000Z warn: x')) -eq '2026-11-20T10:00:03.000000000Z') 'compose: Cursor = groesster, nicht letzter Zeitstempel'
 Assert-That ($null -eq (Get-LlmUsageCursorFromLogLines -Lines @())) 'compose: ohne Zeilen kein Cursor'
 $u = @(Select-LlmUsageFromLogLines -Lines $lines -AfterCursor '2026-11-20T10:00:01.000000000Z')
 Assert-That ($u.Count -eq 1 -and $u[0].id -eq 2) 'compose: nur usage-Zeilen nach dem Cursor'
@@ -94,6 +97,9 @@ try {
 
 Write-Host 'Bot-Token'
 Assert-That ((Get-TestBotToken -Target $tp) -eq $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN) 'compose: das erfundene Token der Installation (eine Adresse: TestStackMockAnswers)'
+# Ziel-Aufloesung fest auf den Verbund (ohne Zustandsdatei); die Pruefung bricht vor jedem docker-Aufruf ab.
+function Get-TestN8nTarget { param([string]$Container) ConvertTo-TestN8nTarget -State $compose }
+Assert-Throws { Get-HitlTelegramSecret -Container 'probe-master' -BotToken 'anderes-token' } 'compose: abweichendes -BotToken fuer die HITL-Signatur = Abbruch'
 
 Write-Host "test_n8n_runtime_test: $failed Fehler."
 exit $failed

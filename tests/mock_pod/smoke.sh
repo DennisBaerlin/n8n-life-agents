@@ -28,7 +28,7 @@ done
 inpod curl -s -o /dev/null -X POST http://127.0.0.1:8088/v1/messages -H 'content-type: application/json' \
   -d '{"model":"claude-haiku-latest","max_tokens":16,"messages":[{"role":"user","content":"hallo"}]}'
 if grep -q '"url":"/v1/messages"' "$LOG/mock_llm.jsonl" 2>/dev/null; then pass M.ki-aufruf-im-log; else fail M.ki-aufruf-im-log "kein Eintrag in mock_llm.jsonl"; fi
-# Echte Test-Dokumente (tests/mock_telegram/docs): ohne sie lieferte die Attrappe fuer mock_photo_* nur das 1x1-PNG.
+# Echte Test-Dokumente (tests/mock_telegram/docs) unter /m/docs; fehlt der Ordner, liefert die Attrappe fuer mock_photo_* ein 1x1-PNG.
 if inpod curl -sf http://127.0.0.1:8089/file/botX/documents/mock_photo_051.pdf | head -c 4 | grep -q '%PDF'; then pass M.tg-dokument; else fail M.tg-dokument "mock_photo_051.pdf kommt nicht aus docs/"; fi
 # MOCK_TG_DOCS: ein eigener Ordner (aufgeloeste Datums-Platzhalter, enable_mock_telegram.ps1) ersetzt docs/.
 DOCS="$(mktemp -d)"; printf 'Datum;Betrag\n2026-01-02;1,00\n' > "$DOCS/mock_photo_083.csv"

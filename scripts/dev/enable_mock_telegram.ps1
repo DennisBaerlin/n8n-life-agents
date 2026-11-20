@@ -95,8 +95,7 @@ function Set-GatewayTelegramApi {
     }
     if ($r.Code -ne 0) { throw "Gateway-Drop-in (Telegram) schreiben/entfernen fehlgeschlagen: $($r.Output -join "`n")" }
     Invoke-Native docker @('exec',$Container,'systemctl','daemon-reload') | Out-Null
-    $r = Invoke-Native docker @('exec',$Container,'systemctl','restart',$GwUnit)
-    if ($r.Code -ne 0) { throw "Neustart $GwUnit fehlgeschlagen (Substrat mit Gateway gebaut? sonst -Reset): $($r.Output -join "`n")" }
+    Restart-TestLlmGateway -Container $Container
     $want = if ($Api) { $Api } else { 'https://api.telegram.org' }
     for ($i = 0; $i -lt 20; $i++) {
         $h = Get-LlmGatewayHealth -Container $Container

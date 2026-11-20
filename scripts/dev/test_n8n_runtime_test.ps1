@@ -97,9 +97,12 @@ try {
 
 Write-Host 'Bot-Token'
 Assert-That ((Get-TestBotToken -Target $tp) -eq $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN) 'compose: das erfundene Token der Installation (eine Adresse: TestStackMockAnswers)'
-# Ziel-Aufloesung fest auf den Verbund (ohne Zustandsdatei); die Pruefung bricht vor jedem docker-Aufruf ab.
-function Get-TestN8nTarget { param([string]$Container) ConvertTo-TestN8nTarget -State $compose }
-Assert-Throws { Get-HitlTelegramSecret -Container 'probe-master' -BotToken 'anderes-token' } 'compose: abweichendes -BotToken fuer die HITL-Signatur = Abbruch'
+$installed = $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN
+Assert-That ((Resolve-TestHitlBotToken -Target $tp -ScriptToken 'aus-env') -eq $installed) 'HITL compose: Token der Installation, nicht das aus .env'
+Assert-That ((Resolve-TestHitlBotToken -Target $tp -BotToken $installed) -eq $installed) 'HITL compose: gleiches -BotToken ist ok'
+Assert-Throws { Resolve-TestHitlBotToken -Target $tp -BotToken 'anderes-token' } 'HITL compose: abweichendes -BotToken = Abbruch'
+Assert-That ((Resolve-TestHitlBotToken -Target $tc -BotToken 'param' -ScriptToken 'script') -eq 'param') 'HITL classic: -BotToken vor der Skript-Variable'
+Assert-That ((Resolve-TestHitlBotToken -Target $tc -ScriptToken 'script') -eq 'script') 'HITL classic: Skript-Variable vor .env'
 
 Write-Host "test_n8n_runtime_test: $failed Fehler."
 exit $failed

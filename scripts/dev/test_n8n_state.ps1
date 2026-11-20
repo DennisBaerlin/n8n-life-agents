@@ -18,27 +18,30 @@
 . (Join-Path $PSScriptRoot '..\lib\test_stack.ps1')
 . (Join-Path $PSScriptRoot '..\lib\dotenv.ps1')
 
+# Read-TestN8nStateJson <pfad> -- die Zustandsdatei als Objekt, $null wenn sie fehlt; unlesbar = Abbruch mit Hinweis.
+function Read-TestN8nStateJson([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try { return ([System.IO.File]::ReadAllText($Path, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json) }
+    catch { throw "Test-Substrat-State unlesbar ($Path): $_. Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset (Verbund: bootstrap_test_stack.ps1 -Reset)" }
+}
+
 # Get-TestN8nState — der rohe Zustand (url, api_key, container, mock_*) des aktuellen Substrats; Throw mit Hinweis, wenn keins.
 function Get-TestN8nState {
     $f = Get-TestN8nStateFile
-    if (-not (Test-Path $f)) {
+    $s = Read-TestN8nStateJson $f
+    if ($null -eq $s) {
         throw "Kein Test-Substrat fuer Container '$(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' })' ($f fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
     }
-    return ([System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json)
+    return $s
 }
 
 function Get-TestN8nConnection {
     param([switch]$AllowMissing)
     $stateFile = Get-TestN8nStateFile
-    if (-not (Test-Path $stateFile)) {
+    $s = Read-TestN8nStateJson $stateFile
+    if ($null -eq $s) {
         if ($AllowMissing) { return $null }
         throw "Kein Test-Substrat gefunden ($stateFile fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
-    }
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
-    try {
-        $s = [System.IO.File]::ReadAllText($stateFile, $utf8) | ConvertFrom-Json
-    } catch {
-        throw "Test-Substrat-State unlesbar ($stateFile): $_. Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset"
     }
     if ([string]::IsNullOrWhiteSpace($s.url)) {
         throw "Test-Substrat-State ohne 'url' ($stateFile). Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset"
@@ -74,17 +77,11 @@ function ConvertTo-TestN8nTarget {
 # Get-TestN8nTarget -Container <c> [-State <obj>] -- Ziel fuer genau diesen Container. Ohne Zustandsdatei oder bei einem klassischen
 # Zustand mit anderem Container gilt classic auf dem genannten Container (ein klassisches Substrat ist ein einziger Container). Im
 # Verbund ist nur der master des Zustands ein gueltiges -Container; ein anderer Name bricht ab, statt runuser/journalctl in einem
-# Verbund-Container zu versuchen. Der Pfad der Zustandsdatei ist je N8NTEST_CONTAINER gecacht (git rev-parse kostet je Aufruf
-# rund 50 ms, die Helfer laufen in Warteschleifen); gelesen wird die Datei je Aufruf, enable_mock_* schreiben sie waehrend des Laufs.
-$script:TestN8nStateFileCache = @{}
+# Verbund-Container zu versuchen. Gelesen wird die Datei je Aufruf (enable_mock_* schreiben sie waehrend des Laufs); Helfer in
+# Warteschleifen loesen das Ziel einmal vorab auf (-Target).
 function Get-TestN8nTarget {
     param([Parameter(Mandatory)][string]$Container, $State)
-    if ($null -eq $State) {
-        $key = [string]$env:N8NTEST_CONTAINER
-        if (-not $script:TestN8nStateFileCache.ContainsKey($key)) { $script:TestN8nStateFileCache[$key] = Get-TestN8nStateFile }
-        $f = $script:TestN8nStateFileCache[$key]
-        if (Test-Path $f) { $State = [System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json }
-    }
+    if ($null -eq $State) { $State = Read-TestN8nStateJson (Get-TestN8nStateFile) }
     if ($null -ne $State -and [string]$State.container -eq $Container) { return ConvertTo-TestN8nTarget -State $State }
     if ($null -ne $State -and (Get-TestN8nRuntime -State $State) -eq 'compose') {
         throw "Container '$Container' ist nicht der master des Test-Verbunds '$($State.project)' ($($State.container)) - Get-TestN8nConnection liefert den richtigen."
@@ -379,19 +376,27 @@ function Get-HitlExecId {
 # + N8N_ENCRYPTION_KEY) (n8n-core InstanceSettings, ohne N8N_HMAC_SIGNATURE_SECRET). Bot-Token = die Telegram-
 # Credential des Substrats: classic -BotToken, sonst TEST_TELEGRAM_BOT_TOKEN (Skript-Variable des Aufrufers oder .env); im Verbund
 # das Token der Installation (Get-TestBotToken), ein abweichendes -BotToken ist dort ein Fehler. Je Container gecacht.
+# Resolve-TestHitlBotToken -Target -BotToken -ScriptToken -- das Token fuer die Signatur (Regeln oben); ohne Docker pruefbar.
+function Resolve-TestHitlBotToken {
+    param([Parameter(Mandatory)]$Target, [string]$BotToken, [string]$ScriptToken)
+    if ($Target.Runtime -eq 'compose') {
+        $installed = Get-TestBotToken -Target $Target
+        if ($BotToken -and $BotToken -ne $installed) { throw "Get-HitlTelegramSecret: -BotToken weicht vom Token der Verbund-Installation ab (erfundenes Token aus TestStackMockAnswers)." }
+        return $installed
+    }
+    if ($BotToken) { return $BotToken }
+    if ($ScriptToken) { return $ScriptToken }
+    $t = Get-TestBotToken -Target $Target   # Aufrufer ohne .env-Import (real_ingress_test, Wait-ExecResolvingGates)
+    if (-not $t) { throw "Get-HitlTelegramSecret: Bot-Token unbekannt (TEST_TELEGRAM_BOT_TOKEN aus .env oder -BotToken)." }
+    return $t
+}
 $script:HitlSecretCache = @{}
 function Get-HitlTelegramSecret {
     param([Parameter(Mandatory)][string]$Container, [string]$BotToken)
-    if ($script:HitlSecretCache[$Container]) { return $script:HitlSecretCache[$Container] }
     $target = Get-TestN8nTarget -Container $Container
-    if ($target.Runtime -eq 'compose') {
-        $installed = Get-TestBotToken -Target $target
-        if ($BotToken -and $BotToken -ne $installed) { throw "Get-HitlTelegramSecret: -BotToken weicht vom Token der Verbund-Installation ab (erfundenes Token aus TestStackMockAnswers)." }
-        $BotToken = $installed
-    }
-    if (-not $BotToken) { $BotToken = $script:TEST_TELEGRAM_BOT_TOKEN }
-    if (-not $BotToken) { $BotToken = Get-TestBotToken -Target $target }   # Aufrufer ohne .env-Import (real_ingress_test, Wait-ExecResolvingGates)
-    if (-not $BotToken) { throw "Get-HitlTelegramSecret: Bot-Token unbekannt (TEST_TELEGRAM_BOT_TOKEN aus .env oder -BotToken)." }
+    $BotToken = Resolve-TestHitlBotToken -Target $target -BotToken $BotToken -ScriptToken $script:TEST_TELEGRAM_BOT_TOKEN
+    $cacheKey = "$Container|$BotToken"
+    if ($script:HitlSecretCache[$cacheKey]) { return $script:HitlSecretCache[$cacheKey] }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     # n8n.env liegt classic im Container, im Verbund im Volume etc_n8n, das der master einhaengt.
     $enc = (& docker exec $target.Master sh -c "grep -E '^N8N_ENCRYPTION_KEY=' /etc/n8n/n8n.env | tail -n1 | cut -d= -f2-" 2>$null | Select-Object -First 1)
@@ -405,7 +410,7 @@ function Get-HitlTelegramSecret {
     $b64 = [Convert]::ToBase64String($h.ComputeHash($utf8.GetBytes("n8n-telegram-hitl-secret:$BotToken")))
     $tok = $b64.TrimEnd('=').Replace('+', '-').Replace('/', '_')
     if ($tok.Length -gt 43) { $tok = $tok.Substring(0, 43) }
-    $script:HitlSecretCache[$Container] = $tok
+    $script:HitlSecretCache[$cacheKey] = $tok
     return $tok
 }
 
@@ -495,9 +500,9 @@ $script:LlmCostLog = '.local\llm_cost_log.jsonl'
 
 # Get-LlmGatewayHealth — /__health des Gateways im Container ({ok, upstream, static_ttl}) oder $null.
 function Get-LlmGatewayHealth {
-    param([Parameter(Mandatory)][string]$Container)
+    param([string]$Container, $Target)
     # Im Verbund teilen master und gateway den Netz-Namensraum des anchor: 127.0.0.1:8090 gilt dort wie im einen Container.
-    $target = Get-TestN8nTarget -Container $Container
+    $target = if ($Target) { $Target } else { Get-TestN8nTarget -Container $Container }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & docker exec $target.Master curl -fsS --max-time 3 $script:LlmGatewayHealthUrl 2>$null
     $ErrorActionPreference = $prev
@@ -513,11 +518,15 @@ function Get-TestLlmGatewayRestartArgs {
 }
 function Restart-TestLlmGateway {
     param([Parameter(Mandatory)][string]$Container, [int]$TimeoutSec = 30)
-    $r = Invoke-Native docker (Get-TestLlmGatewayRestartArgs -Target (Get-TestN8nTarget -Container $Container))
-    if ($r.Code -ne 0) { throw "Neustart des LLM-Gateways fehlgeschlagen: $($r.Output -join "`n")" }
+    $target = Get-TestN8nTarget -Container $Container
+    $r = Invoke-Native docker (Get-TestLlmGatewayRestartArgs -Target $target)
+    if ($r.Code -ne 0) {
+        $hint = if ($target.Runtime -eq 'compose') { 'Verbund neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset' } else { 'Substrat mit Gateway gebaut? sonst .\scripts\dev\bootstrap_test_n8n.ps1 -Reset' }
+        throw "Neustart des LLM-Gateways fehlgeschlagen ($hint): $($r.Output -join "`n")"
+    }
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        if (Get-LlmGatewayHealth -Container $Container) { return }
+        if (Get-LlmGatewayHealth -Target $target) { return }
         Start-Sleep -Milliseconds 300
     }
     throw "LLM-Gateway antwortet nach dem Neustart nicht ($TimeoutSec s, $script:LlmGatewayHealthUrl)."
@@ -527,9 +536,15 @@ function Restart-TestLlmGateway {
 # letzten Zeilen, nicht der der letzten Zeile: stdout und stderr kommen ueber 2>&1 nicht zeitlich geordnet an. Docker schreibt ihn
 # mit fester Laenge (RFC 3339, 9 Nachkommastellen, UTC), darum genuegt der Textvergleich.
 function Get-LlmUsageCursorFromLogLines([object[]]$Lines) {
-    $stamps = @($Lines | ForEach-Object { [string]$_ } | Where-Object { $_ -match '^\S+Z ' } | ForEach-Object { ($_ -split ' ', 2)[0] })
-    if (-not $stamps.Count) { return $null }
-    return ($stamps | Sort-Object | Select-Object -Last 1)
+    $max = $null
+    foreach ($line in @($Lines)) {
+        $s = [string]$line
+        if ($s -notmatch '^\S+Z ') { continue }
+        $stamp = ($s -split ' ', 2)[0]
+        # Ordinal wie Select-LlmUsageFromLogLines; Sort-Object vergliche kulturabhaengig.
+        if ($null -eq $max -or [string]::CompareOrdinal($stamp, $max) -gt 0) { $max = $stamp }
+    }
+    return $max
 }
 function Select-LlmUsageFromLogLines([object[]]$Lines, [string]$AfterCursor) {
     $rows = @()

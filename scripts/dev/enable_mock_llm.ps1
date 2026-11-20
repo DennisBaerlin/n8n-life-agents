@@ -134,8 +134,12 @@ if ($Target.Runtime -eq 'compose') {
     if ($Down) {
         [void](Invoke-Native docker @('rm', '-fv', $mockC))
         # Wie classic: die Transkription geht danach wieder an Google (mit TEST_GOOGLE_API_KEY, den die Installation schon hat).
+        $stateBefore = if (Test-Path $StateFile) { Read-State } else { $null }
         if ($credId) { Set-GeminiHost -CredId $credId -HostUrl $RealHost -ApiKeyVal $GoogleKey; Write-Host "Gemini-host -> $RealHost (Transkription geht wieder an Google)." }
-        Set-TestN8nStateBlock -Name 'mock_llm' -Block $null
+        elseif ($stateBefore -and $stateBefore.mock_llm -and $stateBefore.mock_llm.cred_id) {
+            Write-Host "[WARN] Gemini-Credential ($($stateBefore.mock_llm.cred_id)) zeigt weiter auf die Attrappe (TEST_GOOGLE_API_KEY fehlt zum Zuruecksetzen). Manuell auf $RealHost setzen." -ForegroundColor Yellow
+        }
+        if ($stateBefore) { Set-TestN8nStateBlock -Name 'mock_llm' -Block $null }
         Write-Host "Mock-LLM-Attrappe $mockC entfernt. Das Gateway zeigt laut Installation weiter auf ${MockUrl}: Claude-Aufrufe scheitern jetzt (erfundener Schluessel) und erreichen keine echte API."
         return
     }

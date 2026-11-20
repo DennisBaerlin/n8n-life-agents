@@ -4,11 +4,16 @@
 # gegen denselben Container einen alten Schluessel (401 Unauthorized); eine gemeinsame Datei fuer alle Container liesse ein zweites
 # Substrat den Schluessel des ersten ueberschreiben (403). Jeder Leser und Schreiber holt den Pfad hier.
 # Dot-sourcen; Test: scripts/dev/n8ntest_state_file_test.ps1.
+# Der Haupt-Checkout wird je Lauf einmal ermittelt: git rev-parse kostet rund 50 ms, die Treiber fragen den Pfad in Warteschleifen.
+$script:TestN8nMainCheckout = $null
 function Get-TestN8nStateFile {
     param([string]$Container = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }))
-    # Haupt-Checkout = Elternordner des gemeinsamen .git; stimmt nicht bei Bare-Repo oder --separate-git-dir (hier nicht genutzt).
-    $common = [string](& git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir)
-    return (Join-Path (Split-Path $common -Parent) ".local\n8ntest_state.$Container.json")
+    if (-not $script:TestN8nMainCheckout) {
+        # Haupt-Checkout = Elternordner des gemeinsamen .git; stimmt nicht bei Bare-Repo oder --separate-git-dir (hier nicht genutzt).
+        $common = [string](& git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir)
+        $script:TestN8nMainCheckout = Split-Path $common -Parent
+    }
+    return (Join-Path $script:TestN8nMainCheckout ".local\n8ntest_state.$Container.json")
 }
 
 # Write-TestN8nState -- schreibt die Zustandsdatei (Datei des Containers, UTF-8 ohne BOM) fuer den Verbund; der klassische

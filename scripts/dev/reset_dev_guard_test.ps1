@@ -121,6 +121,11 @@ exit 1
     Assert-True 'Exit ungleich 0, kein Aufruf' ($r.Code -ne 0 -and $r.Calls.Count -eq 0) ($r.Calls -join ' | ')
     Assert-True 'Meldung nennt LIVE_INSTANCE_HOST' ($r.Text -match 'LIVE_INSTANCE_HOST') $r.Text
 
+    Write-Host 'DEV als Adresse, LIVE als Name desselben Rechners: Abbruch ohne ssh-Aufruf'
+    Write-Env '127.0.0.1' 'localhost'
+    $r = Invoke-Sandboxed 'scripts\reset_dev_instance.ps1'
+    Assert-True 'Exit ungleich 0, kein Aufruf' ($r.Code -ne 0 -and $r.Calls.Count -eq 0) ($r.Calls -join ' | ')
+
     Write-Host 'Gueltige Merkdatei: Sperre laesst durch (der naechste ssh-Aufruf ist der erste Schreibschritt)'
     Write-Env 'devbox.example.invalid' 'livebox.example.invalid'
     Set-GuardAnswer "$mk`nlifeagents-dev-instance: devbox`ndata: test-only`nHOST=devbox`n"

@@ -96,8 +96,17 @@ function Invoke-Remote([string]$cmd) {
 $DevMarker = '/etc/lifeagents-dev-instance'
 $createMarkerCmd = 'printf ''lifeagents-dev-instance: %s\ndata: test-only\n'' "$(hostname)" > ' + $DevMarker
 $liveHost = Get-EnvValue 'LIVE_INSTANCE_HOST'
-if ($liveHost -and $liveHost.Equals($devHost, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Abbruch, nichts geaendert: DEV_INSTANCE_HOST zeigt auf dasselbe Ziel wie LIVE_INSTANCE_HOST (das Produktiv-System). DEV_INSTANCE_* muss auf die Entwickler-Instanz zeigen (siehe .env.example)."
+# Name oder Adresse -> Adressen; nicht aufloesbar -> leer (dann entscheidet die Merkdatei allein).
+function Resolve-HostAddresses([string]$Name) {
+    try { return @([System.Net.Dns]::GetHostAddresses($Name) | ForEach-Object { $_.ToString() }) } catch { return @() }
+}
+if ($liveHost) {
+    $devAddr = Resolve-HostAddresses $devHost
+    $sameName = $liveHost.Equals($devHost, [System.StringComparison]::OrdinalIgnoreCase)
+    $sameAddr = @(Resolve-HostAddresses $liveHost | Where-Object { $devAddr -contains $_ }).Count -gt 0
+    if ($sameName -or $sameAddr) {
+        throw "Abbruch, nichts geaendert: DEV_INSTANCE_HOST zeigt auf dasselbe Ziel wie LIVE_INSTANCE_HOST (das Produktiv-System; gleicher Name oder gleiche Adresse). DEV_INSTANCE_* muss auf die Entwickler-Instanz zeigen (siehe .env.example)."
+    }
 }
 $r = Invoke-Remote "if [ -f $DevMarker ]; then echo MARKER-FOUND; cat $DevMarker; else echo MARKER-MISSING; fi; echo HOST=`$(hostname)"
 if ($r.Code -ne 0) { throw "SSH zum Ziel fehlgeschlagen (Exit $($r.Code)): $($r.Output -join "`n")" }

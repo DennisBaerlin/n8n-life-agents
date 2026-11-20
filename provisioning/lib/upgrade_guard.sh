@@ -166,17 +166,13 @@ _upg_new_backup_path() {
 
 # _upg_drain — laufende Ausfuehrungen begrenzt abwarten (UPGRADE_DRAIN_SECS), damit ein Agenten-Lauf nicht mitten im
 # Schritt abbricht. Wartende HITL-Bestaetigungen (status=waiting) ueberleben den Stopp ohnehin (in der DB persistiert).
-# Ohne API-Key oder ohne laufendes n8n: nichts abzuwarten. Die "Bot denkt nach"-Schleife (core.sub_show_thinking)
-# zaehlt nicht: sie laeuft rein kosmetisch Minuten lang (auch waehrend einer offenen Karte), ein Abbruch schadet nicht
-# -> sonst reizte jede offene Karte die volle Wartezeit aus. Workflow-ID aus dem Dateinamen im Paket-Baum (_pkg_dir,
-# stabile IDs).
+# Ohne API-Key oder ohne laufendes n8n: nichts abzuwarten. Die "Bot denkt nach"-Schleife zaehlt nicht (common.sh
+# thinking_workflow_id) -> sonst reizte jede offene Karte die volle Wartezeit aus.
 _upg_drain() {
-  local key n f skip='' left="$UPGRADE_DRAIN_SECS"
+  local key n skip='' left="$UPGRADE_DRAIN_SECS"
   key="$(read_env_value "$N8N_OWNER_ENV_FILE" N8N_API_KEY 2>/dev/null || true)"
   if [ -z "$key" ] || ! svc_is_active n8n; then return 0; fi
-  for f in "$(_pkg_dir)"/core/workflows/*-core.sub_show_thinking.json; do
-    [ -e "$f" ] && skip="$(basename "$f" '-core.sub_show_thinking.json')"
-  done
+  skip="$(thinking_workflow_id)"
   while [ "$left" -gt 0 ]; do
     n="$(n8n_api_curl "$key" "http://127.0.0.1:${N8N_PORT}/api/v1/executions?status=running&limit=100" \
            -fsS -H 'accept: application/json' 2>/dev/null \

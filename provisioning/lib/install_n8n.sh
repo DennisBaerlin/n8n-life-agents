@@ -225,6 +225,7 @@ install_n8n_unit() {
           N8N_OWNER_ENV_FILE="${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" \
           N8N_BIN="$bin" \
           N8N_HOME="$N8N_HOME" \
+          RETIRED_FILE="$(la_retired_file)" \
         | write_if_changed "$N8N_UNIT" 0644; then
       changed=0
     fi

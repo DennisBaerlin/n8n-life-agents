@@ -138,6 +138,26 @@ svc_service() {
     *) return 1 ;;
   esac
 }
+# --- Stilllegung (lib/retire_cli.sh): nie zwei Bots -----------------------------------------------------------------------
+# Solange die Datei liegt, startet nichts n8n: ein gestartetes n8n setzt beim Aktivieren den Telegram-Webhook neu und holt den
+# Bot von der neuen Maschine zurueck. Die Sperre sitzt hier, weil jeder Start (Update, Paket, Einstellung, Kopplung) ueber
+# diese Wrapper laeuft; der Boot-Start im Verbund prueft dieselbe Datei im Volume var_la (stack_core.sh sc_start).
+# Nur `retire --undo` hebt sie fuer seinen Lauf auf (LIFEAGENTS_RETIRE_UNDO=1).
+LA_RETIRED_NAME=retired
+la_retired_file() { printf '%s/%s' "${LIFEAGENTS_STATE_DIR:-/var/lib/lifeagents}" "$LA_RETIRED_NAME"; }
+la_is_retired() { [ -e "$(la_retired_file)" ] && [ "${LIFEAGENTS_RETIRE_UNDO:-0}" != 1 ]; }
+# _rt_n8n_blocked <unit…> — rc 0 (= blockiert, mit Meldung), wenn eine der Units n8n ist und die Installation stillgelegt.
+_rt_n8n_blocked() {
+  local u
+  la_is_retired || return 1
+  for u in "$@"; do
+    if [ "$(svc_service "$u" 2>/dev/null || true)" = n8n ]; then
+      printf '[x] n8n bleibt aus: diese Installation ist stillgelegt (Umzug). Zurück: lifeagents retire --undo\n' >&2
+      return 0
+    fi
+  done
+  return 1
+}
 _svc_container() {
   case "$(svc_service "$1")" in
     n8n) printf '%s' "$LA_N8N_CONTAINER" ;; gateway) printf '%s' "$LA_GW_CONTAINER" ;;
@@ -154,11 +174,15 @@ svc_is_active() {
 # svc_up <unit> — compose: Container anlegen/starten (`up -d --no-deps`; aendert einen laufenden Container mit
 # unveraenderter Definition nicht). systemd: enable --now.
 svc_up() {
+  if _rt_n8n_blocked "$1"; then return 1; fi
   if rt_is_compose; then _rt_compose up -d --no-deps "$(svc_service "$1")" >&2
   else systemctl enable --now "$1" >/dev/null 2>&1 || systemctl enable --now "$1"; fi
 }
 # svc_start / svc_stop <unit…> — compose: nur die Units, die ein Dienst des Verbunds sind (Timer gibt es dort nicht).
-svc_start() { if rt_is_compose; then _svc_compose_each start "$@"; else systemctl start "$@"; fi; }
+svc_start() {
+  if _rt_n8n_blocked "$@"; then return 1; fi
+  if rt_is_compose; then _svc_compose_each start "$@"; else systemctl start "$@"; fi
+}
 svc_stop()  { if rt_is_compose; then _svc_compose_each stop "$@"; else systemctl stop "$@"; fi; }
 _svc_compose_each() {
   local verb="$1" u s svcs=(); shift
@@ -171,6 +195,7 @@ _svc_compose_each() {
 }
 # svc_restart <unit> — compose: `docker restart` (Env/Code liest der Container bei jedem Start frisch).
 svc_restart() {
+  if _rt_n8n_blocked "$1"; then return 1; fi
   if rt_is_compose; then docker restart "$(_svc_container "$1")" >/dev/null
   else systemctl restart "$1"; fi
 }
@@ -203,6 +228,7 @@ systemd_present() { ! rt_is_compose && need_cmd systemctl && [ -d /run/systemd/s
 # Neustart; fehlt der Container oder steht er, legt `up -d --no-deps` ihn an.
 enable_start_unit() {
   local unit="$1" changed="${2:-1}"
+  if _rt_n8n_blocked "$unit"; then return 1; fi
   if rt_is_compose; then
     svc_service "$unit" >/dev/null || { log "Compose-Betrieb: ${unit} entfällt."; return 0; }
     if [ "$changed" -eq 0 ] && svc_is_active "$unit"; then svc_restart "$unit"; else svc_up "$unit"; fi

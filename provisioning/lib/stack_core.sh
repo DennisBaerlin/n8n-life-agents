@@ -462,9 +462,15 @@ sc_start() {
   rc=0; rt_vol_own pgdata || rc=$?
   case "$rc" in 0) ;; 1) sc_fail not_installed "Auf diesem Rechner gibt es keine Installation." ;; *) sc_fail internal "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
   sc_values_read; sc_values_export
+  # Stillgelegt (lib/retire_cli.sh, Datei im Volume var_la): n8n bleibt aus, sonst holte es nach jedem Neustart den Bot zurueck.
+  # Nicht lesbar (rc 2) zaehlt als stillgelegt: lieber n8n aus als zwei Bots.
+  local retired=0 vrc=0
+  rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || vrc=$?
+  case "$vrc" in 0) retired=1 ;; 1) ;; *) retired=1; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n bleibt vorsichtshalber aus." ;; esac
   while read -r svc c; do
     [ -n "$c" ] || continue
     [ -n "$(rt_container_id "$c" || true)" ] || continue
+    if [ "$retired" = 1 ] && [ "$svc" = n8n ]; then warn "n8n bleibt aus: diese Installation ist stillgelegt (Umzug)."; continue; fi
     rt_container_running "$c" || todo+=("$svc")
   done <<<"$(_sc_ro rt_stack_services || true)"
   if [ "${#todo[@]}" -gt 0 ]; then

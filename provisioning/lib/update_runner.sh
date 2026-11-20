@@ -584,6 +584,8 @@ _ur_step() {
 update_tick() {
   require_root
   [ -r "$(lifeagents_version_marker)" ] || return 0
+  # Stillgelegt (lib/retire_cli.sh): kein Update, keine Sicherung — beides gehoert jetzt der neuen Maschine.
+  la_is_retired && return 0
   mkdir -p "$(dirname "$UPDATE_TICK_STATE")"
   env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
   # Eigener Prozess: die Update-Sperre (fd 9) endet mit ihm.

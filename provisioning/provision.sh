@@ -338,6 +338,9 @@ main() {
     uninstall
     exit 0
   fi
+  # Stillgelegt (lib/retire_cli.sh): ein Einrichtungs-Lauf startete n8n und holte den Bot von der neuen Maschine zurueck.
+  # Plain die: der Chat-Weg kommt hier nie an (Timer aus, Tick ausgesetzt), ein Grund-Code braeuchte Chat-Texte.
+  la_is_retired && die "Diese Installation ist stillgelegt (Umzug) — hier wird nichts eingerichtet. Zurück: lifeagents retire --undo"
 
   # --unattended <env-file>: die Datei frueh in die Umgebung laden — sie ist die einzige Eingabe-Quelle
   # (Owner-Identitaet, Domain, LLM-/Telegram-Keys und die First-Init-Secret-Overrides). Muss vor der

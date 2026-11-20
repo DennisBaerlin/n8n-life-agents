@@ -189,11 +189,17 @@ function buildResult(method, body) {
       return true;
     case 'getMyCommands':
       return menus.get(menuKey(body)) || [];
+    case 'setWebhook':
+      if (webhookTrack) webhookUrl = (body && body.url) || '';
+      return true;
+    case 'deleteWebhook':
+      if (webhookTrack) webhookUrl = '';
+      return true;
     case 'getWebhookInfo':
       // Bestaetigen im Chat (n8n Telegram hitl/setup.js) fragt vor jedem Chat-Knopf-Send, wem der Bot-Webhook gehoert.
       // Leere url = 'kein Webhook' -> n8n registriert seinen festen Endpunkt per setWebhook (Mock: true) und sendet
       // callback_data-Knoepfe. (Echte Instanz: der Orchestrator-Trigger besitzt den Webhook -> kein setWebhook.)
-      return { url: '', has_custom_certificate: false, pending_update_count: 0, allowed_updates: [] };
+      return { url: webhookUrl, has_custom_certificate: false, pending_update_count: 0, allowed_updates: [] };
     default:
       return true;
   }
@@ -205,6 +211,12 @@ function buildResult(method, body) {
 // Fallback ohne Knopf geht durch). GET /__hang?method=<m> laesst Aufrufe unbeantwortet (Zeitgrenzen), &off=1 aus.
 const failMethods = new Map();
 const hangMethods = new Set();
+// Webhook-Adresse, die getWebhookInfo meldet: GET /__webhook?url=<adresse> setzt sie ("der Bot hoert woanders", Rueckweg-Pruefung
+// von lifeagents retire --undo, tests/backup/retire_cases.sh), /__webhook?off=1 zurueck auf leer. &track=1 merkt sich zusaetzlich
+// setWebhook/deleteWebhook (sieht, ob n8n den Bot wieder anmeldet), &track=0 aus. Ohne Aufruf: leer, nichts gemerkt (n8n-Knopf-Karten
+// fragen getWebhookInfo und setzen bei leerer Adresse selbst einen Webhook; andere Suiten verlassen sich auf die leere Antwort).
+let webhookUrl = '';
+let webhookTrack = false;
 
 const server = http.createServer((req, res) => {
   // Kontroll-Endpunkt fuer die Readiness-Probe des Treibers.
@@ -215,6 +227,12 @@ const server = http.createServer((req, res) => {
     if (q.get('off')) failMethods.delete(m);
     else if (m) failMethods.set(m, { code: Number(q.get('code') || 400), retry_after: q.get('retry_after'), desc: q.get('desc'), markup: q.get('markup') === '1', times: q.get('times') ? Number(q.get('times')) : Infinity });
     res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end([...failMethods.keys()].join(',')); return;
+  }
+  if (req.url.startsWith('/__webhook?')) {
+    const q = new URLSearchParams(req.url.split('?')[1] || '');
+    if (q.has('track')) webhookTrack = q.get('track') === '1';
+    if (q.get('off')) webhookUrl = ''; else if (q.has('url')) webhookUrl = q.get('url') || '';
+    res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(webhookUrl); return;
   }
   if (req.url.startsWith('/__hang?')) {
     const q = new URLSearchParams(req.url.split('?')[1] || '');

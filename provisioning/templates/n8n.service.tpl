@@ -3,6 +3,9 @@ Description=n8n workflow automation (life-agents)
 Documentation=https://docs.n8n.io
 After=network-online.target postgresql.service
 Wants=network-online.target
+# Stillgelegt fuer den Umzug (lib/retire_cli.sh): nie starten — auch nicht nach Neustart, Restart=on-failure oder einem Start von
+# Hand; ein n8n setzte beim Aktivieren den Telegram-Webhook und holte den Bot von der neuen Maschine zurueck.
+ConditionPathExists=!@@RETIRED_FILE@@
 
 [Service]
 Type=simple

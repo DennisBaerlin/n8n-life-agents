@@ -68,6 +68,9 @@ Usage: lifeagents <befehl> [optionen]
               Exit 0 = geloest oder nichts zu loesen. `lifeagents telegram help` für Details.
   images      Docker-Verbund: keep = Abbilder, die Betrieb und Rückweg noch brauchen (JSON für die Start-App;
               nur lesen, löscht nichts). `lifeagents images help` für Details. Braucht root.
+  retire      Umzug auf eine neue Maschine: diese Installation stilllegen und alles für die neue in einen
+              Ordner legen; --check (Trockenlauf), --status, --undo [--restore <ordner>] (zurück).
+              `lifeagents retire help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
   uninstall   Instanz abbauen (Schema DROP, Dienste stop; im Docker-Verbund entfernt die Start-App); --purge-data für den Voll-Wipe,
               --yes für ohne Rückfrage durchreichen: `lifeagents uninstall --purge-data --yes`. Braucht root.
@@ -113,6 +116,42 @@ cmd="${1:-help}"
 # Befehle unabhaengig von der Schreibweise (z. B. "lifeagents Update" vom Handy).
 cmd="${cmd,,}"
 [ "$#" -gt 0 ] && shift || true
+
+# Stillgelegt (lib/retire_cli.sh): nur lesende Befehle, Sicherungen, der Abbau und `retire` selbst laufen; alles andere (n8n
+# starten, umbauen, Daten aendern: der Umzugs-Ordner ist geschrieben, Geaendertes fehlte der neuen Maschine) endet hier mit einem
+# Satz statt tief im Lauf an der Sperre in lib/runtime.sh. Positivliste: ein neues Verb ist gesperrt, bis es hier steht. Der
+# Minuten-Takt (`update --tick`) darf durch, er setzt selbst aus.
+_retired=0
+if [ -f "${LIFEAGENTS_PROV}/lib/runtime.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${LIFEAGENTS_PROV}/lib/runtime.sh"
+  if la_is_retired; then _retired=1; fi
+fi
+# _retired_allows <befehl> [args…] — 0, wenn der Befehl auf einer stillgelegten Installation laufen darf. Eigene Funktion statt einer
+#   zweiten `case "$cmd"`-Stelle: die Verb-Arme des Verteilers liest contract_lint (Hilfe <-> Arme) an der ersten.
+_retired_allows() {
+  local verb="$1"; shift
+  case "$verb" in
+    retire|doctor|version|--version|-v|help|--help|-h|telegram|images|uninstall) return 0 ;;
+    update) [ "${1:-}" = --tick ]; return ;;
+    backup)
+      case "${1:-}" in
+        export|key|list|auto|host-dir|restore-status|help|--help|-h) return 0 ;;
+        restore) case " $* " in *" --plan "*) return 0 ;; esac ;;   # der Probelauf aendert nichts
+      esac ;;
+    config)    case "${1:-}" in list|help|--help|-h) return 0 ;; esac ;;
+    household) case "${1:-}" in list|blocked|help|--help|-h) return 0 ;; esac ;;
+    package)   case "${1:-}" in list|catalog|doctor|help|--help|-h) return 0 ;; esac ;;
+    proxy)     case "${1:-}" in show|help|--help|-h) return 0 ;; esac ;;
+  esac
+  return 1
+}
+if [ "$_retired" = 1 ]; then
+  if ! _retired_allows "$cmd" "$@"; then
+    printf 'lifeagents %s: diese Installation ist stillgelegt (Umzug). Zurück: lifeagents retire --undo\n' "$cmd" >&2
+    exit 1
+  fi
+fi
 
 case "$cmd" in
   update)
@@ -267,6 +306,21 @@ case "$cmd" in
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
     images_cli "$@"
+    ;;
+  retire)
+    # Umzug (lib/retire_cli.sh): Sicherung + Restore wie der backup-Arm, Bot ueber telegram_cli.sh, Unit-Namen aus den
+    # Install-Libs der Timer und des Gateways (nur Namen, nichts wird installiert).
+    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+      [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
+    done
+    # shellcheck source=/dev/null
+    . "${LIFEAGENTS_PROV}/lib/common.sh"
+    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+      # shellcheck source=/dev/null
+      . "${LIFEAGENTS_PROV}/lib/$f"
+    done
+    export LIFEAGENTS_DOCTOR
+    retire_cli "$@"
     ;;
   doctor)
     [ -f "$LIFEAGENTS_DOCTOR" ] || { printf 'lifeagents: doctor.sh fehlt (%s).\n' "$LIFEAGENTS_DOCTOR" >&2; exit 1; }

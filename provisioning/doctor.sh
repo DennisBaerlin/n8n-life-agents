@@ -351,8 +351,29 @@ _doctor_compose_pod() {
   done <<<"$(reach_lan_doctor)"
 }
 
+# _doctor_retired — stillgelegte Installation (lib/retire_cli.sh): geprueft wird der Ruhezustand,
+#   nicht der Betrieb — n8n und Zeitgeber aus ist hier gruen, die Datenbank muss fuer den Rueckweg laufen.
+_doctor_retired() {
+  local st u
+  st="$(read_env_value "$(la_retired_file)" STAGE 2>/dev/null || true)"
+  if [ "$st" = 'done' ]; then _pass "Stillgelegt für den Umzug (seit $(read_env_value "$(la_retired_file)" AT 2>/dev/null || printf '?')) — Zurück: lifeagents retire --undo"
+  else _red "Stilllegung nicht abgeschlossen (Stand ${st:-?}) — weiter: lifeagents retire, zurück: lifeagents retire --undo"; fi
+  svc_active postgresql "PostgreSQL (für den Rückweg)"
+  if svc_is_active n8n; then _red "n8n läuft auf einer stillgelegten Installation — zwei Bots möglich. Sofort: lifeagents retire"
+  else _pass "n8n angehalten"; fi
+  if ! rt_is_compose; then
+    for u in lifeagents-update-check.timer lifeagents-update-run.timer lifeagents-backup.timer; do
+      if svc_is_active "$u"; then _red "Zeitgeber ${u} läuft noch — lifeagents retire"; else _pass "Zeitgeber ${u} angehalten"; fi
+    done
+  fi
+  echo
+  if [ "$_fail" -eq 0 ]; then ok "Diagnose: stillgelegt, alles im erwarteten Zustand."; else err "Diagnose: ${_fail} Check(s) ROT."; fi
+  return "$_fail"
+}
+
 main() {
   printf 'Diagnose — n8n-life-agents Provisioning\n'
+  if la_is_retired; then _doctor_retired; return; fi
 
   # --- disk ---
   local avail_mb

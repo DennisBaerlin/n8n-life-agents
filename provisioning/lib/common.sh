@@ -1262,6 +1262,16 @@ _pkg_dir() {
     printf '%s' "${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}/packages"
   fi
 }
+# thinking_workflow_id -> Workflow-ID der "Bot denkt nach"-Schleife (core.sub_show_thinking, stabile ID im Dateinamen), leer ohne
+#   Baum. Zaehlt beim Abwarten laufender Ausfuehrungen nie mit: sie laeuft rein kosmetisch Minuten lang, auch waehrend einer offenen
+#   Karte, ein Abbruch schadet nicht (upgrade_guard.sh _upg_drain, retire_cli.sh).
+thinking_workflow_id() {
+  local f
+  for f in "$(_pkg_dir)"/core/workflows/*-core.sub_show_thinking.json; do
+    [ -e "$f" ] && basename "$f" '-core.sub_show_thinking.json'
+  done
+  return 0
+}
 # pkg_text <pkg> <key-suffix> [<lang>] -> Text des Katalog-Keys <pkg>.<key-suffix> aus packages/<pkg>/locales/<lang>.json
 #   (Default de = Sprache der Konsole/des Installers; fehlt der Key -> en -> leer). Die Dateien sind die Wahrheit (der
 #   Seed spiegelt sie nach core.ui_texts); der Host liest sie direkt wie die Manifeste — auch ohne DB. Immer rc 0.

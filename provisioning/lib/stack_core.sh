@@ -26,6 +26,12 @@ fi
 SC_VALUE_KEYS="LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_TS_HOSTNAME"
 SC_VALUES_FILE=stack.env
 SC_FOREIGN_FILE='core-foreign-images'
+# Test-Weichen, die `stack install` aus der eigenen Umgebung an provision.sh reicht (nur als Umgebung erlaubt: die
+# Antwort-Datei sperrt sie, release_inputs.sh _ANSWER_DENY_EXACT; die Ziele prueft der Installer selbst, z. B.
+# install_llm_gateway.sh nur 127.0.0.1). Feste Positivliste, alles andere kommt nie durch. Der Kern laeuft als eigener
+# Container: die Aufrufer reichen genau diese Namen per --env NAME an ihn (scripts/lib/test_stack.ps1 liest die Liste hier;
+# provisioning/setup.sh traegt eine Kopie, Gleichheit prueft tests/mock_runtime/setup_cases.sh).
+SC_TEST_SWITCHES="LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM"
 SC_ANSWERS=/run/lifeagents-wizard/answers.env
 SC_HINTS=/run/lifeagents-wizard/hints.env
 SC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -515,8 +521,14 @@ sc_wizard_url() {
 }
 
 sc_install() {
-  local rc=0
+  local rc=0 n sw=()
   _sc_need_core
+  # Nur Ziele auf 127.0.0.1 (die Attrappen im Pod): setup.sh ist oeffentlich, eine liegengebliebene Weiche mit fremdem Ziel
+  # leitete sonst Bot-Aufrufe samt Token um. Sie faellt mit Warnung weg (Wert nie in der Meldung), die Installation laeuft normal.
+  for n in $SC_TEST_SWITCHES; do
+    [ -n "${!n:-}" ] || continue
+    if [[ "${!n}" =~ ^http://127\.0\.0\.1:[0-9]{1,5}$ ]]; then sw+=("$n"); else warn "Test-Weiche ${n} ignoriert: nur http://127.0.0.1:<port> ist erlaubt."; fi
+  done
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   sc_lock
@@ -525,7 +537,7 @@ sc_install() {
   sc_step answers
   rt_master_write "$SC_ANSWERS" || sc_fail internal "Die Antwort-Datei liess sich nicht in den master legen."
   sc_step provision
-  _sc_fg rt_master_exec bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
+  _sc_fg rt_master_exec_env "${sw[@]}" -- bash /opt/lifeagents/provisioning/provision.sh --unattended "$SC_ANSWERS" "${SC_PROVISION_ARGS[@]}" >&2 || rc=$?
   rt_master_exec rm -f "$SC_ANSWERS" || true
   [ "$rc" -eq 0 ] || sc_fail install_failed "Die Einrichtung im master endete mit Exit ${rc}." "$(jq -cn --argjson n "$rc" '{provision_exit:$n}')"
   sc_step 'done'

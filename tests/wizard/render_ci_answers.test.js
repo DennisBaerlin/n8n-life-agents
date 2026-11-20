@@ -53,6 +53,8 @@ test('CI-Antwort-Datei: --print packages = alle Pakete mit Fragen, wie der Assis
 test('CI-Antwort-Datei --profile dev: Zusatz-Zeilen ersetzen und ergänzen, echter Leser nimmt sie an, eigene Schalter keine', () => {
   // Die Schalter kommen nur ueber --extra-stdin (scripts/lib/test_install_env.ps1); ohne sie liefe dev still ohne Harness-Header.
   assert.throws(() => render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' }), /--extra-stdin/);
+  // --print packages braucht keine Schalter (nur das Paket-Argument; bootstrap_test_stack.ps1 ruft es ohne stdin).
+  assert.equal(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev', what: 'packages' }), Q.packages.map((p) => p.id).join(','));
   const release = render({ flow, Q, reach: 'tunnel', backup: '/x' });
   const txt = render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev',
     extra: 'TELEGRAM_BOT_TOKEN=2000002:inventedDevToken\nTEST_HARNESS_HEADER=X-Test-Auth\nLIFEAGENTS_DEPLOY_FULL=1\nTEST_HARNESS_SECRET=invented-harness\n' });

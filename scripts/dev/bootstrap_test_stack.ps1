@@ -15,9 +15,9 @@
 #   -HitlChatApproval / -FullDeploy / $env:LLM_GATEWAY_SERIAL_TOOLS wie bootstrap_test_n8n.ps1; -Verbose zeigt die Kern-Ausgabe.
 # Ohne Schalter auf einem vorhandenen Verbund: `stack up` (neues Abbild ersetzt den master) und eine Installation ueber die
 # vorhandenen Daten, kein neuer Schnappschuss (er bliebe sonst nicht der Stand „frisch installiert“).
-# Ohne Attrappen: die Telegram-Weiche gehoert in die Umgebung von provision.sh (in der Antwort-Datei gesperrt); bis die
-# Attrappen am anchor laufen, installiert der Verbund wie der klassische Unterbau mit dem Test-Bot aus .env
-# (TEST_TELEGRAM_BOT_TOKEN, nie der Prod-Bot) und TELEGRAM_WEBHOOK_TAKEOVER=1.
+# Attrappen: Telegram, KI und Paperless laufen am anchor (tests/mock_pod/start_mocks.sh, nach jedem Start neu); ihre Ziele gehen
+# als Test-Weichen ueber `stack install` (SC_TEST_SWITCHES im Kern) bzw. als Antworten in die Installation, das Bot-Token ist
+# erfunden (scripts/lib/test_stack.ps1 TestStackMock*). Kein Aufruf verlaesst den Rechner.
 # Voraussetzungen: Docker Desktop (Linux-Container), git, .env mit TEST_HARNESS_SECRET.
 # Exit 0 = Verbund bereit bzw. abgebaut; jeder Fehler wirft (Exit ungleich 0).
 param(
@@ -58,9 +58,9 @@ if ((Invoke-Native docker @('version', '--format', '{{.Server.Os}}')).Output -jo
 }
 function Test-StackInstalled { return ((Get-TestStackVolumeLabel (& $Names.Volume 'var_la') 'io.lifeagents.install') -eq $Names.Project) }
 
-# Remove-OwnStack -- Bruecke, Container (Kern ohne --delete-data), Daten-Volumes, optional Schnappschuss; Abbilder bleiben.
+# Remove-OwnStack -- Attrappen + Bruecke, Container (Kern ohne --delete-data), Daten-Volumes, optional Schnappschuss; Abbilder bleiben.
 function Remove-OwnStack([switch]$WithSnapshot) {
-    Remove-TestStackBridge $Names
+    Remove-TestStackSideContainers $Names
     if ((Test-StackInstalled) -or ((Invoke-Native docker @('ps', '-aq', '--filter', "label=io.lifeagents.install=$($Names.Project)")).Output -join '')) {
         if ((Invoke-Native docker @('image', 'inspect', $Names.Image)).Code -ne 0) { throw "Abbild $($Names.Image) fehlt - der Abbau braucht den Kern daraus (erst ohne -Down bauen)." }
         $r = Invoke-TestStackCore -Names $Names -Ports $Ports -Verb uninstall -LogDir $LogDir
@@ -111,20 +111,21 @@ Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
     if ($_ -match '^\s*(TEST_[A-Z0-9_]+)=(.*)$') { $envValues[$Matches[1]] = $Matches[2].Trim() }
 }
 if (-not $envValues['TEST_HARNESS_SECRET']) { Write-Warning 'TEST_HARNESS_SECRET fehlt in .env - Harness-Webhooks antworten dann 403.' }
-if (-not $envValues['TEST_TELEGRAM_BOT_TOKEN']) { Write-Warning 'TEST_TELEGRAM_BOT_TOKEN fehlt in .env - Telegram-Zugang bleibt leer (wie klassisch; der Orchestrator-Trigger aktiviert ggf. nicht).' }
-if (-not $envValues['TEST_ANTHROPIC_API_KEY']) { Write-Warning 'TEST_ANTHROPIC_API_KEY fehlt in .env - LLM-Zugang bleibt leer (die Agenten-Suiten brauchen ihn).' }
-$extra = ConvertTo-TestStackExtra -Map (Get-TestInstallEnvMap $RepoRoot) -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS)
+$extra = ConvertTo-TestStackExtra -Map (Get-TestInstallEnvMap $RepoRoot) -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS) -Override $script:TestStackMockAnswers
+Assert-TestStackSwitches -Names @($script:TestStackMockSwitches.Keys) -Allowed (Get-TestStackSwitchNames ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\lib\stack_core.sh'), $Utf8NoBom)))
 $answers = Get-TestStackAnswers -RepoRoot $RepoRoot -Names $Names -BackupDir $BackupDir -ExtraText $extra -LogDir $LogDir
 $extra = $null
 $composeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\compose\compose.yml'), $Utf8NoBom)
-$key = Get-TestStackSnapshotKey -ImageId $img.ImageId -AnswersText $answers.Text -ComposeText $composeText
+# Die Weichen landen im installierten Stand (Gateway-Ziel, Telegram-Adresse des n8n-Zugangs): sie gehoeren in den Schluessel.
+$switchText = (@($script:TestStackMockSwitches.Keys) | ForEach-Object { "$_=$($script:TestStackMockSwitches[$_])" }) -join "`n"
+$key = Get-TestStackSnapshotKey -ImageId $img.ImageId -AnswersText ($answers.Text + $switchText) -ComposeText $composeText
 
 function Install-Stack {
     $in = Join-Path $LogDir 'answers.stdin'
     try {
         [System.IO.File]::WriteAllText($in, $answers.Text, $Utf8NoBom)
         Write-Step "stack install (Profil dev, Pakete $($answers.Packages)) ..."
-        $r = Invoke-TestStackCore -Names $Names -Ports $Ports -Verb install -Rest @('--', '--profile', 'dev', '--packages', $answers.Packages) -StdinFile $in -LogDir $LogDir
+        $r = Invoke-TestStackCore -Names $Names -Ports $Ports -Verb install -Rest @('--', '--profile', 'dev', '--packages', $answers.Packages) -StdinFile $in -LogDir $LogDir -Switches $script:TestStackMockSwitches
     } finally { Remove-Item $in -Force -ErrorAction SilentlyContinue }
     Show-CoreLog $r
     Assert-TestStackCoreOk $r 'install'
@@ -134,11 +135,13 @@ function Start-Stack {
     Show-CoreLog $r
     Assert-TestStackCoreOk $r 'up'
     Write-Step "stack up: edge $($r.ports.edge), wizard $($r.ports.wizard)"
+    Start-TestStackMocks $Names $RepoRoot $LogDir
 }
 function Resume-Stack {
     $r = Invoke-TestStackCore -Names $Names -Ports $Ports -Verb start -LogDir $LogDir
     Show-CoreLog $r
     Assert-TestStackCoreOk $r 'start'
+    Start-TestStackMocks $Names $RepoRoot $LogDir
 }
 
 $mode = if (-not (Test-StackInstalled)) { 'cold' } elseif ($Reset) { 'reset' } else { 'warm' }
@@ -170,7 +173,7 @@ if ($mode -eq 'cold') {
     Resume-Stack
 } elseif ($mode -eq 'reset') {
     Write-Step 'Schnappschuss passt: anhalten, zurueckspielen, starten ...'
-    Remove-TestStackBridge $Names
+    Remove-TestStackSideContainers $Names
     Stop-TestStackContainers $Names
     Restore-TestStackSnapshot $Names $StateVolumes $RepoRoot
     Resume-Stack

@@ -356,6 +356,15 @@ su_root debian 12 bookworm
 sux --yes --image "$IMG" --answers "$SUD/answers.env" -- --profile dev --packages finance
 su_has SU.answers-eigene-optionen "$(grep '|stack|install|' "$SUL")" '|--|--profile|dev|--packages|finance'
 su_not SU.answers-profil-nicht-doppelt "$(grep '|stack|install|' "$SUL")" '--profile|release'
+# Test-Weichen: genau die Liste des Kerns (SC_TEST_SWITCHES) geht per --env NAME an den Kern, nur gesetzte, nie ein Wert im argv.
+eq SU.weichen-wie-kern "$(sed -n 's/^SC_TEST_SWITCHES="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")" "$(sed -n 's/^TEST_SWITCHES="\(.*\)"$/\1/p' "$SUS")"
+su_root debian 12 bookworm
+su_run env LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 LIFEAGENTS_LLM_UPSTREAM= LIFEAGENTS_DIR=/fremd bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+instl="$(grep '|stack|install|' "$SUL")"
+su_has SU.weiche-durchgereicht "$instl" '|--env|LIFEAGENTS_TELEGRAM_API|'
+su_not SU.weiche-leer-nicht "$instl" 'LIFEAGENTS_LLM_UPSTREAM'
+su_not SU.weiche-fremd-nie "$instl" 'LIFEAGENTS_DIR'
+su_not SU.weiche-wert-nie-im-argv "$(cat "$SUL")" '127.0.0.1:8089'
 printf '%s\n' '{"v":1,"type":"result","verb":"install","ok":false,"reason":"install_failed","detail":"x","provision_exit":1}' > "$SUD/res.inst"
 su_root debian 12 bookworm
 su_run env STUB_OUT_install="$SUD/res.inst" STUB_RC_install=1 bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"

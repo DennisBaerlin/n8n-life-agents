@@ -9,7 +9,8 @@
 #   bash setup.sh --answers antworten.env     # statt Fragebogen: Antwort-Datei (nach `--` Optionen fuer provision.sh)
 #   bash setup.sh --uninstall [--delete-data] # Verbund entfernen; Docker bleibt
 # Optionen: --yes, --image <ref> (Entwickler/CI; Releases tragen den Pin), --answers <datei>, --uninstall, --delete-data, --help.
-# Test-Naehte (nicht in der Hilfe): LA_PROJECT, LA_CORE_PORTS (an den Kern), LA_SETUP_ROOT (Pfad-Praefix), LA_SETUP_WAIT.
+# Test-Naehte (nicht in der Hilfe): LA_PROJECT, LA_CORE_PORTS (an den Kern), LA_SETUP_ROOT (Pfad-Praefix), LA_SETUP_WAIT,
+# dazu die Test-Weichen TEST_SWITCHES (nur als Name an den Kern, der sie an provision.sh reicht).
 # Exit: 0 gelungen, 1 gescheitert (nichts oder nur Vollendetes geaendert), 2 Aufruf falsch.
 #
 # Neben dem Verbund legt er zwei Dateien an, beide mit Markierung (fremde Dateien gleichen Namens fasst er nie an):
@@ -24,6 +25,8 @@ trap 'rc=$?; printf "\n[x] setup.sh: unerwarteter Abbruch bei Zeile %s (Exit %s)
 # master-Abbild immer die neutrale Form dieser Datei traegt.
 MASTER_IMAGE_PIN=''
 
+# Kopie von SC_TEST_SWITCHES (lib/stack_core.sh; setup.sh sourct nichts), Gleichheit prueft tests/mock_runtime/setup_cases.sh.
+TEST_SWITCHES="LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM"
 R="${LA_SETUP_ROOT:-}"
 P="${LA_PROJECT:-lifeagents}"
 MARK='managed by lifeagents setup.sh'
@@ -203,10 +206,11 @@ OUT="$(mktemp)"; trap 'rm -f "$OUT"' EXIT
 STEPS='{"lock":"Sperre prüfen","delegate":"Installierte Fassung prüfen","check":"Docker prüfen","values":"Werte anlegen","volumes":"Speicher","start":"Dienste starten","answers":"Antworten übergeben","provision":"Einrichten","webhook":"Telegram lösen","containers":"Container entfernen","images":"Abbilder entfernen"}'
 # core <stdin-datei> <verb> [optionen] — der Kern in der einen Aufruf-Form; Ergebnis in $OUT, Fortschritt auf stderr.
 core() {
-  local in="$1" rc a=(run --rm -i --name "$P-core" --label "io.lifeagents.install=$P" --env LA_CORE=1)
+  local in="$1" rc k a=(run --rm -i --name "$P-core" --label "io.lifeagents.install=$P" --env LA_CORE=1)
   shift
   [ -z "${LA_PROJECT:-}" ] || a+=(--env LA_PROJECT)
   [ -z "${LA_CORE_PORTS:-}" ] || a+=(--env LA_CORE_PORTS)
+  for k in $TEST_SWITCHES; do [ -z "${!k:-}" ] || a+=(--env "$k"); done
   a+=(--mount "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock" "$IMAGE" stack "$@")
   set +e
   docker "${a[@]}" < "$in" | tee "$OUT" | jq -Rr --unbuffered --argjson s "$STEPS" 'fromjson? | select(type == "object" and .type == "progress") | (.step // "" | tostring) as $k | "    · " + ($s[$k] // $k)' >&2

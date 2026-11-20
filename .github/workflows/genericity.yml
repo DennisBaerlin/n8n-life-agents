@@ -1206,7 +1206,7 @@ jobs:
           if grep -qF "$pw" "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err"; then echo "FAIL Passwort in der Ausgabe von setup.sh"; exit 1; fi
           printf '%s' "$pw" | sha256sum | cut -c1-16 > "$RUNNER_TEMP/pw.hash"
 
-      - name: A broken answer file fails cleanly through setup.sh --answers; then install like the setup wizard
+      - name: A broken answer file fails cleanly through setup.sh --answers; then the success path of --answers installs
         run: |
           set -euo pipefail
           sudo bash tests/mock_telegram/start_in_pod.sh lifeagents "$RUNNER_TEMP/tgmock"
@@ -1222,10 +1222,16 @@ jobs:
           render() { sudo docker exec lifeagents-master node /tmp/render_ci_answers.js --reach fritzbox --backup "$RUNNER_TEMP/bk-wizard" "$@"; }
           render > "$RUNNER_TEMP/answers.env"
           render --print packages > "$RUNNER_TEMP/packages.arg"
-          sudo docker exec -i lifeagents-master sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
-          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt die Bot-Aufrufe auf den Mock, LLM_GATEWAY_KEEPALIVE_HOURS=0 verhindert Aufrufe des Gateways mit dem erfundenen Schluessel; stack install reicht keine Umgebung durch (Luecke fuer P3, bericht-s4p2a.md)
-          sudo docker exec -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 -e LLM_GATEWAY_KEEPALIVE_HOURS=0 -e LIFEAGENTS_RESULT_FILE=/run/lifeagents-wizard/result lifeagents-master bash /opt/lifeagents/provisioning/provision.sh --profile release --unattended /run/lifeagents-wizard/answers.env --packages "$(cat "$RUNNER_TEMP/packages.arg")"
-          sudo docker exec lifeagents-master rm -f /run/lifeagents-wizard/answers.env
+          # Keep-Alive aus ist eine Antwort (erlaubter Schluessel), keine Weiche: sonst stupste das Gateway mit dem erfundenen Schluessel an.
+          printf 'LLM_GATEWAY_KEEPALIVE_HOURS=0\n' >> "$RUNNER_TEMP/answers.env"
+          # Erfolgsweg von --answers: setup.sh -> Kern `stack install` (Antworten ueber stdin) -> provision.sh im master.
+          # hand-injected: LIFEAGENTS_TELEGRAM_API zeigt die Bot-Aufrufe auf den Mock; Test-Weiche der Positivliste SC_TEST_SWITCHES (lib/stack_core.sh), setup.sh reicht sie als Name an den Kern, der Kern an provision.sh
+          sudo env LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 bash provisioning/setup.sh --yes --image "$SETUP_IMAGE" --answers "$RUNNER_TEMP/answers.env" -- --profile release --packages "$(cat "$RUNNER_TEMP/packages.arg")" > "$RUNNER_TEMP/ans.out" 2> >(tee "$RUNNER_TEMP/ans.err" >&2)
+          if sudo docker exec lifeagents-master test -e /run/lifeagents-wizard/answers.env; then echo "FAIL Antwort-Datei im master liegen geblieben"; exit 1; fi
+          # Die Weiche kam an: der Mock sah Bot-Aufrufe der Installation.
+          # Ein grep ohne Pipe (grep -q hinter einer Pipe beendete den Schreiber mit SIGPIPE, unter pipefail = falscher FAIL).
+          calls="$(grep -c '"method":"[^_]' "$RUNNER_TEMP/tgmock/mock_telegram.jsonl" || true)"
+          [ "${calls:-0}" -gt 0 ] || { echo "FAIL Telegram-Mock ohne Aufruf (Weiche nicht durchgereicht?)"; ls -la "$RUNNER_TEMP/tgmock" || true; exit 1; }
           sudo docker exec lifeagents-master bash /opt/lifeagents/provisioning/doctor.sh
           q() { sudo docker exec lifeagents-postgres psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
           total="$(q 'SELECT count(*) FROM public.workflow_entity')"

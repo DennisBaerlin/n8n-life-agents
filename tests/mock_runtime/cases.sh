@@ -800,6 +800,12 @@ grep '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG" | grep -qF "
   && pass SC.weitergabe-aufruf || fail SC.weitergabe-aufruf "$(grep core-next "$STUB_LOG")"
 if grep -qE '\|volume\|create\||\|up\|-d\|' "$STUB_LOG"; then fail SC.weitergabe-selbst-nichts "$(grep -E 'create|\|up\|' "$STUB_LOG" | head -1)"; else pass SC.weitergabe-selbst-nichts; fi
 if grep -q '"type":"result"' "$SCO"; then fail SC.weitergabe-ein-ergebnis "der aeussere Kern schrieb ein eigenes result"; else pass SC.weitergabe-ein-ergebnis; fi
+# Die Weitergabe nimmt die Test-Weichen mit (als Name); sonst liefe ein install im inneren Kern still gegen echte Dienste.
+LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 LA_FREMD=1 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" \
+  STUB_CORE_IMAGES="$OTHER" scr install --json </dev/null
+_cn="$(grep '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG")"
+case "$_cn" in *'|--env|LIFEAGENTS_TELEGRAM_API|'*) case "$_cn" in *LA_FREMD*|*127.0.0.1:8089*) fail SC.weitergabe-weichen "$_cn" ;; *) pass SC.weitergabe-weichen ;; esac ;;
+  *) fail SC.weitergabe-weichen "$_cn" ;; esac
 STUB_DELEGATE_RC=1 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
 eq SC.weitergabe-exit-durchgereicht 1 "$SC_RC"
 # Kein Kern-Etikett (Stand vor dem Kern) -> legacy_installation, keine Weitergabe; start/status gehen weiter.
@@ -867,6 +873,29 @@ STUB_RUNNING=lifeagents-swap STUB_VOLS='' scr status --json
 eq SC.status-update-laeuft true "$(res .update_running)"
 STUB_VOLS="${_lp}pgdata" STUB_FAIL='|ps|--format|' scr status --json
 eq SC.status-ps-fehler-leere-liste 'true|0' "$(res .ok)|$(res '.services | length')"
+# install: nur die Test-Weichen der Positivliste (SC_TEST_SWITCHES) gehen an provision.sh, als Name (-e NAME, Wert aus der
+# Umgebung des Kerns, nie in einer Befehlszeile); andere Variablen, auch gesperrte LIFEAGENTS_*, kommen nie durch.
+SC_TEST_SWITCHES_EXP='LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM'
+eq SC.weichen-liste "$SC_TEST_SWITCHES_EXP" "$(sed -n 's/^SC_TEST_SWITCHES="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")"
+LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 LIFEAGENTS_LLM_UPSTREAM=http://127.0.0.1:8088 LIFEAGENTS_DIR=/fremd \
+  LIFEAGENTS_RESULT_FILE=/fremd/r LA_FREMD=1 FREMD_WEICHE=x STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master \
+  scr install --json -- --profile dev </dev/null
+_px="$(grep '^docker|exec|.*provision\.sh' "$STUB_LOG")"
+eq SC.install-ok 'true|0' "$(res .ok)|$SC_RC"
+case "$_px" in *'|exec|-e|LIFEAGENTS_TELEGRAM_API|-e|LIFEAGENTS_LLM_UPSTREAM|lifeagents-master|bash|'*'|--profile|dev|'*) pass SC.install-weichen-durch ;;
+  *) fail SC.install-weichen-durch "$_px" ;; esac
+case "$_px" in *LIFEAGENTS_DIR*|*RESULT_FILE*|*LA_FREMD*|*FREMD_WEICHE*) fail SC.install-fremdes-nie "$_px" ;; *) pass SC.install-fremdes-nie ;; esac
+if grep -qF '127.0.0.1:808' "$STUB_LOG"; then fail SC.install-wert-nie-im-argv "$(grep -F '127.0.0.1:808' "$STUB_LOG" | head -1)"; else pass SC.install-wert-nie-im-argv; fi
+LIFEAGENTS_TELEGRAM_API='' STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master scr install --json </dev/null
+_px="$(grep '^docker|exec|.*provision\.sh' "$STUB_LOG")"
+case "$_px" in *'|-e|'*|'') fail SC.install-ohne-weichen "ok=$(res .ok) provision: $_px" ;; *) pass SC.install-ohne-weichen ;; esac
+# setup.sh ist oeffentlich: eine liegengebliebene Weiche mit fremdem Ziel darf nie Bot-Aufrufe umleiten. Nur
+# http://127.0.0.1:<port> geht durch, alles andere faellt mit Warnung weg (Wert nie in der Meldung).
+LIFEAGENTS_TELEGRAM_API=https://fremd.example LIFEAGENTS_LLM_UPSTREAM=http://127.0.0.1:8088 STUB_VOLS="$SC_ALLVOLS" STUB_RUNNING=lifeagents-master \
+  scr install --json </dev/null
+_px="$(grep '^docker|exec|.*provision\.sh' "$STUB_LOG")"
+case "$_px" in *LIFEAGENTS_TELEGRAM_API*|'') fail SC.install-fremdes-ziel-faellt-weg "$_px" ;; *'|-e|LIFEAGENTS_LLM_UPSTREAM|'*) pass SC.install-fremdes-ziel-faellt-weg ;; *) fail SC.install-fremdes-ziel-faellt-weg "$_px" ;; esac
+if grep -q 'LIFEAGENTS_TELEGRAM_API' "$SCE" && ! grep -qF 'fremd.example' "$SCE"; then pass SC.install-fremdes-ziel-warnung; else fail SC.install-fremdes-ziel-warnung "$(cat "$SCE")"; fi
 # start: ohne Installation not_installed; nur vorhandene, stehende Container.
 STUB_VOLS='' scr start --json;  eq SC.start-ohne-installation not_installed "$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor scr start --json

@@ -60,7 +60,7 @@ function render({ flow, Q, reach, backup, what, packages = 'all', profile = 'rel
   if (!['release', 'dev'].includes(profile)) throw new Error('--profile release|dev');
   if (extra && profile !== 'dev') throw new Error('--extra-stdin only with --profile dev');
   // dev ohne Zusatz-Zeilen liefe still ohne die Test-Schalter (Harness-Header, Webhook-Übernahme …), die nur dort kommen.
-  if (profile === 'dev' && !extra) throw new Error('--profile dev needs the test switches via --extra-stdin (scripts/lib/test_install_env.ps1)');
+  if (profile === 'dev' && !extra && what !== 'packages') throw new Error('--profile dev needs the test switches via --extra-stdin (scripts/lib/test_install_env.ps1)');
   const A = {
     __tg_have: 'both', __voice: 'no', __backup_choice: 'other', __backup_dir: backup,
     __packages: packages === 'none' ? [] : Q.packages.map((p) => p.id), __reach: reach,

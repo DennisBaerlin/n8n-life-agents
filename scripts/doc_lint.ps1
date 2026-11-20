@@ -309,43 +309,41 @@ if ((Test-Path $envLib) -and (Test-Path $exampleEnv)) {
     $exampleText = [System.IO.File]::ReadAllText($exampleEnv)
     . $envLib
     $envMapLib = Get-TestInstallEnvMap $RepoRoot
-    if ($envMapLib.Count -eq 0) {
-        Fail 'scripts/lib/test_install_env.ps1' 'Get-TestInstallEnvMap liefert keine Zuordnung -- Env-Konventions-Check kann nicht greifen.'
-    } else {
-        $srcKeys = @($envMapLib.Keys)
-        # Gegenprobe mit eigener Ableitung: TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property
-        # (Property-Name = Kern-Env-Key) muss in der Zuordnung stehen und in .env.example dokumentiert sein.
-        $pkgKeys = New-Object System.Collections.Generic.List[string]
-        foreach ($mfPath in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object { Join-Path $_.FullName 'manifest.json' })) {
-            if (-not (Test-Path $mfPath)) { continue }
-            $mfObj = [System.IO.File]::ReadAllText($mfPath) | ConvertFrom-Json
-            if ($null -eq $mfObj.credentials) { continue }
-            foreach ($credProp in ($mfObj.credentials.PSObject.Properties | Where-Object { $_.Name -notlike '_*' })) {
-                if ($null -eq $credProp.Value.env) { continue }
-                foreach ($envKeyProp in $credProp.Value.env.PSObject.Properties) { $pkgKeys.Add("TEST_$($envKeyProp.Name)") }
-            }
+    $srcKeys = @($envMapLib.Keys)
+    # Gegenprobe mit eigener Ableitung: TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property
+    # (Property-Name = Kern-Env-Key) muss in der Zuordnung stehen und in .env.example dokumentiert sein. Bewusst eine
+    # zweite, unabhaengige Ableitung: ein Lint, der nur die Ausgabe der Bibliothek prueft, saehe einen stillen
+    # Ableitungs-Bruch dort nie (der Selbst-Assert unten faengt 0 Treffer).
+    $pkgKeys = New-Object System.Collections.Generic.List[string]
+    foreach ($mfPath in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object { Join-Path $_.FullName 'manifest.json' })) {
+        if (-not (Test-Path $mfPath)) { continue }
+        $mfObj = [System.IO.File]::ReadAllText($mfPath) | ConvertFrom-Json
+        if ($null -eq $mfObj.credentials) { continue }
+        foreach ($credProp in ($mfObj.credentials.PSObject.Properties | Where-Object { $_.Name -notlike '_*' })) {
+            if ($null -eq $credProp.Value.env) { continue }
+            foreach ($envKeyProp in $credProp.Value.env.PSObject.Properties) { $pkgKeys.Add("TEST_$($envKeyProp.Name)") }
         }
-        # Selbst-Assert: die Ableitung darf nicht still leerlaufen, solange ein credentials-Block existiert
-        # (0 Treffer hiesse Extraktions-Bruch, nicht "keine Pakete").
-        $hasCredBlock = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | Where-Object {
-            $p = Join-Path $_.FullName 'manifest.json'
-            (Test-Path $p) -and (([System.IO.File]::ReadAllText($p) | ConvertFrom-Json).PSObject.Properties.Name -contains 'credentials')
-        }).Count -gt 0
-        if ($hasCredBlock -and $pkgKeys.Count -eq 0) {
-            Fail 'scripts/doc_lint.ps1' 'Selbst-Assert 7b: credentials-Block vorhanden, aber 0 abgeleitete TEST_*-Paket-Keys (Manifest-Ableitung gebrochen).'
+    }
+    # Selbst-Assert: die Ableitung darf nicht still leerlaufen, solange ein credentials-Block existiert
+    # (0 Treffer hiesse Extraktions-Bruch, nicht "keine Pakete").
+    $hasCredBlock = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | Where-Object {
+        $p = Join-Path $_.FullName 'manifest.json'
+        (Test-Path $p) -and (([System.IO.File]::ReadAllText($p) | ConvertFrom-Json).PSObject.Properties.Name -contains 'credentials')
+    }).Count -gt 0
+    if ($hasCredBlock -and $pkgKeys.Count -eq 0) {
+        Fail 'scripts/doc_lint.ps1' 'Selbst-Assert 7b: credentials-Block vorhanden, aber 0 abgeleitete TEST_*-Paket-Keys (Manifest-Ableitung gebrochen).'
+    }
+    foreach ($k in @($pkgKeys)) {
+        if ($srcKeys -notcontains $k) {
+            Fail 'scripts/lib/test_install_env.ps1' "Paket-Zugang '$k' (Manifest credentials) fehlt in Get-TestInstallEnvMap."
         }
-        foreach ($k in @($pkgKeys)) {
-            if ($srcKeys -notcontains $k) {
-                Fail 'scripts/lib/test_install_env.ps1' "Paket-Zugang '$k' (Manifest credentials) fehlt in Get-TestInstallEnvMap."
-            }
+    }
+    foreach ($k in (@($srcKeys) + @($pkgKeys) | Select-Object -Unique)) {
+        if ($k -notmatch '^TEST_') {
+            Fail 'scripts/lib/test_install_env.ps1' "envMap-Quell-Key '$k' ist nicht TEST_-praefixt (Substrat-Test-Input -> TEST_*; Kern-Zielname bleibt rechts unveraendert)."
         }
-        foreach ($k in (@($srcKeys) + @($pkgKeys) | Select-Object -Unique)) {
-            if ($k -notmatch '^TEST_') {
-                Fail 'scripts/lib/test_install_env.ps1' "envMap-Quell-Key '$k' ist nicht TEST_-praefixt (Substrat-Test-Input -> TEST_*; Kern-Zielname bleibt rechts unveraendert)."
-            }
-            if ($exampleText -notmatch ("(?m)^\s*#?\s*" + [regex]::Escape($k) + "=")) {
-                Fail '.env.example' "envMap-Quell-Key '$k' fehlt in .env.example (Vorlage muss jeden Test-Substrat-Schluessel dokumentieren)."
-            }
+        if ($exampleText -notmatch ("(?m)^\s*#?\s*" + [regex]::Escape($k) + "=")) {
+            Fail '.env.example' "envMap-Quell-Key '$k' fehlt in .env.example (Vorlage muss jeden Test-Substrat-Schluessel dokumentieren)."
         }
     }
 }

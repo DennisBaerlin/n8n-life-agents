@@ -76,7 +76,12 @@ $sw = Get-TestDevSwitches -HitlChatApproval -FullDeploy -SerialTools '1'
 Assert-That ((@($sw.Keys) -join ',') -eq 'TEST_HARNESS_HEADER,LIFEAGENTS_HITL_CHAT_APPROVAL,LIFEAGENTS_DEPLOY_FULL,LLM_GATEWAY_KEEPALIVE_HOURS,LLM_GATEWAY_SERIAL_TOOLS,BOT_PROFILE_PHOTO,TELEGRAM_WEBHOOK_TAKEOVER') 'Test-Schalter: Reihenfolge wie im klassischen Bootstrap, SerialTools nur wenn gesetzt'
 Assert-That ($sw['LIFEAGENTS_HITL_CHAT_APPROVAL'] -eq 'true' -and $sw['LIFEAGENTS_DEPLOY_FULL'] -eq '1' -and $sw['LLM_GATEWAY_SERIAL_TOOLS'] -eq '1') 'Schalter-Werte aus den Parametern'
 $classic = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_n8n.ps1'))
-Assert-That ($classic -match 'Get-TestInstallEnvMap' -and $classic -match 'Get-TestDevSwitches') 'klassischer Bootstrap ruft die Bibliothek'
+$envFile = @(ConvertTo-TestEnvFileLines -Map $map -Values @{ TEST_TELEGRAM_BOT_TOKEN = "1:it's-invented"; TEST_GOOGLE_API_KEY = '' })
+Assert-That ($envFile -contains "TELEGRAM_BOT_TOKEN='1:it'\''s-invented'" -and -not ($envFile -match '^GOOGLE_API_KEY=')) 'Env-Datei des Klassikers: gesetzte TEST_*-Werte shell-gequotet, leere fehlen'
+Assert-That ($envFile -contains "TEST_HARNESS_HEADER='X-Test-Auth'" -and $envFile -contains "BOT_PROFILE_PHOTO='0'" -and $envFile -contains "TELEGRAM_WEBHOOK_TAKEOVER='1'" -and $envFile -contains "LLM_GATEWAY_KEEPALIVE_HOURS='0'") 'Env-Datei des Klassikers traegt die Test-Schalter'
+Assert-That ($classic -match 'ConvertTo-TestEnvFileLines' -and $classic -notmatch 'envLines\.Add\(') 'klassischer Bootstrap baut seine Env-Datei nur ueber die Bibliothek'
+$stackSrc = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_stack.ps1'))
+Assert-That ($stackSrc -match 'ConvertTo-TestStackExtra' -and $stackSrc -match '-ExtraText \$extra') 'Verbund reicht die Zusatz-Zeilen (Werte + Schalter) an die Antwort-Datei'
 Assert-That ($classic -notmatch "'TEST_TELEGRAM_BOT_TOKEN'\s*=" -and $classic -notmatch 'TELEGRAM_WEBHOOK_TAKEOVER=1' -and $classic -notmatch 'X-Test-Auth') 'klassischer Bootstrap haelt keine eigene Kopie der Zuordnung oder der Schalter'
 $js = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\wizard\render_ci_answers.js'))
 Assert-That ($js -notmatch 'X-Test-Auth|TELEGRAM_WEBHOOK_TAKEOVER') 'render_ci_answers.js haelt keine eigene Kopie der Test-Schalter'

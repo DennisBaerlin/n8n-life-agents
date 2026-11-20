@@ -345,6 +345,8 @@ $threw = $false; try { Wait-SubstrateSlot -Own 'me' -Max 2 -WaitMin 0 -Reservati
 Assert-That 'Reservierung fuer einen anderen belegt den zweiten Platz' $threw
 $img = ''; $null = Wait-SubstrateSlot -Own 'me' -Image 'jrei/x' -Max 5 -WaitMin 0 -ReservationFile $file -GetRunning { param($i) $script:img = $i; @() }
 Assert-That '-Image geht an die Zaehlung (Alt-Container ohne Etikett)' ($img -eq 'jrei/x')
+$img = ''; $null = Wait-SubstrateSlot -Own 'me' -Max 5 -WaitMin 0 -ReservationFile $file -GetRunning { param($i) $script:img = $i; @() }
+Assert-That 'ohne -Image zaehlt das nackte Abbild des klassischen Unterbaus mit (beide Bootstraps gleich)' ($img -and $img -eq $ClassicSubstrateImage)
 Reset-File
 
 Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue

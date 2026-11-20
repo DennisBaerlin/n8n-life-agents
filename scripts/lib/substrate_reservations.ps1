@@ -192,7 +192,10 @@ function Get-DockerLines([string[]]$DockerArgs) {
 # (Alt-Container ohne Label; kein ancestor= auf das Basis-Image: BuildKit setzt dafuer keine verlaesslichen Eltern-Verweise).
 # Verbund: ConvertFrom-ComposeSubstrateRows. Eine Quelle fuer Wait-SubstrateSlot und `reserve_substrate_slot -List`; die Grenze
 # (Max in Get-SlotAvailability) gilt fuer beide zusammen.
-function Get-RunningSubstrates([string]$Image) {
+# Nacktes Abbild des klassischen Unterbaus (bootstrap_test_n8n.ps1 nimmt es von hier; dieselbe Referenz wie CI genericity.yml).
+# Vorgabe der Zaehlung, damit jeder Aufrufer Alt-Container ohne Etikett mitzaehlt.
+$ClassicSubstrateImage = 'jrei/systemd-debian:12'
+function Get-RunningSubstrates([string]$Image = $ClassicSubstrateImage) {
     $filters = @('label=lifeagents.substrate=n8n', 'label=lifeagents.substrate-base=1')
     if ($Image) { $filters += "ancestor=$Image" }
     $seen = @{}
@@ -227,7 +230,7 @@ function Get-RunningSubstrates([string]$Image) {
 function Wait-SubstrateSlot {
     param(
         [Parameter(Mandatory)][string]$Own,
-        [string]$Image = '',
+        [string]$Image = $ClassicSubstrateImage,
         [int]$Max = $(if ($env:N8NTEST_MAX_PARALLEL) { [int]$env:N8NTEST_MAX_PARALLEL } else { 2 }),
         [int]$WaitMin = $(if ($env:N8NTEST_WAIT_MIN) { [int]$env:N8NTEST_WAIT_MIN } else { 15 }),
         [string]$ReservationFile = (Get-SlotReservationFile),

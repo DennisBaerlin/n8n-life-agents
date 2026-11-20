@@ -67,3 +67,19 @@ function Get-TestDevSwitches {
     $s['TELEGRAM_WEBHOOK_TAKEOVER'] = '1'
     return $s
 }
+
+# ConvertTo-TestEnvFileLines -- Zeilen der Env-Datei des klassischen Unterbaus (provision.sh --unattended liest sie mit
+# install_answers_load, nie gesourct): gesetzte TEST_*-Werte als Kern-Schluessel, danach die Test-Schalter; jeder Wert in
+# einfachen Anfuehrungszeichen ('\'' fuer ein '). Der Verbund nimmt dieselben Paare ueber ConvertTo-TestStackExtra.
+function ConvertTo-TestEnvFileLines {
+    param([Parameter(Mandatory)]$Map, [Parameter(Mandatory)][hashtable]$Values, [switch]$HitlChatApproval, [switch]$FullDeploy, [string]$SerialTools = '')
+    $q = { param($v) "'" + ($v -replace "'", "'\''") + "'" }
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($k in $Map.Keys) {
+        $v = [string]$Values[$k]
+        if ($v) { $out.Add("$($Map[$k])=$(& $q $v)") }
+    }
+    $sw = Get-TestDevSwitches -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools $SerialTools
+    foreach ($k in $sw.Keys) { $out.Add("$k=$(& $q $sw[$k])") }
+    return $out
+}

@@ -87,9 +87,10 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 # Override $env:N8NTEST_CONTAINER (+ $env:N8NTEST_PORT): ein zweiter Git-Worktree faehrt sein eigenes Substrat parallel,
 # statt das geteilte per -Reset abzureissen (die Tier-Skripte lesen den Namen aus dem State-File des Worktrees).
 $Container  = if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }
-# $Image = das nackte Image: kalter Pfad (-Cold/-Version) und Grundlage des Basis-Images. Dieselbe Referenz wie CI
-# genericity.yml (Tag, nicht Digest -> kein CI<->Dev-Drift); den Digest loest erst der Basis-Bau auf (Cache-Key).
-$Image      = 'jrei/systemd-debian:12'
+. "$PSScriptRoot\..\lib\substrate_reservations.ps1"   # Platz-Reservierung (Wait-SubstrateSlot) und $ClassicSubstrateImage
+# $Image = das nackte Image: kalter Pfad (-Cold/-Version) und Grundlage des Basis-Images. Tag, nicht Digest (kein CI<->Dev-Drift);
+# den Digest loest erst der Basis-Bau auf (Cache-Key).
+$Image      = $ClassicSubstrateImage
 $BaseRepo   = 'lifeagents-substrate-base'
 $UseBase    = -not ($Cold -or $Version)
 $BridgePort = 5680                       # socat-Listener im Container (0.0.0.0) -> 127.0.0.1:5678
@@ -97,7 +98,6 @@ $HostPort   = if ($env:N8NTEST_PORT) { $env:N8NTEST_PORT } else { '5680' }
 $N8nUrl     = "http://127.0.0.1:$HostPort"
 . "$PSScriptRoot\test_n8n_state.ps1"     # Get-TestN8nStateFile: Zustandsdatei je Container (zweites Substrat ueberschreibt nichts)
 $StateFile  = Get-TestN8nStateFile -Container $Container
-. "$PSScriptRoot\..\lib\substrate_reservations.ps1"   # Reservierung von Substrat-Plaetzen (Wait-SubstrateSlot)
 $ContainerRoot = '/opt/n8n-life-agents'   # provisioning/ + packages/ als Geschwister (REPO_ROOT)
 $EnvFileInC = '/root/.n8ntest_install.env'
 
@@ -388,7 +388,7 @@ if ($Reset -and $existing) {
 }
 
 if (-not (Get-ContainerId)) {
-    Wait-SubstrateSlot -Own $Container -Image $Image
+    Wait-SubstrateSlot -Own $Container
     # Nach dem Warten nur pruefen (ein paralleler Bau koennte aufgeraeumt haben); fehlt es, neu sicherstellen.
     if ($UseBase -and (Invoke-Native docker @('image', 'inspect', $RunImage)).Code -ne 0) { $RunImage = Initialize-SubstrateBaseImage }
     Write-Host "Starte $RunImage als $Container (systemd, 127.0.0.1:$HostPort -> Container:$BridgePort) ..."
@@ -439,16 +439,9 @@ if ($SkipInstall) {
 # Zuordnung und Schalter samt Begruendung: scripts/lib/test_install_env.ps1 (eine Adresse fuer beide Unterbauten).
 . "$PSScriptRoot\..\lib\test_install_env.ps1"
 $envMap = Get-TestInstallEnvMap $RepoRoot
-function ConvertTo-ShellQuote([string]$v) { "'" + ($v -replace "'", "'\''") + "'" }
-$envLines = New-Object System.Collections.Generic.List[string]
-foreach ($k in $envMap.Keys) {
-    $val = Get-EnvValue $k
-    if ($val) { $envLines.Add("$($envMap[$k])=$(ConvertTo-ShellQuote $val)") }
-}
-# $env:LLM_GATEWAY_SERIAL_TOOLS: nur 0 oder 1 zaehlt, jeder andere Wert bleibt ungesetzt (Standard an).
-$serial = if ($env:LLM_GATEWAY_SERIAL_TOOLS -in @('0', '1')) { [string]$env:LLM_GATEWAY_SERIAL_TOOLS } else { '' }
-$switches = Get-TestDevSwitches -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools $serial
-foreach ($k in $switches.Keys) { $envLines.Add("$k=$(ConvertTo-ShellQuote $switches[$k])") }
+$envValues = @{}
+foreach ($k in $envMap.Keys) { $v = Get-EnvValue $k; if ($v) { $envValues[$k] = $v } }
+$envLines = ConvertTo-TestEnvFileLines -Map $envMap -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS)
 
 # Release-Pin (-Version): install.sh --version laedt anonym aus dem oeffentlichen Repo (kein Token).
 if ($Version) {

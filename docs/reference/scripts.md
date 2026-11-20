@@ -37,9 +37,9 @@ New-Item -ItemType Directory -Path $dst -Force | Out-Null
 Copy-Item -Path 'packages\*\workflows\*.json' -Destination $dst
 ```
 
-## Docker-Test-Substrat-`.env`-Keys (`scripts/dev/bootstrap_test_n8n.ps1`)
+## Test-Substrat-`.env`-Keys (`scripts/lib/test_install_env.ps1`)
 
-Der Substrat-Treiber liest die Test-Identität + optionale Secrets aus `.env` (gitignored) und reicht sie als Install-Env in den Container — gemappt auf die Namen, die der bash-Kern liest. Kanonisches Layout = `.env.example` (`doc_lint.ps1` 7b: jeder `$envMap`-Quell-Key ist dort dokumentiert).
+Beide Substrat-Treiber (klassisch `bootstrap_test_n8n.ps1`, Verbund `bootstrap_test_stack.ps1`) lesen die Test-Identität + optionale Secrets aus `.env` (gitignored) und reichen sie in die Installation — gemappt auf die Namen, die der bash-Kern liest (`Get-TestInstallEnvMap`). Kanonisches Layout = `.env.example` (`doc_lint.ps1` 7b: jeder Quell-Key der Zuordnung ist dort dokumentiert).
 
 | Schlüssel | Pflicht | Zweck / gemappt auf |
 |---|---|---|

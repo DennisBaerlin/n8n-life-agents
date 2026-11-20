@@ -51,7 +51,8 @@ test('CI-Antwort-Datei: --print packages = alle Pakete mit Fragen, wie der Assis
 // Profil dev (Test-Unterbau, scripts/dev/bootstrap_test_stack.ps1): dieselbe Datei; Zusatz-Zeilen (stdin: TEST_*-Werte aus .env und
 // die Test-Schalter aus scripts/lib/test_install_env.ps1) ersetzen einen Schlüssel an seiner Stelle oder kommen dazu.
 test('CI-Antwort-Datei --profile dev: Zusatz-Zeilen ersetzen und ergänzen, echter Leser nimmt sie an, eigene Schalter keine', () => {
-  assert.equal(flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' })).has('TEST_HARNESS_HEADER'), false);
+  // Die Schalter kommen nur ueber --extra-stdin (scripts/lib/test_install_env.ps1); ohne sie liefe dev still ohne Harness-Header.
+  assert.throws(() => render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' }), /--extra-stdin/);
   const release = render({ flow, Q, reach: 'tunnel', backup: '/x' });
   const txt = render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev',
     extra: 'TELEGRAM_BOT_TOKEN=2000002:inventedDevToken\nTEST_HARNESS_HEADER=X-Test-Auth\nLIFEAGENTS_DEPLOY_FULL=1\nTEST_HARNESS_SECRET=invented-harness\n' });
@@ -88,7 +89,7 @@ test('CI-Antwort-Datei --profile dev: kaputte Zusatz-Zeilen brechen ab und nenne
 // Profil dev läuft ohne Attrappen gegen echte Dienste: die erfundenen CI-Schlüssel dürfen dort nie stehen. Ohne .env-Wert
 // bleibt der Schlüssel leer (der Installer überspringt den Zugang wie im klassischen Unterbau), mit Wert gilt der Wert.
 test('CI-Antwort-Datei --profile dev: keine erfundenen Zugänge, nur leer oder der Wert aus .env', () => {
-  const m = flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev' }));
+  const m = flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev', extra: 'TEST_HARNESS_HEADER=X-Test-Auth\n' }));
   assert.equal(m.get('TELEGRAM_BOT_TOKEN'), '');
   assert.equal(m.get('ANTHROPIC_API_KEY'), '');
   const r = flow.parseAnswers(render({ flow, Q, reach: 'tunnel', backup: '/x', profile: 'dev', extra: 'ANTHROPIC_API_KEY=sk-ant-invented-dev\n' }));

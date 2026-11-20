@@ -82,7 +82,10 @@ if (-not $devKey)  { throw "DEV_INSTANCE_SSH_KEY fehlt in .env (siehe .env.examp
 if ($devKey.StartsWith('~')) { $devKey = Join-Path $HOME $devKey.Substring(1).TrimStart('/', '\') }
 if (-not (Test-Path $devKey)) { throw "SSH-Key nicht gefunden: $devKey" }
 $target  = "$devUser@$devHost"
-$sshOpts = @('-i', $devKey, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
+# StrictHostKeyChecking=yes steht ausdruecklich auf der Kommandozeile: eine Nutzer-Config mit "no" wuerde sonst einen
+# falschen Host (z. B. den Router hinter einem Namen, der auch auf ihn aufloest) still durchlassen. Der Host-Key des Ziels
+# muss darum einmal von Hand in known_hosts stehen (einmal per ssh verbinden und bestaetigen).
+$sshOpts = @('-i', $devKey, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10')
 
 function Invoke-Remote([string]$cmd) {
     return Invoke-Native ssh ($sshOpts + @($target, $cmd))
@@ -96,14 +99,10 @@ function Invoke-Remote([string]$cmd) {
 $DevMarker = '/etc/lifeagents-dev-instance'
 $createMarkerCmd = 'printf ''lifeagents-dev-instance: %s\ndata: test-only\n'' "$(hostname)" > ' + $DevMarker
 $liveHost = Get-EnvValue 'LIVE_INSTANCE_HOST'
-# Name oder Adresse -> Adressen; nicht aufloesbar -> leer (dann entscheidet die Merkdatei allein).
-function Resolve-HostAddresses([string]$Name) {
-    try { return @([System.Net.Dns]::GetHostAddresses($Name) | ForEach-Object { $_.ToString() }) } catch { return @() }
-}
+. "$PSScriptRoot\lib\dev_target.ps1"
 if ($liveHost) {
-    $devAddr = Resolve-HostAddresses $devHost
     $sameName = $liveHost.Equals($devHost, [System.StringComparison]::OrdinalIgnoreCase)
-    $sameAddr = @(Resolve-HostAddresses $liveHost | Where-Object { $devAddr -contains $_ }).Count -gt 0
+    $sameAddr = Test-SameTargetAddresses (Resolve-HostAddresses $devHost) (Resolve-HostAddresses $liveHost) (Get-RouterAddresses)
     if ($sameName -or $sameAddr) {
         throw "Abbruch, nichts geaendert: DEV_INSTANCE_HOST zeigt auf dasselbe Ziel wie LIVE_INSTANCE_HOST (das Produktiv-System; gleicher Name oder gleiche Adresse). DEV_INSTANCE_* muss auf die Entwickler-Instanz zeigen (siehe .env.example)."
     }

@@ -16,6 +16,17 @@ function Assert-True([string]$Name, [bool]$Ok, [string]$Got = '') {
     if ($Ok) { Write-Host "  [PASS] $Name" } else { Write-Host "  [FAIL] $Name $Got" -ForegroundColor Red; $script:failed++ }
 }
 
+Write-Host 'Adress-Vergleich DEV/LIVE: die Router-Adresse in beiden Namen zaehlt nicht (Fritz-Box-Namen loesen auch auf den Router auf)'
+. (Join-Path $repo 'scripts\lib\dev_target.ps1')
+$router = @('192.168.178.10')
+Assert-True 'nur der Router gemeinsam: nicht dasselbe Ziel' (-not (Test-SameTargetAddresses @('192.168.178.20', '192.168.178.10') @('192.168.178.30', '192.168.178.10') $router))
+Assert-True 'Container-Adresse gemeinsam (IP gegen Name): dasselbe Ziel' (Test-SameTargetAddresses @('192.168.178.20') @('192.168.178.20', '192.168.178.10') $router)
+Assert-True 'gleiche Adressen samt Router: dasselbe Ziel' (Test-SameTargetAddresses @('192.168.178.20', '192.168.178.10') @('192.168.178.20', '192.168.178.10') $router)
+Assert-True 'nichts aufloesbar: kein Urteil (die Merkdatei entscheidet)' (-not (Test-SameTargetAddresses @() @() $router))
+Assert-True 'zwei nicht aufloesbare Namen (leere Ergebnisse kommen als $null an): kein Urteil' (-not (Test-SameTargetAddresses $null $null $router))
+Assert-True 'ein nicht aufloesbarer Name: kein Urteil' (-not (Test-SameTargetAddresses $null @('192.168.178.20') $router))
+Assert-True 'ohne bekannte Router-Adresse zaehlt jede gemeinsame' (Test-SameTargetAddresses @('192.168.178.10') @('192.168.178.10') @())
+
 $isWin = [System.IO.Path]::DirectorySeparatorChar -eq '\'
 $psExe = (Get-Process -Id $PID).Path
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ('reset_dev_guard_test_' + [guid]::NewGuid().ToString('N'))
@@ -30,7 +41,7 @@ $keyFile = Join-Path $work 'key'
 try {
     # --- Wegwerf-Repo: Kopie der zwei Skripte samt Bibliotheken, erfundene .env ---
     Initialize-GitSandbox $sandbox
-    foreach ($rel in 'scripts\reset_dev_instance.ps1', 'scripts\refresh_privacy_denylist.ps1', 'scripts\lib\dotenv.ps1',
+    foreach ($rel in 'scripts\reset_dev_instance.ps1', 'scripts\refresh_privacy_denylist.ps1', 'scripts\lib\dotenv.ps1', 'scripts\lib\dev_target.ps1',
                      'scripts\lib\privacy_terms.ps1', 'scripts\lib\privacy_terms.sql') {
         $src = Join-Path $repo $rel
         $dst = Join-Path $sandbox $rel
@@ -99,6 +110,7 @@ exit 1
     Assert-True 'genau ein ssh-Aufruf (nur die Abfrage)' ($r.Calls.Count -eq 1 -and $r.Calls[0] -match '^ssh ') ($r.Calls -join ' | ')
     Assert-True 'kein Schreibzugriff (scp, mkdir, rm, chmod, Umleitung)' (Test-NoWrite $r) ($r.Calls -join ' | ')
     Assert-True 'Meldung nennt Merkdatei und den Befehl zum Anlegen' ($r.Text -match '/etc/lifeagents-dev-instance' -and $r.Text -match 'printf') $r.Text
+    Assert-True 'ssh prueft den Host-Key streng (eine Nutzer-Config mit "no" darf ihn nicht abschalten)' ($r.Calls[0] -match 'StrictHostKeyChecking=yes') ($r.Calls -join ' | ')
 
     Write-Host 'Auch -KeepInstance schreibt (Upload) und ist gesperrt'
     $r = Invoke-Sandboxed 'scripts\reset_dev_instance.ps1' @('-KeepInstance')

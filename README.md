@@ -99,12 +99,12 @@ lifeagents update                    # self-update: latest release + DB migratio
 lifeagents package catalog|list|install|uninstall …  # install/uninstall packages individually
 lifeagents reconfigure [core|<pkg>]  # change or add settings (address, bot token, keys) and re-apply
 lifeagents config list|set|reset …   # central runtime config
-lifeagents proxy show|set …          # reverse proxy status + configuration
+lifeagents proxy show                # how Telegram reaches the server (tunnel or FritzBox route); `set` only for legacy own-proxy installs
 lifeagents household …               # list/add/remove/pair-owner/block members
 lifeagents backup export|restore|key # encrypted backup of your user data; key = emergency sheet
 lifeagents rollback                  # after a failed update: back to the previous version (asks first)
 lifeagents doctor                    # read-only health check
-lifeagents uninstall [--purge-data]  # clean removal
+lifeagents uninstall [--purge-data]  # clean removal of a legacy install.sh install (Docker stack: setup.sh --uninstall)
 lifeagents version                   # installed release version
 lifeagents help                      # THE complete reference (per area: lifeagents <command> help)
 ```
@@ -153,7 +153,7 @@ Three decisions make the difference: **the model proposes — the database decid
 
 ```mermaid
 flowchart TD
-    TG["Telegram (one central bot)"] -->|Webhook| RP["your reverse proxy (HTTPS – /webhook* routes only)"]
+    TG["Telegram (one central bot)"] -->|Webhook| RP["HTTPS gate (Tailscale tunnel or FritzBox route – /webhook* routes only)"]
     RP --> N8N["n8n 2.45.7 (self-hosted)"]
     N8N --> ORCH["agent.orchestrator – LLM router"]
     ORCH --> FIN["📒 agent.finance"]
@@ -190,7 +190,7 @@ The README stays an overview — details live at exactly one address:
 
 ## Stack and quality
 
-n8n 2.45.7 · PostgreSQL 17 · reverse proxy (recommended: Caddy, bring your own) · Bash provisioning · PowerShell dev tooling · Docker test substrate · Telegram Bot API · Anthropic Claude for all language work, Google Gemini only for voice transcription.
+n8n 2.45.7 · PostgreSQL 17 · Docker Compose stack with its own HTTPS gate (Tailscale Funnel or a FritzBox route) · Bash provisioning · PowerShell dev tooling · Docker test substrate · Telegram Bot API · Anthropic Claude for all language work, Google Gemini only for voice transcription.
 
 Quality is enforced by tools, not discipline: five test tiers (deterministic DB tests up to end-to-end with real writes), local prek hooks identical to CI, secret scans over the full history. The current numbers live in the test and CI files themselves — deliberately none here that would go stale.
 

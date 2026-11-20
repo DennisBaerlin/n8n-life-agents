@@ -6,7 +6,7 @@ Deine Finanz-, Karriere- und Vorsorgedaten sind sensibel. Diese Seite erklärt, 
 
 ## Alles läuft bei dir zuhause
 
-Der ganze Assistent läuft auf einer eigenen, selbst betriebenen kleinen Servermaschine (self-hosted n8n auf einer Debian-VM im eigenen Netzwerk) oder, mit der Start-App, auf deinem eigenen Mac oder PC, jeweils mit einer eigenen Datenbank (PostgreSQL). Es gibt keinen fremden Cloud-Dienst, der deine Daten dauerhaft speichert. Nach außen ist die Maschine bewusst eng abgeriegelt: ein vorgeschalteter Web-Türsteher (dein Reverse Proxy, z. B. Caddy, oder beim Tunnel Tailscale) lässt ausschließlich die Telegram-Nachrichtenwege durch — jeder andere Zugriffsversuch, etwa auf die Verwaltungsoberfläche, wird abgewiesen.
+Der ganze Assistent läuft auf einer eigenen, selbst betriebenen kleinen Servermaschine (self-hosted n8n in Docker auf einem Linux-Server im eigenen Netzwerk) oder, mit der Start-App, auf deinem eigenen Mac oder PC, jeweils mit einer eigenen Datenbank (PostgreSQL). Es gibt keinen fremden Cloud-Dienst, der deine Daten dauerhaft speichert. Nach außen ist die Maschine bewusst eng abgeriegelt: ein vorgeschalteter Web-Türsteher (beim Tunnel Tailscale, beim FritzBox-Weg der HTTPS-Zugang, den die Einrichtung selbst mitbringt) lässt ausschließlich die Telegram-Nachrichtenwege durch — jeder andere Zugriffsversuch, etwa auf die Verwaltungsoberfläche, wird abgewiesen.
 
 ## Nach draußen geht nur, was für eine Antwort nötig ist
 

@@ -70,108 +70,47 @@ Es öffnet sich eine Auswahl-Liste (Leertaste markiert, Enter startet). Danach l
 
 ## Erreichbarkeit
 
-Damit Telegram deinem Bot Nachrichten schicken kann, muss dein Server **von außen über HTTPS erreichbar** sein. Darum fragt der Installer als Erstes: „Wie soll Telegram deinen Rechner erreichen?“ Es gibt drei Wege:
+Damit Telegram deinem Bot Nachrichten schicken kann, muss dein Rechner **von außen über HTTPS erreichbar** sein. Darum fragt der Fragebogen als Erstes: „Wie soll Telegram deinen Rechner erreichen?“ Es gibt zwei Wege. Den nötigen Türsteher (HTTPS-Zugang) bringt die Einrichtung selbst mit; du brauchst keine eigene Domain und keinen eigenen Reverse Proxy.
 
 | Weg | Für wen | Was du brauchst |
 |---|---|---|
 | **Tunnel (Tailscale)**, empfohlen | jeden Anschluss, auch ohne eigene IPv4-Adresse (DS-Lite) | ein kostenloses Tailscale-Konto, sonst nichts |
-| **FritzBox** | FritzBox mit eigener IPv4-Adresse, ohne fremdes Konto | zwei MyFRITZ!-Freigaben und einen Reverse Proxy (z. B. Caddy) |
-| **Eigene Domain + eigener Reverse Proxy** | wer schon einen Proxy betreibt | Domain, Port-Weiterleitung 443, Reverse Proxy |
+| **FritzBox** | FritzBox mit eigener IPv4-Adresse, ohne fremdes Konto | zwei MyFRITZ!-Freigaben in der FritzBox; Port 80 und 443 müssen noch frei sein |
 
-Ändern geht später jederzeit: `lifeagents reconfigure core` → „Weg ins Internet“. Eine bestehende Installation mit Internet-Adresse gilt als „eigener Reverse Proxy“ und wird nicht neu gefragt.
+Ändern geht später jederzeit: `lifeagents reconfigure core` → „Weg ins Internet“. Hast du früher mit `install.sh` installiert und einen eigenen Reverse Proxy mit eigener Domain, gilt der Hinweis unter [Reverse Proxy (bestehende Installationen)](#reverse-proxy).
 
 ### Weg 1: Tunnel (empfohlen) {#tunnel}
 
-Dein Server baut selbst eine verschlüsselte Verbindung zu **Tailscale** auf (genauer: Tailscale Funnel). Telegram schickt an eine öffentliche Adresse bei Tailscale (`<name>.<tailnet>.ts.net`), Tailscale reicht durch diese Verbindung weiter. Am Router stellst du nichts ein, einen Reverse Proxy brauchst du nicht. Hintergrund, Kosten und Grenzen: [Tunnel einrichten](tunnel.html).
+Dein Rechner baut selbst eine verschlüsselte Verbindung zu **Tailscale** auf (genauer: Tailscale Funnel). Telegram schickt an eine öffentliche Adresse bei Tailscale (`<name>.<tailnet>.ts.net`), Tailscale reicht durch diese Verbindung weiter. Am Router stellst du nichts ein. Hintergrund, Kosten und Grenzen: [Tunnel einrichten](tunnel.html).
 
-So läuft es im Installer:
+So läuft es:
 
-1. Bei der ersten Frage **Über einen sicheren Tunnel** wählen (vorausgewählt). Weitere Fragen zur Erreichbarkeit gibt es nicht.
-2. Nach der Übersicht installiert der Installer **Tailscale** aus der offiziellen, signierten Paketquelle. In einem Proxmox-Container ohne `/dev/net/tun` (unprivilegierter LXC, der Standard) läuft Tailscale im Userspace-Modus; am Proxmox-Host musst du dafür nichts ändern ([Tailscale zu LXC](https://tailscale.com/kb/1130/lxc-unprivileged)).
-3. Der Installer zeigt einen **Anmelde-Link und einen QR-Code**. Öffne den Link im Browser oder scanne den Code mit dem Handy, melde dich bei Tailscale an (oder leg dort ein Konto an) und wähle dann im Installer **„Erledigt — erneut prüfen“**.
-4. Verlangt Tailscale die Freigabe für Nachrichten von außen (Funnel), zeigt der Installer auch dafür einen Link. Einmal zustimmen, erneut prüfen.
-5. Der Installer meldet „Tunnel steht“ mit der neuen Internet-Adresse und installiert weiter. „Später einrichten“ geht auch, dann erreicht Telegram den Bot erst danach (fertig machen mit `lifeagents reconfigure core` → „Unverändert neu anwenden“).
+1. Im Fragebogen bei der ersten Frage **Über einen sicheren Tunnel** wählen (vorausgewählt). Weitere Fragen zur Erreichbarkeit gibt es nicht.
+2. Nach der Übersicht und der Installation kommt der Schritt „Verbinden“. Er zeigt einen **Anmelde-Link**. Öffne ihn im Browser, melde dich bei Tailscale an (oder leg dort ein Konto an) und bestätige das neue Gerät.
+3. Verlangt Tailscale die Freigabe für Nachrichten von außen (Funnel), zeigt der Fragebogen auch dafür einen Link. Einmal zustimmen, dann auf **Noch einmal prüfen**.
+4. Steht der Tunnel, geht es mit dem [Telegram-Schritt](#mit-telegram-verbinden) weiter. Bei einem neuen Tailscale-Konto kann es laut Tailscale bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist.
 
-Was der Tunnel freigibt: nur die Telegram-Pfade aus der Liste unter [Reverse Proxy](#reverse-proxy), alles andere antwortet mit 404. n8n bleibt nur auf dem Server selbst erreichbar (`127.0.0.1:5678`). Läuft auf dem Server schon ein eigenes Tailscale, nimmt der Installer diesen Knoten mit und ändert an deinen Einstellungen nichts; ist dort Port 443 schon für etwas anderes eingerichtet, lässt er alles, wie es ist, und rät zu einem anderen Weg. Den Stand zeigen `lifeagents proxy show` und `lifeagents doctor`, auch wann die Geräte-Anmeldung bei Tailscale abläuft (im Tailscale-Konto unter *Machines* beim Gerät „Disable key expiry“ wählen, sonst schweigt der Bot danach).
+Was der Tunnel freigibt: nur die Telegram-Pfade aus der Liste unter [Reverse Proxy](#reverse-proxy) und die [Übersicht](uebersicht-app.html), alles andere antwortet mit 404. Die n8n-Oberfläche ist von außen nicht erreichbar. Den Stand zeigen `lifeagents proxy show` und `lifeagents doctor`. Läuft die Geräte-Anmeldung bei Tailscale einmal ab, schweigt der Bot danach; im Tailscale-Konto unter *Machines* beim Gerät „Disable key expiry“ wählen, dann läuft sie nicht ab.
 
-### Weg 2 und 3: FritzBox oder eigener Reverse Proxy
+### Weg 2: FritzBox
 
-Wählst du **Über meine FritzBox**, prüft der Installer zuerst selbst, ob dein Anschluss eine eigene IPv4-Adresse hat (bei DS-Lite geht dieser Weg nicht, dann bietet er den Tunnel an; lässt sich das nicht automatisch prüfen, fragt er nach dem Online-Monitor der FritzBox). Danach zeigt er die Schritte für die zwei MyFRITZ!-Freigaben, liest die Endung deiner MyFRITZ!-Adresse aus der FritzBox und übernimmt die Adresse erst, wenn sie nachweislich auf deinen Anschluss zeigt. Details: [FritzBox einrichten](fritzbox.html).
+Wählst du **Über meine FritzBox**, prüft die Einrichtung zuerst, ob dein Anschluss eine eigene IPv4-Adresse hat (bei DS-Lite geht dieser Weg nicht, dann bietet sie den Tunnel an; lässt sich das nicht automatisch prüfen, fragt sie nach dem Online-Monitor der FritzBox). Sind Port 80 oder 443 auf dem Rechner oder in der FritzBox schon vergeben, nimm den Tunnel: Du löschst keine fremden Freigaben. Danach zeigt der Fragebogen die Schritte für die zwei MyFRITZ!-Freigaben und nimmt die MyFRITZ!-Adresse erst an, wenn sie nachweislich auf deinen Anschluss zeigt. Den HTTPS-Zugang bringt die Einrichtung selbst mit. Die Schritte in der FritzBox stehen auf der Seite [FritzBox einrichten](fritzbox.html).
 
-Bei beiden Wegen nimmt dein eigener Reverse Proxy die Verbindungen an. Der Weg einer Nachricht:
+## Reverse Proxy (bestehende Installationen) {#reverse-proxy}
 
-{{< explain name="reach-proxy" width="280" height="560" alt="Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause." >}}
+Die neue Einrichtung bietet keinen eigenen Reverse Proxy an: Den Türsteher bringt sie mit (Tunnel oder FritzBox-Weg). Dieser Abschnitt gilt nur für eine **bestehende Installation**, die früher mit `install.sh` und einem eigenen Reverse Proxy (zum Beispiel Caddy) eingerichtet wurde. Der Proxy ist der „Türsteher“ zwischen Internet und deinem Server: Er nimmt die verschlüsselten HTTPS-Verbindungen von Telegram an und reicht **nur** die Telegram-Pfade an n8n weiter. Die n8n-Oberfläche bleibt so privat.
 
-**Telegram → deine Domain (öffentliches DNS/DynDNS) → Port-Weiterleitung am Router → HTTPS-Terminierung (Reverse Proxy) → n8n.**
-
-Konkret sind das drei Bausteine:
-
-- **Eine öffentliche Domain**, die auf deinen Internet-Anschluss zeigt. Zuhause ändert sich die IP-Adresse oft — dafür gibt es DynDNS-Dienste (die FritzBox bringt mit **MyFRITZ!** einen eigenen mit, siehe [FritzBox einrichten](fritzbox.html)).
-- **Eine Port-Weiterleitung** am Router: eingehende Verbindungen auf **Port 443** an deinen Server. (Telegram akzeptiert nur die Ports 443, 80, 88 oder 8443 — wir nutzen 443.)
-- **Ein Reverse Proxy** — auf diesem Server oder auf einem anderen Rechner in deinem Heimnetz —, der HTTPS verschlüsselt und nur die Telegram-Adressen an n8n weiterreicht (welche, steht unter [Reverse Proxy](#reverse-proxy)). **Das ist Pflicht:** n8n selbst spricht kein HTTPS — eine reine Port-Weiterleitung ohne Reverse Proxy genügt nicht.
-
-Antwortet der Bot nach der Installation nicht, fehlt fast immer einer dieser drei Punkte. Richte sie ein und führe dann — **warst du noch nie mit dem Bot verbunden** — `lifeagents household pair-owner` aus: der Befehl prüft die Erreichbarkeit (und zeigt dir dabei Telegrams eigene Fehlermeldung), meldet den Bot neu bei Telegram an und verbindet dich danach. **Warst du schon verbunden**, nimm stattdessen `lifeagents reconfigure` → Grundsystem → „Unverändert neu anwenden" — das richtet alles neu ein und meldet den Bot wieder bei Telegram an.
-
-## Reverse Proxy
-
-Diesen Abschnitt brauchst du nur beim FritzBox-Weg und beim eigenen Proxy; beim Tunnel übernimmt Tailscale diese Rolle. Der Reverse Proxy ist der „Türsteher" zwischen Internet und deinem Server: Er nimmt die verschlüsselten HTTPS-Verbindungen von Telegram an (dafür hat er das Zertifikat, z. B. von Let's Encrypt) und reicht **nur** die Telegram-Pfade an n8n weiter. Die n8n-Oberfläche bleibt so privat. Er wird **nicht mitinstalliert** — viele Heimserver haben ohnehin schon einen. Der Installer fragt deshalb, **wo** dein Proxy läuft, und gibt dir passend dazu die fertige Konfiguration aus (später erneut anzeigen oder ändern: `lifeagents proxy show` bzw. `lifeagents proxy set <IP>`).
-
-**Für jeden Proxy gilt:**
-
-- Leite **ausschließlich** diese Adress-Pfade an n8n weiter — alles andere soll der Proxy abweisen oder anderswohin schicken:
+- Leite **ausschließlich** diese Adress-Pfade an n8n weiter, alles andere soll der Proxy abweisen:
   - `/webhook/*`, `/webhook-waiting/*`, `/webhook-waiting-telegram`
-  - `/webhook-waiting/*` und `/webhook-waiting-telegram` sind **Pflicht** — darüber laufen die Bestätigungs-Knöpfe. Mit `/webhook-waiting-telegram` antworten die Knöpfe direkt im Chat (ein Tipp, kein Browserfenster); fehlt die Route, öffnen sie stattdessen eine Webseite. Ob alles passt, zeigt `lifeagents doctor`; hast du die Route nachträglich ergänzt, schaltet `lifeagents update` das Bestätigen im Chat ein.
+  - `/webhook-waiting/*` und `/webhook-waiting-telegram` sind **Pflicht**: Darüber laufen die Bestätigungs-Knöpfe. Mit `/webhook-waiting-telegram` antworten die Knöpfe direkt im Chat (ein Tipp, kein Browserfenster); fehlt die Route, öffnen sie stattdessen eine Webseite. Ob alles passt, zeigt `lifeagents doctor`.
 - Reiche die Header `X-Forwarded-For`, `X-Forwarded-Host` und `X-Forwarded-Proto` an n8n durch (Caddy macht das automatisch).
-- Sorge für ein gültiges HTTPS-Zertifikat (z. B. Let's Encrypt) auf deiner Domain.
+- Sorge für ein gültiges HTTPS-Zertifikat (zum Beispiel Let's Encrypt) auf deiner Domain.
 
-### Fall 1: Proxy auf einem anderen Rechner (z. B. zentraler Proxy-Container)
-
-Typisch bei Proxmox & Co.: Ein zentraler Caddy, Nginx Proxy Manager oder Traefik in einem eigenen Container bedient schon andere Dienste (etwa Home Assistant) unter **einer** Domain. Dann gibst du bei der Installation die IP-Adresse dieses Proxy-Rechners an. Was passiert:
-
-- n8n nimmt Verbindungen aus dem Heimnetz an — aber eine **Firewall-Regel lässt nur deinen Proxy-Rechner** durch; alle anderen Geräte im Heimnetz werden abgewiesen. Lässt sich die Regel nicht einrichten, bleibt n8n aus Sicherheitsgründen nur lokal erreichbar, und der Installer sagt dir das deutlich.
-- Du bekommst einen **Baustein zum Einfügen** in deine bestehende Proxy-Konfiguration (gespeichert auch in `/etc/lifeagents/reverse-proxy.caddyfile`). Beispiel für einen zentralen Caddy, der nach Pfad verteilt (Home Assistant bekommt alles andere). Hinter `path` setzt der Installer genau die Pfade aus der Liste [oben](#reverse-proxy) ein:
-
-```caddyfile
-deine-domain.myfritz.net {
-    @lifeagents path <Pfade aus der Liste oben>
-    handle @lifeagents {
-        reverse_proxy 192.168.178.20:5678    # IP des lifeagents-Rechners
-    }
-    handle {
-        reverse_proxy 192.168.178.30:8123    # z. B. Home Assistant
-    }
-}
-```
-
-- **Feste IP-Adressen:** Die Firewall lässt genau die IP deines Proxy-Rechners zu, und der Proxy findet n8n über dessen IP. Vergib darum im Router **beiden** Rechnern eine feste Adresse (FRITZ!Box: *Heimnetz → Netzwerk → Gerät → „Diesem Netzwerkgerät immer die gleiche IPv4-Adresse zuweisen"*). Ändert sich doch eine: `lifeagents proxy set <neue IP>`.
-- Zwischen Proxy und n8n läuft der Verkehr im Heimnetz unverschlüsselt (normal für diesen Aufbau, wie bei Home Assistant hinter einem Proxy).
-- Änderst du selbst etwas an der Firewall des Servers (z. B. alle Regeln neu laden), kann die Freigabe verloren gehen — dann bekommt der Proxy „502". `lifeagents doctor` zeigt dir das an, `lifeagents proxy set <IP>` stellt sie wieder her.
-
-### Fall 2: Proxy auf diesem Rechner (oder noch keiner)
-
-n8n bleibt nur auf diesem Rechner erreichbar (`127.0.0.1:5678`). **Mit Caddy (empfohlen, am einfachsten):** Caddy holt das Zertifikat automatisch. Der Installer gibt dir am Ende ein **komplettes, fertiges Caddyfile** aus (Domain und Adresse bereits eingesetzt); es liegt außerdem in `/etc/lifeagents/reverse-proxy.caddyfile`. Einrichten:
-
-```bash
-# Caddy installieren (Debian) — siehe https://caddyserver.com/docs/install
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
-
-# Das vom Installer ausgegebene Caddyfile eintragen und neu laden:
-sudo cp /etc/lifeagents/reverse-proxy.caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
-```
+Die fertige Konfiguration für deinen Proxy zeigt `lifeagents proxy show` (sie liegt auch in `/etc/lifeagents/reverse-proxy.caddyfile`); steht dein Proxy auf einem anderen Rechner, stellst du mit `lifeagents proxy set <IP>` um. Läuft der Bot nach einer Änderung nicht, prüft `lifeagents doctor`.
 
 ## FritzBox einrichten
 
-Ist dein Router eine **FritzBox**, folge der eigenen Seite **[FritzBox einrichten](fritzbox.html)**. Kurz: Beim Rechner mit deinem Reverse Proxy legst du eine **MyFRITZ!-Freigabe** an (keine normale Portfreigabe) und nimmst dessen eigene MyFRITZ!-Adresse (`<gerät>.<kennung>.myfritz.net`) als Domain, **nicht** die Adresse der FritzBox selbst. Sonst landen Handy und Laptop über IPv6 zufällig auf einer FritzBox-Seite. Der Installer schlägt dir die Endung der Adresse vor, prüft vorher DS-Lite und nach der Eingabe, ob die Adresse auf deinen Anschluss zeigt; am Ende prüfen er und `lifeagents doctor` auch Handy und Laptop und nennen dir den Handgriff.
-
-Die Domain darfst du dem Installer auch als ganze Adresse geben (`https://bot.example.org/`). Er macht daraus selbst den Namen.
-
-Damit der Server sich selbst über die Domain erreicht, trägt der Installer die Domain bei Bedarf in `/etc/hosts` auf deinen Reverse Proxy ein. Das passiert nur, wenn eine Probe bestätigt, dass es so funktioniert. Nach außen (Telegram, Anthropic) spricht der Server bevorzugt IPv4: Ein kurzzeitig hängender IPv6-Weg im Heimnetz würde sonst jede Antwort um rund zwei Minuten verzögern.
-
-Hinweis: Die Installation nimmt extern Port **443** an. Telegram erlaubt zwar auch 80, 88 oder 8443, ein anderer Port wird hier aber derzeit nicht unterstützt — eine Handänderung in `/etc/n8n/n8n.env` würde beim nächsten Update überschrieben.
+Die Schritte in der FritzBox stehen auf der Seite **[FritzBox einrichten](fritzbox.html)**. Kurz: Beim Rechner mit dem Bot legst du eine **MyFRITZ!-Freigabe** an (keine normale Portfreigabe) und nimmst dessen eigene MyFRITZ!-Adresse (`<gerät>.<kennung>.myfritz.net`) als Adresse, **nicht** die Adresse der FritzBox selbst. Sonst landen Handy und Laptop über IPv6 zufällig auf einer FritzBox-Seite. Der Fragebogen prüft vorher DS-Lite und nach der Eingabe, ob die Adresse auf deinen Anschluss zeigt; `lifeagents doctor` prüft später auch Handy und Laptop und nennt dir den Handgriff. Die Adresse ist öffentlich sichtbar: Gib dem Rechner in der FritzBox einen neutralen Namen (warum, steht beim [Tunnel](tunnel.html#neutraler-name)).
 
 ## Telegram-Bot anlegen
 
@@ -186,16 +125,16 @@ Noch kein Bot-Token? So bekommst du eins:
 
 ## Mit Telegram verbinden
 
-Am Ende der Installation verbindet der Installer dich als Owner (Besitzer) mit deinem Bot — in vier Schritten, ohne dass du etwas abtippen musst:
+Am Ende der Einrichtung verbindet der Fragebogen dich als Owner (Besitzer) mit deinem Bot, ohne dass du etwas abtippen musst:
 
-1. **Erreichbarkeit prüfen.** Der Installer fragt Telegram direkt, ob dein Server von außen erreichbar ist. Wenn nicht, zeigt er dir beim FritzBox-Weg und beim eigenen Proxy das fertige Caddyfile, die Anforderungen an deinen Reverse Proxy und Telegrams eigene Fehlermeldung (beim Tunnel stattdessen, was Tailscale noch braucht). Richte das ein und wähle „Erneut prüfen" — oder „Später einrichten". Danach prüft er, ob auch Handy und Laptop bei deinem Proxy ankommen (über IPv4 und IPv6, Details unter [FritzBox einrichten → Was der Installer prüft](fritzbox.html#was-der-installer-prüft)). Ein offener Punkt hält die Installation nicht an.
-2. **Verbindungs-Link öffnen.** Du bekommst einen Link der Form `https://t.me/<dein-bot>?start=<code>`. Öffne ihn auf dem Handy, Telegram startet den Chat mit deinem Bot und schickt den Code mit. (Alternativ tippst du `/start <code>` von Hand.) Der Code steht **nur im Terminal**, nie im Chat — so kann sich niemand, der zufällig Zugriff auf den Chat hätte, selbst als Besitzer eintragen. Er gilt 10 Minuten; danach bietet der Installer dir einen neuen an.
-3. **Warten, fertig.** Der Installer wartet, bis deine Nachricht angekommen ist (der Bot antwortet kurz „Verbunden! Einen Moment …"), und stellt den Bot dann selbst fertig auf dich ein (Befehlsmenü, Benachrichtigungen an dich). Ein zweiter Lauf ist nicht nötig. Mit `s` (oder Strg+C) überspringst du das Warten.
-4. **Begrüßung.** Sobald alles bereit ist, schreibt dir der Bot in Telegram: mit deinem Vornamen, welche Funktionen installiert sind, und einem Knopf **„Haushalt einrichten"** als nächstem Schritt. Kommt die Nachricht nicht, schreib ihm einfach `/start`.
+1. **Erreichbarkeit prüfen.** Der Fragebogen wartet, bis Telegram deinen Rechner von außen erreicht: Er holt sich sein Sicherheitszertifikat, und die Adresse muss sich im Internet herumsprechen, das dauert meist ein paar Minuten. Erreicht Telegram ihn noch nicht, sagt er das; erledige, was fehlt (beim Tunnel die Anmeldung bei Tailscale, beim FritzBox-Weg die Schritte aus [FritzBox einrichten](fritzbox.html)), und wähle „Noch einmal prüfen“.
+2. **QR-Code scannen.** Der Fragebogen zeigt einen QR-Code und einen Link der Form `https://t.me/<dein-bot>?start=<code>`. Scanne den Code mit dem Handy: Telegram startet den Chat mit deinem Bot und schickt den Code mit. (Alternativ öffnest du den Link auf einem Rechner mit Telegram oder tippst `/start <code>` von Hand.) Der Code steht nur im Fragebogen, nie im Chat — so kann sich niemand, der zufällig Zugriff auf den Chat hätte, selbst als Besitzer eintragen. Er gilt 10 Minuten; danach bietet der Fragebogen dir einen neuen an.
+3. **Warten, fertig.** Der Fragebogen wartet, bis deine Nachricht angekommen ist (der Bot antwortet kurz „Verbunden! Einen Moment …“), und stellt den Bot dann selbst fertig auf dich ein (Befehlsmenü, Benachrichtigungen an dich). Ein zweiter Lauf ist nicht nötig.
+4. **Begrüßung.** Sobald alles bereit ist, schreibt dir der Bot in Telegram: mit deinem Vornamen, welche Funktionen installiert sind, und einem Knopf **„Haushalt einrichten“** als nächstem Schritt. Kommt die Nachricht nicht, schreib ihm einfach `/start`.
 
 Hat dein Bot noch kein Profilbild, bekommt er beim Installieren oder beim nächsten Update einmal das Zeichen des Projekts. Ein eigenes Bild bleibt unverändert. Gefällt dir das Zeichen nicht, lösch es bei @BotFather oder setz dort ein eigenes; ein gelöschtes Bild kommt nicht zurück. Für ein Update, das gar nicht erst nachsehen soll: `BOT_PROFILE_PHOTO=0` in `/etc/lifeagents/core.env`.
 
-Hast du den Schritt übersprungen oder kommt ein neues Telegram-Konto dazu: `lifeagents household pair-owner` startet genau denselben Ablauf jederzeit neu. Fehlte für die Verbindung noch eine Angabe (z. B. die Internet-Adresse), trägst du sie mit `lifeagents reconfigure` nach — danach läuft die Verbindung von selbst an. Neuer Bot? Ebenfalls `lifeagents reconfigure`; schreib dem neuen Bot danach einmal `/start`.
+Hast du den Schritt übersprungen oder kommt ein neues Telegram-Konto dazu: `lifeagents household pair-owner` startet den Ablauf jederzeit neu (der Verbindungs-Link steht dann im Terminal). Fehlte für die Verbindung noch eine Angabe (z. B. die Internet-Adresse), trägst du sie mit `lifeagents reconfigure` nach — danach läuft die Verbindung von selbst an. Neuer Bot? Ebenfalls `lifeagents reconfigure`; schreib dem neuen Bot danach einmal `/start`.
 
 ## So geht's weiter
 
@@ -219,11 +158,11 @@ Nach der Installation steht dir auf der Maschine eine kleine Befehlszeile (CLI) 
 | `lifeagents package …` | Fach-Pakete wie Finanzen oder Karriere anzeigen, nachinstallieren oder entfernen; ohne Paketnamen öffnet sich eine Auswahl-Liste (bei `install` mit Leertasten-Mehrfachwahl, erst alle Fragen, dann eine Übersicht zum Prüfen, dann die Installation); `reconfigure` trägt übersprungene Zugangsdaten eines Pakets (z. B. die Job-Quellen des Karriere-Pakets) später nach (mehr dazu unter [Pakete](pakete.html)). |
 | `lifeagents reconfigure` | Angaben nach der Installation ändern oder nachtragen — mit Auswahl-Liste: **Grundsystem** (Weg ins Internet samt Internet-Adresse, Telegram-Bot-Token, Anthropic- und Google-Schlüssel; Enter behält den bisherigen Wert) oder die Zugangsdaten eines Pakets. Danach richtet es alles neu ein, wie ein Update ohne Download. „Unverändert neu anwenden" repariert z. B. eine verlorene Telegram-Verbindung. |
 | `lifeagents config …` | Zentrale Einstellungen ansehen oder ändern, z. B. welches Modell ein Agent nutzt oder ob ein Zeitplan aktiv ist. `list` zeigt je Paket alle Einstellungen mit einem Satz, was sie bewirken, und markiert selbst geänderte Werte mit `*` (sie überleben Updates); `set` zeigt diesen Satz vor der Eingabe noch einmal und prüft den neuen Wert (ein falscher Zeitplan oder eine Zahl außerhalb des erlaubten Bereichs wird mit Erklärung abgelehnt); `reset` holt den Standardwert zurück. Jede Änderung wirkt ohne Neuinstallation: ein geänderter Zeitplan sofort, z. B. `lifeagents config set schedule score_jobs '0 7 * * 1-5'` (werktags 7 Uhr), ein anderes KI-Modell beim nächsten Einsatz, z. B. `lifeagents config set model web_search claude-haiku-latest`. |
-| `lifeagents proxy show\|set …` | Zeigt den Weg nach außen: beim Tunnel den Stand von Tailscale, sonst wo dein Reverse Proxy läuft und wem n8n geöffnet ist, samt der passenden Proxy-Konfiguration; `set <IP>` stellt auf einen Proxy auf einem anderen Rechner um (`set 127.0.0.1` = wieder dieser Rechner). |
+| `lifeagents proxy show` | Zeigt den Weg nach außen (Stand des Tunnels bzw. des FritzBox-Wegs). `proxy set <IP>` gibt es nur für eine ältere Installation mit eigenem Reverse Proxy (siehe [Reverse Proxy](#reverse-proxy)). |
 | `lifeagents household …` | Haushaltsmitglieder einladen, verbinden, entfernen oder sperren. |
 | `lifeagents backup export\|restore\|key` | Ein verschlüsseltes Backup deiner Nutzerdaten erstellen oder zurückspielen (Programm, Abläufe und Zugangsdaten stellt der Installer wieder her), optional als Datei an deinen eigenen Telegram-Chat; `key` zeigt das Notfallblatt mit dem Schlüssel. Mehr unter [Sicherung & neuer Rechner](sicherung.html). |
 | `lifeagents doctor` | Prüft den Zustand der Installation, ohne etwas zu verändern (nur lesend). |
-| `lifeagents uninstall` | Baut die Installation sauber zurück; mit einer Zusatz-Option auch inklusive aller Daten. |
+| Entfernen | Nicht über `lifeagents`: Auf dem Linux-Server `bash setup.sh --uninstall` (siehe [Entfernen](linux.html#entfernen)), mit der Start-App der Menüpunkt **Deinstallieren**. Daten werden nur nach Rückfrage gelöscht. Nur eine ältere Installation mit `install.sh` entfernt `lifeagents uninstall`. |
 | `lifeagents version` | Zeigt, welche Version gerade installiert ist. |
 | `lifeagents help` | Die vollständige Befehls-Referenz (je Bereich: `lifeagents <befehl> help`). |
 

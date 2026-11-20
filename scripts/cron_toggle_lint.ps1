@@ -258,10 +258,12 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
 }
 
 # --- (i) Jeder Cron, der Telegram-Nachrichten schickt, ist eine registrierte Erinnerung (cron_labels
-# list/person/mandatory), erscheint also in /reminders und folgt dem Fenster. Einzige Ausnahme: monitor_triggers, der
+# list/person/mandatory), erscheint also in /reminders und folgt dem Fenster. Ausnahmen: monitor_triggers, der
 # Herzschlag der vom Nutzer selbst bestellten Waechter (geschaltet je Trigger ueber den Monitor-Agenten, Wert-Waechter
-# melden bewusst sofort). Plumbing-Crons ohne Telegram-Send brauchen keinen Eintrag.
-$exemptSchedule = @('monitor_triggers')
+# melden bewusst sofort), und heartbeat_watch, der Betriebs-Waechter (nur an den Owner, nicht abschaltbar im Chat; das
+# Fenster prueft core.fn_heartbeat_claim, der Zeitplan laeuft rund um die Uhr). Plumbing-Crons ohne Telegram-Send
+# brauchen keinen Eintrag.
+$exemptSchedule = @('monitor_triggers', 'heartbeat_watch')
 # (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung <pkg>.cron.<key>.label in locales/de.json (sonst
 # zeigt das /reminders-Menue den rohen Key; locale_lint haelt die anderen Sprachen paritaetisch).
 foreach ($pair in @($regList.GetEnumerator()) + @($regPerson.GetEnumerator()) + @($regMand.GetEnumerator())) {
@@ -298,6 +300,7 @@ $budgetExempt = @{
     remind_case_tasks = 'Pflicht-Fristen im Ereignisfall'
     learn_context = 'Opt-in; eine verworfene Karte kaeme nicht wieder'
     score_jobs = 'Opt-in je Person, eigene Mengenbegrenzung'
+    heartbeat_watch = 'Betriebs-Waechter nur an den Owner, eigener Takt der Wiederholungen in der DB (watch.repeat_*)'
 }
 $allFiles = @(Get-ChildItem $wfDirs -Filter '*.json')
 if ($ExtraWorkflowDir) { $allFiles += @(Get-ChildItem $ExtraWorkflowDir -Filter '*.json') }

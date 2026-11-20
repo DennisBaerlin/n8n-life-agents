@@ -16,7 +16,9 @@
 #         .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By lifeagents-dbtest-xx             # naechsten freien DB-Port nennen und reservieren
 #         .\scripts\reserve_substrate_slot.ps1 -List                                            # gueltige Reservierungen
 # DB-Ports (DBTEST_PG_PORT) laufen ueber dieselbe Liste; bootstrap_test_db.ps1 prueft und traegt den Port beim Start selbst ein.
-# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
+# Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab. Fehlbedienung bricht ab, ohne etwas
+# einzutragen: unbekannter Parameter, mehr als ein Modus, -By bei -Release/-List, Wert mit fuehrendem `-` (Test: substrate_reservation_test.ps1).
+# -List zaehlt die laufenden Substrate beider Unterbauten (klassischer Container und Docker-Verbund).
 param(
     [string]$Container,
     [string]$Release,
@@ -32,6 +34,22 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\lib\substrate_reservations.ps1"
 if (-not $ListFile) { $ListFile = Get-SlotReservationFile }
 $namePattern = '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+
+# Ohne [CmdletBinding()] landen unbekannte Parameter (-Name x) in $args, und `-Release -Name x` liest PowerShell als
+# Release='-Name' plus Container='x' -- das reservierte still x. Darum hier hart abweisen.
+if ($args.Count) { throw "Unbekannte Angabe: $($args -join ' ') (Beschreibung im Skript-Kopf)." }
+foreach ($p in 'Container', 'Release') {
+    $v = (Get-Variable $p).Value
+    if ($v -and $v.StartsWith('-')) { throw "Wert '$v' fuer -$p sieht nach einem Parameter-Namen aus; Name fehlt?" }
+}
+# Schalter zaehlen nur mit Wert $true (-List:$false ist kein Modus); die String-/Zahl-Parameter, sobald sie gebunden sind.
+$modes = @(@('Container', 'Release', 'DbPort', 'FreeDbPort', 'List') | Where-Object {
+    $PSBoundParameters.ContainsKey($_) -and ((Get-Variable $_).Value -isnot [System.Management.Automation.SwitchParameter] -or (Get-Variable $_).Value.IsPresent)
+})
+if ($modes.Count -gt 1) { throw ('Nur ein Modus je Aufruf, angegeben: -' + ($modes -join ', -') + '.') }
+if ($PSBoundParameters.ContainsKey('By') -and $modes -and @('Container', 'DbPort', 'FreeDbPort') -notcontains $modes[0]) {
+    throw "-By gehoert nur zu -Container, -DbPort oder -FreeDbPort, nicht zu -$($modes[0])."
+}
 
 if ($FreeDbPort -or $DbPort) {
     if (-not $By) { $By = if ($env:DBTEST_CONTAINER) { $env:DBTEST_CONTAINER } else { $env:USERNAME } }

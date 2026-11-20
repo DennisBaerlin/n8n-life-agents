@@ -2,6 +2,7 @@
 # RAM; liegengebliebene Substrate liessen den 16-GB-Host auslagern). Trifft NUR Container mit den Labels
 # lifeagents.substrate=n8n UND lifeagents.worktree=<dieser Checkout> (gesetzt von bootstrap_test_n8n.ps1) ->
 # nie das Substrat einer anderen Session, nie Alt-Container ohne Label. db_test-Container bleiben (je ~50 MB).
+# Docker-Verbund: scripts/lib/substrate_reservations.ps1 (Get-WorktreeComposeTargets), Test scripts/dev/substrate_reservation_test.ps1.
 # Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1 (z. B. Owner-Fenster-Suiten nach Session-Ende).
 # Fehlertolerant + still: ein Hook-Fehler darf das Session-Ende nie stoeren. ASCII-only.
 $ErrorActionPreference = 'Stop'
@@ -27,5 +28,12 @@ try {
     # geteilt: nur die der eben abgebauten Container loeschen, nie per Muster.
     $mainLocal = Join-Path (Split-Path $common -Parent) '.local'
     foreach ($n in $names) { Remove-Item -LiteralPath (Join-Path $mainLocal "n8ntest_state.$n.json") -Force -ErrorAction SilentlyContinue }
+    # Docker-Verbund (compose-Unterbau): Auswahl und Abbau stehen in der Bibliothek (eine Quelle mit stop_test_containers.ps1).
+    # Aus dem Checkout des Hakens geladen, nicht aus $repo: $repo kann ein fremdes Repo ohne scripts/ sein.
+    $lib = Join-Path $PSScriptRoot '..\..\scripts\lib\substrate_reservations.ps1'
+    if (Test-Path -LiteralPath $lib) {
+        . $lib
+        Remove-WorktreeComposeSubstrates -Worktree $repo -StateDir $mainLocal | Out-Null
+    }
 } catch { }
 exit 0

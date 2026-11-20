@@ -10,7 +10,7 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 
 ## Trigger-Monitoring (`agent.monitor_*`)
 
-- **Cron-vs-Trigger-Gesetz:** schreibt es in Domänen-Tabellen oder führt es einen Dialog → n8n-Cron (Entwickler baut ihn); beobachtet es nur einen Wert → Trigger-Zeile (Agent per HITL). Kein dritter Mechanismus, kein Workflow-Bau zur Laufzeit; `cron_check_triggers` ist der einzige Heartbeat.
+- **Cron-vs-Trigger-Gesetz:** schreibt es in Domänen-Tabellen oder führt es einen Dialog → n8n-Cron (Entwickler baut ihn); beobachtet es nur einen Wert → Trigger-Zeile (Agent per HITL). Kein dritter Mechanismus, kein Workflow-Bau zur Laufzeit; `cron_check_triggers` ist der einzige Trigger-Heartbeat.
 - `package` ist der Lifecycle-/Purge-Owner (nicht die fachliche `domain`), je Binding fest (advisor `'finance'`, Monitor `'core'`), nie `$fromAI`. `fn_pkg_purge_data` räumt nur `origin='user'` — sonst bricht die Purge am Protect-Trigger ab.
 - `spec_summary` der Read-Windows nur aus typisierten Spalten, nie aus `acquisition_spec`/`action_note` (Prompt-Injection-Echo). Web-Trigger: `check_interval >= 12h` (CHECK).
 

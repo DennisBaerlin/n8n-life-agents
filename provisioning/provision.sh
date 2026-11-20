@@ -645,6 +645,10 @@ main() {
     { printf '  Protokoll dieser Installation: %s\n\n' "$UI_LOG_FILE" >&3; } 2>/dev/null || true
   fi
 
+  # Erstes Lebenszeichen nach der Einrichtung: legt die Zeilen aller Signale an, damit der Waechter auch einen
+  # Hintergrund-Teil meldet, der danach nie lief. Nicht im Chat-Update: dort haelt der Runner `loop busy`, bis er fertig ist.
+  if [ "${LIFEAGENTS_UPDATE_REQUESTED:-0}" != 1 ]; then heartbeat_record loop ok; fi
+
   # Ergebnis fuer den Chat-Runner (common.sh result_set): ok, oder partial, wenn ein Paket bzw. der Workflow-Deploy
   # ausfiel (beides nicht fatal fuer den Lauf). Rote doctor-Punkte allein sind kein partial (oft Umgebung, z. B. Proxy).
   if [ -n "$FAILED_PACKAGES" ] || [ "$_DEPLOY_SKIPPED" -eq 1 ]; then

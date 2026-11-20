@@ -504,6 +504,26 @@ ok_if F.rotation-laesst-fremdes-liegen '[ -e "$W/local/lifeagents-backup-2025010
 # Ordner nicht anlegbar: kein Abbruch (rc 0), Grund "write" in backup.state.
 BACKUP_LOCAL_DIR=/proc/nirgends/sicherung cli backup auto; rc=$?
 ok_if F.ordner-fehlt-grund-write '[ "$rc" -eq 0 ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON)" = write ]' "rc=$rc"
+# Lebenszeichen fuer den Waechter (core.heartbeats, Signal backup): jeder Lauf am Ende, mit der letzten eigenen Meldung;
+# ein abgebrochener Lauf (Zeitgrenze) schreibt keins. gpg haengt per Attrappe, damit der Lauf sicher vor dem Ende stirbt.
+hbq() { pg_su_psql -X -tA -q -d "$N8N_DB_NAME" -c "SELECT status || '|' || COALESCE(extract(epoch FROM notified_at)::bigint::text, '') || '|' || (beat_at > now() - interval '60 seconds') FROM core.heartbeats WHERE signal = 'backup'" 2>/dev/null; }
+hbr() { q "DELETE FROM core.heartbeats; DELETE FROM core.heartbeat_observer;"; }
+hbr; env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"; sleep 1; cli backup auto --scheduled
+ok_if F.hb-versuch 'h="$(hbq)"; [ "$h" = "attempted||true" ]' "backup=[$(hbq)]"
+hbr; cli backup auto --scheduled
+ok_if F.hb-heute-schon-gesichert '[ "$(hbq)" = "current||true" ]' "backup=[$(hbq)]"
+hbr; env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY 1781000000
+mkdir -p "$W/shim2"; printf '#!/bin/sh\nexec sleep 6\n' > "$W/shim2/gpg"; chmod +x "$W/shim2/gpg"
+shm_vor="$(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null || true)"
+PATH="$W/shim2:$PATH" timeout -s KILL 3 "$CLI" backup auto > /dev/null 2>&1 < /dev/null
+ok_if F.hb-abgebrochen-ohne-beat '[ -z "$(hbq)" ]' "backup=[$(hbq)]"
+# KILL laesst keinen trap laufen: nur die Reste DIESES Laufs entfernen, damit L.tmpfs-leer die anderen Faelle prueft.
+for d in $(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null || true); do
+  case "$(printf '\n%s\n' "$shm_vor")" in *$'\n'"$d"$'\n'*) ;; *) rm -rf -- "$d" ;; esac
+done
+sleep 4; cli backup auto
+ok_if F.hb-mit-letzter-meldung '[ "$(hbq)" = "attempted|1781000000|true" ]' "backup=[$(hbq)]"
+hbr
 # doctor (klassisch): ROT statt WARN; frisch = gruen. Echter Code von doctor.sh in einer Teilschale.
 dr_backup() {   # dr_backup <LAST_OK-Alter in s|-> <grund|-> <VERSION-Alter-Tage> -> Zeile + fail=<n>
   local st="$W/dr.state" ver="$W/dr.VERSION"; rm -f "$st"; : > "$ver"

@@ -26,9 +26,17 @@ Write-Host "Betriebsart-Naht (Antwort-Datei, Wrapper systemd/compose, Telegram-P
 Write-Host ("-" * 64)
 
 $root = '/opt/runtime_test'
-$r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root/packages/core")
+$r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root/packages/core $root/tests")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
-foreach ($pair in @(@('provisioning', 'provisioning'), @('packages\core\locales', 'packages/core/locales'),@('tests\mock_runtime', 'mock_runtime'))) {
+# tests/mock_llm = die echte KI-Attrappe fuer den Fall L.echter-weg; die Paket-Manifeste lesen die Paket-Fragen und -Antworten (Faelle P.*).
+$manifestPairs = @()
+foreach ($d in Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory) {
+    if ($d.Name -eq 'core' -or -not (Test-Path (Join-Path $d.FullName 'manifest.json'))) { continue }
+    $r = Invoke-Native docker @('exec', $Container, 'mkdir', '-p', "$root/packages/$($d.Name)")
+    if ($r.Code -ne 0) { throw "Paket-Verzeichnis $($d.Name) nicht anlegbar: $($r.Output -join ' | ')" }
+    $manifestPairs += , @("packages\$($d.Name)\manifest.json", "packages/$($d.Name)/manifest.json")
+}
+foreach ($pair in (@(@('provisioning', 'provisioning'), @('packages\core\locales', 'packages/core/locales'), @('tests\mock_llm', 'tests/mock_llm'), @('tests\mock_runtime', 'mock_runtime')) + $manifestPairs)) {
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:$root/$($pair[1])")
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }

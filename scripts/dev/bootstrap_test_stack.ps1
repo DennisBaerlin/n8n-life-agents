@@ -44,7 +44,7 @@ if (-not $env:N8NTEST_CONTAINER -or -not $env:N8NTEST_PORT -or -not $env:N8NTEST
 $Names = Get-TestStackNames $env:N8NTEST_CONTAINER
 $Ports = Get-TestStackPorts -Port $env:N8NTEST_PORT -CoreRange $env:N8NTEST_STACK_PORTS
 $N8nUrl = "http://127.0.0.1:$($Ports.Bridge)"
-$LogDir = Join-Path ([System.IO.Path]::GetTempPath()) "lifeagents-test-stack\$($Names.Project)"
+$LogDir = Get-TestStackLogDir $Names.Project
 $BackupDir = Join-Path $LogDir 'backup'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $StateVolumes = Get-TestStackStateVolumes ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\lib\runtime.sh'), $Utf8NoBom))

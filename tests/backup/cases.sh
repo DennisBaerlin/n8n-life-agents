@@ -66,8 +66,13 @@ cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N
   [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"
   [ ! -s "$W/career.manifest" ] || cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
   [ ! -s "$W/career.sections" ] || cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
+  [ -z "${BKP_TIMER_STOPPED:-}" ] || systemctl start lifeagents-backup.timer 2>/dev/null
   rm -rf "$W"; }
 trap cleanup EXIT
+# Der echte Sicherungs-Timer des Substrats ruht waehrend der Faelle: sein `backup auto --scheduled` schriebe dasselbe
+# Lebenszeichen (Signal backup), das die F.hb-Faelle pruefen (Muster wie tests/mock_github/update_cases.sh).
+if systemctl is-active --quiet lifeagents-backup.timer 2>/dev/null; then systemctl stop lifeagents-backup.timer; BKP_TIMER_STOPPED=1; fi
+for _ in $(seq 1 150); do systemctl is-active --quiet lifeagents-backup.service || break; sleep 0.2; done
 if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein 64-Hex"; exit "$fails"; fi
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
 KB="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
@@ -513,10 +518,13 @@ ok_if F.hb-versuch 'h="$(hbq)"; [ "$h" = "attempted||true" ]' "backup=[$(hbq)]"
 hbr; cli backup auto --scheduled
 ok_if F.hb-heute-schon-gesichert '[ "$(hbq)" = "current||true" ]' "backup=[$(hbq)]"
 hbr; env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY 1781000000
+# Wie der minuetliche Runner (Timer lifeagents-update-run, Beat vor der Sperre): sein erstes Lebenszeichen legt die
+# backup-Zeile als 'pending' an. Fest gesetzt, damit der Fall nicht davon abhaengt, ob die volle Minute hineinfaellt.
+heartbeat_record loop ok
 mkdir -p "$W/shim2"; printf '#!/bin/sh\nexec sleep 6\n' > "$W/shim2/gpg"; chmod +x "$W/shim2/gpg"
 shm_vor="$(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null || true)"
 PATH="$W/shim2:$PATH" timeout -s KILL 3 "$CLI" backup auto > /dev/null 2>&1 < /dev/null
-ok_if F.hb-abgebrochen-ohne-beat '[ -z "$(hbq)" ]' "backup=[$(hbq)]"
+ok_if F.hb-abgebrochen-ohne-beat '[ "$(hbq)" = "pending||true" ]' "backup=[$(hbq)]"
 # KILL laesst keinen trap laufen: nur die Reste DIESES Laufs entfernen, damit L.tmpfs-leer die anderen Faelle prueft.
 for d in $(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null || true); do
   case "$(printf '\n%s\n' "$shm_vor")" in *$'\n'"$d"$'\n'*) ;; *) rm -rf -- "$d" ;; esac

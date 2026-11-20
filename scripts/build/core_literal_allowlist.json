@@ -51,19 +51,21 @@
       "reason": "fixture: Fakten-Write-Fall hitlF2 schreibt den household-Kontext finance_profile bis in die DB." },
     { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "enable_mock_paperless", "count": 1,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (paket-eigene Test-Infrastruktur; packages/<pkg>/ darf laut layout_lint L2 keine Skripte tragen)." },
-    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "mock_paperless", "count": 11,
+    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "mock_paperless", "count": 13,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (Unit-/State-/Pfadnamen)." },
-    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "paperless", "count": 9,
+    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "paperless", "count": 12,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (Config-Paket/Credential-Name)." },
-    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "paperless_url", "count": 7,
+    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "paperless_url", "count": 9,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (biegt die Config paperless_url um)." },
     { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "PaperlessCredId", "count": 2,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (Hilfsfunktion)." },
     { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "PaperlessToken", "count": 3,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (Hilfsfunktion)." },
-    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "PaperlessUrl", "count": 5,
+    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "PaperlessUrl", "count": 6,
       "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (Hilfsfunktion)." },
     { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "TEST_PAPERLESS_API_TOKEN", "count": 2,
-      "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (.env-Schluessel des Test-Tokens)." }
+      "reason": "fixture: Attrappe des externen Paket-Dienstes Paperless-NGX (.env-Schluessel des Test-Tokens)." },
+    { "file": "scripts/dev/enable_mock_paperless.ps1", "literal": "CONFIG_GENERAL_PAPERLESS_URL", "count": 1,
+      "reason": "fixture: im Docker-Verbund prueft die Attrappe die Adresse, die die Installation als Antwort gesetzt hat (eine Adresse: TestStackMockAnswers in scripts/lib/test_stack.ps1)." }
   ]
 }

@@ -15,6 +15,10 @@
 # -Down: Unit stoppen, paperless_url auf den vorherigen Wert, Credential zurueck auf 'Token <TEST_PAPERLESS_API_TOKEN>'
 #        (falls in .env gesetzt), State-Block entfernen.
 #
+# Im Docker-Verbund (runtime=compose) setzt die Installation Adresse und Mock-Token als Antworten (scripts/lib/test_stack.ps1
+# TestStackMockAnswers); hier startet nur die Attrappe <p>-mock-pl neu (tests/mock_pod/start_mocks.sh pl), die Adresse wird
+# geprueft und der Block mit dem Log-Pfad auf dem Rechner geschrieben. -Down entfernt Attrappe und Block, die Adresse bleibt.
+#
 # Vorbedingung: laufendes Substrat mit installiertem paperless-Paket und der Credential 'Paperless-NGX API'
 # (inject_credentials legt sie nur an, wenn TEST_PAPERLESS_API_TOKEN in .env steht — beliebiger Wert genuegt).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
@@ -47,23 +51,8 @@ $ServerInC  = '/opt/mock_paperless/server.js'
 $StateFile  = Get-TestN8nStateFile
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 $CredName   = 'Paperless-NGX API'
+$Target     = Get-TestN8nTarget -Container $Container
 
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
-. "$PSScriptRoot\..\lib\dotenv.ps1"
-function Get-EnvValue([string]$name) {
-    $line = (Read-DotEnvLines "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
-    if (-not $line) { return $null }
-    $v = ($line -split '=', 2)[1].Trim()
-    if ([string]::IsNullOrWhiteSpace($v)) { return $null }
-    return $v
-}
 function Get-PaperlessCredId {
     $resp = Invoke-RestMethod -Uri "$N8nUrl/api/v1/credentials?limit=250" -Headers $Headers -Method Get
     $c = $resp.data | Where-Object { $_.type -eq 'httpHeaderAuth' -and $_.name -eq $CredName } | Select-Object -First 1
@@ -88,15 +77,29 @@ function Set-PaperlessUrl([string]$Url) {
     if ($r.Code -ne 0 -or (($r.Output -join '') -notmatch 'UPDATE 1')) { throw "paperless_url setzen fehlgeschlagen (Paket paperless installiert?): $($r.Output -join "`n")" }
 }
 function Read-State { [System.IO.File]::ReadAllText($StateFile, $Utf8NoBom) | ConvertFrom-Json }
-function Write-StateMock([object]$state, [object]$mockBlock) {
-    $ordered = [ordered]@{}
-    foreach ($p in $state.PSObject.Properties) { if ($p.Name -ne 'mock_paperless') { $ordered[$p.Name] = $p.Value } }
-    if ($null -ne $mockBlock) { $ordered['mock_paperless'] = $mockBlock }
-    [System.IO.File]::WriteAllText($StateFile, ([pscustomobject]$ordered | ConvertTo-Json), $Utf8NoBom)
-}
 
 $credId = Get-PaperlessCredId
 if (-not $credId) { throw "Keine Credential '$CredName' gefunden — TEST_PAPERLESS_API_TOKEN in .env setzen (beliebiger Wert) und das Substrat neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset" }
+
+# --- Docker-Verbund: Adresse und Token stehen seit der Installation, nur Attrappe + Pruefung + Block ----------------------
+if ($Target.Runtime -eq 'compose') {
+    $MockUrl = $script:TestStackMockAnswers.CONFIG_GENERAL_PAPERLESS_URL
+    $mockC   = "$($Target.Project)-mock-pl"
+    if ($Down) {
+        [void](Invoke-Native docker @('rm', '-fv', $mockC))
+        Set-TestN8nStateBlock -Name 'mock_paperless' -Block $null
+        Write-Host "Mock-Paperless-Attrappe $mockC entfernt; paperless_url bleibt laut Installation $MockUrl (Aufrufe scheitern jetzt)."
+        return
+    }
+    Write-Host "Starte Mock-Paperless-Attrappe $mockC ..."
+    Start-TestStackMocks -Names (Get-TestStackNames $Target.Project) -RepoRoot $RepoRoot -LogDir (Get-TestStackLogDir $Target.Project) -Which pl
+    $now = Get-PaperlessUrl
+    if ($now -ne $MockUrl) { throw "paperless_url im Verbund ist '$now' statt $MockUrl - die Installation hat die Antwort nicht gesetzt. Neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset" }
+    $hostLog = Resolve-TestMockLogPath -Target $Target -LogFile $MockLog
+    Set-TestN8nStateBlock -Name 'mock_paperless' -Block ([ordered]@{ port = ([uri]$MockUrl).Port; url = $MockUrl; log = $hostLog; container = $mockC; cred_id = $credId; previous_url = '' })
+    Write-Host "Mock-Paperless aktiv (Verbund): $mockC an $MockUrl, Log $hostLog"
+    return
+}
 
 # --- Teardown ---------------------------------------------------------------------------------------
 if ($Down) {
@@ -105,9 +108,9 @@ if ($Down) {
     $prevUrl = ''
     if (Test-Path $StateFile) { $st = Read-State; if ($st.mock_paperless) { $prevUrl = [string]$st.mock_paperless.previous_url } }
     Set-PaperlessUrl $prevUrl
-    $real = Get-EnvValue 'TEST_PAPERLESS_API_TOKEN'
+    $real = Get-TestEnvValue 'TEST_PAPERLESS_API_TOKEN'
     if ($real) { Set-PaperlessToken $credId "Token $real" }
-    if (Test-Path $StateFile) { Write-StateMock (Read-State) $null }
+    if (Test-Path $StateFile) { Set-TestN8nStateBlock -Name 'mock_paperless' -Block $null }
     Write-Host "Mock-Paperless deaktiviert: Unit gestoppt, paperless_url -> '$prevUrl', Token zurueckgesetzt, State-Block entfernt."
     return
 }
@@ -153,7 +156,7 @@ Set-PaperlessToken $credId "Token $MockToken"
 Write-Host "Credential '$CredName' ($credId) -> Mock-Token."
 
 # --- 5) State-Block ----------------------------------------------------------------------------------
-Write-StateMock (Read-State) ([ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId; previous_url = $prev })
+Set-TestN8nStateBlock -Name 'mock_paperless' -Block ([ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; unit = $Unit; cred_id = $credId; previous_url = $prev })
 
 Write-Host ""
 Write-Host "============================================================"

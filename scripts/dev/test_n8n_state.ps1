@@ -14,28 +14,34 @@
 # abbrechen statt versehentlich gegen eine fremde Instanz zu feuern.
 # Get-TestN8nStateFile: Pfad der Zustandsdatei (Haupt-Checkout, je Container) -> scripts/lib/n8ntest_state_file.ps1.
 . (Join-Path $PSScriptRoot '..\lib\n8ntest_state_file.ps1')
+# Namen, Log-Ordner und Attrappen-Ziele des Verbunds (eine Adresse); bringt Invoke-Native (test_common.ps1) mit.
+. (Join-Path $PSScriptRoot '..\lib\test_stack.ps1')
+. (Join-Path $PSScriptRoot '..\lib\dotenv.ps1')
+
+# Read-TestN8nStateJson <pfad> -- die Zustandsdatei als Objekt, $null wenn sie fehlt; unlesbar = Abbruch mit Hinweis.
+function Read-TestN8nStateJson([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try { return ([System.IO.File]::ReadAllText($Path, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json) }
+    catch { throw "Test-Substrat-State unlesbar ($Path): $_. Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset (Verbund: bootstrap_test_stack.ps1 -Reset)" }
+}
 
 # Get-TestN8nState — der rohe Zustand (url, api_key, container, mock_*) des aktuellen Substrats; Throw mit Hinweis, wenn keins.
 function Get-TestN8nState {
     $f = Get-TestN8nStateFile
-    if (-not (Test-Path $f)) {
+    $s = Read-TestN8nStateJson $f
+    if ($null -eq $s) {
         throw "Kein Test-Substrat fuer Container '$(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' })' ($f fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
     }
-    return ([System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json)
+    return $s
 }
 
 function Get-TestN8nConnection {
     param([switch]$AllowMissing)
     $stateFile = Get-TestN8nStateFile
-    if (-not (Test-Path $stateFile)) {
+    $s = Read-TestN8nStateJson $stateFile
+    if ($null -eq $s) {
         if ($AllowMissing) { return $null }
         throw "Kein Test-Substrat gefunden ($stateFile fehlt). Zuerst hochfahren: .\scripts\dev\bootstrap_test_n8n.ps1"
-    }
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
-    try {
-        $s = [System.IO.File]::ReadAllText($stateFile, $utf8) | ConvertFrom-Json
-    } catch {
-        throw "Test-Substrat-State unlesbar ($stateFile): $_. Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset"
     }
     if ([string]::IsNullOrWhiteSpace($s.url)) {
         throw "Test-Substrat-State ohne 'url' ($stateFile). Neu bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset"
@@ -50,6 +56,76 @@ function Get-TestN8nConnection {
         ApiKey    = [string]$s.api_key
         Container = [string]$s.container
     }
+}
+
+# --- Unterbau-Weiche (runtime in der Zustandsdatei, scripts/lib/n8ntest_state_file.ps1) ----------------------------------
+# Alle Helfer nehmen weiter -Container (= container der Zustandsdatei) und loesen daraus das Ziel je Rolle auf: classic = alles im
+# einen systemd-Container, compose = Docker-Verbund (Namen aus Get-TestStackNames, Attrappen-Logs als Datei auf dem Rechner).
+# Ziel: Runtime, Master (docker exec fuer curl/Dateien), Postgres, Gateway, MockLogDir (nur compose).
+function ConvertTo-TestN8nTarget {
+    param([Parameter(Mandatory)]$State)
+    $rt = Get-TestN8nRuntime -State $State
+    $c = [string]$State.container
+    if ($rt -eq 'classic') {
+        return [pscustomobject]@{ Runtime = 'classic'; Container = $c; Master = $c; Postgres = $c; Gateway = $c; Project = ''; MockLogDir = '' }
+    }
+    if (-not [string]$State.project) { throw "Zustandsdatei mit runtime=compose ohne 'project' - neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset" }
+    $n = Get-TestStackNames ([string]$State.project)
+    return [pscustomobject]@{ Runtime = 'compose'; Container = $c; Master = $n.Master; Postgres = $n.Postgres; Gateway = "$($n.Project)-gateway"
+        Project = $n.Project; MockLogDir = (Join-Path (Get-TestStackLogDir $n.Project) 'mocks') }
+}
+# Get-TestN8nTarget -Container <c> [-State <obj>] -- Ziel fuer genau diesen Container. Ohne Zustandsdatei oder bei einem klassischen
+# Zustand mit anderem Container gilt classic auf dem genannten Container (ein klassisches Substrat ist ein einziger Container). Im
+# Verbund ist nur der master des Zustands ein gueltiges -Container; ein anderer Name bricht ab, statt runuser/journalctl in einem
+# Verbund-Container zu versuchen. Gelesen wird die Datei je Aufruf (enable_mock_* schreiben sie waehrend des Laufs); Helfer in
+# Warteschleifen loesen das Ziel einmal vorab auf (-Target).
+function Get-TestN8nTarget {
+    param([Parameter(Mandatory)][string]$Container, $State)
+    if ($null -eq $State) { $State = Read-TestN8nStateJson (Get-TestN8nStateFile) }
+    if ($null -ne $State -and [string]$State.container -eq $Container) { return ConvertTo-TestN8nTarget -State $State }
+    if ($null -ne $State -and (Get-TestN8nRuntime -State $State) -eq 'compose') {
+        throw "Container '$Container' ist nicht der master des Test-Verbunds '$($State.project)' ($($State.container)) - Get-TestN8nConnection liefert den richtigen."
+    }
+    return ConvertTo-TestN8nTarget -State ([pscustomobject]@{ container = $Container })
+}
+
+# Set-TestN8nStateBlock -Name mock_<x> -Block <obj|$null> -- einen Block der Zustandsdatei setzen oder (mit $null) entfernen, die
+# uebrigen Felder bleiben. Schreiber: enable_mock_*.ps1.
+function Set-TestN8nStateBlock {
+    param([Parameter(Mandatory)][string]$Name, $Block, [string]$StateFile = (Get-TestN8nStateFile))
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $state = [System.IO.File]::ReadAllText($StateFile, $utf8) | ConvertFrom-Json
+    $ordered = [ordered]@{}
+    foreach ($p in $state.PSObject.Properties) { if ($p.Name -ne $Name) { $ordered[$p.Name] = $p.Value } }
+    if ($null -ne $Block) { $ordered[$Name] = $Block }
+    [System.IO.File]::WriteAllText($StateFile, ([pscustomobject]$ordered | ConvertTo-Json -Depth 10), $utf8)
+}
+
+# Get-TestEnvValue <name> -- Wert aus der .env des Checkouts (letzte Zeile gewinnt, Anfuehrungszeichen ab), $null wenn Datei,
+# Zeile oder Wert fehlt.
+function Get-TestEnvValue([string]$Name) {
+    $envFile = Join-Path ([string](git -C $PSScriptRoot rev-parse --show-toplevel)).Trim() '.env'
+    if (-not (Test-Path $envFile)) { return $null }
+    $line = Read-DotEnvLines $envFile | Where-Object { $_ -match "^\s*$([regex]::Escape($Name))=" } | Select-Object -Last 1
+    if (-not $line) { return $null }
+    $v = ($line -split '=', 2)[1].Trim().Trim("'").Trim('"')
+    if ([string]::IsNullOrWhiteSpace($v)) { return $null }
+    return $v
+}
+
+# Get-TestBotToken -Target <ziel> -- das Bot-Token, mit dem das Substrat installiert wurde: im Verbund das erfundene Token der
+# Installation (TestStackMockAnswers), klassisch TEST_TELEGRAM_BOT_TOKEN aus .env. Die HITL-Signatur haengt daran.
+function Get-TestBotToken {
+    param([Parameter(Mandatory)]$Target)
+    if ($Target.Runtime -eq 'compose') { return $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN }
+    return (Get-TestEnvValue 'TEST_TELEGRAM_BOT_TOKEN')
+}
+
+# Wait-TestN8nReady -Url <bruecke> -- n8n nimmt Arbeit an (/healthz/readiness; /healthz meldet schon vor den Migrationen ok).
+# Gleich fuer beide Unterbauten, z. B. nach einem n8n-Neustart in einer Suite.
+function Wait-TestN8nReady {
+    param([Parameter(Mandatory)][string]$Url, [int]$TimeoutSec = 180)
+    Wait-TestStackReady -Url $Url.TrimEnd('/') -TimeoutSec $TimeoutSec
 }
 
 # --- n8n-REST-Zugang der Tests (eine Quelle fuer alle Treiber) ---------------------------------
@@ -73,27 +149,33 @@ function Stop-Exec([string]$ExecId) {
 }
 
 # --- Container-DB-Zugriff (Tier 2 Fixture-Seed/-Pre-Flight + Tier 5 verify/cleanup) ---------
-# Die n8n-Test-Instanz haelt ihr Postgres nur container-intern (127.0.0.1:5432, von install.sh als
-# DB 'n8n' angelegt) — Docker-Port-Publishing erreicht den loopback-gebundenen Dienst nicht, und es
-# gibt keinen TCP-Passwort-Pfad. Die DB-beruehrenden Tiers erreichen die DB daher ueber
-#   docker exec <container> runuser -u postgres -- psql -d n8n
-# = Peer-Auth am Socket, kein Passwort, kein zusaetzlicher Port, exakt der Pfad, mit dem
-# apply_schema.sh das Schema baute (kein Drift). Superuser-Zugriff; fn-Calls (fn_clear_e2e_data)
-# laufen damit nicht ueber die Laufzeit-Schreibrolle, was fuer Cleanup/Verify unerheblich ist.
+# Postgres lauscht nur im Container bzw. Verbund (127.0.0.1:5432, DB 'n8n') — Docker-Port-Publishing erreicht den
+# loopback-gebundenen Dienst nicht, und es gibt keinen TCP-Passwort-Pfad. Die DB-beruehrenden Tiers gehen darum denselben
+# Superuser-Weg wie der Installer (Get-TestN8nPsqlDockerArgs), kein Passwort, kein zusaetzlicher Port. fn-Calls
+# (fn_clear_e2e_data) laufen damit nicht ueber die Laufzeit-Schreibrolle, was fuer Cleanup/Verify unerheblich ist.
+# Suchpfad der Rolle postgres = pg_catalog, agent, core: n8n-Tabellen (public) im SQL immer schema-qualifiziert.
 $script:TestN8nDbName = 'n8n'
 
-# Invoke-TestN8nPsql — psql im Container gegen die n8n-DB. $PsqlArgs sind die Argumente nach dem
-# festen Praefix (z. B. @('-t','-A','-c',$sql)). EAP lokal auf 'Continue' (PS-5.1: native stderr
-# unter 'Stop' + 2>&1 wuerde als terminierender NativeCommandError werfen). Rueckgabe @{ Code; Output }.
+# Get-TestN8nPsqlDockerArgs -- die docker-Argumente fuer psql als Superuser: classic Peer-Auth per runuser im einen Container,
+# compose wie der Kern (provisioning/lib/runtime.sh pg_su_exec) im Postgres-Container.
+function Get-TestN8nPsqlDockerArgs {
+    param([Parameter(Mandatory)]$Target, [Parameter(Mandatory)][string]$Database, [string[]]$PsqlArgs = @())
+    $psql = @('psql', '--no-psqlrc', '-X', '-v', 'ON_ERROR_STOP=1', '-d', $Database) + $PsqlArgs
+    if ($Target.Runtime -eq 'compose') { return @('exec', '-u', 'postgres', $Target.Postgres) + $psql }
+    return @('exec', $Target.Postgres, 'runuser', '-u', 'postgres', '--') + $psql
+}
+
+# Invoke-TestN8nPsql — psql gegen die n8n-DB des Substrats. $PsqlArgs sind die Argumente nach dem festen Praefix
+# (z. B. @('-t','-A','-c',$sql)). EAP lokal auf 'Continue' (PS-5.1: native stderr unter 'Stop' + 2>&1 wuerde als
+# terminierender NativeCommandError werfen). Rueckgabe @{ Code; Output }.
 function Invoke-TestN8nPsql {
     param(
         [Parameter(Mandatory)][string]$Container,
         [Parameter(Mandatory)][string[]]$PsqlArgs,
         [string]$Database = $script:TestN8nDbName
     )
+    $dockerArgs = Get-TestN8nPsqlDockerArgs -Target (Get-TestN8nTarget -Container $Container) -Database $Database -PsqlArgs $PsqlArgs
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $dockerArgs = @('exec', $Container, 'runuser', '-u', 'postgres', '--',
-                    'psql', '--no-psqlrc', '-X', '-v', 'ON_ERROR_STOP=1', '-d', $Database) + $PsqlArgs
     $out = & docker @dockerArgs 2>&1
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
@@ -158,28 +240,68 @@ function Assert-GoldenHousehold {
 # signierte Resume-URL aus. Aktiviert wird der Mock mit scripts/dev/enable_mock_telegram.ps1.
 $script:MockTelegramLog = '/tmp/mock_telegram.jsonl'
 
+# Im Verbund schreiben die Attrappen (tests/mock_pod/start_mocks.sh) in eingehaengte Dateien auf dem Rechner: gelesen und geleert
+# wird dort, ohne docker exec. Der Log-Pfad der Helfer bleibt der Container-Pfad; Resolve-TestMockLogPath nimmt im Verbund nur
+# seinen Dateinamen.
+function Resolve-TestMockLogPath {
+    param([Parameter(Mandatory)]$Target, [Parameter(Mandatory)][string]$LogFile)
+    if ($Target.Runtime -ne 'compose') { return $LogFile }
+    return (Join-Path $Target.MockLogDir ([System.IO.Path]::GetFileName($LogFile)))
+}
+# Read-TestMockLogFile -- JSON-Zeilen einer Datei auf dem Rechner (fehlt = @()). FileShare.ReadWrite: die Attrappe haelt die
+# Datei zum Anhaengen offen, ein Lesen mit File.ReadAllLines scheiterte dann unter Windows an der Sperre.
+function Read-TestMockLogFile {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try { $text = (New-Object System.IO.StreamReader($fs, (New-Object System.Text.UTF8Encoding($false)))).ReadToEnd() } finally { $fs.Dispose() }
+    return (ConvertFrom-JsonLines ($text -split "`r?`n"))
+}
+# Clear-TestMockLogFile -- Datei auf 0 kuerzen (die Attrappe schreibt mit O_APPEND weiter ans neue Ende); fehlt = nichts tun.
+function Clear-TestMockLogFile {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+    try { $fs.SetLength(0) } finally { $fs.Dispose() }
+}
+function ConvertFrom-JsonLines([object[]]$Lines) {
+    $reqs = @()
+    foreach ($line in @($Lines)) {
+        $s = [string]$line
+        if ([string]::IsNullOrWhiteSpace($s)) { continue }
+        try { $reqs += ($s | ConvertFrom-Json) } catch { Write-Debug "keine JSON-Zeile: $s" }
+    }
+    return $reqs
+}
+# Get-MockLogEntries -- Aufzeichnung einer Attrappe als Objekte (aelteste zuerst), je Unterbau. Leer = @().
+function Get-MockLogEntries {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$LogFile)
+    $target = Get-TestN8nTarget -Container $Container
+    if ($target.Runtime -eq 'compose') { return (Read-TestMockLogFile -Path (Resolve-TestMockLogPath -Target $target -LogFile $LogFile)) }
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $out = & docker exec $Container sh -c "cat '$LogFile' 2>/dev/null" 2>$null
+    $ErrorActionPreference = $prev
+    return (ConvertFrom-JsonLines @($out))
+}
+
 # Get-MockTelegramRequests — alle aufgezeichneten Calls als Objekte (aelteste zuerst). Leer = @().
 function Get-MockTelegramRequests {
     param(
         [Parameter(Mandatory)][string]$Container,
         [string]$LogFile = $script:MockTelegramLog
     )
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & docker exec $Container sh -c "cat '$LogFile' 2>/dev/null" 2>$null
-    $ErrorActionPreference = $prev
-    $reqs = @()
-    foreach ($line in @($out)) {
-        $s = [string]$line
-        if ([string]::IsNullOrWhiteSpace($s)) { continue }
-        try { $reqs += ($s | ConvertFrom-Json) } catch { }
-    }
-    return $reqs
+    return (Get-MockLogEntries -Container $Container -LogFile $LogFile)
 }
 
-# Clear-ContainerLogFiles — Logdateien im Container truncaten, alle in einem docker exec (jedes kostet auf
-# Docker Desktop/Windows ~0,2 s Anlauf). Gemeinsamer Kern der Clear-Mock*-Helfer.
+# Clear-ContainerLogFiles — Logdateien der Attrappen leeren: classic alle in einem docker exec (jedes kostet auf Docker
+# Desktop/Windows ~0,2 s Anlauf), im Verbund direkt auf dem Rechner. Gemeinsamer Kern der Clear-Mock*-Helfer.
 function Clear-ContainerLogFiles {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string[]]$Paths)
+    $target = Get-TestN8nTarget -Container $Container
+    if ($target.Runtime -eq 'compose') {
+        foreach ($p in $Paths) { Clear-TestMockLogFile -Path (Resolve-TestMockLogPath -Target $target -LogFile $p) }
+        return
+    }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     & docker exec $Container sh -c (($Paths | ForEach-Object { ": > '$_'" }) -join '; ') 2>$null | Out-Null
     $ErrorActionPreference = $prev
@@ -252,13 +374,32 @@ function Get-HitlExecId {
 # (n8n Telegram hitl/tokens.js deriveHitlSecretToken): HMAC-SHA256(Schluessel = hmacSignatureSecret der Instanz,
 # 'n8n-telegram-hitl-secret:<Bot-Token>') als base64url, 43 Zeichen. hmacSignatureSecret = sha256hex('hmac-signature:'
 # + N8N_ENCRYPTION_KEY) (n8n-core InstanceSettings, ohne N8N_HMAC_SIGNATURE_SECRET). Bot-Token = die Telegram-
-# Credential des Substrats (TEST_TELEGRAM_BOT_TOKEN). Je Container gecacht.
+# Credential des Substrats: classic -BotToken, sonst TEST_TELEGRAM_BOT_TOKEN (Skript-Variable des Aufrufers oder .env); im Verbund
+# das Token der Installation (Get-TestBotToken), ein abweichendes -BotToken ist dort ein Fehler. Je Container gecacht.
+# Resolve-TestHitlBotToken -Target -BotToken -ScriptToken -- das Token fuer die Signatur (Regeln oben); ohne Docker pruefbar.
+function Resolve-TestHitlBotToken {
+    param([Parameter(Mandatory)]$Target, [string]$BotToken, [string]$ScriptToken)
+    if ($Target.Runtime -eq 'compose') {
+        $installed = Get-TestBotToken -Target $Target
+        if ($BotToken -and $BotToken -ne $installed) { throw "Get-HitlTelegramSecret: -BotToken weicht vom Token der Verbund-Installation ab (erfundenes Token aus TestStackMockAnswers)." }
+        return $installed
+    }
+    if ($BotToken) { return $BotToken }
+    if ($ScriptToken) { return $ScriptToken }
+    $t = Get-TestBotToken -Target $Target   # Aufrufer ohne .env-Import (real_ingress_test, Wait-ExecResolvingGates)
+    if (-not $t) { throw "Get-HitlTelegramSecret: Bot-Token unbekannt (TEST_TELEGRAM_BOT_TOKEN aus .env oder -BotToken)." }
+    return $t
+}
 $script:HitlSecretCache = @{}
 function Get-HitlTelegramSecret {
-    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$BotToken)
-    if ($script:HitlSecretCache[$Container]) { return $script:HitlSecretCache[$Container] }
+    param([Parameter(Mandatory)][string]$Container, [string]$BotToken)
+    $target = Get-TestN8nTarget -Container $Container
+    $BotToken = Resolve-TestHitlBotToken -Target $target -BotToken $BotToken -ScriptToken $script:TEST_TELEGRAM_BOT_TOKEN
+    $cacheKey = "$Container|$BotToken"
+    if ($script:HitlSecretCache[$cacheKey]) { return $script:HitlSecretCache[$cacheKey] }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $enc = (& docker exec $Container sh -c "grep -E '^N8N_ENCRYPTION_KEY=' /etc/n8n/n8n.env | tail -n1 | cut -d= -f2-" 2>$null | Select-Object -First 1)
+    # n8n.env liegt classic im Container, im Verbund im Volume etc_n8n, das der master einhaengt.
+    $enc = (& docker exec $target.Master sh -c "grep -E '^N8N_ENCRYPTION_KEY=' /etc/n8n/n8n.env | tail -n1 | cut -d= -f2-" 2>$null | Select-Object -First 1)
     $ErrorActionPreference = $prev
     $enc = ([string]$enc).Trim().Trim("'").Trim('"')
     if (-not $enc) { throw "N8N_ENCRYPTION_KEY im Container $Container nicht lesbar." }
@@ -269,7 +410,7 @@ function Get-HitlTelegramSecret {
     $b64 = [Convert]::ToBase64String($h.ComputeHash($utf8.GetBytes("n8n-telegram-hitl-secret:$BotToken")))
     $tok = $b64.TrimEnd('=').Replace('+', '-').Replace('/', '_')
     if ($tok.Length -gt 43) { $tok = $tok.Substring(0, 43) }
-    $script:HitlSecretCache[$Container] = $tok
+    $script:HitlSecretCache[$cacheKey] = $tok
     return $tok
 }
 
@@ -295,15 +436,6 @@ function Invoke-HitlResume {
     foreach ($pair in (([uri]$Url).Query.TrimStart('?') -split '&')) { $kv = $pair -split '=', 2; $q[$kv[0]] = [uri]::UnescapeDataString($kv[1]) }
     if (-not $Secret) {
         if (-not $Container) { $Container = (Get-TestN8nConnection).Container }
-        if (-not $BotToken)  { $BotToken = $script:TEST_TELEGRAM_BOT_TOKEN }
-        if (-not $BotToken) {   # Aufrufer ohne .env-Import (real_ingress_test, Wait-ExecResolvingGates): selbst lesen
-            $envFile = Join-Path (git -C $PSScriptRoot rev-parse --show-toplevel) '.env'
-            if (Test-Path $envFile) {
-                $line = [System.IO.File]::ReadAllLines($envFile) | Where-Object { $_ -match '^\s*TEST_TELEGRAM_BOT_TOKEN=' } | Select-Object -Last 1
-                if ($line) { $BotToken = ($line -split '=', 2)[1].Trim().Trim("'").Trim('"') }
-            }
-        }
-        if (-not $BotToken)  { throw "Invoke-HitlResume (Chat-Knopf): Bot-Token unbekannt (TEST_TELEGRAM_BOT_TOKEN aus .env oder -BotToken)." }
         $Secret = Get-HitlTelegramSecret -Container $Container -BotToken $BotToken
     }
     if (-not $FromId) { $FromId = $q['chat'] }
@@ -339,16 +471,7 @@ function Get-MockLlmRequests {
         [Parameter(Mandatory)][string]$Container,
         [string]$LogFile = $script:MockLlmLog
     )
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & docker exec $Container sh -c "cat '$LogFile' 2>/dev/null" 2>$null
-    $ErrorActionPreference = $prev
-    $reqs = @()
-    foreach ($line in @($out)) {
-        $s = [string]$line
-        if ([string]::IsNullOrWhiteSpace($s)) { continue }
-        try { $reqs += ($s | ConvertFrom-Json) } catch { }
-    }
-    return $reqs
+    return (Get-MockLogEntries -Container $Container -LogFile $LogFile)
 }
 
 # Clear-MockLlmRequests — Logdatei truncaten (Test-Isolation vor dem naechsten Fall).
@@ -377,12 +500,70 @@ $script:LlmCostLog = '.local\llm_cost_log.jsonl'
 
 # Get-LlmGatewayHealth — /__health des Gateways im Container ({ok, upstream, static_ttl}) oder $null.
 function Get-LlmGatewayHealth {
-    param([Parameter(Mandatory)][string]$Container)
+    param([string]$Container, $Target)
+    # Im Verbund teilen master und gateway den Netz-Namensraum des anchor: 127.0.0.1:8090 gilt dort wie im einen Container.
+    $target = if ($Target) { $Target } else { Get-TestN8nTarget -Container $Container }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    $out = & docker exec $Container curl -fsS --max-time 3 $script:LlmGatewayHealthUrl 2>$null
+    $out = & docker exec $target.Master curl -fsS --max-time 3 $script:LlmGatewayHealthUrl 2>$null
     $ErrorActionPreference = $prev
     if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
     try { return (($out -join '') | ConvertFrom-Json) } catch { return $null }
+}
+
+# Restart-TestLlmGateway -Container <c> -- Gateway neu starten (liest dabei seine Umgebung neu) und warten, bis /__health antwortet.
+function Get-TestLlmGatewayRestartArgs {
+    param([Parameter(Mandatory)]$Target)
+    if ($Target.Runtime -eq 'compose') { return @('restart', $Target.Gateway) }
+    return @('exec', $Target.Gateway, 'systemctl', 'restart', $script:LlmGatewayUnit)
+}
+function Restart-TestLlmGateway {
+    param([Parameter(Mandatory)][string]$Container, [int]$TimeoutSec = 30)
+    $target = Get-TestN8nTarget -Container $Container
+    $r = Invoke-Native docker (Get-TestLlmGatewayRestartArgs -Target $target)
+    if ($r.Code -ne 0) {
+        $hint = if ($target.Runtime -eq 'compose') { 'Verbund neu bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset' } else { 'Substrat mit Gateway gebaut? sonst .\scripts\dev\bootstrap_test_n8n.ps1 -Reset' }
+        throw "Neustart des LLM-Gateways fehlgeschlagen ($hint): $($r.Output -join "`n")"
+    }
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        if (Get-LlmGatewayHealth -Target $target) { return }
+        Start-Sleep -Milliseconds 300
+    }
+    throw "LLM-Gateway antwortet nach dem Neustart nicht ($TimeoutSec s, $script:LlmGatewayHealthUrl)."
+}
+
+# Im Verbund liegen die usage-Zeilen im Container-Log des Gateways (docker logs --timestamps). Cursor = groesster Zeitstempel der
+# letzten Zeilen, nicht der der letzten Zeile: stdout und stderr kommen ueber 2>&1 nicht zeitlich geordnet an. Docker schreibt ihn
+# mit fester Laenge (RFC 3339, 9 Nachkommastellen, UTC), darum genuegt der Textvergleich.
+function Get-LlmUsageCursorFromLogLines([object[]]$Lines) {
+    $max = $null
+    foreach ($line in @($Lines)) {
+        $s = [string]$line
+        if ($s -notmatch '^\S+Z ') { continue }
+        $stamp = ($s -split ' ', 2)[0]
+        # Ordinal wie Select-LlmUsageFromLogLines; Sort-Object vergliche kulturabhaengig.
+        if ($null -eq $max -or [string]::CompareOrdinal($stamp, $max) -gt 0) { $max = $stamp }
+    }
+    return $max
+}
+function Select-LlmUsageFromLogLines([object[]]$Lines, [string]$AfterCursor) {
+    $rows = @()
+    foreach ($line in @($Lines)) {
+        $parts = ([string]$line) -split ' ', 2
+        if ($parts.Count -lt 2 -or $parts[1] -notmatch '"ev":"usage"') { continue }
+        if ($AfterCursor -and [string]::CompareOrdinal($parts[0], $AfterCursor) -le 0) { continue }
+        try { $rows += ($parts[1] | ConvertFrom-Json) } catch { Write-Debug "usage-Zeile unlesbar: $line" }
+    }
+    return $rows
+}
+function Get-TestGatewayLogLines {
+    param([Parameter(Mandatory)]$Target, [string]$Since, [int]$Tail = 0)
+    $a = @('logs', '--timestamps')
+    if ($Since) { $a += @('--since', $Since) }
+    if ($Tail -gt 0) { $a += @('--tail', [string]$Tail) }
+    $r = Invoke-Native docker ($a + $Target.Gateway)
+    if ($r.Code -ne 0) { return @() }
+    return $r.Output
 }
 
 # Assert-LlmGatewayUpstream — Schutz vor stillen Kosten bzw. Fake-Paessen: die kostenpflichtigen Suiten verlangen
@@ -399,6 +580,8 @@ function Assert-LlmGatewayUpstream {
 # Get-LlmUsageCursor — aktueller Journal-Cursor der Gateway-Unit (Start-Marke eines Laufs) oder $null.
 function Get-LlmUsageCursor {
     param([Parameter(Mandatory)][string]$Container)
+    $target = Get-TestN8nTarget -Container $Container
+    if ($target.Runtime -eq 'compose') { return (Get-LlmUsageCursorFromLogLines -Lines (Get-TestGatewayLogLines -Target $target -Tail 50)) }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & docker exec $Container journalctl -u $script:LlmGatewayUnit -n 1 --show-cursor -o cat --no-pager 2>$null
     $ErrorActionPreference = $prev
@@ -409,6 +592,10 @@ function Get-LlmUsageCursor {
 # Get-LlmUsage — die usage-Zeilen NACH dem Cursor (ohne Cursor: alle) als Objekte, aelteste zuerst.
 function Get-LlmUsage {
     param([Parameter(Mandatory)][string]$Container, [string]$AfterCursor)
+    $target = Get-TestN8nTarget -Container $Container
+    if ($target.Runtime -eq 'compose') {
+        return (Select-LlmUsageFromLogLines -Lines (Get-TestGatewayLogLines -Target $target -Since $AfterCursor) -AfterCursor $AfterCursor)
+    }
     $jArgs = @('exec', $Container, 'journalctl', '-u', $script:LlmGatewayUnit, '-o', 'cat', '--no-pager')
     if ($AfterCursor) { $jArgs += "--after-cursor=$AfterCursor" }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -507,19 +694,20 @@ function Invoke-TestN8nPsqlFile {
     if (-not (Test-Path $HostFile)) { throw "SQL-Datei nicht gefunden: $HostFile" }
     $HostFile = (Resolve-Path $HostFile).Path   # Aufrufer schreiben "$RepoRoot\..."; docker cp und GetFileName brauchen unter Linux echte Trenner
     $inC = "/tmp/n8ntest_$([System.IO.Path]::GetFileName($HostFile))"
+    $target = Get-TestN8nTarget -Container $Container
+    $pg = $target.Postgres   # die Datei muss dort liegen, wo psql laeuft
     $code = -1; $out = @()
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try {
-        $cp = & docker cp $HostFile "${Container}:$inC" 2>&1
+        $cp = & docker cp $HostFile "${pg}:$inC" 2>&1
         if ($LASTEXITCODE -ne 0) { throw "docker cp '$HostFile' fehlgeschlagen: $($cp -join ' ')" }
-        & docker exec $Container chmod 0644 $inC 2>&1 | Out-Null
-        $execArgs = @('exec', $Container, 'runuser', '-u', 'postgres', '--',
-                      'psql', '--no-psqlrc', '-X', '-v', 'ON_ERROR_STOP=1', '-d', $Database) + $PsqlArgs + @('-f', $inC)
+        & docker exec $pg chmod 0644 $inC 2>&1 | Out-Null
+        $execArgs = Get-TestN8nPsqlDockerArgs -Target $target -Database $Database -PsqlArgs ($PsqlArgs + @('-f', $inC))
         $out  = & docker @execArgs 2>&1
         $code = $LASTEXITCODE
     } finally {
         # Temp immer raeumen (auch nach throw/Abbruch); rm -f = no-op, falls nie kopiert. EAP danach zurueck.
-        & docker exec $Container rm -f $inC 2>&1 | Out-Null
+        & docker exec $pg rm -f $inC 2>&1 | Out-Null
         $ErrorActionPreference = $prev
     }
     return [pscustomobject]@{ Code = $code; Output = @($out) }

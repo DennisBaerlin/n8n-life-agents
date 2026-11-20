@@ -8,7 +8,9 @@
 # Die Attrappen laufen mit dem Abbild des master (Node ist dort), Skripte schreibgeschuetzt eingehaengt, Logs je Attrappe in
 # <logordner>/mock_<name>.jsonl auf dem Rechner. Die Attrappen sind dependency-frei.
 # Aufruf:  bash tests/mock_pod/start_mocks.sh <projekt> <logordner> [tg] [llm] [pl]    (ohne Auswahl: alle drei)
-# Umgebung: MOCK_LLM_TODAY (YYYY-MM-DD) wird an die KI-Attrappe durchgereicht, falls gesetzt.
+# Umgebung: MOCK_LLM_TODAY (YYYY-MM-DD) wird an die KI-Attrappe durchgereicht, falls gesetzt. MOCK_TG_DOCS = Ordner der
+# Test-Dokumente fuer die Telegram-Attrappe (/m/docs), Standard tests/mock_telegram/docs; enable_mock_telegram.ps1 gibt einen
+# Ordner mit aufgeloesten Datums-Platzhaltern.
 # Idempotent (entfernt vorhandene Attrappen mit `docker rm -fv`, auch nach einem Schnappschuss-Reset). Exit 0 = alle
 # gewaehlten antworten auf /__health.
 # Abbau: docker rm -fv <projekt>-tgmock <projekt>-mock-llm <projekt>-mock-pl
@@ -20,7 +22,9 @@ TESTS="$(cd "$HERE/.." && pwd)"
 # Git Bash unter Windows (Entwickler-Rechner): git.exe und docker.exe verstehen nur Windows-Pfade (auch wenn der Aufrufer
 # MSYS_NO_PATHCONV schon gesetzt hat, wird /c/... nicht mehr umgewandelt).
 GIT_HERE="$HERE"
-if command -v cygpath >/dev/null 2>&1; then GIT_HERE="$(cygpath -m "$HERE")"; TESTS="$(cygpath -m "$TESTS")"; LOG_DIR="$(cygpath -m "$LOG_DIR")"; export MSYS_NO_PATHCONV=1; fi
+TG_DOCS="${MOCK_TG_DOCS:-$TESTS/mock_telegram/docs}"
+if command -v cygpath >/dev/null 2>&1; then GIT_HERE="$(cygpath -m "$HERE")"; TESTS="$(cygpath -m "$TESTS")"; LOG_DIR="$(cygpath -m "$LOG_DIR")"; TG_DOCS="$(cygpath -m "$TG_DOCS")"; export MSYS_NO_PATHCONV=1; fi
+[ -d "$TG_DOCS" ] || { echo "FAIL Dokumente-Ordner '$TG_DOCS' fehlt" >&2; exit 2; }
 WORKTREE="$(git -C "$GIT_HERE" rev-parse --show-toplevel)"
 mkdir -p "$LOG_DIR"
 img="$(docker inspect -f '{{.Config.Image}}' "$P-master")"
@@ -43,7 +47,7 @@ start() {
 for w in "${want[@]}"; do
   case "$w" in
     tg)  start "$P-tgmock" 8089 mock_telegram.jsonl /m/server.js "$TESTS/mock_telegram/server.js" /m/server.js \
-           -e N8NTEST_MOCK_TG_PORT=8089 -e N8NTEST_MOCK_TG_LOG=/log/mock_telegram.jsonl ;;
+           -e N8NTEST_MOCK_TG_PORT=8089 -e N8NTEST_MOCK_TG_LOG=/log/mock_telegram.jsonl -v "$TG_DOCS:/m/docs:ro" ;;
     llm) start "$P-mock-llm" 8088 mock_llm.jsonl /m/server.js "$TESTS/mock_llm" /m \
            -e MOCK_LLM_PORT=8088 -e MOCK_LLM_LOG=/log/mock_llm.jsonl -e MOCK_LLM_SCENARIOS=/m/scenarios.json \
            ${MOCK_LLM_TODAY:+-e "MOCK_LLM_TODAY=$MOCK_LLM_TODAY"} ;;

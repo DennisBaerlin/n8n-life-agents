@@ -156,6 +156,7 @@ exit 1
     Assert-True 'Meldung nennt LIVE_INSTANCE_HOST' ($r.Text -match 'LIVE_INSTANCE_HOST') $r.Text
     Write-Env 'devbox.example.invalid' 'livebox.example.invalid'
     $r = Invoke-Sandboxed 'scripts\refresh_privacy_denylist.ps1'
+    Assert-True 'Privacy-Liste prueft den Host-Key streng' ($r.Calls.Count -ge 1 -and @($r.Calls | Where-Object { $_ -notmatch 'StrictHostKeyChecking=yes' }).Count -eq 0) ($r.Calls -join ' | ')
     Assert-True 'mit LIVE_INSTANCE_*: Ziel ist der LIVE-Host' ($r.Calls.Count -ge 1 -and ($r.Calls -join ' ') -match 'livebox\.example\.invalid' -and ($r.Calls -join ' ') -notmatch 'devbox') ($r.Calls -join ' | ')
 
     Write-Host 'Trennung im Repo: DEV_INSTANCE_* nur im Reset-Skript'

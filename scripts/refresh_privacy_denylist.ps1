@@ -56,9 +56,10 @@ try {
         $key = Get-MainEnvValue 'LIVE_INSTANCE_SSH_KEY'
         if ($key -match '^~[\\/]') { $key = Join-Path $HOME $key.Substring(2) }
         if (-not $hostName -or -not $key) { Write-Host 'LIVE_INSTANCE_HOST oder LIVE_INSTANCE_SSH_KEY fehlt in der .env des Haupt-Checkouts (kein Rueckfall auf DEV_INSTANCE_*: das ist die Entwickler-Instanz, siehe .env.example).' -ForegroundColor Red; exit 1 }
-        & scp -q -i $key -o BatchMode=yes $temp "${user}@${hostName}:/tmp/lifeagents_privacy_terms.sql" 2>$null | Out-Null
+        # StrictHostKeyChecking=yes ausdruecklich: eine Nutzer-Config mit "no" liesse sonst einen falschen Host (z. B. den Router) durch.
+        & scp -q -i $key -o BatchMode=yes -o StrictHostKeyChecking=yes $temp "${user}@${hostName}:/tmp/lifeagents_privacy_terms.sql" 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host 'Quelle nicht lesbar (scp).' -ForegroundColor Red; exit 1 }
-        $rows = @(& ssh -i $key -o BatchMode=yes "${user}@${hostName}" "chmod 644 /tmp/lifeagents_privacy_terms.sql; $psql; rc=`$?; $rmSql; exit `$rc" 2>$null)
+        $rows = @(& ssh -i $key -o BatchMode=yes -o StrictHostKeyChecking=yes "${user}@${hostName}" "chmod 644 /tmp/lifeagents_privacy_terms.sql; $psql; rc=`$?; $rmSql; exit `$rc" 2>$null)
     }
     $rc = $LASTEXITCODE
 } finally {

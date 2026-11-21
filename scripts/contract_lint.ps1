@@ -1199,6 +1199,7 @@ $promptAllow = @{  # Datei -> erlaubte Primitive (Definition/Delegat/sanktionier
     'provisioning/install.sh'            = @()                       # self-contained Bootstrap: fragt nichts (anonymer Download)
     'provisioning/lib/bootstrap_owner.sh' = @()
     'provisioning/lib/owner_connect.sh' = @('ui_choose', 'ui_wait_key')  # Gefuehrtes Ende: 'Erneut pruefen/Spaeter' + Pairing-Warten
+    'provisioning/lib/move_cli.sh'      = @('ui_choose')            # `umzug done`: Abnahme-Bestaetigung (kein Rueckweg mehr, Updates wieder frei)
 }
 foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -ErrorAction SilentlyContinue)) {
     $rel = $f.FullName.Substring($RepoRoot.Length + 1) -replace '\\','/'
@@ -2194,7 +2195,7 @@ $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s
 # Release-Asset ohne Baum (kein Sourcing, es gibt noch keine lib/), muss Docker einrichten und den Kern starten. Erlaubt sind nur
 # die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
 $setupRel = 'provisioning/setup.sh'
-$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json'
+$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
 $setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|(--now\s+)?"\$UNIT_NAME")\s+>&2|^\s+start\s+"\$UNIT_NAME"\s+>&2|^\s+is-active\s+--quiet\s+"\$UNIT_NAME"|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]

@@ -54,8 +54,14 @@ update_cli() {
     esac
   done
   case "$tag" in *[!A-Za-z0-9._-]*|'') die "Ungültiges Tag '${tag}' (erwartet z. B. v0.14.0)." ;; esac
+  # Vor dem Laden und damit vor jedem master-Wechsel: die Sperre sitzt an dieser einen Stelle (der Chat-Runner ruft denselben Weg).
+  if la_umzug_open; then die "$(_ur_umzug_text)"; fi
   fetch_and_run_release "$tag" "${pass[@]}"
 }
+
+# _ur_umzug_text -> der Satz zur Update-Sperre „Umzug offen“ (lib/move_cli.sh). Rueckweg auf die alte Maschine braucht dieselbe
+#   Release auf beiden Seiten: darum kein Update, bis der Umzug abgenommen ist.
+_ur_umzug_text() { printf 'Updates sind gesperrt, solange der Umzug nicht abgenommen ist (der Rückweg auf die alte Maschine braucht dieselbe Version). Nach der Abnahme: lifeagents umzug done'; }
 
 # _ur_update_usage — Hilfe zu `lifeagents update` (stderr wie die Hilfe der CLI).
 _ur_update_usage() {
@@ -241,6 +247,13 @@ update_check() {
   lifeagents_db_name >/dev/null
   local installed work scheduled=false
   [ "${1:-}" = scheduled ] && scheduled=true
+  # Eine Karte, die sich nicht ausfuehren laesst, ist Rauschen: solange der Umzug offen ist, kommt keine (ohne Netzabruf).
+  if la_umzug_open; then
+    log "Release-Check: Umzug offen — keine Update-Karte bis lifeagents umzug done."
+    heartbeat_record check skipped
+    _ur_outcome decided
+    return 0
+  fi
   # Mitten in einem Update liest der Check noch die alte VERSION und schickt eine ueberfluessige Karte. Die Sperre
   # nur pruefen, nie nehmen (der Check ist kein Update); ein Lauf, der sie selbst haelt (Folge-Check), prueft weiter.
   # Mit Wartezeit: der Minuten-Runner haelt die Sperre zu jeder vollen Minute kurz; ein Update haelt sie Minuten.
@@ -330,6 +343,11 @@ _ur_run_one() {
   local id="$1" tag="$2" kind="$3" installed="$4"
   local cmp work code latest log rf rc
 
+  # Ein Auftrag aus einer Karte von vor dem Umzug: vorhandener Grund „locked“, ohne Update und ohne Netz.
+  if la_umzug_open; then
+    _ur_finish "$id" failed preflight locked false "Umzug offen — $(_ur_umzug_text)"
+    _ur_reports_flush; return 0
+  fi
   if ! _ur_is_tag "$tag"; then
     _ur_finish "$id" failed preflight unknown false "Ungültiges Tag im Auftrag."; _ur_reports_flush; return 0
   fi

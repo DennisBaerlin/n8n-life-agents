@@ -146,6 +146,11 @@ svc_service() {
 LA_RETIRED_NAME=retired
 la_retired_file() { printf '%s/%s' "${LIFEAGENTS_STATE_DIR:-/var/lib/lifeagents}" "$LA_RETIRED_NAME"; }
 la_is_retired() { [ -e "$(la_retired_file)" ] && [ "${LIFEAGENTS_RETIRE_UNDO:-0}" != 1 ]; }
+# „Umzug offen“ (lib/move_cli.sh): auf der NEUEN Maschine ab `umzug apply` bis `umzug done`. Die Datei sperrt nur das Update
+# (update_runner.sh): der Rueckweg auf die alte Maschine nimmt die Sicherung der neuen und verlangt dieselbe Release.
+LA_UMZUG_NAME=umzug-open
+la_umzug_file() { printf '%s/%s' "${LIFEAGENTS_STATE_DIR:-/var/lib/lifeagents}" "$LA_UMZUG_NAME"; }
+la_umzug_open() { [ -e "$(la_umzug_file)" ]; }
 # _rt_n8n_blocked <unit…> — rc 0 (= blockiert, mit Meldung), wenn eine der Units n8n ist und die Installation stillgelegt.
 _rt_n8n_blocked() {
   local u

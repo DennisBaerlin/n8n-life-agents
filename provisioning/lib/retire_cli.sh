@@ -386,7 +386,7 @@ _ret_fetch_dir() {
   trap "rm -rf -- '$st'" EXIT
   rt_host_get "$(_bkp_hd "$src")" umzug.manifest > "$st/umzug.manifest" 2>/dev/null || die "In '${src}' liegt kein Umzugs-Ordner (umzug.manifest fehlt)."
   f="$(read_env_value "$st/umzug.manifest" BACKUP_FILE)"
-  for f in "$f" memory.dump memory.counts; do
+  for f in "$f" memory.dump memory.counts config.json vorher.txt; do
     rt_host_get "$(_bkp_hd "$src")" "$f" > "$st/$f" 2>/dev/null || rm -f "$st/$f"
   done
   _RET_DIR="$st"

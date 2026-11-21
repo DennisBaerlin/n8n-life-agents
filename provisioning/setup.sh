@@ -11,6 +11,7 @@
 # Optionen: --yes, --image <ref> (Entwickler/CI; Releases tragen den Pin), --answers <datei>, --uninstall, --delete-data, --help.
 # Test-Naehte (nicht in der Hilfe): LA_PROJECT, LA_CORE_PORTS (an den Kern), LA_SETUP_ROOT (Pfad-Praefix), LA_SETUP_WAIT,
 # dazu die Test-Weichen TEST_SWITCHES (nur als Name an den Kern, der sie an provision.sh reicht).
+# Mit --answers nennt er danach den Anmelde-Link von Tailscale, falls der Tunnel noch auf die Anmeldung wartet (reach_hint).
 # Exit: 0 gelungen, 1 gescheitert (nichts oder nur Vollendetes geaendert), 2 Aufruf falsch.
 #
 # Neben dem Verbund legt er zwei Dateien an, beide mit Markierung (fremde Dateien gleichen Namens fasst er nie an):
@@ -356,6 +357,44 @@ else
   warn "systemd läuft hier nicht: Nach einem Neustart von Docker startet der Verbund nicht von selbst (lifeagents boot-start von Hand)."
 fi
 
+# reach_hint — nach --answers im Tunnel-Weg: der unbeaufsichtigte Installer zeigt den Anmelde-Link nicht (provision.sh loggt nur
+# „Tunnel noch nicht fertig“), darum fragt setup.sh den Stand im master ab (compose/reach_ctl.sh status) und nennt, was jetzt zu tun
+# ist. Nie fatal: scheitert die Abfrage, bleibt es bei der Meldung „Eingerichtet“. Nur Links von login.tailscale.com.
+reach_hint() {
+  local r='' mode state url next dir
+  for _ in 1 2 3 4 5; do
+    r="$(docker exec "$P-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status 2>/dev/null | jq -Rc 'fromjson? | select(type == "object")' | tail -n1 || true)"
+    [ -n "$r" ] || return 0
+    mode="$(jq -r '.mode // ""' <<<"$r" 2>/dev/null || true)"; state="$(jq -r '.state // ""' <<<"$r" 2>/dev/null || true)"
+    url="$(jq -r '.url // ""' <<<"$r" 2>/dev/null || true)"
+    [ "$mode" = tunnel ] || return 0
+    [[ $url =~ ^https://login\.tailscale\.com/[A-Za-z0-9/?=\&._~%+-]*$ ]] || url=''
+    # Tailscale stellt den Link erst nach einigen Sekunden aus.
+    case "$state" in starting|needs_login) [ -n "$url" ] || { sleep "${LA_SETUP_WAIT:-2}"; continue; } ;; esac
+    break
+  done
+  case "$state" in
+    needs_login|key_expired|starting)
+      if [ -n "$url" ]; then
+        printf '\nDiese Maschine muss sich noch bei Tailscale anmelden. Link im Browser öffnen (Konto mit Google, Apple, Microsoft oder GitHub):\n  %s\n' "$url"
+      else
+        printf '\nTailscale startet noch und hat den Anmelde-Link noch nicht ausgestellt.\n'
+      fi ;;
+    needs_funnel)
+      if [ -n "$url" ]; then printf '\nIm Tailscale-Konto muss Funnel für diese Maschine erlaubt werden. Link im Browser öffnen:\n  %s\n' "$url"
+      else printf '\nIm Tailscale-Konto muss Funnel für diese Maschine erlaubt werden (Access controls).\n'; fi ;;
+    needs_machine_auth) printf '\nIm Tailscale-Konto die Maschine freigeben: https://login.tailscale.com/admin/machines\n' ;;
+    *) return 0 ;;
+  esac
+  if head -n1 "$ANSWERS" | grep -q '^# lifeagents-umzug'; then
+    dir="$(dirname "$(readlink -f "$ANSWERS")")"
+    next="Danach die Daten einspielen: lifeagents umzug apply ${dir}   (wartet auf die Anmeldung und macht dann weiter)"
+  else
+    next="Danach prüft lifeagents doctor den Stand"
+  fi
+  printf '%s. Den Link gibt es auch später: lifeagents proxy show\n' "$next"
+} >&2
+
 if [ -n "$ANSWERS" ]; then
   [ "${#PROV[@]}" -gt 0 ] || PROV=(--profile release)
   case " ${PROV[*]} " in *" --profile "*|*" --profile="*) ;; *) PROV=(--profile release "${PROV[@]}") ;; esac
@@ -363,6 +402,7 @@ if [ -n "$ANSWERS" ]; then
   rc=0; core "$ANSWERS" install --json -- "${PROV[@]}" || rc=$?
   core_verdict "$rc" || exit 1
   ok "Eingerichtet ($version). Zustand prüfen: lifeagents doctor"
+  reach_hint
   exit 0
 fi
 

@@ -222,6 +222,42 @@ config_cmd_set() {
   _cfg_apply_schedule "$category" "$key"
 }
 
+# --- import: Einstellungen aus config.json einspielen (die Datei schreibt `lifeagents retire`, Umzug) ------------------------------
+# Liste [{package,category,key,value}]. Je Zeile dieselbe Pruefung wie `set` (Namen, kein Systemwert, nur bestehende Zeile, die DB
+# prueft den Wert); eine abgelehnte Zeile wird mit Namen gemeldet (nie mit Wert), die uebrigen laufen weiter, rc 1 bei mindestens
+# einer Ablehnung. Zeitplaene spielt jede Zeile einzeln ein (_cfg_apply_schedule), ausser LIFEAGENTS_CONFIG_DEFER_APPLY=1: dann macht
+# der Aufrufer es gesammelt (umzug apply spielt danach ohnehin alle Workflows neu ein).
+config_cmd_import() {
+  local file="${1:-}" total i ok_n=0 bad=0 category key value v_esc updated
+  [ -n "$file" ] && [ -r "$file" ] || die "Usage: lifeagents config import <config.json>"
+  jq -e 'type == "array"' "$file" >/dev/null 2>&1 || die "${file} ist keine Liste von Einstellungen (config.json aus lifeagents retire)."
+  total="$(jq 'length' "$file")"
+  for ((i = 0; i < total; i++)); do
+    category="$(jq -r ".[$i].category // \"\"" "$file")"; key="$(jq -r ".[$i].key // \"\"" "$file")"
+    # -j + Marke: ein Wert mit Zeilenumbruch am Ende bleibt, wie er war ($(…) frisst sonst den letzten).
+    value="$(jq -j ".[$i].value // \"\"" "$file"; printf x)"; value="${value%x}"
+    if ! _cfg_ident_ok "$category" || ! _cfg_ident_ok "$key"; then
+      warn "Einstellung Nr. $((i + 1)): ungültiger Name — nicht übernommen."; bad=$((bad + 1)); continue
+    fi
+    if [ "$(_cfg_managed_by "$category" "$key")" = system ]; then
+      warn "${category}.${key} ist ein Systemwert — nicht übernommen."; bad=$((bad + 1)); continue
+    fi
+    v_esc="${value//\'/\'\'}"
+    if ! updated="$(_cfg_psql -tA -c \
+        "UPDATE core.config SET value = '${v_esc}' WHERE category = '${category}' AND key = '${key}' AND managed_by = 'owner' RETURNING key")"; then
+      warn "${category}.${key}: Wert abgelehnt (Grund oben) — nicht übernommen."; bad=$((bad + 1)); continue
+    fi
+    if [ -z "$updated" ]; then
+      warn "${category}.${key}: gibt es hier nicht — nicht übernommen."; bad=$((bad + 1)); continue
+    fi
+    ok_n=$((ok_n + 1))
+    [ "${LIFEAGENTS_CONFIG_DEFER_APPLY:-0}" = 1 ] || _cfg_apply_schedule "$category" "$key"
+  done
+  if [ "$bad" -eq 0 ]; then ok "Einstellungen: ${ok_n} von ${total} übernommen."; return 0; fi
+  warn "Einstellungen: ${ok_n} von ${total} übernommen, ${bad} nicht."
+  return 1
+}
+
 # --- Dispatcher: `lifeagents config <verb> [args]` ------------------------------------------------
 config_cli() {
   # Verb-Picker: nacktes `lifeagents config` auf TTY -> Menue statt Hilfetext; ESC/non-TTY ->
@@ -243,6 +279,7 @@ MENU
     list)   config_cmd_list "$@" ;;
     set)    config_cmd_set "$@" ;;
     reset)  config_cmd_reset "$@" ;;
+    import) config_cmd_import "$@" ;;
     help|--help|-h)
       cat >&2 <<'EOF'
 lifeagents config <verb> — zentralen Config-Store (core.config) ansehen/ändern.
@@ -256,6 +293,8 @@ lifeagents config <verb> — zentralen Config-Store (core.config) ansehen/änder
                                 Zeitplan ändern z. B.: lifeagents config set schedule score_jobs '0 7 * * 1-5'
                                 (gilt sofort — die Workflows des Pakets werden neu eingespielt).
   reset <category> <key>        Einen angepassten Wert auf den ausgelieferten Standard zurücksetzen.
+  import <datei.json>           Einstellungen einer Liste einspielen (config.json aus lifeagents retire, Umzug). Je Zeile wie
+                                set; abgelehnte Zeilen werden mit Namen gemeldet, die übrigen laufen weiter.
 
 Hinweis: neue Keys legt die CLI NICHT an — sie kommen aus den Paket-Manifesten (.config-Block) über
 den Installer-Seeder. Die Datenbank prüft jeden Wert (Modell bekannt, Zeitplan/Zahl/true-false gültig)

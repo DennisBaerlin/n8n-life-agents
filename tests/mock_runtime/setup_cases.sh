@@ -58,6 +58,9 @@ case "${1:-}" in
   exec)
     d='{"v":1,"type":"result","verb":"wizard-url","ok":true,"url":"http://127.0.0.1:5881/start?t=abc123"}'
     case "$a" in *'|wizard-url|'*) printf '%s\n' "${STUB_URL_JSON:-$d}"; exit "${STUB_URL_RC:-0}" ;; esac
+    # reach_ctl.sh status (Tunnel-Stand): eine JSON-Zeile; STUB_REACH_RC = Abfrage scheitert.
+    r='{"mode":"none","state":"unavailable","url":"","dns_name":""}'
+    case "$a" in *'reach_ctl.sh|status|'*) [ -z "${STUB_REACH_RC:-}" ] || exit "$STUB_REACH_RC"; printf '%s\n' "${STUB_REACH_JSON:-$r}"; exit 0 ;; esac
     exit 0 ;;
 esac
 exit 0
@@ -370,6 +373,47 @@ su_root debian 12 bookworm
 su_run env STUB_OUT_install="$SUD/res.inst" STUB_RC_install=1 bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
 eq SU.answers-install-failed-exit-1 1 "$SU_RC"
 su_has SU.answers-install-failed-text "$(cat "$SUD/err")" 'Einrichtung'
+
+# Tailscale-Anmeldung im Antwort-Datei-Weg: der unbeaufsichtigte Lauf zeigt keinen Link (provision.sh loggt nur „noch nicht fertig“),
+# darum fragt setup.sh nach dem Einrichten den Stand ab und gibt Link und Hinweis aus (compose/reach_ctl.sh status im master).
+su_root debian 12 bookworm
+_su_nl='{"mode":"tunnel","state":"needs_login","url":"https://login.tailscale.com/a/xyz","dns_name":""}'
+su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+eq SU.answers-link-exit-0 0 "$SU_RC"
+su_has SU.answers-link-sichtbar "$(cat "$SUD/out" "$SUD/err")" 'https://login.tailscale.com/a/xyz'
+su_has SU.answers-link-hinweis "$(cat "$SUD/out" "$SUD/err")" 'lifeagents proxy show'
+su_has SU.answers-link-abfrage-im-master "$(su_log)" 'docker|exec|lifeagents-master|bash|/opt/lifeagents/provisioning/compose/reach_ctl.sh|status'
+# Eine Umzugs-Datei (Kopfzeile von `lifeagents retire`) bekommt den naechsten Schritt genannt.
+printf "# lifeagents-umzug v9.0.0 2026-11-20T10:00:00Z\nREACH_MODE='tunnel'\n" > "$SUD/umzug.env"
+su_root debian 12 bookworm
+su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/umzug.env"
+su_has SU.answers-link-umzug-naechster-schritt "$(cat "$SUD/out" "$SUD/err")" 'lifeagents umzug apply'
+su_root debian 12 bookworm
+su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+su_not SU.answers-ohne-umzug-kein-apply "$(cat "$SUD/out" "$SUD/err")" 'umzug apply'
+# Tunnel schon fertig oder gar nicht gewaehlt: kein Link, kein Laerm.
+for _st in ready unavailable; do
+  su_root debian 12 bookworm
+  su_run env STUB_REACH_JSON="{\"mode\":\"none\",\"state\":\"$_st\",\"url\":\"\",\"dns_name\":\"\"}" bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+  eq "SU.answers-$_st-exit-0" 0 "$SU_RC"
+  su_not "SU.answers-$_st-kein-link" "$(cat "$SUD/out" "$SUD/err")" 'login.tailscale.com'
+done
+# Anmeldung ohne Link (Tailscale startet noch): kurz nachfragen, dann ehrlicher Hinweis statt Stille.
+su_root debian 12 bookworm
+su_run env STUB_REACH_JSON='{"mode":"tunnel","state":"starting","url":"","dns_name":""}' bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+eq SU.answers-ohne-link-exit-0 0 "$SU_RC"
+su_has SU.answers-ohne-link-hinweis "$(cat "$SUD/out" "$SUD/err")" 'lifeagents proxy show'
+# Abfrage scheitert (master antwortet nicht, kaputtes JSON): die Einrichtung gilt trotzdem als gelungen.
+su_root debian 12 bookworm
+su_run env STUB_REACH_RC=1 bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+eq SU.answers-abfrage-scheitert-exit-0 0 "$SU_RC"
+su_root debian 12 bookworm
+su_run env STUB_REACH_JSON='kein json' bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+eq SU.answers-abfrage-kaputt-exit-0 0 "$SU_RC"
+# Ein fremder Link (nicht login.tailscale.com) wird nie ausgegeben.
+su_root debian 12 bookworm
+su_run env STUB_REACH_JSON='{"mode":"tunnel","state":"needs_login","url":"https://boese.example/x","dns_name":""}' bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
+su_not SU.answers-fremder-link-nie "$(cat "$SUD/out" "$SUD/err")" 'boese.example'
 
 # --- Abbau ----------------------------------------------------------------------------------------------------------------
 su_root debian 12 bookworm

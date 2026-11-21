@@ -16,6 +16,7 @@
 #   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
 #   H  doctor-Warnung: ein Dienst laeuft noch mit dem alten Node (ersetzte Binary in /proc).
 #   RT Stilllegung fuer den Umzug (lib/retire_cli.sh) und die Sperre „nie zwei Bots“; eigene Datei retire_cases.sh.
+#   UZ Annahme auf der neuen Maschine (lib/move_cli.sh: umzug apply/check/status/done, config import, Update-Sperre); eigene Datei umzug_cases.sh.
 #   SU Linux-Einrichter provisioning/setup.sh (Pruefungen vor jeder Aenderung, Docker-Einrichtung, Kern-Aufruf, Befehl + Systemd-Einheit,
 #      Abbau); eigene Datei setup_cases.sh, hier eingebunden.
 # Braucht kein n8n, kein Docker und kein Netz.
@@ -2098,6 +2099,9 @@ rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
 
 # ---------------------------------------------------------------------------- RT: Stilllegung fuer den Umzug (retire)
 . "$(dirname "${BASH_SOURCE[0]}")/retire_cases.sh"
+
+# ---------------------------------------------------------------------------- UZ: Annahme auf der neuen Maschine (umzug)
+. "$(dirname "${BASH_SOURCE[0]}")/umzug_cases.sh"
 
 # ---------------------------------------------------------------------------- SU: Linux-Einrichter (setup.sh)
 . "$(dirname "${BASH_SOURCE[0]}")/setup_cases.sh"

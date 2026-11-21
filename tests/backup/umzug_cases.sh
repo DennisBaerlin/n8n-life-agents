@@ -177,4 +177,10 @@ cli umzug apply "$OUT"; rc=$?
 { [ "$rc" = 1 ] && said 'in Gebrauch'; } && pass D.danach-in-gebrauch-schuetzt || fail D.danach-in-gebrauch-schuetzt "rc=$rc $(last)"
 eq D.daten-unberuehrt 5 "$(sql "SELECT count(*) FROM ${MEM}")"
 
+# abort: der Ausweg aus einem stehengebliebenen Umzug nimmt nur die Update-Sperre weg.
+printf 'STAGE=restored\nMOVE=x\nAT=y\n' > "$(la_umzug_file)"
+cli umzug abort --yes; eq D.abort-ok 0 "$?"
+[ ! -e "$(la_umzug_file)" ] && pass D.abort-merker-weg || fail D.abort-merker-weg "liegt noch"
+eq D.abort-daten-unberuehrt 5 "$(sql "SELECT count(*) FROM ${MEM}")"
+
 exit "$fails"

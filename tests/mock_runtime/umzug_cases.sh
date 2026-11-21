@@ -54,6 +54,15 @@ _cmp="$(umzug_compare "$W/v.vorher" "$W/v.nachher" 2>&1)"; _rc=$?
 eq UZ-V.nur-alt-rc 1 "$_rc"
 case "$_cmp" in *'config core.cron_enable.y'*) pass UZ-V.nur-alt-gemeldet ;; *) fail UZ-V.nur-alt-gemeldet "$_cmp" ;; esac
 umzug_compare "$W/nichtda" "$W/v.nachher" >/dev/null 2>&1; eq UZ-V.fehlende-datei-rc 2 "$?"
+# Leere vorher.txt (abgeschnittene Kopie): die Richtung bleibt richtig, nichts wird als „vorher“ der zweiten Datei gelesen.
+: > "$W/v.vorher"; printf 'rows finance.accounts 3\n' > "$W/v.nachher"
+_cmp="$(umzug_compare "$W/v.vorher" "$W/v.nachher" 2>&1)"; _rc=$?
+eq UZ-V.leere-vorher-rc 1 "$_rc"
+case "$_cmp" in 'rows finance.accounts  vorher —  nachher 3') pass UZ-V.leere-vorher-richtung ;; *) fail UZ-V.leere-vorher-richtung "$_cmp" ;; esac
+# Scheitert awk selbst, heisst das „Vergleich unmoeglich“, nie „alles gleich“.
+mkdir -p "$W/awkfail"; printf '#!/bin/sh\nexit 3\n' > "$W/awkfail/awk"; chmod +x "$W/awkfail/awk"
+printf 'rows finance.accounts 3\n' > "$W/v.vorher"
+( PATH="$W/awkfail:$PATH"; umzug_compare "$W/v.vorher" "$W/v.nachher" ) >/dev/null 2>&1; eq UZ-V.awk-fehler-rc 2 "$?"
 
 # ---------------------------------------------------------------------------- UZ-C: config import (lib/config_cli.sh)
 # _cfg_psql ist die Attrappe: sie protokolliert das SQL und antwortet je nach Schluessel.
@@ -166,7 +175,6 @@ _ua() (
   load_install_env() { :; }; _pkg_resolve_env() { :; }
   lifeagents_env_file() { printf '%s/%s.env' "$LIFEAGENTS_DIR" "$1"; }
   _bkp_release_tag() { printf '%s' "${INST_REL:-v9.1.0}"; }
-  _owner_chat_id_db() { printf '%s' "${OWNER:-}"; }
   ui_interactive() { [ "${IA:-0}" = 1 ]; }
   _bkp_ask_key_tty() { ev ask_key; printf 'key:%s\n' "${ASK_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"; }
   backup_cmd_restore() {
@@ -187,8 +195,9 @@ _ua() (
   owner_tg_token() { printf 'tok'; }
   _ret_sql() {
     case "$1" in
-      *"telegram_user_id"*) printf '111\n222\n' ;;
-      *fn_should_notify*) ev "latch $1" ;;
+      *"count(*)"*"'owner'"*) [ -z "${OWNER_QFAIL:-}" ] || return 1; if [ -n "${OWNER:-}" ]; then printf 1; else printf 0; fi ;;
+      *"telegram_user_id"*) [ -z "${IDS_FAIL:-}" ] || return 1; printf '111\n222\n' ;;
+      *fn_should_notify*) [ -z "${LATCH_FAIL:-}" ] || return 1; ev "latch $1" ;;
       *) printf '' ;;
     esac
   }
@@ -196,11 +205,11 @@ _ua() (
   reach_status_json() {
     local n; n="$(wc -l < "$W/mv.reach" 2>/dev/null || echo 0)"; echo x >> "$W/mv.reach"
     set -- ${REACH:-ready}; shift "$(( n < $# ? n : $# - 1 ))"
-    printf '{"mode":"tunnel","state":"%s","url":"%s","dns_name":"neu.example.ts.net"}\n' "$1" "https://login.tailscale.com/a/abc123"
+    printf '{"mode":"%s","state":"%s","url":"%s","dns_name":"neu.example.ts.net"}\n' "${REACH_MODE_T:-tunnel}" "$1" "https://login.tailscale.com/a/abc123"
   }
   _mv_reach_activate() { ev activate; }
   _ret_fetch_dir() { _RET_DIR="$MI"; }
-  rt_host_rm() { ev "host_rm $*"; }
+  rt_host_rm() { ev "host_rm $*"; [ -z "${RM_FAIL:-}" ]; }
   rt_host_put() { ev "host_put $*"; cat "$3" > /dev/null; }
   umzug_cli "$@"
 )
@@ -297,6 +306,51 @@ eq UZ.ohne-gedaechtnis-kein-import 0 "$(_mv_log | grep -c '^memory_import')"
 # Nur Umzugs-Ordner und Wort: ohne Argument/Option -> Abbruch.
 _mv_run true; _ua apply >/dev/null 2>&1; eq UZ.apply-ohne-ordner-rc 1 "$?"
 _ua brandneu >/dev/null 2>&1; eq UZ.unbekanntes-verb-rc 1 "$?"
+
+# Review-Funde: Schutz „Maschine frisch“ geht bei DB-Fehler zu (nie auf), Tunnel-Modus, Loeschfehler, Latch-Fehler, Ausweg `abort`.
+_mv_run true; ( OWNER_QFAIL=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.owner-abfrage-scheitert-rc 1 "$?"; _mv_nothing owner-abfrage-scheitert 'Datenbank'
+_mv_run true; ( RT=compose REACH_MODE_T=fritzbox REACH='starting' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.nicht-tunnel-rc 1 "$?"
+_mv_nothing nicht-tunnel 'fritzbox'
+eq UZ.nicht-tunnel-wartet-nicht 1 "$(wc -l < "$W/mv.reach")"
+# Geheimnis-Dateien liessen sich nicht loeschen: kein „eingespielt“, der naechste Lauf versucht nur das Loeschen noch einmal.
+_mv_run true; ( RT=compose RM_FAIL=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.loeschen-scheitert-rc 1 "$?"
+eq UZ.loeschen-scheitert-stufe finalized "$(_mv_state STAGE)"
+grep -q 'umzug.env' "$W/mv.err" && pass UZ.loeschen-scheitert-satz || fail UZ.loeschen-scheitert-satz "$(tail -n2 "$W/mv.err")"
+: > "$STUB_LOG"; ( RT=compose _ua apply "$MI" ) >/dev/null 2>&1; eq UZ.loeschen-nochmal-rc 0 "$?"
+eq UZ.loeschen-nochmal-stufe applied "$(_mv_state STAGE)"
+eq UZ.loeschen-nochmal-kein-restore 0 "$(_mv_log | grep -cE '^(restore|memory_import|finalize)')"
+# Intro-Latch: ein Fehler ist sichtbar (Warnung), haelt den Umzug aber nicht auf.
+for _lf in IDS_FAIL LATCH_FAIL; do
+  _mv_run true; ( export "$_lf=1"; _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq "UZ.latch-fehler-$_lf-rc" 0 "$?"
+  eq "UZ.latch-fehler-$_lf-stufe" applied "$(_mv_state STAGE)"
+  grep -qi 'Ankündigung' "$W/mv.err" && pass "UZ.latch-fehler-$_lf-sichtbar" || fail "UZ.latch-fehler-$_lf-sichtbar" "$(tail -n3 "$W/mv.err")"
+done
+# abort: der Ausweg aus einem stehengebliebenen Umzug (hebt nur die Update-Sperre auf, ruehrt keine Daten an).
+_mv_run true; _ua abort >/dev/null 2>&1; eq UZ.abort-ohne-umzug 0 "$?"
+printf 'STAGE=restored\nMOVE=m\nAT=x\nDIR=%s\n' "$MI" > "$MV/umzug-open"
+_ua abort >/dev/null 2>"$W/mv.err"; eq UZ.abort-ohne-terminal-rc 1 "$?"
+[ -e "$MV/umzug-open" ] && pass UZ.abort-ohne-terminal-merker-bleibt || fail UZ.abort-ohne-terminal-merker-bleibt "weg"
+: > "$STUB_LOG"; _ua abort --yes >"$W/mv.out" 2>"$W/mv.err"; eq UZ.abort-yes-rc 0 "$?"
+[ ! -e "$MV/umzug-open" ] && pass UZ.abort-merker-weg || fail UZ.abort-merker-weg "liegt noch"
+if _mv_log | grep -qE '^(restore|memory_import|config_import|finalize|host_rm)'; then fail UZ.abort-ruehrt-nichts-an "$(_mv_log | tr '\n' ' ')"; else pass UZ.abort-ruehrt-nichts-an; fi
+[ -e "$MI/umzug.env" ] && pass UZ.abort-dateien-bleiben || fail UZ.abort-dateien-bleiben "geloescht"
+case "$(cat "$W/mv.out" "$W/mv.err")" in *Daten*) pass UZ.abort-sagt-daten-bleiben ;; *) fail UZ.abort-sagt-daten-bleiben "$(tail -n3 "$W/mv.err")" ;; esac
+# Ein anderer Umzug bei offenem Merker nennt den Ausweg.
+printf 'STAGE=restored\nMOVE=alt\nAT=x\n' > "$MV/umzug-open"; _mv_folder
+_ua apply "$MI" >/dev/null 2>"$W/mv.err"; grep -q 'umzug abort' "$W/mv.err" && pass UZ.anderer-umzug-nennt-abort || fail UZ.anderer-umzug-nennt-abort "$(tail -n2 "$W/mv.err")"
+
+# ---------------------------------------------------------------------------- UZ-W: neueres Abbild bei „Umzug offen“
+# Ein erneutes setup.sh bzw. `stack up` mit einem anderen Abbild tauscht den master nie: laeuft einer, macht dessen Kern die Arbeit
+# (Weitergabe, mit den Pins der Installation), ohne master verweigert der Kern die Fassung (older_installation). Updates gehen nur ueber
+# den Runner, und den sperrt der Merker. Der Fall haelt fest, dass das auch mit gesetztem Merker so bleibt.
+OTHER=reg.example/master@sha256:bbbb
+: > "$STUB_LOG"
+STUB_CAT__var_la_umzug_open='STAGE=applied' STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING=lifeagents-master STUB_IMG_lifeagents_master="$OTHER" STUB_CORE_IMAGES="$OTHER" scr up --json
+eq UZ-W.weitergabe-ein-lauf "1|0" "$(grep -c '^docker|run|--rm|-i|--name|lifeagents-core-next|' "$STUB_LOG")|$SC_RC"
+# Nur lesende docker-Aufrufe (inspect, Kurzlauf mit nur lesend gemountetem Volume) und genau die Weitergabe: nichts angelegt, kein Helfer-Container (master-Wechsel), kein compose up.
+if grep -E '^docker\|run\|' "$STUB_LOG" | grep -v 'lifeagents-core-next' | grep -qv ',readonly'; then fail UZ-W.selbst-nichts "$(grep -E '^docker\|run\|' "$STUB_LOG" | grep -v core-next | grep -v ',readonly' | head -1)"
+elif grep -qE '\|volume\|create\||\|up\|-d\|' "$STUB_LOG"; then fail UZ-W.selbst-nichts "$(grep -E 'create|\|up\|' "$STUB_LOG" | head -1)"
+else pass UZ-W.selbst-nichts; fi
 
 # ---------------------------------------------------------------------------- UZ: status / check / done
 _mv_run true; _ua status >/dev/null 2>&1; eq UZ.status-kein-umzug 0 "$?"

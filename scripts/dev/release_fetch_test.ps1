@@ -18,15 +18,16 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
-$conn = Get-TestN8nConnection
-$Container = $conn.Container
-
 . "$PSScriptRoot\..\lib\test_common.ps1"
+# classic: das Substrat; N8NTEST_RUNTIME=compose: Wegwerf-Container aus dem master-Abbild (kein laufender Verbund nötig).
+$target = Resolve-TestSuiteContainer -Suite 'release_fetch_test' -RepoRoot $RepoRoot
+$Container = $target.Container
 
 Write-Host ""
 Write-Host "Release-Download (install.sh + lifeagents update) gegen Mock-GitHub — Container $Container"
 Write-Host ("-" * 64)
 
+try {
 # Frischer Stand im Container: alten Test-Baum leeren (docker cp MERGT sonst), dann provisioning/ + Mock kopieren.
 $root = '/opt/release_fetch_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
@@ -37,6 +38,7 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_github', 'm
 }
 
 $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_github/cases.sh", $root, "$Port")
+} finally { Remove-TestSuiteScratch $target }
 $lines = @($r.Output)
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }

@@ -16,15 +16,17 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
-$conn = Get-TestN8nConnection
-$Container = $conn.Container
-
 . "$PSScriptRoot\..\lib\test_common.ps1"
+# classic: das Substrat; N8NTEST_RUNTIME=compose: Wegwerf-Container aus dem master-Abbild (kein laufender Verbund nötig).
+$target = Resolve-TestSuiteContainer -Suite 'runtime_test' -RepoRoot $RepoRoot
+$Container = $target.Container
 
 Write-Host ""
 Write-Host "Betriebsart-Naht (Antwort-Datei, Wrapper systemd/compose, Telegram-Prüfung) + Daten-Seed ohne Pipe-Abbruch — Container $Container"
 Write-Host ("-" * 64)
 
+$passed = 0; $failed = 0
+try {
 $root = '/opt/runtime_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root/packages/core $root/tests")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
@@ -42,7 +44,6 @@ foreach ($pair in (@(@('provisioning', 'provisioning'), @('packages\core\locales
 }
 
 # cases.sh = die Betriebsart-Naht; seed_pipe_cases.sh = der Daten-Seed bricht an keiner Pipe mit fruehem Leser ab (141).
-$passed = 0; $failed = 0
 foreach ($caseFile in @('cases.sh', 'seed_pipe_cases.sh')) {
     $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_runtime/$caseFile", $root)
     $lines = @($r.Output)
@@ -59,6 +60,7 @@ foreach ($caseFile in @('cases.sh', 'seed_pipe_cases.sh')) {
     $passed += $p; $failed += $f
 }
 Invoke-Native docker @('exec', $Container, 'rm', '-rf', $root) | Out-Null
+} finally { Remove-TestSuiteScratch $target }
 
 Write-Host ("-" * 64)
 if ($failed -eq 0) { Write-Host "runtime_test: OK ($passed Faelle)" -ForegroundColor Green }

@@ -16,6 +16,9 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
+# Braucht das echte PostgreSQL mit installiertem Schema (pg_su_psql auf core.*, agent.*, finance.*) und den Backup-Timer des
+# laufenden Systems: im master-Abbild gibt es beides nicht, der Verbund-Weg fehlt noch.
+Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'die Faelle brauchen die echte Datenbank mit installiertem Schema und den Backup-Timer (pg_su_psql, systemctl), im master-Abbild gibt es beides nicht'
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 

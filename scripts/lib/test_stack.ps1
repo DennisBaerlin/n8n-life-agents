@@ -469,3 +469,81 @@ function Remove-TestStackSideContainers($Names) {
         if ($r.Code -ne 0 -and ($r.Output -join ' ') -notmatch 'No such container|already in progress') { throw "Container $c liess sich nicht entfernen: $($r.Output -join "`n")" }
     }
 }
+
+# --- Suiten ohne laufenden Verbund (scripts/dev/*_test.ps1 mit cases.sh-Attrappen-Ketten) ---------------------------------------
+# Eine Suite, die nur bash und Werkzeuge braucht, laeuft im Verbund-Weg in einem Wegwerf-Container aus dem master-Abbild des
+# Arbeitsstands (<projekt>-master:wt), nicht im Substrat. Dieselben docker cp/docker exec wie klassisch, weil die Runner eine Wurzel
+# mit provisioning/ UND den Fall-Ordnern daneben erwarten (ein Einhaengen braucht einen Docker-Dienst, der Rechner-Pfade sieht;
+# ein Tar ueber stdin belegt das stdin der Faelle). Der Container hat ein eigenes Netz: die Mock-Ports der Suiten (8082, 8084,
+# 8093 ...) kollidieren nie mit einem Nachbarn.
+# Suiten, die eine echte Datenbank oder das echte n8n brauchen, bleiben klassisch (Assert-TestSuiteClassicOnly).
+
+# Get-TestSuiteRuntime -- N8NTEST_RUNTIME = classic|compose; ohne Wert classic (Standard bis zur Umschaltung der Matrix). Ein
+# unbekannter Wert bricht ab: der stille Rueckfall liesse die Suite auf dem falschen Unterbau laufen.
+function Get-TestSuiteRuntime {
+    $r = [string]$env:N8NTEST_RUNTIME
+    if (-not $r) { return 'classic' }
+    if ($r -cnotin @('classic', 'compose')) { throw "N8NTEST_RUNTIME '$r' ungueltig (classic oder compose)." }
+    return $r
+}
+
+# Assert-TestSuiteClassicOnly -- Suiten, die den laufenden Verbund brauchen und dort noch keinen Weg haben, brechen auf dem
+# Verbund-Weg laut ab (nie ein stilles Ueberspringen, nie ein Lauf gegen das falsche Substrat).
+function Assert-TestSuiteClassicOnly([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$Reason) {
+    if ((Get-TestSuiteRuntime) -eq 'compose') {
+        throw "$Suite laeuft noch nicht auf dem Docker-Verbund: $Reason. Verbund-Weg kommt mit Paket T3b; bis dahin `$env:N8NTEST_RUNTIME='classic' auf dem klassischen Substrat."
+    }
+}
+
+function Get-TestSuiteScratchName([string]$Project, [string]$Suite) {
+    Assert-TestStackProject $Project
+    if ($Suite -cnotmatch '^[a-z0-9][a-z0-9_]{1,40}$') { throw "Suiten-Name '$Suite' ungueltig (klein, Ziffern, '_')." }
+    return "$Project-suite-" + ($Suite -replace '_', '-')
+}
+
+# Get-TestSuiteScratchRunArgs -- die Argumente von docker run (rein, testbar). Kein Install-Etikett: der Container gehoert nicht
+# zum Verbund (Select-TestStackSideContainers, Platz-Zaehler). Substrat-Etikett n8n-suite + Worktree-Etikett: der Session-Ende-
+# Haken raeumt ihn mit ab (Get-WorktreeComposeTargets, lifeagents.substrate like 'n8n*'). sleep 1800: raeumt sich auch bei einem
+# toten Skript selbst ab (--rm). --init: PID 1 ist sonst `sleep` und raeumt verwaiste Prozesse nicht ab; ein beendeter Waise bliebe
+# als Zombie stehen, und `kill -0` auf ihn meldet „lebt“ (mock_runtime KZ.*: ein Schritt nach der Zeitgrenze). Im klassischen Substrat
+# raeumt systemd als PID 1 auf (gemessen: ohne --init vier KZ-Faelle rot, Waise nach kill = Zombie).
+# -Env: Umgebung des Containers (Name -> Wert, `docker run -e`). Das master-Abbild setzt LIFEAGENTS_RUNTIME=compose; eine Suite, die den
+# klassischen Weg prueft und die Variable nicht selbst setzt, bekommt hier 'systemd' (der Wert von rt_is_compose, runtime.sh).
+function Get-TestSuiteScratchRunArgs {
+    param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot, $Env = @{})
+    $a = @('run', '-d', '--rm', '--init', '--name', (Get-TestSuiteScratchName $Names.Project $Suite),
+        '--label', 'lifeagents.substrate=n8n-suite', '--label', "lifeagents.worktree=$RepoRoot")
+    foreach ($k in $Env.Keys) {
+        if ("$k" -cnotmatch '^[A-Z][A-Z0-9_]*$') { throw "Umgebungsname '$k' ungueltig (A-Z, Ziffern, '_')." }
+        $a += @('-e', "$k=$($Env[$k])")
+    }
+    return $a + @($Names.Image, 'sleep', '1800')
+}
+
+# Resolve-TestSuiteContainer -- der Container, in dem die Suite ihre Dateien ablegt und die Fall-Runner faehrt.
+# classic: das Substrat (Zustandsdatei, Get-TestN8nConnection aus test_n8n_state.ps1 -- der Aufrufer hat es dot-gesourct).
+# compose: master-Abbild aus dem Arbeitsstand (Bau-Cache: gleicher Stand = gleiches Abbild) + Wegwerf-Container. Der Projektname
+# kommt ausdruecklich aus N8NTEST_CONTAINER (wie bootstrap_test_stack.ps1, kein geteilter Standard). Das Abbild traegt denselben
+# Tag wie das des Verbunds gleichen Namens: ein Lauf nach einer Aenderung setzt ihn um, der naechste -Reset dieses Verbunds
+# installiert dann kalt (Schnappschuss-Schluessel haengt an der Abbild-ID); wer das nicht will, nimmt einen eigenen Namen.
+function Resolve-TestSuiteContainer {
+    param([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot, $Env = @{})
+    if ((Get-TestSuiteRuntime) -eq 'classic') {
+        return [pscustomobject]@{ Runtime = 'classic'; Container = (Get-TestN8nConnection).Container; Scratch = $false }
+    }
+    if (-not $env:N8NTEST_CONTAINER) { throw 'N8NTEST_RUNTIME=compose braucht einen eigenen Projektnamen in $env:N8NTEST_CONTAINER (z. B. s4t3a, kein geteilter Standard).' }
+    $names = Get-TestStackNames $env:N8NTEST_CONTAINER
+    $logDir = Get-TestStackLogDir $names.Project
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    [void](New-TestStackImage -RepoRoot $RepoRoot -Names $names -LogDir $logDir)
+    $c = Get-TestSuiteScratchName $names.Project $Suite
+    [void](Invoke-Native docker @('rm', '-fv', $c))
+    $r = Invoke-Native docker (Get-TestSuiteScratchRunArgs -Names $names -Suite $Suite -RepoRoot $RepoRoot -Env $Env)
+    if ($r.Code -ne 0) { throw "Wegwerf-Container $c liess sich nicht starten: $($r.Output -join "`n")" }
+    return [pscustomobject]@{ Runtime = 'compose'; Container = $c; Scratch = $true }
+}
+
+# Remove-TestSuiteScratch -- raeumt den Wegwerf-Container ab (immer `rm -fv`); fuer das klassische Substrat ein No-op.
+function Remove-TestSuiteScratch($Target) {
+    if ($null -ne $Target -and $Target.Scratch) { [void](Invoke-Native docker @('rm', '-fv', $Target.Container)) }
+}

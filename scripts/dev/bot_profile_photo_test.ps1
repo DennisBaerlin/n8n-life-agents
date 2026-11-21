@@ -18,12 +18,13 @@ param([string]$Container, [int]$Port = 8082, [switch]$Verbose)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
-if (-not $Container) {
-    . "$PSScriptRoot\test_n8n_state.ps1"
-    $Container = (Get-TestN8nConnection).Container
-}
-
+. "$PSScriptRoot\test_n8n_state.ps1"
 . "$PSScriptRoot\..\lib\test_common.ps1"
+# -Container nennt ausdrücklich einen Container (kein Substrat, kein Wegwerf-Container); sonst classic = das Substrat,
+# N8NTEST_RUNTIME=compose = Wegwerf-Container aus dem master-Abbild (kein laufender Verbund nötig).
+if ($Container) { $target = [pscustomobject]@{ Runtime = 'classic'; Container = $Container; Scratch = $false } }
+else { $target = Resolve-TestSuiteContainer -Suite 'bot_profile_photo_test' -RepoRoot $RepoRoot }
+$Container = $target.Container
 
 Write-Host ""
 Write-Host "Bot-Profilbild (Installer-Schritt) gegen Mock-Telegram — Container $Container"
@@ -39,6 +40,7 @@ if ((Get-TestDevSwitches)['BOT_PROFILE_PHOTO'] -ne '0') {
     Write-Host "    [FAIL] Get-TestDevSwitches (scripts/lib/test_install_env.ps1) setzt BOT_PROFILE_PHOTO=0 nicht" -ForegroundColor Red
 }
 
+try {
 # Frischer Stand im Container: alten Test-Baum leeren (docker cp mergt sonst), dann provisioning/ + Mock kopieren.
 $root = '/opt/bot_profile_photo_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
@@ -68,6 +70,7 @@ foreach ($cases in 'profile_photo_cases.sh', 'bot_username_cases.sh', 'app_intro
     if ($r.Code -ne 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] $cases brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
     if ($thisPassed -eq 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] $cases lieferte keine Faelle" -ForegroundColor Red }
 }
+} finally { Remove-TestSuiteScratch $target }
 
 Write-Host ("-" * 64)
 if ($failed -eq 0) { Write-Host "bot_profile_photo_test: OK ($passed Faelle)" -ForegroundColor Green }

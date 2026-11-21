@@ -140,5 +140,63 @@ $bad = @([System.Management.Automation.PSParser]::Tokenize($text, [ref]$null) |
     ForEach-Object { $_.StartLine } | Sort-Object -Unique)
 Assert-That ($bad.Count -eq 0) "kein doppeltes Anfuehrungszeichen in Docker-Argumenten von test_stack.ps1 (Zeilen: $($bad -join ', '))"
 
+# --- Suiten ohne Verbund (N8NTEST_RUNTIME, Wegwerf-Container aus dem master-Abbild) ---------------------------------------------
+# Ohne Docker: Weg-Auswahl, Namen, Argumente von docker run, Abbruch ohne Projektnamen und bei Suiten, die den Verbund brauchen.
+$savedRt = $env:N8NTEST_RUNTIME; $savedCt = $env:N8NTEST_CONTAINER
+try {
+    $env:N8NTEST_RUNTIME = $null
+    Assert-That ((Get-TestSuiteRuntime) -eq 'classic') 'Suiten-Weg: ohne N8NTEST_RUNTIME classic (Standard bis zur Umschaltung)'
+    $env:N8NTEST_RUNTIME = 'compose'
+    Assert-That ((Get-TestSuiteRuntime) -eq 'compose') 'Suiten-Weg: compose'
+    $env:N8NTEST_RUNTIME = 'classic'
+    Assert-That ((Get-TestSuiteRuntime) -eq 'classic') 'Suiten-Weg: classic'
+    foreach ($bad in @('Compose', 'docker', 'systemd')) {
+        $env:N8NTEST_RUNTIME = $bad
+        Assert-That (Test-Throws { Get-TestSuiteRuntime }) "Suiten-Weg: unbekannter Wert '$bad' = Abbruch statt stillem Rueckfall"
+    }
+
+    # Verbund-Weg ohne eigenen Projektnamen: kein geteilter Standard (das klassische lifeagents-n8ntest waere ein fremder Platz).
+    $env:N8NTEST_RUNTIME = 'compose'; $env:N8NTEST_CONTAINER = $null
+    Assert-That (Test-Throws { Resolve-TestSuiteContainer -Suite 'runtime_test' -RepoRoot $repo }) 'Verbund-Weg ohne N8NTEST_CONTAINER = Abbruch (vor jedem Docker-Aufruf)'
+
+    # Suiten, die einen laufenden Verbund brauchen (Datenbank, n8n-Patch-Weg): Verbund-Weg bricht klar ab, klassisch laeuft.
+    $env:N8NTEST_RUNTIME = 'classic'
+    Assert-That (-not (Test-Throws { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'x' })) 'Verbund-Suite: klassisch kein Abbruch'
+    $env:N8NTEST_RUNTIME = 'compose'
+    $msg = ''; try { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'echte Datenbank' } catch { $msg = $_.Exception.Message }
+    Assert-That ($msg -match 'backup_test' -and $msg -match 'echte Datenbank' -and $msg -match 'T3b') 'Verbund-Suite: Abbruch nennt Suite, Grund und Folgepaket'
+} finally { $env:N8NTEST_RUNTIME = $savedRt; $env:N8NTEST_CONTAINER = $savedCt }
+
+$sn = Get-TestSuiteScratchName 's4t3a' 'runtime_test'
+Assert-That ($sn -eq 's4t3a-suite-runtime-test') 'Wegwerf-Container: <projekt>-suite-<suite>'
+Assert-That (Test-Throws { Get-TestSuiteScratchName 's4t3a' 'Runtime Test' }) 'Wegwerf-Container: Suiten-Name nur klein/Ziffern/_'
+Assert-That (Test-Throws { Get-TestSuiteScratchName 'lifeagents' 'runtime_test' }) 'Wegwerf-Container: Projekt lifeagents = Abbruch'
+$sa = @(Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite 'runtime_test' -RepoRoot 'C:/x')
+Assert-That ($sa[0] -eq 'run' -and $sa -contains '-d' -and $sa -contains '--rm' -and $sa[($sa.IndexOf('--name') + 1)] -eq $sn) 'Wegwerf-Container: docker run -d --rm mit Namen'
+Assert-That ($sa -contains 'lifeagents.worktree=C:/x' -and $sa -contains 'lifeagents.substrate=n8n-suite') 'Wegwerf-Container: Etiketten fuer den Session-Ende-Haken (Worktree + n8n-*)'
+Assert-That (-not (@($sa | Where-Object { $_ -like 'io.lifeagents.install=*' }).Count) -and $sa -contains 's4t3a-master:wt') 'Wegwerf-Container: kein Install-Etikett (kein Teil des Verbunds), Abbild <projekt>-master:wt'
+$se = @(Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite 'release_fetch_test' -RepoRoot 'C:/x' -Env ([ordered]@{ LIFEAGENTS_RUNTIME = 'systemd' }))
+Assert-That ($se[($se.IndexOf('-e') + 1)] -eq 'LIFEAGENTS_RUNTIME=systemd' -and $se.IndexOf('-e') -lt $se.IndexOf('s4t3a-master:wt') -and -not ($sa -contains '-e')) 'Wegwerf-Container: -Env als docker run -e vor dem Abbild; ohne -Env keine'
+Assert-That (Test-Throws { Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite 'x_test' -RepoRoot 'C:/x' -Env @{ 'BAD NAME' = '1' } }) 'Wegwerf-Container: Umgebungsname nur A-Z, Ziffern, _'
+$rf = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\release_fetch_test.ps1'))
+Assert-That ($rf -match "LIFEAGENTS_RUNTIME\s*=\s*'systemd'") 'release_fetch_test: faehrt die klassische Betriebsart (das Abbild setzt compose, die Faelle pruefen den klassischen Update-Weg)'
+Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst melden die KZ-Faelle einen Zombie als lebend)'
+Assert-That ($sa[-2] -eq 'sleep' -and [int]$sa[-1] -gt 0) 'Wegwerf-Container: Ruhe-Befehl mit Ablauf (raeumt sich auch bei totem Skript ab)'
+
+. (Join-Path $repo 'scripts\lib\substrate_reservations.ps1')
+$tg = Get-WorktreeComposeTargets -Worktree 'C:/x' -ContainerLines @("$sn|lifeagents.substrate=n8n-suite,lifeagents.worktree=C:/x", "fremd-suite|lifeagents.substrate=n8n-suite,lifeagents.worktree=C:/y")
+Assert-That (($tg.Containers -join ',') -eq $sn) 'Session-Ende-Haken raeumt den Wegwerf-Container dieses Worktrees ab, nie den eines anderen'
+
+# Die Suiten selbst: vier laufen im Wegwerf-Container, zwei verlangen den Verbund. Eine Suite, die Resolve vergisst, liefe auf dem
+# Verbund-Weg still gegen das klassische Substrat.
+foreach ($s in @('runtime_test', 'reachability_test', 'release_fetch_test', 'bot_profile_photo_test')) {
+    $t = [System.IO.File]::ReadAllText((Join-Path $repo "scripts\dev\$s.ps1"))
+    Assert-That ($t -match "Resolve-TestSuiteContainer -Suite '$s'" -and $t -match 'Remove-TestSuiteScratch') "$s : Container ueber Resolve-TestSuiteContainer, Abbau ueber Remove-TestSuiteScratch"
+}
+foreach ($s in @('backup_test', 'n8n_patch_test')) {
+    $t = [System.IO.File]::ReadAllText((Join-Path $repo "scripts\dev\$s.ps1"))
+    Assert-That ($t -match "Assert-TestSuiteClassicOnly -Suite '$s'") "$s : bricht auf dem Verbund-Weg klar ab (Assert-TestSuiteClassicOnly)"
+}
+
 Write-Host "test_stack_test: $failed Fehler."
 exit $failed

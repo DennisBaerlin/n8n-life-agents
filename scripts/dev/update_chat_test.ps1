@@ -10,8 +10,8 @@
 # Voraussetzung klassisch: laufendes Substrat (bootstrap_test_n8n.ps1) + .\scripts\dev\enable_mock_telegram.ps1.
 # N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1), ohne enable_mock_telegram. Der Treiber pausiert die
 # Tick-Schleife des master (Suspend-TestStackTick, in finally zurueck), der Fall-Runner startet seine eigene Telegram-Attrappe auf
-# Port+1 und gibt den Fake-Releases die compose.yml des laufenden master-Abbilds mit; der master-Wechsel ist nicht Gegenstand.
-# Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1; frei neben 8088 mock_llm,
+# Port 8101 und gibt den Fake-Releases die compose.yml des laufenden master-Abbilds mit; der master-Wechsel ist nicht Gegenstand.
+# Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1, im Verbund zusaetzlich 8101; frei neben 8088 mock_llm,
 #         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 + 8102/8103 llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8086, [switch]$Verbose)
@@ -27,7 +27,7 @@ $conn = Get-TestN8nConnection
 $Container = $conn.Container
 $state = Get-TestN8nState
 Assert-TestSuiteStateRuntime -State $state
-if ($suiteRuntime -eq 'compose') { $TgPort = "$($Port + 1)" }
+if ($suiteRuntime -eq 'compose') { $TgPort = '8101' }   # fest: Port+1 belegt der S3-Port des GitHub-Mocks, 8088/8089/8092 die Attrappen des Pods
 else {
     if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
     $TgPort = "$($state.mock_telegram.port)"

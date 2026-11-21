@@ -554,12 +554,12 @@ function Assert-TestSuiteStateRuntime {
 # auch den Runner, der die CLI direkt ausfuehrt (`command -v lifeagents`, update_runner.sh) -> Link-Tausch: waehrend der Pause liegt die
 # CLI unter /usr/local/sbin (steht vor /usr/local/bin im PATH), /usr/local/bin/lifeagents fehlt der Schleife. Ein Merker (stillgelegt-
 # Datei) kaeme nicht in Frage: er sperrt auch CLI und Installer. Beim Pausieren wartet das Skript auf einen schon laufenden Schritt der
-# Schleife; das [l] im Muster verhindert den Treffer auf die eigene Befehlszeile.
+# Schleife; das Muster ist am Anfang der Befehlszeile verankert, weil die Schleife (PID 1) den Text selbst in ihrer Befehlszeile traegt.
 function Get-TestStackTickScript {
     param([Parameter(Mandatory)][string]$Action)
     $cli = '/usr/local/lib/lifeagents/bin/lifeagents'
     switch ($Action) {
-        'pause' { return "mkdir -p /usr/local/sbin; ln -sf $cli /usr/local/sbin/lifeagents; rm -f /usr/local/bin/lifeagents; i=0; while pgrep -f '[l]ifeagents update --(tick|run-requested|check)' >/dev/null && [ `$i -lt 240 ]; do sleep 0.5; i=`$((i+1)); done; [ `$i -lt 240 ]" }
+        'pause' { return "mkdir -p /usr/local/sbin; ln -sf $cli /usr/local/sbin/lifeagents; rm -f /usr/local/bin/lifeagents; i=0; while pgrep -f '^[^ ]*bash [^ ]*lifeagents update --(tick|run-requested|check)' >/dev/null && [ `$i -lt 240 ]; do sleep 0.5; i=`$((i+1)); done; [ `$i -lt 240 ]" }
         'resume' { return "ln -sf $cli /usr/local/bin/lifeagents; rm -f /usr/local/sbin/lifeagents" }
         default { throw "Tick-Aktion '$Action' unbekannt (pause oder resume)." }
     }

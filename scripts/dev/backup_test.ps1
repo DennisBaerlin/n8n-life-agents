@@ -48,9 +48,11 @@ $lines = @($r.Output)
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
     elseif ($l -match '^FAIL ') { Write-Host "    [FAIL] $($l.Substring(5))" -ForegroundColor Red }
+    elseif ($l -match '^SKIP ') { Write-Host "    [SKIP] $($l.Substring(5))" -ForegroundColor Yellow }
     elseif ($Verbose) { Write-Host "    $l" -ForegroundColor DarkGray }
 }
 $passed = @($lines | Where-Object { $_ -match '^PASS ' }).Count
+$skipped = @($lines | Where-Object { $_ -match '^SKIP ' }).Count
 $failed = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
 # Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
 if ($r.Code -ne 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] cases.sh brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
@@ -58,6 +60,7 @@ if ($passed -eq 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] case
 Invoke-Native docker @('exec', $Container, 'rm', '-rf', $root) | Out-Null
 
 Write-Host ("-" * 64)
-if ($failed -eq 0) { Write-Host "backup_test: OK ($passed Faelle)" -ForegroundColor Green }
+$skipNote = if ($skipped) { ", $skipped im Verbund-Weg uebersprungen" } else { "" }
+if ($failed -eq 0) { Write-Host "backup_test: OK ($passed Faelle$skipNote)" -ForegroundColor Green }
 else { Write-Host "backup_test: $failed Fehler ($passed ok)" -ForegroundColor Red }
 exit $failed

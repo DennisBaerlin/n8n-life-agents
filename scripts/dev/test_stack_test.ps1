@@ -213,8 +213,9 @@ $tickOff = Get-TestStackTickScript -Action pause
 $tickOn = Get-TestStackTickScript -Action resume
 Assert-That ($tickOff -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/sbin/lifeagents' -and $tickOff -match 'rm -f /usr/local/bin/lifeagents') 'Tick: pausieren = CLI nach /usr/local/sbin (im PATH), /usr/local/bin/lifeagents weg'
 Assert-That ($tickOn -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents' -and $tickOn -match 'rm -f /usr/local/sbin/lifeagents') 'Tick: fortsetzen = Link des Abbilds zurueck, sbin-Link weg'
-# `pgrep -f` im selben sh -c fande sich selbst; die eckige Klammer im Muster verhindert den Treffer auf die eigene Befehlszeile.
-Assert-That ($tickOff -match '\[l\]ifeagents update' -and $tickOff -match 'pgrep -f') 'Tick: wartet auf einen schon laufenden Schritt, ohne sich selbst zu finden ([l]ifeagents)'
+# Die Schleife im master (PID 1) traegt den Text `lifeagents update --tick` in ihrer eigenen Befehlszeile: ein unverankertes `pgrep -f`
+# fand sie immer und die Pause lief in die Zeitgrenze. Das Muster beginnt darum am Anfang der Befehlszeile (bash <pfad>/lifeagents update).
+Assert-That ($tickOff -match [regex]::Escape("pgrep -f '^[^ ]*bash [^ ]*lifeagents update --(tick|run-requested|check)'")) 'Tick: wartet nur auf echte Schritte (am Anfang der Befehlszeile verankert), nicht auf die Schleife selbst'
 Assert-That ($tickOn -notmatch 'pgrep') 'Tick: Fortsetzen wartet auf nichts'
 Assert-That (Test-Throws { Get-TestStackTickScript -Action 'stop' }) 'Tick: unbekannte Aktion = Abbruch'
 $ta = @(Get-TestStackTickArgs -Master 's4t3b-master' -Action pause)

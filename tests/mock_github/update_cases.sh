@@ -121,6 +121,8 @@ if rt_is_compose; then
   N8NTEST_MOCK_TG_PORT="$TGPORT" N8NTEST_MOCK_TG_LOG="$TGLOG" node "$ROOT/mock_telegram/server.js" > "$W/mock_tg.log" 2>&1 &
   TGMOCK_PID=$!
   for _ in $(seq 1 50); do curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null 2>&1 && break; sleep 0.1; done
+  # Ein belegter Port liesse den Health-Check an der fremden Attrappe des Pods gelingen: der eigene Prozess muss leben.
+  kill -0 "$TGMOCK_PID" 2>/dev/null || { echo "FAIL setup: eigene Telegram-Attrappe auf Port ${TGPORT} gestorben: $(tr '\n' ' ' < "$W/mock_tg.log" | cut -c1-200)"; exit 1; }
 fi
 curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup: Telegram-Mock (Port ${TGPORT}) nicht erreichbar — klassisch enable_mock_telegram.ps1, im Verbund ein belegter Port"; exit 1; }
 

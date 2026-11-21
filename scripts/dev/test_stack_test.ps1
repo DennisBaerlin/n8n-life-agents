@@ -269,5 +269,31 @@ foreach ($s in @('update_chat_test', 'bot_menu_test', 'llm_gateway_test', 'backu
     Assert-That ((Get-SuiteCommands $p 'Get-TestSuiteRuntime').Count -ge 1) "$s : waehlt den Weg ueber Get-TestSuiteRuntime (N8NTEST_RUNTIME), nicht ueber Annahmen"
 }
 
+# backup/cases.sh im Verbund: der Standard-Name kommt aus der Meldung des Exports ohne Pfad. Fehlt er dort, bricht der Runner mit einem
+# klaren FAIL ab, statt mit einer anderen Datei weiterzupruefen. Der Block wird aus der Datei gezogen und in bash gegen eine Meldung mit
+# und ohne Namen ausgefuehrt; die Gegenprobe (Guard entfernt) belegt, dass der Test den Unterschied sieht.
+$bkText = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\backup\cases.sh'), (New-Object System.Text.UTF8Encoding($false)))
+$bkBlock = [regex]::Match($bkText, '(?s)if rt_is_compose; then\r?\n  fa="\$\(grep -m1 -o .*?\r?\nfi\r?\n').Value
+Assert-That ($bkBlock.Length -gt 0 -and $bkBlock -match 'E\.name-aus-meldung') 'backup/cases.sh: Verbund-Block fuer den Namen aus der Meldung gefunden (mit Abbruch-Guard)'
+function Invoke-BackupNameBlock([string]$Block, [string]$Message) {
+    $sh = "rt_is_compose() { return 0; }`nfails=0; fail() { printf 'FAIL %s: %s\n' `"`$1`" `"`$2`"; fails=`$((fails + 1)); }`n" +
+          "W=`$(mktemp -d); printf '%s\n' '$Message' > `"`$W/out.e2`"; fa=''`n$Block`nprintf 'FA=%s\n' `"`$fa`"`n"
+    # Datei statt stdin: PS 5.1 stellt beim Pipen in ein natives Programm eine BOM vor die erste Zeile.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("bkname_" + [guid]::NewGuid().ToString('N') + '.sh')
+    try {
+        [System.IO.File]::WriteAllText($tmp, ($sh -replace "`r", ''), (New-Object System.Text.UTF8Encoding($false)))
+        return (Invoke-Native (Get-TestStackBash) @(($tmp -replace '\\', '/')))
+    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+}
+if ($bkBlock.Length -gt 0) {
+    $with = Invoke-BackupNameBlock $bkBlock '[+] Backup geschrieben: C:\x\lifeagents-backup-20261121130414-kc1dab51c-vdev.nla.enc (Ordner auf dem Rechner)'
+    Assert-That ($with.Code -eq 0 -and ($with.Output -join "`n") -match 'FA=lifeagents-backup-20261121130414-kc1dab51c-vdev\.nla\.enc') 'backup/cases.sh: Name aus der Meldung gelesen (auch bei Windows-Pfad)'
+    $without = Invoke-BackupNameBlock $bkBlock '[+] Backup geschrieben: irgendwo'
+    Assert-That ($without.Code -ne 0 -and ($without.Output -join "`n") -match 'FAIL E\.name-aus-meldung' -and ($without.Output -join "`n") -notmatch 'FA=') 'backup/cases.sh: Meldung ohne Namen = klarer FAIL und Abbruch (kein Weiterpruefen mit anderer Datei)'
+    $mutated = [regex]::Replace($bkBlock, '(?m)^\s*\[ -n "\$fa" \] \|\| \{.*\}\r?\n', '')
+    $mm = Invoke-BackupNameBlock $mutated '[+] Backup geschrieben: irgendwo'
+    Assert-That ($mutated -ne $bkBlock -and $mm.Code -eq 0 -and ($mm.Output -join "`n") -match 'FA=\s*$') 'backup/cases.sh: Gegenprobe - ohne den Guard laeuft der Block still mit leerem Namen weiter (der Test sieht den Unterschied)'
+}
+
 Write-Host "test_stack_test: $failed Fehler."
 exit $failed

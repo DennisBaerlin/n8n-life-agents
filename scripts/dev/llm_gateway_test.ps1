@@ -467,17 +467,21 @@ try {
     $h = Get-LlmGatewayHealth -Container $Container
     if ($h -and $h.ok) { Pass "produktiver Gateway gesund (upstream $($h.upstream), static_ttl $($h.static_ttl))" } else { Fail 'produktiver Gateway /__health nicht ok' }
 
-    # (n) Verbund: der echte Gateway-Container (nicht eine Wegwerf-Einheit): ein kaputter Body mit Pruefinhalt (lokal abgelehnt, nie an den
-    # Upstream weitergereicht) erreicht sein Log nicht; nach einem Neustart liest er seine Umgebung aus gateway.env neu und ist gesund.
+    # (n) Verbund: der echte Gateway-Container (nicht eine Wegwerf-Einheit): ein kaputter Body mit Pruefinhalt erreicht sein Log nicht
+    # (nur der feste Code parse_error; der Body geht roh an den Upstream weiter, hier die Attrappe des Verbunds, darum nur bei lokalem
+    # Upstream); nach einem Neustart liest er seine Umgebung aus gateway.env neu und ist gesund.
     if ($IsCompose) {
         Write-Host '  (n) Verbund: echter Gateway-Container: Pruefinhalt nie im Log, Neustart gesund'
-        $resReal = Send-Gw 8090 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')
-        Restart-TestLlmGateway -Container $Container
-        $h2 = Get-LlmGatewayHealth -Container $Container
-        $realLog = @((Invoke-Native docker @('logs', $target.Gateway)).Output)
-        $canaryLines = @($realLog | Where-Object { $_ -match 'CANARY' }).Count
-        if ($resReal.Status -eq '400' -and $h2 -and $h2.ok -and $canaryLines -eq 0 -and (@($realLog) -match '"code":"parse_error"')) { Pass "$($target.Gateway): kaputter Body nur als parse_error geloggt, kein Pruefinhalt; nach Neustart gesund" }
-        else { Fail "echter Gateway: Status=$($resReal.Status) health=$($h2 | ConvertTo-Json -Compress) canary-zeilen=$canaryLines" }
+        if (-not ($h -and "$($h.upstream)" -match '^http://127\.0\.0\.1:')) { Fail "echter Gateway hat keinen lokalen Upstream ($($h.upstream)): kein Pruefinhalt gesendet" }
+        else {
+            $resReal = Send-Gw 8090 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')
+            Restart-TestLlmGateway -Container $Container
+            $h2 = Get-LlmGatewayHealth -Container $Container
+            $realLog = @((Invoke-Native docker @('logs', $target.Gateway)).Output)
+            $canaryLines = @($realLog | Where-Object { $_ -match 'CANARY' }).Count
+            if ($h2 -and $h2.ok -and $canaryLines -eq 0 -and (@($realLog) -match '"code":"parse_error"')) { Pass "$($target.Gateway): kaputter Body nur als parse_error geloggt, kein Pruefinhalt; nach Neustart gesund" }
+            else { Fail "echter Gateway: Status=$($resReal.Status) health=$($h2 | ConvertTo-Json -Compress) canary-zeilen=$canaryLines" }
+        }
     }
 } finally {
     if ($Verbose) { Write-Host ((Get-UnitJournal $Units.gw) -join "`n") -ForegroundColor DarkGray }

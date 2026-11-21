@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
 # Die Faelle pruefen den klassischen Patch-Weg an der per npm installierten n8n-Datei samt .orig. Im Verbund liegt n8n im eigenen
-# Abbild und wird ueber _apply_n8n_patches_compose gepatcht (Volume n8n_patches): der Verbund-Weg kommt mit T3b.
+# Abbild und wird ueber _apply_n8n_patches_compose gepatcht (Volume n8n_patches): der Verbund-Weg fehlt noch.
 Assert-TestSuiteClassicOnly -Suite 'n8n_patch_test' -Reason 'die Faelle pruefen den klassischen npm-Patch-Weg (installierte n8n-Datei + .orig); im Verbund liegt n8n im eigenen Abbild und wird ueber _apply_n8n_patches_compose gepatcht'
 $conn = Get-TestN8nConnection
 $Container = $conn.Container

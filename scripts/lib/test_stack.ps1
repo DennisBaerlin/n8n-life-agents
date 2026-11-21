@@ -491,7 +491,7 @@ function Get-TestSuiteRuntime {
 # Verbund-Weg laut ab (nie ein stilles Ueberspringen, nie ein Lauf gegen das falsche Substrat).
 function Assert-TestSuiteClassicOnly([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$Reason) {
     if ((Get-TestSuiteRuntime) -eq 'compose') {
-        throw "$Suite laeuft noch nicht auf dem Docker-Verbund: $Reason. Verbund-Weg kommt mit Paket T3b; bis dahin `$env:N8NTEST_RUNTIME='classic' auf dem klassischen Substrat."
+        throw "$Suite laeuft noch nicht auf dem Docker-Verbund: $Reason. Der Verbund-Weg fehlt noch; bis dahin `$env:N8NTEST_RUNTIME='classic' auf dem klassischen Substrat."
     }
 }
 
@@ -506,7 +506,7 @@ function Get-TestSuiteScratchName([string]$Project, [string]$Suite) {
 # Haken raeumt ihn mit ab (Get-WorktreeComposeTargets, lifeagents.substrate like 'n8n*'). sleep 1800: raeumt sich auch bei einem
 # toten Skript selbst ab (--rm). --init: PID 1 ist sonst `sleep` und raeumt verwaiste Prozesse nicht ab; ein beendeter Waise bliebe
 # als Zombie stehen, und `kill -0` auf ihn meldet „lebt“ (mock_runtime KZ.*: ein Schritt nach der Zeitgrenze). Im klassischen Substrat
-# raeumt systemd als PID 1 auf (gemessen: ohne --init vier KZ-Faelle rot, Waise nach kill = Zombie).
+# raeumt systemd als PID 1 auf (Waise nach kill = Zombie).
 # Das Abbild setzt LIFEAGENTS_RUNTIME=compose (Dockerfile ENV); ein Runner, der den klassischen Weg prueft, setzt die Variable selbst.
 function Get-TestSuiteScratchRunArgs {
     param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot)

@@ -56,9 +56,9 @@ Write-Host "Telegram-Befehlsmenue je Sprache (Installer-Code gegen Mock-Telegram
 Write-Host ("-" * 64)
 # Der echte Minuten-Runner wuerde einen Menue-Auftrag mit dem echten Telegram-Endpunkt abarbeiten und mit dem Test
 # um den Auftrag konkurrieren -> fuer die Testdauer anhalten (am Ende wieder starten).
+try {
 if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
 else { & docker exec $Container systemctl stop lifeagents-update-run.timer 2>$null | Out-Null }
-try {
 $audienceBefore = Invoke-Sql "SELECT value FROM core.config WHERE category = 'app' AND key = 'audience';"
 [void](Invoke-Sql "UPDATE core.config SET value = 'owner' WHERE category = 'app' AND key = 'audience';")
 Clear-MockTelegramRequests -Container $Container

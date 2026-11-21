@@ -105,7 +105,11 @@ cli backup export "$W/x.nla.enc"; rc=$?
 ( cd "$W" && "$CLI" backup export > "$W/out.e2" 2>&1 < /dev/null ); rc2=$?
 fa="$(cd "$W" && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
 # Verbund: ein Export ohne Pfad landet im Ordner auf dem Rechner, nicht im Arbeitsordner; der Name steht in der Meldung.
-if rt_is_compose; then fa="$(grep -m1 -o 'lifeagents-backup-[0-9]\{14\}-[0-9A-Za-z]*-v[0-9A-Za-z.-]*\.nla\.enc' "$W/out.e2" || true)"; fi
+if rt_is_compose; then
+  fa="$(grep -m1 -o 'lifeagents-backup-[0-9]\{14\}-[0-9A-Za-z]*-v[0-9A-Za-z.-]*\.nla\.enc' "$W/out.e2" || true)"
+  # Ohne Namen in der Meldung gaebe es keine Datei unter dem Standard-Namen: abbrechen, statt mit einer anderen Datei weiterzupruefen.
+  [ -n "$fa" ] || { fail E.name-aus-meldung "kein Standard-Name in der Meldung: $(tr '\n' ' ' < "$W/out.e2" | cut -c1-200)"; exit "$fails"; }
+fi
 ok_if E.export-ok '[ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ -s "$W/x.nla.enc" ]' "rc=$rc/$rc2"
 # Alle Pakete = Fremdschluessel-Ringe (accounts, recurring_payments, ...): pg_dump -a warnt darueber; mit --disable-triggers
 # harmlos, darum nicht in der Ausgabe (Live-Fund v0.43.1). Sonstige Ausgabe bleibt.

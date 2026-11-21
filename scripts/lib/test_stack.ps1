@@ -570,13 +570,18 @@ function Get-TestStackTickArgs {
     return @('exec', $Master, 'sh', '-c', (Get-TestStackTickScript -Action $Action))
 }
 # Suspend-/Resume-TestStackTick -Master <p>-master -- nur im Verbund (klassisch pausieren die Suiten ihre Timer selbst). Resume
-# gehoert in ein finally; ein vergessenes Resume heilt der naechste -Reset (die CLI liegt im Volume rt_tree).
+# gehoert in ein finally; ein vergessenes Resume heilt der naechste -Reset (die CLI liegt im Volume rt_tree). Die Pause ist ein einziger
+# Schalter je master, ohne Besitzer und Zaehler: zwei Suiten gleichzeitig auf demselben Verbund stuenden sich im Weg (die zweite
+# setzt die erste fort). Je Verbund eine Suite zur Zeit, parallele Suiten bekommen je einen eigenen Verbund.
 function Suspend-TestStackTick([Parameter(Mandatory)][string]$Master) {
     $r = Invoke-Native docker (Get-TestStackTickArgs -Master $Master -Action pause)
     if ($r.Code -ne 0) { throw "Tick-Schleife von $Master liess sich nicht pausieren (ein Schritt lief nach 2 Min noch?): $($r.Output -join ' | ')" }
 }
 function Resume-TestStackTick([Parameter(Mandatory)][string]$Master) {
-    [void](Invoke-Native docker (Get-TestStackTickArgs -Master $Master -Action resume))
+    $r = Invoke-Native docker (Get-TestStackTickArgs -Master $Master -Action resume)
+    # Kein throw: Resume laeuft im finally und darf einen Fehler der Suite nicht ueberdecken. Sichtbar machen, denn ohne Fortsetzen
+    # steht die Tick-Schleife (Updates, Pruefungen, Sicherung) still.
+    if ($r.Code -ne 0) { Write-Host "    [WARN] Tick-Schleife von $Master liess sich nicht fortsetzen (Exit $($r.Code)): $($r.Output -join ' | ') -- bootstrap_test_stack.ps1 -Reset stellt sie her." -ForegroundColor Yellow }
 }
 
 # Get-TestStackUnitName -Project <p> -Unit <n8ntest-gwt…> -- Name des Container, der die gleichnamige systemd-Einheit der klassischen
@@ -601,8 +606,10 @@ function Get-TestStackGatewayUnitArgs {
     param([Parameter(Mandatory)][string]$Project, [Parameter(Mandatory)][string]$Unit, [Parameter(Mandatory)][string]$Image,
           [string[]]$Env = @(), [Parameter(Mandatory)][string]$RepoRoot)
     $a = @('run', '-d') + (Get-TestStackUnitCommon $Project $Unit $RepoRoot) + @('--user', '1000:1000', '-v', "${Project}_gw_code:/gw:ro",
-        '--tmpfs', '/tmp/gwtest_usage:rw,mode=1777', '-e', 'NODE_OPTIONS=--dns-result-order=ipv4first')
+        '-e', 'NODE_OPTIONS=--dns-result-order=ipv4first')
     foreach ($e in $Env) { $a += @('-e', $e) }
+    # Der Zaehler-Ordner ist im Verbund je Einheit ein eigener tmpfs (klassisch teilen sich Einheiten einen Ordner im Substrat).
+    if (@($Env | Where-Object { $_ -like 'LLM_GATEWAY_USAGE_DIR=*' }).Count -gt 0) { $a += @('--tmpfs', '/tmp/gwtest_usage:rw,mode=1777') }
     return $a + @('--entrypoint', 'node', $Image, '/gw/server.js')
 }
 # Get-TestStackNodeUnitCreateArgs -- docker create fuer eine Attrappe (Stub-LLM, Telegram) im master-Abbild; das Skript kopiert der

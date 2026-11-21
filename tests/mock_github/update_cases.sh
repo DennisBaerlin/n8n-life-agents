@@ -23,8 +23,8 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 
 DB="$(grep -E '^DB_POSTGRESDB_DATABASE=' /etc/n8n/n8n.env | tail -n1 | cut -d= -f2)"; DB="${DB:-n8n}"
 # Datenbank und Betriebsart ueber lib/runtime.sh: klassisch runuser, im Docker-Verbund docker exec auf den Postgres-Container (dieselben
-# Texte laufen auf beiden). Im Verbund pausiert der Treiber die Tick-Schleife des master (die CLI liegt dann unter /usr/local/sbin),
-# und systemctl gibt es nicht: die Timer-Schleifen unten laufen leer durch.
+# Texte laufen auf beiden). Im Verbund pausiert der Treiber die Tick-Schleife des master (die CLI liegt dann unter /usr/local/sbin);
+# die Timer unten gibt es nur klassisch.
 # shellcheck source=/dev/null
 . "$LIB/provisioning/lib/runtime.sh"
 sql() { pg_su_psql -X -tA -q -v ON_ERROR_STOP=1 -d "$DB" -c "$1"; }
@@ -45,13 +45,15 @@ trap cleanup EXIT
 # Die echten Update-Timer des Substrats ruhen waehrend der Faelle: der minuetliche Runner uebernahm sonst einen
 # Test-Auftrag vor dem Fall (mit dem echten GitHub statt dem Mock -> "superseded", Flake sig_missing_refused 2026-10-31)
 # oder hielt zur vollen Minute die Update-Sperre (Flakes run_lock_busy 2026-10-26, run_interrupted 2026-10-30).
-for t in lifeagents-update-run.timer lifeagents-update-check.timer; do
-  if systemctl is-active --quiet "$t"; then systemctl stop "$t"; STOPPED_TIMERS+=("$t"); fi
-done
-for _ in $(seq 1 150); do
-  systemctl is-active --quiet lifeagents-update-run.service || systemctl is-active --quiet lifeagents-update-check.service || break
-  sleep 0.2
-done
+if ! rt_is_compose; then
+  for t in lifeagents-update-run.timer lifeagents-update-check.timer; do
+    if systemctl is-active --quiet "$t"; then systemctl stop "$t"; STOPPED_TIMERS+=("$t"); fi
+  done
+  for _ in $(seq 1 150); do
+    systemctl is-active --quiet lifeagents-update-run.service || systemctl is-active --quiet lifeagents-update-check.service || break
+    sleep 0.2
+  done
+fi
 
 # --- Fake-Releases ---------------------------------------------------------------------------------------------
 rm -rf "$W"; mkdir -p "$REL" "$BODIES" "$GNUPGHOME"; chmod 700 "$GNUPGHOME"

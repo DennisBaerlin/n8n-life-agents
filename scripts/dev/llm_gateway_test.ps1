@@ -467,15 +467,17 @@ try {
     $h = Get-LlmGatewayHealth -Container $Container
     if ($h -and $h.ok) { Pass "produktiver Gateway gesund (upstream $($h.upstream), static_ttl $($h.static_ttl))" } else { Fail 'produktiver Gateway /__health nicht ok' }
 
-    # (n) Verbund: der echte Gateway-Container (nicht eine Wegwerf-Einheit) laeuft nach einem Neustart mit seiner Umgebung aus gateway.env
-    # wieder, antwortet gesund und hat keinen Pruefinhalt im Log; die Wegwerf-Einheiten oben tragen denselben Code und dasselbe Abbild.
+    # (n) Verbund: der echte Gateway-Container (nicht eine Wegwerf-Einheit): ein kaputter Body mit Pruefinhalt (lokal abgelehnt, nie an den
+    # Upstream weitergereicht) erreicht sein Log nicht; nach einem Neustart liest er seine Umgebung aus gateway.env neu und ist gesund.
     if ($IsCompose) {
-        Write-Host '  (n) Verbund: echter Gateway-Container nach Neustart gesund, Log ohne Inhalt'
+        Write-Host '  (n) Verbund: echter Gateway-Container: Pruefinhalt nie im Log, Neustart gesund'
+        $resReal = Send-Gw 8090 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')
         Restart-TestLlmGateway -Container $Container
         $h2 = Get-LlmGatewayHealth -Container $Container
         $realLog = @((Invoke-Native docker @('logs', $target.Gateway)).Output)
-        if ($h2 -and $h2.ok -and @($realLog | Where-Object { $_ -match 'CANARY' }).Count -eq 0) { Pass "$($target.Gateway) neu gestartet, gesund, kein Pruefinhalt im Log" }
-        else { Fail "echter Gateway nach Neustart: health=$($h2 | ConvertTo-Json -Compress) canary-zeilen=$(@($realLog | Where-Object { $_ -match 'CANARY' }).Count)" }
+        $canaryLines = @($realLog | Where-Object { $_ -match 'CANARY' }).Count
+        if ($resReal.Status -eq '400' -and $h2 -and $h2.ok -and $canaryLines -eq 0 -and (@($realLog) -match '"code":"parse_error"')) { Pass "$($target.Gateway): kaputter Body nur als parse_error geloggt, kein Pruefinhalt; nach Neustart gesund" }
+        else { Fail "echter Gateway: Status=$($resReal.Status) health=$($h2 | ConvertTo-Json -Compress) canary-zeilen=$canaryLines" }
     }
 } finally {
     if ($Verbose) { Write-Host ((Get-UnitJournal $Units.gw) -join "`n") -ForegroundColor DarkGray }

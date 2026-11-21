@@ -247,8 +247,9 @@ Assert-That ($gw -contains 'lifeagents.worktree=C:/x' -and $gw -contains 'lifeag
 Assert-That ($gw -contains 'LLM_GATEWAY_PORT=8097' -and ($gw -contains 'NODE_OPTIONS=--dns-result-order=ipv4first') -and -not (@($gw | Where-Object { $_ -like 'STATE_DIRECTORY=*' }).Count)) 'Gateway-Einheit: Umgebung der Suite + NODE_OPTIONS wie der echte Gateway, kein STATE_DIRECTORY (sonst schriebe sie in den echten Zaehler)'
 Assert-That ($gw[-3] -eq '--entrypoint' -or $gw[-4] -eq '--entrypoint') 'Gateway-Einheit: eigener Einstieg (node), nicht das Skript des echten Gateways'
 Assert-That ($gw[-1] -eq '/gw/server.js' -and $gw[-2] -eq 'node:24-alpine@sha256:x') 'Gateway-Einheit: gleicher Code /gw/server.js im Abbild des echten Gateways'
-$gwl = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt' -Image 'i' -Env @() -RepoRoot 'C:/x')
-Assert-That ($gwl -contains '--tmpfs' -and $gwl[($gwl.IndexOf('--tmpfs') + 1)] -like '/tmp/gwtest_usage*') 'Gateway-Einheit: Zaehler-Ordner als tmpfs (Nutzer 1000 darf schreiben)'
+$gwl = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt' -Image 'i' -Env @('LLM_GATEWAY_USAGE_DIR=/tmp/gwtest_usage') -RepoRoot 'C:/x')
+Assert-That ($gwl -contains '--tmpfs' -and $gwl[($gwl.IndexOf('--tmpfs') + 1)] -like '/tmp/gwtest_usage*') 'Gateway-Einheit mit Zaehler-Ordner in der Umgebung: tmpfs dafuer (Nutzer 1000 darf schreiben)'
+Assert-That (-not ($gw -contains '--tmpfs')) 'Gateway-Einheit ohne Zaehler-Ordner: kein tmpfs'
 $mk = @(Get-TestStackNodeUnitCreateArgs -Project 's4t3b' -Unit 'n8ntest-gwt-mock' -Image 's4t3b-master:wt' -Env @('MOCK_LLM_PORT=8096') -ScriptPath '/tmp/gwtest_mock.js' -RepoRoot 'C:/x')
 Assert-That ($mk[0] -eq 'create' -and $mk[($mk.IndexOf('--network') + 1)] -eq 'container:s4t3b-anchor' -and $mk -contains 'MOCK_LLM_PORT=8096') 'Attrappen-Einheit: docker create im Namensraum des anchor (danach docker cp, docker start)'
 Assert-That ($mk[-1] -eq '/tmp/gwtest_mock.js' -and $mk[-2] -eq 's4t3b-master:wt') 'Attrappen-Einheit: node + Skript im master-Abbild'
@@ -259,7 +260,9 @@ foreach ($s in @('update_chat_test', 'bot_menu_test', 'backup_test')) {
     $sus = @(Get-SuiteCommands $p 'Suspend-TestStackTick')
     $inFinally = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $null -ne $n.Finally }, $true) |
         Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Resume-TestStackTick' }, $true)).Count -gt 0 })
-    Assert-That ($sus.Count -ge 1 -and $inFinally.Count -ge 1) "$s : pausiert den Tick im Verbund und setzt ihn in finally fort (auch bei Abbruch)"
+    # Jede Pause steht im Rumpf eines try, dessen finally fortsetzt: scheitert die Pause selbst (der Link ist dann schon getauscht), laeuft das finally trotzdem.
+    $guarded = @($sus | Where-Object { $c = $_; @($inFinally | Where-Object { $c.Extent.StartOffset -ge $_.Body.Extent.StartOffset -and $c.Extent.EndOffset -le $_.Body.Extent.EndOffset }).Count -gt 0 })
+    Assert-That ($sus.Count -ge 1 -and $guarded.Count -eq $sus.Count) "$s : pausiert den Tick im Verbund im Rumpf eines try und setzt ihn in finally fort (auch wenn die Pause selbst scheitert)"
 }
 foreach ($s in @('update_chat_test', 'bot_menu_test', 'llm_gateway_test', 'backup_test', 'n8n_patch_test')) {
     $p = Join-Path $repo "scripts\dev\$s.ps1"

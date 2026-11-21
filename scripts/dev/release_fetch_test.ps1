@@ -20,9 +20,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
 . "$PSScriptRoot\..\lib\test_common.ps1"
 # classic: das Substrat; N8NTEST_RUNTIME=compose: Wegwerf-Container aus dem master-Abbild (kein laufender Verbund nötig).
-# Das Abbild setzt LIFEAGENTS_RUNTIME=compose; die Fälle prüfen den klassischen Update-Weg (cases.sh setzt die Variable nicht selbst:
-# im compose-Zweig verlangt `update` ein master-Image in der compose.yml des Releases), also läuft der Container wie das Substrat.
-$target = Resolve-TestSuiteContainer -Suite 'release_fetch_test' -RepoRoot $RepoRoot -Env ([ordered]@{ LIFEAGENTS_RUNTIME = 'systemd' })
+$target = Resolve-TestSuiteContainer -Suite 'release_fetch_test' -RepoRoot $RepoRoot
 $Container = $target.Container
 
 Write-Host ""

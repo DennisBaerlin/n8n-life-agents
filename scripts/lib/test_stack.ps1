@@ -507,17 +507,12 @@ function Get-TestSuiteScratchName([string]$Project, [string]$Suite) {
 # toten Skript selbst ab (--rm). --init: PID 1 ist sonst `sleep` und raeumt verwaiste Prozesse nicht ab; ein beendeter Waise bliebe
 # als Zombie stehen, und `kill -0` auf ihn meldet „lebt“ (mock_runtime KZ.*: ein Schritt nach der Zeitgrenze). Im klassischen Substrat
 # raeumt systemd als PID 1 auf (gemessen: ohne --init vier KZ-Faelle rot, Waise nach kill = Zombie).
-# -Env: Umgebung des Containers (Name -> Wert, `docker run -e`). Das master-Abbild setzt LIFEAGENTS_RUNTIME=compose; eine Suite, die den
-# klassischen Weg prueft und die Variable nicht selbst setzt, bekommt hier 'systemd' (der Wert von rt_is_compose, runtime.sh).
+# Das Abbild setzt LIFEAGENTS_RUNTIME=compose (Dockerfile ENV); ein Runner, der den klassischen Weg prueft, setzt die Variable selbst.
 function Get-TestSuiteScratchRunArgs {
-    param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot, $Env = @{})
-    $a = @('run', '-d', '--rm', '--init', '--name', (Get-TestSuiteScratchName $Names.Project $Suite),
-        '--label', 'lifeagents.substrate=n8n-suite', '--label', "lifeagents.worktree=$RepoRoot")
-    foreach ($k in $Env.Keys) {
-        if ("$k" -cnotmatch '^[A-Z][A-Z0-9_]*$') { throw "Umgebungsname '$k' ungueltig (A-Z, Ziffern, '_')." }
-        $a += @('-e', "$k=$($Env[$k])")
-    }
-    return $a + @($Names.Image, 'sleep', '1800')
+    param([Parameter(Mandatory)]$Names, [Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot)
+    return @('run', '-d', '--rm', '--init', '--name', (Get-TestSuiteScratchName $Names.Project $Suite),
+        '--label', 'lifeagents.substrate=n8n-suite', '--label', "lifeagents.worktree=$RepoRoot",
+        $Names.Image, 'sleep', '1800')
 }
 
 # Resolve-TestSuiteContainer -- der Container, in dem die Suite ihre Dateien ablegt und die Fall-Runner faehrt.
@@ -527,7 +522,7 @@ function Get-TestSuiteScratchRunArgs {
 # Tag wie das des Verbunds gleichen Namens: ein Lauf nach einer Aenderung setzt ihn um, der naechste -Reset dieses Verbunds
 # installiert dann kalt (Schnappschuss-Schluessel haengt an der Abbild-ID); wer das nicht will, nimmt einen eigenen Namen.
 function Resolve-TestSuiteContainer {
-    param([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot, $Env = @{})
+    param([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$RepoRoot)
     if ((Get-TestSuiteRuntime) -eq 'classic') {
         return [pscustomobject]@{ Runtime = 'classic'; Container = (Get-TestN8nConnection).Container; Scratch = $false }
     }
@@ -538,7 +533,7 @@ function Resolve-TestSuiteContainer {
     [void](New-TestStackImage -RepoRoot $RepoRoot -Names $names -LogDir $logDir)
     $c = Get-TestSuiteScratchName $names.Project $Suite
     [void](Invoke-Native docker @('rm', '-fv', $c))
-    $r = Invoke-Native docker (Get-TestSuiteScratchRunArgs -Names $names -Suite $Suite -RepoRoot $RepoRoot -Env $Env)
+    $r = Invoke-Native docker (Get-TestSuiteScratchRunArgs -Names $names -Suite $Suite -RepoRoot $RepoRoot)
     if ($r.Code -ne 0) { throw "Wegwerf-Container $c liess sich nicht starten: $($r.Output -join "`n")" }
     return [pscustomobject]@{ Runtime = 'compose'; Container = $c; Scratch = $true }
 }

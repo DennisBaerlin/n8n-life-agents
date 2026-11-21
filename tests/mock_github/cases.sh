@@ -16,6 +16,8 @@ API="http://127.0.0.1:${PORT}"; SLUG="owner/repo"; TAG="v9.9.9"; BADSHA_TAG="v9.
 OLDTOK="tok-legacy-5f3a"
 W=/tmp/mock_github; REL="$W/releases"; MARK="$W/applied"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1 ROOT
+# hand-injected: die Faelle pruefen den klassischen Update-Weg; das master-Abbild setzt LIFEAGENTS_RUNTIME=compose (der Verbund-Weg hat eigene Faelle, tests/mock_runtime)
+export LIFEAGENTS_RUNTIME=systemd
 fails=0
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }

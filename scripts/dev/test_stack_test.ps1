@@ -175,11 +175,11 @@ $sa = @(Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite '
 Assert-That ($sa[0] -eq 'run' -and $sa -contains '-d' -and $sa -contains '--rm' -and $sa[($sa.IndexOf('--name') + 1)] -eq $sn) 'Wegwerf-Container: docker run -d --rm mit Namen'
 Assert-That ($sa -contains 'lifeagents.worktree=C:/x' -and $sa -contains 'lifeagents.substrate=n8n-suite') 'Wegwerf-Container: Etiketten fuer den Session-Ende-Haken (Worktree + n8n-*)'
 Assert-That (-not (@($sa | Where-Object { $_ -like 'io.lifeagents.install=*' }).Count) -and $sa -contains 's4t3a-master:wt') 'Wegwerf-Container: kein Install-Etikett (kein Teil des Verbunds), Abbild <projekt>-master:wt'
-$se = @(Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite 'release_fetch_test' -RepoRoot 'C:/x' -Env ([ordered]@{ LIFEAGENTS_RUNTIME = 'systemd' }))
-Assert-That ($se[($se.IndexOf('-e') + 1)] -eq 'LIFEAGENTS_RUNTIME=systemd' -and $se.IndexOf('-e') -lt $se.IndexOf('s4t3a-master:wt') -and -not ($sa -contains '-e')) 'Wegwerf-Container: -Env als docker run -e vor dem Abbild; ohne -Env keine'
-Assert-That (Test-Throws { Get-TestSuiteScratchRunArgs -Names (Get-TestStackNames 's4t3a') -Suite 'x_test' -RepoRoot 'C:/x' -Env @{ 'BAD NAME' = '1' } }) 'Wegwerf-Container: Umgebungsname nur A-Z, Ziffern, _'
-$rf = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\release_fetch_test.ps1'))
-Assert-That ($rf -match "LIFEAGENTS_RUNTIME\s*=\s*'systemd'") 'release_fetch_test: faehrt die klassische Betriebsart (das Abbild setzt compose, die Faelle pruefen den klassischen Update-Weg)'
+# Das Abbild setzt LIFEAGENTS_RUNTIME=compose (Dockerfile ENV). Ein Runner, der den klassischen Weg prueft, setzt die Betriebsart selbst,
+# sonst haengt sein Ergebnis an der Umgebung (im Abbild: sechs rote Faelle in release_fetch_test). Der Container bekommt keine Sonder-Variable.
+$gh = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\mock_github\cases.sh'))
+Assert-That ($gh -match '(?m)^export LIFEAGENTS_RUNTIME=systemd\b') 'mock_github/cases.sh setzt die klassische Betriebsart selbst (export LIFEAGENTS_RUNTIME=systemd)'
+Assert-That (-not ($sa -contains '-e')) 'Wegwerf-Container: keine Sonder-Umgebung, die Runner setzen ihre Betriebsart selbst'
 Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst melden die KZ-Faelle einen Zombie als lebend)'
 Assert-That ($sa[-2] -eq 'sleep' -and [int]$sa[-1] -gt 0) 'Wegwerf-Container: Ruhe-Befehl mit Ablauf (raeumt sich auch bei totem Skript ab)'
 

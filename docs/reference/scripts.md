@@ -37,6 +37,10 @@ New-Item -ItemType Directory -Path $dst -Force | Out-Null
 Copy-Item -Path 'packages\*\workflows\*.json' -Destination $dst
 ```
 
+## Unterbau der Suiten: `N8NTEST_RUNTIME` (`classic` | `compose`)
+
+`classic` (Standard bis zur Umschaltung der Matrix) ist das systemd-Substrat (`bootstrap_test_n8n.ps1`), `compose` der Docker-Verbund (`bootstrap_test_stack.ps1`, eigener Projektname in `N8NTEST_CONTAINER`). Die Zustandsdatei nennt den laufenden Unterbau; `Assert-TestSuiteStateRuntime` bricht ab, wenn er nicht zu `N8NTEST_RUNTIME` passt. Suiten, die nur bash und Werkzeuge brauchen, laufen im Verbund-Weg in einem Wegwerf-Container aus dem master-Abbild (`Resolve-TestSuiteContainer`). Suiten mit Datenbank, Timer, Gateway oder n8n laufen im master des Verbunds: statt der systemd-Timer pausiert `Suspend-TestStackTick` die Tick-Schleife (in `finally` zurück), statt der transienten Gateway-Einheiten starten eigene Container im Netz des `anchor` (`Get-TestStackGatewayUnitArgs`, Abbild und Code des echten Gateways). Hilfen: `scripts/lib/test_stack.ps1`.
+
 ## Test-Substrat-`.env`-Keys (`scripts/lib/test_install_env.ps1`)
 
 Beide Substrat-Treiber (klassisch `bootstrap_test_n8n.ps1`, Verbund `bootstrap_test_stack.ps1`) lesen die Test-Identität + optionale Secrets aus `.env` (gitignored) und reichen sie in die Installation — gemappt auf die Namen, die der bash-Kern liest (`Get-TestInstallEnvMap`). Kanonisches Layout = `.env.example` (`doc_lint.ps1` 7b: jeder Quell-Key der Zuordnung ist dort dokumentiert).

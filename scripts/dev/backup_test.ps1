@@ -8,6 +8,8 @@
 #   - backup key (Terminal/--file/stdout), Rueckweg nach Update, Leck-Probe (Ausgaben, /proc, tmpfs).
 # Veraendert die Substrat-DB nur voruebergehend: core.backup_key steht danach wie vorher, die Nutzerdaten sind die eigene
 # Sicherung (Restore derselben Daten). Braucht kein n8n-Aufruf, kein LLM, kein Netz.
+# N8NTEST_RUNTIME=compose: im master des Verbunds (bootstrap_test_stack.ps1); statt des Backup-Timers pausiert die Tick-Schleife des master
+# (sie sicherte sonst stuendlich zwischen den Faellen).
 # Usage:  .\scripts\dev\backup_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
@@ -16,11 +18,11 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
-# Braucht das echte PostgreSQL mit installiertem Schema (pg_su_psql auf core.*, agent.*, finance.*) und den Backup-Timer des
-# laufenden Systems: im master-Abbild gibt es beides nicht, der Verbund-Weg fehlt noch.
-Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'die Faelle brauchen die echte Datenbank mit installiertem Schema und den Backup-Timer (pg_su_psql, systemctl), im master-Abbild gibt es beides nicht'
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
+Assert-TestSuiteStateRuntime -State (Get-TestN8nState)
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 
@@ -36,7 +38,12 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages')
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
 
-$r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/cases.sh", $root)
+try {
+    if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/cases.sh", $root)
+} finally {
+    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
+}
 $lines = @($r.Output)
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }

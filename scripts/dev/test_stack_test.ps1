@@ -159,12 +159,6 @@ try {
     $env:N8NTEST_RUNTIME = 'compose'; $env:N8NTEST_CONTAINER = $null
     Assert-That (Test-Throws { Resolve-TestSuiteContainer -Suite 'runtime_test' -RepoRoot $repo }) 'Verbund-Weg ohne N8NTEST_CONTAINER = Abbruch (vor jedem Docker-Aufruf)'
 
-    # Suiten, die einen laufenden Verbund brauchen (Datenbank, n8n-Patch-Weg): Verbund-Weg bricht klar ab, klassisch laeuft.
-    $env:N8NTEST_RUNTIME = 'classic'
-    Assert-That (-not (Test-Throws { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'x' })) 'Verbund-Suite: klassisch kein Abbruch'
-    $env:N8NTEST_RUNTIME = 'compose'
-    $msg = ''; try { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'echte Datenbank' } catch { $msg = $_.Exception.Message }
-    Assert-That ($msg -match 'backup_test' -and $msg -match 'echte Datenbank' -and $msg -match 'Verbund-Weg fehlt') 'Verbund-Suite: Abbruch nennt Suite und Grund'
 } finally { $env:N8NTEST_RUNTIME = $savedRt; $env:N8NTEST_CONTAINER = $savedCt }
 
 $sn = Get-TestSuiteScratchName 's4t3a' 'runtime_test'
@@ -209,11 +203,66 @@ foreach ($s in @('runtime_test', 'reachability_test', 'release_fetch_test', 'bot
         Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Remove-TestSuiteScratch' }, $true)).Count -gt 0 })
     Assert-That ($res.Count -eq 1 -and $inFinally.Count -ge 1) "$s : ruft Resolve-TestSuiteContainer mit eigenem Namen und raeumt in finally mit Remove-TestSuiteScratch ab"
 }
-foreach ($s in @('backup_test', 'n8n_patch_test')) {
+
+# --- Suiten im laufenden Verbund (T3b): Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------
+# Die Tick-Schleife des master (compose.yml) ruft jede Minute `lifeagents update --tick` und konkurriert mit den Suiten um
+# Auftraege und die Update-Sperre. Sie ruft die CLI nur, wenn /usr/local/bin/lifeagents ausfuehrbar ist; der Runner ruft die CLI aber
+# selbst direkt auf (`command -v lifeagents`), ein `chmod a-x` bremste also auch ihn. Darum Link-Tausch: die CLI liegt waehrend der
+# Pause unter /usr/local/sbin (steht vor /usr/local/bin im PATH), /usr/local/bin/lifeagents fehlt der Schleife.
+$tickOff = Get-TestStackTickScript -Action pause
+$tickOn = Get-TestStackTickScript -Action resume
+Assert-That ($tickOff -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/sbin/lifeagents' -and $tickOff -match 'rm -f /usr/local/bin/lifeagents') 'Tick: pausieren = CLI nach /usr/local/sbin (im PATH), /usr/local/bin/lifeagents weg'
+Assert-That ($tickOn -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents' -and $tickOn -match 'rm -f /usr/local/sbin/lifeagents') 'Tick: fortsetzen = Link des Abbilds zurueck, sbin-Link weg'
+# `pgrep -f` im selben sh -c fande sich selbst; die eckige Klammer im Muster verhindert den Treffer auf die eigene Befehlszeile.
+Assert-That ($tickOff -match '\[l\]ifeagents update' -and $tickOff -match 'pgrep -f') 'Tick: wartet auf einen schon laufenden Schritt, ohne sich selbst zu finden ([l]ifeagents)'
+Assert-That ($tickOn -notmatch 'pgrep') 'Tick: Fortsetzen wartet auf nichts'
+Assert-That (Test-Throws { Get-TestStackTickScript -Action 'stop' }) 'Tick: unbekannte Aktion = Abbruch'
+$ta = @(Get-TestStackTickArgs -Master 's4t3b-master' -Action pause)
+Assert-That ($ta[0] -eq 'exec' -and $ta[1] -eq 's4t3b-master' -and $ta[2] -eq 'sh' -and $ta[3] -eq '-c') 'Tick: docker exec nur im master dieses Verbunds'
+Assert-That (Test-Throws { Get-TestStackTickArgs -Master '' -Action pause }) 'Tick: ohne master-Namen = Abbruch'
+
+# Der laufende Unterbau muss zu N8NTEST_RUNTIME passen: ein Lauf im Verbund-Weg gegen ein klassisches Substrat (oder umgekehrt) fuehrte
+# systemd- bzw. docker-Aufrufe ins Leere und liefe mit irrefuehrenden Fehlern.
+. (Join-Path $repo 'scripts\lib\n8ntest_state_file.ps1')
+$savedRt2 = $env:N8NTEST_RUNTIME
+try {
+    $env:N8NTEST_RUNTIME = 'compose'
+    Assert-That (-not (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ runtime = 'compose' }) })) 'Unterbau passt: compose/compose kein Abbruch'
+    $msg = ''; try { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ container = 'x' }) } catch { $msg = $_.Exception.Message }
+    Assert-That ($msg -match 'compose' -and $msg -match 'classic') 'Unterbau passt nicht: compose gewaehlt, Substrat klassisch = Abbruch mit beiden Namen'
+    $env:N8NTEST_RUNTIME = 'classic'
+    Assert-That (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ runtime = 'compose' }) }) 'Unterbau passt nicht: classic gewaehlt, Verbund laeuft = Abbruch'
+    Assert-That (-not (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ container = 'x' }) })) 'Unterbau passt: classic/ohne Feld (alte Zustandsdatei) kein Abbruch'
+} finally { $env:N8NTEST_RUNTIME = $savedRt2 }
+
+$un = Get-TestStackUnitName -Project 's4t3b' -Unit 'n8ntest-gwt-mock'
+Assert-That ($un -eq 's4t3b-n8ntest-gwt-mock') 'Einheit: <projekt>-<einheit>'
+Assert-That ((Test-Throws { Get-TestStackUnitName -Project 's4t3b' -Unit 'fremd' }) -and (Test-Throws { Get-TestStackUnitName -Project 'lifeagents' -Unit 'n8ntest-gwt' })) 'Einheit: nur n8ntest-gwt…-Namen, nie im Standard-Projekt'
+$gw = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt-dead' -Image 'node:24-alpine@sha256:x' -Env @('LLM_GATEWAY_PORT=8097') -RepoRoot 'C:/x')
+Assert-That ($gw[0] -eq 'run' -and $gw -contains '-d' -and $gw[($gw.IndexOf('--name') + 1)] -eq 's4t3b-n8ntest-gwt-dead') 'Gateway-Einheit: docker run -d mit Namen'
+Assert-That ($gw[($gw.IndexOf('--network') + 1)] -eq 'container:s4t3b-anchor') 'Gateway-Einheit: im Netz-Namensraum des anchor (127.0.0.1 wie der echte Gateway)'
+Assert-That ($gw[($gw.IndexOf('--user') + 1)] -eq '1000:1000' -and $gw -contains 's4t3b_gw_code:/gw:ro') 'Gateway-Einheit: Nutzer und Code-Volume wie compose.yml (gateway), Code nur lesbar'
+Assert-That ($gw -contains 'lifeagents.worktree=C:/x' -and $gw -contains 'lifeagents.substrate=n8n-suite' -and -not (@($gw | Where-Object { $_ -like 'io.lifeagents.install=*' }).Count)) 'Gateway-Einheit: Etiketten fuer den Session-Ende-Haken, kein Install-Etikett'
+Assert-That ($gw -contains 'LLM_GATEWAY_PORT=8097' -and ($gw -contains 'NODE_OPTIONS=--dns-result-order=ipv4first') -and -not (@($gw | Where-Object { $_ -like 'STATE_DIRECTORY=*' }).Count)) 'Gateway-Einheit: Umgebung der Suite + NODE_OPTIONS wie der echte Gateway, kein STATE_DIRECTORY (sonst schriebe sie in den echten Zaehler)'
+Assert-That ($gw[-3] -eq '--entrypoint' -or $gw[-4] -eq '--entrypoint') 'Gateway-Einheit: eigener Einstieg (node), nicht das Skript des echten Gateways'
+Assert-That ($gw[-1] -eq '/gw/server.js' -and $gw[-2] -eq 'node:24-alpine@sha256:x') 'Gateway-Einheit: gleicher Code /gw/server.js im Abbild des echten Gateways'
+$gwl = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt' -Image 'i' -Env @() -RepoRoot 'C:/x')
+Assert-That ($gwl -contains '--tmpfs' -and $gwl[($gwl.IndexOf('--tmpfs') + 1)] -like '/tmp/gwtest_usage*') 'Gateway-Einheit: Zaehler-Ordner als tmpfs (Nutzer 1000 darf schreiben)'
+$mk = @(Get-TestStackNodeUnitCreateArgs -Project 's4t3b' -Unit 'n8ntest-gwt-mock' -Image 's4t3b-master:wt' -Env @('MOCK_LLM_PORT=8096') -ScriptPath '/tmp/gwtest_mock.js' -RepoRoot 'C:/x')
+Assert-That ($mk[0] -eq 'create' -and $mk[($mk.IndexOf('--network') + 1)] -eq 'container:s4t3b-anchor' -and $mk -contains 'MOCK_LLM_PORT=8096') 'Attrappen-Einheit: docker create im Namensraum des anchor (danach docker cp, docker start)'
+Assert-That ($mk[-1] -eq '/tmp/gwtest_mock.js' -and $mk[-2] -eq 's4t3b-master:wt') 'Attrappen-Einheit: node + Skript im master-Abbild'
+
+foreach ($s in @('update_chat_test', 'bot_menu_test', 'backup_test')) {
     $p = Join-Path $repo "scripts\dev\$s.ps1"
-    $as = @(Get-SuiteCommands $p 'Assert-TestSuiteClassicOnly' | Where-Object { (Get-SuiteArg $_ 'Suite') -eq $s })
-    $conn = @(Get-SuiteCommands $p 'Get-TestN8nConnection')
-    Assert-That ($as.Count -eq 1 -and $conn.Count -ge 1 -and $as[0].Extent.StartOffset -lt $conn[0].Extent.StartOffset) "$s : bricht auf dem Verbund-Weg ab, bevor es das Substrat anspricht (Assert-TestSuiteClassicOnly vor Get-TestN8nConnection)"
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$null)
+    $sus = @(Get-SuiteCommands $p 'Suspend-TestStackTick')
+    $inFinally = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $null -ne $n.Finally }, $true) |
+        Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Resume-TestStackTick' }, $true)).Count -gt 0 })
+    Assert-That ($sus.Count -ge 1 -and $inFinally.Count -ge 1) "$s : pausiert den Tick im Verbund und setzt ihn in finally fort (auch bei Abbruch)"
+}
+foreach ($s in @('update_chat_test', 'bot_menu_test', 'llm_gateway_test', 'backup_test', 'n8n_patch_test')) {
+    $p = Join-Path $repo "scripts\dev\$s.ps1"
+    Assert-That ((Get-SuiteCommands $p 'Get-TestSuiteRuntime').Count -ge 1) "$s : waehlt den Weg ueber Get-TestSuiteRuntime (N8NTEST_RUNTIME), nicht ueber Annahmen"
 }
 
 Write-Host "test_stack_test: $failed Fehler."

@@ -22,13 +22,20 @@ pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 
 DB="$(grep -E '^DB_POSTGRESDB_DATABASE=' /etc/n8n/n8n.env | tail -n1 | cut -d= -f2)"; DB="${DB:-n8n}"
-sql() { runuser -u postgres -- psql -X -tA -q -v ON_ERROR_STOP=1 -d "$DB" -c "$1"; }
+# Datenbank und Betriebsart ueber lib/runtime.sh: klassisch runuser, im Docker-Verbund docker exec auf den Postgres-Container (dieselben
+# Texte laufen auf beiden). Im Verbund pausiert der Treiber die Tick-Schleife des master (die CLI liegt dann unter /usr/local/sbin),
+# und systemctl gibt es nicht: die Timer-Schleifen unten laufen leer durch.
+# shellcheck source=/dev/null
+. "$LIB/provisioning/lib/runtime.sh"
+sql() { pg_su_psql -X -tA -q -v ON_ERROR_STOP=1 -d "$DB" -c "$1"; }
+if rt_is_compose; then RT_NAME=compose; else RT_NAME=systemd; fi
 
 ORIG_VER="$(cat "$VER" 2>/dev/null || printf dev)"
-MOCK_PID=''; STOPPED_TIMERS=()
+MOCK_PID=''; TGMOCK_PID=''; STOPPED_TIMERS=()
 # shellcheck disable=SC2329  # aufgerufen ueber trap EXIT
 cleanup() {
   [ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null
+  [ -n "$TGMOCK_PID" ] && kill "$TGMOCK_PID" 2>/dev/null
   printf '%s\n' "$ORIG_VER" > "$VER"
   sql "DELETE FROM core.update_requests; DELETE FROM core.notification_state WHERE source = 'release_update';" >/dev/null 2>&1
   for t in "${STOPPED_TIMERS[@]}"; do systemctl start "$t" 2>/dev/null; done
@@ -58,7 +65,7 @@ sc="$(cat /tmp/upd_test/scenario 2>/dev/null || printf ok)"
 result_set status running; result_set stage preflight
 printf '%s' "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" > /tmp/upd_test/request_id
 # Lebenszeichen der Schleife WAEHREND des Updates (hb_loop_busy_update): der Runner meldet busy vor dem Update
-runuser -u postgres -- psql -X -tA -d "${N8N_DB_NAME:-n8n}" -c "SELECT status || '|' || round(extract(epoch FROM busy_until - beat_at)) FROM core.heartbeats WHERE signal = 'loop'" > /tmp/upd_test/hb_during 2>/dev/null || true
+pg_su_psql -X -tA -d "${N8N_DB_NAME:-n8n}" -c "SELECT status || '|' || round(extract(epoch FROM busy_until - beat_at)) FROM core.heartbeats WHERE signal = 'loop'" > /tmp/upd_test/hb_during 2>/dev/null || true
 case "$sc" in
   steps)   for s in base postgres n8n workflows final; do result_set stage "$s"; sleep 2; done
            printf '%s\n' "$RELEASE_TAG" > /usr/local/lib/lifeagents/VERSION; result_set status ok ;;
@@ -69,6 +76,12 @@ case "$sc" in
   fail)    result_set changed true; result_set stage workflows; die "Workflow-Import fehlgeschlagen (Test)" ;;
 esac
 STUB
+  # Docker-Verbund: das Release nennt sein master-Abbild in compose/compose.yml (fetch_release.sh). Dasselbe wie das laufende: der
+  # Applier (Stub) laeuft ohne master-Wechsel, der nicht Gegenstand dieser Faelle ist (er ersetzte den master mitten im Lauf).
+  if rt_is_compose; then
+    mkdir -p "$src/compose"
+    printf 'name: lifeagents\nservices:\n  master:\n    image: %s\n' "$LA_MASTER_IMAGE" > "$src/compose/compose.yml"
+  fi
   tar -czf "$REL/$tag/n8n-life-agents-$tag.tar.gz" -C "$W/src/$tag" "n8n-life-agents-$tag"
   ( cd "$REL/$tag" && sha256sum "n8n-life-agents-$tag.tar.gz" > "n8n-life-agents-$tag.tar.gz.sha256" )
   printf 'echo fake-install\n' > "$REL/$tag/install.sh"
@@ -102,7 +115,14 @@ MOCK_GH_PORT="$PORT" MOCK_GH_SLUG="$SLUG" MOCK_GH_RELEASE_DIR="$REL" MOCK_GH_BOD
 MOCK_PID=$!
 for _ in $(seq 1 50); do [ "$(curl -s "$API/__pid" | jq -r '.pid // empty' 2>/dev/null)" = "$MOCK_PID" ] && break; sleep 0.1; done
 [ "$(curl -s "$API/__pid" | jq -r '.pid // empty' 2>/dev/null)" = "$MOCK_PID" ] || { echo "FAIL setup: GitHub-Mock nicht bereit $(cat "$W/mock.log")"; exit 1; }
-curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup: Telegram-Mock (Port ${TGPORT}) nicht erreichbar — enable_mock_telegram.ps1"; exit 1; }
+# Im Verbund loggt die Attrappe des Pods auf den Rechner, die Faelle lesen das Log aber im master: eigene Attrappe auf TGPORT, Log TGLOG.
+if rt_is_compose; then
+  : > "$TGLOG"
+  N8NTEST_MOCK_TG_PORT="$TGPORT" N8NTEST_MOCK_TG_LOG="$TGLOG" node "$ROOT/mock_telegram/server.js" > "$W/mock_tg.log" 2>&1 &
+  TGMOCK_PID=$!
+  for _ in $(seq 1 50); do curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null 2>&1 && break; sleep 0.1; done
+fi
+curl -fsS "http://127.0.0.1:${TGPORT}/__health" >/dev/null || { echo "FAIL setup: Telegram-Mock (Port ${TGPORT}) nicht erreichbar — klassisch enable_mock_telegram.ps1, im Verbund ein belegter Port"; exit 1; }
 
 # --- Helfer -------------------------------------------------------------------------------------------------
 # Schluesselbund-Modus immer AUSDRUECKLICH: der Substrat-Baum traegt den echten Projekt-Schluessel (install_release_keyring
@@ -147,7 +167,7 @@ reset_db; latch_clear
 # 1-3 Release-Karte: faellig, genau einmal, erst nach erfolgreichem Senden gemerkt
 installed v9.9.8; reset_db; latch_clear; tg_clear; hb_reset; cli --check
 h="$(hb check)"
-if [ "$h" = 'ok||true' ] && [ "$(sql "SELECT runtime || ' ' || help_url FROM core.heartbeat_observer")" = 'systemd https://owner.github.io/repo/docs/update-hilfe.html' ]; then
+if [ "$h" = 'ok||true' ] && [ "$(sql "SELECT runtime || ' ' || help_url FROM core.heartbeat_observer")" = "$RT_NAME https://owner.github.io/repo/docs/update-hilfe.html" ]; then
   pass hb_check_ok; else fail hb_check_ok "check=[$h] $(show "$OUT")"; fi
 if [ "$(tg_n)" = 1 ] && tg_has 'upd:now:v9.9.10' && tg_has 'Kurz zehn.' && tg_has 'Kurz neun.' && ! tg_has 'RC-Text' && ! tg_has 'Alt acht' \
    && [ "$(sql "SELECT state FROM core.notification_state WHERE source='release_update' AND key='v9.9.10'")" = fired ]; then

@@ -9,3 +9,19 @@ function Read-DotEnvLines([string]$Path) {
     $native = $Path.Replace([char]92, [System.IO.Path]::DirectorySeparatorChar)
     [System.IO.File]::ReadAllLines($native, (New-Object System.Text.UTF8Encoding($false)))
 }
+
+# ConvertFrom-DotEnvLine <zeile> -> @{Name; Value} oder $null (Kommentar, Leerzeile, kein "="). Die eine Lesart der .env-Werte:
+# Leerraum und ein umschliessendes Paar '...' bzw. "..." fallen ab (ein gequoteter Bot-Token passte sonst nicht zur Signaturpruefung).
+function ConvertFrom-DotEnvLine([string]$Line) {
+    if ($Line -notmatch '^\s*([^#\s=][^=]*)=(.*)$') { return $null }
+    $v = $Matches[2].Trim()
+    if ($v.Length -ge 2 -and (($v[0] -eq '"' -and $v[-1] -eq '"') -or ($v[0] -eq "'" -and $v[-1] -eq "'"))) { $v = $v.Substring(1, $v.Length - 2) }
+    return [pscustomobject]@{ Name = $Matches[1].Trim(); Value = $v }
+}
+
+# Read-DotEnvValues <pfad> -> Hashtable Name -> Wert (letzte Zeile gewinnt).
+function Read-DotEnvValues([string]$Path) {
+    $map = @{}
+    foreach ($l in (Read-DotEnvLines $Path)) { $e = ConvertFrom-DotEnvLine $l; if ($e) { $map[$e.Name] = $e.Value } }
+    return $map
+}

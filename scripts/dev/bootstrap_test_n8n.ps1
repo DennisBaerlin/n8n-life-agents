@@ -103,11 +103,8 @@ $EnvFileInC = '/root/.n8ntest_install.env'
 
 # --- .env laden (gleiche Mechanik wie die uebrigen scripts/-Treiber) ---------
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
-        Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
-    }
-}
+$dotEnv = Read-DotEnvValues "$RepoRoot\.env"
+foreach ($k in $dotEnv.Keys) { Set-Variable -Name $k -Value $dotEnv[$k] -Scope Script }
 function Get-EnvValue([string]$name) {
     $v = Get-Variable $name -ValueOnly -Scope Script -ErrorAction SilentlyContinue
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }

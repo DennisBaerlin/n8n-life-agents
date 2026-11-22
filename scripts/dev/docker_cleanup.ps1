@@ -3,13 +3,13 @@
 # Standard ist eine Liste ohne Loeschen; erst -Apply loescht. Nie `prune`, nie `--all`, nie fremde Objekte.
 #
 # Was als eigen gilt (scripts/lib/docker_cleanup_select.ps1):
-#   Container  gestoppt (exited/created/dead) und Label lifeagents.substrate* / io.lifeagents.* ODER Name n8ntest*, lifeagents-dbtest*,
+#   Container  gestoppt (exited/created/dead) und Label lifeagents.substrate* / lifeagents.worktree ODER Name n8ntest*, lifeagents-dbtest*,
 #              ta-voltest*, ta-*test*. Laufende Container bleiben immer stehen.
 #   Volumes    nur die anonymen Volumes der eigenen Container, und zwar ueber `docker rm -fv` mit dem Container. Benannte Volumes
 #              und alles Fremde bleiben. Warnung -IncludeOrphanAnonymousVolumes (Standard aus): loescht zusaetzlich alle anonymen
 #              Volumes (64-Hex-Name) ohne Container, auch Altlasten laengst geloeschter eigener Container. Docker kann sie keinem
 #              Projekt zuordnen, es trifft darum auch verwaiste Volumes fremder Docker-Projekte.
-#   Images     Zwischenstaende ohne Namen (dangling) mit Label lifeagents.substrate-base oder io.lifeagents.install.
+#   Images     Zwischenstaende ohne Namen (dangling) mit Label lifeagents.substrate-base. io.lifeagents.install allein ist nie eigen (echte Start-App-Installation).
 # Voraussetzung: Docker-Daemon. Ohne Docker meldet das Skript es und endet mit Exit 0.
 #
 # Usage:  .\scripts\dev\docker_cleanup.ps1            # zeigt, was entfernt wuerde (WhatIf)

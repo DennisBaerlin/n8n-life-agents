@@ -171,7 +171,13 @@ cli backup restore "$A" --yes; rc=$?
 ok_if R.ohne-eingabe-abbruch '[ "$rc" -ne 0 ] && said -- "--key-stdin" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
 paper "$KC" > "$W/kc"; cli_in "$W/kc" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.falscher-schluessel '[ "$rc" -ne 0 ] && said "gehört nicht zu dieser Sicherung" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
-c3="$(paper "$KA" | sed -n 3p | cut -c5)"; [ "$c3" = f ] && c3=e || c3=f
+# Tippfehler in Zeile 3 so, dass das Pruefzeichen sicher nicht passt (typo_lib.sh; ein fester Tausch rutschte bei 1 von 256 Schluesseln durch).
+# shellcheck source=typo_lib.sh
+. "$ROOT/backup/typo_lib.sh"
+l3="$(paper "$KA" | sed -n 3p | sed -E 's/^3:[[:space:]]+//; s/-//g; s/[[:space:]].*$//')"
+c3="$(typo_char 3 "$l3")"
+bash "$ROOT/backup/typo_lib_test.sh" "$ROOT" > "$W/typo_lib.out" 2>&1; rc=$?
+ok_if R.typo-lib '[ "$rc" -eq 0 ] && [ -n "$c3" ]' "rc=$rc c3='$c3' $(tail -n 5 "$W/typo_lib.out" | tr '\n' ' ')"
 paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
 cli_in "$W/typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && active_is "$KB"' "rc=$rc"

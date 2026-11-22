@@ -1,10 +1,11 @@
 ﻿#Requires -Version 5.1
 # Auswahl-Logik fuer scripts/dev/docker_cleanup.ps1 (rein, ohne Docker; Test: scripts/dev/docker_cleanup_test.ps1).
-# "Eigen" heisst: Label lifeagents.substrate* / io.lifeagents.* oder ein bekannter Test-Container-Name. Alles andere bleibt unberuehrt.
+# "Eigen" heisst: Label lifeagents.substrate* / lifeagents.worktree (Etiketten-Vertrag, scripts/lib/test_stack.ps1) oder ein bekannter
+# Test-Container-Name. io.lifeagents.install allein ist nie eigen: das Etikett tragen auch die Container einer echten Start-App-Installation.
 
-$OwnLabelPattern = '^(lifeagents\.substrate|io\.lifeagents\.)'
+$OwnLabelPattern = '^(lifeagents\.substrate|lifeagents\.worktree=)'
 $OwnNamePattern  = '^(n8ntest|lifeagents-dbtest|ta-voltest|ta-[a-z0-9]+test)'
-$OwnImageLabels  = @('lifeagents.substrate-base', 'io.lifeagents.install')
+$OwnImageLabels  = @('lifeagents.substrate-base')
 
 # Eine `docker ps -a --format '{{.Names}}|{{.State}}|{{.Labels}}'`-Zeile -> Objekt.
 function ConvertFrom-ContainerLine([string]$Line) {

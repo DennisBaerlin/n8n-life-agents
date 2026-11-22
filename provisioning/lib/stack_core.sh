@@ -265,6 +265,10 @@ sc_delegate() {
           if [ "$vcmp" = 1 ]; then
             sc_fail newer_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — ein neueres Programm verwenden. Nichts geaendert."
           fi
+          # Ein Vorab-Stand bekommt keine Update-Karte (common.sh): dort fuehrt nur `lifeagents update` weiter.
+          if is_prerelease_tag "$inst"; then
+            sc_fail older_installation "Die Daten stammen vom Vorab-Release ${inst}, dieses Programm ist ${own} — zuerst mit ${inst} starten, dann 'lifeagents update'. Nichts geaendert."
+          fi
           sc_fail older_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — zuerst mit ${inst} starten, dann im Chat aktualisieren. Nichts geaendert." ;;
       esac
     fi

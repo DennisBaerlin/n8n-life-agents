@@ -249,6 +249,10 @@ _mv_run true; F_REL=v0.51.0-rc.1 _mv_folder
 eq UZ.vorab-release-aus-dateiname v0.51.0-rc.1 "$(_bkp_bundle_release "$W/kein-bundle" lifeagents-backup-20261120100000-abcd1234-v0.51.0-rc.1.nla.enc)"
 _bkp_rel_older v0.51.0-rc.1 v0.51.0; eq UZ.vorab-sicherung-aelter-als-stabil 0 "$?"
 _bkp_rel_older dev-0123abc v0.51.0; eq UZ.dev-sicherung-nie-aelter 1 "$?"
+_bn="$(_bkp_file_name 20261120100000 abcd1234 v0.51.0-probe-x)"
+eq UZ.vorab-bindestrich-dateiname lifeagents-backup-20261120100000-abcd1234-v0.51.0-probe-x.nla.enc "$_bn"
+eq UZ.vorab-bindestrich-zurueck v0.51.0-probe-x "$(_bkp_bundle_release "$W/kein-bundle" "$_bn")"
+eq UZ.dev-dateiname-vdev lifeagents-backup-20261120100000-abcd1234-vdev.nla.enc "$(_bkp_file_name 20261120100000 abcd1234 dev-0123abc)"
 # Notfallblatt: ohne Terminal klarer Satz mit dem Befehl, nichts geaendert; mit Terminal einmal fragen, an Plan UND Restore reichen.
 _mv_run true; ( PLAN_CODE=key_needed _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.blatt-ohne-terminal-rc 1 "$?"; _mv_nothing blatt-ohne-terminal 'Notfallblatt'
 _mv_run true; ( PLAN_CODE=key_needed IA=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.blatt-mit-terminal-rc 0 "$?"

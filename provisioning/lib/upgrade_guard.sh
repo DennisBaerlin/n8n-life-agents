@@ -115,11 +115,12 @@ _upg_release_change() {
   return 0
 }
 
-# _upg_installed_release -> das installierte stabile Release-Tag (VERSION), leer bei dev/keinem.
+# _upg_installed_release -> das installierte Release- oder Vorab-Tag (VERSION), leer bei dev/keinem. Ein Wechsel ab einem
+#   Vorab-Stand ist ein Release-Wechsel wie jeder andere: erst sichern.
 _upg_installed_release() {
   local v
   v="$(cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
-  [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s' "$v"
+  if is_release_tag "$v" || is_prerelease_tag "$v"; then printf '%s' "$v"; fi
   return 0
 }
 
@@ -541,7 +542,7 @@ upgrade_rollback() {
     :
   else
     case "$from_rel" in
-      v[0-9]*) [[ "$from_rel" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Vorherige Version '${from_rel}' ist kein stabiles Release — kein automatischer Rückweg." ;;
+      v[0-9]*) is_release_tag "$from_rel" || is_prerelease_tag "$from_rel" || die "Vorherige Version '${from_rel}' ist kein Release — kein automatischer Rückweg." ;;
       *) die "Vorherige Version unbekannt ('${from_rel:-?}') — kein automatischer Rückweg (Einzelschritte: docs/reference/provisioning.md *Versionswechsel*)." ;;
     esac
   fi

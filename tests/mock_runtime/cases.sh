@@ -2002,9 +2002,15 @@ eq VH.lauf-vorab-tag-bleibt '0|v0.51.0-rc.1|' "$(vh_resolve release v0.51.0-rc.1
 eq VH.lauf-dev-nimmt-vorab-abbild-tag '0|v0.51.0-rc.1|' "$(vh_resolve release dev v0.51.0-rc.1)"
 eq VH.lauf-kaputtes-suffix-bricht-ab '1||no_version' "$(vh_resolve release v0.51.0- v0.51.0-)"
 
-# Versionsvergleich mit Vorab-Release: sort -V ordnete v0.51.0-rc.1 HINTER v0.51.0. Darum vergleicht kein Weg ein Vorab-Tag;
-# nur reine vX.Y.Z zaehlen. Release-Check: installiert ein Vorab-Tag -> still (keine Karte, kein Alarm not_release); Rueckschritt-
-# Sperre: von v0.51.0-rc.1 auf v0.51.0 frei (per `lifeagents update`), von v0.51.0 auf ein aelteres reines Tag gesperrt.
+# Vorab-Release im Versionsvergleich: der Release-Check kennt nur reine vX.Y.Z (installiert ein Vorab-Tag -> still, kein Alarm
+# not_release); auf dem Host ordnet release_cmp (v0.51.0-rc.1 < v0.51.0; sort -V der ganzen Tags ordnete es dahinter).
+# Ein Update ab einem Vorab-Stand ist ein Release-Wechsel (erst sichern).
+vh_inst() (   # vh_inst <VERSION> -> _upg_installed_release
+  vh_env release "$1"; lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }
+  _upg_installed_release
+)
+eq VH.installiert-vorab-zaehlt v0.51.0-rc.1 "$(vh_inst v0.51.0-rc.1)"
+eq VH.installiert-dev-leer '' "$(vh_inst dev-0123abc)"
 vh_check() (   # vh_check <VERSION> -> Lebenszeichen des Release-Checks
   vh_env release "$1"; export LIFEAGENTS_DIR="$W/vh/etc"
   lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }

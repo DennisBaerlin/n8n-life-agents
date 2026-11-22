@@ -253,10 +253,10 @@ _bkp_host_rotate() {
 }
 # _bkp_release_tag -> Release der laufenden CLI (VERSION, leer ohne Marker) — Dateiname, Kopf-Feld release, Restore-Vergleich.
 _bkp_release_tag() { cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true; }
-# _bkp_file_name <ts> <schluessel-id> <release> -> Dateiname einer Sicherung; kein stabiles Release -> "vdev".
+# _bkp_file_name <ts> <schluessel-id> <release> -> Dateiname einer Sicherung; kein Release- oder Vorab-Tag -> "vdev".
 _bkp_file_name() {
   local v="$3"
-  [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || v=vdev
+  is_release_tag "$v" || is_prerelease_tag "$v" || v=vdev
   printf 'lifeagents-backup-%s-%s-%s.nla.enc' "$1" "$2" "$v"
 }
 # _bkp_file_key_id <pfad|name> -> Schluessel-ID aus dem Dateinamen (leer bei Namen ohne ID).
@@ -795,11 +795,12 @@ _bkp_pick_lines() {
 #   unbekannte Staende sind nie aelter.
 _bkp_rel_older() { [ "$(release_cmp "$1" "$2" 2>/dev/null)" = -1 ]; }
 # _bkp_bundle_release <tmp> <dateiname> -> Release der Sicherung: Kopf-Feld release, sonst aus dem Dateinamen (Sicherungen
-#   ohne Kopf-Feld), sonst leer. Nur die Form vX.Y.Z[-suffix]; verglichen wird ueber _bkp_rel_older (release_cmp).
+#   ohne Kopf-Feld), sonst leer. Nur Release- oder Vorab-Tags; verglichen wird ueber _bkp_rel_older (release_cmp).
 _bkp_bundle_release() {
   local r; r="$(jq -r '.release // empty' "$1/manifest.json" 2>/dev/null)"
-  if [[ ! "$r" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-    r=''; [[ "$2" =~ -(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.nla\.enc$ ]] && r="${BASH_REMATCH[1]}"
+  if ! is_release_tag "$r" && ! is_prerelease_tag "$r"; then
+    r=''; [[ "$2" =~ -(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)\.nla\.enc$ ]] && r="${BASH_REMATCH[1]}"
+    is_release_tag "$r" || is_prerelease_tag "$r" || r=''
   fi
   printf '%s' "$r"
 }

@@ -865,17 +865,19 @@ pub fn autostart_bring_up(app: &AppHandle) {
     if detect::detect(&h).verdict == Verdict::DesktopStopped {
         let _ = docker_desktop::start(&h);
     }
+    // Fehlversuche wiederholen bis zur Frist: Kurz nach „Docker bereit“ antworten Abfragen noch unzuverlässig, und ein
+    // gleichzeitiger Kern-Lauf belegt den festen Namen `lifeagents-core` (Docker-Exit 125), bis er endet.
     let start = Instant::now();
+    let mut tried = false;
     while start.elapsed() < DOCKER_WAIT {
         if let Some(d) = docker_if_ready() {
-            if let Some(p) = core_paths(app) {
-                if core_start::start_after_login(&h, &d, &p).is_err() {
-                    fail(app, "start-failed");
-                }
+            let Some(p) = core_paths(app) else { return };
+            if core_start::start_after_login(&h, &d, &p).is_ok() {
+                return;
             }
-            return;
+            tried = true;
         }
         std::thread::sleep(Duration::from_secs(5));
     }
-    fail(app, "docker-start-timeout");
+    fail(app, if tried { "start-failed" } else { "docker-start-timeout" });
 }

@@ -353,6 +353,13 @@ main() {
   # Secret-Overrides (nur First-Init; bestehende n8n.env gewinnt immer) NACH dem Einlesen erfassen.
   OPT_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-}"
   OPT_DB_PASSWORD="${N8N_DB_PASSWORD:-}"
+  # Umzug offen: kein Versionswechsel, auch nicht ueber install.sh --version (upgrade_guard.sh). Ziel = was install_cli als VERSION
+  # schriebe; ohne Tag im Verbund das laufende Abbild (release_tag_resolve) = installiert. --apply-network schreibt keine VERSION.
+  if [ "$APPLY_NETWORK" -ne 1 ]; then
+    local _umzug_target="${RELEASE_TAG:-}"
+    [ -n "$_umzug_target" ] || rt_is_compose || _umzug_target=dev
+    upgrade_umzug_guard "$_umzug_target"
+  fi
 
   # Früh root erzwingen: collect_release_inputs schreibt /etc/lifeagents/core.env (root), noch vor
   # preflight; sonst mkdir-/chown-Fehler tief im Lauf.

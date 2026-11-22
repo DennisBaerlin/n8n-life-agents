@@ -8,6 +8,7 @@
 # typo_char <zeilennummer> <16 hex der Zeile> -> ein Hex-Zeichen != erstes Zeichen, bei dem das Pruefzeichen der Zeile nicht passt.
 typo_char() {
   local n="$1" d="$2" c want
+  [[ "$d" =~ ^[0-9a-f]{16}$ ]] || return 1   # eine anders gelesene Blatt-Zeile soll laut scheitern, nicht still ein Zeichen liefern
   want="$(_backup_key_check "$n" "$d")"
   for c in f e d c b a 9 8 7 6 5 4 3 2 1 0; do
     [ "$c" != "${d:0:1}" ] || continue

@@ -730,7 +730,8 @@ rt_swap_helper_stop() { docker stop "${LA_PROJECT}-swap" >/dev/null 2>&1; }
 # rt_master_release_tag / rt_image_release_tag <abbild> — Release-Tag des laufenden master bzw. eines master-Abbilds (Ziel
 #   eines Rueckwegs) auf stdout; Quelle von lifeagents_version_heal und release_tag_resolve. Zuerst RELEASE_TAG aus der
 #   Umgebung des Abbilds (ENV ab v0.48.0; die Prozess-Umgebung taugt nicht, Aufrufer ueberschreiben RELEASE_TAG mit 'dev'),
-#   sonst das Etikett org.opencontainers.image.version (Release-Bau, build_master_image.ps1). Nur vX.Y.Z, sonst rc 1.
+#   sonst das Etikett org.opencontainers.image.version (Release-Bau, build_master_image.ps1). Nur vX.Y.Z oder ein Vorab-Tag
+#   vX.Y.Z-<suffix> (common.sh is_prerelease_tag), sonst rc 1.
 #   Klassisch rc 1: dort gibt es kein Abbild und keine andere verlaessliche Quelle.
 _RT_REL_FMT='{{range .Config.Env}}{{println .}}{{end}}{{index .Config.Labels "org.opencontainers.image.version"}}'
 _rt_release_tag_pick() {   # stdin = Ausgabe von _RT_REL_FMT
@@ -738,7 +739,8 @@ _rt_release_tag_pick() {   # stdin = Ausgabe von _RT_REL_FMT
   out="$(cat)"
   env="$(printf '%s\n' "$out" | sed -n 's/^RELEASE_TAG=//p' | head -n1)"
   lab="$(printf '%s\n' "$out" | tail -n1)"
-  if is_release_tag "$env"; then printf '%s\n' "$env"; elif is_release_tag "$lab"; then printf '%s\n' "$lab"; else return 1; fi
+  if is_release_tag "$env" || is_prerelease_tag "$env"; then printf '%s\n' "$env"
+  elif is_release_tag "$lab" || is_prerelease_tag "$lab"; then printf '%s\n' "$lab"; else return 1; fi
 }
 rt_master_release_tag() {
   rt_is_compose || return 1

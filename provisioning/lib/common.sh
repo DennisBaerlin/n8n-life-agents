@@ -246,12 +246,16 @@ lifeagents_db_name() {
 lifeagents_version_marker() { printf '%s/VERSION' "$(lifeagents_runtime_dir)"; }
 
 # --- Versionsnummer der Installation (Gesetz: im Release-Profil traegt VERSION immer eine) ----------------------------
-# Versionsnummer = Release-Tag vX.Y.Z oder ein benannter Entwickler-Stand dev-<rev> (/reset-dev installiert ihn bewusst im
-# Release-Profil). Keine Versionsnummer = leer oder genau 'dev' (ein Lauf ohne Tag): daran haengt der Release-Check still
-# fest (update_runner.sh vergleicht nur vX.Y.Z), und der Rueckweg kennt das Ziel nicht. Quelle zum Nachtragen ist allein das
-# laufende master-Abbild (rt_master_release_tag); klassisch gibt es keine, dann bleibt es beim klaren Abbruch bzw. doctor ROT.
+# Versionsnummer = Release-Tag vX.Y.Z, ein Vorab-Tag vX.Y.Z-<suffix> (Probe-Maschinen; scripts/lib/release_tag.ps1, gleiche
+# Form) oder ein benannter Entwickler-Stand dev-<rev> (/reset-dev installiert ihn bewusst im Release-Profil). Verglichen werden
+# nur reine vX.Y.Z (Release-Check, Rueckschritt-Sperre): sort -V ordnete v0.51.0-rc.1 hinter v0.51.0. Ein Vorab-Stand bekommt
+# darum wie dev-<rev> keine Update-Hinweise, `lifeagents update` holt das naechste stabile Release. Keine Versionsnummer = leer
+# oder genau 'dev' (ein Lauf ohne Tag): daran haengt der Release-Check still fest, und der Rueckweg kennt das Ziel nicht. Quelle
+# zum Nachtragen ist allein das laufende master-Abbild (rt_master_release_tag); klassisch gibt es keine, dann bleibt es beim
+# klaren Abbruch bzw. doctor ROT.
 is_release_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
-version_is_named() { is_release_tag "${1:-}" || [[ "${1:-}" =~ ^dev-[A-Za-z0-9._-]+$ ]]; }
+is_prerelease_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ]]; }
+version_is_named() { is_release_tag "${1:-}" || is_prerelease_tag "${1:-}" || [[ "${1:-}" =~ ^dev-[A-Za-z0-9._-]+$ ]]; }
 _install_profile() { read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true; }
 
 # lifeagents_help_url -> die Hilfeseite "Wenn ein Update fehlschlaegt" (GitHub Pages des Repos; eine Adresse: der Slug).

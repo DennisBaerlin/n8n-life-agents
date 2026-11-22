@@ -13,10 +13,11 @@
 #      GitHub aus release.yml fuer dieses Tag (`gh attestation verify`).
 #   3. SHA256SUMS mit dem privaten Schluessel unterschreiben (detached, SHA256SUMS.sig) und gegen das Schluesselbund im
 #      Repo gegenpruefen.
-#   4. SHA256SUMS.sig hochladen, den Entwurf veroeffentlichen. Erst jetzt zeigt /releases/latest auf das Release.
+#   4. SHA256SUMS.sig hochladen, den Entwurf veroeffentlichen. Erst jetzt zeigt /releases/latest auf das Release; ein Vorab-Tag
+#      (v0.51.0-rc.1) wird prerelease und nie latest (scripts/lib/release_tag.ps1), Installationen bekommen es nicht angeboten.
 #
 # Braucht: gpg (Git for Windows), gh (winget GitHub.cli), git; GH_TOKEN wird bei Bedarf aus dem Git-Credential-Manager
-#   geholt (nur fuer diesen Prozess). Usage: .\scripts\sign_release.ps1 v0.14.0
+#   geholt (nur fuer diesen Prozess). Usage: .\scripts\sign_release.ps1 v0.14.0  (Vorab: ... v0.51.0-rc.1)
 # Exit 0 = unterschrieben und veroeffentlicht; jede fehlgeschlagene Pruefung bricht mit throw ab (nichts wird hochgeladen).
 param([Parameter(Mandatory = $true)][string]$Tag)
 $ErrorActionPreference = 'Stop'
@@ -25,7 +26,9 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # stdin an gpg (Pass
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\release_images.ps1')
 
-if ($Tag -notmatch '^v\d+\.\d+\.\d+$') { throw "Ungueltiges Tag '$Tag' (erwartet z. B. v0.14.0)." }
+. (Join-Path $PSScriptRoot 'lib\release_tag.ps1')
+
+$null = Get-ReleaseTagKind $Tag   # wirft bei ungueltigem Format; Vorab-Tags (v0.51.0-rc.1) veroeffentlicht Schritt 4 als prerelease
 $keyFile = Join-Path $RepoRoot 'provisioning\keys\release-signing.gpg'
 if (-not (Test-Path $keyFile)) { throw 'Noch kein Release-Schluessel im Repo — zuerst .\scripts\new_release_key.ps1.' }
 
@@ -172,10 +175,11 @@ try {
     & gh release upload $Tag -R $slug $sig --clobber
     if ($LASTEXITCODE -ne 0) { throw 'Upload von SHA256SUMS.sig fehlgeschlagen.' }
     if ($isDraft -eq 'true') {
-        & gh release edit $Tag -R $slug --draft=false --latest
-        if ($LASTEXITCODE -ne 0) { throw 'Veroeffentlichen fehlgeschlagen (Unterschrift ist hochgeladen; erneut: gh release edit --draft=false).' }
+        & gh release edit $Tag -R $slug @(Get-ReleasePublishFlags $Tag)
+        if ($LASTEXITCODE -ne 0) { throw "Veroeffentlichen fehlgeschlagen (Unterschrift ist hochgeladen; erneut: gh release edit $Tag $((Get-ReleasePublishFlags $Tag) -join ' '))." }
     }
-    Write-Host "Fertig: $Tag ist unterschrieben und veroeffentlicht. Installationen sehen das Update beim naechsten Check." -ForegroundColor Green
+    $seen = if ((Get-ReleaseTagKind $Tag) -eq 'prerelease') { 'Vorab-Release: keine Installation bekommt es als Update angeboten, nur per Tag-Link installierbar.' } else { 'Installationen sehen das Update beim naechsten Check.' }
+    Write-Host "Fertig: $Tag ist unterschrieben und veroeffentlicht. $seen" -ForegroundColor Green
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -1938,6 +1938,12 @@ eq VH.release-bleibt '0|v1.2.3|0' "$(vh_case release v1.2.3 v9.0.0 '')"
 eq VH.dev-profil-unberuehrt '0|dev|0' "$(vh_case dev dev v9.0.0 '')"
 eq VH.ohne-installation-nichts '0|fehlt|0' "$(vh_case release -fehlt v9.0.0 '')"
 eq VH.klassisch-keine-quelle '1|dev|0' "$(vh_case release dev v9.0.0 '' systemd)"
+# Vorab-Release (vX.Y.Z-<suffix>, Probe-Maschinen): eine Versionsnummer wie dev-<rev>, aus dem Abbild uebernehmbar; ein
+# kaputtes Suffix bleibt keine.
+eq VH.vorab-bleibt '0|v0.51.0-rc.1|0' "$(vh_case release v0.51.0-rc.1 v9.0.0 '')"
+eq VH.dev-aus-vorab-abbild '0|v0.51.0-rc.1|1' "$(vh_case release dev v0.51.0-rc.1 '')"
+eq VH.dev-aus-vorab-etikett '0|v0.51.0-rc.1|1' "$(vh_case release dev '' v0.51.0-rc.1)"
+eq VH.kaputtes-suffix-nicht-uebernommen '1|dev|1' "$(vh_case release dev 'v0.51.0-' 'v0.51.0+x')"
 # Kein Nachtragen mitten in einem Umbau: dann liefe womoeglich schon das Ziel-Abbild (Release-Wechsel ginge verloren).
 vh_busy() (   # vh_busy <sperre|wechsel|merkzettel> -> VERSION danach
   vh_env release dev; export LIFEAGENTS_DIR="$W/vh/etc" LIFEAGENTS_RUNTIME=compose STUB_REL_ENV=v9.0.0 STUB_REL_LABEL=''
@@ -1986,6 +1992,33 @@ eq VH.lauf-ohne-quelle-bricht-ab '1||no_version' "$(vh_resolve release dev dev)"
 eq VH.lauf-klassisch-ohne-tag-bricht-ab '1||no_version' "$(vh_resolve release dev v9.0.0 systemd)"
 eq VH.lauf-entwickler-stand-bleibt '0|dev-0123abc|' "$(vh_resolve release dev-0123abc v9.0.0)"
 eq VH.lauf-dev-profil-unberuehrt '0|dev|' "$(vh_resolve dev dev v9.0.0)"
+# Probe mit Vorab-Release: install.sh --version / setup.sh uebergeben das Vorab-Tag bzw. das Abbild traegt es.
+eq VH.lauf-vorab-tag-bleibt '0|v0.51.0-rc.1|' "$(vh_resolve release v0.51.0-rc.1 v9.0.0)"
+eq VH.lauf-dev-nimmt-vorab-abbild-tag '0|v0.51.0-rc.1|' "$(vh_resolve release dev v0.51.0-rc.1)"
+eq VH.lauf-kaputtes-suffix-bricht-ab '1||no_version' "$(vh_resolve release v0.51.0- v0.51.0-)"
+
+# Versionsvergleich mit Vorab-Release: sort -V ordnete v0.51.0-rc.1 HINTER v0.51.0. Darum vergleicht kein Weg ein Vorab-Tag;
+# nur reine vX.Y.Z zaehlen. Release-Check: installiert ein Vorab-Tag -> still (keine Karte, kein Alarm not_release); Rueckschritt-
+# Sperre: von v0.51.0-rc.1 auf v0.51.0 frei (per `lifeagents update`), von v0.51.0 auf ein aelteres reines Tag gesperrt.
+vh_check() (   # vh_check <VERSION> -> Lebenszeichen des Release-Checks
+  vh_env release "$1"; export LIFEAGENTS_DIR="$W/vh/etc"
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
+  require_root() { :; }; lifeagents_db_name() { echo n8n; }; la_umzug_open() { return 1; }
+  LIFEAGENTS_UPDATE_LOCK_HELD=1; _ur_installed() { vh_ver; }; heartbeat_record() { printf '%s/%s' "$1" "$2"; }
+  _ur_check_in() { printf 'netz'; }; _ur_outcome() { :; }
+  update_check 2>/dev/null
+)
+eq VH.check-vorab-still 'check/skipped' "$(vh_check v0.51.0-rc.1)"
+eq VH.check-dev-alarm 'check/not_release' "$(vh_check dev)"
+eq VH.check-release-fragt-github 'netz' "$(vh_check v0.50.0)"
+vh_down() (   # vh_down <VERSION> <ziel-tag> -> frei|downgrade
+  vh_env release "$1"
+  lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }
+  die_because() { printf '%s' "$1"; exit 1; }
+  ( _refuse_downgrade "$2" && printf frei )
+)
+eq VH.vorab-auf-stabil-frei frei "$(vh_down v0.51.0-rc.1 v0.51.0)"
+eq VH.stabil-auf-aelter-gesperrt downgrade "$(vh_down v0.51.0 v0.50.0)"
 
 # doctor: im Release-Profil ist eine fehlende Versionsnummer ROT, mit dem Weg, wie sie wiederkommt; dev-<rev> ist in Ordnung.
 vh_doc() (   # vh_doc <profil> <VERSION> <env-tag> [systemd] -> Ausgabe + fail=<n>

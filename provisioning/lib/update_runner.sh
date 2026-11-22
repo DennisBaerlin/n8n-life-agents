@@ -54,14 +54,11 @@ update_cli() {
     esac
   done
   case "$tag" in *[!A-Za-z0-9._-]*|'') die "Ungültiges Tag '${tag}' (erwartet z. B. v0.14.0)." ;; esac
-  # Vor dem Laden und damit vor jedem master-Wechsel: die Sperre sitzt an dieser einen Stelle (der Chat-Runner ruft denselben Weg).
-  if la_umzug_open; then die "$(_ur_umzug_text)"; fi
+  # Vor dem Laden und damit vor jedem master-Wechsel: die Sperre des Verbs sitzt hier (der Chat-Runner ruft denselben Weg;
+  # rollback und provision.sh: upgrade_guard.sh upgrade_umzug_guard).
+  if la_umzug_open; then die "$(la_umzug_text)"; fi
   fetch_and_run_release "$tag" "${pass[@]}"
 }
-
-# _ur_umzug_text -> der Satz zur Update-Sperre „Umzug offen“ (lib/move_cli.sh). Rueckweg auf die alte Maschine braucht dieselbe
-#   Release auf beiden Seiten: darum kein Update, bis der Umzug abgenommen ist.
-_ur_umzug_text() { printf 'Updates sind gesperrt, solange der Umzug nicht abgenommen ist (der Rückweg auf die alte Maschine braucht dieselbe Version). Nach der Abnahme: lifeagents umzug done'; }
 
 # _ur_update_usage — Hilfe zu `lifeagents update` (stderr wie die Hilfe der CLI).
 _ur_update_usage() {
@@ -345,7 +342,7 @@ _ur_run_one() {
 
   # Ein Auftrag aus einer Karte von vor dem Umzug: vorhandener Grund „locked“, ohne Update und ohne Netz.
   if la_umzug_open; then
-    _ur_finish "$id" failed preflight locked false "Umzug offen — $(_ur_umzug_text)"
+    _ur_finish "$id" failed preflight locked false "Umzug offen — $(la_umzug_text)"
     _ur_reports_flush; return 0
   fi
   if ! _ur_is_tag "$tag"; then

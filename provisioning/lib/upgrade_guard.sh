@@ -126,6 +126,18 @@ _upg_installed_release() {
   return 0
 }
 
+# upgrade_umzug_guard --any|<ziel> — bei offenem Umzug (runtime.sh la_umzug_open) Abbruch mit dem Satz der Update-Sperre, vor jeder Aenderung.
+#   --any immer (rollback: die pre-upgrade-Sicherung ist der Stand vor dem Umzug). <ziel> = was install_cli als VERSION schriebe:
+#   nur bei einem anderen Wert als der installierten VERSION; dieselbe Release erneut anwenden (reconfigure, compose/reach_ctl.sh
+#   activate) bleibt erlaubt. Grund `locked` wie die Sperre im Chat-Runner (Ergebnis-Datei eines Chat-Updates).
+upgrade_umzug_guard() {
+  la_umzug_open || return 0
+  if [ "$1" != --any ]; then
+    [ "$1" != "$(head -n1 "$(lifeagents_version_marker)" 2>/dev/null | tr -d '[:space:]')" ] || return 0
+  fi
+  die_because locked "$(la_umzug_text)"
+}
+
 # _upg_db_exists — 0, wenn PG laeuft und die App-DB existiert (sonst: Erstinstallation, nichts zu schuetzen).
 _upg_db_exists() {
   [ "$(pg_su_psql -X -tAc "SELECT 1 FROM pg_database WHERE datname='${N8N_DB_NAME}'" 2>/dev/null)" = 1 ]
@@ -507,6 +519,7 @@ upgrade_rollback() {
     *) die "Unbekannte Option für rollback: $1 — es wurde nichts geändert (lifeagents rollback --help)." ;;
   esac
   [ "$#" -le 1 ] || die "Zu viele Angaben für rollback — es wurde nichts geändert (lifeagents rollback --help)."
+  upgrade_umzug_guard --any
   require_root
   lifeagents_db_name >/dev/null
   local src backup from_rel ktab key choice when work url kr profile rc=0 keep="${N8N_DB_NAME}_before_rollback" from_img="" from_compose=""

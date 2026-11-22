@@ -9,6 +9,9 @@
 #   - Sperre/Abnahme: Update endet mit Satz, doctor nennt den Umzug nur als Hinweis, zweiter Lauf spielt nichts doppelt ein, done hebt auf.
 # Haelt n8n im Substrat voruebergehend an (retire) -> nur im EIGENEN Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
 # am Ende laeuft alles wieder wie vorher. Voraussetzung: enable_mock_telegram.ps1 (aktuelle Attrappe). Kein LLM, kein echtes Telegram.
+# N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1), ohne Telegram-Attrappe, nur die Versions-Sperre
+# (lock_cases in umzug_cases.sh: update, rollback, provision.sh mit anderer/ohne/gleicher Version); die Tick-Schleife des master ist dabei
+# angehalten (Suspend-TestStackTick, in finally zurueck).
 # Usage:  $env:N8NTEST_CONTAINER='s4b2-n8ntest'; $env:N8NTEST_PORT='58000'; .\scripts\dev\umzug_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
@@ -17,12 +20,18 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 $state = Get-TestN8nState
-if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
-$MockPort = "$($state.mock_telegram.port)"
-$MockLog = "$($state.mock_telegram.log)"
+Assert-TestSuiteStateRuntime -State $state
+$MockPort = '0'; $MockLog = ''
+if ($suiteRuntime -eq 'classic') {
+    if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
+    $MockPort = "$($state.mock_telegram.port)"
+    $MockLog = "$($state.mock_telegram.log)"
+}
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 
@@ -38,7 +47,12 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages')
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
 
-$r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/umzug_cases.sh", $root, "$MockPort", "$MockLog")
+try {
+    if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/umzug_cases.sh", $root, "$MockPort", "$MockLog")
+} finally {
+    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
+}
 $lines = @($r.Output)
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }

@@ -455,7 +455,7 @@ sc_up() {
   sc_ok "$x"
 }
 
-# _sc_start_todo — fuellt SC_TODO mit den vorhandenen, nicht laufenden Diensten (ohne die in SC_SKIP).
+# _sc_start_todo — fuellt SC_TODO mit den vorhandenen Diensten, die nicht laufen oder in einer Neustart-Schleife stecken (ohne die in SC_SKIP).
 _sc_start_todo() {
   local svc c
   SC_TODO=()
@@ -463,7 +463,7 @@ _sc_start_todo() {
     [ -n "$c" ] || continue
     [ -n "$(rt_container_id "$c" || true)" ] || continue
     case " $SC_SKIP " in *" $svc "*) continue ;; esac
-    rt_container_running "$c" || SC_TODO+=("$svc")
+    rt_container_up "$c" || SC_TODO+=("$svc")
   done <<<"$SC_SERVICES"
 }
 sc_start() {

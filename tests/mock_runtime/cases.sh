@@ -92,13 +92,15 @@ esac
 # `compose … start <dienste>`: ein gestarteter Dienst laeuft danach (${STUB_LOG}.running, liest inspect State.Running mit).
 # STUB_START_FLAKY = Dienste, deren erster Start scheitert (Docker startet gerade selbst neu), STUB_START_DEAD = Dienste,
 # die nie laufen (beides wie beim echten compose mit Exit 1), STUB_START_EXITS = Dienste, die compose startet (Exit 0) und
-# die gleich wieder enden (z. B. Netz-Namensraum des anchor fehlt).
+# die gleich wieder enden (z. B. Netz-Namensraum des anchor fehlt). STUB_START_LOOP = Dienste in Docker-Neustart-Schleife
+# (Running=true, Restarting=true).
 if [ "$me" = docker ] && [ "${1:-}" = compose ]; then case "$(printf '|%s' "$@")" in *'|start|'*)
   _on=0 _rc=0
   for s in "$@"; do
     [ "$_on" = 1 ] || { [ "$s" = start ] && _on=1; continue; }
     case " ${STUB_START_DEAD:-} " in *" $s "*) _rc=1; continue ;; esac
     case " ${STUB_START_EXITS:-} " in *" $s "*) continue ;; esac
+    case " ${STUB_START_LOOP:-} " in *" $s "*) echo "${LA_PROJECT:-lifeagents}-$s" >> "${STUB_LOG}.restarting" ;; esac
     case " ${STUB_START_FLAKY:-} " in *" $s "*)
       if ! grep -qxF "$s" "${STUB_LOG}.flaky" 2>/dev/null; then echo "$s" >> "${STUB_LOG}.flaky"; _rc=1; continue; fi ;; esac
     echo "${LA_PROJECT:-lifeagents}-$s" >> "${STUB_LOG}.running"
@@ -133,6 +135,8 @@ case "$me $1 ${2:-}" in
     # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
     n="${*: -1}"
     case "$3" in
+      *State.Restarting*) r=false; case " ${STUB_RUNNING:-} $(tr '\n' ' ' < "${STUB_LOG}.running" 2>/dev/null) " in *" $n "*) r=true ;; esac
+        l=false; grep -qxF "$n" "${STUB_LOG}.restarting" 2>/dev/null && l=true; echo "$r $l" ;;
       *State.Running*) case " ${STUB_RUNNING:-} $(tr '\n' ' ' < "${STUB_LOG}.running" 2>/dev/null) " in *" $n "*) echo true ;; *) echo false ;; esac ;;
       *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
       # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett);
@@ -735,7 +739,7 @@ if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down l
 # Nur Logik, die der echte Weg schwer erzwingt (Werte-Quellen, Ports, Weitergabe, JSON-Vertrag); ob Docker dabei wirklich
 # anlegt und startet, belegt erst genericity.yml.
 SCO="$W/sc.out"; SCE="$W/sc.err"
-scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; rm -f "${STUB_LOG}.failn" "${STUB_LOG}.running" "${STUB_LOG}.flaky"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
+scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; rm -f "${STUB_LOG}.failn" "${STUB_LOG}.running" "${STUB_LOG}.flaky" "${STUB_LOG}.restarting"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
 res() { tail -n1 "$SCO" | jq -r "$1" 2>/dev/null; }
 put_of() { awk -v f="== $1" '$0 == f {on=1; next} /^== /{on=0} on' "${STUB_LOG}.put"; }
 _lp="lifeagents_"
@@ -933,6 +937,10 @@ case "$(res .detail)" in *edge*) pass SC.start-gescheitert-nennt-dienst ;; *) fa
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
   STUB_START_EXITS=edge scr start --json
 eq SC.start-endet-gleich-wieder 'false|start_failed' "$(res .ok)|$(res .reason)"
+# Neustart-Schleife (restart: unless-stopped, der Dienst stuerzt bei jedem Start ab): Docker meldet Running=true; zaehlt nicht.
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
+  STUB_START_LOOP=edge scr start --json
+eq SC.start-neustart-schleife 'false|start_failed' "$(res .ok)|$(res .reason)"
 # Stillgelegt (lib/retire_cli.sh _ret_stop haelt n8n und das Gateway an): der Boot-Start laesst beide aus.
 _sc_cfg_rt="$(jq -c '.services.n8n = {image:"n8n:t",container_name:"lifeagents-n8n"} | .services.gateway = {image:"gw:t",container_name:"lifeagents-gateway"}' <<<"$SC_CFG")"
 SC_CFG="$_sc_cfg_rt" STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-n8n lifeagents-gateway lifeagents-edge' \

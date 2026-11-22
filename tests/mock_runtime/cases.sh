@@ -948,6 +948,10 @@ eq SC.start-endet-gleich-wieder 'false|start_failed' "$(res .ok)|$(res .reason)"
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
   STUB_START_LOOP=edge scr start --json
 eq SC.start-neustart-schleife 'false|start_failed' "$(res .ok)|$(res .reason)"
+# Dienst-Liste nicht lesbar (compose.yml war beim Start des Kerns noch lesbar, sc_init las die Abbilder): nichts geprueft,
+# nichts gestartet -> nie ok mit started:[]. Ganz unlesbar endet schon sc_init mit internal.
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor' STUB_FAIL='|config|--profiles' STUB_FAIL_FROM=2 scr start --json
+eq SC.start-dienste-unlesbar 'false|start_failed' "$(res .ok)|$(res .reason)"
 # Stillgelegt (lib/retire_cli.sh _ret_stop haelt n8n und das Gateway an): der Boot-Start laesst beide aus.
 _sc_cfg_rt="$(jq -c '.services.n8n = {image:"n8n:t",container_name:"lifeagents-n8n"} | .services.gateway = {image:"gw:t",container_name:"lifeagents-gateway"}' <<<"$SC_CFG")"
 SC_CFG="$_sc_cfg_rt" STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-n8n lifeagents-gateway lifeagents-edge' \

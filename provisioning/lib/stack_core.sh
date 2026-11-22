@@ -485,7 +485,8 @@ sc_start() {
     1) ;;
     *) SC_SKIP='n8n gateway'; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n und das Gateway bleiben vorsichtshalber aus." ;;
   esac
-  SC_SERVICES="$(_sc_ro rt_stack_services || true)"
+  SC_SERVICES="$(_sc_ro rt_stack_services)" && [ -n "$SC_SERVICES" ] \
+    || sc_fail start_failed "Die Dienste aus compose.yml liessen sich nicht lesen — nichts gestartet."
   # Nach einem Docker-Neustart (Boot-Einheit, PartOf=docker.service) startet Docker die Container mit Neustart-Regel
   # gleichzeitig selbst; ein Start in diesem Fenster kann scheitern (compose meldet Fehler) oder der Container endet gleich
   # wieder. Darum nach jedem Start kurz warten, neu lesen und bis zu dreimal starten; was danach steht, ist start_failed.

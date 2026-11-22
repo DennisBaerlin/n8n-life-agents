@@ -569,7 +569,6 @@ jobs:
           . "$RUNNER_TEMP/core.sh"
           sudo systemctl restart docker
           for _ in $(seq 1 60); do docker version >/dev/null 2>&1 && break; sleep 2; done
-          sleep 20
           docker ps -aq --filter "label=io.lifeagents.install=$LA_PROJECT" | xargs -r docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}'
           core_run start1 start
           core_res start1 | jq -e '.ok'
@@ -1263,7 +1262,10 @@ jobs:
             sleep 2
           done
           [ -n "$ok" ] || { sudo journalctl -u lifeagents-stack.service --no-pager | tail -40; sudo docker ps -a --format '{{.Names}} {{.Status}}'; exit 1; }
-          test "$(systemctl is-active lifeagents-stack.service)" = active
+          # Die Ergebnis-Zeile steht im Journal, bevor der Kern-Container endet: bis dahin meldet systemd "activating".
+          st=""
+          for _ in $(seq 1 30); do st="$(systemctl is-active lifeagents-stack.service || true)"; [ "$st" = activating ] || break; sleep 1; done
+          [ "$st" = active ] || { echo "FAIL Einheit $st"; sudo journalctl -u lifeagents-stack.service --no-pager | tail -40; exit 1; }
           ready=""
           for _ in $(seq 1 120); do
             if curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:5880/healthz/readiness"; then ready=1; break; fi

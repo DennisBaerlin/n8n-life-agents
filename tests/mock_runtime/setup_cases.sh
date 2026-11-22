@@ -359,6 +359,13 @@ su_root debian 12 bookworm
 sux --yes --image "$IMG" --answers "$SUD/answers.env" -- --profile dev --packages finance
 su_has SU.answers-eigene-optionen "$(grep '|stack|install|' "$SUL")" '|--|--profile|dev|--packages|finance'
 su_not SU.answers-profil-nicht-doppelt "$(grep '|stack|install|' "$SUL")" '--profile|release'
+# Jeder Fortschritts-Schritt des Kerns (sc_step) hat in setup.sh einen Text, sonst stuende er roh in der Ausgabe.
+_steps="$(sed -n "s/^STEPS='\(.*\)'$/\1/p" "$SUS")"
+_miss=''
+while read -r _s; do
+  jq -e --arg k "$_s" 'has($k)' <<<"$_steps" >/dev/null 2>&1 || _miss="$_miss $_s"
+done < <(grep -oE "sc_step +'?[a-z]+'?" "$ROOT/provisioning/lib/stack_core.sh" | awk '{print $2}' | tr -d "'" | sort -u)
+[ -n "$_steps" ] && eq SU.schritte-alle-mit-text '' "${_miss# }" || fail SU.schritte-alle-mit-text "STEPS nicht lesbar"
 # Test-Weichen: genau die Liste des Kerns (SC_TEST_SWITCHES) geht per --env NAME an den Kern, nur gesetzte, nie ein Wert im argv.
 eq SU.weichen-wie-kern "$(sed -n 's/^SC_TEST_SWITCHES="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")" "$(sed -n 's/^TEST_SWITCHES="\(.*\)"$/\1/p' "$SUS")"
 su_root debian 12 bookworm

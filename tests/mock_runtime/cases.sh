@@ -89,6 +89,23 @@ case "$(printf '|%s' "$@")" in
   *'|exec|lifeagents-master|bash|/opt/lifeagents/provisioning/provision.sh|'*) [ -z "${STUB_SLOW_EXEC:-}" ] || sleep "$STUB_SLOW_EXEC" ;;
   *'|down|--remove-orphans'*) [ -z "${STUB_SLOW_DOWN:-}" ] || sleep "$STUB_SLOW_DOWN" ;;
 esac
+# `compose … start <dienste>`: ein gestarteter Dienst laeuft danach (${STUB_LOG}.running, liest inspect State.Running mit).
+# STUB_START_FLAKY = Dienste, deren erster Start scheitert (Docker startet gerade selbst neu), STUB_START_DEAD = Dienste,
+# die nie laufen (beides wie beim echten compose mit Exit 1), STUB_START_EXITS = Dienste, die compose startet (Exit 0) und
+# die gleich wieder enden (z. B. Netz-Namensraum des anchor fehlt).
+if [ "$me" = docker ] && [ "${1:-}" = compose ]; then case "$(printf '|%s' "$@")" in *'|start|'*)
+  _on=0 _rc=0
+  for s in "$@"; do
+    [ "$_on" = 1 ] || { [ "$s" = start ] && _on=1; continue; }
+    case " ${STUB_START_DEAD:-} " in *" $s "*) _rc=1; continue ;; esac
+    case " ${STUB_START_EXITS:-} " in *" $s "*) continue ;; esac
+    case " ${STUB_START_FLAKY:-} " in *" $s "*)
+      if ! grep -qxF "$s" "${STUB_LOG}.flaky" 2>/dev/null; then echo "$s" >> "${STUB_LOG}.flaky"; _rc=1; continue; fi ;; esac
+    echo "${LA_PROJECT:-lifeagents}-$s" >> "${STUB_LOG}.running"
+  done
+  [ "$_rc" = 0 ] || echo "stub: Container ließ sich nicht starten" >&2
+  exit "$_rc" ;; esac
+fi
 case "$me $1 ${2:-}" in
   "docker version --format")
     case "${3:-}" in *Os*) printf '%s\n' "${STUB_SRV_OS:-linux}" ;; *) printf '%s\n' "${STUB_SRV_VERSION:-27.5.1}" ;; esac; exit 0 ;;
@@ -116,7 +133,7 @@ case "$me $1 ${2:-}" in
     # STUB_RUNNING = laufende Container (Leerzeichen-Liste); STUB_IMG_<name mit _> = Image eines Containers.
     n="${*: -1}"
     case "$3" in
-      *State.Running*) case " ${STUB_RUNNING:-} " in *" $n "*) echo true ;; *) echo false ;; esac ;;
+      *State.Running*) case " ${STUB_RUNNING:-} $(tr '\n' ' ' < "${STUB_LOG}.running" 2>/dev/null) " in *" $n "*) echo true ;; *) echo false ;; esac ;;
       *Config.Image*)  v="STUB_IMG_$(printf '%s' "$n" | tr -c 'A-Za-z0-9\n' _)"; [ -n "${!v:-}" ] || exit 1; printf '%s\n' "${!v}" ;;
       # Umgebung + Versions-Etikett des master (STUB_REL_ENV leer = Abbild ohne RELEASE_TAG, STUB_REL_LABEL leer = ohne Etikett);
       # STUB_MASTER_ENV = weitere Zeilen der Umgebung (Werte einer Installation der Start-App).
@@ -690,7 +707,7 @@ SC_CFG="$(jq -cn --arg m "$SC_SELFIMG" '{services:{anchor:{image:"busybox:t",con
 # real-path-test: genericity.yml compose-stack-cold/-ops fahren dieselben Verben im echten Docker (Kern per docker run).
 core() {
   ( cd "$W" && env -u LA_EDGE_PORT -u LA_WIZARD_PORT -u LA_PG_SUPERPW -u LA_PROBE_IMAGE -u LIFEAGENTS_RUNTIME \
-      LA_CORE="${SC_CORE-1}" LA_PROJECT=lifeagents STUB_IMG_lifeagents_core="$SC_SELFIMG" STUB_CONFIG_JSON="$SC_CFG" \
+      LA_CORE="${SC_CORE-1}" LA_PROJECT=lifeagents SC_START_PAUSE=0 STUB_IMG_lifeagents_core="$SC_SELFIMG" STUB_CONFIG_JSON="$SC_CFG" \
       RELEASE_TAG="${SC_REL:-v9.0.0}" bash "$ROOT/provisioning/compose/stack.sh" "$@" )
 }
 dst() { : > "$STUB_LOG"; core uninstall "$@" >/dev/null 2>&1; }
@@ -718,7 +735,7 @@ if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down l
 # Nur Logik, die der echte Weg schwer erzwingt (Werte-Quellen, Ports, Weitergabe, JSON-Vertrag); ob Docker dabei wirklich
 # anlegt und startet, belegt erst genericity.yml.
 SCO="$W/sc.out"; SCE="$W/sc.err"
-scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; rm -f "${STUB_LOG}.failn"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
+scr() { : > "$STUB_LOG"; : > "${STUB_LOG}.put"; : > "${STUB_LOG}.vols"; rm -f "${STUB_LOG}.failn" "${STUB_LOG}.running" "${STUB_LOG}.flaky"; SC_RC=0; core "$@" >"$SCO" 2>"$SCE" || SC_RC=$?; }
 res() { tail -n1 "$SCO" | jq -r "$1" 2>/dev/null; }
 put_of() { awk -v f="== $1" '$0 == f {on=1; next} /^== /{on=0} on' "${STUB_LOG}.put"; }
 _lp="lifeagents_"
@@ -903,6 +920,33 @@ STUB_VOLS='' scr start --json;  eq SC.start-ohne-installation not_installed "$(r
 STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor scr start --json
 grep -q '^docker|compose|.*|start|edge|stdin=$' "$STUB_LOG" && pass SC.start-nur-vorhandene || fail SC.start-nur-vorhandene "$(grep '|start|' "$STUB_LOG")"
 if grep -q '|up|' "$STUB_LOG"; then fail SC.start-legt-nichts-an "up lief"; else pass SC.start-legt-nichts-an; fi
+eq SC.start-meldet-gestartete 'true|["edge"]' "$(res .ok)|$(res '.started | tostring')"
+# Start nach einem Docker-Neustart: Docker startet die Container mit Neustart-Regel gleichzeitig selbst, ein Start kann
+# dabei scheitern. Der Kern liest danach neu und startet ein zweites Mal; was dann noch steht, ist start_failed (nie ok).
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-postgres lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
+  STUB_START_FLAKY=edge scr start --json
+eq SC.start-zweiter-versuch 'true|2|["edge","postgres"]' "$(res .ok)|$(grep -c '^docker|compose|.*|start|.*edge' "$STUB_LOG")|$(res '.started | sort | tostring')"
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-postgres lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
+  STUB_START_DEAD=edge scr start --json
+eq SC.start-dauerhaft-gescheitert 'false|start_failed|1' "$(res .ok)|$(res .reason)|$SC_RC"
+case "$(res .detail)" in *edge*) pass SC.start-gescheitert-nennt-dienst ;; *) fail SC.start-gescheitert-nennt-dienst "$(res .detail)" ;; esac
+STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-edge' STUB_RUNNING=lifeagents-anchor \
+  STUB_START_EXITS=edge scr start --json
+eq SC.start-endet-gleich-wieder 'false|start_failed' "$(res .ok)|$(res .reason)"
+# Stillgelegt (lib/retire_cli.sh _ret_stop haelt n8n und das Gateway an): der Boot-Start laesst beide aus.
+_sc_cfg_rt="$(jq -c '.services.n8n = {image:"n8n:t",container_name:"lifeagents-n8n"} | .services.gateway = {image:"gw:t",container_name:"lifeagents-gateway"}' <<<"$SC_CFG")"
+SC_CFG="$_sc_cfg_rt" STUB_VOLS="$SC_ALLVOLS" STUB_EXISTING='lifeagents-anchor lifeagents-n8n lifeagents-gateway lifeagents-edge' \
+  STUB_RUNNING=lifeagents-anchor STUB_CAT__var_la_retired='STAGE=done' scr start --json
+_st="$(grep '^docker|compose|.*|start|' "$STUB_LOG" | head -1)"
+case "$_st" in *'|n8n'*|*'|gateway'*) fail SC.stillgelegt-ohne-gateway "$_st" ;; *'|edge'*) pass SC.stillgelegt-ohne-gateway ;; *) fail SC.stillgelegt-ohne-gateway "kein start: $_st" ;; esac
+eq SC.stillgelegt-ok true "$(res .ok)"
+# Test-Weichen kommen nur als Umgebung durch: jede steht in der festen Sperrliste der Antwort-Datei.
+_sw="$(sed -n 's/^SC_TEST_SWITCHES="\(.*\)"$/\1/p' "$ROOT/provisioning/lib/stack_core.sh")"
+_bad=''; for _s in $_sw; do
+  case "$_ANSWER_DENY_EXACT" in *[[:space:]]"$_s"[[:space:]]*) ;; *) _bad="$_bad $_s" ;; esac
+done
+[ -n "$_sw" ] && eq SC.weichen-in-antwort-sperre '' "${_bad# }" \
+  || fail SC.weichen-in-antwort-sperre "SC_TEST_SWITCHES nicht lesbar"
 # Sperre: offener master-Wechsel bei laufendem master (sein Tick schliesst ihn ab) -> busy vor jeder Aenderung.
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_master_swap_state='PHASE=handoff' STUB_RUNNING=lifeagents-master scr up --json
 eq SC.wechsel-offen-busy 'busy|0' "$(res .reason)|$(grep -c 'volume|create' "$STUB_LOG")"

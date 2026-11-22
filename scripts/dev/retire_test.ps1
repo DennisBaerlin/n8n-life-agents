@@ -81,8 +81,8 @@ if ($suiteRuntime -eq 'compose') {
     try {
         Suspend-TestStackTick -Master $Container
         Assert-Case 'V.vorher-n8n-laeuft' ((Get-ContainerState $n8n) -eq 'running') (Get-ContainerState $n8n)
+        $retired = $true   # vor dem Lauf: bricht retire nach dem Anhalten von n8n ab, muss finally trotzdem zurueck
         Invoke-RunnerPhase 'retire'
-        $retired = $true
         Assert-Case 'V.retire-n8n-angehalten' ((Get-ContainerState $n8n) -eq 'exited') (Get-ContainerState $n8n)
         # Die Start-App ruft beim Anmelden `stack start`: n8n bleibt aus, alles andere laeuft.
         $res = Invoke-TestStackCore -Names $Names -Ports $Ports -Verb start -LogDir $LogDir

@@ -16,6 +16,9 @@ SC_REASONS="docker_unreachable docker_windows_mode docker_too_old docker_capabil
 SC_DOCKER_MIN=26.0
 SC_DISK_MIN_KB=10485760
 SC_MEM_WARN=3758096384
+# Pause zwischen zwei Start-Versuchen von `stack start` (Sekunden); die Fall-Runner setzen 0.
+SC_START_PAUSE="${SC_START_PAUSE:-3}"
+[[ "$SC_START_PAUSE" =~ ^[0-9]{1,2}$ ]] || SC_START_PAUSE=3
 SC_PORT_FIRST=5880
 SC_PORT_LAST=5899
 if [[ "${LA_CORE_PORTS:-}" =~ ^([0-9]{4,5})-([0-9]{4,5})$ ]] && [ "${BASH_REMATCH[1]}" -lt "${BASH_REMATCH[2]}" ]; then
@@ -452,8 +455,25 @@ sc_up() {
   sc_ok "$x"
 }
 
+# _sc_marker <name> — Merker-Datei im Volume var_la (retire_cli.sh, move_cli.sh). rc 0 = liegt, 1 = fehlt, 2 = nicht lesbar.
+_sc_marker() {
+  local rc=0
+  rt_vol_get var_la "$1" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0|1) return "$rc" ;; *) return 2 ;; esac
+}
+# _sc_start_todo — fuellt SC_TODO mit den vorhandenen Diensten, die nicht laufen oder in einer Neustart-Schleife stecken (ohne die in SC_SKIP).
+_sc_start_todo() {
+  local svc c
+  SC_TODO=()
+  while read -r svc c; do
+    [ -n "$c" ] || continue
+    [ -n "$(rt_container_id "$c" || true)" ] || continue
+    case " $SC_SKIP " in *" $svc "*) continue ;; esac
+    rt_container_up "$c" || SC_TODO+=("$svc")
+  done <<<"$SC_SERVICES"
+}
 sc_start() {
-  local svc c started=() todo=() rc
+  local svc started=() tried=() rc try SC_SKIP='' SC_SERVICES='' SC_TODO=()
   _sc_need_core
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
@@ -462,27 +482,35 @@ sc_start() {
   rc=0; rt_vol_own pgdata || rc=$?
   case "$rc" in 0) ;; 1) sc_fail not_installed "Auf diesem Rechner gibt es keine Installation." ;; *) sc_fail internal "Volume ${LA_PROJECT}_pgdata liess sich nicht pruefen." ;; esac
   sc_values_read; sc_values_export
-  # Stillgelegt (lib/retire_cli.sh, Datei im Volume var_la): n8n bleibt aus, sonst holte es nach jedem Neustart den Bot zurueck.
-  # Nicht lesbar (rc 2) zaehlt als stillgelegt: lieber n8n aus als zwei Bots.
-  local retired=0 vrc=0
-  rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || vrc=$?
-  case "$vrc" in 0) retired=1 ;; 1) ;; *) retired=1; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n bleibt vorsichtshalber aus." ;; esac
-  while read -r svc c; do
-    [ -n "$c" ] || continue
-    [ -n "$(rt_container_id "$c" || true)" ] || continue
-    if [ "$retired" = 1 ] && [ "$svc" = n8n ]; then warn "n8n bleibt aus: diese Installation ist stillgelegt (Umzug)."; continue; fi
-    rt_container_running "$c" || todo+=("$svc")
-  done <<<"$(_sc_ro rt_stack_services || true)"
-  if [ "${#todo[@]}" -gt 0 ]; then
-    _sc_ro rt_stack_start "${todo[@]}" || sc_fail start_failed "Die vorhandenen Container liessen sich nicht starten."
-  fi
-  for svc in "${todo[@]}"; do rt_container_running "${LA_PROJECT}-$svc" && started+=("$svc"); done
+  # Stillgelegt (lib/retire_cli.sh, Datei im Volume var_la): n8n und das Gateway bleiben aus wie nach _ret_stop, sonst holte n8n
+  # nach jedem Neustart den Bot zurueck. Nicht lesbar (rc 2) zaehlt als stillgelegt: lieber n8n aus als zwei Bots.
+  local vrc=0
+  _sc_marker "$LA_RETIRED_NAME" || vrc=$?
+  case "$vrc" in
+    0) SC_SKIP='n8n gateway'; warn "n8n und das Gateway bleiben aus: diese Installation ist stillgelegt (Umzug)." ;;
+    1) ;;
+    *) SC_SKIP='n8n gateway'; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n und das Gateway bleiben vorsichtshalber aus." ;;
+  esac
+  SC_SERVICES="$(_sc_ro rt_stack_services)" && [ -n "$SC_SERVICES" ] \
+    || sc_fail start_failed "Die Dienste aus compose.yml liessen sich nicht lesen — nichts gestartet."
+  # Nach einem Docker-Neustart (Boot-Einheit, PartOf=docker.service) startet Docker die Container mit Neustart-Regel
+  # gleichzeitig selbst; ein Start in diesem Fenster kann scheitern (compose meldet Fehler) oder der Container endet gleich
+  # wieder. Darum nach jedem Start kurz warten, neu lesen und bis zu dreimal starten; was danach steht, ist start_failed.
+  for try in 1 2 3 4; do
+    [ "$try" = 1 ] || sleep "$SC_START_PAUSE"
+    _sc_start_todo
+    [ "${#SC_TODO[@]}" -gt 0 ] && [ "$try" -lt 4 ] || break
+    tried+=("${SC_TODO[@]}")
+    _sc_ro rt_stack_start "${SC_TODO[@]}" || warn "Start von ${SC_TODO[*]} scheiterte (Versuch ${try} von 3)."
+  done
+  [ "${#SC_TODO[@]}" -eq 0 ] || sc_fail start_failed "Diese Container laufen nicht: ${SC_TODO[*]} (docker logs ${LA_PROJECT}-${SC_TODO[0]})."
+  for svc in $(printf '%s\n' "${tried[@]}" | sort -u); do started+=("$svc"); done
   sc_step 'done'
   sc_ok "$(printf '%s\n' "${started[@]}" | jq -cR 'select(. != "")' | jq -cs '{started:.}')"
 }
 
 sc_status() {
-  local m installed=false running=false ver core=0 svcs phase='' upd=false x st rc
+  local m installed=false running=false ver core=0 svcs phase='' upd=false x st rc ret=false umz=false
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   if [ "${LA_CORE:-}" = 1 ]; then sc_delegate; fi
@@ -502,9 +530,16 @@ sc_status() {
   # Zustand nicht lesbar = laeuft (die App startet dann nichts Aenderndes).
   st=''; rc=0; st="$(rt_vol_get var_la master-swap/state)" || rc=$?
   if rt_swap_helper_running || [ -n "$st" ] || [ "$rc" -ge 2 ]; then upd=true; fi
+  # Nicht lesbar = true: retired wie in sc_start (lieber n8n aus als zwei Bots), umzug_open wie die Update-Sperre, die an
+  # dieser Datei haengt (update_runner.sh: lieber kein Update als eines, das den Rueckweg verbaut).
+  rc=0; _sc_marker "$LA_RETIRED_NAME" || rc=$?
+  [ "$rc" = 1 ] || ret=true
+  rc=0; _sc_marker "$LA_UMZUG_NAME" || rc=$?
+  [ "$rc" = 1 ] || umz=true
   x="$(jq -cn --argjson i "$installed" --argjson r "$running" --arg v "$ver" --argjson core "$core" \
     --argjson ports "$(_sc_ports_json)" --argjson s "$svcs" --arg ph "$phase" --argjson u "$upd" \
-    '{installed:$i,running:$r,version:$v,core:$core,ports:$ports,services:$s,update_running:$u}
+    --argjson ret "$ret" --argjson umz "$umz" \
+    '{installed:$i,running:$r,version:$v,core:$core,ports:$ports,services:$s,update_running:$u,retired:$ret,umzug_open:$umz}
      + (if $ph == "" then {} else {wizard:{phase:$ph}} end)')"
   sc_step 'done'
   sc_ok "$x"

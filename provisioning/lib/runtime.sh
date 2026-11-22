@@ -493,6 +493,8 @@ rt_container_running_known() {
 }
 # rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
+# rt_container_up <container> — 0 = laeuft und steckt nicht in einer Neustart-Schleife (dort meldet Docker Running=true).
+rt_container_up() { [ "$(docker inspect -f '{{.State.Running}} {{.State.Restarting}}' "$1" 2>/dev/null)" = 'true false' ]; }
 # rt_master_image_of <compose-datei> -> das master-Image, das diese Datei selbst nennt (Release-Pin:
 #   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
 #   keins (neutrale Form `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.

@@ -204,7 +204,7 @@ if docker inspect "$P-core" >/dev/null 2>&1; then
 fi
 
 OUT="$(mktemp)"; trap 'rm -f "$OUT"' EXIT
-STEPS='{"lock":"Sperre prüfen","delegate":"Installierte Fassung prüfen","check":"Docker prüfen","values":"Werte anlegen","volumes":"Speicher","start":"Dienste starten","answers":"Antworten übergeben","provision":"Einrichten","webhook":"Telegram lösen","containers":"Container entfernen","images":"Abbilder entfernen"}'
+STEPS='{"lock":"Sperre prüfen","delegate":"Installierte Fassung prüfen","check":"Docker prüfen","values":"Werte anlegen","volumes":"Speicher","start":"Dienste starten","answers":"Antworten übergeben","provision":"Einrichten","webhook":"Telegram lösen","containers":"Container entfernen","images":"Abbilder entfernen","done":"Fertig"}'
 # core <stdin-datei> <verb> [optionen] — der Kern in der einen Aufruf-Form; Ergebnis in $OUT, Fortschritt auf stderr.
 core() {
   local in="$1" rc k a=(run --rm -i --name "$P-core" --label "io.lifeagents.install=$P" --env LA_CORE=1)

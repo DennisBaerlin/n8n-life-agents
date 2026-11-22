@@ -80,7 +80,7 @@ lock_cases() {
   cli rollback; rc=$?
   { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
   # provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
-  # hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor nur Sperre/Ergebnis-Datei und die DOMAIN-Schreibweise, Substrat ohne DOMAIN): so laeuft auch ein Lauf ohne Sperre nie durch.
+  # hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor Sperre/Ergebnis-Datei, DOMAIN-Schreibweise und im Verbund reach_prepare: der Tailscale-Container des Test-Verbunds startet und bleibt ohne Anmeldung): so laeuft auch ein Lauf ohne Sperre nie durch.
   provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
   # Installierte Version fuer diese Faelle eine Release (das Substrat traegt oft „dev“, dann schriebe ein Lauf ohne Tag dasselbe = kein Wechsel).
   VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM" 2>/dev/null)"; V_SAVED=1; [ -e "$VM" ] || V_BEFORE=''; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"

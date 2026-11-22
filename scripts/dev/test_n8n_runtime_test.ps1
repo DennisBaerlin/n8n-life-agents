@@ -18,6 +18,20 @@ function Assert-Throws([scriptblock]$Block, [string]$Name) {
     Assert-That $threw $Name
 }
 
+Write-Host '.env-Zeilen (eine Lesart fuer Bootstrap und Treiber)'
+$e = ConvertFrom-DotEnvLine 'TEST_TELEGRAM_BOT_TOKEN="123456:ABC-def"'
+Assert-That ($e.Name -eq 'TEST_TELEGRAM_BOT_TOKEN' -and $e.Value -eq '123456:ABC-def') 'doppelte Anfuehrungszeichen um den Wert fallen ab'
+$e = ConvertFrom-DotEnvLine "  KEY = 'a=b c' "
+Assert-That ($e.Name -eq 'KEY' -and $e.Value -eq 'a=b c') 'einfache Anfuehrungszeichen, Leerraum, "=" im Wert'
+$e = ConvertFrom-DotEnvLine 'KEY=plain'
+Assert-That ($e.Value -eq 'plain') 'ungequoteter Wert bleibt'
+Assert-That ($null -eq (ConvertFrom-DotEnvLine '# KEY=x') -and $null -eq (ConvertFrom-DotEnvLine '') -and $null -eq (ConvertFrom-DotEnvLine 'ohne gleich')) 'Kommentar, Leerzeile, Zeile ohne "=" sind keine Eintraege'
+$tmpEnv = Join-Path ([System.IO.Path]::GetTempPath()) ("dotenv_probe_" + [guid]::NewGuid().ToString('N') + '.env')
+[System.IO.File]::WriteAllText($tmpEnv, "A=1`nA=`"zwei`"`nB='x'`n", $utf8)
+$vals = Read-DotEnvValues $tmpEnv
+Remove-Item $tmpEnv -Force
+Assert-That ($vals['A'] -eq 'zwei' -and $vals['B'] -eq 'x') 'Read-DotEnvValues: letzte Zeile gewinnt, Anfuehrungszeichen ab'
+
 $classic = [pscustomobject]@{ url = 'http://127.0.0.1:5800'; container = 'probe-n8n'; api_key = 'k' }
 $compose = [pscustomobject]@{ url = 'http://127.0.0.1:57800'; container = 'probe-master'; api_key = 'k'; runtime = 'compose'; project = 'probe' }
 

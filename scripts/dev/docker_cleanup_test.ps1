@@ -19,13 +19,19 @@ $lines = @(
     'ta-voltest-db|created|',
     'misc-sub|exited|lifeagents.substrate=n8n,foo=bar',
     'desk|dead|io.lifeagents.desktop=1',
+    'real-n8n|exited|io.lifeagents.install=lifeagents,com.docker.compose.project=lifeagents',
+    'real-anchor|exited|io.lifeagents.install=lifeagents',
+    's4x-bridge|exited|io.lifeagents.install=s4x,lifeagents.substrate=n8n-bridge,lifeagents.worktree=C:/wt/x',
+    's4x-mock|exited|io.lifeagents.install=s4x,lifeagents.worktree=C:/wt/x',
     'n8ntest-live|running|lifeagents.substrate=n8n',
     'fremd-db|exited|com.example=1',
     'postgres-privat|exited|',
     'nginx|running|'
 )
 $sel = @(Select-StoppedOwnContainers @($lines | ForEach-Object { ConvertFrom-ContainerLine $_ }) | ForEach-Object Name)
-Assert-That 'eigene gestoppte Container gewaehlt' (($sel -join ',') -eq 'n8ntest-a,lifeagents-dbtest-x,ta-voltest-db,misc-sub,desk')
+Assert-That 'eigene gestoppte Container gewaehlt' (($sel -join ',') -eq 'n8ntest-a,lifeagents-dbtest-x,ta-voltest-db,misc-sub,s4x-bridge,s4x-mock')
+Assert-That 'echte Start-App-Installation (io.lifeagents.install allein) und io.lifeagents.desktop bleiben' ($sel -notcontains 'real-n8n' -and $sel -notcontains 'real-anchor' -and $sel -notcontains 'desk')
+Assert-That 'Images: io.lifeagents.install ist kein Eigen-Etikett' ($OwnImageLabels -notcontains 'io.lifeagents.install')
 Assert-That 'laufender eigener Container bleibt' ($sel -notcontains 'n8ntest-live')
 Assert-That 'fremde Container bleiben' ($sel -notcontains 'fremd-db' -and $sel -notcontains 'postgres-privat' -and $sel -notcontains 'nginx')
 $hex = ('ab' * 32)

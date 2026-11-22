@@ -106,9 +106,7 @@ function Set-TestN8nStateBlock {
 function Get-TestEnvValue([string]$Name) {
     $envFile = Join-Path ([string](git -C $PSScriptRoot rev-parse --show-toplevel)).Trim() '.env'
     if (-not (Test-Path $envFile)) { return $null }
-    $line = Read-DotEnvLines $envFile | Where-Object { $_ -match "^\s*$([regex]::Escape($Name))=" } | Select-Object -Last 1
-    if (-not $line) { return $null }
-    $v = ($line -split '=', 2)[1].Trim().Trim("'").Trim('"')
+    $v = (Read-DotEnvValues $envFile)[$Name]
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }
     return $v
 }

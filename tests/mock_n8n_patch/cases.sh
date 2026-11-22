@@ -4,6 +4,8 @@
 set -uo pipefail
 ROOT="$1"
 ID=hitl-chat-no-link-fallback
+# Docker-Verbund: n8n liegt im eigenen Abbild (kein npm-Weg, kein .orig), eigener Zweig.
+if [ "${LIFEAGENTS_RUNTIME:-systemd}" = compose ]; then exec bash "$ROOT/mock_n8n_patch/compose_cases.sh" "$ROOT"; fi
 rt_is_compose() { return 1; }
 n8n_live_cat() { cat "${LIVE_OVERRIDE:-$1}"; }
 warn() { printf 'WARN %s\n' "$*" >&2; }

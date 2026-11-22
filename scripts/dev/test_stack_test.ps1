@@ -159,12 +159,6 @@ try {
     $env:N8NTEST_RUNTIME = 'compose'; $env:N8NTEST_CONTAINER = $null
     Assert-That (Test-Throws { Resolve-TestSuiteContainer -Suite 'runtime_test' -RepoRoot $repo }) 'Verbund-Weg ohne N8NTEST_CONTAINER = Abbruch (vor jedem Docker-Aufruf)'
 
-    # Suiten, die einen laufenden Verbund brauchen (Datenbank, n8n-Patch-Weg): Verbund-Weg bricht klar ab, klassisch laeuft.
-    $env:N8NTEST_RUNTIME = 'classic'
-    Assert-That (-not (Test-Throws { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'x' })) 'Verbund-Suite: klassisch kein Abbruch'
-    $env:N8NTEST_RUNTIME = 'compose'
-    $msg = ''; try { Assert-TestSuiteClassicOnly -Suite 'backup_test' -Reason 'echte Datenbank' } catch { $msg = $_.Exception.Message }
-    Assert-That ($msg -match 'backup_test' -and $msg -match 'echte Datenbank' -and $msg -match 'Verbund-Weg fehlt') 'Verbund-Suite: Abbruch nennt Suite und Grund'
 } finally { $env:N8NTEST_RUNTIME = $savedRt; $env:N8NTEST_CONTAINER = $savedCt }
 
 $sn = Get-TestSuiteScratchName 's4t3a' 'runtime_test'
@@ -209,11 +203,96 @@ foreach ($s in @('runtime_test', 'reachability_test', 'release_fetch_test', 'bot
         Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Remove-TestSuiteScratch' }, $true)).Count -gt 0 })
     Assert-That ($res.Count -eq 1 -and $inFinally.Count -ge 1) "$s : ruft Resolve-TestSuiteContainer mit eigenem Namen und raeumt in finally mit Remove-TestSuiteScratch ab"
 }
-foreach ($s in @('backup_test', 'n8n_patch_test')) {
+
+# --- Suiten im laufenden Verbund (T3b): Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------
+# Die Tick-Schleife des master (compose.yml) ruft jede Minute `lifeagents update --tick` und konkurriert mit den Suiten um
+# Auftraege und die Update-Sperre. Sie ruft die CLI nur, wenn /usr/local/bin/lifeagents ausfuehrbar ist; der Runner ruft die CLI aber
+# selbst direkt auf (`command -v lifeagents`), ein `chmod a-x` bremste also auch ihn. Darum Link-Tausch: die CLI liegt waehrend der
+# Pause unter /usr/local/sbin (steht vor /usr/local/bin im PATH), /usr/local/bin/lifeagents fehlt der Schleife.
+$tickOff = Get-TestStackTickScript -Action pause
+$tickOn = Get-TestStackTickScript -Action resume
+Assert-That ($tickOff -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/sbin/lifeagents' -and $tickOff -match 'rm -f /usr/local/bin/lifeagents') 'Tick: pausieren = CLI nach /usr/local/sbin (im PATH), /usr/local/bin/lifeagents weg'
+Assert-That ($tickOn -match 'ln -sf /usr/local/lib/lifeagents/bin/lifeagents /usr/local/bin/lifeagents' -and $tickOn -match 'rm -f /usr/local/sbin/lifeagents') 'Tick: fortsetzen = Link des Abbilds zurueck, sbin-Link weg'
+# Die Schleife im master (PID 1) traegt den Text `lifeagents update --tick` in ihrer eigenen Befehlszeile: ein unverankertes `pgrep -f`
+# fand sie immer und die Pause lief in die Zeitgrenze. Das Muster beginnt darum am Anfang der Befehlszeile (bash <pfad>/lifeagents update).
+Assert-That ($tickOff -match [regex]::Escape("pgrep -f '^[^ ]*bash [^ ]*lifeagents update --(tick|run-requested|check)'")) 'Tick: wartet nur auf echte Schritte (am Anfang der Befehlszeile verankert), nicht auf die Schleife selbst'
+Assert-That ($tickOn -notmatch 'pgrep') 'Tick: Fortsetzen wartet auf nichts'
+Assert-That (Test-Throws { Get-TestStackTickScript -Action 'stop' }) 'Tick: unbekannte Aktion = Abbruch'
+$ta = @(Get-TestStackTickArgs -Master 's4t3b-master' -Action pause)
+Assert-That ($ta[0] -eq 'exec' -and $ta[1] -eq 's4t3b-master' -and $ta[2] -eq 'sh' -and $ta[3] -eq '-c') 'Tick: docker exec nur im master dieses Verbunds'
+Assert-That (Test-Throws { Get-TestStackTickArgs -Master '' -Action pause }) 'Tick: ohne master-Namen = Abbruch'
+
+# Der laufende Unterbau muss zu N8NTEST_RUNTIME passen: ein Lauf im Verbund-Weg gegen ein klassisches Substrat (oder umgekehrt) fuehrte
+# systemd- bzw. docker-Aufrufe ins Leere und liefe mit irrefuehrenden Fehlern.
+. (Join-Path $repo 'scripts\lib\n8ntest_state_file.ps1')
+$savedRt2 = $env:N8NTEST_RUNTIME
+try {
+    $env:N8NTEST_RUNTIME = 'compose'
+    Assert-That (-not (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ runtime = 'compose' }) })) 'Unterbau passt: compose/compose kein Abbruch'
+    $msg = ''; try { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ container = 'x' }) } catch { $msg = $_.Exception.Message }
+    Assert-That ($msg -match 'compose' -and $msg -match 'classic') 'Unterbau passt nicht: compose gewaehlt, Substrat klassisch = Abbruch mit beiden Namen'
+    $env:N8NTEST_RUNTIME = 'classic'
+    Assert-That (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ runtime = 'compose' }) }) 'Unterbau passt nicht: classic gewaehlt, Verbund laeuft = Abbruch'
+    Assert-That (-not (Test-Throws { Assert-TestSuiteStateRuntime -State ([pscustomobject]@{ container = 'x' }) })) 'Unterbau passt: classic/ohne Feld (alte Zustandsdatei) kein Abbruch'
+} finally { $env:N8NTEST_RUNTIME = $savedRt2 }
+
+$un = Get-TestStackUnitName -Project 's4t3b' -Unit 'n8ntest-gwt-mock'
+Assert-That ($un -eq 's4t3b-n8ntest-gwt-mock') 'Einheit: <projekt>-<einheit>'
+Assert-That ((Test-Throws { Get-TestStackUnitName -Project 's4t3b' -Unit 'fremd' }) -and (Test-Throws { Get-TestStackUnitName -Project 'lifeagents' -Unit 'n8ntest-gwt' })) 'Einheit: nur n8ntest-gwt…-Namen, nie im Standard-Projekt'
+$gw = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt-dead' -Image 'node:24-alpine@sha256:x' -Env @('LLM_GATEWAY_PORT=8097') -RepoRoot 'C:/x')
+Assert-That ($gw[0] -eq 'run' -and $gw -contains '-d' -and $gw[($gw.IndexOf('--name') + 1)] -eq 's4t3b-n8ntest-gwt-dead') 'Gateway-Einheit: docker run -d mit Namen'
+Assert-That ($gw[($gw.IndexOf('--network') + 1)] -eq 'container:s4t3b-anchor') 'Gateway-Einheit: im Netz-Namensraum des anchor (127.0.0.1 wie der echte Gateway)'
+Assert-That ($gw[($gw.IndexOf('--user') + 1)] -eq '1000:1000' -and $gw -contains 's4t3b_gw_code:/gw:ro') 'Gateway-Einheit: Nutzer und Code-Volume wie compose.yml (gateway), Code nur lesbar'
+Assert-That ($gw -contains 'lifeagents.worktree=C:/x' -and $gw -contains 'lifeagents.substrate=n8n-suite' -and -not (@($gw | Where-Object { $_ -like 'io.lifeagents.install=*' }).Count)) 'Gateway-Einheit: Etiketten fuer den Session-Ende-Haken, kein Install-Etikett'
+Assert-That ($gw -contains 'LLM_GATEWAY_PORT=8097' -and ($gw -contains 'NODE_OPTIONS=--dns-result-order=ipv4first') -and -not (@($gw | Where-Object { $_ -like 'STATE_DIRECTORY=*' }).Count)) 'Gateway-Einheit: Umgebung der Suite + NODE_OPTIONS wie der echte Gateway, kein STATE_DIRECTORY (sonst schriebe sie in den echten Zaehler)'
+Assert-That ($gw[-3] -eq '--entrypoint' -or $gw[-4] -eq '--entrypoint') 'Gateway-Einheit: eigener Einstieg (node), nicht das Skript des echten Gateways'
+Assert-That ($gw[-1] -eq '/gw/server.js' -and $gw[-2] -eq 'node:24-alpine@sha256:x') 'Gateway-Einheit: gleicher Code /gw/server.js im Abbild des echten Gateways'
+$gwl = @(Get-TestStackGatewayUnitArgs -Project 's4t3b' -Unit 'n8ntest-gwt' -Image 'i' -Env @('LLM_GATEWAY_USAGE_DIR=/tmp/gwtest_usage') -RepoRoot 'C:/x')
+Assert-That ($gwl -contains '--tmpfs' -and $gwl[($gwl.IndexOf('--tmpfs') + 1)] -like '/tmp/gwtest_usage*') 'Gateway-Einheit mit Zaehler-Ordner in der Umgebung: tmpfs dafuer (Nutzer 1000 darf schreiben)'
+Assert-That (-not ($gw -contains '--tmpfs')) 'Gateway-Einheit ohne Zaehler-Ordner: kein tmpfs'
+$mk = @(Get-TestStackNodeUnitCreateArgs -Project 's4t3b' -Unit 'n8ntest-gwt-mock' -Image 's4t3b-master:wt' -Env @('MOCK_LLM_PORT=8096') -ScriptPath '/tmp/gwtest_mock.js' -RepoRoot 'C:/x')
+Assert-That ($mk[0] -eq 'create' -and $mk[($mk.IndexOf('--network') + 1)] -eq 'container:s4t3b-anchor' -and $mk -contains 'MOCK_LLM_PORT=8096') 'Attrappen-Einheit: docker create im Namensraum des anchor (danach docker cp, docker start)'
+Assert-That ($mk[-1] -eq '/tmp/gwtest_mock.js' -and $mk[-2] -eq 's4t3b-master:wt') 'Attrappen-Einheit: node + Skript im master-Abbild'
+
+foreach ($s in @('update_chat_test', 'bot_menu_test', 'backup_test')) {
     $p = Join-Path $repo "scripts\dev\$s.ps1"
-    $as = @(Get-SuiteCommands $p 'Assert-TestSuiteClassicOnly' | Where-Object { (Get-SuiteArg $_ 'Suite') -eq $s })
-    $conn = @(Get-SuiteCommands $p 'Get-TestN8nConnection')
-    Assert-That ($as.Count -eq 1 -and $conn.Count -ge 1 -and $as[0].Extent.StartOffset -lt $conn[0].Extent.StartOffset) "$s : bricht auf dem Verbund-Weg ab, bevor es das Substrat anspricht (Assert-TestSuiteClassicOnly vor Get-TestN8nConnection)"
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$null)
+    $sus = @(Get-SuiteCommands $p 'Suspend-TestStackTick')
+    $inFinally = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $null -ne $n.Finally }, $true) |
+        Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Resume-TestStackTick' }, $true)).Count -gt 0 })
+    # Jede Pause steht im Rumpf eines try, dessen finally fortsetzt: scheitert die Pause selbst (der Link ist dann schon getauscht), laeuft das finally trotzdem.
+    $guarded = @($sus | Where-Object { $c = $_; @($inFinally | Where-Object { $c.Extent.StartOffset -ge $_.Body.Extent.StartOffset -and $c.Extent.EndOffset -le $_.Body.Extent.EndOffset }).Count -gt 0 })
+    Assert-That ($sus.Count -ge 1 -and $guarded.Count -eq $sus.Count) "$s : pausiert den Tick im Verbund im Rumpf eines try und setzt ihn in finally fort (auch wenn die Pause selbst scheitert)"
+}
+foreach ($s in @('update_chat_test', 'bot_menu_test', 'llm_gateway_test', 'backup_test', 'n8n_patch_test')) {
+    $p = Join-Path $repo "scripts\dev\$s.ps1"
+    Assert-That ((Get-SuiteCommands $p 'Get-TestSuiteRuntime').Count -ge 1) "$s : waehlt den Weg ueber Get-TestSuiteRuntime (N8NTEST_RUNTIME), nicht ueber Annahmen"
+}
+
+# backup/cases.sh im Verbund: der Standard-Name kommt aus der Meldung des Exports ohne Pfad. Fehlt er dort, bricht der Runner mit einem
+# klaren FAIL ab, statt mit einer anderen Datei weiterzupruefen. Der Block wird aus der Datei gezogen und in bash gegen eine Meldung mit
+# und ohne Namen ausgefuehrt; die Gegenprobe (Guard entfernt) belegt, dass der Test den Unterschied sieht.
+$bkText = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\backup\cases.sh'), (New-Object System.Text.UTF8Encoding($false)))
+$bkBlock = [regex]::Match($bkText, '(?s)if rt_is_compose; then\r?\n  fa="\$\(grep -m1 -o .*?\r?\nfi\r?\n').Value
+Assert-That ($bkBlock.Length -gt 0 -and $bkBlock -match 'E\.name-aus-meldung') 'backup/cases.sh: Verbund-Block fuer den Namen aus der Meldung gefunden (mit Abbruch-Guard)'
+function Invoke-BackupNameBlock([string]$Block, [string]$Message) {
+    $sh = "rt_is_compose() { return 0; }`nfails=0; fail() { printf 'FAIL %s: %s\n' `"`$1`" `"`$2`"; fails=`$((fails + 1)); }`n" +
+          "W=`$(mktemp -d); printf '%s\n' '$Message' > `"`$W/out.e2`"; fa=''`n$Block`nprintf 'FA=%s\n' `"`$fa`"`n"
+    # Datei statt stdin: PS 5.1 stellt beim Pipen in ein natives Programm eine BOM vor die erste Zeile.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("bkname_" + [guid]::NewGuid().ToString('N') + '.sh')
+    try {
+        [System.IO.File]::WriteAllText($tmp, ($sh -replace "`r", ''), (New-Object System.Text.UTF8Encoding($false)))
+        return (Invoke-Native (Get-TestStackBash) @(($tmp -replace '\\', '/')))
+    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+}
+if ($bkBlock.Length -gt 0) {
+    $with = Invoke-BackupNameBlock $bkBlock '[+] Backup geschrieben: C:\x\lifeagents-backup-20261121130414-kc1dab51c-vdev.nla.enc (Ordner auf dem Rechner)'
+    Assert-That ($with.Code -eq 0 -and ($with.Output -join "`n") -match 'FA=lifeagents-backup-20261121130414-kc1dab51c-vdev\.nla\.enc') 'backup/cases.sh: Name aus der Meldung gelesen (auch bei Windows-Pfad)'
+    $without = Invoke-BackupNameBlock $bkBlock '[+] Backup geschrieben: irgendwo'
+    Assert-That ($without.Code -ne 0 -and ($without.Output -join "`n") -match 'FAIL E\.name-aus-meldung' -and ($without.Output -join "`n") -notmatch 'FA=') 'backup/cases.sh: Meldung ohne Namen = klarer FAIL und Abbruch (kein Weiterpruefen mit anderer Datei)'
+    $mutated = [regex]::Replace($bkBlock, '(?m)^\s*\[ -n "\$fa" \] \|\| \{.*\}\r?\n', '')
+    $mm = Invoke-BackupNameBlock $mutated '[+] Backup geschrieben: irgendwo'
+    Assert-That ($mutated -ne $bkBlock -and $mm.Code -eq 0 -and ($mm.Output -join "`n") -match 'FA=\s*$') 'backup/cases.sh: Gegenprobe - ohne den Guard laeuft der Block still mit leerem Namen weiter (der Test sieht den Unterschied)'
 }
 
 Write-Host "test_stack_test: $failed Fehler."

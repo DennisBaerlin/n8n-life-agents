@@ -18,6 +18,7 @@
 #   - Menü einmal je Install-/Update-Lauf, ein Wiederholversuch je Telegram-Aufruf, Fehlergrund im Protokoll (menu_once_cases.sh);
 #     `lifeagents telegram release-webhook` (Schnittstelle der Start-App beim Abbau) in allen Zustaenden (release_webhook_cases.sh).
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
+# N8NTEST_RUNTIME=compose: im master des Verbunds (bootstrap_test_stack.ps1); statt des Minuten-Timers pausiert die Tick-Schleife des master.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
@@ -27,9 +28,12 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 $state = Get-TestN8nState
+Assert-TestSuiteStateRuntime -State $state
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
 $MockPort = "$($state.mock_telegram.port)"
 if (-not $MockPort) { $MockPort = '8089' }
@@ -52,7 +56,9 @@ Write-Host "Telegram-Befehlsmenue je Sprache (Installer-Code gegen Mock-Telegram
 Write-Host ("-" * 64)
 # Der echte Minuten-Runner wuerde einen Menue-Auftrag mit dem echten Telegram-Endpunkt abarbeiten und mit dem Test
 # um den Auftrag konkurrieren -> fuer die Testdauer anhalten (am Ende wieder starten).
-& docker exec $Container systemctl stop lifeagents-update-run.timer 2>$null | Out-Null
+try {
+if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
+else { & docker exec $Container systemctl stop lifeagents-update-run.timer 2>$null | Out-Null }
 $audienceBefore = Invoke-Sql "SELECT value FROM core.config WHERE category = 'app' AND key = 'audience';"
 [void](Invoke-Sql "UPDATE core.config SET value = 'owner' WHERE category = 'app' AND key = 'audience';")
 Clear-MockTelegramRequests -Container $Container
@@ -234,8 +240,11 @@ if ($addedTid) {
 if ($audienceBefore) { [void](Invoke-Sql "UPDATE core.config SET value = '$audienceBefore' WHERE category = 'app' AND key = 'audience';") }
 $prev4 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 [void](& docker exec $Container bash -c $sh 2>&1)
-& docker exec $Container systemctl start lifeagents-update-run.timer 2>$null | Out-Null
 $ErrorActionPreference = $prev4
+} finally {
+    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
+    else { & docker exec $Container systemctl start lifeagents-update-run.timer 2>$null | Out-Null }
+}
 
 Write-Host ("-" * 64)
 if ($failed -eq 0) { Write-Host "bot_menu_test: OK ($($sets.Count) Menues, Texte je Sprache aus dem Katalog)" -ForegroundColor Green }

@@ -2,6 +2,8 @@
 # n8n_patch_test.ps1 — gratis Test der n8n-Korrektur hitl-chat-no-link-fallback gegen das im Substrat installierte n8n
 # (tests/mock_n8n_patch/): Fingerabdruck und Status bei fremder Fassung, Wiederholung, Stopp statt Link-Knopf, chatApproval=false.
 # Ein n8n-Pin-Wechsel ohne angepassten Patch wird hier rot. Braucht nur den laufenden Container.
+# N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1) mit eigenem Zweig tests/mock_n8n_patch/compose_cases.sh
+# (Original aus dem n8n-Image, Anwendung gegen einen Temp-Ordner, Status im laufenden n8n-Container).
 # Usage:  .\scripts\dev\n8n_patch_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
@@ -10,11 +12,12 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\test_n8n_state.ps1"
-# Die Faelle pruefen den klassischen Patch-Weg an der per npm installierten n8n-Datei samt .orig. Im Verbund liegt n8n im eigenen
-# Abbild und wird ueber _apply_n8n_patches_compose gepatcht (Volume n8n_patches): der Verbund-Weg fehlt noch.
-Assert-TestSuiteClassicOnly -Suite 'n8n_patch_test' -Reason 'die Faelle pruefen den klassischen npm-Patch-Weg (installierte n8n-Datei + .orig); im Verbund liegt n8n im eigenen Abbild und wird ueber _apply_n8n_patches_compose gepatcht'
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
+Assert-TestSuiteStateRuntime -State (Get-TestN8nState)
+Write-Host "n8n-Korrektur hitl-chat-no-link-fallback (Unterbau $suiteRuntime) - Container $Container"
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 

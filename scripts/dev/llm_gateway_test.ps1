@@ -23,6 +23,11 @@
 # Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 #
+# N8NTEST_RUNTIME=compose (Docker-Verbund, bootstrap_test_stack.ps1): statt der systemd-Einheiten starten eigene Container im
+# Netz-Namensraum des anchor (127.0.0.1 wie der echte Gateway): die Gateways aus dem Abbild und mit dem Code (/gw/server.js) des echten
+# Gateway-Containers, Stub-LLM und Telegram-Stub im master-Abbild; das Journal ist `docker logs`. Der echte Gateway-Container <p>-gateway
+# bleibt unberuehrt und wird am Ende neu gestartet und auf Gesundheit und Privacy-Log geprueft (Fall n).
+#
 # Kein LLM-Credit (count_tokens ist laut Anthropic kostenlos). Exit = Anzahl FAIL.
 param([switch]$Verbose)
 
@@ -37,11 +42,21 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\test_n8n_state.ps1"
 . "$PSScriptRoot\..\lib\dotenv.ps1"
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
+$IsCompose = ($suiteRuntime -eq 'compose')
+if ($IsCompose) {
+    $target = Get-TestN8nTarget -Container $Container
+    Assert-TestSuiteStateRuntime -State (Get-TestN8nState)
+}
 
-$GwJs     = '/usr/local/lib/lifeagents-llm-gateway/server.js'
-$MockDir  = '/opt/gwtest'
+# Pfade je Unterbau: klassisch der installierte Gateway im Substrat, im Verbund /gw (Volume gw_code, im master und im Gateway gleich).
+$GwJs      = if ($IsCompose) { '/gw/server.js' } else { '/usr/local/lib/lifeagents-llm-gateway/server.js' }
+$StickerDir = if ($IsCompose) { '/gw/stickers' } else { '/usr/local/lib/lifeagents-llm-gateway/stickers' }
+$MockDir   = if ($IsCompose) { '/tmp' } else { '/opt/gwtest' }
+$TgDir     = if ($IsCompose) { '/tmp' } else { '/opt/gwtest_tg' }
 $MockLog  = '/tmp/gwtest_mock.jsonl'
 $UsageDir = '/tmp/gwtest_usage'
 $Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg'; par = 'n8ntest-gwt-par' }
@@ -50,6 +65,12 @@ $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 function Invoke-InC([string[]]$CmdArgs) { Invoke-Native docker (@('exec', $Container) + $CmdArgs) }
+# Invoke-InU <einheit> <befehl> -- im Container, der die Einheit traegt: klassisch das Substrat, im Verbund ihr eigener Container
+# (dort liegen Stub-Log, Zaehler und Telegram-Log; das Gateway-Abbild ist Alpine, `cat`/`wc` genuegen).
+function Invoke-InU([string]$Unit, [string[]]$CmdArgs) {
+    if (-not $IsCompose) { return (Invoke-InC $CmdArgs) }
+    return (Invoke-Native docker (@('exec', (Get-TestStackUnitName -Project $target.Project -Unit $Unit)) + $CmdArgs))
+}
 
 $passed = 0; $failed = 0; $skipped = 0
 function Pass([string]$m) { $script:passed++; Write-Host "    [PASS] $m" -ForegroundColor Green }
@@ -58,23 +79,65 @@ function Skip([string]$m) { $script:skipped++; Write-Host "    [SKIP] $m" -Foreg
 
 # --- Vorbedingungen ------------------------------------------------------------------------------------------
 $r = Invoke-InC @('test', '-f', $GwJs)
-if ($r.Code -ne 0) { throw "Gateway-Code fehlt im Container ($GwJs) -- Substrat mit Gateway bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset" }
-$nodeBin = ((Invoke-InC @('sh', '-c', 'command -v node')).Output -join '').Trim()
-if (-not $nodeBin) { throw 'node im Container nicht gefunden.' }
+if ($r.Code -ne 0) {
+    $hint = if ($IsCompose) { 'Verbund bauen: .\scripts\dev\bootstrap_test_stack.ps1 -Reset' } else { 'Substrat mit Gateway bauen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset' }
+    throw "Gateway-Code fehlt im Container ($GwJs) -- $hint"
+}
+if ($IsCompose) {
+    # Abbilder: Gateway-Einheiten aus dem Abbild des echten Gateways, Attrappen aus dem des master (Node darin).
+    $GwImage = ((Invoke-Native docker @('inspect', '-f', '{{.Config.Image}}', $target.Gateway)).Output -join '').Trim()
+    $MasterImage = ((Invoke-Native docker @('inspect', '-f', '{{.Config.Image}}', $target.Master)).Output -join '').Trim()
+    if (-not $GwImage -or -not $MasterImage) { throw "Abbilder von $($target.Gateway) / $($target.Master) nicht lesbar (laeuft der Verbund?)." }
+} else {
+    $nodeBin = ((Invoke-InC @('sh', '-c', 'command -v node')).Output -join '').Trim()
+    if (-not $nodeBin) { throw 'node im Container nicht gefunden.' }
+}
 
-function Stop-TestUnits { foreach ($u in $Units.Values) { Invoke-InC @('systemctl', 'stop', $u) | Out-Null; Invoke-InC @('systemctl', 'reset-failed', $u) | Out-Null } }
-function Start-TestUnit([string]$Unit, [string[]]$Env, [string]$Js, [int]$Port) {
-    $a = @('systemd-run', "--unit=$Unit", '--collect') + ($Env | ForEach-Object { "--setenv=$_" }) + @($nodeBin, $Js)
-    $r = Invoke-InC $a
-    if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join ' ')" }
+function Stop-TestUnits {
+    foreach ($u in $Units.Values) {
+        if ($IsCompose) { [void](Invoke-Native docker @('rm', '-fv', (Get-TestStackUnitName -Project $target.Project -Unit $u))) }
+        else { Invoke-InC @('systemctl', 'stop', $u) | Out-Null; Invoke-InC @('systemctl', 'reset-failed', $u) | Out-Null }
+    }
+}
+# Start-TestUnit <einheit> <env> <js> <port> [-Files @{ rechner-pfad = ziel-pfad }] -- klassisch systemd-run im Substrat (Dateien vorher
+# hineinkopiert), im Verbund ein Container: -Js = der Gateway-Code -> Gateway-Einheit, sonst eine Attrappe (create, cp, start).
+function Start-TestUnit([string]$Unit, [string[]]$Env, [string]$Js, [int]$Port, [hashtable]$Files = @{}) {
+    if ($IsCompose) {
+        $name = Get-TestStackUnitName -Project $target.Project -Unit $Unit
+        [void](Invoke-Native docker @('rm', '-fv', $name))
+        if ($Js -eq $GwJs) {
+            $r = Invoke-Native docker (Get-TestStackGatewayUnitArgs -Project $target.Project -Unit $Unit -Image $GwImage -Env $Env -RepoRoot $RepoRoot)
+        } else {
+            $r = Invoke-Native docker (Get-TestStackNodeUnitCreateArgs -Project $target.Project -Unit $Unit -Image $MasterImage -Env $Env -ScriptPath $Js -RepoRoot $RepoRoot)
+            foreach ($f in $Files.Keys) {
+                if ($r.Code -ne 0) { break }
+                $r = Invoke-Native docker @('cp', $f, "${name}:$($Files[$f])")
+            }
+            if ($r.Code -eq 0) { $r = Invoke-Native docker @('start', $name) }
+        }
+        if ($r.Code -ne 0) { throw "Container $name fehlgeschlagen: $($r.Output -join ' ')" }
+    } else {
+        foreach ($f in $Files.Keys) {
+            Invoke-InC @('mkdir', '-p', (Split-Path $Files[$f] -Parent).Replace('\', '/')) | Out-Null
+            Invoke-Native docker @('cp', $f, "${Container}:$($Files[$f])") | Out-Null
+        }
+        $a = @('systemd-run', "--unit=$Unit", '--collect') + ($Env | ForEach-Object { "--setenv=$_" }) + @($nodeBin, $Js)
+        $r = Invoke-InC $a
+        if ($r.Code -ne 0) { throw "systemd-run $Unit fehlgeschlagen: $($r.Output -join ' ')" }
+    }
     for ($i = 0; $i -lt 25; $i++) {
         $p = Invoke-InC @('sh', '-c', "curl -sf http://127.0.0.1:$Port/__health >/dev/null && echo ok || echo no")
         if ((($p.Output -join '').Trim()) -eq 'ok') { return }
         Start-Sleep -Milliseconds 300
     }
-    throw "$Unit wurde nicht bereit (journalctl -u $Unit)."
+    $where = if ($IsCompose) { 'docker logs ' + (Get-TestStackUnitName -Project $target.Project -Unit $Unit) } else { 'journalctl -u ' + $Unit }
+    throw "$Unit wurde nicht bereit ($where)."
 }
-
+# Get-UnitIdentity -- aendert sich, wenn der Prozess neu gestartet wurde oder endete: klassisch MainPID, im Verbund Zustand + Start-Zeit.
+function Get-UnitIdentity([string]$Unit) {
+    if ($IsCompose) { return ((Invoke-Native docker @('inspect', '-f', '{{.State.Running}} {{.State.StartedAt}}', (Get-TestStackUnitName -Project $target.Project -Unit $Unit))).Output -join '').Trim() }
+    return ((Invoke-InC @('systemctl', 'show', $Unit, '-p', 'MainPID', '--value')).Output -join '').Trim()
+}
 # Sendet einen Body (String, roh) an einen Gateway-Port; liefert @{ Status; Body }.
 $script:reqN = 0
 function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = $FakeKey, [string]$Workflow = '') {
@@ -93,11 +156,11 @@ function Send-Gw([int]$Port, [string]$Path, [string]$RawBody, [string]$ApiKey = 
     Invoke-InC @('rm', '-f', $inC, '/tmp/gwtest_resp') | Out-Null
     return [pscustomobject]@{ Status = (($r.Output -join '').Trim()); Body = $body }
 }
-function Clear-MockLog { Invoke-InC @('sh', '-c', ": > $MockLog") | Out-Null }
+function Clear-MockLog { Invoke-InU $Units.mock @('sh', '-c', ": > $MockLog") | Out-Null }
 # Letzte echte Anfrage am Stub: Keep-Alive-Anstupser (max_tokens 0) der Unit aus Fall (k) laufen im Hintergrund weiter
 # und landen im selben Log -> auslassen, sonst liest ein spaeterer Fall den Anstupser statt seiner Anfrage.
 function Get-MockEntries {
-    @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } |
+    @((Invoke-InU $Units.mock @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } |
         ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.max_tokens -ne 0 })
 }
 function Get-LastMockEntry {
@@ -105,7 +168,10 @@ function Get-LastMockEntry {
     if ($e.Count -eq 0) { return $null }
     return $e[-1]
 }
-function Get-UnitJournal([string]$Unit) { (Invoke-InC @('journalctl', '-u', $Unit, '-o', 'cat', '--no-pager')).Output }
+function Get-UnitJournal([string]$Unit) {
+    if ($IsCompose) { return (Invoke-Native docker @('logs', (Get-TestStackUnitName -Project $target.Project -Unit $Unit))).Output }
+    (Invoke-InC @('journalctl', '-u', $Unit, '-o', 'cat', '--no-pager')).Output
+}
 function Get-LastUsage([string]$Unit) {
     $u = @(Get-UnitJournal $Unit | Where-Object { $_ -match '"ev":"usage"' })
     if ($u.Count -eq 0) { return $null }
@@ -122,11 +188,13 @@ Write-Host ''
 Write-Host "LLM-Gateway-Test (gratis) -- Container $Container"
 Write-Host ('-' * 64)
 Stop-TestUnits
-Invoke-InC @('mkdir', '-p', $MockDir) | Out-Null
-Invoke-Native docker @('cp', (Join-Path $RepoRoot 'tests\mock_llm\server.js'), "${Container}:$MockDir/server.js") | Out-Null
-Invoke-InC @('sh', '-c', "echo '[]' > $MockDir/scenarios.json") | Out-Null
-Start-TestUnit $Units.mock @('MOCK_LLM_PORT=8096', "MOCK_LLM_LOG=$MockLog", "MOCK_LLM_SCENARIOS=$MockDir/scenarios.json") "$MockDir/server.js" 8096
-Invoke-InC @('sh', '-c', "rm -rf $UsageDir && mkdir -p $UsageDir") | Out-Null
+$emptyScenarios = Join-Path $env:TEMP 'gwtest_scenarios.json'
+[System.IO.File]::WriteAllText($emptyScenarios, '[]', $Utf8NoBom)
+Start-TestUnit $Units.mock @('MOCK_LLM_PORT=8096', "MOCK_LLM_LOG=$MockLog", "MOCK_LLM_SCENARIOS=$MockDir/scenarios.json") "$MockDir/server.js" 8096 `
+    -Files @{ (Join-Path $RepoRoot 'tests\mock_llm\server.js') = "$MockDir/server.js"; $emptyScenarios = "$MockDir/scenarios.json" }
+Remove-Item $emptyScenarios -ErrorAction SilentlyContinue
+# Zaehler-Ordner: klassisch im Substrat, im Verbund ein tmpfs je Gateway-Einheit (Get-TestStackGatewayUnitArgs).
+if (-not $IsCompose) { Invoke-InC @('sh', '-c', "rm -rf $UsageDir && mkdir -p $UsageDir") | Out-Null }
 Start-TestUnit $Units.gw @('LLM_GATEWAY_PORT=8095', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', "LLM_GATEWAY_USAGE_DIR=$UsageDir") $GwJs 8095
 Start-TestUnit $Units.dead @('LLM_GATEWAY_PORT=8097', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:1', 'LLM_GATEWAY_KEEPALIVE_HOURS=0') $GwJs 8097
 # (j2) Schalter LLM_GATEWAY_SERIAL_TOOLS=0 (Probelauf parallele Werkzeug-Aufrufe), sonst identisch.
@@ -235,7 +303,7 @@ try {
     $null = Send-Gw 8099 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; system = 'SYS'; messages = $msgs }))
     Clear-MockLog
     Start-Sleep -Seconds 4
-    $kaReq = @((Invoke-InC @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.max_tokens -eq 0 })
+    $kaReq = @((Invoke-InU $Units.mock @('cat', $MockLog)).Output | Where-Object { $_ -match '"dialect":"anthropic"' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.max_tokens -eq 0 })
     $hKa = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8099/__health')).Output -join '') | ConvertFrom-Json
     $hOff = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8095/__health')).Output -join '') | ConvertFrom-Json
     $kaUse = @(Get-UnitJournal $Units.ka | Where-Object { $_ -match '"keepalive":true' } | ForEach-Object { $_ | ConvertFrom-Json })
@@ -274,7 +342,7 @@ try {
     # usage.jsonl + /__usage (Seite 1 von 2, dann der Rest)
     $p1 = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8095/__usage?limit=2')).Output -join '') | ConvertFrom-Json
     $p2 = ((Invoke-InC @('curl', '-s', "http://127.0.0.1:8095/__usage?limit=5000&after=$($p1.next_after)")).Output -join '') | ConvertFrom-Json
-    $fileN = [int](((Invoke-InC @('sh', '-c', "wc -l < $UsageDir/usage.jsonl")).Output -join '').Trim())
+    $fileN = [int](((Invoke-InU $Units.gw @('sh', '-c', "wc -l < $UsageDir/usage.jsonl")).Output -join '').Trim())
     if (-not ($p1.rows.Count -eq 2 -and $p1.has_more -eq $true -and ($p1.rows.Count + $p2.rows.Count) -eq $fileN -and $p2.has_more -eq $false -and
               @($p2.rows | Where-Object { $_.wf -eq 'agent.tool_web_search' }).Count -eq 1 -and $p1.rows[0].id -match '^[0-9]{13}-[0-9a-f]{6}-[0-9]{6}$')) {
         $lOk = $false; $lWhy += "usage p1=$($p1.rows.Count)/$($p1.has_more) p2=$($p2.rows.Count) datei=$fileN" }
@@ -288,17 +356,17 @@ try {
     # (f) Privacy: Kanarien + Schluessel nie im Journal (inkl. kaputtem JSON)
     Write-Host '  (f) Privacy: Prompt-Inhalt und Schluessel nie im Journal'
     $res = Send-Gw 8095 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')   # kaputtes JSON
-    $all = @(Get-UnitJournal $Units.gw) + @(Get-UnitJournal $Units.dead) + @(Get-UnitJournal $Units.ka) + @((Invoke-InC @('cat', "$UsageDir/usage.jsonl")).Output)
+    $all = @(Get-UnitJournal $Units.gw) + @(Get-UnitJournal $Units.dead) + @(Get-UnitJournal $Units.ka) + @((Invoke-InU $Units.gw @('cat', "$UsageDir/usage.jsonl")).Output)
     $leak = @($all | Where-Object { $_ -match 'CANARY' })
     if ($leak.Count -eq 0 -and (@($all) -match '"code":"parse_error"')) { Pass 'kein Inhalt/Schluessel im Journal + usage.jsonl, kaputtes JSON nur als parse_error' }
     else { Fail "Journal enthaelt Inhalt/Schluessel: $($leak -join ' | ')" }
 
     # (i) ungueltiges Anfrage-Ziel ('//host/…') -> 400, Prozess lebt weiter (kein uncaughtException-Neustart)
     Write-Host '  (i) ungueltiges Anfrage-Ziel -> 400, Dienst laeuft weiter'
-    $pidBefore = ((Invoke-InC @('systemctl', 'show', $Units.gw, '-p', 'MainPID', '--value')).Output -join '').Trim()
+    $pidBefore = Get-UnitIdentity $Units.gw
     $r = Invoke-InC @('curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--request-target', '//evil.example/v1/messages', '-X', 'POST', 'http://127.0.0.1:8095/')
-    $pidAfter = ((Invoke-InC @('systemctl', 'show', $Units.gw, '-p', 'MainPID', '--value')).Output -join '').Trim()
-    if ((($r.Output -join '').Trim()) -eq '400' -and $pidBefore -eq $pidAfter -and $pidAfter -ne '0') { Pass '400 + gleicher Prozess' }
+    $pidAfter = Get-UnitIdentity $Units.gw
+    if ((($r.Output -join '').Trim()) -eq '400' -and $pidBefore -eq $pidAfter -and $pidAfter -ne '0' -and $pidAfter -notmatch '^false') { Pass '400 + gleicher Prozess' }
     else { Fail "Status=$($r.Output -join '') PID $pidBefore -> $pidAfter" }
 
     # (h) echter Upstream, gratis (count_tokens)
@@ -324,12 +392,11 @@ try {
     Write-Host '  (m) Telegram-Relay: Allowlist, Token-Form, Reaktion, Sticker Upload -> file_id, kein Leck'
     $TgLog = '/tmp/gwtest_tg.jsonl'
     $TgToken = '123456789:AAFAKEtokenFAKEtokenFAKEtoken_0000'
-    Invoke-InC @('mkdir', '-p', '/opt/gwtest_tg') | Out-Null
-    Invoke-Native docker @('cp', (Join-Path $RepoRoot 'tests\mock_telegram\server.js'), "${Container}:/opt/gwtest_tg/server.js") | Out-Null
-    Invoke-InC @('sh', '-c', ": > $TgLog") | Out-Null
-    Start-TestUnit $Units.tgmock @('N8NTEST_MOCK_TG_PORT=8103', "N8NTEST_MOCK_TG_LOG=$TgLog") '/opt/gwtest_tg/server.js' 8103
+    if (-not $IsCompose) { Invoke-InC @('sh', '-c', ": > $TgLog") | Out-Null }
+    Start-TestUnit $Units.tgmock @('N8NTEST_MOCK_TG_PORT=8103', "N8NTEST_MOCK_TG_LOG=$TgLog") "$TgDir/server.js" 8103 `
+        -Files @{ (Join-Path $RepoRoot 'tests\mock_telegram\server.js') = "$TgDir/server.js" }
     Start-TestUnit $Units.tg @('LLM_GATEWAY_PORT=8102', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0',
-        'LLM_GATEWAY_TELEGRAM_API=http://127.0.0.1:8103', 'LLM_GATEWAY_STICKER_DIR=/usr/local/lib/lifeagents-llm-gateway/stickers') $GwJs 8102
+        'LLM_GATEWAY_TELEGRAM_API=http://127.0.0.1:8103', "LLM_GATEWAY_STICKER_DIR=$StickerDir") $GwJs 8102
     function Send-Tg([string]$Path, [string]$RawBody, [string]$Token = $TgToken) {
         $script:reqN++
         $hostFile = Join-Path $env:TEMP "gwtest_tg_$($script:reqN).json"
@@ -344,7 +411,7 @@ try {
         Invoke-InC @('rm', '-f', $inC, '/tmp/gwtest_tg_resp') | Out-Null
         return [pscustomobject]@{ Status = (($r.Output -join '').Trim()); Body = $body }
     }
-    function Get-TgEntries { @((Invoke-InC @('cat', $TgLog)).Output | Where-Object { $_ -match '"method"' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.method -ne '__start' }) }
+    function Get-TgEntries { @((Invoke-InU $Units.tgmock @('cat', $TgLog)).Output | Where-Object { $_ -match '"method"' } | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.method -ne '__start' }) }
 
     $res = Send-Tg '/__telegram/setMessageReaction' '{"chat_id":"4242","message_id":77}'
     $e = @(Get-TgEntries)
@@ -399,6 +466,23 @@ try {
     # Produktiver Gateway gesund?
     $h = Get-LlmGatewayHealth -Container $Container
     if ($h -and $h.ok) { Pass "produktiver Gateway gesund (upstream $($h.upstream), static_ttl $($h.static_ttl))" } else { Fail 'produktiver Gateway /__health nicht ok' }
+
+    # (n) Verbund: der echte Gateway-Container (nicht eine Wegwerf-Einheit): ein kaputter Body mit Pruefinhalt erreicht sein Log nicht
+    # (nur der feste Code parse_error; der Body geht roh an den Upstream weiter, hier die Attrappe des Verbunds, darum nur bei lokalem
+    # Upstream); nach einem Neustart liest er seine Umgebung aus gateway.env neu und ist gesund.
+    if ($IsCompose) {
+        Write-Host '  (n) Verbund: echter Gateway-Container: Pruefinhalt nie im Log, Neustart gesund'
+        if (-not ($h -and "$($h.upstream)" -match '^http://127\.0\.0\.1:')) { Fail "echter Gateway hat keinen lokalen Upstream ($($h.upstream)): kein Pruefinhalt gesendet" }
+        else {
+            $resReal = Send-Gw 8090 '/v1/messages' ('{"model":"x","messages":[{"role":"user","content":"' + $Canary + '"}')
+            Restart-TestLlmGateway -Container $Container
+            $h2 = Get-LlmGatewayHealth -Container $Container
+            $realLog = @((Invoke-Native docker @('logs', $target.Gateway)).Output)
+            $canaryLines = @($realLog | Where-Object { $_ -match 'CANARY' }).Count
+            if ($h2 -and $h2.ok -and $canaryLines -eq 0 -and (@($realLog) -match '"code":"parse_error"')) { Pass "$($target.Gateway): kaputter Body nur als parse_error geloggt, kein Pruefinhalt; nach Neustart gesund" }
+            else { Fail "echter Gateway: Status=$($resReal.Status) health=$($h2 | ConvertTo-Json -Compress) canary-zeilen=$canaryLines" }
+        }
+    }
 } finally {
     if ($Verbose) { Write-Host ((Get-UnitJournal $Units.gw) -join "`n") -ForegroundColor DarkGray }
     Stop-TestUnits

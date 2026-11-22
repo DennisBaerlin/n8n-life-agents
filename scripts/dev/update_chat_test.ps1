@@ -7,8 +7,11 @@
 # kopieren und tests/mock_github/update_cases.sh fahren: Fake-Releases mit Stub-provision.sh (Ergebnis je Szenario),
 # Telegram ueber den Mock (Aufzeichnung /tmp/mock_telegram.jsonl). Die echten Update-Timer des Substrats ruhen waehrend
 # der Faelle; VERSION, Auftrags-/Latch-Zeilen und die Timer stellt der Fall-Runner am Ende zurueck.
-# Voraussetzung: laufendes Substrat (bootstrap_test_n8n.ps1) + .\scripts\dev\enable_mock_telegram.ps1.
-# Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1; frei neben 8088 mock_llm,
+# Voraussetzung klassisch: laufendes Substrat (bootstrap_test_n8n.ps1) + .\scripts\dev\enable_mock_telegram.ps1.
+# N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1), ohne enable_mock_telegram. Der Treiber pausiert die
+# Tick-Schleife des master (Suspend-TestStackTick, in finally zurueck), der Fall-Runner startet seine eigene Telegram-Attrappe auf
+# Port 8101 und gibt den Fake-Releases die compose.yml des laufenden master-Abbilds mit; der master-Wechsel ist nicht Gegenstand.
+# Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1, im Verbund zusaetzlich 8101; frei neben 8088 mock_llm,
 #         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 + 8102/8103 llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8086, [switch]$Verbose)
@@ -18,12 +21,18 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\test_n8n_state.ps1"
+. "$PSScriptRoot\..\lib\test_stack.ps1"
+$suiteRuntime = Get-TestSuiteRuntime
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 $state = Get-TestN8nState
-if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
-$TgPort = "$($state.mock_telegram.port)"
-if (-not $TgPort) { $TgPort = '8089' }
+Assert-TestSuiteStateRuntime -State $state
+if ($suiteRuntime -eq 'compose') { $TgPort = '8101' }   # fest: Port+1 belegt der S3-Port des GitHub-Mocks, 8088/8089/8092 die Attrappen des Pods
+else {
+    if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (kein mock_telegram-Block im State). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
+    $TgPort = "$($state.mock_telegram.port)"
+    if (-not $TgPort) { $TgPort = '8089' }
+}
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 
@@ -33,9 +42,13 @@ Write-Host ("-" * 64)
 
 $root = '/opt/update_chat_test'
 $lib = '/usr/local/lib/lifeagents'
+# Verbund: ein Rest einer frueheren Pause heilt zuerst; der Spiegel unten schreibt durch den Link /usr/local/bin/lifeagents (fehlt er, entstuende dort eine lose Datei).
+if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
-foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_github', 'mock_github'))) {
+$copies = @(@('provisioning', 'provisioning'), @('tests\mock_github', 'mock_github'))
+if ($suiteRuntime -eq 'compose') { $copies += ,@('tests\mock_telegram', 'mock_telegram') }   # eigene Attrappe des Fall-Runners
+foreach ($pair in $copies) {
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:$root/$($pair[1])")
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
@@ -45,7 +58,13 @@ $sync = "set -e; rm -rf $lib/provisioning && cp -a $root/provisioning $lib/provi
 $r = Invoke-Native docker @('exec', $Container, 'bash', '-c', $sync)
 if ($r.Code -ne 0) { throw "Runtime-Spiegel im Container fehlgeschlagen: $($r.Output -join ' | ')" }
 
-$r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_github/update_cases.sh", $root, "$Port", $TgPort)
+# Verbund: erst nach dem Spiegel pausiert die Tick-Schleife des master; sie konkurriert sonst mit den Faellen um Auftraege und die Sperre.
+try {
+    if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_github/update_cases.sh", $root, "$Port", $TgPort)
+} finally {
+    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
+}
 $lines = @($r.Output)
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }

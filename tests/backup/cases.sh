@@ -25,7 +25,10 @@ fails=0
 pass() { printf 'PASS %s\n' "$1"; }
 fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 ok_if() { if eval "$2"; then pass "$1"; else fail "$1" "${3:-Bedingung falsch}"; fi; }
-
+# Faelle, die das Ziel der automatischen Sicherung im Dateisystem des Fall-Runners lesen (Ordner BACKUP_LOCAL_DIR, /var/backups/lifeagents):
+# im Docker-Verbund liegt das Ziel in einem Ordner auf dem Rechner, den nur ein Helfer-Container erreicht, der master sieht ihn nicht.
+# Dort ein sichtbares SKIP statt eines Falls, der nichts pruefen koennte.
+ok_if_local() { if rt_is_compose; then printf 'SKIP %s: Ziel im Verbund = Ordner auf dem Rechner, vom master nicht lesbar\n' "$1"; else ok_if "$@"; fi; }
 W="$(mktemp -d)"; chmod 0700 "$W"
 CLI="$ROOT/lifeagents"
 sed "s|@@LIBDIR@@|$ROOT|" "$ROOT/provisioning/templates/lifeagents.tpl" > "$CLI"; chmod 0700 "$CLI"
@@ -46,6 +49,17 @@ rows() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM agent.core
 n=0
 cli() { n=$((n + 1)); "$CLI" "$@" > "$W/out.$n" 2>&1 < /dev/null; }
 cli_in() { local f="$1"; shift; n=$((n + 1)); "$CLI" "$@" > "$W/out.$n" 2>&1 < "$f"; }
+# exp_to <ordner> <ausgabe-datei> -- Export in einen Ordner. Klassisch ohne Pfad (Standard-Name im Arbeitsordner); im Verbund mit Pfad,
+# denn ohne Pfad landet er in einem Ordner auf dem Rechner, den der master nicht liest. Der Name traegt die Schluessel-ID des aktiven
+# Schluessels und die Release wie der Standard-Name: die Faelle zu "falscher Schluessel" erkennen den Schluessel am Dateinamen.
+exp_to() {
+  if rt_is_compose; then
+    local kid v
+    kid="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT value FROM core.backup_key WHERE key = '${BACKUP_KEY_NAME}'" | tr -d '\n' | backup_key_id)"
+    v="$(tr -d '[:space:]' < "$ROOT/VERSION")"; [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || v=vdev
+    "$CLI" backup export "$1/lifeagents-backup-$(date -u +%Y%m%d%H%M%S)-${kid}-${v}.nla.enc" > "$2" 2>&1 < /dev/null
+  else ( cd "$1" && "$CLI" backup export > "$2" 2>&1 < /dev/null ); fi
+}
 said() { grep -qF -- "$1" "$W/out.$n"; }
 
 ORIG="$(pg_su_psql -X -tA -F $'\t' -d "$N8N_DB_NAME" -c "SELECT key, value FROM core.backup_key ORDER BY key")"
@@ -90,6 +104,12 @@ cli backup export "$W/x.nla.enc"; rc=$?
 # Export mit Pfad schreibt genau dorthin; den Standard-Namen pruefen wir ueber ein Export ohne Pfad im Arbeitsordner.
 ( cd "$W" && "$CLI" backup export > "$W/out.e2" 2>&1 < /dev/null ); rc2=$?
 fa="$(cd "$W" && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
+# Verbund: ein Export ohne Pfad landet im Ordner auf dem Rechner, nicht im Arbeitsordner; der Name steht in der Meldung.
+if rt_is_compose; then
+  fa="$(grep -m1 -o 'lifeagents-backup-[0-9]\{14\}-[0-9A-Za-z]*-v[0-9A-Za-z.-]*\.nla\.enc' "$W/out.e2" || true)"
+  # Ohne Namen in der Meldung gaebe es keine Datei unter dem Standard-Namen: abbrechen, statt mit einer anderen Datei weiterzupruefen.
+  [ -n "$fa" ] || { fail E.name-aus-meldung "kein Standard-Name in der Meldung: $(tr '\n' ' ' < "$W/out.e2" | cut -c1-200)"; exit "$fails"; }
+fi
 ok_if E.export-ok '[ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ -s "$W/x.nla.enc" ]' "rc=$rc/$rc2"
 # Alle Pakete = Fremdschluessel-Ringe (accounts, recurring_payments, ...): pg_dump -a warnt darueber; mit --disable-triggers
 # harmlos, darum nicht in der Ausgabe (Live-Fund v0.43.1). Sonstige Ausgabe bleibt.
@@ -98,7 +118,7 @@ ok_if E.export-ohne-ring-warnung '! grep -q "circular foreign-key" "$W/out.e2" &
 ok_if E.name-mit-id-und-version '[[ "$fa" =~ ^lifeagents-backup-[0-9]{14}-${kidA}-v[0-9A-Za-z.-]+\.nla\.enc$ ]]' "Name: $fa"
 ok_if E.state-last-ok 'grep -qE "^LAST_OK=[0-9]+$" "$BACKUP_STATE_FILE"' "backup.state ohne LAST_OK"
 ok_if E.schluessel-unveraendert 'active_is "$KA" && [ "$(prev_n)" = 0 ]'
-A="$W/$fa"
+A="$W/$fa"; if rt_is_compose; then cp "$W/x.nla.enc" "$A"; fi   # Verbund: der Export mit Pfad unter dem Standard-Namen (die Datei ohne Pfad liegt auf dem Rechner)
 
 # Vollstaendigkeit: Der Export traegt jedes aktive Paket mit backup-Block. Soll = Manifest + information_schema (nicht
 # _bkp_bulk_tables, sonst pruefte der Test den Code mit sich selbst); Ist = manifest.json im Bundle (Kopf, verify_counts)
@@ -106,7 +126,7 @@ A="$W/$fa"
 # Schema, kein Block) - sonst fehlten seine Daten still in der Sicherung.
 EX="$W/ex"; mkdir -p "$EX"
 gpg_sym_decrypt_any "$A" "$EX/bundle.tar.gz" && tar -xzf "$EX/bundle.tar.gz" -C "$EX"
-pg_su_exec pg_restore -l < "$EX/data.dump" 2>/dev/null | awk '/ TABLE DATA / { print $(NF-2) "." $(NF-1) }' | sort -u > "$EX/toc"
+pg_su_stdin pg_restore -l < "$EX/data.dump" 2>/dev/null | awk '/ TABLE DATA / { print $(NF-2) "." $(NF-1) }' | sort -u > "$EX/toc"
 act="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT package FROM core.package_registry WHERE status = 'active' ORDER BY package" | sort)"
 miss=''; blockless=''; checked=0
 for pkg in $act; do
@@ -142,7 +162,7 @@ ok_if E.export-ohne-core-schluessel '[ "$(jq -r "[.verify_counts | keys[] | sele
 
 # Sicherung mit dem "frischen" Schluessel KB (fuer den prev-Fall), dann ist KB aktiv wie auf einem neuen Rechner.
 set_active "$KB"
-( mkdir -p "$W/b" && cd "$W/b" && "$CLI" backup export > "$W/out.eb" 2>&1 < /dev/null )
+mkdir -p "$W/b"; exp_to "$W/b" "$W/out.eb"
 B="$(ls -1 "$W"/b/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
 ok_if E.export-mit-zweitem-schluessel '[ -s "$B" ]'
 
@@ -191,7 +211,7 @@ cli_in "$W/ka" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.zweimal-gleicher-schluessel '[ "$rc" -eq 0 ] && active_is "$KA" && [ "$(prev_n)" = 1 ]' "rc=$rc"
 
 # Jede Wiederherstellung mit eigenen Daten schreibt vorher eine Sicherung (Server: /var/backups/lifeagents).
-ok_if R.vorab-sicherung '[ -n "$(new_backups)" ]' \
+ok_if_local R.vorab-sicherung '[ -n "$(new_backups)" ]' \
   "keine neue Sicherung vor dem Ersetzen"
 
 # ---------------------------------------------------------------------------- P: Start-App (Probelauf, stdin, Hintergrund)
@@ -269,7 +289,7 @@ fin() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) || ':' || md5(CO
 # vfp -> Fingerabdruck fuer „nichts geaendert“: Kontexte/Schluessel/Pakete/backup.state (fp) | Konten (fin) | neue Sicherungsdateien.
 vfp() { printf '%s|%s|%s' "$(fp)" "$(fin)" "$(new_backups | wc -l)"; }
 # vexp <ordner> -> Pfad der frischen Sicherung (Standard-Name, traegt die Release aus VERSION)
-vexp() { mkdir -p "$W/v/$1"; ( cd "$W/v/$1" && "$CLI" backup export > "$W/out.v$1" 2>&1 < /dev/null ); ls -1 "$W/v/$1"/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1; }
+vexp() { mkdir -p "$W/v/$1"; exp_to "$W/v/$1" "$W/out.v$1"; ls -1 "$W/v/$1"/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1; }
 vplan() { n=$((n + 1)); "$CLI" backup restore "$1" --plan --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
 vyes() { n=$((n + 1)); "$CLI" backup restore "$1" --yes --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
 # vblock <fall> <bundle> <code> [release] — Probelauf und echter Lauf lehnen mit <code> ab, nichts geaendert.
@@ -486,29 +506,29 @@ export BACKUP_LOCAL_DIR="$W/local"; PATH_VOR_F="$PATH"; export PATH="$W/shim:$PA
 own_n() { find "$W/local" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | grep -cE "^lifeagents-backup-[0-9]{14}-${kidA}-v[0-9A-Za-z.-]+\.nla\.enc\$"; }
 rm -f "$BACKUP_STATE_FILE"
 cli backup auto; rc=$?
-ok_if F.auto-schreibt-in-ordner '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
-ok_if F.ordner-nur-fuer-root '[ "$(stat -c %a "$W/local")" = 700 ]'
+ok_if_local F.auto-schreibt-in-ordner '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
+ok_if_local F.ordner-nur-fuer-root '[ "$(stat -c %a "$W/local")" = 700 ]'
 ok_if F.auto-last-ok '[ "$(( $(date +%s) - $(read_env_value "$BACKUP_STATE_FILE" LAST_OK) ))" -lt 120 ]'
 ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qFf "$W/needles" "$W/out.$n"'
 erste="$(ls -1 "$W/local" | head -n1)"
 # --scheduled: heute schon gesichert -> nichts; seit 3 Tagen nicht -> eine neue Datei.
 cli backup auto --scheduled; rc=$?
-ok_if F.scheduled-heute-schon-gesichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
+ok_if_local F.scheduled-heute-schon-gesichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
 env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
 sleep 1; cli backup auto --scheduled; rc=$?
-ok_if F.scheduled-nach-3-tagen-sichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 2 ]' "rc=$rc n=$(own_n)"
+ok_if_local F.scheduled-nach-3-tagen-sichert '[ "$rc" -eq 0 ] && [ "$(own_n)" = 2 ]' "rc=$rc n=$(own_n)"
 # Aufbewahrung: 16 alte eigene + 1 fremder Schluessel + 1 Vorab-Sicherung; danach bleiben 14 eigene (die neuesten).
 for i in $(seq 1 16); do : > "$W/local/lifeagents-backup-2026010100$(printf %02d "$i")00-${kidA}-v0.0.1.nla.enc"; done
 : > "$W/local/lifeagents-backup-20250101000000-kdeadbeef-v0.0.1.nla.enc"
 : > "$W/local/pre-upgrade-n8n-1.0.0-20260101T000000Z.dump.gpg"
 env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
 sleep 1; cli backup auto; rc=$?
-ok_if F.rotation-behaelt-14 '[ "$rc" -eq 0 ] && [ "$(own_n)" = 14 ]' "rc=$rc n=$(own_n)"
-ok_if F.rotation-loescht-die-aeltesten '[ ! -e "$W/local/lifeagents-backup-20260101000100-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/lifeagents-backup-20260101001600-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/$erste" ]' "Reihenfolge"
-ok_if F.rotation-laesst-fremdes-liegen '[ -e "$W/local/lifeagents-backup-20250101000000-kdeadbeef-v0.0.1.nla.enc" ] && [ -e "$W/local/pre-upgrade-n8n-1.0.0-20260101T000000Z.dump.gpg" ]'
+ok_if_local F.rotation-behaelt-14 '[ "$rc" -eq 0 ] && [ "$(own_n)" = 14 ]' "rc=$rc n=$(own_n)"
+ok_if_local F.rotation-loescht-die-aeltesten '[ ! -e "$W/local/lifeagents-backup-20260101000100-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/lifeagents-backup-20260101001600-${kidA}-v0.0.1.nla.enc" ] && [ -e "$W/local/$erste" ]' "Reihenfolge"
+ok_if_local F.rotation-laesst-fremdes-liegen '[ -e "$W/local/lifeagents-backup-20250101000000-kdeadbeef-v0.0.1.nla.enc" ] && [ -e "$W/local/pre-upgrade-n8n-1.0.0-20260101T000000Z.dump.gpg" ]'
 # Ordner nicht anlegbar: kein Abbruch (rc 0), Grund "write" in backup.state.
 BACKUP_LOCAL_DIR=/proc/nirgends/sicherung cli backup auto; rc=$?
-ok_if F.ordner-fehlt-grund-write '[ "$rc" -eq 0 ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON)" = write ]' "rc=$rc"
+ok_if_local F.ordner-fehlt-grund-write '[ "$rc" -eq 0 ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON)" = write ]' "rc=$rc"
 # Lebenszeichen fuer den Waechter (core.heartbeats, Signal backup): jeder Lauf am Ende, mit der letzten eigenen Meldung;
 # ein abgebrochener Lauf (Zeitgrenze) schreibt keins. gpg haengt per Attrappe, damit der Lauf sicher vor dem Ende stirbt.
 hbq() { pg_su_psql -X -tA -q -d "$N8N_DB_NAME" -c "SELECT status || '|' || COALESCE(extract(epoch FROM notified_at)::bigint::text, '') || '|' || (beat_at > now() - interval '60 seconds') FROM core.heartbeats WHERE signal = 'backup'" 2>/dev/null; }

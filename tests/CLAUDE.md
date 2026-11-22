@@ -6,6 +6,7 @@
 - **Testdaten nur erfunden** (Repo ist öffentlich): Vorrat und Regeln in `tests/fixtures/README.md`, nie Werte aus einem Befund — keine echten Namen, Geburtsdaten, Bestände, Beträge, Kontonummern. Eine Session, die einen Befund nachbaut, bekommt nur die Eigenschaft (z. B. Rundungsfall), nie den Originaltext; Notizen und Kommentare nennen nur sie. `privacy_lint` prüft gegen die lokalen Listen, `owner_fact_lint` typische Formulierungen.
 
 - **Live-Fehler ⟹ zuerst ein roter Test zur Eigenschaft, Fix erst danach; ohne Test nicht fertig.**
+- **Zwei Unterbauten (`N8NTEST_RUNTIME=classic|compose`):** Ein Fall-Runner (`cases.sh`), der im Verbund laufen soll, ruft Datenbank, Betriebsart und Dienste über `provisioning/lib/runtime.sh` (`pg_su_psql`, `rt_is_compose`), nie `runuser`/`systemctl` direkt; was nur klassisch Sinn hat (Timer), bekommt im Verbund einen eigenen Weg im Treiber (`Suspend-TestStackTick`), nicht im Runner. Jede Suite läuft einmal klassisch und einmal im Verbund grün (Mechanik → `docs/reference/scripts.md`).
 - **Ersatz beweist den echten Weg nicht:** Ein Test gegen eine Attrappe (`fake_*`) oder mit einem von Hand mitgegebenen Wert (`docker exec -e`, `NAME=… bash provision.sh`) prüft nur den Ersatz. Die Attrappe nennt im Kopf den Test, der dieselben Eingaben durch das echte Gegenstück schickt (`# real-path-test:`), der Hand-Wert seine Begründung (`# hand-injected:`); `none (<Grund>)` macht eine Lücke sichtbar, statt sie zu verstecken. Wächter `scripts/standin_lint.ps1`.
 
 ## LLM-Test-Kosten: OWNER-ONLY

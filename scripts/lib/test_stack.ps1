@@ -476,7 +476,7 @@ function Remove-TestStackSideContainers($Names) {
 # mit provisioning/ UND den Fall-Ordnern daneben erwarten (ein Einhaengen braucht einen Docker-Dienst, der Rechner-Pfade sieht;
 # ein Tar ueber stdin belegt das stdin der Faelle). Der Container hat ein eigenes Netz: die Mock-Ports der Suiten (8082, 8084,
 # 8093 ...) kollidieren nie mit einem Nachbarn.
-# Suiten, die eine echte Datenbank oder das echte n8n brauchen, bleiben klassisch (Assert-TestSuiteClassicOnly).
+# Suiten, die den laufenden Verbund brauchen (Datenbank, Timer, Gateway, n8n-Patches), laufen im master-Container des Verbunds (Abschnitt unten).
 
 # Get-TestSuiteRuntime -- N8NTEST_RUNTIME = classic|compose; ohne Wert classic (Standard bis zur Umschaltung der Matrix). Ein
 # unbekannter Wert bricht ab: der stille Rueckfall liesse die Suite auf dem falschen Unterbau laufen.
@@ -485,14 +485,6 @@ function Get-TestSuiteRuntime {
     if (-not $r) { return 'classic' }
     if ($r -cnotin @('classic', 'compose')) { throw "N8NTEST_RUNTIME '$r' ungueltig (classic oder compose)." }
     return $r
-}
-
-# Assert-TestSuiteClassicOnly -- Suiten, die den laufenden Verbund brauchen und dort noch keinen Weg haben, brechen auf dem
-# Verbund-Weg laut ab (nie ein stilles Ueberspringen, nie ein Lauf gegen das falsche Substrat).
-function Assert-TestSuiteClassicOnly([Parameter(Mandatory)][string]$Suite, [Parameter(Mandatory)][string]$Reason) {
-    if ((Get-TestSuiteRuntime) -eq 'compose') {
-        throw "$Suite laeuft noch nicht auf dem Docker-Verbund: $Reason. Der Verbund-Weg fehlt noch; bis dahin `$env:N8NTEST_RUNTIME='classic' auf dem klassischen Substrat."
-    }
 }
 
 function Get-TestSuiteScratchName([string]$Project, [string]$Suite) {
@@ -541,4 +533,91 @@ function Resolve-TestSuiteContainer {
 # Remove-TestSuiteScratch -- raeumt den Wegwerf-Container ab (immer `rm -fv`); fuer das klassische Substrat ein No-op.
 function Remove-TestSuiteScratch($Target) {
     if ($null -ne $Target -and $Target.Scratch) { [void](Invoke-Native docker @('rm', '-fv', $Target.Container)) }
+}
+
+# --- Suiten im laufenden Verbund (update_chat_test, bot_menu_test, llm_gateway_test, backup_test) ------------------------------
+# Sie laufen im master des Verbunds (Netz-Namensraum des anchor: 127.0.0.1 gilt dort wie fuer n8n und den echten Gateway), nicht in
+# einem Wegwerf-Container: sie brauchen die echte Datenbank, die Volumes und die Dienste. Zwei Dinge gibt es dort anders als
+# klassisch: statt der systemd-Timer die Tick-Schleife des master, statt der transienten systemd-Einheiten eigene Container.
+
+# Assert-TestSuiteStateRuntime -State <Zustandsdatei-Objekt> -- N8NTEST_RUNTIME und der laufende Unterbau muessen uebereinstimmen.
+function Assert-TestSuiteStateRuntime {
+    param([Parameter(Mandatory)]$State)
+    $want = Get-TestSuiteRuntime; $have = Get-TestN8nRuntime -State $State
+    if ($want -ne $have) {
+        throw "N8NTEST_RUNTIME=$want, aber das laufende Substrat ist '$have' (Zustandsdatei). Passenden Unterbau starten (bootstrap_test_stack.ps1 fuer compose, bootstrap_test_n8n.ps1 fuer classic) oder N8NTEST_RUNTIME angleichen."
+    }
+}
+
+# Get-TestStackTickScript -Action pause|resume -- sh-Text. Die Schleife im master (compose.yml) ruft `lifeagents update --tick` nur,
+# wenn /usr/local/bin/lifeagents ausfuehrbar ist. Ein `chmod a-x` (so pausiert heartbeat_e2e.sh, das die CLI nie selbst ruft) bremste
+# auch den Runner, der die CLI direkt ausfuehrt (`command -v lifeagents`, update_runner.sh) -> Link-Tausch: waehrend der Pause liegt die
+# CLI unter /usr/local/sbin (steht vor /usr/local/bin im PATH), /usr/local/bin/lifeagents fehlt der Schleife. Ein Merker (stillgelegt-
+# Datei) kaeme nicht in Frage: er sperrt auch CLI und Installer. Beim Pausieren wartet das Skript auf einen schon laufenden Schritt der
+# Schleife; das Muster ist am Anfang der Befehlszeile verankert, weil die Schleife (PID 1) den Text selbst in ihrer Befehlszeile traegt.
+function Get-TestStackTickScript {
+    param([Parameter(Mandatory)][string]$Action)
+    $cli = '/usr/local/lib/lifeagents/bin/lifeagents'
+    switch ($Action) {
+        'pause' { return "mkdir -p /usr/local/sbin; ln -sf $cli /usr/local/sbin/lifeagents; rm -f /usr/local/bin/lifeagents; i=0; while pgrep -f '^[^ ]*bash [^ ]*lifeagents update --(tick|run-requested|check)' >/dev/null && [ `$i -lt 240 ]; do sleep 0.5; i=`$((i+1)); done; [ `$i -lt 240 ]" }
+        'resume' { return "ln -sf $cli /usr/local/bin/lifeagents; rm -f /usr/local/sbin/lifeagents" }
+        default { throw "Tick-Aktion '$Action' unbekannt (pause oder resume)." }
+    }
+}
+function Get-TestStackTickArgs {
+    param([Parameter(Mandatory)][string]$Master, [Parameter(Mandatory)][string]$Action)
+    if (-not $Master) { throw 'Tick: master-Container fehlt.' }
+    return @('exec', $Master, 'sh', '-c', (Get-TestStackTickScript -Action $Action))
+}
+# Suspend-/Resume-TestStackTick -Master <p>-master -- nur im Verbund (klassisch pausieren die Suiten ihre Timer selbst). Resume
+# gehoert in ein finally; ein vergessenes Resume heilt der naechste -Reset (die CLI liegt im Volume rt_tree). Die Pause ist ein einziger
+# Schalter je master, ohne Besitzer und Zaehler: zwei Suiten gleichzeitig auf demselben Verbund stuenden sich im Weg (die zweite
+# setzt die erste fort). Je Verbund eine Suite zur Zeit, parallele Suiten bekommen je einen eigenen Verbund.
+function Suspend-TestStackTick([Parameter(Mandatory)][string]$Master) {
+    $r = Invoke-Native docker (Get-TestStackTickArgs -Master $Master -Action pause)
+    if ($r.Code -ne 0) { throw "Tick-Schleife von $Master liess sich nicht pausieren (ein Schritt lief nach 2 Min noch?): $($r.Output -join ' | ')" }
+}
+function Resume-TestStackTick([Parameter(Mandatory)][string]$Master) {
+    $r = Invoke-Native docker (Get-TestStackTickArgs -Master $Master -Action resume)
+    # Kein throw: Resume laeuft im finally und darf einen Fehler der Suite nicht ueberdecken. Sichtbar machen, denn ohne Fortsetzen
+    # steht die Tick-Schleife (Updates, Pruefungen, Sicherung) still.
+    if ($r.Code -ne 0) { Write-Host "    [WARN] Tick-Schleife von $Master liess sich nicht fortsetzen (Exit $($r.Code)): $($r.Output -join ' | ') -- bootstrap_test_stack.ps1 -Reset stellt sie her." -ForegroundColor Yellow }
+}
+
+# Get-TestStackUnitName -Project <p> -Unit <n8ntest-gwt…> -- Name des Container, der die gleichnamige systemd-Einheit der klassischen
+# Gateway-Suite ersetzt. Nie im Standard-Projekt (Assert-TestStackProject).
+function Get-TestStackUnitName {
+    param([Parameter(Mandatory)][string]$Project, [Parameter(Mandatory)][string]$Unit)
+    Assert-TestStackProject $Project
+    if ($Unit -cnotmatch '^n8ntest-gwt(-[a-z]+)?$') { throw "Einheit '$Unit' ungueltig (n8ntest-gwt oder n8ntest-gwt-<name>)." }
+    return "$Project-$Unit"
+}
+# Gemeinsame Argumente: Namensraum des anchor (127.0.0.1 wie der echte Gateway), Etiketten fuer den Session-Ende-Haken
+# (lifeagents.substrate=n8n-suite, Worktree) und kein Install-Etikett: der Container gehoert nicht zum Verbund, `stack uninstall`
+# und der Platz-Zaehler sehen ihn nicht.
+function Get-TestStackUnitCommon([string]$Project, [string]$Unit, [string]$RepoRoot) {
+    return @('--name', (Get-TestStackUnitName -Project $Project -Unit $Unit), '--network', "container:$Project-anchor",
+        '--label', 'lifeagents.substrate=n8n-suite', '--label', "lifeagents.worktree=$RepoRoot")
+}
+# Get-TestStackGatewayUnitArgs -- docker run fuer ein Wegwerf-Gateway: Abbild und Nutzer des echten Gateway-Containers, sein Code
+# (/gw/server.js aus dem Volume gw_code, nur lesbar), aber die Umgebung der Suite statt gateway.env. Kein STATE_DIRECTORY: der
+# echte Zaehler (Volume gw_state) bleibt unberuehrt; Suiten, die einen Zaehler brauchen, setzen LLM_GATEWAY_USAGE_DIR (tmpfs).
+function Get-TestStackGatewayUnitArgs {
+    param([Parameter(Mandatory)][string]$Project, [Parameter(Mandatory)][string]$Unit, [Parameter(Mandatory)][string]$Image,
+          [string[]]$Env = @(), [Parameter(Mandatory)][string]$RepoRoot)
+    $a = @('run', '-d') + (Get-TestStackUnitCommon $Project $Unit $RepoRoot) + @('--user', '1000:1000', '-v', "${Project}_gw_code:/gw:ro",
+        '-e', 'NODE_OPTIONS=--dns-result-order=ipv4first')
+    foreach ($e in $Env) { $a += @('-e', $e) }
+    # Der Zaehler-Ordner ist im Verbund je Einheit ein eigener tmpfs (klassisch teilen sich Einheiten einen Ordner im Substrat).
+    if (@($Env | Where-Object { $_ -like 'LLM_GATEWAY_USAGE_DIR=*' }).Count -gt 0) { $a += @('--tmpfs', '/tmp/gwtest_usage:rw,mode=1777') }
+    return $a + @('--entrypoint', 'node', $Image, '/gw/server.js')
+}
+# Get-TestStackNodeUnitCreateArgs -- docker create fuer eine Attrappe (Stub-LLM, Telegram) im master-Abbild; das Skript kopiert der
+# Aufrufer mit docker cp hinein, danach docker start (ein Bind-Mount braeuchte einen Docker-Dienst, der Rechner-Pfade sieht).
+function Get-TestStackNodeUnitCreateArgs {
+    param([Parameter(Mandatory)][string]$Project, [Parameter(Mandatory)][string]$Unit, [Parameter(Mandatory)][string]$Image,
+          [string[]]$Env = @(), [Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string]$RepoRoot)
+    $a = @('create') + (Get-TestStackUnitCommon $Project $Unit $RepoRoot)
+    foreach ($e in $Env) { $a += @('-e', $e) }
+    return $a + @('--entrypoint', 'node', $Image, $ScriptPath)
 }

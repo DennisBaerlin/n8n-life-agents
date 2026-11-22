@@ -480,8 +480,11 @@ sc_start() {
   # nach jedem Neustart den Bot zurueck. Nicht lesbar (rc 2) zaehlt als stillgelegt: lieber n8n aus als zwei Bots.
   local vrc=0
   rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || vrc=$?
-  case "$vrc" in 0) SC_SKIP='n8n gateway' ;; 1) ;; *) SC_SKIP='n8n gateway'; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n bleibt vorsichtshalber aus." ;; esac
-  [ -z "$SC_SKIP" ] || warn "n8n und das Gateway bleiben aus: diese Installation ist stillgelegt (Umzug)."
+  case "$vrc" in
+    0) SC_SKIP='n8n gateway'; warn "n8n und das Gateway bleiben aus: diese Installation ist stillgelegt (Umzug)." ;;
+    1) ;;
+    *) SC_SKIP='n8n gateway'; warn "Stilllegungs-Merker im Volume ${LA_PROJECT}_var_la nicht lesbar — n8n und das Gateway bleiben vorsichtshalber aus." ;;
+  esac
   SC_SERVICES="$(_sc_ro rt_stack_services || true)"
   # Nach einem Docker-Neustart (Boot-Einheit, PartOf=docker.service) startet Docker die Container mit Neustart-Regel
   # gleichzeitig selbst; ein Start in diesem Fenster kann scheitern (compose meldet Fehler) oder der Container endet gleich

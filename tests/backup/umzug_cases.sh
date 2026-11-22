@@ -167,6 +167,9 @@ cli rollback; rc=$?
 provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
 provn v0.0.2; rc=$?
 { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
+# Ohne Tag schriebe ein klassischer Lauf VERSION=dev: auch das ist ein Versionswechsel und sperrt.
+provn ''; rc=$?
+{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-ohne-tag-gesperrt || fail U.provision-ohne-tag-gesperrt "rc=$rc $(last)"
 provn "$_v0"; rc=$?
 { [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
 eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"

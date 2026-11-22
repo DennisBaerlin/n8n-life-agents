@@ -2371,9 +2371,48 @@ foreach ($sa in @(
     $got = ((Get-AppStateVolumes $sa.t) | Sort-Object) -join ' '
     if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet '$($sa.want)', gefunden '$got' -- Check 33 ist defekt.") }
 }
+# Anmeldestart der Start-App (DockerCall::CoreStart) = setup.sh boot-start: derselbe Kern-Aufruf. Der Container-Name ist
+# Vertrag (der Kern findet darueber sein Abbild, rt_core_container), das Etikett entscheidet Kern oder compose start
+# (rt_image_has_core); ohne Kern-Start liefe auf einer stillgelegten Start-App-Installation n8n wieder an.
+function Get-RsConst([string]$Rs, [string]$Name) {
+    $m = [regex]::Match($Rs, "(?m)^pub const $Name\s*:\s*&(?:'static\s+)?str\s*=\s*`"([^`"]+)`";")
+    if ($m.Success) { return $m.Groups[1].Value } else { return $null }
+}
+function Get-BootStartBlock([string]$Sh) {
+    return [regex]::Match($Sh, '(?ms)^\s*boot-start\)\s*\r?\n(.*?);;').Groups[1].Value
+}
+function Get-CoreStartArm([string]$Rs) {
+    return [regex]::Match($Rs, '(?ms)DockerCall::CoreStart \{ image \} => \{(.*?)\r?\n\s*\}').Groups[1].Value
+}
+$setupPath = Join-Path $provDir 'setup.sh'
+if ((Test-Path $appContract) -and (Test-Path $setupPath)) {
+    $appRs = [System.IO.File]::ReadAllText($appContract, $Utf8NoBom)
+    $coreName = Get-RsConst $appRs 'CORE_CONTAINER'; $coreLabel = Get-RsConst $appRs 'CORE_IMAGE_LABEL'; $sockMount = Get-RsConst $appRs 'DOCKER_SOCKET_MOUNT'
+    $rtSuffix = [regex]::Match($rtTxt, "(?m)^rt_core_container\(\)\s*\{\s*printf '%s(-[a-z]+)%s'").Groups[1].Value
+    $rtLabel = [regex]::Match($rtTxt, '(?m)^rt_image_has_core\(\).*?\.Config\.Labels "([^"]+)"').Groups[1].Value
+    $boot = Get-BootStartBlock ([System.IO.File]::ReadAllText($setupPath, $Utf8NoBom))
+    if (-not $coreName -or -not $coreLabel -or -not $sockMount) { $errors.Add("COMPOSE-PINS: CORE_CONTAINER/CORE_IMAGE_LABEL/DOCKER_SOCKET_MOUNT in provisioning/desktop/core/src/contract.rs nicht lesbar -- Check 33 ist defekt oder die Form hat sich geaendert.") }
+    elseif (-not $rtSuffix -or -not $rtLabel -or -not $boot) { $errors.Add("COMPOSE-PINS: rt_core_container/rt_image_has_core (lib/runtime.sh) oder boot-start (setup.sh) nicht lesbar -- Check 33 ist defekt.") }
+    else {
+        if ($coreName -ne "lifeagents$rtSuffix") { $errors.Add("COMPOSE-PINS: CORE_CONTAINER der Start-App ($coreName) != rt_core_container in lib/runtime.sh (lifeagents$rtSuffix) -- der Kern faende sein Abbild nicht.") }
+        if ($coreLabel -ne $rtLabel) { $errors.Add("COMPOSE-PINS: CORE_IMAGE_LABEL der Start-App ($coreLabel) != rt_image_has_core in lib/runtime.sh ($rtLabel).") }
+        foreach ($t in @('--rm', "--name `"`$P$rtSuffix`"", "--label `"io.lifeagents.install=`$P`"", '--env LA_CORE=1', "--mount $sockMount", "{{.Config.Image}}' `"`$P-master`"", 'stack start --json')) {
+            if (-not $boot.Contains($t)) { $errors.Add("COMPOSE-PINS: setup.sh boot-start ohne '$t' -- Anmeldestart der Start-App (DockerCall::CoreStart) und boot-start sind derselbe Kern-Aufruf.") }
+        }
+        $rsArm = Get-CoreStartArm ([System.IO.File]::ReadAllText((Join-Path $provDir 'desktop\core\src\docker.rs'), $Utf8NoBom))
+        foreach ($t in @('"run", "--rm", "--name", CORE_CONTAINER, "--label"', '{LABEL}={PROJECT}', '"--env", "LA_CORE=1", "--mount", DOCKER_SOCKET_MOUNT, image, "stack", "start", "--json"')) {
+            if (-not $rsArm.Contains($t)) { $errors.Add("COMPOSE-PINS: DockerCall::CoreStart (provisioning/desktop/core/src/docker.rs) ohne '$t' -- Anmeldestart und setup.sh boot-start sind derselbe Kern-Aufruf.") }
+        }
+    }
+}
+foreach ($sa in @(
+    @{ n = 'Konstante lesbar'; got = (Get-RsConst "pub const CORE_CONTAINER: &str = `"lifeagents-core`";`n" 'CORE_CONTAINER'); want = 'lifeagents-core' },
+    @{ n = 'boot-start-Block'; got = (Get-BootStartBlock "case x in`n  boot-start)`n    exec docker run --rm img stack start --json ;;`n  *) y ;;`n").Trim(); want = 'exec docker run --rm img stack start --json' },
+    @{ n = 'CoreStart-Arm'; got = (Get-CoreStartArm "            DockerCall::CoreStart { image } => {`n                p(&mut a, &[`"run`"]);`n            }`n            DockerCall::X => {}`n").Trim(); want = 'p(&mut a, &["run"]);' })) {
+    if ($sa.got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet '$($sa.want)', gefunden '$($sa.got)' -- Check 33 ist defekt.") }
+}
 # Linux-Einrichter: im Baum nur der Platzhalter MASTER_IMAGE_PIN='' (das master-Image traegt die neutrale Form, den Pin setzt erst
 # das Release-Asset ein: scripts/release_setup_asset.ps1, geprueft von sign_release.ps1).
-$setupPath = Join-Path $provDir 'setup.sh'
 if (Test-Path $setupPath) {
     try { if ((Get-SetupPin ([System.IO.File]::ReadAllText($setupPath, $Utf8NoBom))) -ne '') { $errors.Add("COMPOSE-PINS: provisioning/setup.sh traegt im Baum einen Abbild-Pin -- erwartet MASTER_IMAGE_PIN='' (den Pin setzt das Release-Asset).") } }
     catch { $errors.Add("COMPOSE-PINS: provisioning/setup.sh: $($_.Exception.Message)") }

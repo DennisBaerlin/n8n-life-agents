@@ -1,5 +1,6 @@
 //! Erster Start des Verbunds nach der Zustimmung (Paket-1-Ablauf: Konfig prüfen, Volumes mit Label anlegen,
-//! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur `start`; Schnittstelle zum Wizard (Paket 4).
+//! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur Starten über den Kern (`start_after_login`);
+//! Schnittstelle zum Wizard (Paket 4).
 //! Namen und Befehle kommen aus `contract`.
 
 use crate::contract::{
@@ -291,9 +292,29 @@ pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, 
     j.done(host, seq, None)
 }
 
-/// Bei jeder Anmeldung nach der Einrichtung: nur starten, nichts neu anlegen (Plan, Prüfung Nr. 6).
+/// Anmeldestart nach der Einrichtung, legt nichts neu an (Plan, Prüfung Nr. 6). Trägt das Abbild des vorhandenen
+/// `master` den Kern, startet dessen `stack start` (nur er kennt die Stilllegung: n8n bleibt dann aus, sonst holte es
+/// den Bot von der neuen Maschine zurück). Leeres Kern-Etikett (Installation von vor dem Kern, kennt `retire` nicht):
+/// `compose start`. Alles Unklare (master-Abbild oder Etikett unlesbar, unbekannter Etikett-Wert) startet nichts; der
+/// Aufrufer versucht es bis zu seiner Frist erneut. Nur der Exit zählt (Kern-Vertrag: 0 = ok), keine JSON-Felder.
 pub fn start_after_login(host: &dyn Host, d: &Docker, p: &CorePaths) -> Result<(), String> {
-    let out = d.call(host, DockerCall::ComposeStart { file: &p.compose_file, env_file: &p.env_file })?;
+    let inspect = d.call(host, DockerCall::MasterImage)?;
+    let image = inspect.stdout.trim().to_string();
+    // Der Wert landet im argv von `docker run`: nur ein einzelnes Wort, nie eine Option.
+    if !inspect.success() || image.is_empty() || image.starts_with('-') || image.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(format!("master-Abbild nicht lesbar: {}", first_line(&inspect.stderr)));
+    }
+    let label = d.call(host, DockerCall::ImageCoreLabel(&image))?;
+    if !label.success() {
+        return Err("Kern-Etikett des master-Abbilds nicht lesbar".into());
+    }
+    // Go-Templates drucken `<no value>`, wenn das Abbild gar keine Etiketten hat; das heißt wie leer: vor dem Kern.
+    let call = match label.stdout.trim() {
+        "1" => DockerCall::CoreStart { image: &image },
+        "" | "<no value>" => DockerCall::ComposeStart { file: &p.compose_file, env_file: &p.env_file },
+        _ => return Err("unbekanntes Kern-Etikett am master-Abbild".into()),
+    };
+    let out = d.call(host, call)?;
     if out.success() {
         Ok(())
     } else {
@@ -789,5 +810,82 @@ mod tests {
         assert_eq!(wizard_status(&h, &d()).lang, None, "nur bekannte Sprachen");
         h.set(&cmd(DockerCall::Master(MasterCmd::WizardStatus)), CmdOut::ok("{\"phase\":\"questions\"}\n"));
         assert_eq!(wizard_status(&h, &d()).lang, None);
+    }
+
+    const MASTER_IMG: &str = "ghcr.io/example/master@sha256:cccc";
+
+    /// Anmeldestart gegen einen vorhandenen master: Abbild-Name und Kern-Etikett wie angegeben.
+    fn login_host(image: CmdOut, label: CmdOut) -> (FakeHost, CorePaths) {
+        let h = FakeHost::mac();
+        let p = paths(&h, "/x/compose.yml");
+        h.set(&cmd(DockerCall::MasterImage), image);
+        h.set(&cmd(DockerCall::ImageCoreLabel(MASTER_IMG)), label);
+        h.set(&cmd(DockerCall::ComposeStart { file: &p.compose_file, env_file: &p.env_file }), CmdOut::ok(""));
+        (h, p)
+    }
+    fn core_start_cmd() -> String {
+        cmd(DockerCall::CoreStart { image: MASTER_IMG })
+    }
+    fn compose_start_cmd(p: &CorePaths) -> String {
+        cmd(DockerCall::ComposeStart { file: &p.compose_file, env_file: &p.env_file })
+    }
+
+    // `compose start` startete n8n auch auf einer stillgelegten Installation; nur der Kern (sc_start) lässt es aus.
+    #[test]
+    fn login_start_runs_the_core_of_the_master_image() {
+        let (h, p) = login_host(CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::ok("1\n"));
+        h.set(&core_start_cmd(), CmdOut::ok("{\"v\":1,\"type\":\"result\",\"verb\":\"start\",\"ok\":true,\"started\":[\"anchor\"]}\n"));
+        start_after_login(&h, &d(), &p).unwrap();
+        assert!(h.called(&core_start_cmd()));
+        assert!(!h.called(&compose_start_cmd(&p)), "der Kern startet, nicht die App");
+    }
+
+    #[test]
+    fn login_start_fails_when_the_core_fails() {
+        let (h, p) = login_host(CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::ok("1\n"));
+        h.set(&core_start_cmd(), CmdOut::fail(1, "stack start: busy"));
+        assert!(start_after_login(&h, &d(), &p).is_err());
+        assert_eq!(h.calls_starting(&core_start_cmd()).len(), 1, "kein zweiter Versuch");
+        assert!(!h.called(&compose_start_cmd(&p)), "kein Rückfall auf compose start");
+    }
+
+    #[test]
+    fn login_start_trusts_only_the_exit_code() {
+        for out in ["", "{\"v\":2,\"type\":\"result\",\"ok\":false}\n"] {
+            let (h, p) = login_host(CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::ok("1\n"));
+            h.set(&core_start_cmd(), CmdOut::ok(out));
+            assert!(start_after_login(&h, &d(), &p).is_ok(), "{out}");
+        }
+    }
+
+    // Installation von vor dem Kern: kennt `retire` nicht, darum bleibt es dort beim bisherigen Start.
+    #[test]
+    fn login_start_without_core_label_keeps_compose_start() {
+        for label in ["\n", "<no value>\n"] {
+            let (h, p) = login_host(CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::ok(label));
+            start_after_login(&h, &d(), &p).unwrap();
+            assert!(h.called(&compose_start_cmd(&p)), "{label}");
+            assert!(!h.called(&core_start_cmd()));
+        }
+    }
+
+    // Ohne master-Container, mit unlesbarem Etikett oder seltsamem Abbild-Namen startet nichts: ein Rückfall auf
+    // `compose start` könnte das stillgelegte n8n starten.
+    #[test]
+    fn login_start_starts_nothing_when_the_master_is_unclear() {
+        let cases = [
+            (CmdOut::fail(1, "Error: No such container: lifeagents-master"), CmdOut::ok("1\n")),
+            (CmdOut::ok("\n"), CmdOut::ok("1\n")),
+            (CmdOut::ok("--privileged\n"), CmdOut::ok("1\n")),
+            (CmdOut::ok("a b\n"), CmdOut::ok("1\n")),
+            (CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::fail(1, "Error: No such image")),
+            (CmdOut::ok(&format!("{MASTER_IMG}\n")), CmdOut::ok("true\n")),
+        ];
+        for (image, label) in cases {
+            let (h, p) = login_host(image, label);
+            assert!(start_after_login(&h, &d(), &p).is_err());
+            assert!(!h.called(&compose_start_cmd(&p)));
+            assert!(h.calls_starting("docker --context desktop-linux run").is_empty(), "{:?}", h.calls.borrow());
+        }
     }
 }

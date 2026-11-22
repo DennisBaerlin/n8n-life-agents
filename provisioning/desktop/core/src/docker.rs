@@ -3,7 +3,10 @@
 //! etwas ändert, mit festem Projektnamen. Breite Befehle (Aufräumen über alles, „alle“-Schalter beim Löschen,
 //! Listen nur aus IDs für Massen-Löschungen) gibt es hier nicht; der Test `no_broad_commands` hält das fest.
 
-use crate::contract::{MasterCmd, FIRST_SERVICES, HINTS_DIR, LABEL, MASTER_CONTAINER, PROBE_VOLUME, PROJECT};
+use crate::contract::{
+    MasterCmd, CORE_CONTAINER, CORE_IMAGE_LABEL, DOCKER_SOCKET_MOUNT, FIRST_SERVICES, HINTS_DIR, LABEL, MASTER_CONTAINER, PROBE_VOLUME,
+    PROJECT,
+};
 use crate::host::{CmdOut, Host};
 
 /// Gefundenes Docker: Pfad zum Befehl und der festgehaltene Kontext.
@@ -30,6 +33,10 @@ pub enum DockerCall<'a> {
     OurVolumes,
     /// Label-Wert eines Volumes (leer = ohne unser Label). Fehlt das Volume, scheitert der Aufruf.
     VolumeLabel(&'a str),
+    /// Abbild-Name des `master` (`.Config.Image`, nicht die ID: der Kern vergleicht Namen, `sc_delegate`).
+    MasterImage,
+    /// Kern-Etikett eines Abbilds (`contract::CORE_IMAGE_LABEL`, `1` = trägt den Kern).
+    ImageCoreLabel(&'a str),
     /// Compose-Datei und Pflicht-Variablen prüfen, ohne etwas auszugeben oder anzulegen.
     ComposeConfig {
         file: &'a str,
@@ -43,7 +50,7 @@ pub enum DockerCall<'a> {
         file: &'a str,
         env_file: &'a str,
     },
-    /// Nach der Einrichtung bei jeder Anmeldung: vorhandene Container starten, nichts neu anlegen.
+    /// Anmeldestart für Installationen von vor dem Kern: vorhandene Container starten, nichts neu anlegen.
     ComposeStart {
         file: &'a str,
         env_file: &'a str,
@@ -72,6 +79,11 @@ pub enum DockerCall<'a> {
     VolumeRemove(&'a str),
     /// Image löschen, nur wenn das Journal sagt, dass wir es geladen haben.
     ImageRemove(&'a str),
+    /// Anmeldestart: `stack start --json` des Kerns im Abbild des vorhandenen `master`, wie `setup.sh boot-start`.
+    /// Startet vorhandene Container, n8n nicht auf einer stillgelegten Installation (`sc_start`).
+    CoreStart {
+        image: &'a str,
+    },
     /// Befehl im `master` (Schnittstelle zu Paket 4).
     Master(MasterCmd),
     /// Wie `Master`, mit stdin (`--interactive`): das Notfallblatt bzw. die gewählte Sicherung (`restore.rs`), nie im argv.
@@ -138,6 +150,12 @@ impl Docker {
                 a.push(format!("{{{{index .Labels \"{LABEL}\"}}}}"));
                 a.push(name.to_string());
             }
+            DockerCall::MasterImage => p(&mut a, &["container", "inspect", "--format", "{{.Config.Image}}", MASTER_CONTAINER]),
+            DockerCall::ImageCoreLabel(reference) => {
+                p(&mut a, &["image", "inspect", "--format"]);
+                a.push(format!("{{{{index .Config.Labels \"{CORE_IMAGE_LABEL}\"}}}}"));
+                a.push(reference.to_string());
+            }
             DockerCall::ComposeConfig { file, env_file } => {
                 compose(&mut a, file, env_file);
                 p(&mut a, &["config", "--quiet"]);
@@ -168,8 +186,13 @@ impl Docker {
                 probe_run(&mut a, &format!("type=volume,src={PROBE_VOLUME},dst=/m,volume-subpath=sub,readonly"));
                 a.extend([image.to_string(), "cat".into(), "/m/f".into()]);
             }
+            DockerCall::CoreStart { image } => {
+                p(&mut a, &["run", "--rm", "--name", CORE_CONTAINER, "--label"]);
+                a.push(format!("{LABEL}={PROJECT}"));
+                p(&mut a, &["--env", "LA_CORE=1", "--mount", DOCKER_SOCKET_MOUNT, image, "stack", "start", "--json"]);
+            }
             DockerCall::ProbeSocket { image } => {
-                probe_run(&mut a, "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock");
+                probe_run(&mut a, DOCKER_SOCKET_MOUNT);
                 a.extend([image.to_string(), "test".into(), "-S".into(), "/var/run/docker.sock".into()]);
             }
             DockerCall::VolumeRemove(name) => {
@@ -281,7 +304,30 @@ mod tests {
             DockerCall::Master(MasterCmd::RestorePlan { name: "x.nla.enc".into(), file: false, key: false }),
             DockerCall::MasterIn(MasterCmd::RestorePlan { name: "x.nla.enc".into(), file: true, key: true }),
             DockerCall::MasterIn(MasterCmd::Restore { name: "x.nla.enc".into(), file: false, key: true }),
+            DockerCall::MasterImage,
+            DockerCall::ImageCoreLabel("ghcr.io/example/master@sha256:00"),
+            DockerCall::CoreStart { image: "ghcr.io/example/master@sha256:00" },
         ]
+    }
+
+    // Wie `setup.sh boot-start` (contract_lint 33 hält beide Formen gleich): eigener Name, damit der Kern sein Abbild
+    // findet (rt_self_image), unser Label, Docker-Zugang.
+    #[test]
+    fn core_start_is_the_boot_start_call() {
+        let d = Docker { bin: "docker".into(), context: "default".into() };
+        assert_eq!(
+            d.args(&DockerCall::CoreStart { image: "r.example/master@sha256:00" }).join(" "),
+            "--context default run --rm --name lifeagents-core --label io.lifeagents.install=lifeagents --env LA_CORE=1 \
+             --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock r.example/master@sha256:00 stack start --json"
+        );
+        assert_eq!(
+            d.args(&DockerCall::MasterImage).join(" "),
+            "--context default container inspect --format {{.Config.Image}} lifeagents-master"
+        );
+        assert_eq!(
+            d.args(&DockerCall::ImageCoreLabel("r.example/master@sha256:00")).join(" "),
+            "--context default image inspect --format {{index .Config.Labels \"io.lifeagents.core\"}} r.example/master@sha256:00"
+        );
     }
 
     #[test]

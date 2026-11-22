@@ -19,6 +19,14 @@ pub const FIRST_SERVICES: [&str; 4] = ["anchor", "postgres", "master", "edge"];
 pub const STATE_VOLUMES: [&str; 9] = ["pgdata", "n8n_home", "etc_n8n", "etc_la", "var_la", "rt_tree", "gw_state", "ts_state", "wizard_state"];
 /// Container-Name des `master` (für `docker exec`), Muster `<projekt>-<dienst>`.
 pub const MASTER_CONTAINER: &str = "lifeagents-master";
+/// Kern (`stack <verb> --json`, `provisioning/lib/stack_core.sh`) als Kurzlauf-Container aus dem Abbild des `master`.
+/// Der Name ist Vertrag: Der Kern findet darüber sein eigenes Abbild (`rt_self_image`/`rt_core_container` in runtime.sh).
+/// Name, Etikett und Socket gleicht `contract_lint` 33 mit runtime.sh und `setup.sh boot-start` ab.
+pub const CORE_CONTAINER: &str = "lifeagents-core";
+/// Etikett eines master-Abbilds mit Kern (`rt_image_has_core`, Wert `1`); Abbilder von vor dem Kern tragen es nicht.
+pub const CORE_IMAGE_LABEL: &str = "io.lifeagents.core";
+/// Docker-Zugang im Container (Fähigkeits-Prüfung und Kern).
+pub const DOCKER_SOCKET_MOUNT: &str = "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock";
 /// Name der Compose-Datei im Ressourcen-Ordner der App (bis Paket 5 eine andere Quelle festlegt).
 pub const COMPOSE_FILE: &str = "compose.yml";
 /// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).

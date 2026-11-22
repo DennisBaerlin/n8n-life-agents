@@ -849,6 +849,11 @@ eq SC.neuere-installation newer_installation "$(res .reason)"
 # Daten einer aelteren Fassung ohne master -> older_installation (die eigenen Pins liefen sonst ohne Sicherung ueber alten Daten).
 STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v8.9.0 scr up --json
 eq SC.aeltere-installation 'older_installation|0' "$(res .reason)|$(grep -c '|up|-d|' "$STUB_LOG")"
+# Vorab-Fassungen zaehlen mit (release_cmp): Daten von v9.5.0-rc.1 sind neuer als v9.0.0, Daten von v9.0.0-rc.1 aelter.
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v9.5.0-rc.1 scr up --json
+eq SC.neuere-vorab-installation newer_installation "$(res .reason)"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__rt_tree_VERSION=v9.0.0-rc.1 scr up --json
+eq SC.aeltere-vorab-installation 'older_installation|0' "$(res .reason)|$(grep -c '|up|-d|' "$STUB_LOG")"
 
 # Unerwarteter Abbruch (die in einem Helfer) -> trotzdem genau ein result mit internal und der letzten Meldung.
 STUB_VOLS='' STUB_FAIL='|volume|create|--label|io.lifeagents.install=lifeagents|lifeagents_pgdata' scr up --json
@@ -2019,6 +2024,18 @@ vh_down() (   # vh_down <VERSION> <ziel-tag> -> frei|downgrade
 )
 eq VH.vorab-auf-stabil-frei frei "$(vh_down v0.51.0-rc.1 v0.51.0)"
 eq VH.stabil-auf-aelter-gesperrt downgrade "$(vh_down v0.51.0 v0.50.0)"
+eq VH.vorab-auf-aelteres-stabil-gesperrt downgrade "$(vh_down v0.51.0-rc.1 v0.50.0)"
+eq VH.stabil-auf-eigenes-vorab-gesperrt downgrade "$(vh_down v0.51.0 v0.51.0-rc.1)"
+eq VH.vorab-auf-naechstes-vorab-frei frei "$(vh_down v0.51.0-rc.2 v0.51.0-rc.10)"
+eq VH.vorab-zurueck-gesperrt downgrade "$(vh_down v0.51.0-rc.10 v0.51.0-rc.2)"
+eq VH.dev-ohne-sperre frei "$(vh_down dev-0123abc v0.40.0)"
+# release_cmp: die eine Ordnung (SemVer) fuer reine und Vorab-Tags; alles andere ist nicht vergleichbar (rc 1, keine Ausgabe).
+vh_cmp() { local o rc=0; o="$(release_cmp "$1" "$2")" || rc=$?; printf '%s|%s' "$o" "$rc"; }
+eq VH.cmp-basis '1|0' "$(vh_cmp v0.52.0-rc.1 v0.51.0)"
+eq VH.cmp-vorab-vor-stabil '-1|0' "$(vh_cmp v0.51.0-rc.1 v0.51.0)"
+eq VH.cmp-gleich '0|0' "$(vh_cmp v0.51.0-rc.1 v0.51.0-rc.1)"
+eq VH.cmp-zahlen-nicht-text '1|0' "$(vh_cmp v0.10.0 v0.9.0)"
+eq VH.cmp-dev-unvergleichbar '|1' "$(vh_cmp dev-0123abc v0.51.0)"
 
 # doctor: im Release-Profil ist eine fehlende Versionsnummer ROT, mit dem Weg, wie sie wiederkommt; dev-<rev> ist in Ordnung.
 vh_doc() (   # vh_doc <profil> <VERSION> <env-tag> [systemd] -> Ausgabe + fail=<n>

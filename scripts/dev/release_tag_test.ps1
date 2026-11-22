@@ -34,7 +34,7 @@ Write-Host 'A: Art des Tags' -ForegroundColor Cyan
 if (Get-Command Get-ReleaseTagKind -ErrorAction SilentlyContinue) {
     foreach ($t in 'v0.51.0', 'v1.0.0', 'v10.20.30') { Check "stabil: $t" ((Get-ReleaseTagKind $t) -eq 'stable') }
     foreach ($t in 'v0.51.0-rc.1', 'v0.51.0-rc1', 'v1.0.0-beta.2', 'v0.51.0-probe-x') { Check "vorab: $t" ((Get-ReleaseTagKind $t) -eq 'prerelease') }
-    foreach ($t in '0.51.0', 'v0.51', 'v0.51.0-', 'v0.51.0+build', 'v0.51.0 -rc.1', 'v0.51.0-rc;1', 'dev-abc', '') {
+    foreach ($t in "v$([char]0x0661).51.0", '0.51.0', 'v0.51', 'v0.51.0-', 'v0.51.0+build', 'v0.51.0 -rc.1', 'v0.51.0-rc;1', 'dev-abc', '') {
         Check "ungueltig: '$t'" (Throws { Get-ReleaseTagKind $t })
     }
 } else { Check 'Get-ReleaseTagKind vorhanden' $false }
@@ -82,6 +82,8 @@ Check 'sign_release laedt den Helfer' ($sign -match "lib\\release_tag\.ps1")
 Check 'sign_release veroeffentlicht mit Get-ReleasePublishFlags' ($sign -match 'gh release edit \$Tag -R \$slug @\(Get-ReleasePublishFlags \$Tag\)')
 Check 'sign_release: kein festes --latest mehr' ($sign -notmatch '--draft=false --latest')
 Check 'sign_release: Tag-Pruefung ueber den Helfer (keine zweite Regex)' ($sign -notmatch [regex]::Escape("'^v\d+\.\d+\.\d+$'"))
+$bmi = [IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\build_master_image.ps1'), $u8)
+Check 'build_master_image prueft die Version ueber den Helfer' ($bmi -match 'Get-ReleaseTagKind \$Version' -and $bmi -notmatch [regex]::Escape("-notmatch '^v"))
 
 Write-Host ''
 if ($failed) { Write-Host "release_tag_test: $failed Fehler" -ForegroundColor Red } else { Write-Host 'release_tag_test: alles gruen' -ForegroundColor Green }

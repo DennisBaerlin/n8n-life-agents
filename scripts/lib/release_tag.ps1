@@ -6,8 +6,9 @@
 # Nummern eine Installation als Version kennt) steht in provisioning/lib/common.sh. Test: scripts/dev/release_tag_test.ps1.
 
 # Suffix nach SemVer-Zeichensatz ohne '+' (Build-Metadaten tragen wir nicht; '+' waere in Asset-URLs ein Sonderfall).
-$ReleaseTagStableRx = '^v\d+\.\d+\.\d+$'
-$ReleaseTagPreRx = '^v\d+\.\d+\.\d+-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$'
+# [0-9] statt \d: \d trifft in .NET jede Unicode-Ziffer, die bash-Seite (common.sh) nur ASCII.
+$ReleaseTagStableRx = '^v[0-9]+\.[0-9]+\.[0-9]+$'
+$ReleaseTagPreRx = '^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$'
 
 # Get-ReleaseTagKind <tag> -> 'stable' | 'prerelease'; jedes andere Format wirft.
 function Get-ReleaseTagKind([string]$Tag) {

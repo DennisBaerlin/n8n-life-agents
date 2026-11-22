@@ -583,7 +583,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_tag_test.ps1
         pass_filenames: false
-        files: ^(scripts/(lib/release_tag|release_meta|sign_release|dev/release_tag_test)\.ps1|\.github/workflows/release\.yml)$
+        files: ^(scripts/(lib/release_tag|release_meta|sign_release|build_master_image|dev/release_tag_test)\.ps1|\.github/workflows/release\.yml)$
 
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)

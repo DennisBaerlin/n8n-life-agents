@@ -247,15 +247,32 @@ lifeagents_version_marker() { printf '%s/VERSION' "$(lifeagents_runtime_dir)"; }
 
 # --- Versionsnummer der Installation (Gesetz: im Release-Profil traegt VERSION immer eine) ----------------------------
 # Versionsnummer = Release-Tag vX.Y.Z, ein Vorab-Tag vX.Y.Z-<suffix> (Probe-Maschinen; scripts/lib/release_tag.ps1, gleiche
-# Form) oder ein benannter Entwickler-Stand dev-<rev> (/reset-dev installiert ihn bewusst im Release-Profil). Verglichen werden
-# nur reine vX.Y.Z (Release-Check, Rueckschritt-Sperre): sort -V ordnete v0.51.0-rc.1 hinter v0.51.0. Ein Vorab-Stand bekommt
-# darum wie dev-<rev> keine Update-Hinweise, `lifeagents update` holt das naechste stabile Release. Keine Versionsnummer = leer
+# Form) oder ein benannter Entwickler-Stand dev-<rev> (/reset-dev installiert ihn bewusst im Release-Profil). Der Release-Check
+# (update_runner.sh, core.fn_semver_cmp) kennt nur reine vX.Y.Z: ein Vorab-Stand bekommt wie dev-<rev> keine Update-Hinweise.
+# Reihenfolge beider Formen auf dem Host allein ueber release_cmp (Rueckschritt-Sperre, Fassungs-Sperre des Kerns, Restore-
+# Meldung), nie ueber sort -V der ganzen Tags: das ordnete v0.51.0-rc.1 hinter v0.51.0. Keine Versionsnummer = leer
 # oder genau 'dev' (ein Lauf ohne Tag): daran haengt der Release-Check still fest, und der Rueckweg kennt das Ziel nicht. Quelle
 # zum Nachtragen ist allein das laufende master-Abbild (rt_master_release_tag); klassisch gibt es keine, dann bleibt es beim
 # klaren Abbruch bzw. doctor ROT.
 is_release_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 is_prerelease_tag() { [[ "${1:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*$ ]]; }
 version_is_named() { is_release_tag "${1:-}" || is_prerelease_tag "${1:-}" || [[ "${1:-}" =~ ^dev-[A-Za-z0-9._-]+$ ]]; }
+# release_cmp <a> <b> -> -1|0|1 auf stdout (SemVer-Ordnung); rc 1 ohne Ausgabe, wenn eins kein reines oder Vorab-Tag ist (dev,
+#   dev-<rev>, leer: nicht vergleichbar, der Aufrufer entscheidet). Erst die Basis vX.Y.Z, bei gleicher Basis liegt das Vorab-Tag
+#   vor dem stabilen, zwei Vorab-Tags nach sort -V der Suffixe (rc.2 < rc.10). Ohne DB: die Rueckschritt-Sperre muss auch bei
+#   kaputter DB laufen.
+release_cmp() {
+  local a="${1:-}" b="${2:-}" x y
+  { is_release_tag "$a" || is_prerelease_tag "$a"; } && { is_release_tag "$b" || is_prerelease_tag "$b"; } || return 1
+  if [ "$a" = "$b" ]; then printf '0\n'; return 0; fi
+  x="${a%%-*}"; y="${b%%-*}"
+  if [ "$x" = "$y" ]; then
+    if is_release_tag "$a"; then printf '1\n'; return 0; fi
+    if is_release_tag "$b"; then printf -- '-1\n'; return 0; fi
+    x="${a#*-}"; y="${b#*-}"
+  fi
+  if [ "$(printf '%s\n%s\n' "$x" "$y" | sort -V | head -n1)" = "$x" ]; then printf -- '-1\n'; else printf '1\n'; fi
+}
 _install_profile() { read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true; }
 
 # lifeagents_help_url -> die Hilfeseite "Wenn ein Update fehlschlaegt" (GitHub Pages des Repos; eine Adresse: der Slug).

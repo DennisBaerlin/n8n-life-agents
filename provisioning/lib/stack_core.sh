@@ -258,10 +258,11 @@ sc_delegate() {
     inst="$(tr -d '[:space:]' <<<"$SC_VREAD")"
     # Ohne master liefen sonst die eigenen Pins ueber Daten einer anderen Fassung: neuere Daten verstuende dieses Programm
     # nicht, aeltere bekaemen neue Pins (z. B. eine neue Postgres-Hauptversion) ohne Sicherung vorher (upgrade_guard).
-    if is_release_tag "$inst" && is_release_tag "$own" && [ "$inst" != "$own" ]; then
+    local vcmp; vcmp="$(release_cmp "$inst" "$own")" || vcmp=0
+    if [ "$vcmp" != 0 ]; then
       case "$SC_VERB" in
         up|install)
-          if [ "$(printf '%s\n%s\n' "$inst" "$own" | sort -V | tail -n1)" = "$inst" ]; then
+          if [ "$vcmp" = 1 ]; then
             sc_fail newer_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — ein neueres Programm verwenden. Nichts geaendert."
           fi
           sc_fail older_installation "Die Daten stammen von ${inst}, dieses Programm ist ${own} — zuerst mit ${inst} starten, dann im Chat aktualisieren. Nichts geaendert." ;;

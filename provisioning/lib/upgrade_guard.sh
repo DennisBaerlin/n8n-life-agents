@@ -32,12 +32,9 @@ UPGRADE_ACTIVE=0      # 1 = dieser Lauf tauscht Versionen (oder setzt einen abge
 UPGRADE_CHANGES=''    # von upgrade_detect gefuellt: eine Zeile je anstehendem Tausch
 RELEASE_HISTORY_START="v0.35.0"   # erstes Release im Repo; aeltere Tags sind dort nicht ladbar (Repo ohne Historie)
 
-# _release_is_gone <tag> — 0, wenn <tag> ein stabiles vX.Y.Z vor RELEASE_HISTORY_START ist (also nicht mehr ladbar). Vergleich
-#   per `sort -V` wie _refuse_downgrade: bewusst ohne DB, der Rueckweg muss auch bei einer kaputten DB laufen.
-_release_is_gone() {
-  [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$1" != "$RELEASE_HISTORY_START" ] \
-    && [ "$(printf '%s\n%s\n' "$1" "$RELEASE_HISTORY_START" | sort -V | head -n1)" = "$1" ]
-}
+# _release_is_gone <tag> — 0, wenn <tag> ein reines oder Vorab-Tag vor RELEASE_HISTORY_START ist (also nicht mehr ladbar).
+#   Vergleich per release_cmp wie _refuse_downgrade: bewusst ohne DB, der Rueckweg muss auch bei einer kaputten DB laufen.
+_release_is_gone() { [ "$(release_cmp "$1" "$RELEASE_HISTORY_START" 2>/dev/null)" = -1 ]; }
 
 # _upg_pg_versions -> "<installiert> <kandidat>" von postgresql-<PG_VERSION> (leer, wenn nicht installiert).
 # Setzt ein vorheriges apt-get update voraus (install_base_packages). Ein apt-Hold aendert den Kandidaten nicht.

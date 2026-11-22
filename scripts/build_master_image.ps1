@@ -35,8 +35,9 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\release_images.ps1')
+. (Join-Path $PSScriptRoot 'lib\release_tag.ps1')
 
-if ($Version -notmatch '^v\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$') { throw "Ungueltige Version '$Version' (z. B. v0.37.0)." }
+$null = Get-ReleaseTagKind $Version   # wirft bei ungueltigem Format; dieselbe Form wie Tag, sign_release und Kern (is_prerelease_tag)
 function Invoke-Git { $o = & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') fehlgeschlagen." }; return $o }
 
 $remote = (Invoke-Git remote get-url origin | Select-Object -First 1).Trim()

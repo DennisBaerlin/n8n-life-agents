@@ -503,7 +503,7 @@ sc_start() {
 }
 
 sc_status() {
-  local m installed=false running=false ver core=0 svcs phase='' upd=false x st rc
+  local m installed=false running=false ver core=0 svcs phase='' upd=false x st rc ret=false umz=false
   rt_docker_ok || sc_fail docker_unreachable "Docker antwortet nicht."
   sc_init
   if [ "${LA_CORE:-}" = 1 ]; then sc_delegate; fi
@@ -523,9 +523,15 @@ sc_status() {
   # Zustand nicht lesbar = laeuft (die App startet dann nichts Aenderndes).
   st=''; rc=0; st="$(rt_vol_get var_la master-swap/state)" || rc=$?
   if rt_swap_helper_running || [ -n "$st" ] || [ "$rc" -ge 2 ]; then upd=true; fi
+  # Merker im Volume var_la (retire_cli.sh, move_cli.sh); nicht lesbar = true wie in sc_start (lieber Hinweis als zwei Bots).
+  rc=0; rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 1 ] || ret=true
+  rc=0; rt_vol_get var_la "$LA_UMZUG_NAME" >/dev/null 2>&1 || rc=$?
+  [ "$rc" = 1 ] || umz=true
   x="$(jq -cn --argjson i "$installed" --argjson r "$running" --arg v "$ver" --argjson core "$core" \
     --argjson ports "$(_sc_ports_json)" --argjson s "$svcs" --arg ph "$phase" --argjson u "$upd" \
-    '{installed:$i,running:$r,version:$v,core:$core,ports:$ports,services:$s,update_running:$u}
+    --argjson ret "$ret" --argjson umz "$umz" \
+    '{installed:$i,running:$r,version:$v,core:$core,ports:$ports,services:$s,update_running:$u,retired:$ret,umzug_open:$umz}
      + (if $ph == "" then {} else {wizard:{phase:$ph}} end)')"
   sc_step 'done'
   sc_ok "$x"

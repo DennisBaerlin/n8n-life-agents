@@ -896,6 +896,13 @@ STUB_RUNNING=lifeagents-swap STUB_VOLS='' scr status --json
 eq SC.status-update-laeuft true "$(res .update_running)"
 STUB_VOLS="${_lp}pgdata" STUB_FAIL='|ps|--format|' scr status --json
 eq SC.status-ps-fehler-leere-liste 'true|0' "$(res .ok)|$(res '.services | length')"
+# Stilllegung und offener Umzug (Merker im Volume var_la); nicht lesbar zaehlt als true wie in sc_start.
+STUB_VOLS="$SC_ALLVOLS" scr status --json
+eq SC.status-merker-aus 'false|false' "$(res .retired)|$(res .umzug_open)"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_retired='STAGE=done' STUB_CAT__var_la_umzug_open=1 scr status --json
+eq SC.status-merker-an 'true|true' "$(res .retired)|$(res .umzug_open)"
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|/var_la/retired' STUB_FAIL2='|/var_la/umzug-open' scr status --json
+eq SC.status-merker-unlesbar 'true|true|true' "$(res .ok)|$(res .retired)|$(res .umzug_open)"
 # install: nur die Test-Weichen der Positivliste (SC_TEST_SWITCHES) gehen an provision.sh, als Name (-e NAME, Wert aus der
 # Umgebung des Kerns, nie in einer Befehlszeile); andere Variablen, auch gesperrte LIFEAGENTS_*, kommen nie durch.
 SC_TEST_SWITCHES_EXP='LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM'

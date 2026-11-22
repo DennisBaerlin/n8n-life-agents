@@ -353,13 +353,6 @@ main() {
   # Secret-Overrides (nur First-Init; bestehende n8n.env gewinnt immer) NACH dem Einlesen erfassen.
   OPT_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-}"
   OPT_DB_PASSWORD="${N8N_DB_PASSWORD:-}"
-  # Umzug offen: kein Versionswechsel, auch nicht ueber install.sh --version (upgrade_guard.sh). Ziel = was install_cli als VERSION
-  # schriebe; ohne Tag im Verbund das laufende Abbild (release_tag_resolve) = installiert. --apply-network schreibt keine VERSION.
-  if [ "$APPLY_NETWORK" -ne 1 ]; then
-    local _umzug_target="${RELEASE_TAG:-}"
-    [ -n "$_umzug_target" ] || rt_is_compose || _umzug_target=dev
-    upgrade_umzug_guard "$_umzug_target"
-  fi
 
   # Früh root erzwingen: collect_release_inputs schreibt /etc/lifeagents/core.env (root), noch vor
   # preflight; sonst mkdir-/chown-Fehler tief im Lauf.
@@ -375,22 +368,6 @@ main() {
   # interaktiv erfragen (nur Release+TTY). Vor derive_network_config — DOMAIN bestimmt die
   # Ingress-/WEBHOOK_URL-Ableitung (Public-HTTPS vs. dev/:80).
   load_install_env
-
-  # Internet-Adresse: load_install_env hat DOMAIN normalisiert (eine Regel fuer alle Eingabewege). Steht in core.env
-  # dieselbe Adresse nur anders geschrieben (https://name:443/), wird sie einmal korrigiert zurueckgeschrieben (danach
-  # Zweitlauf no-op); eine per Flag neue Adresse speichert erst collect_release_inputs.
-  if [ -n "$DOMAIN" ]; then
-    local _dom_stored
-    _dom_stored="$(read_env_value "$INSTALL_ENV_FILE" DOMAIN 2>/dev/null || true)"
-    if [ -n "$_dom_stored" ] && [ "$_dom_stored" != "$DOMAIN" ] && [ "$(normalize_domain "$_dom_stored")" = "$DOMAIN" ]; then
-      env_upsert "$INSTALL_ENV_FILE" DOMAIN "$DOMAIN"
-      chmod 0640 "$INSTALL_ENV_FILE" 2>/dev/null || true
-      chown "root:${N8N_USER}" "$INSTALL_ENV_FILE" 2>/dev/null || true
-    fi
-  fi
-  # Docker-Verbund: Weg nach aussen (REACH_MODE) merken; beim Tunnel kommt die Internet-Adresse von Tailscale, sobald der
-  # Knoten angemeldet ist (lib/reach.sh) — darum VOR derive_network_config.
-  if rt_is_compose; then reach_prepare; fi
 
   # `lifeagents update` reicht leere Args durch -> ohne Persistenz liefe jedes Prod-Update als PROFILE=dev
   # und die release-gegateten Schritte (collect_release_inputs = Host-Key-Nachprompt neuer Releases,
@@ -408,6 +385,25 @@ main() {
   # Gesetz Versionsnummer (common.sh): ein Release-Lauf ohne Nummer nimmt die des laufenden Abbilds oder bricht hier ab.
   # --apply-network schreibt keine VERSION und bleibt so auch fuer einen Stand ohne Nummer moeglich.
   if [ "$APPLY_NETWORK" -ne 1 ]; then release_tag_resolve "$PROFILE"; fi
+  # Umzug offen: kein Versionswechsel, auch nicht ueber install.sh --version (upgrade_guard.sh). Ziel = genau der Wert, den install_cli
+  # als VERSION schreibt (nach release_tag_resolve); vor dem ersten Schreiben in core.env (DOMAIN, reach_prepare) und vor jedem Schritt.
+  if [ "$APPLY_NETWORK" -ne 1 ]; then upgrade_umzug_guard "${RELEASE_TAG:-dev}"; fi
+
+  # Internet-Adresse: load_install_env hat DOMAIN normalisiert (eine Regel fuer alle Eingabewege). Steht in core.env
+  # dieselbe Adresse nur anders geschrieben (https://name:443/), wird sie einmal korrigiert zurueckgeschrieben (danach
+  # Zweitlauf no-op); eine per Flag neue Adresse speichert erst collect_release_inputs.
+  if [ -n "$DOMAIN" ]; then
+    local _dom_stored
+    _dom_stored="$(read_env_value "$INSTALL_ENV_FILE" DOMAIN 2>/dev/null || true)"
+    if [ -n "$_dom_stored" ] && [ "$_dom_stored" != "$DOMAIN" ] && [ "$(normalize_domain "$_dom_stored")" = "$DOMAIN" ]; then
+      env_upsert "$INSTALL_ENV_FILE" DOMAIN "$DOMAIN"
+      chmod 0640 "$INSTALL_ENV_FILE" 2>/dev/null || true
+      chown "root:${N8N_USER}" "$INSTALL_ENV_FILE" 2>/dev/null || true
+    fi
+  fi
+  # Docker-Verbund: Weg nach aussen (REACH_MODE) merken; beim Tunnel kommt die Internet-Adresse von Tailscale, sobald der
+  # Knoten angemeldet ist (lib/reach.sh) — darum VOR derive_network_config.
+  if rt_is_compose; then reach_prepare; fi
 
   # TRUSTED_PROXIES (Flag / Env / --unattended-Datei / core.env) validieren und profilunabhaengig sofort
   # persistieren (Muster INSTALL_PROFILE) — sonst fiele ein Dev-Profil-Update still auf "nur lokal" zurueck

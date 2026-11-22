@@ -39,12 +39,17 @@ export LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:$PORT" RETIRE_WEBHOOK_WAIT_SECS
 # hand-injected: Substrat ohne Bot-Schluessel; ein erfundener (Umgebung vor core.env) schickt Loesen, Pruefen und Menue ueber die Attrappe
 export TELEGRAM_BOT_TOKEN=1000001:UMZUGTESTzz9
 
-CK=''; CV=''; OWNER_SET=0; V_BEFORE=''; VM=''
+CK=''; CV=''; OWNER_SET=0; VM=''; V_BEFORE=''; V_SAVED=0
 # setowner <json-wert> — telegram_user_id des Owners in den family-Fakten (null = noch nicht gekoppelt).
 setowner() {
   sql "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}',
          (SELECT jsonb_agg(CASE WHEN p->>'role' = 'owner' THEN jsonb_set(p, '{telegram_user_id}', '$1'::jsonb) ELSE p END)
             FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family'" >/dev/null
+}
+# v_restore — VERSION-Marker wie vor den provision.sh-Faellen (fehlte er, wieder weg: sonst saehe das Substrat installiert aus).
+v_restore() {
+  if [ -n "$V_BEFORE" ]; then printf '%s\n' "$V_BEFORE" > "$VM"; else rm -f "$VM"; fi
+  V_SAVED=0
 }
 cleanup() {
   find /var/backups/lifeagents -type f 2>/dev/null | grep -vxF -f "$W/bk_before" | xargs -r rm -f
@@ -54,7 +59,7 @@ cleanup() {
   sql "DROP TABLE IF EXISTS ${MEM}; DELETE FROM agent.guide_learn_watermark WHERE agent_name = 'uzprobe'" >/dev/null 2>&1
   [ -z "$CK" ] || "$CLI" config set ${CK} "$CV" >/dev/null 2>&1
   [ "$OWNER_SET" != 1 ] || setowner null
-  [ -z "$V_BEFORE" ] || printf '%s\n' "$V_BEFORE" > "$VM"
+  [ "$V_SAVED" != 1 ] || v_restore
   curl -sf "http://127.0.0.1:$PORT/__webhook?off=1&track=0" >/dev/null 2>&1; rm -rf "$W" "$CLI"
 }
 find /var/backups/lifeagents -type f 2>/dev/null > "$W/bk_before" || : > "$W/bk_before"
@@ -163,10 +168,10 @@ cli update --version v0.0.1; rc=$?
 cli rollback; rc=$?
 { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
 # provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
-# hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht direkt hinter der Versions-Aufloesung ohne Aenderung ab: so laeuft auch ein Lauf ohne Sperre nie durch (roter Beweis gefahrlos).
+# hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor nur Sperre/Ergebnis-Datei und die DOMAIN-Schreibweise, Substrat ohne DOMAIN): so laeuft auch ein Lauf ohne Sperre nie durch.
 provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
 # Installierte Version fuer diese Faelle eine Release (das Substrat traegt oft „dev“, dann schriebe ein Lauf ohne Tag dasselbe = kein Wechsel).
-VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM")"; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"
+VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM" 2>/dev/null)"; V_SAVED=1; [ -e "$VM" ] || V_BEFORE=''; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"
 provn v0.0.2; rc=$?
 { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
 # Ohne Tag schriebe ein klassischer Lauf VERSION=dev: gegenueber einer Release ein Versionswechsel, sperrt.
@@ -175,7 +180,7 @@ provn ''; rc=$?
 provn "$_v0"; rc=$?
 { [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
 eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
-printf '%s\n' "$V_BEFORE" > "$VM"; V_BEFORE=''
+v_restore
 cli doctor; _rcd=$?
 { grep -q 'Umzug offen' "$W/out.$n"; } && pass U.doctor-nennt-umzug || fail U.doctor-nennt-umzug "$(last)"
 { grep 'Umzug offen' "$W/out.$n" | grep -q 'FAIL'; } && fail U.doctor-umzug-nie-rot "als FAIL" || pass U.doctor-umzug-nie-rot

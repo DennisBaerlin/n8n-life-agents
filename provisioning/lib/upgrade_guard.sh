@@ -128,15 +128,14 @@ _upg_installed_release() {
 
 # upgrade_umzug_guard --any|<ziel> — bei offenem Umzug (runtime.sh la_umzug_open) Abbruch mit dem Satz der Update-Sperre, vor jeder Aenderung.
 #   --any immer (rollback: die pre-upgrade-Sicherung ist der Stand vor dem Umzug). <ziel> = was install_cli als VERSION schriebe:
-#   nur bei einem anderen Wert als der installierten VERSION; leer = kein Wechsel. Dieselbe Release erneut anwenden (reconfigure,
-#   compose/reach_ctl.sh activate) bleibt erlaubt.
+#   nur bei einem anderen Wert als der installierten VERSION; dieselbe Release erneut anwenden (reconfigure, compose/reach_ctl.sh
+#   activate) bleibt erlaubt. Grund `locked` wie die Sperre im Chat-Runner (Ergebnis-Datei eines Chat-Updates).
 upgrade_umzug_guard() {
   la_umzug_open || return 0
   if [ "$1" != --any ]; then
-    [ -n "$1" ] || return 0
     [ "$1" != "$(head -n1 "$(lifeagents_version_marker)" 2>/dev/null | tr -d '[:space:]')" ] || return 0
   fi
-  die "$(la_umzug_text)"
+  die_because locked "$(la_umzug_text)"
 }
 
 # _upg_db_exists — 0, wenn PG laeuft und die App-DB existiert (sonst: Erstinstallation, nichts zu schuetzen).

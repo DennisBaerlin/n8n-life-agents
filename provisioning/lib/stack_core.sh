@@ -455,6 +455,12 @@ sc_up() {
   sc_ok "$x"
 }
 
+# _sc_marker <name> — Merker-Datei im Volume var_la (retire_cli.sh, move_cli.sh). rc 0 = liegt, 1 = fehlt, 2 = nicht lesbar.
+_sc_marker() {
+  local rc=0
+  rt_vol_get var_la "$1" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0|1) return "$rc" ;; *) return 2 ;; esac
+}
 # _sc_start_todo — fuellt SC_TODO mit den vorhandenen Diensten, die nicht laufen oder in einer Neustart-Schleife stecken (ohne die in SC_SKIP).
 _sc_start_todo() {
   local svc c
@@ -479,7 +485,7 @@ sc_start() {
   # Stillgelegt (lib/retire_cli.sh, Datei im Volume var_la): n8n und das Gateway bleiben aus wie nach _ret_stop, sonst holte n8n
   # nach jedem Neustart den Bot zurueck. Nicht lesbar (rc 2) zaehlt als stillgelegt: lieber n8n aus als zwei Bots.
   local vrc=0
-  rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || vrc=$?
+  _sc_marker "$LA_RETIRED_NAME" || vrc=$?
   case "$vrc" in
     0) SC_SKIP='n8n gateway'; warn "n8n und das Gateway bleiben aus: diese Installation ist stillgelegt (Umzug)." ;;
     1) ;;
@@ -524,10 +530,11 @@ sc_status() {
   # Zustand nicht lesbar = laeuft (die App startet dann nichts Aenderndes).
   st=''; rc=0; st="$(rt_vol_get var_la master-swap/state)" || rc=$?
   if rt_swap_helper_running || [ -n "$st" ] || [ "$rc" -ge 2 ]; then upd=true; fi
-  # Merker im Volume var_la (retire_cli.sh, move_cli.sh); nicht lesbar = true wie in sc_start (lieber Hinweis als zwei Bots).
-  rc=0; rt_vol_get var_la "$LA_RETIRED_NAME" >/dev/null 2>&1 || rc=$?
+  # Nicht lesbar = true: retired wie in sc_start (lieber n8n aus als zwei Bots), umzug_open wie die Update-Sperre, die an
+  # dieser Datei haengt (update_runner.sh: lieber kein Update als eines, das den Rueckweg verbaut).
+  rc=0; _sc_marker "$LA_RETIRED_NAME" || rc=$?
   [ "$rc" = 1 ] || ret=true
-  rc=0; rt_vol_get var_la "$LA_UMZUG_NAME" >/dev/null 2>&1 || rc=$?
+  rc=0; _sc_marker "$LA_UMZUG_NAME" || rc=$?
   [ "$rc" = 1 ] || umz=true
   x="$(jq -cn --argjson i "$installed" --argjson r "$running" --arg v "$ver" --argjson core "$core" \
     --argjson ports "$(_sc_ports_json)" --argjson s "$svcs" --arg ph "$phase" --argjson u "$upd" \

@@ -6,7 +6,7 @@
 #              Einstellung auf Standard, Owner ohne chat_id, Workflows MIT Platzhalter-chat_id = genau der Zustand nach `setup.sh --answers`).
 #   A  apply   Vorpruefung „Maschine in Gebrauch“ greift; apply spielt alles ein: Daten (family-Kontext mit der chat_id), Gedaechtnis samt
 #              Wasserstand, Einstellung, 0 Platzhalter in den n8n-Workflows, Geheimnis-Dateien weg, Sicherung bleibt, Vergleich gruen.
-#   U  Sperre  Update endet mit Satz; doctor zeigt „Umzug offen“ nur als Hinweis; zweiter apply-Lauf spielt nichts doppelt ein.
+#   U  Sperre  Update, rollback und provision.sh mit anderer Release enden mit Satz (gleiche Release laeuft); doctor zeigt „Umzug offen“ nur als Hinweis; zweiter apply-Lauf spielt nichts doppelt ein.
 #   D  done    Abnahme hebt die Sperre auf; danach schuetzt „in Gebrauch“ die Daten vor einem versehentlichen apply.
 # Testdaten erfunden; eigene Gedaechtnis-Tabelle agent.uzprobe_chat_memory (wird entfernt). Am Ende laeuft alles wie vorher.
 # real-path-test fuer tests/mock_runtime/umzug_cases.sh (die Attrappen dort ersetzen Tunnel, Rechner-Ordner und Notfallblatt-Eingabe; der
@@ -157,6 +157,19 @@ eq A.intro-merker-gesetzt 0 "$_miss"
 # --- U: Sperre -------------------------------------------------------------------------------------------------------------------------
 cli update --version v0.0.1; rc=$?
 { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.update-gesperrt || fail U.update-gesperrt "rc=$rc $(last)"
+# Jeder andere Versionswechsel sperrt mit demselben Satz, vor jeder Aenderung: rollback spielte sonst die pre-upgrade-Sicherung (Stand vor dem
+# Umzug) ein, und ein provision.sh mit anderer Release (install.sh --version …) braeche den Rueckweg (verlangt dieselbe Release).
+_v0="$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
+cli rollback; rc=$?
+{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
+# provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
+# hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht direkt hinter der Versions-Aufloesung ohne Aenderung ab: so laeuft auch ein Lauf ohne Sperre nie durch (roter Beweis gefahrlos).
+provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
+provn v0.0.2; rc=$?
+{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
+provn "$_v0"; rc=$?
+{ [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
+eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
 cli doctor; _rcd=$?
 { grep -q 'Umzug offen' "$W/out.$n"; } && pass U.doctor-nennt-umzug || fail U.doctor-nennt-umzug "$(last)"
 { grep 'Umzug offen' "$W/out.$n" | grep -q 'FAIL'; } && fail U.doctor-umzug-nie-rot "als FAIL" || pass U.doctor-umzug-nie-rot

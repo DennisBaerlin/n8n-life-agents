@@ -8,6 +8,7 @@
 #              Wasserstand, Einstellung, 0 Platzhalter in den n8n-Workflows, Geheimnis-Dateien weg, Sicherung bleibt, Vergleich gruen.
 #   U  Sperre  Update, rollback und provision.sh mit anderer Release enden mit Satz (gleiche Release laeuft); doctor zeigt „Umzug offen“ nur als Hinweis; zweiter apply-Lauf spielt nichts doppelt ein.
 #   D  done    Abnahme hebt die Sperre auf; danach schuetzt „in Gebrauch“ die Daten vor einem versehentlichen apply.
+#   Verbund (N8NTEST_RUNTIME=compose, im master): nur lock_cases (Versions-Sperre), Merker vom Test gelegt.
 # Testdaten erfunden; eigene Gedaechtnis-Tabelle agent.uzprobe_chat_memory (wird entfernt). Am Ende laeuft alles wie vorher.
 # real-path-test fuer tests/mock_runtime/umzug_cases.sh (die Attrappen dort ersetzen Tunnel, Rechner-Ordner und Notfallblatt-Eingabe; der
 #   Verbund-Zweig hat seinen echten Weg in der Probe auf zwei Test-LXC bzw. im CI-Job linux-setup).
@@ -69,7 +70,41 @@ cli() { n=$((n + 1)); "$CLI" "$@" > "$W/out.$n" 2>&1 < /dev/null; }
 said() { grep -qF -- "$1" "$W/out.$n"; }
 last() { tail -n6 "$W/out.$n" | tr '\n' ' '; }
 ready() { for _ in $(seq 1 90); do curl -fsS -o /dev/null "http://127.0.0.1:5678/healthz/readiness" 2>/dev/null && return 0; sleep 2; done; return 1; }
+# lock_cases — Versions-Sperre bei offenem Umzug: update, rollback und provision.sh mit anderer Version enden mit dem Satz, vor jeder
+#   Aenderung; dieselbe Version laeuft. Klassisch im Abschnitt U, im Verbund allein (unten).
+lock_cases() {
+  cli update --version v0.0.1; rc=$?
+  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.update-gesperrt || fail U.update-gesperrt "rc=$rc $(last)"
+  # Jeder andere Versionswechsel sperrt mit demselben Satz, vor jeder Aenderung: rollback spielte sonst die pre-upgrade-Sicherung (Stand vor dem
+  # Umzug) ein, und ein provision.sh mit anderer Release (install.sh --version …) braeche den Rueckweg (verlangt dieselbe Release).
+  cli rollback; rc=$?
+  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
+  # provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
+  # hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor nur Sperre/Ergebnis-Datei und die DOMAIN-Schreibweise, Substrat ohne DOMAIN): so laeuft auch ein Lauf ohne Sperre nie durch.
+  provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
+  # Installierte Version fuer diese Faelle eine Release (das Substrat traegt oft „dev“, dann schriebe ein Lauf ohne Tag dasselbe = kein Wechsel).
+  VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM" 2>/dev/null)"; V_SAVED=1; [ -e "$VM" ] || V_BEFORE=''; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"
+  provn v0.0.2; rc=$?
+  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
+  # Ohne Tag schriebe klassisch VERSION=dev, im Verbund die Nummer des laufenden Abbilds (release_tag_resolve, Fall „Abbild ≠ VERSION“):
+  # beides weicht von der installierten Release ab und sperrt.
+  provn ''; rc=$?
+  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-ohne-tag-gesperrt || fail U.provision-ohne-tag-gesperrt "rc=$rc $(last)"
+  provn "$_v0"; rc=$?
+  { [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
+  eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
+  v_restore
+}
 
+# Verbund: nur die Versions-Sperre. Annahme und Abnahme im Verbund prueft die Probe auf zwei Test-LXC bzw. der CI-Job linux-setup (Kopf);
+# den Merker legt hier der Test selbst (Stufe wie nach apply). Die Tick-Schleife des master haelt der Treiber an (Update-Sperre).
+if rt_is_compose; then
+  [ ! -e "$(la_umzug_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
+  trap 'rm -f "$(la_umzug_file)"; [ "$V_SAVED" != 1 ] || v_restore; rm -rf "$W" "$CLI"' EXIT
+  printf 'STAGE=applied\nMOVE=uzprobe\nAT=test\n' > "$(la_umzug_file)"
+  lock_cases
+  exit "$fails"
+fi
 curl -sf "http://127.0.0.1:$PORT/__health" >/dev/null 2>&1 || { fail setup 'Telegram-Attrappe antwortet nicht'; exit "$fails"; }
 [ ! -e "$(la_retired_file)" ] && [ ! -e "$(la_umzug_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
 curl -sf "http://127.0.0.1:$PORT/__webhook?off=1&track=1" >/dev/null || { fail setup 'Attrappe ohne Webhook-Merkmodus'; exit "$fails"; }
@@ -161,26 +196,7 @@ _miss=0; for _i in $_ids; do [ "$(sql "SELECT core.fn_app_intro_pending('${_i}')
 eq A.intro-merker-gesetzt 0 "$_miss"
 
 # --- U: Sperre -------------------------------------------------------------------------------------------------------------------------
-cli update --version v0.0.1; rc=$?
-{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.update-gesperrt || fail U.update-gesperrt "rc=$rc $(last)"
-# Jeder andere Versionswechsel sperrt mit demselben Satz, vor jeder Aenderung: rollback spielte sonst die pre-upgrade-Sicherung (Stand vor dem
-# Umzug) ein, und ein provision.sh mit anderer Release (install.sh --version …) braeche den Rueckweg (verlangt dieselbe Release).
-cli rollback; rc=$?
-{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
-# provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
-# hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor nur Sperre/Ergebnis-Datei und die DOMAIN-Schreibweise, Substrat ohne DOMAIN): so laeuft auch ein Lauf ohne Sperre nie durch.
-provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
-# Installierte Version fuer diese Faelle eine Release (das Substrat traegt oft „dev“, dann schriebe ein Lauf ohne Tag dasselbe = kein Wechsel).
-VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM" 2>/dev/null)"; V_SAVED=1; [ -e "$VM" ] || V_BEFORE=''; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"
-provn v0.0.2; rc=$?
-{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
-# Ohne Tag schriebe ein klassischer Lauf VERSION=dev: gegenueber einer Release ein Versionswechsel, sperrt.
-provn ''; rc=$?
-{ [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-ohne-tag-gesperrt || fail U.provision-ohne-tag-gesperrt "rc=$rc $(last)"
-provn "$_v0"; rc=$?
-{ [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
-eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
-v_restore
+lock_cases
 cli doctor; _rcd=$?
 { grep -q 'Umzug offen' "$W/out.$n"; } && pass U.doctor-nennt-umzug || fail U.doctor-nennt-umzug "$(last)"
 { grep 'Umzug offen' "$W/out.$n" | grep -q 'FAIL'; } && fail U.doctor-umzug-nie-rot "als FAIL" || pass U.doctor-umzug-nie-rot

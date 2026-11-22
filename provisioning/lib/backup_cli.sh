@@ -795,7 +795,7 @@ _bkp_pick_lines() {
 #   unbekannte Staende sind nie aelter.
 _bkp_rel_older() { [ "$(release_cmp "$1" "$2" 2>/dev/null)" = -1 ]; }
 # _bkp_bundle_release <tmp> <dateiname> -> Release der Sicherung: Kopf-Feld release, sonst aus dem Dateinamen (Sicherungen
-#   ohne Kopf-Feld), sonst leer. Nur die Form vX.Y.Z[-suffix] (Anzeige); verglichen wird nur die reine Form.
+#   ohne Kopf-Feld), sonst leer. Nur die Form vX.Y.Z[-suffix]; verglichen wird ueber _bkp_rel_older (release_cmp).
 _bkp_bundle_release() {
   local r; r="$(jq -r '.release // empty' "$1/manifest.json" 2>/dev/null)"
   if [[ ! "$r" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then

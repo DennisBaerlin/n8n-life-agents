@@ -132,6 +132,15 @@ _uu update_cli >/dev/null 2>&1; eq UZ-U.update-ohne-tag-gesperrt 0 "$(_mv_log | 
 : > "$STUB_LOG"; _uu update_cli --check >/dev/null 2>&1; _uu update_cli --tick >/dev/null 2>&1; _uu update_cli --run-requested >/dev/null 2>&1
 eq UZ-U.check-tick-runner-frei 3 "$(_mv_log | grep -cE '^(check|tick|run_requested)')"
 _uu update_cli --help >/dev/null 2>&1; eq UZ-U.hilfe-frei 0 "$?"
+# Sperre im Applier (provision.sh -> upgrade_umzug_guard): dieselbe Vorab-Version erneut anwenden frei, jede andere gesperrt.
+_ug() (
+  # hand-injected: Merker-Ordner und VERSION im Wegwerf-Verzeichnis; der echte Pfad laeuft in tests/backup/umzug_cases.sh
+  export LIFEAGENTS_STATE_DIR="$MV"; printf 'v0.51.0-rc.1\n' > "$W/ug.version"
+  lifeagents_version_marker() { printf '%s' "$W/ug.version"; }; die_because() { printf '%s' "$1"; exit 1; }
+  upgrade_umzug_guard "$1" && printf frei
+)
+eq UZ-U.vorab-gleich-frei frei "$(_ug v0.51.0-rc.1)"
+eq UZ-U.vorab-anders-gesperrt locked "$(_ug v0.51.0)"
 # Keine Update-Karte, solange der Umzug offen ist: eine Karte, die man nicht ausfuehren kann, ist Rauschen. Kein Netzabruf.
 _chk() (
   # hand-injected: Merker-Ordner im Wegwerf-Verzeichnis und Betriebsart fest; der echte Pfad laeuft in tests/backup/umzug_cases.sh
@@ -231,6 +240,15 @@ _ua apply "$MI" >/dev/null 2>"$W/mv.err"; eq UZ.ohne-sicherung-rc 1 "$?"; _mv_no
 _mv_run true; ( OWNER=4711 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.in-gebrauch-rc 1 "$?"; _mv_nothing in-gebrauch 'in Gebrauch'
 _mv_run true; ( PLAN_REL=v9.0.0 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.plan-andere-release-rc 1 "$?"; _mv_nothing plan-andere-release 'v9.0.0'
 _mv_run true; ( PLAN_CODE=corrupt _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.plan-rot-rc 1 "$?"; _mv_nothing plan-rot ''
+# Vorab-Release (Umzugs-Probe): gleiches Vorab-Tag auf beiden Seiten geht durch, Vorab gegen stabil derselben Basis nicht.
+_mv_run true; F_REL=v0.51.0-rc.1 _mv_folder
+( INST_REL=v0.51.0-rc.1 PLAN_REL=v0.51.0-rc.1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.vorab-gleich-rc 0 "$?"
+_mv_run true; F_REL=v0.51.0-rc.1 _mv_folder
+( INST_REL=v0.51.0 PLAN_REL=v0.51.0-rc.1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.vorab-gegen-stabil-rc 1 "$?"; _mv_nothing vorab-gegen-stabil 'v0.51.0-rc.1'
+# Sicherung: Release aus dem Dateinamen (Sicherung ohne Kopf-Feld) und die Restore-Meldung ordnen Vorab vor stabil.
+eq UZ.vorab-release-aus-dateiname v0.51.0-rc.1 "$(_bkp_bundle_release "$W/kein-bundle" lifeagents-backup-20261120100000-abcd1234-v0.51.0-rc.1.nla.enc)"
+_bkp_rel_older v0.51.0-rc.1 v0.51.0; eq UZ.vorab-sicherung-aelter-als-stabil 0 "$?"
+_bkp_rel_older dev-0123abc v0.51.0; eq UZ.dev-sicherung-nie-aelter 1 "$?"
 # Notfallblatt: ohne Terminal klarer Satz mit dem Befehl, nichts geaendert; mit Terminal einmal fragen, an Plan UND Restore reichen.
 _mv_run true; ( PLAN_CODE=key_needed _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.blatt-ohne-terminal-rc 1 "$?"; _mv_nothing blatt-ohne-terminal 'Notfallblatt'
 _mv_run true; ( PLAN_CODE=key_needed IA=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq UZ.blatt-mit-terminal-rc 0 "$?"

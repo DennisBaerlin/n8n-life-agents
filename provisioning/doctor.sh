@@ -249,6 +249,7 @@ _doctor_release_version() {
   [ -e "$m" ] || return 0   # nicht installiert (reversibel deinstalliert): kein Stand, dem eine Nummer fehlt
   v="$(head -n1 "$m" 2>/dev/null | tr -d '[:space:]' || true)"
   if is_release_tag "$v"; then _pass "Installierte Version: ${v}"; return 0; fi
+  if is_prerelease_tag "$v"; then _pass "Installierte Version: ${v} (Vorab-Release, ohne Update-Hinweise; 'lifeagents update' holt das nächste stabile)"; return 0; fi
   if version_is_named "$v"; then _pass "Installierte Version: ${v} (Entwickler-Stand)"; return 0; fi
   shown="${v:-leer}"
   if [ -e /var/lib/lifeagents/upgrade.pending ] || [ -e /var/lib/lifeagents/master-swap/state ]; then

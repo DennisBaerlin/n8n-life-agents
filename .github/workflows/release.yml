@@ -95,7 +95,13 @@ jobs:
             echo "::error::Die Tag-Nachricht erfuellt die Regel der Update-Karte nicht (Meldung oben). Annotiert taggen: git tag -a ${TAG} --cleanup=whitespace -F <datei>."
             exit 1
           }
-          printf '\n---\nInstall (as root, via the bootstrap launcher asset `install.sh`): `curl -fsSL https://github.com/%s/releases/download/%s/install.sh -o install.sh && bash install.sh --version %s` (without `--version` = latest stable release). Update an existing instance: `lifeagents update`.\n' "${GITHUB_REPOSITORY}" "${TAG}" "${TAG}" >> notes.md
+          # Stabil oder Vorab (vX.Y.Z-<suffix>) entscheidet allein scripts/lib/release_tag.ps1 (auch sign_release.ps1): ein Vorab-Tag
+          # wird prerelease und nie latest, sonst boete /releases/latest es jeder Installation als Update an.
+          note="$(pwsh -NoProfile -File scripts/release_meta.ps1 -Tag "${TAG}" -What install-note -Repo "${GITHUB_REPOSITORY}")"
+          flags="$(pwsh -NoProfile -File scripts/release_meta.ps1 -Tag "${TAG}" -What create-flags)"
+          kind_flags=()
+          if [ -n "${flags}" ]; then mapfile -t kind_flags <<< "${flags}"; fi
+          printf '\n---\n%s\n' "${note}" >> notes.md
           # Release ggf. anlegen (existiert bereits -> ueberspringen); Assets mit --clobber neu hoch
           # -> ein erneuter Lauf desselben Tags ist idempotent.
           # Signierendes Projekt (provisioning/keys/release-signing.gpg im Tag): nur als ENTWURF anlegen — Installationen mit
@@ -110,6 +116,7 @@ jobs:
             --title "${TAG}" \
             --notes-file notes.md \
             "${draft[@]}" \
+            "${kind_flags[@]}" \
             --verify-tag || echo "Release ${TAG} existiert bereits — nur Assets aktualisieren."
           # Schon unterschrieben (SHA256SUMS.sig haengt am Release) -> NICHTS ueberschreiben: ein neu gebauter Tarball (andere
           # gzip-Bytes) passte nicht mehr zur Unterschrift, und jede Installation mit Schluesselbund lehnte das Release ab.

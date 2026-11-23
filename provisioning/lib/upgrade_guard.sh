@@ -32,12 +32,9 @@ UPGRADE_ACTIVE=0      # 1 = dieser Lauf tauscht Versionen (oder setzt einen abge
 UPGRADE_CHANGES=''    # von upgrade_detect gefuellt: eine Zeile je anstehendem Tausch
 RELEASE_HISTORY_START="v0.35.0"   # erstes Release im Repo; aeltere Tags sind dort nicht ladbar (Repo ohne Historie)
 
-# _release_is_gone <tag> — 0, wenn <tag> ein stabiles vX.Y.Z vor RELEASE_HISTORY_START ist (also nicht mehr ladbar). Vergleich
-#   per `sort -V` wie _refuse_downgrade: bewusst ohne DB, der Rueckweg muss auch bei einer kaputten DB laufen.
-_release_is_gone() {
-  [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$1" != "$RELEASE_HISTORY_START" ] \
-    && [ "$(printf '%s\n%s\n' "$1" "$RELEASE_HISTORY_START" | sort -V | head -n1)" = "$1" ]
-}
+# _release_is_gone <tag> — 0, wenn <tag> ein reines oder Vorab-Tag vor RELEASE_HISTORY_START ist (also nicht mehr ladbar).
+#   Vergleich per release_cmp wie _refuse_downgrade: bewusst ohne DB, der Rueckweg muss auch bei einer kaputten DB laufen.
+_release_is_gone() { [ "$(release_cmp "$1" "$RELEASE_HISTORY_START" 2>/dev/null)" = -1 ]; }
 
 # _upg_pg_versions -> "<installiert> <kandidat>" von postgresql-<PG_VERSION> (leer, wenn nicht installiert).
 # Setzt ein vorheriges apt-get update voraus (install_base_packages). Ein apt-Hold aendert den Kandidaten nicht.
@@ -118,11 +115,12 @@ _upg_release_change() {
   return 0
 }
 
-# _upg_installed_release -> das installierte stabile Release-Tag (VERSION), leer bei dev/keinem.
+# _upg_installed_release -> das installierte Release- oder Vorab-Tag (VERSION), leer bei dev/keinem. Ein Wechsel ab einem
+#   Vorab-Stand ist ein Release-Wechsel wie jeder andere: erst sichern.
 _upg_installed_release() {
   local v
   v="$(cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
-  [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && printf '%s' "$v"
+  if is_release_tag "$v" || is_prerelease_tag "$v"; then printf '%s' "$v"; fi
   return 0
 }
 
@@ -544,7 +542,7 @@ upgrade_rollback() {
     :
   else
     case "$from_rel" in
-      v[0-9]*) [[ "$from_rel" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Vorherige Version '${from_rel}' ist kein stabiles Release — kein automatischer Rückweg." ;;
+      v[0-9]*) is_release_tag "$from_rel" || is_prerelease_tag "$from_rel" || die "Vorherige Version '${from_rel}' ist kein Release — kein automatischer Rückweg." ;;
       *) die "Vorherige Version unbekannt ('${from_rel:-?}') — kein automatischer Rückweg (Einzelschritte: docs/reference/provisioning.md *Versionswechsel*)." ;;
     esac
   fi

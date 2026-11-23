@@ -77,7 +77,7 @@ _rr() (
   lifeagents_env_file() { printf '%s/%s.env' "$LIFEAGENTS_DIR" "$1"; }   # Abschnitt K ueberschreibt sie global
   _pkg_dir() { printf '%s' "$ROOT/packages"; }
   _ret_doctor_red() { printf '%s' "${DOC_RED:-0}"; }
-  _bkp_release_tag() { printf 'v9.1.0'; }; _bkp_key() { printf '0123456789abcdef0123'; }; _bkp_active_names() { printf 'core career'; }
+  _bkp_release_tag() { printf '%s' "${INST_REL:-v9.1.0}"; }; _bkp_key() { printf '0123456789abcdef0123'; }; _bkp_active_names() { printf 'core career'; }
   _bkp_tmpdir() { mktemp -d -p "$W"; }
   _ret_sql() {
     case "$1" in
@@ -176,6 +176,13 @@ eq RT.antworten-ohne-warnung '' "$(cat "$W/ret.load")"
 _rt_reset; _rt_env
 ( _rr --out "$W/ret_out" --backup-dir /srv/sicherung ) >/dev/null 2>&1
 eq RT.antworten-backup-dir "'/srv/sicherung'" "$(grep '^BACKUP_PARENT_DIR=' "$W/ret_out/umzug.env" | cut -d= -f2-)"
+# Vorab-Release (Umzugs-Probe): Vorpruefung gruen, Ordner und Sicherung tragen das Vorab-Tag (die neue Maschine vergleicht es
+# woertlich).
+_rt_reset; _rt_env
+( INST_REL=v0.51.0-rc.1 _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"; _rc=$?
+eq RT.vorab-lauf-ok 0 "$_rc"
+eq RT.vorab-manifest v0.51.0-rc.1 "$(read_env_value "$W/ret_out/umzug.manifest" RELEASE)"
+case "$(read_env_value "$W/ret_out/umzug.manifest" BACKUP_FILE)" in lifeagents-backup-*-v0.51.0-rc.1.nla.enc) pass RT.vorab-sicherung-name ;; *) fail RT.vorab-sicherung-name "$(read_env_value "$W/ret_out/umzug.manifest" BACKUP_FILE)" ;; esac
 
 # --status in jeder Stufe; erneuter Lauf setzt fort, ohne Erledigtes zu wiederholen.
 _rt_reset; ( _rr --status ) >/dev/null 2>&1; eq RT.status-nicht 0 "$?"

@@ -214,16 +214,14 @@ fetch_and_run_release() {
 
 # _refuse_downgrade <tag> — kein Rueckschritt auf eine aeltere Version, ausser bewusst (LIFEAGENTS_ALLOW_DOWNGRADE=1, gesetzt
 #   von `lifeagents update --allow-downgrade` bzw. `lifeagents rollback`). Ein Downgrade liefe die neueren Schema-Migrationen
-#   nicht zurueck — der echte Rueckweg stellt erst die Sicherung her (lifeagents rollback). Greift nur zwischen zwei stabilen
-#   Tags vX.Y.Z; Vergleich per `sort -V` (dieselbe Ordnung wie core.fn_semver_cmp fuer vX.Y.Z — bewusst ohne DB, denn
-#   genau bei einer kaputten DB muss ein Update/Rueckweg noch laufen). Gleiches Tag = erneut anwenden, erlaubt.
+#   nicht zurueck — der echte Rueckweg stellt erst die Sicherung her (lifeagents rollback). Greift zwischen reinen und
+#   Vorab-Tags (release_cmp, ohne DB: genau bei einer kaputten DB muss ein Update/Rueckweg noch laufen); ein dev-Stand ist nicht
+#   vergleichbar und frei. Gleiches Tag = erneut anwenden, erlaubt.
 _refuse_downgrade() {
   local tag="$1" installed
   [ "${LIFEAGENTS_ALLOW_DOWNGRADE:-0}" = 1 ] && return 0
   installed="$(cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
-  [[ "$installed" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
-  [ "$installed" = "$tag" ] && return 0
-  if [ "$(printf '%s\n%s\n' "$installed" "$tag" | sort -V | head -n1)" = "$tag" ]; then
+  if [ "$(release_cmp "$tag" "$installed" 2>/dev/null)" = -1 ]; then
     die_because downgrade "Release ${tag} ist älter als die installierte Version ${installed} — kein Rückschritt. Zurück auf eine frühere Version: lifeagents rollback (stellt auch die Daten von vorher wieder her)."
   fi
 }

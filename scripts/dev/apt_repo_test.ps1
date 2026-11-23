@@ -23,7 +23,7 @@ $passed = 0; $failed = 0
 foreach ($caseFile in @('cases.sh', 'first_step_cases.sh')) {
     $r = $null
     try {
-        Invoke-Native docker @('rm', '-f', $Container) | Out-Null
+        Invoke-Native docker @('rm', '-fv', $Container) | Out-Null
         $r = Invoke-Native docker @('run', '-d', '--name', $Container, $Image, 'sleep', '3600')
         if ($r.Code -ne 0) { throw "Container nicht startbar: $($r.Output -join ' | ')" }
         $r = Invoke-Native docker @('exec', $Container, 'mkdir', '-p', '/opt/t', '/srv')
@@ -33,7 +33,7 @@ foreach ($caseFile in @('cases.sh', 'first_step_cases.sh')) {
         }
         $r = Invoke-Native docker @('exec', $Container, 'bash', "/opt/t/apt_repo/$caseFile", '/opt/t')
     } finally {
-        Invoke-Native docker @('rm', '-f', $Container) | Out-Null
+        Invoke-Native docker @('rm', '-fv', $Container) | Out-Null
     }
     $lines = @($r.Output)
     foreach ($l in $lines) {

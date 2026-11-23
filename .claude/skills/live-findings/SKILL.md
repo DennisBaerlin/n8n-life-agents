@@ -11,8 +11,20 @@ Grundsatz „Agenten schlagen vor, der Nutzer bestätigt“: Du liest und berich
 
 - **Nur lesend** auf dem Live-System: kein `INSERT/UPDATE/DELETE`, kein n8n-Stop, kein Neustart, kein `lifeagents update`. Jede SQL-Sitzung beginnt mit `SET default_transaction_read_only = on;`, API-Aufrufe sind nur GET. Eine nötige Änderung ist ein Vorschlag im Bericht, nie eine Aktion.
 - **Der Bericht enthält private Daten** (Gesprächsinhalte, Beträge, Namen) und kommt deshalb nie ins Repo: keine Datei im Repo, kein Commit. Ablage nur als privates Artefakt (`Artifact`-Tool, Standard = privat, nicht teilen) oder als privates Dokument im Konto des Owners. Das Repo ist öffentlich.
-- **Zugang** (Host, Nutzer, Schlüssel) steht in der `.env` des Haupt-Checkouts (`LIVE_INSTANCE_HOST`, `LIVE_INSTANCE_USER`, `LIVE_INSTANCE_SSH_KEY`; Worktrees haben keine `.env`; `DEV_INSTANCE_*` ist die Entwickler-Instanz für `/reset-dev` und hier tabu, fehlt `LIVE_INSTANCE_*`, den Owner bitten, nicht auf `DEV_*` ausweichen). Nie in den Bericht oder in eine Nachricht schreiben. Das Rezept (Skript in den Scratchpad, LF/ohne BOM, `scp`, `ssh … 'bash /tmp/x.sh; rm -f /tmp/x.sh'`) und die Dauer-Erlaubnis des Owners für lesende Zugriffe stehen in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission` des Projekts (Index `MEMORY.md`). Lies beide zuerst. Blockt der Berechtigungs-Klassifizierer trotzdem, nicht umgehen: den Owner um Freigabe bitten.
+- **Zugang** (Host, Nutzer, Schlüssel) steht in der `.env` des Haupt-Checkouts (`LIVE_INSTANCE_HOST`, `LIVE_INSTANCE_USER`, `LIVE_INSTANCE_SSH_KEY`; Worktrees haben keine `.env`; `DEV_INSTANCE_*` ist die Entwickler-Instanz für `/reset-dev` und hier tabu, fehlt `LIVE_INSTANCE_*`, den Owner bitten, nicht auf `DEV_*` ausweichen). Nie in den Bericht oder in eine Nachricht schreiben. Das Rezept (SQL in eine Datei im Scratchpad, LF/ohne BOM, dann `.\scripts\live_read.ps1 -SqlFile <datei>`; die Laufzeit des Ziels erkennt es selbst, siehe *Zwei Laufzeiten*) und die Dauer-Erlaubnis des Owners für lesende Zugriffe stehen in den Memory-Notizen `owner-instance-ssh-access` und `live-system-read-permission` des Projekts (Index `MEMORY.md`). Lies beide zuerst. Blockt der Berechtigungs-Klassifizierer trotzdem, nicht umgehen: den Owner um Freigabe bitten.
 - Ausführung nur über das PowerShell-Tool (Root-`CLAUDE.md` *Scripts*), Remote-Skripte ASCII.
+
+## Zwei Laufzeiten (klassisch oder Docker-Verbund, bei jedem Lauf neu erkannt)
+
+`.\scripts\live_read.ps1 -Runtime` sagt `classic` oder `compose` (läuft der Container `lifeagents-master` auf dem Ziel). SQL und Mitschrift gehen immer über das Skript (`-SqlFile`, `-Usage`), nie über ein eigenes ssh-Rezept. Für die übrigen lesenden Befehle der Schritte gilt (Ziel per `ssh`, Zugang wie oben):
+
+| Schritt | klassisch | Verbund |
+|---|---|---|
+| Gesundheit | `lifeagents doctor`, `systemctl is-active n8n lifeagents-llm-gateway postgresql@17-main` | `docker exec lifeagents-master lifeagents doctor`, `docker ps --filter label=io.lifeagents.install=lifeagents --format '{{.Names}} {{.Status}}'` |
+| Fehler-Alerts (Journal) | `journalctl -u n8n -u lifeagents-llm-gateway --since '7 days ago' -p err` | `docker logs --since 168h lifeagents-n8n` und `lifeagents-gateway`, nach `error` filtern |
+| flatted-Parser (Ausführungsdaten) | `/usr/lib/node_modules/n8n/node_modules/flatted` | im Container `lifeagents-n8n` (`node -e` per `docker exec`); Pfad dort per `require.resolve('flatted')` finden (Ort je Image-Stand; stimmt er nicht, die Zeile hier korrigieren) |
+
+Zustand mit `docker exec` im Verbund bleibt lesend (`docker logs`, `docker ps`, `doctor`); `docker restart`, `compose`, `stack` und `lifeagents update` bleiben tabu.
 
 ## Kosten-Politik
 
@@ -22,9 +34,9 @@ Die Fleißarbeit machen Sonnet-Unteragenten (`Explore`): Server-Abfragen, Log- u
 
 Zeitraum = letzte 7 Tage bis jetzt. Fakten sammeln, dann auswerten.
 
-1. **Gesundheit:** `lifeagents doctor` (lesend) und `systemctl is-active n8n lifeagents-llm-gateway postgresql@17-main`; Auffälliges in einem Satz.
-2. **Ausführungsfehler:** n8n-Tabellen mit Präfix `public.` (`public.execution_entity`, `public.workflow_entity`). **Immer `"deletedAt" IS NULL`** (n8n löscht nicht gespeicherte Läufe weich; sonst falscher Alarm). Je Workflow: Anzahl `status = 'error'` und `crashed`, erster/letzter Zeitpunkt, Fehlermeldung (Ausführungsdaten sind flatted-JSON: parsen mit node + `/usr/lib/node_modules/n8n/node_modules/flatted`). Dazu `status = 'waiting'` älter als 1 Tag (liegengebliebene Bestätigungskarten) — nur zählen, nicht stoppen.
-3. **Fehler-Alerts:** Jeder Fehlerlauf löst `core.sub_error_notify` aus (Telegram-Alarm an den Owner); es gibt keine eigene Alarm-Tabelle. Ersatz: die Fehlerläufe aus Schritt 2 gelten als Alarme; zusätzlich `journalctl -u n8n -u lifeagents-llm-gateway --since '7 days ago' -p err` (zusammenfassen, nicht roh einfügen).
+1. **Gesundheit:** `lifeagents doctor` (lesend) und die Dienste (Befehle je Laufzeit: Tabelle oben); Auffälliges in einem Satz.
+2. **Ausführungsfehler:** n8n-Tabellen mit Präfix `public.` (`public.execution_entity`, `public.workflow_entity`). **Immer `"deletedAt" IS NULL`** (n8n löscht nicht gespeicherte Läufe weich; sonst falscher Alarm). Je Workflow: Anzahl `status = 'error'` und `crashed`, erster/letzter Zeitpunkt, Fehlermeldung (Ausführungsdaten sind flatted-JSON: parsen mit node + `flatted`, Ort je Laufzeit in der Tabelle oben). Dazu `status = 'waiting'` älter als 1 Tag (liegengebliebene Bestätigungskarten) — nur zählen, nicht stoppen.
+3. **Fehler-Alerts:** Jeder Fehlerlauf löst `core.sub_error_notify` aus (Telegram-Alarm an den Owner); es gibt keine eigene Alarm-Tabelle. Ersatz: die Fehlerläufe aus Schritt 2 gelten als Alarme; zusätzlich die Fehlerzeilen der Dienst-Protokolle (Tabelle oben; zusammenfassen, nicht roh einfügen).
 4. **Gespräche:** Chat-Gedächtnis-Tabellen entdecken (`information_schema.tables`, Muster `agent.%_chat_memory`; Spalten nicht raten, erst ansehen). Je Agent: Anzahl Gespräche/Nachrichten, Verteilung über die Woche. Die Gesprächsinhalte nur so weit lesen, wie Schritt 5 es braucht.
 5. **Auffälligkeiten in den Gesprächen** (Liste je Fund: Agent, Tag, ein Satz, keine Beträge/Namen, die der Sache nicht dienen):
    - **Fehlrouten:** der Router (Orchestrator) schickt an den falschen Spezialisten, oder ein Spezialist antwortet „dafür gibt es kein Tool“ / „not yet available“, obwohl ein anderer Agent es kann.

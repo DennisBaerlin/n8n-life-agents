@@ -52,6 +52,10 @@ step_kvm() {
   echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
   sudo udevadm control --reload-rules
   sudo udevadm trigger --name-match=kvm || true
+  # Die Regel greift mit Verzug (A0: zwei Laeufe ok, ein Lauf zu frueh geprueft): kurz warten, sonst die Rechte direkt setzen.
+  local _
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -w /dev/kvm ] && break; sleep 1; done
+  [ -w /dev/kvm ] || { [ ! -c /dev/kvm ] || sudo chmod a+rw /dev/kvm; }
   if ! { [ -c /dev/kvm ] && [ -w /dev/kvm ]; }; then
     echo "::error::Kein nutzbares /dev/kvm auf diesem Runner: Runner-Ausfall, nicht der Produktcode. Lauf wiederholen."
     exit 1

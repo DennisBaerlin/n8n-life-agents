@@ -74,7 +74,7 @@ async function press(page, id) {
 async function handle(page, s) {
   const p = s.page;
   const id = p.id;
-  if (p.poll && p.kind !== 'connect') { await sleep(1000); return; }
+  if (p.poll && p.kind !== 'connect' && p.kind !== 'install') { await sleep(1000); return; }
   // Die Seite zeichnet nach einer Antwort erst nach einer kurzen Anzeige der Pruefmeldung (bis ~2 s) neu; wer vorher tippt,
   // tippt ins alte Feld. Darum erst handeln, wenn die Ueberschrift im Browser die der neuen Seite ist.
   // (waitForFunction scheitert an der CSP der Seite: kein eval.)
@@ -172,13 +172,13 @@ async function handle(page, s) {
   let rc = 1;
   try {
     await page.goto(URL_, { waitUntil: 'domcontentloaded' });
-    for (let i = 0; i < 200; i += 1) {
+    for (const deadline = Date.now() + 60 * 60 * 1000; Date.now() < deadline;) {
       const s = await state(page);
       if (s.offline || !s.page) { await sleep(1000); continue; }
       if (seen[seen.length - 1] !== s.page.id) { seen.push(s.page.id); log(`Seite ${seen.length}: ${s.page.id} (${s.page.kind})`); }
       await handle(page, s);
     }
-    throw new Error('Zu viele Seiten (Schleife?)');
+    throw new Error('Zeitgrenze (60 Min) im Klickweg');
   } catch (e) {
     if (e.done) { rc = 0; log(`FERTIG, ${seen.length} Seiten: ${seen.join(' > ')}`); } else {
       log(`FEHLER: ${e.message}`);

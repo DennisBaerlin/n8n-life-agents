@@ -71,9 +71,9 @@ Usage: lifeagents <befehl> [optionen]
   retire      Umzug auf eine neue Maschine: diese Installation stilllegen und alles für die neue in einen
               Ordner legen; --check (Trockenlauf), --status, --undo [--restore <ordner>] (zurück).
               `lifeagents retire help` für Details. Braucht root.
-  umzug       Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt Sicherung, Gedächtnis und Einstellungen ein,
+  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt Sicherung, Gedächtnis und Einstellungen ein,
               check (Vergleich mit der alten Maschine), status, done (Abnahme; bis dahin keine Updates), abort (Ausweg).
-              `lifeagents umzug help` für Details. Braucht root.
+              `lifeagents move help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
   uninstall   Instanz abbauen (Schema DROP, Dienste stop; im Docker-Verbund entfernt die Start-App); --purge-data für den Voll-Wipe,
               --yes für ohne Rückfrage durchreichen: `lifeagents uninstall --purge-data --yes`. Braucht root.
@@ -325,13 +325,13 @@ case "$cmd" in
     export LIFEAGENTS_DOCTOR
     retire_cli "$@"
     ;;
-  umzug)
+  move)
     # Annahme auf der neuen Maschine (lib/move_cli.sh): Sicherung + Restore wie der backup-Arm, Gedaechtnis und Ordner-Zugriff aus
     # retire_cli.sh, Einstellungen aus config_cli.sh, der Abschluss (Bot auf die chat_id einstellen) aus owner_connect.sh wie bei
     # `household pair-owner`. Auf einer stillgelegten (alten) Maschine gibt es ihn nicht (_retired_allows).
-    _umzug_libs="release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh bootstrap_owner.sh firewall.sh owner_connect.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh config_cli.sh move_cli.sh"
+    _move_libs="release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh bootstrap_owner.sh firewall.sh owner_connect.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh config_cli.sh move_cli.sh"
     # shellcheck disable=SC2086  # bewusst in Dateinamen zerlegt
-    for f in common.sh $_umzug_libs; do
+    for f in common.sh $_move_libs; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
     # shellcheck disable=SC2034  # von der dynamisch gesourcten release_inputs.sh gelesen (load_install_env)
@@ -339,11 +339,11 @@ case "$cmd" in
     # shellcheck source=/dev/null
     . "${LIFEAGENTS_PROV}/lib/common.sh"
     # shellcheck disable=SC2086  # bewusst in Dateinamen zerlegt
-    for f in $_umzug_libs; do
+    for f in $_move_libs; do
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
-    umzug_cli "$@"
+    move_cli "$@"
     ;;
   doctor)
     [ -f "$LIFEAGENTS_DOCTOR" ] || { printf 'lifeagents: doctor.sh fehlt (%s).\n' "$LIFEAGENTS_DOCTOR" >&2; exit 1; }

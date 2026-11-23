@@ -226,7 +226,7 @@ config_cmd_set() {
 # Liste [{package,category,key,value}]. Je Zeile dieselbe Pruefung wie `set` (Namen, kein Systemwert, nur bestehende Zeile, die DB
 # prueft den Wert); eine abgelehnte Zeile wird mit Namen gemeldet (nie mit Wert), die uebrigen laufen weiter, rc 1 bei mindestens
 # einer Ablehnung. Zeitplaene spielt jede Zeile einzeln ein (_cfg_apply_schedule), ausser LIFEAGENTS_CONFIG_DEFER_APPLY=1: dann macht
-# der Aufrufer es gesammelt (umzug apply spielt danach ohnehin alle Workflows neu ein).
+# der Aufrufer es gesammelt (move apply spielt danach ohnehin alle Workflows neu ein).
 config_cmd_import() {
   local file="${1:-}" total i ok_n=0 bad=0 category key value v_esc updated
   [ -n "$file" ] && [ -r "$file" ] || die "Usage: lifeagents config import <config.json>"

@@ -387,7 +387,7 @@ main() {
   if [ "$APPLY_NETWORK" -ne 1 ]; then release_tag_resolve "$PROFILE"; fi
   # Umzug offen: kein Versionswechsel, auch nicht ueber install.sh --version (upgrade_guard.sh). Ziel = genau der Wert, den install_cli
   # als VERSION schreibt (nach release_tag_resolve); vor dem ersten Schreiben in core.env (DOMAIN, reach_prepare) und vor jedem Schritt.
-  if [ "$APPLY_NETWORK" -ne 1 ]; then upgrade_umzug_guard "${RELEASE_TAG:-dev}"; fi
+  if [ "$APPLY_NETWORK" -ne 1 ]; then upgrade_move_guard "${RELEASE_TAG:-dev}"; fi
 
   # Internet-Adresse: load_install_env hat DOMAIN normalisiert (eine Regel fuer alle Eingabewege). Steht in core.env
   # dieselbe Adresse nur anders geschrieben (https://name:443/), wird sie einmal korrigiert zurueckgeschrieben (danach

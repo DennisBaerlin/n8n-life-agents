@@ -1,4 +1,4 @@
-# move_cli.sh — `lifeagents umzug`: Annahme auf der NEUEN Maschine (Gegenstueck zu `lifeagents retire`, lib/retire_cli.sh).
+# move_cli.sh — `lifeagents move`: Annahme auf der NEUEN Maschine (Gegenstueck zu `lifeagents retire`, lib/retire_cli.sh).
 # Gesourct von templates/lifeagents.tpl (mit retire_cli.sh, backup_cli.sh, config_cli.sh und den Install-Primitiven des household-Arms:
 # owner_connect.sh liefert _oc_finalize_verified). Mechanik: docs/reference/provisioning.md *Umzug*.
 #
@@ -10,28 +10,28 @@
 #   done             Abnahme: hebt die Update-Sperre auf.
 #   abort            Ausweg aus einem stehengebliebenen Umzug: hebt nur die Update-Sperre auf, Daten bleiben.
 #
-# Zustand: la_umzug_file (runtime.sh) = Merker „Umzug offen“ + Stufe; ab `started` sperrt er das Update (update_runner.sh), bis
+# Zustand: la_move_file (runtime.sh) = Merker „Umzug offen“ + Stufe; ab `started` sperrt er das Update (update_runner.sh), bis
 # `done` oder `abort`. Ein neuer apply-Lauf mit demselben Umzug macht nach der letzten erledigten Stufe weiter und spielt die Sicherung nie
 # noch einmal ein: Daten, die inzwischen entstanden sind, gingen sonst verloren.
 # Exit: 0 ok; 1 Abbruch bzw. Vergleich mit Abweichung (Grund auf stderr); 2 Vergleich unmoeglich.
 
-UMZUG_FORMAT=1
-UMZUG_STAGES="started restored memory config finalized applied"
-UMZUG_TUNNEL_WAIT_SECS="${UMZUG_TUNNEL_WAIT_SECS:-600}"
-UMZUG_TUNNEL_POLL_SECS="${UMZUG_TUNNEL_POLL_SECS:-5}"
-UMZUG_SECRET_FILES="umzug.env memory.dump memory.counts"
+MOVE_FORMAT=1
+MOVE_STAGES="started restored memory config finalized applied"
+MOVE_TUNNEL_WAIT_SECS="${MOVE_TUNNEL_WAIT_SECS:-600}"
+MOVE_TUNNEL_POLL_SECS="${MOVE_TUNNEL_POLL_SECS:-5}"
+MOVE_SECRET_FILES="move.env memory.dump memory.counts"
 
-umzug_usage() {
+move_usage() {
   cat >&2 <<'USAGE'
-lifeagents umzug — Daten von der alten Maschine auf diese (neue) Maschine übernehmen.
+lifeagents move — Daten von der alten Maschine auf diese (neue) Maschine übernehmen.
 
-Usage: lifeagents umzug apply <ordner>
-       lifeagents umzug check [<ordner>] | status | done [--yes] | abort [--yes]
+Usage: lifeagents move apply <ordner>
+       lifeagents move check [<ordner>] | status | done [--yes] | abort [--yes]
 
   apply <ordner>  Einspielen: Vorprüfungen (ändern nichts), dann Sicherung, Gesprächs-Gedächtnis, geänderte Einstellungen,
                   Bot fest auf dich einstellen, Übersicht-Knopf mit der neuen Adresse, Geheimnis-Dateien im Ordner löschen,
                   Vergleich. Bricht es ab, macht ein neuer Lauf dort weiter. <ordner> = der Umzugs-Ordner der alten Maschine
-                  (Docker-Verbund: Pfad auf dem Rechner, z. B. /root/lifeagents-umzug).
+                  (Docker-Verbund: Pfad auf dem Rechner, z. B. /root/lifeagents-move).
   check           Vergleich mit den Werten der alten Maschine (vorher.txt): nur Namen und Kennzahlen.
   status          Wie weit ist der Umzug? Exit 0 = kein Umzug offen, 10 = mitten drin, 11 = eingespielt (Abnahme steht aus).
   done            Abnahme nach der Probezeit: hebt die Update-Sperre auf. Ohne Terminal nur mit --yes.
@@ -42,16 +42,16 @@ USAGE
 }
 
 # --- Zustand -------------------------------------------------------------------------------------------------------------
-_mv_get() { read_env_value "$(la_umzug_file)" "$1" 2>/dev/null || true; }
+_mv_get() { read_env_value "$(la_move_file)" "$1" 2>/dev/null || true; }
 _mv_set() {
-  local f; f="$(la_umzug_file)"
+  local f; f="$(la_move_file)"
   ( umask 077; env_upsert "$f" "$1" "$2" ) || die "Stand des Umzugs liess sich nicht schreiben ($f)."
 }
-_mv_stage() { la_umzug_open || return 0; _mv_get STAGE; }
+_mv_stage() { la_move_open || return 0; _mv_get STAGE; }
 # _mv_reached <stufe> — 0, wenn die gespeicherte Stufe <stufe> oder eine spaetere ist.
 _mv_reached() {
   local cur s seen=0; cur="$(_mv_stage)"; [ -n "$cur" ] || return 1
-  for s in $UMZUG_STAGES; do
+  for s in $MOVE_STAGES; do
     [ "$s" = "$1" ] && seen=1
     if [ "$s" = "$cur" ]; then [ "$seen" = 1 ]; return; fi
   done
@@ -59,10 +59,10 @@ _mv_reached() {
 }
 
 # --- Vergleich -----------------------------------------------------------------------------------------------------------
-# umzug_compare <vorher> <nachher> — nur die abweichenden Zeilen, "<art> <name>  vorher <wert|—>  nachher <wert|—>", sortiert; still,
+# move_compare <vorher> <nachher> — nur die abweichenden Zeilen, "<art> <name>  vorher <wert|—>  nachher <wert|—>", sortiert; still,
 #   wenn alles gleich ist. rc 0 gleich, 1 Abweichung, 2 eine Datei fehlt. Zeilenform: "<art> <name> <wert>" (move_snapshot); der
 #   Schluessel ist "<art> <name>", der Wert Zeilenzahl, md5 oder Zaehler — nie ein Inhalt.
-umzug_compare() {
+move_compare() {
   local out
   [ -r "$1" ] && [ -r "$2" ] || return 2
   # Zuordnung ueber den Dateinamen: NR==FNR hielte bei leerer erster Datei jede Zeile der zweiten fuer „vorher“. Der awk-Status
@@ -81,7 +81,7 @@ umzug_compare() {
 }
 
 # _mv_check <ordner-wie-angegeben> <lokaler-ordner> — move_snapshot hier -> nachher.txt (Verbund: auch in den Rechner-Ordner), dann
-#   Vergleich mit vorher.txt. rc wie umzug_compare.
+#   Vergleich mit vorher.txt. rc wie move_compare.
 _mv_check() {
   local dir="$1" d="$2" diff rc=0
   [ -r "$d/vorher.txt" ] || { err "In ${dir} fehlt vorher.txt — ohne die Werte der alten Maschine gibt es nichts zu vergleichen."; return 2; }
@@ -90,7 +90,7 @@ _mv_check() {
   if rt_is_compose; then
     rt_host_put "$(_bkp_hd "$dir")" nachher.txt "$d/nachher.txt" || warn "nachher.txt ließ sich nicht in '${dir}' ablegen (der Vergleich läuft trotzdem)."
   fi
-  diff="$(umzug_compare "$d/vorher.txt" "$d/nachher.txt")" || rc=$?
+  diff="$(move_compare "$d/vorher.txt" "$d/nachher.txt")" || rc=$?
   case "$rc" in
     0) ok "Vergleich: alle gesicherten Tabellen, Einstellungen und das Gedächtnis stimmen mit der alten Maschine überein." ;;
     1) warn "Vergleich: Abweichungen gegenüber der alten Maschine (Zeilenzahl bzw. Prüfsumme je Tabelle):"
@@ -163,30 +163,30 @@ _mv_tunnel_text() {
 #   Anmelde- bzw. Freigabe-Link (der unbeaufsichtigte Installer zeigt ihn nicht). Bei Ablauf der Wartezeit Abbruch ohne Aenderung.
 _mv_tunnel() {
   rt_is_compose || return 0
-  local left="$UMZUG_TUNNEL_WAIT_SECS" js state url mode last='' activated=0 txt
+  local left="$MOVE_TUNNEL_WAIT_SECS" js state url mode last='' activated=0 txt
   while :; do
     js="$(reach_status_json 2>/dev/null || true)"
     state="$(printf '%s' "$js" | jq -r '.state // "unavailable"' 2>/dev/null || printf unavailable)"
     url="$(printf '%s' "$js" | jq -r '.url // ""' 2>/dev/null || true)"
     printf '%s' "$url" | grep -qE '^https://login\.tailscale\.com/[A-Za-z0-9/?=&._~%+-]*$' || url=''
-    # Der Umzug setzt REACH_MODE=tunnel (umzug.env). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
+    # Der Umzug setzt REACH_MODE=tunnel (move.env). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
     mode="$(printf '%s' "$js" | jq -r '.mode // ""' 2>/dev/null || true)"
     [ -z "$js" ] || [ "$mode" = tunnel ] \
-      || die "Der Weg nach außen ist hier nicht der Tunnel (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt REACH_MODE='tunnel'. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/umzug.env"
+      || die "Der Weg nach außen ist hier nicht der Tunnel (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt REACH_MODE='tunnel'. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/move.env"
     case "$state" in
       ready) return 0 ;;
       pending_activation)
         if [ "$activated" = 0 ]; then
           activated=1; log "Der Tunnel steht — die Adresse wird übernommen und der Bot umgestellt ..."
-          _mv_reach_activate || die "Die Adresse ließ sich nicht übernehmen (Ausgabe oben). Es wurde nichts eingespielt; noch einmal: lifeagents umzug apply"
+          _mv_reach_activate || die "Die Adresse ließ sich nicht übernehmen (Ausgabe oben). Es wurde nichts eingespielt; noch einmal: lifeagents move apply"
           continue
         fi ;;
     esac
     txt="$(_mv_tunnel_text "$state" "$url")"
     if [ "$state:$url" != "$last" ]; then warn "Der Weg nach außen ist noch nicht fertig:"; printf '%s\n' "$txt" >&2; last="$state:$url"; fi
-    left=$((left - UMZUG_TUNNEL_POLL_SECS))
+    left=$((left - MOVE_TUNNEL_POLL_SECS))
     [ "$left" -gt 0 ] || die "Der Weg nach außen wurde in der Wartezeit nicht fertig. Es wurde nichts eingespielt — nach der Anmeldung dasselbe Kommando noch einmal."
-    sleep "$UMZUG_TUNNEL_POLL_SECS"
+    sleep "$MOVE_TUNNEL_POLL_SECS"
   done
 }
 
@@ -215,37 +215,37 @@ _mv_wipe_secrets() {
   local dir="$1" d="$2" f
   if rt_is_compose; then
     # shellcheck disable=SC2086  # feste Dateinamen ohne Leerzeichen
-    rt_host_rm "$(_bkp_hd "$dir")" $UMZUG_SECRET_FILES
+    rt_host_rm "$(_bkp_hd "$dir")" $MOVE_SECRET_FILES
   else
-    for f in $UMZUG_SECRET_FILES; do rm -f -- "${d:?}/$f" || return 1; done
+    for f in $MOVE_SECRET_FILES; do rm -f -- "${d:?}/$f" || return 1; done
   fi
 }
 
 # --- Verben --------------------------------------------------------------------------------------------------------------
-umzug_cmd_apply() {
+move_cmd_apply() {
   local dir="${1:-}" d rel move f inst
-  [ -n "$dir" ] || { umzug_usage; die "lifeagents umzug apply braucht den Umzugs-Ordner."; }
-  [ "$#" -le 1 ] || die "lifeagents umzug apply: nur der Ordner als Angabe (lifeagents umzug help)."
+  [ -n "$dir" ] || { move_usage; die "lifeagents move apply braucht den Umzugs-Ordner."; }
+  [ "$#" -le 1 ] || die "lifeagents move apply: nur der Ordner als Angabe (lifeagents move help)."
   require_root
   _bkp_resolve_db
   update_lock_acquire 30 || die "Gerade läuft ein Update, eine Sicherung oder eine Wiederherstellung — danach erneut."
   _ret_fetch_dir "$dir"; d="$_RET_DIR"
-  [ -r "$d/umzug.manifest" ] || die "In ${dir} liegt kein Umzugs-Ordner (umzug.manifest fehlt)."
-  [ "$(read_env_value "$d/umzug.manifest" FORMAT 2>/dev/null || true)" = "$UMZUG_FORMAT" ] \
-    || die "Der Umzugs-Ordner hat ein anderes Format ($(read_env_value "$d/umzug.manifest" FORMAT 2>/dev/null || printf '?')) — mit derselben Version der alten und der neuen Maschine neu erzeugen."
-  rel="$(read_env_value "$d/umzug.manifest" RELEASE 2>/dev/null || true)"
+  [ -r "$d/move.manifest" ] || die "In ${dir} liegt kein Umzugs-Ordner (move.manifest fehlt)."
+  [ "$(read_env_value "$d/move.manifest" FORMAT 2>/dev/null || true)" = "$MOVE_FORMAT" ] \
+    || die "Der Umzugs-Ordner hat ein anderes Format ($(read_env_value "$d/move.manifest" FORMAT 2>/dev/null || printf '?')) — mit derselben Version der alten und der neuen Maschine neu erzeugen."
+  rel="$(read_env_value "$d/move.manifest" RELEASE 2>/dev/null || true)"
   inst="$(_bkp_release_tag)"
   [ -n "$rel" ] && [ "$rel" = "$inst" ] \
     || die "Der Umzugs-Ordner stammt von Version ${rel:-?}, hier ist ${inst:-keine Version} installiert — beide Maschinen müssen dieselbe Version haben. Es wurde nichts geändert."
-  f="$(read_env_value "$d/umzug.manifest" BACKUP_FILE 2>/dev/null || true)"
-  case "$f" in ''|*/*) die "umzug.manifest nennt keine Sicherung." ;; esac
+  f="$(read_env_value "$d/move.manifest" BACKUP_FILE 2>/dev/null || true)"
+  case "$f" in ''|*/*) die "move.manifest nennt keine Sicherung." ;; esac
   [ -r "$d/$f" ] || die "Die Sicherung ${f} fehlt im Umzugs-Ordner. Es wurde nichts geändert."
-  move="$(read_env_value "$d/umzug.manifest" CREATED 2>/dev/null || true)"
-  [ -n "$move" ] || die "umzug.manifest nennt keinen Zeitpunkt (CREATED)."
+  move="$(read_env_value "$d/move.manifest" CREATED 2>/dev/null || true)"
+  [ -n "$move" ] || die "move.manifest nennt keinen Zeitpunkt (CREATED)."
 
-  if la_umzug_open; then
+  if la_move_open; then
     [ "$(_mv_get MOVE)" = "$move" ] \
-      || die "Ein anderer Umzug ist noch offen (Stand: $(_mv_stage)) — erst abnehmen (lifeagents umzug done) oder verwerfen (lifeagents umzug abort). Es wurde nichts geändert."
+      || die "Ein anderer Umzug ist noch offen (Stand: $(_mv_stage)) — erst abnehmen (lifeagents move done) oder verwerfen (lifeagents move abort). Es wurde nichts geändert."
   else
     # Schutz gegen den teuersten Tippfehler: das Einspielen ersetzt alle Nutzerdaten. Auf einer frisch eingerichteten Maschine ist
     # noch kein Owner gekoppelt (die Antwort-Datei koppelt keinen).
@@ -263,19 +263,19 @@ umzug_cmd_apply() {
   fi
   _mv_tunnel
 
-  if ! la_umzug_open; then
-    rm -f "$(la_umzug_file)"
+  if ! la_move_open; then
+    rm -f "$(la_move_file)"
     _mv_set MOVE "$move"; _mv_set AT "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; _mv_set RELEASE "$rel"; _mv_set DIR "$dir"; _mv_set STAGE started
   fi
   if ! _mv_reached restored; then
     log "Spiele die Sicherung ein ..."
     ( printf '%s' "$_MV_SHEET" | backup_cmd_restore "$d/$f" --yes --key-stdin ) \
-      || die "Wiederherstellen gescheitert — die Daten sind unverändert (atomar). Noch einmal: lifeagents umzug apply ${dir}"
+      || die "Wiederherstellen gescheitert — die Daten sind unverändert (atomar). Noch einmal: lifeagents move apply ${dir}"
     _mv_set STAGE restored
   fi
   if ! _mv_reached memory; then
     if [ -r "$d/memory.dump" ] && [ -r "$d/memory.counts" ]; then
-      memory_import "$d/memory.dump" "$d/memory.counts" || die "Gesprächs-Gedächtnis ließ sich nicht einspielen. Noch einmal: lifeagents umzug apply ${dir}"
+      memory_import "$d/memory.dump" "$d/memory.counts" || die "Gesprächs-Gedächtnis ließ sich nicht einspielen. Noch einmal: lifeagents move apply ${dir}"
     else
       log "Kein Gesprächs-Gedächtnis im Umzugs-Ordner — übersprungen."
     fi
@@ -292,88 +292,88 @@ umzug_cmd_apply() {
     _pkg_resolve_env
     _mv_intro_latch
     _oc_finalize_verified \
-      || die "Der Bot ließ sich nicht fest auf dich einstellen (${OC_FINALIZE_REASON:-?}); Details oben. Der Stand ist gespeichert — noch einmal: lifeagents umzug apply ${dir}"
+      || die "Der Bot ließ sich nicht fest auf dich einstellen (${OC_FINALIZE_REASON:-?}); Details oben. Der Stand ist gespeichert — noch einmal: lifeagents move apply ${dir}"
     _set_bot_menu_buttons "$(owner_tg_token)"
     _mv_set STAGE finalized
   fi
   if ! _mv_reached applied; then
     # Erst nach gelungenem Loeschen „eingespielt“: sonst blieben Schluessel und Gespraeche im Ordner, und kein Lauf versuchte es noch einmal.
     _mv_wipe_secrets "$dir" "$d" \
-      || die "Die Geheimnis-Dateien (${UMZUG_SECRET_FILES}) ließen sich in '${dir}' nicht löschen — Ordner und Rechte prüfen oder von Hand entfernen, dann noch einmal: lifeagents umzug apply ${dir}"
+      || die "Die Geheimnis-Dateien (${MOVE_SECRET_FILES}) ließen sich in '${dir}' nicht löschen — Ordner und Rechte prüfen oder von Hand entfernen, dann noch einmal: lifeagents move apply ${dir}"
     _mv_set STAGE applied
   fi
   ok "Eingespielt. Jetzt prüfen (nicht abnehmen, bevor das alles stimmt): lifeagents doctor; dem Bot schreiben, eine Karte bestätigen; ein Mitglied schreibt, die Übersicht öffnet mit der neuen Adresse."
-  log "Gut läuft es zwei Wochen? Dann abnehmen: lifeagents umzug done (danach gibt es Updates wieder und keinen Rückweg mehr)."
+  log "Gut läuft es zwei Wochen? Dann abnehmen: lifeagents move done (danach gibt es Updates wieder und keinen Rückweg mehr)."
   _mv_check "$dir" "$d"
 }
 
-umzug_cmd_check() {
+move_cmd_check() {
   local dir="${1:-}" d
   require_root
   _bkp_resolve_db
   [ -n "$dir" ] || dir="$(_mv_get DIR)"
-  [ -n "$dir" ] || die "Umzugs-Ordner nötig: lifeagents umzug check <ordner>"
+  [ -n "$dir" ] || die "Umzugs-Ordner nötig: lifeagents move check <ordner>"
   _ret_fetch_dir "$dir"; d="$_RET_DIR"
   _mv_check "$dir" "$d"
 }
 
-umzug_cmd_status() {
+move_cmd_status() {
   local st; st="$(_mv_stage)"
-  if ! la_umzug_open; then log "Kein Umzug offen."; return 0; fi
+  if ! la_move_open; then log "Kein Umzug offen."; return 0; fi
   if [ "$st" = applied ]; then
-    ok "Umzug offen seit $(_mv_get AT) (Version $(_mv_get RELEASE)); Updates sind gesperrt. Prüfen: lifeagents umzug check — abnehmen: lifeagents umzug done"
+    ok "Umzug offen seit $(_mv_get AT) (Version $(_mv_get RELEASE)); Updates sind gesperrt. Prüfen: lifeagents move check — abnehmen: lifeagents move done"
     return 11
   fi
-  warn "Umzug angefangen, Stand: ${st:-?} (seit $(_mv_get AT)). Weiter: lifeagents umzug apply $(_mv_get DIR)"
+  warn "Umzug angefangen, Stand: ${st:-?} (seit $(_mv_get AT)). Weiter: lifeagents move apply $(_mv_get DIR)"
   return 10
 }
 
 # abort — Ausweg aus einem stehengebliebenen Umzug (falscher Ordner, ein Lauf, der nicht mehr gelingt, die alte Maschine hat neu
 #   exportiert): nimmt nur den Merker „Umzug offen“ weg, also die Update-Sperre. Daten werden nie angefasst; was schon eingespielt ist,
 #   bleibt. Der eigentliche Rueckweg ist `lifeagents retire` hier und `lifeagents retire --undo` auf der alten Maschine.
-umzug_cmd_abort() {
+move_cmd_abort() {
   local yes=0 a choice
   for a in "$@"; do
-    case "$a" in --yes|-y) yes=1 ;; *) die "lifeagents umzug abort: unbekannte Angabe: $a" ;; esac
+    case "$a" in --yes|-y) yes=1 ;; *) die "lifeagents move abort: unbekannte Angabe: $a" ;; esac
   done
   require_root
-  la_umzug_open || { log "Kein Umzug offen — nichts zu verwerfen."; return 0; }
+  la_move_open || { log "Kein Umzug offen — nichts zu verwerfen."; return 0; }
   if [ "$yes" != 1 ]; then
-    ui_interactive || die "Ohne Terminal nur mit --yes: lifeagents umzug abort --yes"
+    ui_interactive || die "Ohne Terminal nur mit --yes: lifeagents move abort --yes"
     choice="$(printf '%s\t%s\n' 'Ja, verwerfen (nur die Update-Sperre fällt weg, Daten bleiben)' yes 'Nein' no | ui_choose 'Umzug verwerfen? Eingespieltes bleibt, es gibt danach wieder Updates.' 0)"
     [ "$choice" = yes ] || die "Nicht verworfen — nichts geändert."
   fi
-  rm -f "$(la_umzug_file)"
+  rm -f "$(la_move_file)"
   ok "Umzug verworfen: die Update-Sperre ist weg. Eingespielte Daten bleiben, wie sie sind (zurück auf die alte Maschine: lifeagents retire hier, dann lifeagents retire --undo dort)."
 }
 
-umzug_cmd_done() {
+move_cmd_done() {
   local yes=0 a choice
   for a in "$@"; do
-    case "$a" in --yes|-y) yes=1 ;; *) die "lifeagents umzug done: unbekannte Angabe: $a" ;; esac
+    case "$a" in --yes|-y) yes=1 ;; *) die "lifeagents move done: unbekannte Angabe: $a" ;; esac
   done
   require_root
-  la_umzug_open || { log "Kein Umzug offen — nichts abzunehmen."; return 0; }
+  la_move_open || { log "Kein Umzug offen — nichts abzunehmen."; return 0; }
   [ "$(_mv_stage)" = applied ] \
-    || die "Der Umzug ist noch nicht eingespielt (Stand: $(_mv_stage)) — erst zu Ende führen: lifeagents umzug apply $(_mv_get DIR)"
+    || die "Der Umzug ist noch nicht eingespielt (Stand: $(_mv_stage)) — erst zu Ende führen: lifeagents move apply $(_mv_get DIR)"
   if [ "$yes" != 1 ]; then
-    ui_interactive || die "Ohne Terminal nur mit --yes: lifeagents umzug done --yes"
+    ui_interactive || die "Ohne Terminal nur mit --yes: lifeagents move done --yes"
     choice="$(printf '%s\t%s\n' 'Ja, abnehmen (kein Rückweg mehr, Updates wieder frei)' yes 'Noch nicht' no | ui_choose 'Läuft alles so, wie es soll? Der Umzug wird abgenommen.' 0)"
     [ "$choice" = yes ] || die "Nicht abgenommen — nichts geändert."
   fi
-  rm -f "$(la_umzug_file)"
+  rm -f "$(la_move_file)"
   ok "Umzug abgenommen: Updates sind wieder frei. Die alte Maschine, die Proxy-Regel im Heimnetz und die Weiterleitung in der FritzBox dürfen jetzt weg; einen Rückweg auf die alte Maschine gibt es nicht mehr."
 }
 
-umzug_cli() {
+move_cli() {
   local verb="${1:-help}"; shift || true
   case "$verb" in
-    apply)  umzug_cmd_apply "$@" ;;
-    check)  umzug_cmd_check "$@" ;;
-    status) umzug_cmd_status "$@" ;;
-    done)   umzug_cmd_done "$@" ;;
-    abort)  umzug_cmd_abort "$@" ;;
-    help|--help|-h) umzug_usage; return 0 ;;
-    *) umzug_usage; die "lifeagents umzug: unbekanntes Verb: ${verb}" ;;
+    apply)  move_cmd_apply "$@" ;;
+    check)  move_cmd_check "$@" ;;
+    status) move_cmd_status "$@" ;;
+    done)   move_cmd_done "$@" ;;
+    abort)  move_cmd_abort "$@" ;;
+    help|--help|-h) move_usage; return 0 ;;
+    *) move_usage; die "lifeagents move: unbekanntes Verb: ${verb}" ;;
   esac
 }

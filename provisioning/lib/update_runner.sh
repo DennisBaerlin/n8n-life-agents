@@ -55,8 +55,8 @@ update_cli() {
   done
   case "$tag" in *[!A-Za-z0-9._-]*|'') die "Ungültiges Tag '${tag}' (erwartet z. B. v0.14.0)." ;; esac
   # Vor dem Laden und damit vor jedem master-Wechsel: die Sperre des Verbs sitzt hier (der Chat-Runner ruft denselben Weg;
-  # rollback und provision.sh: upgrade_guard.sh upgrade_umzug_guard).
-  if la_umzug_open; then die "$(la_umzug_text)"; fi
+  # rollback und provision.sh: upgrade_guard.sh upgrade_move_guard).
+  if la_move_open; then die "$(la_move_text)"; fi
   fetch_and_run_release "$tag" "${pass[@]}"
 }
 
@@ -245,8 +245,8 @@ update_check() {
   local installed work scheduled=false
   [ "${1:-}" = scheduled ] && scheduled=true
   # Eine Karte, die sich nicht ausfuehren laesst, ist Rauschen: solange der Umzug offen ist, kommt keine (ohne Netzabruf).
-  if la_umzug_open; then
-    log "Release-Check: Umzug offen — keine Update-Karte bis lifeagents umzug done."
+  if la_move_open; then
+    log "Release-Check: Umzug offen — keine Update-Karte bis lifeagents move done."
     heartbeat_record check skipped
     _ur_outcome decided
     return 0
@@ -341,8 +341,8 @@ _ur_run_one() {
   local cmp work code latest log rf rc
 
   # Ein Auftrag aus einer Karte von vor dem Umzug: vorhandener Grund „locked“, ohne Update und ohne Netz.
-  if la_umzug_open; then
-    _ur_finish "$id" failed preflight locked false "Umzug offen — $(la_umzug_text)"
+  if la_move_open; then
+    _ur_finish "$id" failed preflight locked false "Umzug offen — $(la_move_text)"
     _ur_reports_flush; return 0
   fi
   if ! _ur_is_tag "$tag"; then

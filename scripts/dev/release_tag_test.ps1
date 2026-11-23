@@ -52,6 +52,8 @@ Write-Host 'C: Installations-Hinweis im Release-Text' -ForegroundColor Cyan
 if (Get-Command Get-ReleaseInstallNote -ErrorAction SilentlyContinue) {
     $s = Get-ReleaseInstallNote 'beispiel/repo' 'v0.51.0'
     Check 'stabil: setup.sh des Tags' ($s -match [regex]::Escape('curl -fsSL https://github.com/beispiel/repo/releases/download/v0.51.0/setup.sh -o setup.sh && bash setup.sh'))
+    Check 'stabil: setup.sh holt curl selbst (frisches Debian hat keins)' ($s -match [regex]::Escape('apt-get update && apt-get install -y curl && curl -fsSL https://github.com/beispiel/repo/releases/download/v0.51.0/setup.sh'))
+    Check 'stabil: klassischer Weg holt curl selbst' ($s -match [regex]::Escape('apt-get update && apt-get install -y curl && curl -fsSL https://github.com/beispiel/repo/releases/download/v0.51.0/install.sh'))
     Check 'stabil: Bestand per lifeagents update' ($s -match [regex]::Escape('`lifeagents update`'))
     Check 'stabil: kein Vorab-Satz' ($s -notmatch 'pre-release')
     Check 'stabil: klassischer Weg nur noch fuer Bestand mit --version' ($s -match [regex]::Escape('install.sh --version v0.51.0'))

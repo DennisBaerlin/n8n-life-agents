@@ -3,8 +3,9 @@
 # .../releases/latest/download/setup.sh). Er prueft den Rechner, richtet fehlendes Docker aus Dockers apt-Paketquelle ein,
 # ruft den Kern des Verbunds (`stack up`, Aufruf-Form im Kopf von compose/stack.sh) und gibt den SSH-Befehl fuer den Fragebogen aus.
 #
-# Aufruf als root auf Debian 12/13 oder Ubuntu 22.04/24.04 (amd64, arm64), nie `| bash` (ein abgebrochener Download liefe halb):
-#   curl -fsSL https://github.com/<slug>/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
+# Aufruf als root auf Debian 12/13 oder Ubuntu 22.04/24.04 (amd64, arm64), nie `| bash` (ein abgebrochener Download liefe halb).
+# Ein frisches Debian hat kein curl; das `apt-get install` davor ist auf einem Rechner mit curl ein No-op. Test: tests/util/apt_repo/first_step_cases.sh.
+#   apt-get update && apt-get install -y curl && curl -fsSL https://github.com/<slug>/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
 #   bash setup.sh --yes                       # Docker ohne Rueckfrage einrichten
 #   bash setup.sh --answers antworten.env     # statt Fragebogen: Antwort-Datei (nach `--` Optionen fuer provision.sh)
 #   bash setup.sh --uninstall [--delete-data] # Verbund entfernen; Docker bleibt

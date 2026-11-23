@@ -416,10 +416,22 @@ render_template() {
 # enable_start_unit (systemd-Unit bzw. Compose-Dienst anwerfen) -> lib/runtime.sh.
 
 # --- apt: idempotent repo + key registration ---------------------------------
+# ensure_gpg — gpg bereitstellen. Frisches Debian hat kein gnupg, und manche Quellen (Tunnel) werden vor
+#   install_base_packages eingerichtet, das gnupg sonst mitbringt.
+ensure_gpg() {
+  need_cmd gpg && return 0
+  # Ein Ueberbleibsel-Eintrag ohne Schluessel laesst `apt-get update` mit rc 100 enden, die Paketlisten der Hauptquellen
+  # sind dann trotzdem frisch -> Fehlschlag hier nicht fatal, der Install entscheidet.
+  apt_update_once || true
+  apt_install gnupg || return 1
+  need_cmd gpg
+}
+
 # add_apt_key <url> <keyring-path>  — dearmor the key only if the keyring is missing.
 add_apt_key() {
   local url="$1" keyring="$2"
   if [ -s "$keyring" ]; then return 0; fi
+  ensure_gpg || return 1
   mkdir -p "$(dirname "$keyring")"
   # Erst vollstaendig in eine Datei: bei einem Abbruch mitten im Download (curl 18) bekaeme gpg sonst einen halben Schluessel.
   # --retry-all-errors faengt auch curl 18/56 ab (--retry allein nur Zeitueberschreitung und 5xx).
@@ -432,8 +444,17 @@ add_apt_key() {
 }
 
 # add_apt_source <list-path> <line>  — write the sources.list.d entry if absent/different.
+#   Eine Quelle, deren signed-by-Schluesselbund fehlt/leer ist, wird nie geschrieben (rc 1) und ein Ueberbleibsel davon
+#   entfernt: apt-get update scheitert sonst mit "not signed", und das bricht jeden spaeteren Installationsschritt, nicht
+#   nur den, der die Quelle wollte. Greift fuer alle Aufrufer, auch wenn die den rc von add_apt_key ignorieren.
 add_apt_source() {
-  local list="$1" line="$2"
+  local list="$1" line="$2" keyring=""
+  case "$line" in *signed-by=*) keyring="${line#*signed-by=}"; keyring="${keyring%%[] ]*}" ;; esac
+  if [ -n "$keyring" ] && [ ! -s "$keyring" ]; then
+    rm -f "$list"
+    warn "apt-Quelle ${list##*/} nicht eingerichtet: Schluesselbund ${keyring} fehlt."
+    return 1
+  fi
   printf '%s\n' "$line" | write_if_changed "$list" 0644 || true
 }
 

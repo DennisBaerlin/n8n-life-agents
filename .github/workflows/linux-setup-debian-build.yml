@@ -1,0 +1,83 @@
+# Bau-Lauf von linux-setup-debian.yml auf dem Entwicklungs-Branch: dieselben Schritte (tests/install/debian_vm.sh), aber ohne
+# Environment und ohne secrets.* -> der Attrappen-Weg (erfundene Werte, Telegram-Attrappe, gesperrtes Anthropic). Noetig, weil
+# workflow_dispatch nur Dateien auf dem Default-Branch startet und Secrets nur dort gelten. Faellt vor dem Merge weg (Datei loeschen).
+name: linux-setup-debian-build
+
+on:
+  push:
+    branches: [feat/s4-l2-debian-269b9b]
+    paths: ['.github/workflows/linux-setup-debian*.yml', 'tests/install/**']
+
+permissions:
+  contents: read
+
+jobs:
+  debian:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: KVM (Runner-Ausfall, wenn es fehlt)
+        run: bash tests/install/debian_vm.sh kvm
+
+      - name: Build the master image and serve it from a registry without Docker (crane)
+        run: bash tests/install/debian_vm.sh registry
+
+      - name: Download Debian 12 cloud image (latest, checksum) and prepare disk and cloud-init seed (LANG=C)
+        run: bash tests/install/debian_vm.sh image
+
+      - name: Boot the VM and wait for SSH and cloud-init
+        timeout-minutes: 10
+        run: bash tests/install/debian_vm.sh boot
+
+      - name: setup.sh --yes on the cold Debian (installs Docker from the repo, starts the core, prints SSH command and link)
+        timeout-minutes: 30
+        run: bash tests/install/debian_vm.sh setup
+
+      - name: Stand-ins for what the run does not have (Telegram mock, questionnaire with the test switch, Anthropic blocked)
+        run: bash tests/install/debian_vm.sh mocks
+
+      - name: Link and tunnel like an owner's laptop; install the browser
+        run: bash tests/install/debian_vm.sh browser
+
+      - name: Click through the questionnaire (all pages) up to the Connect page, installation included
+        timeout-minutes: 50
+        run: bash tests/install/debian_vm.sh klick
+
+      - name: Pair the owner over the real ingress and finish (Telegram mock; the Tailscale login of the Connect page needs an account)
+        timeout-minutes: 15
+        run: bash tests/install/debian_vm.sh pair
+
+      - name: End check (n8n answers, stack healthy, doctor, workflows published)
+        run: bash tests/install/debian_vm.sh verify
+
+      - name: A second setup.sh run changes nothing
+        run: bash tests/install/debian_vm.sh second
+
+      - name: Uninstall with data leaves nothing behind
+        run: bash tests/install/debian_vm.sh uninstall
+
+      - name: Summary (times per phase)
+        if: always()
+        run: bash tests/install/debian_vm.sh summary
+
+      - name: Diagnostics on failure (VM console, containers, wizard log)
+        if: failure()
+        run: bash tests/install/debian_vm.sh diag
+
+      - name: Screenshots of the questionnaire pages (invented values only)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: klick-out
+          path: ${{ runner.temp }}/klick-out
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop the VM
+        if: always()
+        run: bash tests/install/debian_vm.sh stop

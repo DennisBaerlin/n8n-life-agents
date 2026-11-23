@@ -3,7 +3,7 @@
 # GitHub-Runner, darin der echte Linux-Einstieg provisioning/setup.sh wie bei einem Nutzer (Docker holen, Kern starten), dann der
 # Fragebogen im Browser (tests/install/wizard_klick.cjs), Kopplung, Pruefung am Ende, Zweitlauf, Abbau.
 # Aufruf (nur auf einem ubuntu-24.04-Runner, im Checkout):  bash tests/install/debian_vm.sh <schritt> [arg]
-#   kvm | registry | image | boot | setup | mocks | link | tunnel | tgreset | pair | verify | second | uninstall | summary | diag | stop
+#   kvm | registry | image | boot | setup | mocks | link | tunnel | browser | klick | tgreset | pair | verify | second | uninstall | summary | diag | stop
 # Zustand liegt in $RUNNER_TEMP (Marken, Schluessel, VM-Ordner) und in $GITHUB_ENV (SETUP_IMAGE, VM_DIR).
 #
 # Grenzen (ohne echtes Telegram und echtes Anthropic gehen diese Stellen nur mit Ersatz, alles andere ist der echte Weg):
@@ -37,7 +37,7 @@ vm_setup() { vm "sudo env -u LC_ALL LANG=C bash setup.sh --yes --image '$SETUP_I
 # Secrets: GitHub maskiert sie ohnehin; zusaetzlich hier, damit auch abgeleitete Zeilen nie im Log stehen. Nie ausgeben.
 mask_secrets() {
   local v
-  for v in TEST_TELEGRAM_BOT_TOKEN TEST_ANTHROPIC_API_KEY TEST_TS_AUTHKEY; do [ -z "${!v:-}" ] || echo "::add-mask::${!v}"; done
+  for v in TEST_TELEGRAM_BOT_TOKEN TEST_ANTHROPIC_API_KEY TEST_TS_AUTHKEY KLICK_TELEGRAM_TOKEN KLICK_ANTHROPIC_KEY; do [ -z "${!v:-}" ] || echo "::add-mask::${!v}"; done
 }
 
 step_kvm() {
@@ -241,6 +241,20 @@ step_tunnel() {
   ssh -f -N -L 5881:127.0.0.1:5881 -o ExitOnForwardFailure=yes "${SSH_O[@]}" debian@127.0.0.1
 }
 
+# Browser wie am Laptop des Nutzers: frischer Link, Tunnel (ssh -L), Playwright aus dem Lockfile.
+step_browser() {
+  step_link
+  step_tunnel
+  node --version
+  npm ci --no-audit --no-fund --prefix tests/install
+  npx --prefix tests/install playwright install --with-deps chromium
+}
+# Den Fragebogen durchklicken. Die echten Zugaenge (KLICK_TELEGRAM_TOKEN, KLICK_ANTHROPIC_KEY) kommen nur per Umgebung des Schritts.
+step_klick() {
+  mask_secrets
+  KLICK_URL="$(cat "$RUNNER_TEMP/klick.url")" KLICK_OUT="${KLICK_OUT:-$RUNNER_TEMP/klick-out}" node tests/install/wizard_klick.cjs
+}
+
 # Kopplung und Abschluss ohne echtes Telegram: dasselbe Skript wie in genericity.yml (Verbund-Lauf). Es armiert die Kopplung ueber
 # `lifeagents household pair-owner --machine`, schickt /start <Code> an den echten Webhook des Orchestrators und prueft Abschluss,
 # Begruessung (kommt bei der Attrappe an), chat_id in den Workflows und doctor. Der Fragebogen selbst kommt hier nicht weiter (Grenze).
@@ -332,7 +346,7 @@ step_stop() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   kvm) step_kvm ;; registry) step_registry ;; image) step_image ;; boot) step_boot ;; setup) step_setup ;;
-  mocks) step_mocks ;; tgreset) step_tgreset ;; link) step_link ;; tunnel) step_tunnel ;; pair) step_pair "$@" ;; verify) step_verify ;;
+  mocks) step_mocks ;; tgreset) step_tgreset ;; link) step_link ;; tunnel) step_tunnel ;; browser) step_browser ;; klick) step_klick ;; pair) step_pair "$@" ;; verify) step_verify ;;
   second) step_second ;; uninstall) step_uninstall ;; summary) step_summary ;; diag) step_diag ;; stop) step_stop ;;
-  *) echo "Aufruf: bash tests/install/debian_vm.sh kvm|registry|image|boot|setup|mocks|link|tunnel|tgreset|pair|verify|second|uninstall|summary|diag|stop" >&2; exit 64 ;;
+  *) echo "Aufruf: bash tests/install/debian_vm.sh kvm|registry|image|boot|setup|mocks|link|tunnel|browser|klick|tgreset|pair|verify|second|uninstall|summary|diag|stop" >&2; exit 64 ;;
 esac

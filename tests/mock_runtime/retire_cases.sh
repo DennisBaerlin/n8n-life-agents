@@ -156,17 +156,17 @@ eq RT.merker-fertig 'done' "$(read_env_value "$RS/retired" STAGE)"
 eq RT.ordner-rechte 700 "$(stat -c %a "$W/ret_out")"
 eq RT.dateien-rechte 600 "$(stat -c %a "$W/ret_out"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
 _f0=$fails
-for _f in umzug.env umzug.manifest config.json memory.dump memory.counts vorher.txt SO-GEHT-ES-WEITER.txt; do
+for _f in move.env move.manifest config.json memory.dump memory.counts vorher.txt SO-GEHT-ES-WEITER.txt; do
   [ -s "$W/ret_out/$_f" ] || fail "RT.ordner-$_f" "fehlt/leer"
 done; [ "$fails" = "$_f0" ] && pass RT.ordner-vollstaendig
-_bf="$(read_env_value "$W/ret_out/umzug.manifest" BACKUP_FILE)"
+_bf="$(read_env_value "$W/ret_out/move.manifest" BACKUP_FILE)"
 case "$_bf" in lifeagents-backup-*-v9.1.0.nla.enc) [ -s "$W/ret_out/$_bf" ] && pass RT.sicherung-im-ordner || fail RT.sicherung-im-ordner "Datei fehlt" ;; *) fail RT.sicherung-im-ordner "$_bf" ;; esac
-eq RT.manifest-pakete career "$(read_env_value "$W/ret_out/umzug.manifest" PACKAGES)"
+eq RT.manifest-pakete career "$(read_env_value "$W/ret_out/move.manifest" PACKAGES)"
 grep -qF -- '--packages career' "$W/ret_out/SO-GEHT-ES-WEITER.txt" && pass RT.naechste-schritte || fail RT.naechste-schritte "$(cat "$W/ret_out/SO-GEHT-ES-WEITER.txt")"
 if ls -A "$W"/tmp.* >/dev/null 2>&1; then fail RT.arbeitsordner-weg "$(ls -d "$W"/tmp.*)"; else pass RT.arbeitsordner-weg; fi
 
 # Antwort-Datei: Positivliste, Tunnel, nie Uebernahme/erzeugte Geheimnisse/Proxy; liest sich ohne Warnung zurueck.
-_ae="$W/ret_out/umzug.env"
+_ae="$W/ret_out/move.env"
 _keys="$(grep -oE '^[A-Z_]+=' "$_ae" | tr -d = | sort | tr '\n' ' ')"
 eq RT.antworten-schluessel 'ADZUNA_APP_ID ADZUNA_APP_KEY ANTHROPIC_API_KEY HOUSEHOLD_TIMEZONE OWNER_BIRTH_DATE OWNER_FIRST_NAME OWNER_LANGUAGE OWNER_LAST_NAME REACH_MODE TELEGRAM_BOT_TOKEN ' "$_keys"
 if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES|N8N_DB_PASSWORD|CAREER_RW_PASSWORD)=' "$_ae"; then fail RT.antworten-nie "$(grep -E 'TAKEOVER|DOMAIN|TRUSTED|PASSWORD' "$_ae")"; else pass RT.antworten-nie; fi
@@ -175,14 +175,14 @@ eq RT.antworten-zurueck "tunnel|Muster'mann|app 1" "$_back"
 eq RT.antworten-ohne-warnung '' "$(cat "$W/ret.load")"
 _rt_reset; _rt_env
 ( _rr --out "$W/ret_out" --backup-dir /srv/sicherung ) >/dev/null 2>&1
-eq RT.antworten-backup-dir "'/srv/sicherung'" "$(grep '^BACKUP_PARENT_DIR=' "$W/ret_out/umzug.env" | cut -d= -f2-)"
+eq RT.antworten-backup-dir "'/srv/sicherung'" "$(grep '^BACKUP_PARENT_DIR=' "$W/ret_out/move.env" | cut -d= -f2-)"
 # Vorab-Release (Umzugs-Probe): Vorpruefung gruen, Ordner und Sicherung tragen das Vorab-Tag (die neue Maschine vergleicht es
 # woertlich).
 _rt_reset; _rt_env
 ( INST_REL=v0.51.0-rc.1 _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"; _rc=$?
 eq RT.vorab-lauf-ok 0 "$_rc"
-eq RT.vorab-manifest v0.51.0-rc.1 "$(read_env_value "$W/ret_out/umzug.manifest" RELEASE)"
-case "$(read_env_value "$W/ret_out/umzug.manifest" BACKUP_FILE)" in lifeagents-backup-*-v0.51.0-rc.1.nla.enc) pass RT.vorab-sicherung-name ;; *) fail RT.vorab-sicherung-name "$(read_env_value "$W/ret_out/umzug.manifest" BACKUP_FILE)" ;; esac
+eq RT.vorab-manifest v0.51.0-rc.1 "$(read_env_value "$W/ret_out/move.manifest" RELEASE)"
+case "$(read_env_value "$W/ret_out/move.manifest" BACKUP_FILE)" in lifeagents-backup-*-v0.51.0-rc.1.nla.enc) pass RT.vorab-sicherung-name ;; *) fail RT.vorab-sicherung-name "$(read_env_value "$W/ret_out/move.manifest" BACKUP_FILE)" ;; esac
 
 # --status in jeder Stufe; erneuter Lauf setzt fort, ohne Erledigtes zu wiederholen.
 _rt_reset; ( _rr --status ) >/dev/null 2>&1; eq RT.status-nicht 0 "$?"
@@ -215,8 +215,8 @@ _rt_reset; _rt_env
 eq RT.verbund-ok 0 "$_rc"
 grep -qE '^docker\|compose\|.*\|stop\|n8n' "$STUB_LOG" && pass RT.verbund-stop-n8n || fail RT.verbund-stop-n8n "$(_rt_log | tr '\n' ' ')"
 if grep -q '^systemctl' "$STUB_LOG"; then fail RT.verbund-ohne-systemctl "$(grep '^systemctl' "$STUB_LOG")"; else pass RT.verbund-ohne-systemctl; fi
-grep -q '^== /out/' "${STUB_LOG}.put" 2>/dev/null || grep -q 'umzug.env' "$STUB_LOG" && pass RT.verbund-ordner-rechner || fail RT.verbund-ordner-rechner "$(grep 'run' "$STUB_LOG" | head -3)"
-eq RT.verbund-ordner '/srv/hd/lifeagents-umzug' "$(read_env_value "$RS/retired" OUT)"
+grep -q '^== /out/' "${STUB_LOG}.put" 2>/dev/null || grep -q 'move.env' "$STUB_LOG" && pass RT.verbund-ordner-rechner || fail RT.verbund-ordner-rechner "$(grep 'run' "$STUB_LOG" | head -3)"
+eq RT.verbund-ordner '/srv/hd/lifeagents-move' "$(read_env_value "$RS/retired" OUT)"
 # Ohne Sicherungs-Ordner auf dem Rechner: Abbruch vor dem Export (die in $(…) darf nicht still mit leerem Ziel weiterlaufen).
 _rt_reset; _rt_env; sed -i '/^BACKUP_HOST_DIR=/d' "$W/ret_etc/core.env"
 ( RT=compose _rr ) >/dev/null 2>"$W/ret.err"; _rc=$?
@@ -251,7 +251,7 @@ eq RT.undo-ohne-bot-frei 0 "$_rc"
 
 # --undo --restore: andere Release -> nichts; gleiche -> erst einspielen (+ Gedaechtnis), dann an.
 _rt_reset; _rt_env; _rt_mark 'done'; mkdir -p "$W/rueck"
-printf 'FORMAT=1\nRELEASE=v9.1.0\nBACKUP_FILE=b.nla.enc\n' > "$W/rueck/umzug.manifest"; printf 'enc' > "$W/rueck/b.nla.enc"
+printf 'FORMAT=1\nRELEASE=v9.1.0\nBACKUP_FILE=b.nla.enc\n' > "$W/rueck/move.manifest"; printf 'enc' > "$W/rueck/b.nla.enc"
 printf 'agent.guide_chat_memory\t2\t7\n' > "$W/rueck/memory.counts"; printf 'dump' > "$W/rueck/memory.dump"
 ( PLAN_REL=v9.0.0 WH_URL='' _rr --undo --restore "$W/rueck" ) >/dev/null 2>"$W/ret.err"
 if _rt_log | grep -qE 'ev\|restore|systemctl\|(start|restart)'; then fail RT.undo-restore-andere-release "$(_rt_log | tr '\n' ' ')"; else pass RT.undo-restore-andere-release; fi
@@ -285,11 +285,11 @@ done
 # Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und der alte Gedaechtnis-Abzug fliegen raus; eine
 # andere Sicherung im Ordner bleibt (--out kann der normale Sicherungs-Ordner sein); fremder Ordner -> Abbruch.
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"
-printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/umzug.manifest"; printf 'alt' > "$W/ret_out/memory.dump"
+printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"; printf 'alt' > "$W/ret_out/memory.dump"
 printf 'alt' > "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc"; printf 'taeglich' > "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc"
 ( NO_MEMORY=1 _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"
 [ ! -e "$W/ret_out/memory.dump" ] && pass RT-P.alter-abzug-weg || fail RT-P.alter-abzug-weg "liegt noch"
-[ ! -e "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc" ] && pass RT-P.alte-umzugs-sicherung-weg || fail RT-P.alte-umzugs-sicherung-weg "liegt noch"
+[ ! -e "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc" ] && pass RT-P.alte-move-sicherung-weg || fail RT-P.alte-move-sicherung-weg "liegt noch"
 [ -e "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc" ] && pass RT-P.andere-sicherung-bleibt || fail RT-P.andere-sicherung-bleibt "geloescht"
 eq RT-P.neue-sicherung-da 1 "$(find "$W/ret_out" -name '*-v9.1.0.nla.enc' | wc -l)"
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"; printf 'fremd' > "$W/ret_out/notiz.txt"

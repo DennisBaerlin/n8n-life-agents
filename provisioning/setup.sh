@@ -386,9 +386,9 @@ reach_hint() {
     needs_machine_auth) printf '\nIm Tailscale-Konto die Maschine freigeben: https://login.tailscale.com/admin/machines\n' ;;
     *) return 0 ;;
   esac
-  if head -n1 "$ANSWERS" | grep -q '^# lifeagents-umzug'; then
+  if head -n1 "$ANSWERS" | grep -q '^# lifeagents-move'; then
     dir="$(dirname "$(readlink -f "$ANSWERS")")"
-    next="Danach die Daten einspielen: lifeagents umzug apply ${dir}   (wartet auf die Anmeldung und macht dann weiter)"
+    next="Danach die Daten einspielen: lifeagents move apply ${dir}   (wartet auf die Anmeldung und macht dann weiter)"
   else
     next="Danach prüft lifeagents doctor den Stand"
   fi

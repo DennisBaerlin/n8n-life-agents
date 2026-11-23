@@ -10,9 +10,9 @@
 # Ein neuer Lauf setzt nach der letzten erledigten Stufe fort; `--undo` geht aus jeder Stufe zurueck. PostgreSQL bleibt immer an.
 #
 # Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc), memory.dump + memory.counts (agent.*_chat_memory), config.json
-#   (vom Owner geaenderte Einstellungen), umzug.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
-#   umzug.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. memory_import und move_snapshot nutzt
-#   auch `lifeagents umzug` (B2) — eine Adresse.
+#   (vom Owner geaenderte Einstellungen), move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
+#   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. memory_import und move_snapshot nutzt
+#   auch `lifeagents move` (B2) — eine Adresse.
 #
 # Exit: 0 ok; 1 Abbruch (Grund auf stderr, nichts weiter geaendert); --status: 0 nicht stillgelegt, 10 mitten drin, 11 fertig.
 
@@ -20,8 +20,8 @@ RETIRE_DRAIN_SECS="${RETIRE_DRAIN_SECS:-300}"
 RETIRE_POLL_SECS="${RETIRE_POLL_SECS:-5}"
 RETIRE_WEBHOOK_WAIT_SECS="${RETIRE_WEBHOOK_WAIT_SECS:-90}"
 RETIRE_BACKUP_MAX_AGE_S="${RETIRE_BACKUP_MAX_AGE_S:-93600}"   # 26 h: die taegliche Sicherung darf einmal knapp ausfallen
-RETIRE_OUT_DEFAULT=/root/lifeagents-umzug
-RETIRE_HOST_SUBDIR=lifeagents-umzug
+RETIRE_OUT_DEFAULT=/root/lifeagents-move
+RETIRE_HOST_SUBDIR=lifeagents-move
 RETIRE_FORMAT=1
 RETIRE_STAGES="released stopped drained done"
 
@@ -34,8 +34,8 @@ Usage: lifeagents retire [--out <ordner>] [--backup-dir <pfad-auf-der-neuen-masc
 
   (ohne Option)   Bot lösen, n8n und Zeitgeber anhalten (auch nach einem Neustart), warten, bis nichts mehr läuft,
                   dann Sicherung, Gesprächs-Gedächtnis, Einstellungen und Antworten für die neue Maschine in den
-                  Umzugs-Ordner schreiben (Standard /root/lifeagents-umzug; Docker-Verbund: Unterordner
-                  lifeagents-umzug im Sicherungs-Ordner auf dem Rechner). Die Datenbank bleibt an.
+                  Umzugs-Ordner schreiben (Standard /root/lifeagents-move; Docker-Verbund: Unterordner
+                  lifeagents-move im Sicherungs-Ordner auf dem Rechner). Die Datenbank bleibt an.
                   Bricht der Lauf ab, macht ein neuer Lauf dort weiter.
   --check         Nur die Vorprüfungen (ändert nichts) — am Vortag als Trockenlauf.
   --status        Wie weit ist die Stilllegung? Exit 0 = nicht stillgelegt, 10 = mitten drin, 11 = fertig.
@@ -173,7 +173,7 @@ _ret_answer_keys() {
 _ret_write_answers() {
   local out="$1" f k v
   {
-    printf '# lifeagents-umzug %s %s — Antworten für setup.sh --answers. Enthält Schlüssel: nur direkt alt -> neu kopieren.\n' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '# lifeagents-move %s %s — Antworten für setup.sh --answers. Enthält Schlüssel: nur direkt alt -> neu kopieren.\n' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'REACH_MODE=%s\n' "$(_ret_q tunnel)"
     [ -z "${3:-}" ] || printf 'BACKUP_PARENT_DIR=%s\n' "$(_ret_q "$3")"
     while IFS=$'\t' read -r f k; do
@@ -271,9 +271,9 @@ TXT
 1. Diesen Ordner direkt auf die neue Maschine kopieren (enthält Schlüssel — nie über Laptop oder Chat):
      scp -r ${dir} root@<neue-maschine>:/root/
 2. Auf der neuen Maschine einrichten (die Antworten kommen aus der Datei):
-     bash setup.sh --answers /root/${base}/umzug.env -- --packages ${pk}
+     bash setup.sh --answers /root/${base}/move.env -- --packages ${pk}
 3. Auf der neuen Maschine die Daten einspielen:
-     lifeagents umzug apply /root/${base}
+     lifeagents move apply /root/${base}
 
 Zurück (bis zur Abnahme): erst die neue Maschine stilllegen (dort lifeagents retire, dann setup.sh --uninstall ohne
 --delete-data), dann hier: lifeagents retire --undo --restore <ordner von der neuen maschine>
@@ -283,13 +283,13 @@ TXT
 # _ret_publish <staging> <ziel> — Dateien in den Umzugs-Ordner: klassisch ein Ordner hier (0700, Dateien 0600, je Datei .part ->
 #   umbenannt), im Verbund ein Ordner auf dem Rechner (rt_host_put prueft je Datei die Pruefsumme).
 #   Reste eines frueheren Laufs (seine Sicherung, ein alter Gedaechtnis-Abzug) wuerden sonst mit eingespielt: geloescht werden genau
-#   die Sicherung, die das alte umzug.manifest nennt, und memory.dump — nie andere Sicherungen im Ordner (--out kann der normale
-#   Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit Sicherungen (Verbund) ohne umzug.manifest bricht ab.
+#   die Sicherung, die das alte move.manifest nennt, und memory.dump — nie andere Sicherungen im Ordner (--out kann der normale
+#   Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit Sicherungen (Verbund) ohne move.manifest bricht ab.
 _ret_publish() {
   local st="$1" out="$2" f hd old=''
   if rt_is_compose; then
     hd="$(_bkp_hd "$out")"
-    if rt_host_get "$hd" umzug.manifest > "$st/.alt.manifest" 2>/dev/null; then
+    if rt_host_get "$hd" move.manifest > "$st/.alt.manifest" 2>/dev/null; then
       old="$(read_env_value "$st/.alt.manifest" BACKUP_FILE 2>/dev/null || true)"
       case "$old" in */*|*\\*) old='' ;; esac
       # shellcheck disable=SC2086  # $old ist leer oder genau ein Dateiname ohne Leerzeichen (Namensmuster der Sicherung)
@@ -302,8 +302,8 @@ _ret_publish() {
     return 0
   fi
   if [ -d "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
-    [ -e "$out/umzug.manifest" ] || die "Ordner ${out} ist nicht leer und kein Umzugs-Ordner — einen anderen wählen: lifeagents retire --out <ordner>"
-    old="$(read_env_value "$out/umzug.manifest" BACKUP_FILE 2>/dev/null || true)"
+    [ -e "$out/move.manifest" ] || die "Ordner ${out} ist nicht leer und kein Umzugs-Ordner — einen anderen wählen: lifeagents retire --out <ordner>"
+    old="$(read_env_value "$out/move.manifest" BACKUP_FILE 2>/dev/null || true)"
     case "$old" in ''|*/*) ;; *) rm -f -- "${out:?}/${old}" ;; esac
     rm -f -- "$out/memory.dump"
   fi
@@ -342,13 +342,13 @@ _ret_export() {
   ( backup_cmd_export "$st/$name" ) || die "Sicherung ließ sich nicht schreiben — nichts verloren, erneut: lifeagents retire"
   _ret_write_memory "$st"
   _ret_write_config "$st/config.json"
-  _ret_write_answers "$st/umzug.env" "$rel" "$bdir"
+  _ret_write_answers "$st/move.env" "$rel" "$bdir"
   move_snapshot > "$st/vorher.txt" || die "Vergleichswerte ließen sich nicht lesen."
   pk="$(for p in $(_bkp_active_names); do [ "$p" = core ] || printf '%s\n' "$p"; done | paste -sd, -)"
   {
     printf 'FORMAT=%s\nRELEASE=%s\nCREATED=%s\nRUNTIME=%s\nBACKUP_FILE=%s\nPACKAGES=%s\n' \
       "$RETIRE_FORMAT" "$rel" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${LIFEAGENTS_RUNTIME:-systemd}" "$name" "${pk:-none}"
-  } > "$st/umzug.manifest"
+  } > "$st/move.manifest"
   _ret_next_steps "${pk:-none}" "$out" > "$st/SO-GEHT-ES-WEITER.txt"
   _ret_publish "$st" "$out"
 }
@@ -380,12 +380,12 @@ _ret_start() {
 #   nicht in $(…): Aufraeum-Falle und Abbruch (die) gehoeren in die Haupt-Shell.
 _ret_fetch_dir() {
   local src="$1" st f
-  if ! rt_is_compose; then [ -r "$src/umzug.manifest" ] || die "In ${src} liegt kein Umzugs-Ordner (umzug.manifest fehlt)."; _RET_DIR="$src"; return 0; fi
+  if ! rt_is_compose; then [ -r "$src/move.manifest" ] || die "In ${src} liegt kein Umzugs-Ordner (move.manifest fehlt)."; _RET_DIR="$src"; return 0; fi
   st="$(_bkp_tmpdir)" || die "Arbeitsordner ließ sich nicht anlegen."
   # shellcheck disable=SC2064  # bewusst jetzt expandieren: $st ist local
   trap "rm -rf -- '$st'" EXIT
-  rt_host_get "$(_bkp_hd "$src")" umzug.manifest > "$st/umzug.manifest" 2>/dev/null || die "In '${src}' liegt kein Umzugs-Ordner (umzug.manifest fehlt)."
-  f="$(read_env_value "$st/umzug.manifest" BACKUP_FILE)"
+  rt_host_get "$(_bkp_hd "$src")" move.manifest > "$st/move.manifest" 2>/dev/null || die "In '${src}' liegt kein Umzugs-Ordner (move.manifest fehlt)."
+  f="$(read_env_value "$st/move.manifest" BACKUP_FILE)"
   for f in "$f" memory.dump memory.counts config.json vorher.txt; do
     rt_host_get "$(_bkp_hd "$src")" "$f" > "$st/$f" 2>/dev/null || rm -f "$st/$f"
   done
@@ -394,8 +394,8 @@ _ret_fetch_dir() {
 
 _ret_restore_from() {
   local d="$1" f rel plan prel
-  f="$(read_env_value "$d/umzug.manifest" BACKUP_FILE 2>/dev/null || true)"
-  case "$f" in ''|*/*) die "umzug.manifest nennt keine Sicherung." ;; esac
+  f="$(read_env_value "$d/move.manifest" BACKUP_FILE 2>/dev/null || true)"
+  case "$f" in ''|*/*) die "move.manifest nennt keine Sicherung." ;; esac
   [ -r "$d/$f" ] || die "Sicherung ${f} fehlt im Umzugs-Ordner."
   rel="$(_ret_release)"
   # Erst pruefen (aendert nichts): Release der Sicherung = installierte; sonst Abbruch vor jeder Aenderung.

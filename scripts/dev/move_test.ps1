@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
-# umzug_test.ps1 — GRATIS Test von `lifeagents umzug` (Annahme auf der neuen Maschine) und `config import` auf dem echten Weg im
+# move_test.ps1 — GRATIS Test von `lifeagents move` (Annahme auf der neuen Maschine) und `config import` auf dem echten Weg im
 # klassischen Substrat: echtes systemd, n8n, PostgreSQL; Telegram ist die Attrappe des Substrats (enable_mock_telegram.ps1).
-# Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner (tests/backup/umzug_cases.sh) in den Container und faehrt dort
-# umzug_cases.sh mit der CLI dieses Baums:
+# Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner (tests/backup/move_cases.sh) in den Container und faehrt dort
+# move_cases.sh mit der CLI dieses Baums:
 #   - Erzeugung: B1-`retire` schreibt den Umzugs-Ordner, danach wird „frisch eingerichtete Maschine“ nachgebaut (Platzhalter-chat_id);
 #   - apply: „in Gebrauch“ und falsche Release brechen vor jeder Aenderung ab; apply spielt Daten, Gedaechtnis (Wasserstand), Einstellung ein,
 #     0 Platzhalter, Geheimnis-Dateien weg, Sicherung bleibt, Vergleich gruen;
@@ -10,9 +10,9 @@
 # Haelt n8n im Substrat voruebergehend an (retire) -> nur im EIGENEN Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
 # am Ende laeuft alles wieder wie vorher. Voraussetzung: enable_mock_telegram.ps1 (aktuelle Attrappe). Kein LLM, kein echtes Telegram.
 # N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1), ohne Telegram-Attrappe, nur die Versions-Sperre
-# (lock_cases in umzug_cases.sh: update, rollback, provision.sh mit anderer/ohne/gleicher Version); die Tick-Schleife des master ist dabei
+# (lock_cases in move_cases.sh: update, rollback, provision.sh mit anderer/ohne/gleicher Version); die Tick-Schleife des master ist dabei
 # angehalten (Suspend-TestStackTick, in finally zurueck).
-# Usage:  $env:N8NTEST_CONTAINER='s4b2-n8ntest'; $env:N8NTEST_PORT='58000'; .\scripts\dev\umzug_test.ps1 [-Verbose]
+# Usage:  $env:N8NTEST_CONTAINER='s4b2-n8ntest'; $env:N8NTEST_PORT='58000'; .\scripts\dev\move_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 
@@ -36,10 +36,10 @@ if ($suiteRuntime -eq 'classic') {
 . "$PSScriptRoot\..\lib\test_common.ps1"
 
 Write-Host ""
-Write-Host "Umzug: lifeagents umzug (Annahme, Sperre, Abnahme) — Container $Container"
+Write-Host "Umzug: lifeagents move (Annahme, Sperre, Abnahme) — Container $Container"
 Write-Host ("-" * 64)
 
-$root = '/opt/umzug_test'
+$root = '/opt/move_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root && chmod 0700 $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
 foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages'), @('tests\backup', 'backup'))) {
@@ -49,7 +49,7 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages')
 
 try {
     if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
-    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/umzug_cases.sh", $root, "$MockPort", "$MockLog")
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/move_cases.sh", $root, "$MockPort", "$MockLog")
 } finally {
     if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
 }
@@ -62,11 +62,11 @@ foreach ($l in $lines) {
 $passed = @($lines | Where-Object { $_ -match '^PASS ' }).Count
 $failed = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
 # Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
-if ($r.Code -ne 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] umzug_cases.sh brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
-if ($passed -eq 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] umzug_cases.sh lieferte keine Faelle" -ForegroundColor Red }
+if ($r.Code -ne 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] move_cases.sh brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
+if ($passed -eq 0 -and $failed -eq 0) { $failed = 1; Write-Host "    [FAIL] move_cases.sh lieferte keine Faelle" -ForegroundColor Red }
 Invoke-Native docker @('exec', $Container, 'rm', '-rf', $root) | Out-Null
 
 Write-Host ("-" * 64)
-if ($failed -eq 0) { Write-Host "umzug_test: OK ($passed Faelle)" -ForegroundColor Green }
-else { Write-Host "umzug_test: $failed Fehler ($passed ok)" -ForegroundColor Red }
+if ($failed -eq 0) { Write-Host "move_test: OK ($passed Faelle)" -ForegroundColor Green }
+else { Write-Host "move_test: $failed Fehler ($passed ok)" -ForegroundColor Red }
 exit $failed

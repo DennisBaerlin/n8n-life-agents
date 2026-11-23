@@ -1199,7 +1199,7 @@ $promptAllow = @{  # Datei -> erlaubte Primitive (Definition/Delegat/sanktionier
     'provisioning/install.sh'            = @()                       # self-contained Bootstrap: fragt nichts (anonymer Download)
     'provisioning/lib/bootstrap_owner.sh' = @()
     'provisioning/lib/owner_connect.sh' = @('ui_choose', 'ui_wait_key')  # Gefuehrtes Ende: 'Erneut pruefen/Spaeter' + Pairing-Warten
-    'provisioning/lib/move_cli.sh'      = @('ui_choose')            # `umzug done`: Abnahme-Bestaetigung (kein Rueckweg mehr, Updates wieder frei)
+    'provisioning/lib/move_cli.sh'      = @('ui_choose')            # `move done`: Abnahme-Bestaetigung (kein Rueckweg mehr, Updates wieder frei)
 }
 foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -ErrorAction SilentlyContinue)) {
     $rel = $f.FullName.Substring($RepoRoot.Length + 1) -replace '\\','/'

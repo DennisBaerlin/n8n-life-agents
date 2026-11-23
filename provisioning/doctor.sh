@@ -376,8 +376,8 @@ main() {
   printf 'Diagnose — n8n-life-agents Provisioning\n'
   if la_is_retired; then _doctor_retired; return; fi
   # Umzug offen (lib/move_cli.sh): nur ein Hinweis, nie ROT (die Sperre ist gewollt).
-  if la_umzug_open; then
-    _warn "Umzug offen seit $(read_env_value "$(la_umzug_file)" AT 2>/dev/null || printf '?') (Stand $(read_env_value "$(la_umzug_file)" STAGE 2>/dev/null || printf '?')): Updates sind gesperrt — nach der Probezeit lifeagents umzug done"
+  if la_move_open; then
+    _warn "Umzug offen seit $(read_env_value "$(la_move_file)" AT 2>/dev/null || printf '?') (Stand $(read_env_value "$(la_move_file)" STAGE 2>/dev/null || printf '?')): Updates sind gesperrt — nach der Probezeit lifeagents move done"
   fi
 
   # --- disk ---

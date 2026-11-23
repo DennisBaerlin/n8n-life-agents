@@ -4,7 +4,7 @@
 #
 # Die eine Adresse fuer "freie Gates auf dem Gesamtstand" (/coordinate): richtige Reihenfolge ([Substrat] -> Mocks llm, telegram, paperless -> Suiten aus $Gates; db_test im Eltern-Prozess), alle Mocks,
 # jede Suite einzeln geloggt, Zusammenfassung am Ende. Bezahlte Suiten laufen hier nie (Owner-Fenster).
-# retire/umzug laufen nur klassisch (N8NTEST_RUNTIME ungesetzt) und halten n8n im Substrat voruebergehend an (seriell innerhalb ihrer Gruppe, nie gleichzeitig mit anderen Suiten desselben Substrats).
+# retire/move laufen nur klassisch (N8NTEST_RUNTIME ungesetzt) und halten n8n im Substrat voruebergehend an (seriell innerhalb ihrer Gruppe, nie gleichzeitig mit anderen Suiten desselben Substrats).
 # Fallen bei Handarbeit: fehlende Mock-Vorbedingung (infra_test braucht mock_paperless), ein aus Bash
 # uebergebenes -WriteTools kommt als EIN String an, und eine psql-NOTICE bricht unter *>-Umleitung ab.
 #
@@ -59,7 +59,7 @@ $Gates = [ordered]@{
     backup        = @{ Script = 'scripts\dev\backup_test.ps1' }   # Notfallblatt + Schluessel-Uebernahme gegen das echte PostgreSQL (nur Container)
     n8n_patch     = @{ Script = 'scripts\dev\n8n_patch_test.ps1' }   # n8n-Korrektur Bestaetigungs-Karten gegen das installierte n8n (nur Container)
     retire        = @{ Script = 'scripts\dev\retire_test.ps1' }   # Umzug: `lifeagents retire` im klassischen Substrat (haelt n8n voruebergehend an; Mock-Telegram)
-    umzug         = @{ Script = 'scripts\dev\umzug_test.ps1' }   # Umzug: `lifeagents umzug`/`config import` im klassischen Substrat (wie retire)
+    move          = @{ Script = 'scripts\dev\move_test.ps1' }   # Umzug: `lifeagents move`/`config import` im klassischen Substrat (wie retire)
     infra        = @{ Script = 'scripts\infra_test.ps1' }
     hitl_gate     = @{ Script = 'scripts\dev\hitl_gate_test.ps1' }
     cron_text     = @{ Script = 'scripts\dev\cron_text_test.ps1' }
@@ -85,7 +85,7 @@ $Gates = [ordered]@{
 # nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
-$GroupB = @('release_fetch', 'reachability', 'runtime', 'backup', 'n8n_patch', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint', 'monitor_probe', 'plan_rollout', 'retire', 'umzug')
+$GroupB = @('release_fetch', 'reachability', 'runtime', 'backup', 'n8n_patch', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint', 'monitor_probe', 'plan_rollout', 'retire', 'move')
 $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($_) })
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }

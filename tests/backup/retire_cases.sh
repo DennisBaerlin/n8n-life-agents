@@ -19,7 +19,7 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "erwartet '$2', bekommen '$3'"; fi; }
 
 W="$(mktemp -d)"; chmod 0700 "$W"
-OUT="$W/umzug"
+OUT="$W/move"
 CLI="$ROOT/lifeagents"
 sed "s|@@LIBDIR@@|$ROOT|" "$ROOT/provisioning/templates/lifeagents.tpl" > "$CLI"; chmod 0700 "$CLI"
 [ -r "$ROOT/VERSION" ] || cp /usr/local/lib/lifeagents/VERSION "$ROOT/VERSION" 2>/dev/null || true
@@ -86,17 +86,17 @@ systemctl is-active --quiet postgresql && pass L.postgres-an || fail L.postgres-
 eq L.stand 'done' "$(read_env_value "$(la_retired_file)" STAGE)"
 eq L.ordner-rechte 700 "$(stat -c %a "$OUT")"
 eq L.dateien-rechte 600 "$(stat -c %a "$OUT"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
-BF="$(read_env_value "$OUT/umzug.manifest" BACKUP_FILE)"
+BF="$(read_env_value "$OUT/move.manifest" BACKUP_FILE)"
 cli backup restore "$OUT/$BF" --plan --json
 eq L.sicherung-pruefbar true "$(tail -n1 "$W/out.$n" | jq -r .ok 2>/dev/null)"
 eq L.sicherung-release "$(cat "$ROOT/VERSION")" "$(tail -n1 "$W/out.$n" | jq -r .release 2>/dev/null)"
 eq L.gedaechtnis-zeilen 5 "$(awk -F'\t' -v t="$MEM" '$1 == t {print $2}' "$OUT/memory.counts")"
 grep -qx "memory ${MEM} 5" "$OUT/vorher.txt" && pass L.vorher-gedaechtnis || fail L.vorher-gedaechtnis "$(grep memory "$OUT/vorher.txt")"
 grep -q '^md5 ' "$OUT/vorher.txt" && pass L.vorher-fingerabdruck || fail L.vorher-fingerabdruck "kein md5"
-_back="$( ( . "$ROOT/provisioning/lib/release_inputs.sh"; install_answers_load "$OUT/umzug.env" 2>"$W/load.err"; printf '%s' "$REACH_MODE" ) )"
+_back="$( ( . "$ROOT/provisioning/lib/release_inputs.sh"; install_answers_load "$OUT/move.env" 2>"$W/load.err"; printf '%s' "$REACH_MODE" ) )"
 eq L.antworten-tunnel tunnel "$_back"
 eq L.antworten-ohne-warnung '' "$(cat "$W/load.err")"
-if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES)=' "$OUT/umzug.env"; then fail L.antworten-nie "$(grep -oE '^[A-Z_]+=' "$OUT/umzug.env" | tr '\n' ' ')"; else pass L.antworten-nie; fi
+if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES)=' "$OUT/move.env"; then fail L.antworten-nie "$(grep -oE '^[A-Z_]+=' "$OUT/move.env" | tr '\n' ' ')"; else pass L.antworten-nie; fi
 cli retire; eq L.zweiter-lauf-nichts 2 "$(tgcalls deleteWebhook)"
 cli retire --status; eq L.status-fertig 11 "$?"
 

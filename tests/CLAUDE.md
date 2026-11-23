@@ -2,7 +2,7 @@
 
 *Wann* getestet wird, steht in der Root-`CLAUDE.md` (*Testing / TDD-Workflow*); hier die Regeln beim Schreiben/Laufen. Dateien-Tabelle mit den exakten Suite-Kommandos, Harness-Mechanik, Judge und E2E-Details → `docs/reference/tests.md` (on-demand).
 
-- **Layout** (`layout_lint` L3): `tests/db/<pkg>/test_*.sql`, `tests/agent/<pkg>/*_cases.json` (`<pkg>` auch `cross`), `util/`, `fixtures/`, `wizard/`, `backup/`, `mock_*/`. `tests/agent/judge_bundle.json` ist transient (gitignored); `tests/fixtures/fixtures.json` ist die eine Namensliste der Routing-Fixtures (`doc_lint` erzwingt Manifest ⊆ Seed).
+- **Layout** (`layout_lint` L3): `tests/db/<pkg>/test_*.sql`, `tests/agent/<pkg>/*_cases.json` (`<pkg>` auch `cross`), `util/`, `fixtures/`, `wizard/`, `backup/`, `install/`, `mock_*/`. `tests/agent/judge_bundle.json` ist transient (gitignored); `tests/fixtures/fixtures.json` ist die eine Namensliste der Routing-Fixtures (`doc_lint` erzwingt Manifest ⊆ Seed).
 - **Testdaten nur erfunden** (Repo ist öffentlich): Vorrat und Regeln in `tests/fixtures/README.md`, nie Werte aus einem Befund — keine echten Namen, Geburtsdaten, Bestände, Beträge, Kontonummern. Eine Session, die einen Befund nachbaut, bekommt nur die Eigenschaft (z. B. Rundungsfall), nie den Originaltext; Notizen und Kommentare nennen nur sie. `privacy_lint` prüft gegen die lokalen Listen, `owner_fact_lint` typische Formulierungen.
 
 - **Live-Fehler ⟹ zuerst ein roter Test zur Eigenschaft, Fix erst danach; ohne Test nicht fertig.**

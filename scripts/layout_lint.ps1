@@ -15,7 +15,7 @@
 #      (command_lint/config_test ueberspringen manifest-lose Pakete sonst still);
 #      Subdirs subset {db,build,contexts,seed,workflows,onboarding,locales}; direkt unter dem Paket nur
 #      manifest.json/CLAUDE.md; direkt unter packages/ nur CLAUDE.md.
-#   L3 Tests-Contract: alles unter tests/ matcht tests/(db|agent)/(<pkg>|cross)/... | util/ | fixtures/ | wizard/ | backup/ |
+#   L3 Tests-Contract: alles unter tests/ matcht tests/(db|agent)/(<pkg>|cross)/... | util/ | fixtures/ | wizard/ | backup/ | install/ |
 #      mock_*/ | CLAUDE.md. Die <pkg>-Alternation kommt zur Laufzeit aus L2 (keine Namensliste).
 #   L4 Retired-Roots-Ratchet: verbotene Root-Tokens db//n8n/ in getrackten Textdateien (negative Lookbehind
 #      INKL. @ -> kein FP auf @n8n/n8n-nodes-langchain; + ^/(db|n8n)/-Alternative fuer CODEOWNERS). Scope
@@ -105,7 +105,8 @@ function Test-L3Path([string]$rel, $pkgSet) {
     }
     # wizard/ = Gratis-Tests des Einrichtungs-Wizards (provisioning/wizard, node --test): Installer-Baustein, kein Paket
     # backup/ = Fall-Runner fuer `lifeagents backup` gegen das echte PostgreSQL des Substrats (kein Mock, kein Paket)
-    if ($top -eq 'util' -or $top -eq 'fixtures' -or $top -eq 'wizard' -or $top -eq 'backup') { return $true }
+    # install/ = Klicktest und Debian-VM-Lauf des Linux-Einstiegs (CI linux-setup-debian.yml, braucht KVM/Browser, kein Substrat)
+    if ($top -eq 'util' -or $top -eq 'fixtures' -or $top -eq 'wizard' -or $top -eq 'backup' -or $top -eq 'install') { return $true }
     if ($top -like 'mock_*') { return $true }
     return $false
 }
@@ -172,6 +173,7 @@ if (-not (Test-L3Path 'tests/agent/cross/y.json' @('core')))  { $st++ }
 if (-not (Test-L3Path 'tests/util/z.sql' @('core')))          { $st++ }
 if (-not (Test-L3Path 'tests/mock_llm/s.js' @('core')))       { $st++ }
 if (-not (Test-L3Path 'tests/wizard/a.test.js' @('core')))    { $st++ }
+if (-not (Test-L3Path 'tests/install/debian_vm.sh' @('core')))    { $st++ }
 if (-not (Test-L3Path 'tests/CLAUDE.md' @('core')))           { $st++ }
 if (Test-L3Path 'tests/db/bogus/x.sql' @('core'))             { $st++ }   # unbekanntes Bucket
 if (Test-L3Path 'tests/random/x.txt' @('core'))               { $st++ }   # unbekannter Top-Ordner
@@ -301,7 +303,7 @@ foreach ($rel in ($tracked | Where-Object { $_ -like 'packages/*' })) {
 # =====================================================================================================
 foreach ($rel in ($tracked | Where-Object { $_ -like 'tests/*' })) {
     if (-not (Test-L3Path $rel $pkgNames)) {
-        Fail "L3: Tests-Pfad verletzt den Contract: '$rel' (erlaubt: tests/(db|agent)/(<pkg>|cross)/... | util/ | fixtures/ | wizard/ | mock_*/ | CLAUDE.md)."
+        Fail "L3: Tests-Pfad verletzt den Contract: '$rel' (erlaubt: tests/(db|agent)/(<pkg>|cross)/... | util/ | fixtures/ | wizard/ | backup/ | install/ | mock_*/ | CLAUDE.md)."
     }
 }
 

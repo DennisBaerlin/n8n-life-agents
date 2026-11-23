@@ -8,6 +8,8 @@
 #   S  Tunnel-Stand (settle): Anmelden, Freigabe, fertig = DOMAIN + TRUSTED_PROXIES.
 #   F  FritzBox: Zone aus dem Box-Zertifikat, DS-Lite mit dieser Zone, Adresse zeigt auf den Anschluss.
 #   A  Dialoge (Wahl des Wegs, FritzBox-Pruefungen, MyFRITZ!-Adresse, Tunnel-Anmeldung, Uebersicht/reconfigure).
+#   K  Anmeldeschluessel TS_AUTHKEY: nur per stdin, nie exportiert/gespeichert/ausgegeben, nur bei NeedsLogin, auch
+#      unbeaufsichtigt (echter Weg: scripts/dev/tailscale_authkey_test.ps1).
 #
 # Usage: bash cli_cases.sh <root>     Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
 # shellcheck disable=SC2015,SC2329,SC2034  # Attrappen ruft der Lib-Code; "a && pass || fail" gewollt (pass = rc 0)
@@ -107,6 +109,14 @@ case "$1 $2" in
     f="$(cat "$S/funnel.json" 2>/dev/null || printf '{}')"
     printf '%s' "$f" | jq -c --arg k "$(cat "$S/dns"):443" --arg m "$m" 'del(.Web[$k].Handlers[$m])' > "$S/funnel.json" ;;
   'up --hostname=bot') : ;;
+  'up --auth-key=file:/dev/stdin')
+    # Anmeldeschluessel-Weg: Wert kommt ueber stdin; erbt der Prozess TS_AUTHKEY, steht das in env_seen. Die Ablehnung
+    # spiegelt den Schluessel absichtlich auf stderr: der Lib-Code muss die Ausgabe verwerfen.
+    k="$(cat)"; printf '%s' "$k" > "$S/key_seen"; env | grep -c '^TS_AUTHKEY=' > "$S/env_seen"
+    if [ "$k" = tskey-auth-FAKEgood ]; then
+      jq -nc '{BackendState:"Running", Self:{DNSName:"bot.tail-fantasy.ts.net.", CapMap:{https:null, funnel:null}}}' > "$S/status.json"
+      echo 1 > "$S/allowed"
+    else printf 'backend error: invalid key: %s\n' "$k" >&2; exit 1; fi ;;
   *) exit 1 ;;
 esac
 TS
@@ -291,6 +301,50 @@ eq A_conn_unattended "$DNS" "${DOMAIN:-}"
 UNATTENDED=0; ui_interactive() { return 0; }
 newrun; REACH_MODE=proxy; ts_reset; reach_tunnel_connect 2>/dev/null
 eq A_conn_other_mode '' "$(cat "$TS_MOCK_DIR/calls.log" 2>/dev/null)"
+
+# --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) -----------------------------------------------------------
+# Wert nur ueber stdin (argv zeigt den Pfad file:/dev/stdin), nie exportiert, nie in core.env oder Ausgabe; nur fuer einen
+# Knoten im Zustand NeedsLogin; unbeaufsichtigt genauso (dort endet reach_tunnel_connect sonst vor jeder Anmeldung).
+# hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen deckt scripts/dev/tailscale_authkey_test.ps1
+export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
+ans() { printf "TS_AUTHKEY='%s'\nREACH_MODE=tunnel\n" "$1" > "$W/answers.env"; install_answers_load "$W/answers.env" 2>"$W/ans.err"; }
+UNATTENDED=1; ui_interactive() { [ "${UNATTENDED:-0}" -ne 1 ]; }
+newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-auth-FAKEgood
+eq K_loaded_not_exported "tskey-auth-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
+reach_tunnel_connect >"$W/out" 2>&1; out="$(cat "$W/out")"
+has K_up_by_file 'up --auth-key=file:/dev/stdin --hostname=' "$(cat "$TS_MOCK_DIR/calls.log")"
+hasnt K_argv_no_key FAKEgood "$(cat "$TS_MOCK_DIR/calls.log")"
+eq K_key_via_stdin tskey-auth-FAKEgood "$(cat "$TS_MOCK_DIR/key_seen" 2>/dev/null)"
+eq K_child_no_env 0 "$(cat "$TS_MOCK_DIR/env_seen" 2>/dev/null)"
+eq K_unattended_ready "$DNS|$DNS" "${DOMAIN:-}|$(read_env_value "$INSTALL_ENV_FILE" DOMAIN)"
+hasnt K_core_env_no_key FAKEgood "$(cat "$INSTALL_ENV_FILE" 2>/dev/null)"
+hasnt K_output_no_key FAKEgood "$out"
+eq K_used_once '' "${_reach_authkey:-}"
+# Schon angemeldet (eigener Knoten, Zweitlauf) oder angehalten: der Schluessel bleibt unbenutzt.
+for st in Running Stopped; do
+  newrun; ts_reset; ts_state "$st" '' '["https","funnel"]'; echo 1 > "$TS_MOCK_DIR/allowed"; ans tskey-auth-FAKEgood
+  reach_tunnel_connect >/dev/null 2>&1
+  hasnt "K_${st}_untouched" 'auth-key' "$(cat "$TS_MOCK_DIR/calls.log" 2>/dev/null)"
+done
+# Kein Tailscale-Schluessel: Warnung ohne Wert, Variable weg.
+newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans not-a-key-FAKEodd
+eq K_bad_prefix_dropped '' "${_reach_authkey:-}${TS_AUTHKEY:-}"
+has K_bad_prefix_warn 'TS_AUTHKEY' "$(cat "$W/ans.err")"
+hasnt K_bad_prefix_no_value FAKEodd "$(cat "$W/ans.err")"
+# Abgelehnt: Meldung ohne Wert, keine Adresse, unbeaufsichtigt kein Abbruch.
+newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-auth-FAKEbad
+reach_tunnel_connect >"$W/out" 2>&1; rc=$?; out="$(cat "$W/out")"
+eq K_rejected_rc 0 "$rc"
+has K_rejected_msg 'abgelehnt' "$out"
+hasnt K_rejected_no_key FAKEbad "$out"
+eq K_rejected_no_domain '' "${DOMAIN:-}"
+# Wizard-Form der Antwort-Datei: ebenfalls nicht exportiert.
+newrun; printf '# lifeagents-answers v1\nTS_AUTHKEY=tskey-auth-FAKEgood\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
+eq K_wizard_not_exported "tskey-auth-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
+# hand-injected: ein TS_AUTHKEY aus der Umgebung des Aufrufers zaehlt nie (nur die Datei) und wird nicht weitergereicht.
+export TS_AUTHKEY=tskey-auth-FAKEenv; printf 'REACH_MODE=tunnel\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
+eq K_env_ignored "||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEenv)"
+unset TS_AUTHKEY _reach_authkey; UNATTENDED=0; ui_interactive() { return 0; }
 
 # Review-Funde: Verbund bietet den Weg nicht zum Aendern an; Bestand wird schon beim Laden eigener Proxy; Funnel ohne
 # Freigabe wartet nur einmal; FritzBox-Beschriftung im Verbund ohne „eigener Reverse Proxy".

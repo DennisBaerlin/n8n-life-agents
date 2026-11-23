@@ -121,6 +121,25 @@ reach_cli_ts_login_start() {
   return 0
 }
 
+# reach_cli_ts_login_key — Anmeldung mit dem Schluessel aus der Antwort-Datei (Regeln: _reach_key_login in lib/reach.sh),
+#   danach bis REACH_KEY_SETTLE_SECS (60) fertigstellen (Funnel-Eintraege, DOMAIN). Auch unbeaufsichtigt: der Aufrufer
+#   ruft sie vor seiner Frage nach dem Anmelde-Link. rc wie _reach_key_login; REACH_CLI_STATE ist danach aktuell (bei rc 1
+#   unveraendert: der Aufrufer hat kurz vorher fertiggestellt).
+reach_cli_ts_login_key() {
+  local rc=0
+  need_cmd tailscale || { unset _reach_authkey; return 1; }
+  _reach_key_login reach_cli_ts_status _reach_cli_ts_up_key "$(reach_cli_ts_host)" || rc=$?
+  if [ "$rc" -ne 0 ]; then [ "$rc" -eq 2 ] && reach_cli_tunnel_settle "${N8N_PORT:-5678}"; return "$rc"; fi
+  _reach_key_wait _reach_cli_key_settled || true
+}
+_reach_cli_ts_up_key() { _reach_key_up "$1" timeout 100; }
+# _reach_cli_key_settled — fertigstellen und true bei einem Endzustand (needs_funnel kann direkt nach `up` noch kommen).
+_reach_cli_key_settled() {
+  reach_cli_tunnel_settle "${N8N_PORT:-5678}"
+  case "$REACH_CLI_STATE" in ready|busy|needs_machine_auth|key_expired) return 0 ;; esac
+  return 1
+}
+
 # reach_cli_ts_wait_url [sekunden] — bis zu N s (Standard 15) auf einen Anmelde-Link warten; Ergebnis in REACH_TS_*.
 reach_cli_ts_wait_url() {
   local n="${1:-15}" i=0

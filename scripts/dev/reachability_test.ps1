@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # reachability_test.ps1 — deterministischer, gratis Test der Geraete-Erreichbarkeit (Installer + doctor, IPv4/IPv6).
-# Kopiert provisioning/ dieses Checkouts + den Mock (tests/mock_reach/) in den laufenden Substrat-Container und faehrt
+# Kopiert provisioning/ dieses Checkouts + den Mock (tests/mock_reach/) + scripts/ci/ (Antwort-Datei der Install-Tests) in
+# den laufenden Substrat-Container und faehrt
 # dort tests/mock_reach/cases.sh gegen den echten Lib-Code (common.sh, release_inputs.sh, owner_connect.sh):
 #   - Domain-Normalisierung (https://, :443, Pfad, Rand-Leerzeichen, Schluss-Punkt) + Meldung bei anderem Port;
 #   - Box-Namen-Regel <kennung>.myfritz.net (ohne Netz);
@@ -10,7 +11,9 @@
 #   - zweiter Runner tests/mock_reach/compose_cases.sh: Weg nach aussen im Docker-Verbund (lib/reach.sh: Tailscale-Status,
 #     Funnel, reach_status_json, Installer-Haken, Rand-Konfiguration) gegen Attrappen;
 #   - dritter Runner tests/mock_reach/cli_cases.sh: Weg nach aussen der CLI-Installation (lib/reach_cli.sh: Wahl des Wegs,
-#     Tailscale im Userspace-Modus, Funnel nur fuer die oeffentlichen Pfade, DS-Lite/MyFRITZ!-Pruefung, Dialoge, doctor).
+#     Tailscale im Userspace-Modus, Funnel nur fuer die oeffentlichen Pfade, DS-Lite/MyFRITZ!-Pruefung, Dialoge, doctor);
+#   - vierter Runner tests/mock_reach/answers_cases.sh: Antwort-Datei der Install-Tests (scripts/ci/install_test_answers.sh,
+#     Schluessel per OAuth gegen eine Attrappe der Tailscale-API, Geheimnisse nie im argv).
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, node, openssl).
 # Usage:  .\scripts\dev\reachability_test.ps1 [-Port 8084] [-Verbose]   (belegt Port und Port+1; 8086/8087 = update_chat)
 # Exit-Code = Anzahl Fehler.
@@ -34,7 +37,7 @@ try {
 $root = '/opt/reachability_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }
-foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_reach', 'mock_reach'))) {
+foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_reach', 'mock_reach'), @('scripts\ci', 'ci'))) {
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:$root/$($pair[1])")
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
@@ -52,6 +55,12 @@ $r3 = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/cli_c
 $lines += @($r3.Output)
 if ($r3.Code -ne 0 -and @($r3.Output | Where-Object { $_ -match '^FAIL ' }).Count -eq 0) {
     $lines += "FAIL cli_cases.sh brach ab (exit $($r3.Code)): $($r3.Output -join ' | ')"
+}
+# Vierter Teil: Antwort-Datei der Install-Tests (scripts/ci/install_test_answers.sh) gegen eine Attrappe der Tailscale-API.
+$r4 = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/answers_cases.sh", $root)
+$lines += @($r4.Output)
+if ($r4.Code -ne 0 -and @($r4.Output | Where-Object { $_ -match '^FAIL ' }).Count -eq 0) {
+    $lines += "FAIL answers_cases.sh brach ab (exit $($r4.Code)): $($r4.Output -join ' | ')"
 }
 } finally { Remove-TestSuiteScratch $target }
 foreach ($l in $lines) {

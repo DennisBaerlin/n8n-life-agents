@@ -35,13 +35,15 @@ reach_mode() {
 # reach_ts_eval <status-json> [jetzt-epoch] — `tailscale status --json` einordnen (rein, ohne Docker; Fall-Tests mit
 #   Attrappen-JSON). Setzt REACH_TS_STATE (starting | needs_login | needs_machine_auth | needs_funnel | key_expired |
 #   stopped | running), REACH_TS_URL (Anmelde-Link, nur login.tailscale.com), REACH_TS_DNS (ohne Schluss-Punkt),
-#   REACH_TS_KEY_EXPIRY (RFC 3339 oder leer = Ablauf abgeschaltet), REACH_TS_KEY_DAYS (ganze Tage, leer = kein Ablauf).
+#   REACH_TS_KEY_EXPIRY (RFC 3339 oder leer = Ablauf abgeschaltet), REACH_TS_KEY_DAYS (ganze Tage, leer = kein Ablauf),
+#   REACH_TS_BACKEND (BackendState, nur Buchstaben; allein NeedsLogin heisst „nicht angemeldet“, REACH_TS_STATE=starting
+#   umfasst auch leer/NoState/Starting).
 #   `running` heisst: angemeldet und der Knoten darf HTTPS + Funnel (Node-Faehigkeiten "https" und "funnel"; fehlt eine,
 #   muss der Nutzer Funnel im Konto freigeben -> needs_funnel). Felder laut ipn/ipnstate (BackendState, AuthURL,
 #   Self.DNSName/KeyExpiry/Expired/CapMap).
 reach_ts_eval() {
   local js="$1" now="${2:-$(date +%s)}" row
-  REACH_TS_STATE=starting; REACH_TS_URL=''; REACH_TS_DNS=''; REACH_TS_KEY_EXPIRY=''; REACH_TS_KEY_DAYS=''
+  REACH_TS_STATE=starting; REACH_TS_URL=''; REACH_TS_DNS=''; REACH_TS_KEY_EXPIRY=''; REACH_TS_KEY_DAYS=''; REACH_TS_BACKEND=''
   [ -n "$js" ] || return 0
   row="$(printf '%s' "$js" | jq -r --argjson now "$now" '
     def caps: ((((.Self.CapMap // {}) | keys) + (.Self.Capabilities // [])) | map(sub("^https://tailscale\\.com/cap/"; "")));
@@ -58,11 +60,12 @@ reach_ts_eval() {
                                   else "needs_funnel" end)
        elif $b == "Stopped" then "stopped"
        else "starting" end) as $st
-    | [$st, (.AuthURL // ""), ((.Self.DNSName // "") | rtrimstr(".")), $ke, (if $days == null then "" else ($days | tostring) end)]
+    | [$st, (.AuthURL // ""), ((.Self.DNSName // "") | rtrimstr(".")), $ke, (if $days == null then "" else ($days | tostring) end),
+       ($b | gsub("[^A-Za-z]"; ""))]
     | join("\u001f")' 2>/dev/null)" || return 0
   [ -n "$row" ] || return 0
   # Trenner \x1f statt Tab: Tab ist Leerraum fuer `read`, zwei Tabs (leeres Feld) verschmelzen sonst zu einem.
-  IFS=$'\x1f' read -r REACH_TS_STATE REACH_TS_URL REACH_TS_DNS REACH_TS_KEY_EXPIRY REACH_TS_KEY_DAYS <<<"$row"
+  IFS=$'\x1f' read -r REACH_TS_STATE REACH_TS_URL REACH_TS_DNS REACH_TS_KEY_EXPIRY REACH_TS_KEY_DAYS REACH_TS_BACKEND <<<"$row"
   printf '%s' "$REACH_TS_URL" | grep -qE "$REACH_LOGIN_RE" || REACH_TS_URL=''
   printf '%s' "$REACH_TS_DNS" | grep -qiE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || REACH_TS_DNS=''
   return 0
@@ -73,6 +76,66 @@ _reach_ts_status() {
   rt_edge_active tailscale || return 0
   rt_edge_exec tailscale tailscale status --json --peers=false 2>/dev/null || true
 }
+
+# --- Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY, beide Wege) ------------------------------------------------
+# Fuer Installationen ohne Bildschirm und die Install-Tests: statt Anmelde-Link meldet ein Schluessel den Knoten an. Der
+# Wert kommt nur aus der Antwort-Datei (install_answers_load -> _answers_ts_authkey_guard in release_inputs.sh legt ihn in
+# die nicht exportierte Variable _reach_authkey; ein TS_AUTHKEY aus der Umgebung des Aufrufers zaehlt nie) und geht nur
+# per stdin an `tailscale up --auth-key=file:/dev/stdin` (argv zeigt den Pfad, tailscale.com/kb/1241). Ausgabe wird
+# verworfen: eine Ablehnung kann Teile des Schluessels spiegeln, und CI schwaerzt nur exakte Werte. Nie in core.env,
+# Stack-.env oder compose.yml (dort stuende er in docker inspect und im argv des Image-Starts; das Image kennt fuer
+# TS_AUTHKEY kein file:).
+#
+# _reach_key_login <status-fn> <up-fn> <rechnername> — rc 0 = angemeldet; 1 = nicht benutzt; 2 = abgelehnt bzw. nicht
+#   abgeschlossen (Meldung ohne Wert). Benutzt wird er nur bei BackendState NeedsLogin (nie angemeldet oder abgemeldet:
+#   derselbe Zustand, in dem der Installer sonst den Anmelde-Link ausstellt; der Schluessel in der Antwort-Datei ist die
+#   Zustimmung wie dort der Klick). Angemeldete, angehaltene oder abgelaufene Knoten bekommen nie andere Schalter. Wartet
+#   bis REACH_KEY_WAIT_SECS (30), solange tailscaled noch startet (leer/NoState/Starting). Danach ist der Schluessel in
+#   jedem Fall verbraucht (unset).
+_reach_key_login() {
+  local status_fn="$1" up_fn="$2" host="$3" i=0 rc=0
+  [ -n "${_reach_authkey:-}" ] || return 1
+  while :; do
+    reach_ts_eval "$("$status_fn")"
+    case "$REACH_TS_BACKEND" in NeedsLogin) break ;; ''|NoState|Starting) : ;; *) rc=1; break ;; esac
+    [ "$i" -lt "${REACH_KEY_WAIT_SECS:-30}" ] || { rc=1; warn "Tailscale antwortet nicht rechtzeitig — Anmeldeschlüssel aus der Antwort-Datei nicht benutzt."; break; }
+    sleep 1; i=$((i + 1))
+  done
+  [ "$rc" -eq 0 ] && [ "$REACH_TS_STATE" = key_expired ] && rc=1
+  if [ "$rc" -ne 0 ]; then unset _reach_authkey; return 1; fi
+  printf '%s' "$_reach_authkey" | "$up_fn" "$host" >/dev/null 2>&1 || rc=$?
+  unset _reach_authkey
+  [ "$rc" -eq 0 ] && return 0
+  reach_ts_eval "$("$status_fn")"
+  case "$REACH_TS_BACKEND" in
+    NeedsMachineAuth) : ;;   # den Hinweis „Geraet freigeben“ zeigt der Stand danach selbst
+    NeedsLogin) warn "Tailscale hat den Anmeldeschlüssel aus der Antwort-Datei abgelehnt (abgelaufen oder widerrufen?) — weiter ohne Schlüssel." ;;
+    *) warn "Tailscale: Anmeldung mit dem Schlüssel aus der Antwort-Datei nicht abgeschlossen (Stand: ${REACH_TS_STATE})." ;;
+  esac
+  return 2
+}
+
+# _reach_key_up <rechnername> <laeufer…> — der eine `up`-Aufruf beider Wege, Wert von stdin. Schalter exakt wie beim Start
+#   ohne Schluessel (Image: TS_HOSTNAME, TS_ACCEPT_DNS=false; CLI: reach_cli_ts_login_start), sonst lehnt `up` ab
+#   („requires mentioning all non-default flags“). --timeout: `up` wartet sonst unbegrenzt auf Running.
+_reach_key_up() {
+  local host="$1"; shift
+  "$@" tailscale up --auth-key=file:/dev/stdin --hostname="$host" --accept-dns=false --timeout=90s
+}
+_reach_ts_up_key() { _reach_key_up "$1" rt_edge_exec_in tailscale; }
+
+# _reach_key_wait <pruef-fn> — nach der Anmeldung bis REACH_KEY_SETTLE_SECS (60) alle 2 s pruefen; direkt nach `up` fehlen
+#   DNS-Name und Faehigkeiten noch. rc 0 = <pruef-fn> meldete fertig.
+_reach_key_wait() {
+  local i=0
+  while :; do
+    "$1" && return 0
+    [ "$i" -lt "${REACH_KEY_SETTLE_SECS:-60}" ] || return 1
+    sleep 2; i=$((i + 2))
+  done
+}
+# _reach_ts_key_ready — Verbund: laeuft, hat seinen Namen, darf Funnel.
+_reach_ts_key_ready() { reach_ts_eval "$(_reach_ts_status)"; [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ]; }
 
 # reach_funnel_configured <dns> <funnel-status-json> -> 0, wenn Funnel fuer <dns>:443 an ist und auf :8088 zeigt.
 reach_funnel_configured() {
@@ -435,6 +498,10 @@ reach_prepare() {
   m="$(reach_mode)"
   [ "$m" = tunnel ] || return 0
   rt_stack_up --no-deps tailscale >/dev/null 2>&1 || { warn "Tunnel: Tailscale-Container ließ sich nicht starten ($(rt_edge_logs_hint tailscale))."; return 0; }
+  # Name = TS_HOSTNAME des Containers (compose.yml: ${LA_TS_HOSTNAME:-bot}).
+  if _reach_key_login _reach_ts_status _reach_ts_up_key "$(ts_name_valid "${LA_TS_HOSTNAME:-}" && printf '%s' "$LA_TS_HOSTNAME" || printf bot)"; then
+    _reach_key_wait _reach_ts_key_ready || true
+  fi
   reach_ts_eval "$(_reach_ts_status)"
   if [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ] && reach_funnel_ensure "$REACH_TS_DNS"; then
     if [ "${DOMAIN:-}" != "$REACH_TS_DNS" ]; then

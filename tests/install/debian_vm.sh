@@ -9,8 +9,8 @@
 # Grenzen (ohne echtes Telegram und echtes Anthropic gehen diese Stellen nur mit Ersatz, alles andere ist der echte Weg):
 #  - Telegram: der Bot ist die Attrappe tests/mock_telegram im Netz-Namensraum des Verbunds. Der Fragebogen-Prozess im master
 #    kennt die Test-Weiche LIFEAGENTS_TELEGRAM_API nicht (compose.yml setzt sie nicht), darum wird er mit ihr neu gestartet.
-#  - Anthropic: der Fragebogen prueft den Schluessel live gegen api.anthropic.com und lehnt einen erfundenen ab. Die VM sperrt
-#    die Adresse, der Fragebogen nimmt den Schluessel dann mit Hinweis "nicht online pruefbar" (wie ohne Netz) an.
+#  - Telegram-Token und Anthropic-Schluessel: der Fragebogen prueft sie live gegen api.telegram.org und api.anthropic.com und lehnt erfundene ab. Die VM sperrt
+#    die Adressen, der Fragebogen nimmt die Werte dann mit Hinweis "nicht online pruefbar" (wie ohne Netz) an; der Bot-Aufruf tg-check geht an die Attrappe.
 #  - Kopplung: ohne Tailscale-Konto kommt der Fragebogen nicht ueber die Seite "Verbinden" (zeigt den echten Anmelde-Link); Kopplung und
 #    Abschluss fahren danach wie im Verbund-Lauf von genericity.yml (pair_and_finalize.sh, Webhook-Update statt Telegram).
 #  - Paperless: das Modul bleibt weg (der Fragebogen prueft dessen Adresse live gegen ein Paperless im LAN).
@@ -196,13 +196,17 @@ mock_telegram_up() {
   vm 'sudo docker exec -d -e LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089 lifeagents-master sh -c "exec node /opt/lifeagents/provisioning/wizard/server.js >>/tmp/wizard.log 2>&1"'
   for _ in $(seq 1 30); do vm 'sudo docker exec lifeagents-master node /opt/lifeagents/provisioning/wizard/ctl.js status >/dev/null' 2>/dev/null && break; sleep 1; done
 }
-# Anthropic sperren (v4 und v6), sonst lehnt der Fragebogen den erfundenen Schluessel ab.
-block_anthropic() {
-  vm 'bash -s' <<'VM'
-for ip in $(getent ahostsv4 api.anthropic.com | awk '{print $1}' | sort -u); do sudo ip route replace blackhole "$ip/32"; done
-for ip in $(getent ahostsv6 api.anthropic.com 2>/dev/null | awk '{print $1}' | sort -u); do sudo ip -6 route replace blackhole "$ip/128" || true; done
-code="$(sudo docker exec lifeagents-master curl -s -o /dev/null -w '%{http_code}' --max-time 8 https://api.anthropic.com/v1/models || true)"
-echo "api.anthropic.com aus dem master: HTTP $code"
+# Dienst sperren (v4 und v6): der Fragebogen prueft Telegram-Token und Anthropic-Schluessel live gegen die festen Adressen (nur der
+# Bot-Aufruf der Brueckenfunktion tg-check folgt der Test-Weiche) und lehnt erfundene Werte ab; "nicht erreichbar" nimmt er mit
+# Hinweis an (wie ohne Netz).
+block_host() {
+  local h="$1"
+  vm "bash -s '$h'" <<'VM'
+h="$1"
+for ip in $(getent ahostsv4 "$h" | awk '{print $1}' | sort -u); do sudo ip route replace blackhole "$ip/32"; done
+for ip in $(getent ahostsv6 "$h" 2>/dev/null | awk '{print $1}' | sort -u); do sudo ip -6 route replace blackhole "$ip/128" || true; done
+code="$(sudo docker exec lifeagents-master curl -s -o /dev/null -w '%{http_code}' --max-time 8 "https://$h/" || true)"
+echo "$h aus dem master: HTTP $code"
 [ "$code" = 000 ]
 VM
 }
@@ -212,8 +216,8 @@ step_mocks() {
   local tg=mock ai=invented
   [ -z "${TEST_TELEGRAM_BOT_TOKEN:-}" ] || tg=real
   [ -z "${TEST_ANTHROPIC_API_KEY:-}" ] || ai=real
-  if [ "$tg" = mock ]; then mock_telegram_up; else echo "Telegram: echter Test-Bot (Secret gesetzt), keine Attrappe"; fi
-  if [ "$ai" = invented ]; then block_anthropic; else echo "Anthropic: echter Schluessel (Secret gesetzt), keine Sperre"; fi
+  if [ "$tg" = mock ]; then mock_telegram_up; block_host api.telegram.org; else echo "Telegram: echter Test-Bot (Secret gesetzt), keine Attrappe"; fi
+  if [ "$ai" = invented ]; then block_host api.anthropic.com; else echo "Anthropic: echter Schluessel (Secret gesetzt), keine Sperre"; fi
   [ -z "${TEST_TS_AUTHKEY:-}" ] || echo "Tailscale-Schluessel gesetzt: der Installer nimmt ihn noch nicht an (eigenes Paket), der Klickweg endet am Anmelde-Link."
   printf 'tg=%s\nai=%s\n' "$tg" "$ai" > "$RUNNER_TEMP/modes.env"
   mark mocks_ready

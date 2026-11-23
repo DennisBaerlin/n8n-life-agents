@@ -27,7 +27,7 @@ foreach ($caseFile in @('cases.sh', 'first_step_cases.sh')) {
         $r = Invoke-Native docker @('run', '-d', '--name', $Container, $Image, 'sleep', '3600')
         if ($r.Code -ne 0) { throw "Container nicht startbar: $($r.Output -join ' | ')" }
         $r = Invoke-Native docker @('exec', $Container, 'mkdir', '-p', '/opt/t', '/srv')
-        foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\apt_repo', 'apt_repo'))) {
+        foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\util\apt_repo', 'apt_repo'))) {
             $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:/opt/t/$($pair[1])")
             if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
         }

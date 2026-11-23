@@ -16,7 +16,7 @@
 #   G  Fingerabdruck des Workflow-Deploys: n8n-Version je Einstieg gleich, Versionswechsel aendert ihn.
 #   H  doctor-Warnung: ein Dienst laeuft noch mit dem alten Node (ersetzte Binary in /proc).
 #   RT Stilllegung fuer den Umzug (lib/retire_cli.sh) und die Sperre „nie zwei Bots“; eigene Datei retire_cases.sh.
-#   UZ Annahme auf der neuen Maschine (lib/move_cli.sh: umzug apply/check/status/done, config import, Update-Sperre); eigene Datei umzug_cases.sh.
+#   MV Annahme auf der neuen Maschine (lib/move_cli.sh: move apply/check/status/done, config import, Update-Sperre); eigene Datei move_cases.sh.
 #   SU Linux-Einrichter provisioning/setup.sh (Pruefungen vor jeder Aenderung, Docker-Einrichtung, Kern-Aufruf, Befehl + Systemd-Einheit,
 #      Abbau); eigene Datei setup_cases.sh, hier eingebunden.
 # Braucht kein n8n, kein Docker und kein Netz.
@@ -903,11 +903,11 @@ STUB_VOLS="${_lp}pgdata" STUB_FAIL='|ps|--format|' scr status --json
 eq SC.status-ps-fehler-leere-liste 'true|0' "$(res .ok)|$(res '.services | length')"
 # Stilllegung und offener Umzug (Merker im Volume var_la); nicht lesbar zaehlt als true wie in sc_start.
 STUB_VOLS="$SC_ALLVOLS" scr status --json
-eq SC.status-merker-aus 'false|false' "$(res .retired)|$(res .umzug_open)"
-STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_retired='STAGE=done' STUB_CAT__var_la_umzug_open=1 scr status --json
-eq SC.status-merker-an 'true|true' "$(res .retired)|$(res .umzug_open)"
-STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|/var_la/retired' STUB_FAIL2='|/var_la/umzug-open' scr status --json
-eq SC.status-merker-unlesbar 'true|true|true' "$(res .ok)|$(res .retired)|$(res .umzug_open)"
+eq SC.status-merker-aus 'false|false' "$(res .retired)|$(res .move_open)"
+STUB_VOLS="$SC_ALLVOLS" STUB_CAT__var_la_retired='STAGE=done' STUB_CAT__var_la_move_open=1 scr status --json
+eq SC.status-merker-an 'true|true' "$(res .retired)|$(res .move_open)"
+STUB_VOLS="$SC_ALLVOLS" STUB_FAIL='|/var_la/retired' STUB_FAIL2='|/var_la/move-open' scr status --json
+eq SC.status-merker-unlesbar 'true|true|true' "$(res .ok)|$(res .retired)|$(res .move_open)"
 # install: nur die Test-Weichen der Positivliste (SC_TEST_SWITCHES) gehen an provision.sh, als Name (-e NAME, Wert aus der
 # Umgebung des Kerns, nie in einer Befehlszeile); andere Variablen, auch gesperrte LIFEAGENTS_*, kommen nie durch.
 SC_TEST_SWITCHES_EXP='LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM'
@@ -2014,7 +2014,7 @@ eq VH.installiert-dev-leer '' "$(vh_inst dev-0123abc)"
 vh_check() (   # vh_check <VERSION> -> Lebenszeichen des Release-Checks
   vh_env release "$1"; export LIFEAGENTS_DIR="$W/vh/etc"
   lifeagents_version_marker() { printf '%s' "$W/vh/lib/VERSION"; }; lifeagents_env_file() { printf '%s/%s.env' "$W/vh/etc" "$1"; }
-  require_root() { :; }; lifeagents_db_name() { echo n8n; }; la_umzug_open() { return 1; }
+  require_root() { :; }; lifeagents_db_name() { echo n8n; }; la_move_open() { return 1; }
   LIFEAGENTS_UPDATE_LOCK_HELD=1; _ur_installed() { vh_ver; }; heartbeat_record() { printf '%s/%s' "$1" "$2"; }
   _ur_check_in() { printf 'netz'; }; _ur_outcome() { :; }
   update_check 2>/dev/null
@@ -2219,8 +2219,8 @@ rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
 # ---------------------------------------------------------------------------- RT: Stilllegung fuer den Umzug (retire)
 . "$(dirname "${BASH_SOURCE[0]}")/retire_cases.sh"
 
-# ---------------------------------------------------------------------------- UZ: Annahme auf der neuen Maschine (umzug)
-. "$(dirname "${BASH_SOURCE[0]}")/umzug_cases.sh"
+# ---------------------------------------------------------------------------- MV: Annahme auf der neuen Maschine (move)
+. "$(dirname "${BASH_SOURCE[0]}")/move_cases.sh"
 
 # ---------------------------------------------------------------------------- SU: Linux-Einrichter (setup.sh)
 . "$(dirname "${BASH_SOURCE[0]}")/setup_cases.sh"

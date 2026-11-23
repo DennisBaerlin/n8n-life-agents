@@ -391,13 +391,13 @@ su_has SU.answers-link-sichtbar "$(cat "$SUD/out" "$SUD/err")" 'https://login.ta
 su_has SU.answers-link-hinweis "$(cat "$SUD/out" "$SUD/err")" 'lifeagents proxy show'
 su_has SU.answers-link-abfrage-im-master "$(su_log)" 'docker|exec|lifeagents-master|bash|/opt/lifeagents/provisioning/compose/reach_ctl.sh|status'
 # Eine Umzugs-Datei (Kopfzeile von `lifeagents retire`) bekommt den naechsten Schritt genannt.
-printf "# lifeagents-umzug v9.0.0 2026-11-20T10:00:00Z\nREACH_MODE='tunnel'\n" > "$SUD/umzug.env"
+printf "# lifeagents-move v9.0.0 2026-11-20T10:00:00Z\nREACH_MODE='tunnel'\n" > "$SUD/move.env"
 su_root debian 12 bookworm
-su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/umzug.env"
-su_has SU.answers-link-umzug-naechster-schritt "$(cat "$SUD/out" "$SUD/err")" 'lifeagents umzug apply'
+su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/move.env"
+su_has SU.answers-link-move-naechster-schritt "$(cat "$SUD/out" "$SUD/err")" 'lifeagents move apply'
 su_root debian 12 bookworm
 su_run env STUB_REACH_JSON="$_su_nl" bash "$SUS" --yes --image "$IMG" --answers "$SUD/answers.env"
-su_not SU.answers-ohne-umzug-kein-apply "$(cat "$SUD/out" "$SUD/err")" 'umzug apply'
+su_not SU.answers-ohne-move-kein-apply "$(cat "$SUD/out" "$SUD/err")" 'move apply'
 # Tunnel schon fertig oder gar nicht gewaehlt: kein Link, kein Laerm.
 for _st in ready unavailable; do
   su_root debian 12 bookworm

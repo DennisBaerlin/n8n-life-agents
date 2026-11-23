@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# umzug_cases.sh — Fall-Runner von scripts/dev/umzug_test.ps1, laeuft IM klassischen Substrat (root, systemd, echtes n8n +
-# PostgreSQL, die CLI DIESES Baums unter <root>/lifeagents). Echter Weg von `lifeagents umzug` (lib/move_cli.sh) und `config import`:
+# move_cases.sh — Fall-Runner von scripts/dev/move_test.ps1, laeuft IM klassischen Substrat (root, systemd, echtes n8n +
+# PostgreSQL, die CLI DIESES Baums unter <root>/lifeagents). Echter Weg von `lifeagents move` (lib/move_cli.sh) und `config import`:
 #   Erzeugung  B1-`retire` schreibt den Umzugs-Ordner (erfundene Daten: Gedaechtnis-Tabelle, eine geaenderte Einstellung), `retire --undo`
 #              holt das Substrat zurueck; danach wird der Zustand „frisch eingerichtete Maschine“ nachgebaut (Gedaechtnis weg,
 #              Einstellung auf Standard, Owner ohne chat_id, Workflows MIT Platzhalter-chat_id = genau der Zustand nach `setup.sh --answers`).
@@ -10,10 +10,10 @@
 #   D  done    Abnahme hebt die Sperre auf; danach schuetzt „in Gebrauch“ die Daten vor einem versehentlichen apply.
 #   Verbund (N8NTEST_RUNTIME=compose, im master): nur lock_cases (Versions-Sperre), Merker vom Test gelegt.
 # Testdaten erfunden; eigene Gedaechtnis-Tabelle agent.uzprobe_chat_memory (wird entfernt). Am Ende laeuft alles wie vorher.
-# real-path-test fuer tests/mock_runtime/umzug_cases.sh (die Attrappen dort ersetzen Tunnel, Rechner-Ordner und Notfallblatt-Eingabe; der
+# real-path-test fuer tests/mock_runtime/move_cases.sh (die Attrappen dort ersetzen Tunnel, Rechner-Ordner und Notfallblatt-Eingabe; der
 #   Verbund-Zweig hat seinen echten Weg in der Probe auf zwei Test-LXC bzw. im CI-Job linux-setup).
 #
-# Usage: bash umzug_cases.sh <root> <mock-port> <mock-log>   Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
+# Usage: bash move_cases.sh <root> <mock-port> <mock-log>   Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
 # shellcheck disable=SC2016,SC2329,SC2015,SC2031,SC2086,SC2034  # cleanup laeuft per trap; A && pass || fail ist gewollt (pass scheitert nie); ${CK} ist „category key“ und wird bewusst zerlegt; INSTALL_ENV_FILE liest load_install_env
 set -uo pipefail
 ROOT="$1"; PORT="$2"   # $3 (Telegram-Protokoll) braucht dieser Lauf nicht; der Runner reicht es wie bei retire_test mit
@@ -24,7 +24,7 @@ fail() { printf 'FAIL %s: %s\n' "$1" "$2"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "erwartet '$2', bekommen '$3'"; fi; }
 
 W="$(mktemp -d)"; chmod 0700 "$W"
-OUT="$W/umzug"
+OUT="$W/move"
 CLI="$ROOT/lifeagents"
 sed "s|@@LIBDIR@@|$ROOT|" "$ROOT/provisioning/templates/lifeagents.tpl" > "$CLI"; chmod 0700 "$CLI"
 [ -r "$ROOT/VERSION" ] || cp /usr/local/lib/lifeagents/VERSION "$ROOT/VERSION" 2>/dev/null || true
@@ -38,7 +38,7 @@ UNITS="n8n lifeagents-llm-gateway lifeagents-update-check.timer lifeagents-updat
 # hand-injected: Telegram = Attrappe im Container (nie der echte Bot); kurze Warte-/Abwartezeiten fuer den Testlauf
 export LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:$PORT" RETIRE_WEBHOOK_WAIT_SECS=5 RETIRE_DRAIN_SECS=60
 # hand-injected: Substrat ohne Bot-Schluessel; ein erfundener (Umgebung vor core.env) schickt Loesen, Pruefen und Menue ueber die Attrappe
-export TELEGRAM_BOT_TOKEN=1000001:UMZUGTESTzz9
+export TELEGRAM_BOT_TOKEN=1000001:MOVETESTzz9
 
 CK=''; CV=''; OWNER_SET=0; VM=''; V_BEFORE=''; V_SAVED=0
 # setowner <json-wert> — telegram_user_id des Owners in den family-Fakten (null = noch nicht gekoppelt).
@@ -55,7 +55,7 @@ v_restore() {
 cleanup() {
   find /var/backups/lifeagents -type f 2>/dev/null | grep -vxF -f "$W/bk_before" | xargs -r rm -f
   local u
-  rm -f "$(la_retired_file)" "$(la_umzug_file)"
+  rm -f "$(la_retired_file)" "$(la_move_file)"
   for u in $UNITS; do systemctl enable "$u" >/dev/null 2>&1; systemctl start "$u" >/dev/null 2>&1; done
   sql "DROP TABLE IF EXISTS ${MEM}; DELETE FROM agent.guide_learn_watermark WHERE agent_name = 'uzprobe'" >/dev/null 2>&1
   [ -z "$CK" ] || "$CLI" config set ${CK} "$CV" >/dev/null 2>&1
@@ -74,24 +74,24 @@ ready() { for _ in $(seq 1 90); do curl -fsS -o /dev/null "http://127.0.0.1:5678
 #   Aenderung; dieselbe Version laeuft. Klassisch im Abschnitt U, im Verbund allein (unten).
 lock_cases() {
   cli update --version v0.0.1; rc=$?
-  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.update-gesperrt || fail U.update-gesperrt "rc=$rc $(last)"
+  { [ "$rc" = 1 ] && said 'move done'; } && pass U.update-gesperrt || fail U.update-gesperrt "rc=$rc $(last)"
   # Jeder andere Versionswechsel sperrt mit demselben Satz, vor jeder Aenderung: rollback spielte sonst die pre-upgrade-Sicherung (Stand vor dem
   # Umzug) ein, und ein provision.sh mit anderer Release (install.sh --version …) braeche den Rueckweg (verlangt dieselbe Release).
   cli rollback; rc=$?
-  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
+  { [ "$rc" = 1 ] && said 'move done'; } && pass U.rollback-gesperrt || fail U.rollback-gesperrt "rc=$rc $(last)"
   # provn <release> — provision.sh dieses Baums wie install.sh/fetch_release ihn starten (RELEASE_TAG exportiert).
   # hand-injected: RELEASE_TAG ist genau der Wert, den install.sh/fetch_release exportieren; TRUSTED_PROXIES=kaputt bricht kurz hinter der Sperre ab, bevor etwas installiert wird (davor Sperre/Ergebnis-Datei, DOMAIN-Schreibweise und im Verbund reach_prepare: der Tailscale-Container des Test-Verbunds startet und bleibt ohne Anmeldung): so laeuft auch ein Lauf ohne Sperre nie durch.
   provn() { n=$((n + 1)); RELEASE_TAG="$1" TRUSTED_PROXIES=kaputt bash "$ROOT/provisioning/provision.sh" > "$W/out.$n" 2>&1 < /dev/null; }
   # Installierte Version fuer diese Faelle eine Release (das Substrat traegt oft „dev“, dann schriebe ein Lauf ohne Tag dasselbe = kein Wechsel).
   VM="$(lifeagents_version_marker)"; V_BEFORE="$(cat "$VM" 2>/dev/null)"; V_SAVED=1; [ -e "$VM" ] || V_BEFORE=''; _v0=v9.9.1; printf '%s\n' "$_v0" > "$VM"
   provn v0.0.2; rc=$?
-  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
+  { [ "$rc" = 1 ] && said 'move done'; } && pass U.provision-andere-release-gesperrt || fail U.provision-andere-release-gesperrt "rc=$rc $(last)"
   # Ohne Tag schriebe klassisch VERSION=dev, im Verbund die Nummer des laufenden Abbilds (release_tag_resolve, Fall „Abbild ≠ VERSION“):
   # beides weicht von der installierten Release ab und sperrt.
   provn ''; rc=$?
-  { [ "$rc" = 1 ] && said 'umzug done'; } && pass U.provision-ohne-tag-gesperrt || fail U.provision-ohne-tag-gesperrt "rc=$rc $(last)"
+  { [ "$rc" = 1 ] && said 'move done'; } && pass U.provision-ohne-tag-gesperrt || fail U.provision-ohne-tag-gesperrt "rc=$rc $(last)"
   provn "$_v0"; rc=$?
-  { [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'umzug done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
+  { [ "$rc" = 1 ] && said 'TRUSTED_PROXIES' && ! said 'move done'; } && pass U.provision-gleiche-release-frei || fail U.provision-gleiche-release-frei "rc=$rc $(last)"
   eq U.version-unveraendert "$_v0" "$(cat "$(lifeagents_version_marker)" 2>/dev/null)"
   v_restore
 }
@@ -99,14 +99,14 @@ lock_cases() {
 # Verbund: nur die Versions-Sperre. Annahme und Abnahme im Verbund prueft die Probe auf zwei Test-LXC bzw. der CI-Job linux-setup (Kopf);
 # den Merker legt hier der Test selbst (Stufe wie nach apply). Die Tick-Schleife des master haelt der Treiber an (Update-Sperre).
 if rt_is_compose; then
-  [ ! -e "$(la_umzug_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
-  trap 'rm -f "$(la_umzug_file)"; [ "$V_SAVED" != 1 ] || v_restore; rm -rf "$W" "$CLI"' EXIT
-  printf 'STAGE=applied\nMOVE=uzprobe\nAT=test\n' > "$(la_umzug_file)"
+  [ ! -e "$(la_move_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
+  trap 'rm -f "$(la_move_file)"; [ "$V_SAVED" != 1 ] || v_restore; rm -rf "$W" "$CLI"' EXIT
+  printf 'STAGE=applied\nMOVE=uzprobe\nAT=test\n' > "$(la_move_file)"
   lock_cases
   exit "$fails"
 fi
 curl -sf "http://127.0.0.1:$PORT/__health" >/dev/null 2>&1 || { fail setup 'Telegram-Attrappe antwortet nicht'; exit "$fails"; }
-[ ! -e "$(la_retired_file)" ] && [ ! -e "$(la_umzug_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
+[ ! -e "$(la_retired_file)" ] && [ ! -e "$(la_move_file)" ] || { fail setup 'Merker liegt schon (fremder Lauf?)'; exit "$fails"; }
 curl -sf "http://127.0.0.1:$PORT/__webhook?off=1&track=1" >/dev/null || { fail setup 'Attrappe ohne Webhook-Merkmodus'; exit "$fails"; }
 
 # --- Ausgangslage („alte Maschine“): Gedaechtnis wie der n8n-Knoten es anlegt, eine geaenderte Einstellung ----------------------------
@@ -156,22 +156,22 @@ PH0="$(owner_chat_placeholder_count)"
 # --- A: apply ------------------------------------------------------------------------------------------------------------------------
 # Maschine in Gebrauch (Owner schon gekoppelt): nichts wird eingespielt. Hier: erst einen Owner eintragen, dann zurueck auf „frisch“.
 setowner "$OWNER_BEFORE"
-cli umzug apply "$OUT"; rc=$?
+cli move apply "$OUT"; rc=$?
 { [ "$rc" = 1 ] && said 'in Gebrauch'; } && pass A.in-gebrauch-abbruch || fail A.in-gebrauch-abbruch "rc=$rc $(last)"
-[ ! -e "$(la_umzug_file)" ] && pass A.in-gebrauch-kein-merker || fail A.in-gebrauch-kein-merker "Merker liegt"
-[ -e "$OUT/umzug.env" ] && pass A.in-gebrauch-dateien-bleiben || fail A.in-gebrauch-dateien-bleiben "umzug.env weg"
+[ ! -e "$(la_move_file)" ] && pass A.in-gebrauch-kein-merker || fail A.in-gebrauch-kein-merker "Merker liegt"
+[ -e "$OUT/move.env" ] && pass A.in-gebrauch-dateien-bleiben || fail A.in-gebrauch-dateien-bleiben "move.env weg"
 setowner null
 # Vorpruefung: falsche Release im Manifest -> nichts.
-cp "$OUT/umzug.manifest" "$W/manifest.bak"; sed -i 's/^RELEASE=.*/RELEASE=v0.0.1/' "$OUT/umzug.manifest"
-cli umzug apply "$OUT"; rc=$?
+cp "$OUT/move.manifest" "$W/manifest.bak"; sed -i 's/^RELEASE=.*/RELEASE=v0.0.1/' "$OUT/move.manifest"
+cli move apply "$OUT"; rc=$?
 { [ "$rc" = 1 ] && said 'v0.0.1'; } && pass A.andere-release-abbruch || fail A.andere-release-abbruch "rc=$rc $(last)"
-cp "$W/manifest.bak" "$OUT/umzug.manifest"; chmod 0600 "$OUT/umzug.manifest"
-[ ! -e "$(la_umzug_file)" ] && pass A.andere-release-kein-merker || fail A.andere-release-kein-merker "Merker liegt"
+cp "$W/manifest.bak" "$OUT/move.manifest"; chmod 0600 "$OUT/move.manifest"
+[ ! -e "$(la_move_file)" ] && pass A.andere-release-kein-merker || fail A.andere-release-kein-merker "Merker liegt"
 
-cli umzug apply "$OUT"; rc=$?
+cli move apply "$OUT"; rc=$?
 eq A.apply-ok 0 "$rc"
 [ "$rc" = 0 ] || printf '# %s\n' "$(cat "$W/out.$n")" | tail -n 14
-eq A.stufe applied "$(read_env_value "$(la_umzug_file)" STAGE)"
+eq A.stufe applied "$(read_env_value "$(la_move_file)" STAGE)"
 eq A.owner-chat-id-da "$OWNER_BEFORE" "$(_owner_chat_id_db)"
 eq A.null-platzhalter 0 "$(owner_chat_placeholder_count)"
 eq A.gedaechtnis-zeilen 5 "$(sql "SELECT count(*) FROM ${MEM}")"
@@ -179,17 +179,17 @@ eq A.wasserstand-max 5 "$(sql "SELECT last_seen_id FROM agent.guide_learn_waterm
 eq A.eigentuemer-n8n "$_owner" "$(sql "SELECT tableowner FROM pg_tables WHERE schemaname || '.' || tablename = '${MEM}'")"
 eq A.einstellung-da "$CV2" "$(sql "SELECT value FROM core.config WHERE category = '${CK% *}' AND key = '${CK#* }'")"
 _f0=$fails
-for f in umzug.env memory.dump memory.counts; do [ ! -e "$OUT/$f" ] || fail "A.geloescht-$f" "liegt noch"; done
+for f in move.env memory.dump memory.counts; do [ ! -e "$OUT/$f" ] || fail "A.geloescht-$f" "liegt noch"; done
 [ "$fails" = "$_f0" ] && pass A.geheimnisse-geloescht
-BF="$(read_env_value "$OUT/umzug.manifest" BACKUP_FILE)"
+BF="$(read_env_value "$OUT/move.manifest" BACKUP_FILE)"
 [ -s "$OUT/$BF" ] && pass A.sicherung-bleibt || fail A.sicherung-bleibt "weg"
 [ -s "$OUT/nachher.txt" ] && pass A.nachher-geschrieben || fail A.nachher-geschrieben "fehlt"
 eq A.ordner-rechte 700 "$(stat -c %a "$OUT")"
 eq A.dateien-rechte 600 "$(stat -c %a "$OUT"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
-cli umzug check; _rcc=$?; eq A.check-gleich 0 "$_rcc"
+cli move check; _rcc=$?; eq A.check-gleich 0 "$_rcc"
 [ "$_rcc" = 0 ] || printf '# %s
 ' "$(cat "$W/out.$n")" | tail -n 12
-cli umzug status; eq A.status-offen 11 "$?"
+cli move status; eq A.status-offen 11 "$?"
 # Die Intro-Merker sind gesetzt (kein zweites Mal die Animation fuer jede Person der family-Fakten).
 _ids="$(sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name='family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}\$'")"
 _miss=0; for _i in $_ids; do [ "$(sql "SELECT core.fn_app_intro_pending('${_i}')")" = f ] || _miss=$((_miss + 1)); done
@@ -198,29 +198,29 @@ eq A.intro-merker-gesetzt 0 "$_miss"
 # --- U: Sperre -------------------------------------------------------------------------------------------------------------------------
 lock_cases
 cli doctor; _rcd=$?
-{ grep -q 'Umzug offen' "$W/out.$n"; } && pass U.doctor-nennt-umzug || fail U.doctor-nennt-umzug "$(last)"
-{ grep 'Umzug offen' "$W/out.$n" | grep -q 'FAIL'; } && fail U.doctor-umzug-nie-rot "als FAIL" || pass U.doctor-umzug-nie-rot
+{ grep -q 'Umzug offen' "$W/out.$n"; } && pass U.doctor-nennt-move || fail U.doctor-nennt-move "$(last)"
+{ grep 'Umzug offen' "$W/out.$n" | grep -q 'FAIL'; } && fail U.doctor-move-nie-rot "als FAIL" || pass U.doctor-move-nie-rot
 # Zweiter apply-Lauf: Daten, die inzwischen entstanden sind, bleiben (kein zweites Einspielen).
 sql "INSERT INTO ${MEM}(session_id, message) VALUES ('uz-neu', '{\"type\":\"human\",\"data\":{\"content\":\"nach dem Einspielen\"}}')" >/dev/null
 # Der Vergleich sieht die neue Zeile (Exit 1, Tabelle genannt): das beweist zugleich, dass nichts eingespielt wurde.
-cli umzug apply "$OUT"; eq U.nochmal-vergleich-meldet-abweichung 1 "$?"
+cli move apply "$OUT"; eq U.nochmal-vergleich-meldet-abweichung 1 "$?"
 said "memory ${MEM}" && pass U.nochmal-nennt-tabelle || fail U.nochmal-nennt-tabelle "$(last)"
 eq U.nochmal-kein-restore 6 "$(sql "SELECT count(*) FROM ${MEM}")"
 sql "DELETE FROM ${MEM} WHERE session_id = 'uz-neu'" >/dev/null
 
 # --- D: Abnahme ------------------------------------------------------------------------------------------------------------------------
-cli umzug 'done'; rc=$?
-{ [ "$rc" = 1 ] && [ -e "$(la_umzug_file)" ]; } && pass D.ohne-terminal-ohne-yes-nein || fail D.ohne-terminal-ohne-yes-nein "rc=$rc $(last)"
-cli umzug 'done' --yes; eq D.yes-ok 0 "$?"
-[ ! -e "$(la_umzug_file)" ] && pass D.merker-weg || fail D.merker-weg "liegt noch"
-cli umzug apply "$OUT"; rc=$?
+cli move 'done'; rc=$?
+{ [ "$rc" = 1 ] && [ -e "$(la_move_file)" ]; } && pass D.ohne-terminal-ohne-yes-nein || fail D.ohne-terminal-ohne-yes-nein "rc=$rc $(last)"
+cli move 'done' --yes; eq D.yes-ok 0 "$?"
+[ ! -e "$(la_move_file)" ] && pass D.merker-weg || fail D.merker-weg "liegt noch"
+cli move apply "$OUT"; rc=$?
 { [ "$rc" = 1 ] && said 'in Gebrauch'; } && pass D.danach-in-gebrauch-schuetzt || fail D.danach-in-gebrauch-schuetzt "rc=$rc $(last)"
 eq D.daten-unberuehrt 5 "$(sql "SELECT count(*) FROM ${MEM}")"
 
 # abort: der Ausweg aus einem stehengebliebenen Umzug nimmt nur die Update-Sperre weg.
-printf 'STAGE=restored\nMOVE=x\nAT=y\n' > "$(la_umzug_file)"
-cli umzug abort --yes; eq D.abort-ok 0 "$?"
-[ ! -e "$(la_umzug_file)" ] && pass D.abort-merker-weg || fail D.abort-merker-weg "liegt noch"
+printf 'STAGE=restored\nMOVE=x\nAT=y\n' > "$(la_move_file)"
+cli move abort --yes; eq D.abort-ok 0 "$?"
+[ ! -e "$(la_move_file)" ] && pass D.abort-merker-weg || fail D.abort-merker-weg "liegt noch"
 eq D.abort-daten-unberuehrt 5 "$(sql "SELECT count(*) FROM ${MEM}")"
 
 exit "$fails"

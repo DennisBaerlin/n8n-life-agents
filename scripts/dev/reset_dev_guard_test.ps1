@@ -41,7 +41,7 @@ $keyFile = Join-Path $work 'key'
 try {
     # --- Wegwerf-Repo: Kopie der zwei Skripte samt Bibliotheken, erfundene .env ---
     Initialize-GitSandbox $sandbox
-    foreach ($rel in 'scripts\reset_dev_instance.ps1', 'scripts\refresh_privacy_denylist.ps1', 'scripts\lib\dotenv.ps1', 'scripts\lib\dev_target.ps1',
+    foreach ($rel in 'scripts\reset_dev_instance.ps1', 'scripts\refresh_privacy_denylist.ps1', 'scripts\lib\dotenv.ps1', 'scripts\lib\dev_target.ps1', 'scripts\lib\live_read.ps1',
                      'scripts\lib\privacy_terms.ps1', 'scripts\lib\privacy_terms.sql') {
         $src = Join-Path $repo $rel
         $dst = Join-Path $sandbox $rel
@@ -160,7 +160,7 @@ exit 1
     Assert-True 'mit LIVE_INSTANCE_*: Ziel ist der LIVE-Host' ($r.Calls.Count -ge 1 -and ($r.Calls -join ' ') -match 'livebox\.example\.invalid' -and ($r.Calls -join ' ') -notmatch 'devbox') ($r.Calls -join ' | ')
 
     Write-Host 'Trennung im Repo: DEV_INSTANCE_* nur im Reset-Skript'
-    $liveUsers = @('scripts/refresh_privacy_denylist.ps1', '.claude/skills/live-findings/SKILL.md', '.claude/skills/cost-report/SKILL.md')
+    $liveUsers = @('scripts/refresh_privacy_denylist.ps1', 'scripts/live_read.ps1', 'scripts/lib/live_read.ps1','.claude/skills/live-findings/SKILL.md', '.claude/skills/cost-report/SKILL.md')
     # Die Nutzer duerfen DEV_INSTANCE_* nur als Verbot nennen ("tabu", "kein Rueckfall"), nie als Zugang lesen.
     foreach ($f in $liveUsers) {
         $t = [System.IO.File]::ReadAllText((Join-Path $repo $f))
@@ -169,7 +169,7 @@ exit 1
     }
     $tracked = @(git -C $repo ls-files -- scripts .claude/skills .claude/hooks docs provisioning packages '*.md' '.env.example')
     $devUsers = @($tracked | Where-Object {
-        $_ -notlike 'scripts/dev/reset_dev_guard_test.ps1' -and (Test-Path (Join-Path $repo $_)) -and
+        $_ -notlike 'scripts/dev/reset_dev_guard_test.ps1' -and $_ -notlike 'scripts/dev/live_read_test.ps1' -and (Test-Path (Join-Path $repo $_)) -and
         ([System.IO.File]::ReadAllText((Join-Path $repo $_)) -match 'DEV_INSTANCE_')
     })
     $allowed = @('scripts/reset_dev_instance.ps1', '.env.example', '.claude/skills/reset-dev/SKILL.md', 'docs/reference/scripts.md') + $liveUsers

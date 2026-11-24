@@ -17,6 +17,7 @@
 #     normaler Menue-Lauf (Install/Update) schliesst einen offenen Auftrag mit. Der echte Timer pausiert dafuer kurz.
 #   - Menü einmal je Install-/Update-Lauf, ein Wiederholversuch je Telegram-Aufruf, Fehlergrund im Protokoll (menu_once_cases.sh);
 #     `lifeagents telegram release-webhook` (Schnittstelle der Start-App beim Abbau) in allen Zustaenden (release_webhook_cases.sh).
+#     `lifeagents telegram relink` (Bot wieder verbinden, doctor-Abhilfe) gegen Mock-Telegram + n8n-Attrappe (relink_cases.sh, Ports 8096/8097).
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
 # N8NTEST_RUNTIME=compose: im master des Verbunds (bootstrap_test_stack.ps1); statt des Minuten-Timers pausiert die Tick-Schleife des master.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
@@ -222,7 +223,7 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('tests\mock_telegram', 
     $cp = & docker cp (Join-Path $RepoRoot $pair[0]) "${Container}:$mroot/$($pair[1])" 2>&1
     if ($LASTEXITCODE -ne 0) { $cpFail = $true; Fail "docker cp $($pair[0]) fehlgeschlagen: $($cp -join ' | ')" }
 }
-$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/release_webhook_cases.sh" $mroot 8094 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/backup_notify_cases.sh" $mroot 8095 2>&1 | ForEach-Object { "$_" }) }
+$mo = if ($cpFail) { @() } else { @(& docker exec $Container bash "$mroot/mock_telegram/menu_once_cases.sh" $mroot 8093 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/relink_cases.sh" $mroot 8096 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/release_webhook_cases.sh" $mroot 8094 2>&1 | ForEach-Object { "$_" }) + @(& docker exec $Container bash "$mroot/mock_telegram/backup_notify_cases.sh" $mroot 8095 2>&1 | ForEach-Object { "$_" }) }
 $ErrorActionPreference = $prev5
 $moPass = 0
 foreach ($l in $mo) {

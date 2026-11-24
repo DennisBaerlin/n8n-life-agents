@@ -31,7 +31,7 @@ Write-Host "Bot-Profilbild (Installer-Schritt) gegen Mock-Telegram — Container
 Write-Host ("-" * 64)
 
 $failed = 0
-# Das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN -> ohne Schalter bekaeme der Test-Bot bei jedem -Reset ein Bild.
+# Mit N8NTEST_REAL_TELEGRAM=1 installiert das Substrat mit dem echten Test-Bot -> ohne Schalter bekaeme er bei jedem -Reset ein Bild.
 # Die Schalter stehen in scripts/lib/test_install_env.ps1 (beide Unterbauten); dass beide Bootstraps sie rufen, prueft
 # scripts/dev/test_stack_test.ps1.
 . (Join-Path $RepoRoot 'scripts\lib\test_install_env.ps1')

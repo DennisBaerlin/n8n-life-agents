@@ -573,8 +573,11 @@ eq R.pgdump-ohne-ring-unveraendert 'pg_dump: detail: x|pg_dump: warning: y' \
 # Erfundene Schluessel, nie ein echter Wert (Repo oeffentlich).
 K1="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
 K2="$(printf 'fedcba9876543210%.0s' 1 2 3 4)"
-_paper="$(printf '%s' "$K1" | backup_key_paper)"
-eq B.blatt-vier-zeilen 4 "$(printf '%s\n' "$_paper" | grep -cE '^[1-4]:  [0-9a-f]{4}(-[0-9a-f]{4}){3}  [0-9a-f]{2}$')"
+# shellcheck source=/dev/null
+. "$ROOT/backup/old_sheet_lib.sh"
+_paper="$(printf '%s' "$K1" | old_paper)"
+# Gedrucktes Blatt im alten Format (Stand vor dem Token, erfundene Schluessel K1/K2): bleibt gueltig.
+eq B.altes-blatt-golden "key:$K1 key:$K2" "$(backup_key_parse < "$ROOT/backup/fixtures/notfallblatt-alt.txt" | tr '\n' ' ' | sed 's/ $//')"
 eq B.blatt-rundweg "key:$K1" "$(printf '%s\n' "$_paper" | backup_key_parse)"
 eq B.gross-und-ohne-praefix "key:$K1" "$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | tr 'a-f' 'A-F' | backup_key_parse)"
 eq B.roh-ohne-pruefzeichen "key:$K1" "$(printf '  %s\n' "$K1" | backup_key_parse)"
@@ -589,9 +592,70 @@ eq B.zu-kurz err:length "$(printf 'abc123' | backup_key_parse)"
 eq B.fremde-zeichen err:chars "$(printf 'kein schluessel!' | backup_key_parse)"
 eq B.fehlende-zeile err:line4 "$(printf '%s\n' "$_paper" | sed '4d' | backup_key_parse)"
 # Die ganze Notfallblatt-Datei: aktueller + aelterer Schluessel, dazwischen Text und eine Schritt-Liste.
-_kit="$(printf 'Notfallblatt\n%s\n\nFuer aeltere Sicherungen:\n%s\n- 1. Schritt\nDatum 12.11.2026\n' "$_paper" "$(printf '%s' "$K2" | backup_key_paper)")"
+_kit="$(printf 'Notfallblatt\n%s\n\nFuer aeltere Sicherungen:\n%s\n- 1. Schritt\nDatum 12.11.2026\n' "$_paper" "$(printf '%s' "$K2" | old_paper)")"
 eq B.datei-zwei-schluessel "key:$K1 key:$K2" "$(printf '%s\n' "$_kit" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
-eq B.datei-tippfehler-im-ersten "err:line3 key:$K2" "$(printf '%s\n%s\n' "$_bad" "$(printf '%s' "$K2" | backup_key_paper)" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+eq B.datei-tippfehler-im-ersten "err:line3 key:$K2" "$(printf '%s\n%s\n' "$_bad" "$(printf '%s' "$K2" | old_paper)" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+# Notfallschluessel als Token (eine Zeile). Die erwarteten Werte sind unabhaengig gerechnet (PowerShell/.NET: SHA256 + eigenes Base32),
+# nicht mit dieser Umsetzung; K1 wiederholt seine ersten 16 Bytes (ohne `od -v` fasst od sie zu "*" zusammen).
+T1=labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy
+T2=labk1_zvebn63pags11zpwqac7cn1j23zdsemresa3447yvjx9gxjm6885c9zk
+eq B.token-bekannt "$T1 $T2" "$(printf '%s' "$K1" | backup_key_token) $(printf '%s' "$K2" | backup_key_token)"
+if [[ "$(printf '%s' "$K2" | backup_key_token)" =~ ^labk1_[0-9a-hjkmnp-tv-z]{56}$ ]]; then pass B.token-form; else fail B.token-form "Form"; fi
+eq B.token-rundweg "key:$K1" "$(printf '%s\n' "$T1" | backup_key_parse)"
+eq B.token-gross "key:$K1" "$(printf '  %s  \n' "${T1^^}" | backup_key_parse)"
+eq B.token-umbruch "key:$K1" "$(printf '%s\n%s\n' "${T1:0:30}" "${T1:30}" | backup_key_parse)"
+eq B.token-crlf "key:$K1" "$(printf '%s\r\n' "$T1" | backup_key_parse)"
+eq B.token-nbsp "key:$K1" "$(printf '%s\xc2\xa0%s\n' "${T1:0:20}" "${T1:20}" | backup_key_parse)"
+eq B.token-crockford "key:$K1" "$(printf 'labk1_%s\n' "$(printf '%s' "${T1#labk1_}" | tr '01' 'oI')" | backup_key_parse)"
+eq B.token-praefix-tolerant "key:$K1 key:$K2" "$(printf 'LABKL-%s\nlabk1 %s\n' "${T1#labk1_}" "${T2#labk1_}" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+# Heutige Start-App, Token ins Feld "Zeile 1": genau die Bytes von restore::Sheet::typed([token, "", "", ""]) (Rust-Test haelt sie fest).
+eq B.token-app-feld1 "key:$K1" "$(printf '1: %s\n2: \n3: \n4: \n' "$T1" | backup_key_parse)"
+# Tippfehler: 2 <-> 3 ist kein Crockford-Alias (o/0, i/l/1 waeren keine Fehler).
+case "${T1:15:1}" in 2) _tbad="${T1:0:15}3${T1:16}" ;; *) _tbad="${T1:0:15}2${T1:16}" ;; esac
+eq B.token-tippfehler err:token "$(printf '%s\n' "$_tbad" | backup_key_parse)"
+eq B.token-zu-kurz err:token "$(printf '%s\n' "${T1:0:61}" | backup_key_parse)"
+eq B.token-fremdes-zeichen err:token "$(printf '%s\n' "${T1:0:20}u${T1:21}" | backup_key_parse)"
+# Praefix nur als eigenes Wort mit Trenner: ein Ordnername wie "LabKit-Backups" auf dem Blatt ist kein Token-Versuch.
+eq B.token-praefix-nicht-im-wort "key:$K1" "$(printf 'Ordner /Users/x/LabKit-Backups\n  %s\n' "$T1" | backup_key_parse)"
+# Ein falscher Treffer vor dem echten Token verbraucht dessen Zeichen nicht.
+eq B.token-nach-fehlstueck "err:token key:$K1" "$(printf 'labkl- notiz %s\n' "$T1" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+eq B.token-zwei "key:$K1 key:$K2" "$(printf 'Notfallschluessel\n  %s\nFuer aeltere:\n  %s\n' "$T1" "$T2" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+# Passwort-Manager-Notiz mit altem Block und Token: beide; nummerierte Schritte auf dem neuen Blatt sind kein Zeilen-Block.
+eq B.mischtext "key:$K2 key:$K1" "$(printf '%s\n%s\n1: Installiere die Version.\n2: Fuege ein.\n' "$T2" "$_paper" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+# Das ganze Blatt in de/en/ko: nur key:-Zeilen (kein Katalog-Text darf das Praefix tragen), eine Token-Zeile je Schluessel,
+# Schritte mit "1:" (Start-Apps vor dem Ein-Feld-Fenster nehmen nur ein Blatt mit einer "1:"-Zeile an, desktop/core/src/backup.rs save_kit).
+kit_case() (   # kit_case <lang> -> backup_kit_text mit K1 aktiv, K2 aelter
+  _pkg_dir() { printf '%s' "$ROOT/packages"; }; backup_kit_lang() { printf '%s' "$KC_LANG"; }; KC_LANG="$1"; _BACKUP_LANG=''
+  backup_key_candidates() { printf '%s\n' "$K1" "$K2"; }; pg_su_psql() { printf '2026-11-12\n'; }
+  lifeagents_version_marker() { printf '%s' "$W/kc.ver"; }; printf 'v0.51.0\n' > "$W/kc.ver"
+  read_env_value() { return 1; }; rt_is_compose() { return 0; }
+  backup_kit_text
+)
+# Die eingecheckte Datei des neuen Blatts (Rust-Test der Start-App liest sie) ist genau die heutige Ausgabe.
+eq B.blatt-fixture-aktuell "$(cat "$ROOT/backup/fixtures/notfallblatt-token.txt")" "$(kit_case de)"
+for _l in de en ko; do
+  _k="$(kit_case "$_l")"
+  eq "B.blatt-nur-schluessel-$_l" "key:$K1 key:$K2" "$(printf '%s\n' "$_k" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+  eq "B.blatt-eine-zeile-$_l" "2:0" "$(printf '%s\n' "$_k" | grep -cE '^  labk1_[0-9a-hjkmnp-tv-z]{56}$'):$(printf '%s\n' "$_k" | grep -cE '^ *[1-4]: +[0-9a-f]{4}-')"
+  if printf '%s\n' "$_k" | grep -qE '^[[:space:]]*1:'; then pass "B.blatt-alte-app-$_l"; else fail "B.blatt-alte-app-$_l" "keine Zeile mit 1: (alte Start-App lehnt das Blatt ab)"; fi
+done
+# Terminal-Frage (_bkp_ask_key_tty, auch vom Umzug): Antworten der Reihe nach; Ergebnis "<ausgabe>|<anzahl fragen>".
+tty_case() (
+  _pkg_dir() { printf '%s' "$ROOT/packages"; }; backup_kit_lang() { printf de; }; _BACKUP_LANG=''
+  printf '%s\n' "$@" > "$W/tty.in"; : > "$W/tty.n"
+  ui_input() { echo x >> "$W/tty.n"; sed -n "$(wc -l < "$W/tty.n")p" "$W/tty.in"; }
+  r="$(_bkp_ask_key_tty 2>/dev/null)"; printf '%s|%s' "$r" "$(wc -l < "$W/tty.n")"
+)
+eq B.tty-token "key:$K1|1" "$(tty_case "$T1")"
+eq B.tty-token-fehler-dann-richtig "key:$K1|2" "$(tty_case "$_tbad" "$T1")"
+eq B.tty-token-dreimal-falsch "err:token|3" "$(tty_case "$_tbad" "$_tbad" "$_tbad")"
+eq B.tty-token-rest-einfuegen "key:$K1|2" "$(tty_case "${T1:0:30}" "${T1:30}")"
+eq B.tty-alter-ganzer-schluessel "key:$K1|1" "$(tty_case "$K1")"
+eq B.tty-token-nach-fehlstueck "key:$K1|1" "$(tty_case "labkl- notiz $T1")"
+# Alte Zeile 1 mit Tippfehler (g statt f): bleibt in den Zeilen-Fragen ("Zeile 1: …"), nicht "kein Notfallschluessel".
+eq B.tty-alte-zeile-tippfehler "err:line1|3" "$(tty_case '1: 0123-4567-89ab-cdeg 73' '1: 0123-4567-89ab-cdeg 73' '1: 0123-4567-89ab-cdeg 73')"
+mapfile -t _lines < <(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //; s/ +/-/g')
+eq B.tty-alte-vier-zeilen "key:$K1|4" "$(tty_case "${_lines[@]}")"
 _id1="$(printf '%s' "$K1" | backup_key_id)"; _id2="$(printf '%s' "$K2" | backup_key_id)"
 if [[ "$_id1" =~ ^k[0-9a-f]{8}$ ]] && [ "$_id1" != "$_id2" ]; then pass B.kennung-form; else fail B.kennung-form "$_id1/$_id2"; fi
 # Entschluesseln mit allen gespeicherten Schluesseln (die DB-Abfrage ist hier eine Attrappe; gpg ist echt).

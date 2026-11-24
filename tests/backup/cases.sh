@@ -91,10 +91,18 @@ if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
 KB="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
 KC="$(printf 'fedcba9876543210%.0s' 1 2 3 4)"
-printf '%s\n%s\n%s\n' "$KA" "$KB" "$KC" > "$W/needles"
-for k in "$KA" "$KB" "$KC"; do printf '%s' "${k:0:16}" >> "$W/needles"; printf '\n' >> "$W/needles"; done
+# Nadeln der Leck-Probe je Schluessel: Hex ganz und die ersten 16, das Token, sein 56er-Rumpf, die RFC-4648-Form vor base32 -d
+# und je die ersten 16 Zeichen davon (Suche ohne Gross/klein: grep -iF).
+: > "$W/needles"
+for k in "$KA" "$KB" "$KC"; do
+  t="$(printf '%s' "$k" | backup_key_token)"; r="${t#"${BACKUP_TOKEN_PREFIX}_"}"; f="$(printf '%s' "$r" | tr "$_BK_B32_CRO" "$_BK_B32_RFC")"
+  for v in "$k" "$t" "$r" "$f"; do printf '%s\n%s\n' "$v" "${v:0:16}" >> "$W/needles"; done
+done
 kidA="$(printf '%s' "$KA" | backup_key_id)"
-paper() { printf '%s' "$1" | backup_key_paper; }
+# shellcheck source=old_sheet_lib.sh
+. "$ROOT/backup/old_sheet_lib.sh"
+paper() { printf '%s' "$1" | old_paper; }   # gedrucktes Blatt im alten Format (bleibt gueltig)
+token() { printf '%s\n' "$(printf '%s' "$1" | backup_key_token)"; }
 N0="$(rows)"
 BACKUP_RESTORE_LOCK_T="$W/restore.lock"
 : > "$W/bk_before"; for _f in /var/backups/lifeagents/lifeagents-backup-*.nla.enc; do [ -e "$_f" ] && printf '%s\n' "$_f" >> "$W/bk_before"; done
@@ -185,6 +193,10 @@ ok_if S.secret-argv '[ "$rc" -eq 0 ] && grep -q "^PASS" "$W/secret_argv.out"' "r
 paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
 cli_in "$W/typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && active_is "$KB"' "rc=$rc"
+# Notfallschluessel als Token mit einem Tippfehler (typo_token: Ersatz, bei dem die Pruefsumme sicher nicht passt).
+typo_token "$(printf '%s' "$KA" | backup_key_token)" > "$W/tok_typo"
+cli_in "$W/tok_typo" backup restore "$A" --key-stdin --yes; rc=$?
+ok_if R.token-tippfehler '[ -s "$W/tok_typo" ] && [ "$rc" -ne 0 ] && said "hat einen Fehler" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
 # Beschaedigt: gleicher Name (ID passt), halbe Datei; mit dem passenden Blatt -> "beschaedigt", nichts geaendert.
 mkdir -p "$W/kaputt"; head -c "$(( $(stat -c %s "$A") / 2 ))" "$A" > "$W/kaputt/$fa"
 paper "$KA" > "$W/ka"; cli_in "$W/ka" backup restore "$W/kaputt/$fa" --key-stdin --yes; rc=$?
@@ -198,15 +210,16 @@ if [ "${N0:-0}" -gt 0 ]; then
 else
   fail R.tx-fehler-nichts-geaendert "keine Agenten-Kontexte im Substrat"
 fi
-# Mit dem Blatt (Grossbuchstaben, Bindestriche) — dabei /proc beobachten (Leck-Probe L).
-paper "$KA" | tr 'a-f' 'A-F' > "$W/kaU"
+# Nur der Notfallschluessel (eine Zeile, wie kopiert) — dabei /proc beobachten (Leck-Probe L). Das alte Blatt fuehrt unten
+# (K.altes-blatt-gueltig, P.hintergrund-*) ebenfalls bis zur Uebernahme.
+token "$KA" > "$W/kaT"
 : > "$W/proc_hits"
-( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaU"; echo $? > "$W/rc.r4" ) &
+( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaT"; echo $? > "$W/rc.r4" ) &
 bg=$!
 while kill -0 "$bg" 2>/dev/null; do
   for p in /proc/[0-9]*; do
     [ "${p#/proc/}" = "$BASHPID" ] && continue
-    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits"
+    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qiFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits"
   done
 done
 wait "$bg"; rc="$(cat "$W/rc.r4")"
@@ -245,6 +258,15 @@ ok_if P.probe-falsches-blatt '[ "$(js .code)" = key_foreign ] && [ "$(js .id)" =
 printf 'Einkaufsliste: Milch\n' > "$W/keinblatt"; frame "$W/keinblatt" "$A"
 n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"
 ok_if P.probe-kein-blatt '[ "$(js .code)" = key_format ]' "$(js .code)"
+# Notfallschluessel als Token: als Datei-Inhalt, und so, wie die heutige App das Feld "Zeile 1" schickt (restore::Sheet::typed).
+frame "$W/kaT" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token '[ "$rc" -eq 0 ] && [ "$(js .adopt_key_id)" = "$kidA" ] && [ "$(fp)" = "$F0" ]' "rc=$rc $(js .code)"
+printf '1: %s\n2: \n3: \n4: \n' "$(printf '%s' "$KA" | backup_key_token)" > "$W/kaF1"
+frame "$W/kaF1" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token-app-feld1 '[ "$rc" -eq 0 ] && [ "$(js .adopt_key_id)" = "$kidA" ]' "rc=$rc $(js .code)"
+# Kaputtes Token: fuer die Start-App key_line mit Zeile 1 (eine aeltere App kennt keinen neuen Code).
+frame "$W/tok_typo" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token-tippfehler '[ "$rc" -ne 0 ] && [ "$(js .code)" = key_line ] && [ "$(js .line)" = 1 ] && [ "$(fp)" = "$F0" ]' "$(js .code)/$(js .line)"
 # Sperre: laeuft schon eine Wiederherstellung, startet keine zweite.
 ( flock "$BACKUP_RESTORE_LOCK_T" sleep 4 ) & lk=$!; sleep 1
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
@@ -258,13 +280,13 @@ ok_if P.hintergrund-startet '[ "$rc" -eq 0 ] && [ "$(js .ok)" = true ]' "rc=$rc 
 for _ in $(seq 1 240); do
   for p in /proc/[0-9]*; do
     [ "${p#/proc/}" = "$BASHPID" ] && continue
-    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits2"
+    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qiFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits2"
   done
   [ "$(rs_state)" = running: ] || break
   sleep 0.5
 done
 ok_if P.hintergrund-fertig '[ "$(rs_state)" = ok: ] && active_is "$KA" && prev_has "$KB" && [ "$(rows)" = "$N0" ]' "$(rs_state)"
-ok_if P.hintergrund-kein-leck '[ ! -s "$W/proc_hits2" ] && ! grep -qFf "$W/needles" "$W/log/restore.log" "$BACKUP_STATE_FILE"' "Schluessel in /proc, Protokoll oder backup.state"
+ok_if P.hintergrund-kein-leck '[ ! -s "$W/proc_hits2" ] && ! grep -qiFf "$W/needles" "$W/log/restore.log" "$BACKUP_STATE_FILE"' "Schluessel in /proc, Protokoll oder backup.state"
 # Abbruch mitten im Lauf (kill -9 vor der TX, Kind sichert gerade vorab): Stand „nicht abgeschlossen“, nichts geaendert.
 set_active "$KB"; env_upsert "$BACKUP_STATE_FILE" LAST_RESTORE_PID ''
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"
@@ -535,10 +557,12 @@ cli backup key; rc=$?
 ok_if K.ohne-terminal-abbruch '[ "$rc" -ne 0 ] && said "Kein Terminal"' "rc=$rc"
 cli backup key --file "$W/blatt.txt"; rc=$?
 ok_if K.datei-0600 '[ "$rc" -eq 0 ] && [ "$(stat -c %a "$W/blatt.txt")" = 600 ]' "rc=$rc"
-ok_if K.datei-inhalt '[ "$(grep -cE "^  [1-4]:  [0-9a-f]{4}(-[0-9a-f]{4}){3}  [0-9a-f]{2}$" "$W/blatt.txt")" = 8 ] && grep -qF "$kidA" "$W/blatt.txt"' "erwartet 2 Schluessel à 4 Zeilen + ID"
+# Je Schluessel eine Token-Zeile, keine Zeilen des alten Blatts, ID, und eine Zeile "1:" (Pruefung der heutigen Start-App beim Speichern).
+ok_if K.blatt-token '[ "$(grep -cE "^  labk1_[0-9a-hjkmnp-tv-z]{56}$" "$W/blatt.txt")" = 2 ] && ! grep -qE "^ *[1-4]: +[0-9a-f]{4}-" "$W/blatt.txt" && grep -qF "$kidA" "$W/blatt.txt" && grep -qF "$(printf "%s" "$KA" | backup_key_token)" "$W/blatt.txt" && grep -qE "^1: " "$W/blatt.txt"' \
+  "erwartet 2 Token-Zeilen + ID + Schritt 1:"
 cli backup key --file "$W/blatt.txt"; rc=$?
 ok_if K.nie-ueberschreiben '[ "$rc" -ne 0 ] && [ "$(stat -c %a "$W/blatt.txt")" = 600 ]' "rc=$rc"
-cli backup key --file -; rc=$?
+cli backup key --file -; rc=$?; k_stdout_n=$n   # diese Ausgabe ist das Blatt selbst (L ueberspringt sie)
 ok_if K.stdout '[ "$rc" -eq 0 ] && said "$kidA"' "rc=$rc"
 # Die gespeicherte Datei taugt als Eingabe auf einem neuen Rechner (traegt den aktuellen und den aelteren Schluessel).
 set_active "$KB"
@@ -549,6 +573,11 @@ ok_if K.datei-als-eingabe '[ "$rc" -eq 0 ] && active_is "$KA" && prev_has "$KB"'
 set_active "$KC"
 cli_in "$W/blatt.txt" backup restore "$B" --key-stdin --yes; rc=$?
 ok_if K.blatt-aelterer-passt '[ "$rc" -eq 0 ] && active_is "$KB" && prev_has "$KA" && prev_has "$KC"' "rc=$rc"
+# Gedrucktes Blatt im alten Format (fixtures/notfallblatt-alt.txt: Ausgabe vor dem Token, erfundene Schluessel KB aktuell + KC
+# aelter) bleibt gueltig: Sicherung B (KB) auf einem Rechner mit KC.
+set_active "$KC"
+cli_in "$ROOT/backup/fixtures/notfallblatt-alt.txt" backup restore "$B" --key-stdin --yes; rc=$?
+ok_if K.altes-blatt-gueltig '[ "$rc" -eq 0 ] && active_is "$KB" && prev_has "$KC"' "rc=$rc"
 
 # ---------------------------------------------------------------------------- U: Rueckweg behaelt den Blatt-Schluessel
 # Lage nach pg_restore --create: die hergestellte DB traegt den alten Schluessel (KB), die beiseitegelegte den uebernommenen
@@ -576,7 +605,7 @@ cli backup auto; rc=$?
 ok_if_local F.auto-schreibt-in-ordner '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
 ok_if_local F.ordner-nur-fuer-root '[ "$(stat -c %a "$W/local")" = 700 ]'
 ok_if F.auto-last-ok '[ "$(( $(date +%s) - $(read_env_value "$BACKUP_STATE_FILE" LAST_OK) ))" -lt 120 ]'
-ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qFf "$W/needles" "$W/out.$n"'
+ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qiFf "$W/needles" "$W/out.$n"'
 erste="$(ls -1 "$W/local" | head -n1)"
 # --scheduled: heute schon gesichert -> nichts; seit 3 Tagen nicht -> eine neue Datei.
 cli backup auto --scheduled; rc=$?
@@ -643,11 +672,12 @@ export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
 leak=0
 for f in "$W"/out.* ; do
   [ -f "$f" ] || continue
-  grep -qFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
+  [ "$f" != "$W/out.${k_stdout_n:-x}" ] || continue
+  grep -qiFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
 done
 ok_if L.kein-schluessel-in-ausgaben '[ "$leak" = 0 ]' "Schluessel in einer CLI-Ausgabe"
 printf '%s\n' "$KA" > "$W/needle_a"
-ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Papierform"
+ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Token"
 ok_if L.tmpfs-leer '[ -z "$(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null)" ]' "Reste im tmpfs"
 
 exit "$fails"

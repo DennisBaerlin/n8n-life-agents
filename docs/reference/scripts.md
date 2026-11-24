@@ -48,7 +48,7 @@ Beide Substrat-Treiber (klassisch `bootstrap_test_n8n.ps1`, Verbund `bootstrap_t
 | Schlüssel | Pflicht | Zweck / gemappt auf |
 |---|---|---|
 | `TEST_HARNESS_SECRET` | ja | Wert der Harness-Header-Auth-Credential; Header-Name `X-Test-Auth` via `TEST_HARNESS_HEADER`. Ohne: infra/n8n-Tier bekommen 403 |
-| `TEST_TELEGRAM_BOT_TOKEN` | nein | separater BotFather-Token (nie der Prod-Bot) → `TELEGRAM_BOT_TOKEN`; fehlt → Telegram-Credential + Orchestrator-Trigger-Aktivierung übersprungen |
+| `TEST_TELEGRAM_BOT_TOKEN` | nein | separater BotFather-Token (nie der Prod-Bot), nur für ausdrückliche Ende-zu-Ende-Läufe: Ein Substrat bekommt standardmäßig ein erfundenes Token (`Resolve-TestTelegramToken`, `scripts/lib/test_install_env.ps1`), sonst würde n8n beim Aktivieren des Orchestrators `setWebhook` am echten Telegram aufrufen und den Bot für jede andere Installation stumm machen. Der echte Token gilt nur mit `$env:N8NTEST_REAL_TELEGRAM = '1'` (klassischer `-Down` gibt den Webhook dann frei); Wächter `scripts/dev/test_n8n_runtime_test.ps1` |
 | `TEST_TELEGRAM_CHAT_ID` | nein | → `OWNER_CHAT_ID` (Owner-Send-Nodes) |
 | `TEST_N8N_OWNER_EMAIL` / `TEST_N8N_OWNER_PASSWORD` | nein | n8n-Owner-Login (sonst generiert; PW-Policy 8–64/≥1 Ziffer/≥1 Großbuchstabe) |
 | `TEST_N8N_ENCRYPTION_KEY` / `TEST_PG_PASSWORD` | nein | First-Init-Overrides → `N8N_ENCRYPTION_KEY`/`N8N_DB_PASSWORD` (sonst generiert) |

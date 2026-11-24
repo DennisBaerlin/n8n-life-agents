@@ -29,8 +29,8 @@ trap 'kill "$MOCK_PID" 2>/dev/null || true' EXIT
 for _ in $(seq 1 25); do curl -sf "http://127.0.0.1:$PORT/__health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -sf "http://127.0.0.1:$PORT/__health" >/dev/null 2>&1 || { fail setup 'Mock antwortet nicht'; exit 1; }
 
-printf 'GIF89a-de' > "$W/core/build/stickers/app_intro_de.gif"
-printf 'GIF89a-en' > "$W/core/build/stickers/app_intro_en.gif"
+printf 'mp4-de' > "$W/core/build/stickers/app_intro_de.mp4"
+printf 'mp4-en' > "$W/core/build/stickers/app_intro_en.mp4"
 printf '{"core.app.intro_caption":"Bereit"}\n' > "$W/core/locales/de.json"
 printf '{"core.app.intro_caption":"Ready"}\n' > "$W/core/locales/en.json"
 TOKEN='1000001:MARKERTOKENzz9'
@@ -59,7 +59,7 @@ LEAK="$OUT"
 # Fehlende Sprache: Englisch als Rueckfall
 reset_case
 fallback_out="$( ( tg_api_curl() { printf '%s\n' "$*" > "$W/args"; }; set -euo pipefail; _app_intro_announce "$TOKEN" 111 ko "$W/core/locales" 0 ) 2>&1 )"
-if grep -q 'app_intro_en.gif' "$W/args"; then pass 'sprache: Rueckfall en'; else fail 'sprache: Rueckfall en' "$(cat "$W/args")"; fi
+if grep -q 'app_intro_en.mp4' "$W/args"; then pass 'sprache: Rueckfall en'; else fail 'sprache: Rueckfall en' "$(cat "$W/args")"; fi
 if grep -q 'caption=Ready' "$W/args"; then pass 'sprache: Text en'; else fail 'sprache: Text en' "$(cat "$W/args")"; fi
 
 case "$OUT$LEAK$fallback_out" in

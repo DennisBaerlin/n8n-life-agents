@@ -711,7 +711,9 @@ main() {
       if [ -z "$_wh" ]; then _skip "Telegram-Webhook-Check (Telegram-API nicht erreichbar)"
       elif [ -z "$_wh_url" ]; then _red "Telegram kennt keine Webhook-Adresse — der Bot empfängt nichts (Reparatur: lifeagents reconfigure → Grundsystem → Unverändert neu anwenden; noch nie mit Telegram verbunden: lifeagents household pair-owner)"
       elif [ "${_wh_pending:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - ${_wh_err_date:-0} )) -lt 900 ] 2>/dev/null; then
-        _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}"
+        _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}. Abhilfe: lifeagents telegram relink$(tg_webhook_foreign "$_wh" "$DOMAIN" && printf ' — Telegram stellt an %s zu: ein anderes System nutzt denselben Bot, relink holt ihn hierher zurück' "$(url_host "$_wh_url")")"
+      elif tg_webhook_foreign_blocking "$_wh" "$DOMAIN"; then
+        _red "Telegram stellt den Bot an $(url_host "$_wh_url") zu, nicht an ${DOMAIN} — ein anderes System nutzt denselben Bot. Abhilfe: lifeagents telegram relink (danach bekommt das andere System keine Nachrichten mehr)"
       else _pass "Telegram stellt an ${_wh_url%%/webhook/*}/… zu"; fi
       # Nur wenn Telegram an genau diese Domain zustellt, gilt ein IPv4-Fehlschlag in (5) als Hairpin (neutral).
       if tg_webhook_delivers "$_wh" "$DOMAIN"; then _tg_ok=1; fi

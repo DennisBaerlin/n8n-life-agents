@@ -71,7 +71,7 @@ Usage: lifeagents <befehl> [optionen]
   retire      Umzug auf eine neue Maschine: diese Installation stilllegen und alles für die neue in einen
               Ordner legen; --check (Trockenlauf), --status, --undo [--restore <ordner>] (zurück).
               `lifeagents retire help` für Details. Braucht root.
-  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt Sicherung, Gedächtnis und Einstellungen ein,
+  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt die Sicherung ein (mit Gesprächen, Einstellungen, Zugängen),
               check (Vergleich mit der alten Maschine), status, done (Abnahme; bis dahin keine Updates), abort (Ausweg).
               `lifeagents move help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
@@ -280,13 +280,13 @@ case "$cmd" in
     # Backup/Restore der Nutzerdaten: common.sh + backup_cli.sh + die Install-Primitive
     # (Restore-vor-Install ruft pkg_install_one --no-seed). Braucht root (pg_dump/pg_restore + core.backup_key
     # + ggf. per-Paket-Install). Derselbe Install-Code wie `lifeagents package install`.
-    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do
+    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
     [ "$(id -u)" -eq 0 ] || { printf 'lifeagents backup: braucht root (DB-Zugriff).\n' >&2; exit 1; }
     # shellcheck source=/dev/null
     . "${LIFEAGENTS_PROV}/lib/common.sh"
-    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do
+    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh; do
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
@@ -314,12 +314,12 @@ case "$cmd" in
   retire)
     # Umzug (lib/retire_cli.sh): Sicherung + Restore wie der backup-Arm, Bot ueber telegram_cli.sh, Unit-Namen aus den
     # Install-Libs der Timer und des Gateways (nur Namen, nichts wird installiert).
-    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
     # shellcheck source=/dev/null
     . "${LIFEAGENTS_PROV}/lib/common.sh"
-    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done

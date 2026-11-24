@@ -148,6 +148,10 @@ function buildResult(method, body) {
       };
     case 'sendDocument':
       return { message_id: ++messageId, from: BOT_USER, chat: { id: body && body.chat_id, type: 'private' }, date: Math.floor(Date.now() / 1000), document: { file_name: body && body.doc_name } };
+    case 'editMessageMedia':
+    case 'editMessageCaption':
+      // Bearbeiten behaelt die message_id (die Sicherungs-Kopie tauscht in derselben Nachricht).
+      return { message_id: Number(body && body.message_id), from: BOT_USER, chat: { id: body && body.chat_id, type: 'private' }, date: Math.floor(Date.now() / 1000) };
     case 'getFile':
       // Sprach-Test-Dateien (file_id mock_voice_*): file_path traegt die file_id wie bei Telegram ('voice/file_12.oga')
       // -> der Download liefert markierte Bytes, an denen der Mock-LLM die Gemini-Transkription erkennt
@@ -318,8 +322,8 @@ const server = http.createServer((req, res) => {
       ? inspectProfileUpload(ct.indexOf('multipart/form-data') !== -1 ? parseMultipart(Buffer.concat(chunks), ct) : [])
       : null;
     if (upload) body = upload;
-    // sendDocument (Sicherungs-Kopie): Textfelder + Dateiname + Groesse, nie die Bytes.
-    if (method === 'sendDocument' && ct.indexOf('multipart/form-data') !== -1) {
+    // sendDocument/editMessageMedia (Sicherungs-Kopie): Textfelder + Dateiname + Groesse, nie die Bytes.
+    if ((method === 'sendDocument' || method === 'editMessageMedia') && ct.indexOf('multipart/form-data') !== -1) {
       const parts = parseMultipart(Buffer.concat(chunks), ct);
       body = { doc_name: null, doc_size: 0 };
       for (const p of parts) {

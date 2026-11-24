@@ -28,7 +28,8 @@
 #   (7) CRON-ENABLE: jeder gegatete Cron liest sein Enable-Flag ueber
 #       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal muss im Manifest
 #       (.config.cron_enable.<key>) deklariert sein (sonst seedet der Host die Zeile nicht ->
-#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest).
+#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest). Gates = die
+#       Postgres-Knoten der Workflows und die Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Host-Schalter).
 #   (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): der manifest-`backup`-Block darf den
 #       Backup-Key und Code-Seeds nie in ein Bundle ziehen. (8a) Schema `core` nie in einem backup-Block
 #       (kein `core.<tabelle>` in full_tables/filtered_tables; kein schema_dump auf einem Paket, das Schema
@@ -678,16 +679,24 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #     wenn das Paket-Manifest den Key deklariert (.config.cron_enable.<key>). Drift in eine Richtung
 #     (Gate liest nicht-deklariertes Flag) -> stiller fail-closed; Drift andersrum (deklariertes Flag,
 #     das kein Gate liest) -> tote Config. Scannt die Postgres-Node-Queries der getrackten Workflows
-#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal).
+#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal), dazu die
+#     Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Schalter, die der Host-Teil selbst liest: Kopie der Sicherung).
 # ---------------------------------------------------------------
 $cronEnableRefs = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Gate-Queries
+$cronEnableRx = "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)"
 foreach ($w in $workflows.Values) {
     foreach ($n in $w.Json.nodes) {
         if ($n.type -notin @('n8n-nodes-base.postgres', 'n8n-nodes-base.postgresTool')) { continue }
         $q = "$($n.parameters.query)"
-        foreach ($m in [regex]::Matches($q, "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)")) {
+        foreach ($m in [regex]::Matches($q, $cronEnableRx)) {
             [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)")
         }
+    }
+}
+foreach ($sh in (Get-ChildItem (Join-Path $RepoRoot 'provisioning\lib') -Filter '*.sh' -ErrorAction SilentlyContinue)) {
+    foreach ($line in [System.IO.File]::ReadAllLines($sh.FullName, [System.Text.Encoding]::UTF8)) {
+        if ($line -match '^\s*#') { continue }
+        foreach ($m in [regex]::Matches($line, $cronEnableRx)) { [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)") }
     }
 }
 $cronEnableDeclared = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Manifesten
@@ -780,12 +789,16 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 # (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): kein Paket darf den Backup-Key oder einen
 #     Code-Seed in ein Export-Bundle ziehen. Geprueft wird der manifest-`backup`-Block (von backup_cli.sh
 #     gelesen): die gedumpten Tabellen (full_tables + filtered_tables-Keys; exclude_tables ist die
-#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core`
-#     noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
+#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core` (ausser der
+#     Positivliste $coreBackupAllowed) noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
 # ---------------------------------------------------------------
 # Code-geseedete Tabellen (managed_by<>'agent' = Repo-Code, vom Installer neu geseedet): gehoeren nie
 # in ein Bundle. core.* faengt schon (8a) ab; agent.ai_models ist der einzige Code-Seed ausserhalb core.
 $codeSeedTables = @('agent.ai_models', 'core.config')
+# Positivliste: einzelne Nutzerdaten-Tabellen im Schema core, die ein backup-Block nennen darf (Kostenverlauf und
+# "schon gezeigt"-Merker, Restore-Regeln in core.fn_backup_restore_filtered). core.backup_key, core.app_secret, core.config und
+# Schema core als Ganzes bleiben verboten.
+$coreBackupAllowed = @('core.llm_usage', 'core.notification_state')
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
     $mf  = Read-Manifest $pkg
@@ -801,7 +814,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($bk.filtered_tables) { foreach ($p in $bk.filtered_tables.PSObject.Properties) { $dumped.Add($p.Name) } }
 
     foreach ($t in $dumped) {
-        if ($t -match '^core\.') {
+        if ($t -match '^core\.' -and $coreBackupAllowed -notcontains $t) {
             $errors.Add("BACKUP-BLOCK core-SCHEMA: $pkg/manifest.json backup-Block dumpt '$t' (Schema core) -- Schema core darf NIE in einem backup-Block stehen, sonst rutscht core.backup_key (der Restore-Schluessel selbst) ins Bundle (arch-3 Obj 3).")
         }
         if ($codeSeedTables -contains $t) {

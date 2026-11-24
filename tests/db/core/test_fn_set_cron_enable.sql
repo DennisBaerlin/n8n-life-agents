@@ -14,13 +14,15 @@ INSERT INTO core.config (category, key, value, package) VALUES
   ('cron_enable', 'plan_review',   'true',  'core'),
   ('cron_enable', 'learn_context', 'true',  'core'),
   ('cron_enable', 'test_alwayson', 'true',  'finance'),
-  ('cron_enable', 'wf2_probe',     'false', 'career')
+  ('cron_enable', 'wf2_probe',     'false', 'career'),
+  ('cron_enable', 'backup_telegram_copy', 'true', 'core')
 ON CONFLICT (category, key) DO NOTHING;
 INSERT INTO core.cron_labels (cron_key, package) VALUES
   ('drift_check',   'core'),
   ('plan_review',   'core'),
   ('learn_context', 'core'),
-  ('wf2_probe',     'career')
+  ('wf2_probe',     'career'),
+  ('backup_telegram_copy', 'core')
 ON CONFLICT (cron_key) DO NOTHING;
 
 DO $$
@@ -94,6 +96,18 @@ BEGIN
   SELECT package INTO v_pkg FROM core.config WHERE category = 'cron_enable' AND key = 'wf2_probe';
   IF v_pkg IS DISTINCT FROM 'career' THEN RAISE EXCEPTION 'FAIL [9]: package der wf2_probe-Zeile = % (erwartet career, unveraendert) -- die fn hat package ueberschrieben', v_pkg; END IF;
   RAISE NOTICE 'PASS [package der Config-Zeile unveraendert (career)]';
+
+  -- TEST 10: always-on Haushalts-Erinnerung mit cron_labels-Zeile (Kopie der Sicherung im Owner-Chat, Default 'true',
+  --   Knopf cron_off:backup_telegram_copy aus provisioning/lib/backup_cli.sh) -> aus und wieder an.
+  r := core.fn_set_cron_enable(jsonb_build_object('key', 'backup_telegram_copy', 'enabled', false));
+  SELECT value INTO v_val FROM core.config WHERE category = 'cron_enable' AND key = 'backup_telegram_copy';
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR v_val IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION 'FAIL [10]: backup_telegram_copy nicht ausgeschaltet (r=%, val=%)', r, v_val; END IF;
+  r := core.fn_set_cron_enable(jsonb_build_object('key', 'backup_telegram_copy', 'enabled', true));
+  SELECT value INTO v_val FROM core.config WHERE category = 'cron_enable' AND key = 'backup_telegram_copy';
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR v_val IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'FAIL [10]: backup_telegram_copy nicht wieder eingeschaltet (r=%, val=%)', r, v_val; END IF;
+  RAISE NOTICE 'PASS [backup_telegram_copy aus und wieder an]';
 END $$;
 
 ROLLBACK;

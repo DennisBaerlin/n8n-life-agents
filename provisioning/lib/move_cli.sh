@@ -5,8 +5,8 @@
 #   apply <ordner>   Umzugs-Ordner einspielen (Ordner = Ergebnis von `retire`; Verbund: Pfad auf dem Rechner). Vorpruefungen aendern
 #                    nichts; danach in Stufen started -> restored -> finalized -> applied. Die Sicherung bringt Gespraeche,
 #                    geaenderte Einstellungen und Paket-Zugaenge selbst mit (backup_cli.sh _bkp_restore_parts).
-#   check [<ordner>] Vergleich vorher.txt (alte Maschine) gegen nachher.txt (hier, move_snapshot aus retire_cli.sh): generisch je
-#                    Tabelle Zeilenzahl und md5, kein Paket-Code im Kern.
+#   check [<ordner>] Vergleich vorher.txt (alte Maschine) gegen nachher.txt (hier, move_snapshot = backup_fingerprint): generisch je
+#                    Tabelle der Sicherung Zeilenzahl und md5, kein Paket-Code im Kern.
 #   status           Stand (Exit 0 = kein Umzug offen, 10 = mitten drin, 11 = eingespielt, wartet auf die Abnahme).
 #   done             Abnahme: hebt die Update-Sperre auf.
 #   abort            Ausweg aus einem stehengebliebenen Umzug: hebt nur die Update-Sperre auf, Daten bleiben.
@@ -192,7 +192,8 @@ _mv_tunnel() {
 }
 
 # --- Stufen --------------------------------------------------------------------------------------------------------------
-# _mv_wipe_secrets <ordner-wie-angegeben> <lokaler-ordner> — die Antwort-Datei (Schluessel) nach dem Einspielen loeschen; die verschluesselte Sicherung bleibt (Sicherheitsnetz bis `done`). Verbund: ueber den Rechner-Ordner.
+# _mv_wipe_secrets <ordner-wie-angegeben> <lokaler-ordner> — die Antwort-Datei (Schluessel) nach dem Einspielen loeschen;
+#   die verschluesselte Sicherung bleibt (Sicherheitsnetz bis `done`). Verbund: ueber den Rechner-Ordner.
 _mv_wipe_secrets() {
   local dir="$1" d="$2" f
   if rt_is_compose; then

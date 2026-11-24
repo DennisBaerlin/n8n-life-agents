@@ -1,8 +1,8 @@
 -- ============================================================
 -- core.fn_backup_restore_filtered (Restore-Helfer der zeilen-gefilterten geteilten Tabellen)
 --   Kein Backup, kein ganzer Restore: der Bulk (finance.* + advisor_plans + guide_onboarding_state)
---   laeuft via pg_restore in der CLI; diese fn macht nur die zwei zeilen-gefilterten gemischten
---   agent-Tabellen, die pg_restore nicht zeilengenau behandeln kann (Code+Nutzerdaten in einer Tabelle):
+--   laeuft via pg_restore in der CLI; diese fn macht nur die vier zeilen-gefilterten Tabellen,
+--   die pg_restore nicht zeilengenau behandeln kann (Code+Nutzerdaten bzw. Ziel-eigene Zeilen in einer Tabelle):
 --     * agent.core_contexts (managed_by='agent' = PII: family + Paket-Fakten-/Plan-Kontexte):
 --       UPDATE-statt-DELETE (trg_core_contexts_protect blockt DELETE protected Zeilen), family vor den
 --       Kontexten, die family-Personen referenzieren (bidirektionaler trg_validate_household_facts), Phase 0
@@ -34,8 +34,8 @@
 --   rollt alles (inkl. pg_restore-Bulk + TRUNCATE) zurueck. Laeuft als postgres-Superuser (CLI).
 --   search_path=pg_catalog gepinnt (alle Objekte schema-qualifiziert, CVE-2018-1058).
 -- ============================================================
--- core.fn_notify_installation_source(source, key) -> boolean: ein Merker in core.notification_state, der zu dieser Installation
---   gehoert und darum nie mit Sicherung oder Umzug reist: app_button/* (Menue-Knopf dieses Bots belegt), app_intro/legacy_checked
+-- core.fn_notify_installation_source(source, key) -> boolean: true = ein Merker in core.notification_state, der zu dieser
+--   Installation gehoert und darum nie mit Sicherung oder Umzug reist: app_button/* (Menue-Knopf dieses Bots belegt), app_intro/legacy_checked
 --   (einmalige Pruefung des Installers), heartbeat/* (Waechter des Hintergrund-Teils), release_update/* (Update-Karten dieser
 --   Installation). Die eine Adresse fuer den Filter im core-Manifest (backup.filtered_tables) und fuer den Restore unten.
 --   Setzer: provisioning/lib/deploy_workflows.sh (app_button, app_intro), core.fn_heartbeat_claim, core.fn_release_card_sent.

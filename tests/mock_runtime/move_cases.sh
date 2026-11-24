@@ -204,7 +204,7 @@ _mv_run() { _mv_reset; _mv_folder; rm -f "$W/mv.reach"; "$@"; }
 
 # Vorpruefungen rot -> nichts geaendert (kein Marker, kein restore, nichts geloescht).
 _mv_nothing() {  # <name> <grund-im-satz>
-  if _mv_log | grep -qE '^(restore|memory_import|config_import|finalize|menu)'; then fail "MV.$1-nichts" "$(_mv_log | tr '\n' ' ')"; else pass "MV.$1-nichts"; fi
+  if _mv_log | grep -qE '^(restore|rows|finalize|menu)'; then fail "MV.$1-nichts" "$(_mv_log | tr '\n' ' ')"; else pass "MV.$1-nichts"; fi
   [ ! -e "$MV/move-open" ] && pass "MV.$1-kein-merker" || fail "MV.$1-kein-merker" "Merker liegt"
   [ -e "$MI/move.env" ] && pass "MV.$1-dateien-bleiben" || fail "MV.$1-dateien-bleiben" "move.env geloescht"
   [ -z "${2:-}" ] || { grep -qi -- "$2" "$W/mv.err" && pass "MV.$1-satz" || fail "MV.$1-satz" "$(tail -n3 "$W/mv.err")"; }
@@ -306,7 +306,7 @@ eq MV.loeschen-scheitert-stufe finalized "$(_mv_state STAGE)"
 grep -q 'move.env' "$W/mv.err" && pass MV.loeschen-scheitert-satz || fail MV.loeschen-scheitert-satz "$(tail -n2 "$W/mv.err")"
 : > "$STUB_LOG"; ( RT=compose _ua apply "$MI" ) >/dev/null 2>&1; eq MV.loeschen-nochmal-rc 0 "$?"
 eq MV.loeschen-nochmal-stufe applied "$(_mv_state STAGE)"
-eq MV.loeschen-nochmal-kein-restore 0 "$(_mv_log | grep -cE '^(restore|memory_import|finalize)')"
+eq MV.loeschen-nochmal-kein-restore 0 "$(_mv_log | grep -cE '^(restore|finalize)')"
 # abort: der Ausweg aus einem stehengebliebenen Umzug (hebt nur die Update-Sperre auf, ruehrt keine Daten an).
 _mv_run true; _ua abort >/dev/null 2>&1; eq MV.abort-ohne-move 0 "$?"
 printf 'STAGE=restored\nMOVE=m\nAT=x\nDIR=%s\n' "$MI" > "$MV/move-open"
@@ -314,7 +314,7 @@ _ua abort >/dev/null 2>"$W/mv.err"; eq MV.abort-ohne-terminal-rc 1 "$?"
 [ -e "$MV/move-open" ] && pass MV.abort-ohne-terminal-merker-bleibt || fail MV.abort-ohne-terminal-merker-bleibt "weg"
 : > "$STUB_LOG"; _ua abort --yes >"$W/mv.out" 2>"$W/mv.err"; eq MV.abort-yes-rc 0 "$?"
 [ ! -e "$MV/move-open" ] && pass MV.abort-merker-weg || fail MV.abort-merker-weg "liegt noch"
-if _mv_log | grep -qE '^(restore|memory_import|config_import|finalize|host_rm)'; then fail MV.abort-ruehrt-nichts-an "$(_mv_log | tr '\n' ' ')"; else pass MV.abort-ruehrt-nichts-an; fi
+if _mv_log | grep -qE '^(restore|rows|finalize|host_rm)'; then fail MV.abort-ruehrt-nichts-an "$(_mv_log | tr '\n' ' ')"; else pass MV.abort-ruehrt-nichts-an; fi
 [ -e "$MI/move.env" ] && pass MV.abort-dateien-bleiben || fail MV.abort-dateien-bleiben "geloescht"
 case "$(cat "$W/mv.out" "$W/mv.err")" in *Daten*) pass MV.abort-sagt-daten-bleiben ;; *) fail MV.abort-sagt-daten-bleiben "$(tail -n3 "$W/mv.err")" ;; esac
 # Ein anderer Umzug bei offenem Merker nennt den Ausweg.

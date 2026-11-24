@@ -15,7 +15,8 @@
 # z. B. Zeitplan oder ganze Zahl, trg_config_check_value_type) und meldet bei Ablehnung, was erwartet wird.
 #
 # Jede Zeile, die `list` zeigt, wirkt: Systemwerte (managed_by='system', z. B. api.core_version) sind ausgeblendet
-# und nicht aenderbar; ein Zeitplan (category='schedule') steckt im Workflow (n8n liest ihn nur beim Aktivieren)
+# und nicht aenderbar, Installationswerte (managed_by='instance', z. B. telegram.bot_username) sichtbar, aber nicht
+# aenderbar und reisen nie mit einer Sicherung; ein Zeitplan (category='schedule') steckt im Workflow (n8n liest ihn nur beim Aktivieren)
 # -> nach `set`/`reset` spielt die CLI die Workflows des besitzenden Pakets neu ein (_cfg_apply_schedule).
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
@@ -275,7 +276,7 @@ config_import_report() {
 config_cmd_import() {
   local file="${1:-}" res
   [ -n "$file" ] && [ -r "$file" ] || die "Usage: lifeagents config import <config.json>"
-  jq -e 'type == "array"' "$file" >/dev/null 2>&1 || die "${file} ist keine Liste von Einstellungen (config.json aus lifeagents retire)."
+  jq -e 'type == "array"' "$file" >/dev/null 2>&1 || die "${file} ist keine Liste von Einstellungen (config.json aus einer Sicherung)."
   res="$(config_import_rows "$file")" && [ -n "$res" ] || die "Einstellungen ließen sich nicht einspielen (Grund oben)."
   config_import_report "$res"
 }
@@ -315,8 +316,9 @@ lifeagents config <verb> — zentralen Config-Store (core.config) ansehen/änder
                                 Zeitplan ändern z. B.: lifeagents config set schedule score_jobs '0 7 * * 1-5'
                                 (gilt sofort — die Workflows des Pakets werden neu eingespielt).
   reset <category> <key>        Einen angepassten Wert auf den ausgelieferten Standard zurücksetzen.
-  import <datei.json>           Einstellungen einer Liste einspielen (config.json aus lifeagents retire, Umzug). Je Zeile wie
-                                set; abgelehnte Zeilen werden mit Namen gemeldet, die übrigen laufen weiter.
+  import <datei.json>           Geänderte Einstellungen einer Liste einspielen (config.json aus einer Sicherung; ein
+                                Restore macht das selbst). Abgelehnte Zeilen werden mit Namen gemeldet, die übrigen
+                                laufen weiter.
 
 Hinweis: neue Keys legt die CLI NICHT an — sie kommen aus den Paket-Manifesten (.config-Block) über
 den Installer-Seeder. Die Datenbank prüft jeden Wert (Modell bekannt, Zeitplan/Zahl/true-false gültig)

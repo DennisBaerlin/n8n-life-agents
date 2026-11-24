@@ -13,13 +13,16 @@
 #   * schema_dump-Pakete (finance): das ganze Schema via pg_dump -a --disable-triggers -Fc (materialisierte
 #     Tabellen 1:1, kein Recompute), exclude_tables raus.
 #   * full_tables (agent.advisor_plans/guide_onboarding_state): ganz, via pg_dump -t.
-#   * filtered_tables (agent.core_contexts managed_by='agent', monitor_triggers origin='user'): pg_dump kann
-#     nicht zeilen-filtern -> Export als jsonb (SELECT ... WHERE), Restore regel-bewusst via
-#     core.fn_backup_restore_filtered (protected Contexts nur UPDATE, family vor finance_profile, monitor entdoppelt).
+#   * filtered_tables (agent.core_contexts managed_by='agent', monitor_triggers origin='user', core.llm_usage,
+#     core.notification_state ohne Installations-Merker): pg_dump kann nicht zeilen-filtern -> Export als jsonb
+#     (SELECT ... WHERE), Restore regel-bewusst via core.fn_backup_restore_filtered (protected Contexts nur UPDATE,
+#     family vor finance_profile, monitor entdoppelt, Kostenverlauf zusammengefuehrt).
 # pg_dump ignoriert -n (Schema), sobald -t gesetzt ist -> alle bulk-Tabellen werden explizit per -t enumeriert.
 #
-# Bundle = verschluesseltes Tarball {manifest.json (Header: bundle_format/release/packages/versions/migrations/verify_counts),
-#   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen)}, gpg --symmetric AES256, Passphrase = aktiver Schluessel
+# Bundle = verschluesseltes Tarball {manifest.json (Header: bundle_format/release/packages/versions/migrations/verify_counts/parts),
+#   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen), memory.dump + memory.counts (agent.*_chat_memory), config.json (geaenderte
+#   Einstellungen, core.fn_config_export), access.json (Paket-Zugaenge, nie Instanz-Geheimnisse, Bot-Token oder
+#   Anthropic-Schluessel)}; parts[] nennt die Teile, ein unbekannter Teil bricht vor jeder Aenderung ab. gpg --symmetric AES256, Passphrase = aktiver Schluessel
 #   aus core.backup_key (Lebenszyklus: common.sh *Sicherungs-Verschluesselung*). Klartext nur transient in /dev/shm.
 #   Dateiname lifeagents-backup-<ts>-k<schluessel-id>-v<release>.nla.enc: die ID trennt "falscher Schluessel" von
 #   "beschaedigt" und begrenzt das Aufraeumen auf eigene Sicherungen; die Release waehlt nur den Hinweis-Satz bei einem Aufbau-Unterschied.
@@ -409,8 +412,8 @@ _bkp_access_covers() {
       | .value.env | keys[]] | all(. as $k | (($a[0][$p] // {})[$k] // "") != "")' "$mf" >/dev/null 2>&1
 }
 
-# _bkp_access_write_env <arbeitsordner> [<pakete>] — (mit <pakete> nur deren Schluessel) vor der Paket-Einrichtung bzw. nach der Daten-TX die Werte aus access.json in die env-Dateien dieses Systems
-#   schreiben, nur wo der Schluessel fehlt oder leer ist (die Installation liest sie dann wie eingegebene Werte). Ein vorhandener,
+# _bkp_access_write_env <arbeitsordner> [<pakete>] — die Werte aus access.json in die env-Dateien dieses Systems schreiben
+#   (mit <pakete> nur deren Schluessel: vor der Paket-Einrichtung; ohne: nach der Daten-TX), nur wo der Schluessel fehlt oder leer ist (die Installation liest sie dann wie eingegebene Werte). Ein vorhandener,
 #   anderer Wert bleibt (eben bei der Installation eingegeben) und wird gemeldet. Nur bekannte Schluessel: Manifest-`credentials`
 #   des Pakets bzw. BACKUP_HOST_ACCESS_KEYS; alles andere im Bundle wird ignoriert. Setzt _BKP_ACCESS_WRITTEN (Anzahl).
 _bkp_access_write_env() {
@@ -1492,7 +1495,8 @@ backup_cmd_restore_status() {
 # ============================================================
 # restore
 # ============================================================
-# backup_cmd_restore [<datei>|<name>] [--from-host] [--key-stdin] [--in-stdin] [--yes] [--plan] [--detach] [--json]
+# backup_cmd_restore [<datei>|<name>] [--from-host] [--key-stdin] [--in-stdin] [--yes] [--plan] [--detach] [--json] [--parts]
+#   --parts        nur Gespraeche, Einstellungen und Zugaenge nachholen (_bkp_restore_parts), ohne Daten zu ersetzen.
 #   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann eine TX und der Abgleich mit dieser Version. Start-App:
 #   --plan --json  Probelauf: oeffnen, pruefen, nichts schreiben (auch kein Paket, kein backup.state) -> ein JSON-Objekt.
 #   --detach --json  (mit --yes) pruefen wie der Probelauf, dann im Hintergrund: Pakete einrichten, Vorab-Sicherung, TX, Abgleich;
@@ -1878,8 +1882,9 @@ _bkp_rs_apply() {
 # _bkp_restore_parts <arbeitsordner> — nach den Daten: Gespraeche (eigene TX), Abgleich mit dieser Version (_bkp_converge),
 #   geaenderte Einstellungen (nach dem Abgleich: erst dann gibt es die Zeilen eben eingerichteter Pakete), Zugaenge. Jeder Teil
 #   fuer sich: die Daten sind schon eingespielt, ein gescheiterter Teil wird gemeldet (backup.state LAST_RESTORE_PARTS,
-#   restore-status parts_failed; converged bleibt dem Abgleich vorbehalten) und laesst sich mit `backup restore <datei> --parts` nachholen. Ein Teil, den die Sicherung nicht traegt
-#   (aeltere Sicherung), bleibt auf dem Ziel unberuehrt.
+#   restore-status parts_failed; converged bleibt dem Abgleich vorbehalten) und laesst sich mit
+#   `backup restore <datei> --parts` nachholen. Ein Teil, den die Sicherung nicht traegt (aeltere Sicherung), bleibt auf dem
+#   Ziel unberuehrt.
 _bkp_restore_parts() {
   local tmp="$1" bad='' rc res pk
   _bkp_state_set LAST_RESTORE_PARTS ''

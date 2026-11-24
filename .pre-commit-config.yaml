@@ -592,6 +592,14 @@ repos:
         pass_filenames: false
         files: ^(scripts/(lib/release_tag|release_meta|sign_release|build_master_image|dev/release_tag_test)\.ps1|\.github/workflows/release\.yml)$
 
+      - id: apt-repo-test
+        name: apt_repo_test (fresh debian:12 container, real apt + pkgs.tailscale.com - without gpg, key/source registration never leaves an unsigned source; the documented first step works without curl; needs Docker + network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/apt_repo_test.ps1
+        pass_filenames: false
+        files: ^(provisioning/(setup\.sh|install\.sh|lib/common\.sh|lib/reach_cli\.sh)|tests/util/apt_repo/.*|scripts/dev/apt_repo_test\.ps1)$
+        stages: [pre-push]
+
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)
         language: system

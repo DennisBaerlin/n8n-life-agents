@@ -1,5 +1,5 @@
 // fake_n8n_api.js — Attrappe der n8n-Public-API fuer relink_cases.sh (nur die drei Aufrufe, die `lifeagents telegram relink` braucht).
-// real-path-test: none (der echte Weg braucht den Test-Bot, der gerade dem Probe-Rechner gehoert; echter Lauf nur nach Absprache mit der Leitung)
+// real-path-test: none (der echte Weg braucht den echten Test-Bot, den eine andere Installation belegt haben kann; echter Lauf nur mit N8NTEST_REAL_TELEGRAM=1)
 //
 // GET  /api/v1/workflows            -> ein Orchestrator-Workflow (id wf-orch)
 // POST /api/v1/workflows/<id>/unpublish -> 200; wie n8n: Webhook beim Telegram-Mock loesen (deleteWebhook-Wirkung)

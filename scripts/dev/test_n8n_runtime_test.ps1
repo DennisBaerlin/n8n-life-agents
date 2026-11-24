@@ -116,7 +116,40 @@ Assert-That ((Resolve-TestHitlBotToken -Target $tp -ScriptToken 'aus-env') -eq $
 Assert-That ((Resolve-TestHitlBotToken -Target $tp -BotToken $installed) -eq $installed) 'HITL compose: gleiches -BotToken ist ok'
 Assert-Throws { Resolve-TestHitlBotToken -Target $tp -BotToken 'anderes-token' } 'HITL compose: abweichendes -BotToken = Abbruch'
 Assert-That ((Resolve-TestHitlBotToken -Target $tc -BotToken 'param' -ScriptToken 'script') -eq 'param') 'HITL classic: -BotToken vor der Skript-Variable'
-Assert-That ((Resolve-TestHitlBotToken -Target $tc -ScriptToken 'script') -eq 'script') 'HITL classic: Skript-Variable vor .env'
+
+
+Write-Host 'Test-Bot-Schutz (ein Substrat bekommt den echten Token nie ohne ausdruecklichen Schalter)'
+$prevReal = $env:N8NTEST_REAL_TELEGRAM
+try {
+    $env:N8NTEST_REAL_TELEGRAM = $null
+    $invented = $script:TestInventedBotToken
+    Assert-That ([bool]$invented -and $invented -eq $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN) 'ein erfundenes Token, dasselbe fuer beide Unterbauten (eine Adresse)'
+    Assert-That ((Resolve-TestTelegramToken '1234:echter-test-bot') -eq $invented) 'ohne Schalter: erfundenes Token, auch wenn .env ein echtes hat'
+    Assert-That ((Resolve-TestTelegramToken '') -eq $invented) 'ohne Schalter und ohne .env-Wert: erfundenes Token'
+    Assert-That ((Get-TestBotToken -Target $tc) -eq $invented) 'classic: Get-TestBotToken liefert ohne Schalter das erfundene Token'
+    Assert-That ((Resolve-TestHitlBotToken -Target $tc -ScriptToken '1234:echter-test-bot') -eq $invented) 'classic: HITL-Signatur nimmt nie den echten Token aus .env'
+    $env:N8NTEST_REAL_TELEGRAM = '1'
+    Assert-That ((Resolve-TestTelegramToken '1234:echter-test-bot') -eq '1234:echter-test-bot') 'mit N8NTEST_REAL_TELEGRAM=1: der echte Token aus .env'
+    Assert-That ((Resolve-TestTelegramToken '') -eq $invented) 'Schalter ohne Token in .env: erfundenes Token'
+} finally { $env:N8NTEST_REAL_TELEGRAM = $prevReal }
+# Jede Stelle, die den .env-Token liest, geht durch Resolve-TestTelegramToken (sonst biegt ein Substrat den Test-Bot um:
+# n8n ruft beim Aktivieren des Orchestrators setWebhook am echten Telegram auf).
+$readers = New-Object System.Collections.Generic.List[string]
+foreach ($f in (Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1 | Where-Object { $_.Name -notin @('test_n8n_runtime_test.ps1', 'test_stack_test.ps1') })) {
+    $ln = 0
+    foreach ($line in [System.IO.File]::ReadAllLines($f.FullName, $utf8)) {
+        $ln++
+        if ($line.TrimStart().StartsWith('#')) { continue }
+        # Leser: Get-(Test)EnvValue 'TEST_...' (auch in Klammern/Anfuehrungszeichen), $TEST_... bzw. $x.TEST_..., Index ['TEST_...']
+        if ($line -match 'Get-(Test)?EnvValue\s*\(?\s*[''"]TEST_TELEGRAM_BOT_TOKEN[''"]|\$[\w:]*\.?TEST_TELEGRAM_BOT_TOKEN|\[[''"]TEST_TELEGRAM_BOT_TOKEN[''"]\]' -and $line -notmatch 'Resolve-TestTelegramToken|TestInventedBotToken|# real-token:') {
+            $readers.Add("$($f.Name):$ln")
+        }
+    }
+}
+Assert-That ($readers.Count -eq 0) ("kein Leser des .env-Tokens ohne Resolve-TestTelegramToken" + $(if ($readers.Count) { ': ' + ($readers -join ', ') } else { '' }))
+$bootstrap = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_n8n.ps1'), $utf8)
+Assert-That ($bootstrap -match "envValues\['TEST_TELEGRAM_BOT_TOKEN'\]\s*=\s*Resolve-TestTelegramToken") 'klassischer Bootstrap setzt den Installations-Token ueber Resolve-TestTelegramToken'
+Assert-That (([regex]::Matches($bootstrap, '\.n8ntest_real_telegram')).Count -eq 2 -and $bootstrap -notmatch "grep[^`n]*core\.env[^`n]*TestInventedBotToken") 'Bootstrap: Echt-Bot-Marker im Container setzt und prueft den Abbau (nicht core.env, der Dev-Install behaelt das Token dort nicht)'
 
 Write-Host "test_n8n_runtime_test: $failed Fehler."
 exit $failed

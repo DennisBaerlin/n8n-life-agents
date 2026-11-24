@@ -418,8 +418,17 @@ ok_if S.vorbereitet '[ "${S_RO%%:*}" -gt 0 ] && [ "$(pg_su_psql -X -tA -d "$N8N_
 q "UPDATE career.onboarding_state SET for_roles = NULL; UPDATE career.onboarding_state SET status = 'skipped' WHERE section_key = 'profile_basics'; UPDATE estate.directive_types SET label = 'bk alt' WHERE doc_type = 'testament'"
 S1="$(vexp abgleich)"
 q "UPDATE career.onboarding_state SET status = 'unknown' WHERE section_key = 'profile_basics'"
+# hand-injected: Registry-Altreste, wie sie ein frueherer Stand hinterlaesst (Eintrag aus dem Manifest entfernt, Zeile aus der Zeit
+# vor der package-Spalte). Der Abgleich nach dem Einspielen (seed_data) muss sie entfernen; Manifest-Zeilen bleiben.
+q "INSERT INTO core.context_validators (context_name, validate_fn, package) VALUES ('career_planning', 'career.fn_validate_career_planning', 'career'), ('bk_ohne_paket', 'core.fn_bk_alt', '') ON CONFLICT DO NOTHING;
+   INSERT INTO core.context_scopes (context_name, scope, write_permission, package) VALUES ('bk_alt_scope', 'household', 'owner_only', 'core') ON CONFLICT DO NOTHING;
+   INSERT INTO core.context_renderers (context_name, render_fn, package) VALUES ('bk_alt_render', 'core.fn_bk_alt', 'core') ON CONFLICT DO NOTHING"
+regn() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT (SELECT count(*) FROM core.context_validators WHERE context_name IN ('career_planning','bk_ohne_paket')) + (SELECT count(*) FROM core.context_scopes WHERE context_name = 'bk_alt_scope') + (SELECT count(*) FROM core.context_renderers WHERE context_name = 'bk_alt_render')"; }
+regk() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM core.context_validators WHERE context_name = 'career_profile'"; }
+S_REG="$(regn)"
 vyes "$S1"; rc=$?
 ok_if S.rollen '[ "$rc" -eq 0 ] && [ "$(cro)" = "$S_RO" ]' "rc=$rc $(js .code) / Abschnitte $(cro) statt $S_RO / $(tail -n2 "$W/err.$n")"
+ok_if S.registry-altreste '[ "$S_REG" = 4 ] && [ "$(regn)" = 0 ] && [ "$(regk)" = 1 ]' "vorher $S_REG Altreste, nachher $(regn); career_profile $(regk)"
 ok_if S.katalog '[ "$(dlab)" = "$S_LAB" ]' "Bezeichnung '$(dlab)'"
 ok_if S.nutzerwert '[ "$(cst)" = skipped ]' "Status '$(cst)' statt skipped aus der Sicherung"
 # Bricht der Abgleich ab, sind die Daten trotzdem eingespielt: der Hintergrund-Lauf endet ok, restore-status meldet

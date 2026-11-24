@@ -345,6 +345,246 @@ _bkp_notify_reconcile() {
   return 0
 }
 
+# --- Bundle-Teile ------------------------------------------------------------------------------------------------------
+# Kopf-Feld parts[] nennt, was das Bundle traegt: data (data.dump), shared (shared.json), memory (memory.*), config (config.json),
+# access (access.json). Kennt dieser Stand einen Teil nicht, bricht der Restore vor jeder Aenderung mit version_newer ab: die
+# Tabellen-Sperre (_bkp_schema_check) faengt nur neue Tabellen, ein neuer Teil ohne Tabelle verschwaende sonst still.
+# Fehlt parts[] (aeltere Sicherung), gelten data und shared.
+BACKUP_KNOWN_PARTS="data shared memory config access"
+# _bkp_parts_json <arbeitsordner> -> JSON-Liste der Teile, die dort liegen.
+_bkp_parts_json() {
+  local out
+  out='"data","shared"'
+  [ ! -f "$1/memory.counts" ] || out="$out,\"memory\""
+  [ ! -f "$1/config.json" ]   || out="$out,\"config\""
+  [ ! -f "$1/access.json" ]   || out="$out,\"access\""
+  printf '[%s]' "$out"
+}
+# _bkp_has_part <arbeitsordner> <teil> -> rc 0, wenn der Kopf (manifest.json) den Teil nennt.
+_bkp_has_part() { jq -e --arg p "$2" '(.parts // ["data","shared"]) | index($p) != null' "$1/manifest.json" >/dev/null 2>&1; }
+
+# --- Zugaenge (access.json) ---------------------------------------------------------------------------------------------
+# Vom Nutzer eingegebene Dienst-Zugaenge reisen mit (Owner-Entscheid): die env-Schluessel der Manifest-`credentials` jedes aktiven
+# Pakets (/etc/lifeagents/<pkg>.env) und die optionalen Host-Zugaenge BACKUP_HOST_ACCESS_KEYS (core.env). Nie: Instanz-Geheimnisse
+# (N8N_ENCRYPTION_KEY, DB-Passwoerter, N8N_API_KEY, INGRESS_ID_KEY, app_secret, backup_key) und die Pflicht-Schluessel jeder
+# Neuinstallation (TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY): die fragt die Installation vor jedem Restore ohnehin ab, im Archiv
+# vergroesserten sie nur den Schaden bei einem Leck. Form {"<pkg>": {"<ENV>": "<wert>"}, "host": {...}}; Klartext nur im
+# gpg-Chiffrat und im 0700-tmpfs, nie im argv oder Log. Ein leerer Wert reist nicht.
+# Tests: tests/backup/cases.sh (Z.*)
+BACKUP_HOST_ACCESS_KEYS="GOOGLE_API_KEY"
+
+# _bkp_pkg_access_keys <pkg> -> die env-Schluessel der Manifest-`credentials` des Pakets, einer je Zeile.
+_bkp_pkg_access_keys() {
+  local mf; mf="$(_pkg_dir)/$1/manifest.json"
+  [ -r "$mf" ] || return 0
+  jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf" 2>/dev/null || true
+}
+
+# _bkp_access_write_bundle <arbeitsordner> -> access.json aus den env-Dateien dieser Installation.
+_bkp_access_write_bundle() {
+  local d="$1" pkg k v
+  : > "$d/access.tsv"
+  for k in $BACKUP_HOST_ACCESS_KEYS; do
+    v="$(read_env_value "$(lifeagents_env_file core)" "$k" 2>/dev/null || true)"
+    [ -z "$v" ] || printf 'host\t%s\t%s\n' "$k" "$v" >> "$d/access.tsv"
+  done
+  for pkg in $(_bkp_active_names); do
+    while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      v="$(read_env_value "$(lifeagents_env_file "$pkg")" "$k" 2>/dev/null || true)"
+      [ -z "$v" ] || printf '%s\t%s\t%s\n' "$pkg" "$k" "$v" >> "$d/access.tsv"
+    done < <(_bkp_pkg_access_keys "$pkg")
+  done
+  jq -Rn 'reduce (inputs | split("\t")) as [$s, $k, $v] ({}; .[$s][$k] = $v)' < "$d/access.tsv" > "$d/access.json" || return 1
+  rm -f "$d/access.tsv"
+}
+
+# _bkp_access_covers <arbeitsordner> <pkg> [required] -> rc 0, wenn access.json alle env-Schluessel der (Pflicht-)Zugaenge des
+#   Pakets traegt. Ohne Teil access (aeltere Sicherung) nie.
+_bkp_access_covers() {
+  local mf; mf="$(_pkg_dir)/$2/manifest.json"
+  [ -r "$mf" ] && [ -r "$1/access.json" ] && _bkp_has_part "$1" access || return 1
+  jq -e --arg p "$2" --arg req "${3:-}" --slurpfile a "$1/access.json" \
+    '[(.credentials // {}) | to_entries[] | select(.key != "_comment") | select($req == "" or .value.required == true)
+      | .value.env | keys[]] | all(. as $k | (($a[0][$p] // {})[$k] // "") != "")' "$mf" >/dev/null 2>&1
+}
+
+# _bkp_access_write_env <arbeitsordner> — vor der Paket-Einrichtung die Werte aus access.json in die env-Dateien dieses Systems
+#   schreiben, nur wo der Schluessel fehlt oder leer ist (die Installation liest sie dann wie eingegebene Werte). Ein vorhandener,
+#   anderer Wert bleibt (eben bei der Installation eingegeben) und wird gemeldet. Nur bekannte Schluessel: Manifest-`credentials`
+#   des Pakets bzw. BACKUP_HOST_ACCESS_KEYS; alles andere im Bundle wird ignoriert. Setzt _BKP_ACCESS_WRITTEN (Anzahl).
+_bkp_access_write_env() {
+  local d="$1" s k v f cur
+  _BKP_ACCESS_WRITTEN=0
+  _bkp_has_part "$d" access && [ -r "$d/access.json" ] || return 0
+  while IFS=$'\t' read -r s k v; do
+    [ -n "$k" ] && [ -n "$v" ] || continue
+    if [ "$s" = host ]; then
+      case " $BACKUP_HOST_ACCESS_KEYS " in *" $k "*) ;; *) continue ;; esac
+      f="$(lifeagents_env_file core)"
+    else
+      # Prozess-Ersetzung statt Pipe: grep -q beendet frueh, unter pipefail zaehlte das als "nicht gefunden".
+      if ! [[ $s =~ ^[a-z][a-z0-9_]*$ ]] || ! grep -qxF -- "$k" < <(_bkp_pkg_access_keys "$s"); then continue; fi
+      f="$(lifeagents_env_file "$s")"
+    fi
+    cur="$(read_env_value "$f" "$k" 2>/dev/null || true)"
+    if [ -z "$cur" ]; then
+      ( umask 077; env_upsert "$f" "$k" "$v" ) || { warn "Zugang ${k} ließ sich nicht schreiben."; continue; }
+      _BKP_ACCESS_WRITTEN=$((_BKP_ACCESS_WRITTEN + 1))
+    elif [ "$cur" != "$v" ]; then
+      warn "${s}: Zugang ${k} auf diesem System behalten (weicht von der Sicherung ab)."
+    fi
+  done < <(jq -r 'to_entries[] | .key as $s | .value | to_entries[] | [$s, .key, .value] | @tsv' "$d/access.json" 2>/dev/null)
+  [ "$_BKP_ACCESS_WRITTEN" = 0 ] || ok "Zugänge aus der Sicherung übernommen: ${_BKP_ACCESS_WRITTEN}."
+}
+
+# _bkp_access_inject <arbeitsordner> — nach dem Einspielen die n8n-Credentials der Zugaenge setzen (id-stabiler Upsert mit
+#   /credentials/{id}/test je Zugang, inject_access_credentials) fuer die aktiven Pakete, die access.json nennt, und Google.
+#   Ein roter Test ist ein Hinweis im Protokoll, kein Abbruch. rc 1 nur, wenn der Upsert selbst scheitert.
+_bkp_access_inject() {
+  local d="$1" pkgs='' p act
+  _bkp_has_part "$d" access && [ -r "$d/access.json" ] || return 0
+  act="$(_bkp_active_names)"
+  for p in $(jq -r 'keys[] | select(. != "host")' "$d/access.json" 2>/dev/null); do
+    [[ $p =~ ^[a-z][a-z0-9_]*$ ]] && _bkp_is_active "$p" "$act" && pkgs="$pkgs $p"
+  done
+  # shellcheck disable=SC2086  # $pkgs ist eine Liste geprüfter Paketnamen (je ein Wort)
+  ( _pkg_resolve_env; inject_access_credentials $pkgs )
+}
+
+# --- Fingerabdruck (backup fingerprint) ---------------------------------------------------------------------------------
+# backup_fingerprint -> Vergleichswerte des ganzen Sicherungs-Umfangs (sortiert, eine Zeile je Wert "<art> <name> <wert>"):
+#   bulk-Tabelle: Zeilen + md5 (System-Tabellen nur Zeilen: der Abgleich setzt sie auf den Stand dieser Version); gefilterte
+#   Tabelle: Zeilen + md5 der gefilterten Zeilen, ausser agent.core_contexts und agent.monitor_triggers (nur Zeilen: der Restore
+#   setzt dort Zeitstempel bzw. ids neu) und core.llm_usage (zusammengefuehrt, das Ziel hat eigene Zeilen); Einstellungen
+#   (core.fn_config_export) je md5 des Werts; Gespraeche je Tabelle Zeilen + md5 mit id (der Restore uebernimmt ids und
+#   Folge-Nummern); Zugaenge (access.json-Umfang) nur md5 des Werts, nie der Wert.
+#   Gleich auf beiden Seiten = alles wie vorher. Nutzer: move (vorher.txt/nachher.txt) und tests/backup/roundtrip_cases.sh.
+#   Der md5 haengt nicht an der Maschine: Text der Zeilen mit festen Sitzungs-Einstellungen (Zeitzone/Datumsform setzt ein LXC aus
+#   der System-Locale, das Docker-Abbild auf UTC), sortiert und verbunden werden je Zeile md5-Werte (hex: Sortierung ohne Collation,
+#   feste Laenge statt einer Tabelle als ein Text bis zur 1-GB-Grenze).
+BACKUP_MD5_SET="SET TimeZone = 'UTC'; SET DateStyle = 'ISO, YMD'; SET IntervalStyle = 'postgres'; SET extra_float_digits = 1;"
+_bkp_md5_rows() {   # _bkp_md5_rows <tabelle> [<bedingung>] -> md5 ueber alle Zeilen
+  local v
+  v="$(_bkp_psql_scalar "${BACKUP_MD5_SET} SELECT md5(COALESCE(string_agg(md5(x::text), '' ORDER BY md5(x::text) COLLATE \"C\"), '')) FROM ${1} x WHERE ${2:-true}")" || return 1
+  v="${v##*$'\n'}"   # psql gibt je SET eine Zeile „SET“ aus, das Ergebnis steht zuletzt
+  [[ $v =~ ^[0-9a-f]{32}$ ]] || return 1
+  printf '%s' "$v"
+}
+backup_fingerprint() {
+  local t qual cond v sys out='' d
+  sys=$'\n'"$(_bkp_system_tables)"$'\n'
+  while IFS= read -r t; do
+    if [ -z "$t" ] || ! _bkp_qual_ok "$t"; then continue; fi
+    v="$(_bkp_psql_scalar "SELECT count(*) FROM ${t}")" || return 1; [ -n "$v" ] || return 1
+    out+="rows ${t} ${v}"$'\n'
+    [[ "$sys" == *$'\n'"$t"$'\n'* ]] && continue
+    v="$(_bkp_md5_rows "$t")" || return 1
+    out+="md5 ${t} ${v}"$'\n'
+  done < <(_bkp_bulk_tables)
+  while IFS=$'\t' read -r qual cond; do
+    if [ -z "$qual" ] || ! _bkp_qual_ok "$qual"; then continue; fi
+    # core.llm_usage fuehrt der Restore zusammen: das Ziel darf eigene Zeilen haben (roundtrip_cases.sh prueft die Teilmenge).
+    [ "$qual" != core.llm_usage ] || continue
+    v="$(_bkp_psql_scalar "SELECT count(*) FROM ${qual} WHERE ${cond}")" || return 1; [ -n "$v" ] || return 1
+    out+="rows ${qual}[filtered] ${v}"$'\n'
+    case "$qual" in agent.core_contexts|agent.monitor_triggers) continue ;; esac
+    v="$(_bkp_md5_rows "$qual" "$cond")" || return 1
+    out+="md5 ${qual}[filtered] ${v}"$'\n'
+  done < <(_bkp_filtered)
+  v="$(_bkp_psql_scalar "SELECT 'config ' || (e->>'package') || '.' || (e->>'category') || '.' || (e->>'key') || ' ' || md5(COALESCE(e->>'value', ''))
+                         FROM jsonb_array_elements(core.fn_config_export()) e")" || return 1
+  out+="${v}"$'\n'
+  while IFS= read -r t; do
+    if [ -z "$t" ] || ! _bkp_qual_ok "$t"; then continue; fi
+    v="$(_bkp_psql_scalar "SELECT count(*) FROM ${t}")" || return 1; [ -n "$v" ] || return 1
+    out+="memory ${t} ${v}"$'\n'
+    v="$(_bkp_md5_rows "$t")" || return 1
+    out+="memory-md5 ${t} ${v}"$'\n'
+  done < <(_bkp_memory_tables)
+  d="$(_bkp_tmpdir)" || return 1
+  if _bkp_access_write_bundle "$d"; then
+    while IFS=$'\t' read -r t qual v; do
+      [ -n "$qual" ] && out+="access ${t}.${qual} $(printf '%s' "$v" | md5sum | cut -c1-32)"$'\n'
+    done < <(jq -r 'to_entries[] | .key as $s | .value | to_entries[] | [$s, .key, .value] | @tsv' "$d/access.json" 2>/dev/null)
+  fi
+  rm -rf -- "$d"
+  printf '%s' "$out" | grep -v '^$' | LC_ALL=C sort
+}
+
+# --- Gespraechs-Gedaechtnis (agent.*_chat_memory) ----------------------------------------------------------------------
+# Die Tabellen legt n8n zur Laufzeit an (Chat-Memory-Knoten, je Agent eine). Sie reisen als eigener Bundle-Teil: memory.dump
+# (pg_dump -Fc, Aufbau + Daten + Folge-Nummern) und memory.counts ("tabelle<TAB>zeilen<TAB>max_id"). Ein Bundle mit memory.counts
+# bringt den Teil mit (auch leer = keine Gespraeche); aeltere Sicherungen ohne die Datei lassen das Gedaechtnis des Ziels stehen.
+# Tests: tests/backup/cases.sh (G.*), tests/backup/retire_cases.sh, tests/backup/move_cases.sh
+
+# _bkp_memory_tables -> die Gedaechtnis-Tabellen dieser Datenbank, eine je Zeile (agent.<agent>_chat_memory).
+_bkp_memory_tables() {
+  _bkp_psql_scalar "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname = 'agent' AND tablename LIKE '%\_chat\_memory' ORDER BY 1"
+}
+
+# _bkp_memory_write <ordner> -> memory.counts (immer) und memory.dump (wenn es Tabellen gibt). rc 1 bei Fehler.
+_bkp_memory_write() {
+  local d="$1" t v args=() rc=0
+  : > "$d/memory.counts"
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    _bkp_qual_ok "$t" || continue
+    args+=(-t "$t")
+    v="$(_bkp_psql_scalar "SELECT count(*) || E'\t' || COALESCE(max(id), 0) FROM ${t}")" || return 1
+    [[ $v =~ ^[0-9]+$'\t'[0-9]+$ ]] || return 1
+    printf '%s\t%s\n' "$t" "$v" >> "$d/memory.counts"
+  done < <(_bkp_memory_tables)
+  [ "${#args[@]}" -gt 0 ] || return 0
+  pg_su_exec pg_dump -d "$N8N_DB_NAME" -Fc "${args[@]}" > "$d/memory.dump" 2> "$d/memory.err" || rc=$?
+  rm -f "$d/memory.err"
+  return "$rc"
+}
+
+# _bkp_memory_restore <memory.dump|-> <memory.counts> -> rc 0 eingespielt, 1 Fehler, 2 belegt (Sperre). Eine Transaktion:
+#   alle Gedaechtnis-Tabellen des Ziels ersetzen (nicht nur die der Sicherung: sonst bliebe das Gespraech eines Agenten stehen,
+#   den es beim Sichern noch nicht gab), Aufbau + Daten + Folge-Nummern aus dem Abzug, Wasserstand des Lern-Laufs je Tabelle auf
+#   max(id) (sonst laese er alle alten Gespraeche erneut: doppelte Vorschlaege, Kosten), Zeilen gegen memory.counts. Angelegt wie
+#   vom n8n-Knoten selbst: als n8n-Rolle dieser Maschine (ihr Name kann anders sein), ohne Rechte und Trigger aus dem Abzug; den
+#   Guard haengt der Event-Trigger beim CREATE TABLE an (agent.chat_memory_guard_init.sql; die n8n-Rolle darf die Guard-Funktion
+#   nicht selbst in einen Trigger setzen). n8n laeuft beim Restore weiter: lock_timeout statt endlosem Warten auf ein DROP.
+_bkp_memory_restore() {
+  local dump="$1" counts="$2" t n owner agent rc=0 wd sql
+  [ -r "$counts" ] || return 1
+  _bkp_resolve_db
+  owner="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" DB_POSTGRESDB_USER 2>/dev/null || true)"
+  [[ $owner =~ ^[a-z_][a-z0-9_]*$ ]] || { err "n8n-Datenbank-Rolle unbekannt (DB_POSTGRESDB_USER in n8n.env)."; return 1; }
+  # Das SQL traegt Gespraechs-Inhalte -> in den 0700-Arbeitsordner (tmpfs), nie neben den Abzug.
+  wd="$(_bkp_tmpdir)" || return 1; sql="$wd/memory.sql"
+  {
+    printf '\\set ON_ERROR_STOP on\n'
+    printf "SET LOCAL lock_timeout = '30s';\n"
+    while IFS= read -r t; do
+      [[ $t =~ ^agent\.[a-z][a-z0-9_]*_chat_memory$ ]] && printf 'DROP TABLE IF EXISTS %s CASCADE;\n' "$t"
+    done < <(_bkp_memory_tables; cut -f1 "$counts")
+    if [ -s "$counts" ]; then
+      printf 'SET ROLE %s;\n' "$owner"
+      pg_su_stdin pg_restore --no-owner --no-acl -f - < "$dump" | sed '/^CREATE TRIGGER trg_chat_memory_strip_thinking /d' || rc=$?
+      printf 'RESET ROLE;\n'
+    fi
+    while IFS=$'\t' read -r t n _; do
+      [[ $t =~ ^agent\.[a-z][a-z0-9_]*_chat_memory$ ]] || { rc=1; continue; }
+      agent="${t#agent.}"; agent="${agent%_chat_memory}"
+      printf "INSERT INTO agent.guide_learn_watermark(agent_name, last_seen_id) SELECT '%s', COALESCE(max(id), 0) FROM %s\n" "$agent" "$t"
+      printf '  ON CONFLICT (agent_name) DO UPDATE SET last_seen_id = EXCLUDED.last_seen_id;\n'
+      printf "DO \$\$ BEGIN IF (SELECT count(*) FROM %s) <> %s THEN RAISE EXCEPTION 'Zeilen in %s weichen ab'; END IF; END \$\$;\n" "$t" "${n:-0}" "$t"
+    done < "$counts"
+  } > "$sql"
+  [ "$rc" -eq 0 ] || { rm -rf -- "$wd"; err "Gedächtnis-Abzug nicht lesbar (pg_restore)."; return 1; }
+  # Ueber stdin: psql laeuft als postgres und darf den root-eigenen 0700-Arbeitsordner nicht lesen.
+  pg_su_psql -X -q -1 -d "$N8N_DB_NAME" -f - < "$sql" >/dev/null 2> "$wd/err" || rc=$?
+  # Fehlertext nicht ausgeben: psql zitiert bei COPY-Fehlern die Datenzeile (Gespraechs-Inhalt).
+  if [ "$rc" -ne 0 ] && grep -q 'lock timeout' "$wd/err" 2>/dev/null; then rc=2; fi
+  rm -rf -- "$wd"
+  [ "$rc" -eq 0 ] || return "$rc"
+  ok "Gesprächs-Gedächtnis eingespielt ($(grep -c . "$counts") Tabelle(n)), Lern-Lauf setzt danach an."
+}
+
 # _bkp_require_pg <programm> — pg_dump/pg_restore muessen dort liegen, wo die Wrapper sie ausfuehren: auf dem LXC lokal,
 #   im Docker-Verbund im Datenbank-Container (pg_su_exec = docker exec, im master gibt es sie nicht).
 _bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd "$1"; fi; }
@@ -713,6 +953,11 @@ backup_cmd_export() {
     printf '{}' > "$tmp/shared.json"
   fi
 
+  # --- (2b) weitere Teile (Kopf-Feld parts[]): Gespraeche (memory.*), geaenderte Einstellungen (config.json), Zugaenge ---
+  _bkp_memory_write "$tmp" || _bkp_fail dump "Gesprächs-Gedächtnis ließ sich nicht sichern (pg_dump)."
+  _bkp_psql_scalar "SELECT core.fn_config_export()" > "$tmp/config.json" || _bkp_fail dump "Einstellungen ließen sich nicht lesen."
+  _bkp_access_write_bundle "$tmp" || _bkp_fail dump "Zugänge ließen sich nicht lesen."
+
   # --- (3) verify_counts: count(*) je bulk- + filtered-Tabelle (Korruptions-Pruefung) ---
   local vsel=() n
   while IFS= read -r t; do
@@ -740,13 +985,16 @@ backup_cmd_export() {
   [ -n "$verify_json" ] || verify_json='{}'
   [ -n "$mig_json" ]    || mig_json='{}'
   jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg cv "$core_ver" --arg rel "$(_bkp_release_tag)" \
-        --argjson pkgs "$pkgs_json" --argjson vc "$verify_json" --argjson mig "$mig_json" \
-        '{bundle_format:2, created_at:$ts, core_version:$cv, release:$rel, packages:$pkgs, migrations:$mig, verify_counts:$vc}' \
+        --argjson pkgs "$pkgs_json" --argjson vc "$verify_json" --argjson mig "$mig_json" --argjson parts "$(_bkp_parts_json "$tmp")" \
+        '{bundle_format:2, created_at:$ts, core_version:$cv, release:$rel, packages:$pkgs, migrations:$mig, verify_counts:$vc, parts:$parts}' \
         > "$tmp/manifest.json" || _bkp_fail dump "manifest.json-Bau fehlgeschlagen."
 
   # --- (5) Tarball -> gpg (Passphrase via fd, nie argv) ---
   local tarf="$tmp/bundle.tar.gz"
-  tar -czf "$tarf" -C "$tmp" manifest.json data.dump shared.json || _bkp_fail dump "tar fehlgeschlagen."
+  local tfiles=(manifest.json data.dump shared.json memory.counts config.json)
+  [ ! -f "$tmp/memory.dump" ] || tfiles+=(memory.dump)
+  [ ! -f "$tmp/access.json" ] || tfiles+=(access.json)
+  tar -czf "$tarf" -C "$tmp" "${tfiles[@]}" || _bkp_fail dump "tar fehlgeschlagen."
   # umask in der Teilschale: gpg legt die Datei dann nie weltlesbar an; chmod danach deckt eine vorhandene Zieldatei ab.
   if ! ( umask 077; gpg_sym_encrypt "$key" "$out" "$tarf" ); then
     _bkp_fail encrypt "gpg-Verschluesselung fehlgeschlagen."
@@ -760,6 +1008,7 @@ backup_cmd_export() {
     ok "Backup geschrieben: $out"
   fi
   _bkp_state_set LAST_OK "$(date +%s)"
+  _bkp_state_set LAST_SIZE "$(stat -c '%s' "$out" 2>/dev/null || echo 0)"   # doctor: Warnung vor der 50-MB-Grenze der Telegram-Kopie
   log "Inhalt:$(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + $(_bkp_filtered | grep -c .) gefilterte; aktive Pakete: ${pkgs_json}"
   # Kopie im Telegram-Chat (best-effort, kippt den fertigen Export nie); im Verbund auch neben dem Rechner-Ordner.
   if [ "$notify" -eq 1 ]; then
@@ -1202,15 +1451,17 @@ backup_cmd_list() {
 }
 
 # backup_cmd_restore_status --json — Stand des letzten Hintergrund-Laufs: {ok:true, state: idle|running|ok|fail|unfinished,
-#   code, converged, release, name, created, foreign, started}; release nur bei fail (Release der Sicherung, fuer die
+#   code, converged, parts_failed, release, name, created, foreign, started}; parts_failed = Teile nach den Daten, die nicht
+#   uebernommen wurden (memory|config|access; nachholen: backup restore <datei> --parts); release nur bei fail (Release der Sicherung, fuer die
 #   Versions-Codes); converged nur bei ok (false = Daten eingespielt, Abgleich mit dieser Version brach ab, _bkp_converge);
 #   unfinished = gestartet, ohne Ergebnis und die Restore-Sperre ist frei (Rechner aus, Container neu, Lauf abgebrochen) — die
 #   TX hat dann nichts geaendert.
 backup_cmd_restore_status() {
   [ "${1:-}" = --json ] || die "Usage: lifeagents backup restore-status --json"
-  local st okt flt rs nm cr fg rl cv state=idle v
+  local st okt flt rs nm cr fg rl cv pf state=idle v
   for v in st:LAST_RESTORE_START okt:LAST_RESTORE_OK flt:LAST_RESTORE_FAIL rs:LAST_RESTORE_REASON nm:LAST_RESTORE_NAME \
-           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN rl:LAST_RESTORE_RELEASE cv:LAST_RESTORE_CONVERGE; do
+           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN rl:LAST_RESTORE_RELEASE cv:LAST_RESTORE_CONVERGE \
+           pf:LAST_RESTORE_PARTS; do
     printf -v "${v%%:*}" '%s' "$(read_env_value "$BACKUP_STATE_FILE" "${v#*:}" 2>/dev/null || true)"
   done
   case "$st" in ''|*[!0-9]*) st=0 ;; esac; case "$okt" in ''|*[!0-9]*) okt=0 ;; esac; case "$flt" in ''|*[!0-9]*) flt=0 ;; esac
@@ -1229,9 +1480,10 @@ backup_cmd_restore_status() {
     fi
   fi
   jq -cn --arg state "$state" --arg code "$rs" --arg name "$nm" --arg created "$cr" --arg foreign "$fg" --argjson started "$st" \
-    --arg release "$rl" --arg cv "$cv" \
+    --arg release "$rl" --arg cv "$cv" --arg pf "$pf" \
     '{ok: true, state: $state, code: (if $state == "fail" then $code else null end),
       converged: (if $state == "ok" then $cv != "fail" else null end),
+      parts_failed: (if $state == "ok" and $pf != "" then ($pf | split(" ")) else [] end),
       release: (if $state == "fail" and $release != "" then $release else null end), name: (if $name == "" then null else $name end),
       created: (if $created == "" then null else $created end), foreign: ($foreign == "1"), started: $started}'
 }
@@ -1252,7 +1504,7 @@ backup_cmd_restore() {
   # Ordner (BACKUP_HOST_DIR). Im Verbund ist das ohne Pfad der Normalfall (die Auswahl listet den gemerkten Ordner).
   # --key-stdin: Schluessel vom Notfallblatt aus stdin (Text oder die ganze Notfallblatt-Datei), nur gelesen, wenn kein
   # gespeicherter Schluessel die Datei oeffnet. Nie als Argument (Prozessliste).
-  local enc="" force=0 a from_host=0 key_stdin=0 in_stdin=0 plan=0 detach=0
+  local enc="" force=0 a from_host=0 key_stdin=0 in_stdin=0 plan=0 detach=0 parts_only=0
   for a in "$@"; do
     case "$a" in
       --yes|-y) force=1 ;;
@@ -1261,6 +1513,7 @@ backup_cmd_restore() {
       --in-stdin) in_stdin=1; key_stdin=1 ;;
       --plan) plan=1 ;;
       --detach) detach=1 ;;
+      --parts) parts_only=1 ;;
       --json) _BKP_JSON=1 ;;
       --*)      die "Unbekannte Option: $a" ;;
       *)        enc="$a" ;;
@@ -1352,6 +1605,10 @@ backup_cmd_restore() {
 
   local fmt; fmt="$(jq -r '.bundle_format // empty' "$tmp/manifest.json" 2>/dev/null)"
   [ "$fmt" = "2" ] || _bkp_rdie format "Nicht unterstuetztes Backup-Format (bundle_format='${fmt:-?}', erwartet 2). Alt-/.enc-Bundles der frueheren In-DB-Engine sind inkompatibel. Nichts geaendert."
+  local part
+  for part in $(jq -r '(.parts // [])[]' "$tmp/manifest.json" 2>/dev/null); do
+    case " $BACKUP_KNOWN_PARTS " in *" $part "*) ;; *) _bkp_rdie version_newer "Die Sicherung enthält einen Teil ($part), den diese Version nicht kennt — erst 'lifeagents update', dann erneut wiederherstellen. Es wurde NICHTS geaendert." --arg release "$(_bkp_bundle_release "$tmp" "$src_name")" ;; esac
+  done
 
   # --- (2) Pre-Flight je Bundle-Paket gegen Registry bzw. Paket-Manifest — prueft nur, aendert nichts. Ein fehlendes Paket
   #     wird spaeter eingerichtet (--no-seed, der Restore bringt die Daten; eines ohne backup-Block nur gemeldet), ein
@@ -1373,10 +1630,10 @@ backup_cmd_restore() {
         # Ohne Terminal (App) entstuende ein Paket mit Pflicht-Zugang halb eingerichtet; freiwillige Zugaenge laesst die
         # Einrichtung dann aus (wie Enter im Terminal), sie sind spaeter nachtragbar.
         if { [ "$_BKP_JSON" = 1 ] || ! tty_usable; }; then
-          if _bkp_pkg_needs_setup "$pkg"; then
+          if _bkp_pkg_needs_setup "$pkg" && ! _bkp_access_covers "$tmp" "$pkg" required; then
             _bkp_rdie needs_setup "Paket '$pkg' braucht Zugangsdaten — erst einrichten, dann erneut wiederherstellen. Es wurde NICHTS geaendert." --arg pkg "$pkg"
           fi
-          _bkp_pkg_has_access "$pkg" && missing_access="$(jq -c --arg p "$pkg" '. + [$p]' <<<"$missing_access")"
+          _bkp_pkg_has_access "$pkg" && ! _bkp_access_covers "$tmp" "$pkg" && missing_access="$(jq -c --arg p "$pkg" '. + [$p]' <<<"$missing_access")"
         fi
         pstate=install; to_install="${to_install}${pkg} "
       fi
@@ -1458,7 +1715,7 @@ backup_cmd_restore() {
     _bkp_state_set LAST_RESTORE_CREATED "$created"; _bkp_state_set LAST_RESTORE_FOREIGN "$([ -n "$brought" ] && printf 1 || printf 0)"
     _bkp_state_set LAST_RESTORE_TMP "$tmp"
     _bkp_state_set LAST_RESTORE_OK ''; _bkp_state_set LAST_RESTORE_FAIL ''; _bkp_state_set LAST_RESTORE_REASON ''
-    _bkp_state_set LAST_RESTORE_RELEASE ''; _bkp_state_set LAST_RESTORE_CONVERGE ''
+    _bkp_state_set LAST_RESTORE_RELEASE ''; _bkp_state_set LAST_RESTORE_CONVERGE ''; _bkp_state_set LAST_RESTORE_PARTS ''
     (
       exec </dev/null >"$log_f" 2>&1
       # shellcheck disable=SC2064  # bewusst JETZT expandieren (local $tmp)
@@ -1494,12 +1751,15 @@ backup_cmd_restore() {
 #   danach warnt nur, die Daten sind dann schon eingespielt.
 _bkp_rs_apply() {
   local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" pkg
+  # Zugaenge aus der Sicherung vor der Einrichtung: pkg_install_one liest sie dann wie eingegebene Werte (kein Nachfragen,
+  # kein Abbruch an einem Pflicht-Zugang).
+  _bkp_access_write_env "$tmp"
   _pkg_menus_defer   # Menue einmal nach den Paketen (jeder Statuswechsel setzt es sonst neu)
   for pkg in $to_install; do
     log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
     # Subshell: ein internes `die` beendet nur den Install, dann sauberer Abbruch HIER (vor dem Wipe).
     ( pkg_install_one "$pkg" --no-seed ) || _bkp_rdie internal "Auto-Install '$pkg' fehlgeschlagen -> Abbruch VOR jedem Wipe (alte Welt intakt)."
-    if ! ui_interactive && _bkp_pkg_has_access "$pkg"; then
+    if ! ui_interactive && _bkp_pkg_has_access "$pkg" && ! _bkp_access_covers "$tmp" "$pkg"; then
       log "Paket '$pkg' ist ohne seine freiwilligen Zugänge eingerichtet — nachtragen: lifeagents package reconfigure $pkg"
     fi
   done
@@ -1522,6 +1782,10 @@ _bkp_rs_apply() {
   local bulk; bulk="$(_bkp_bulk_tables)"
   [ -n "$bulk" ] || _bkp_rdie no_tables "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
 
+  # --parts: nur die Teile nach den Daten (Gespraeche, Einstellungen, Zugaenge) nachholen, ohne die Daten erneut zu ersetzen.
+  # parts_only ist die Option von backup_cmd_restore (Aufrufer-Variable; bash sieht locals des Aufrufers).
+  if [ "$parts_only" = 1 ]; then _bkp_restore_parts "$tmp"; return; fi
+
   # Vorab-Sicherung: der einzige Rueckweg, wenn eigene Daten ersetzt werden. Eigene Teilschale (export setzt seinen Trap);
   # die Update-Sperre ist geerbt (LIFEAGENTS_UPDATE_LOCK_HELD).
   if [ "$has_data" = 1 ]; then
@@ -1539,14 +1803,17 @@ _bkp_rs_apply() {
   # lock_timeout: haelt n8n gerade eine Zeilen-/Tabellensperre (ein Mitglied schreibt), wartet TRUNCATE nicht endlos.
   printf "SET LOCAL lock_timeout = '30s';\n" > "$restore_sql"
   # (a) TRUNCATE der bulk-Tabellen (FK-/Trigger-frei dank --disable-triggers im pg_restore; CASCADE als Sicherung).
-  #     filtered_tables (core_contexts/monitor_triggers) nicht truncaten -> die fn macht den zeilen-gefilterten Wipe.
+  #     filtered_tables nicht truncaten -> die fn macht den zeilen-gefilterten Wipe. Nur Tabellen, deren Daten im Bundle stehen
+  #     ($tmp/sc.bundle aus _bkp_schema_check): eine aeltere Sicherung ohne eine neue Tabelle laesst sie auf dem Ziel unberuehrt.
   local trunc="" t n
   while IFS= read -r t; do
     [ -n "$t" ] || continue; _bkp_qual_ok "$t" || _bkp_rdie internal "Ungueltiger Tabellenname im bulk-Set: $t"
+    # Prozess-Ersetzung statt Pipe: grep -q beendet frueh, cut bekaeme SIGPIPE und pipefail meldete "nicht gefunden".
+    grep -qxF -- "$t" < <(cut -f1 "$tmp/sc.bundle") || { log "$t steht nicht in dieser Sicherung — bleibt unberuehrt."; continue; }
     [ -n "$trunc" ] && trunc+=", "
     trunc+="$t"
   done <<< "$bulk"
-  printf 'TRUNCATE %s CASCADE;\n' "$trunc" >> "$restore_sql"
+  [ -z "$trunc" ] || printf 'TRUNCATE %s CASCADE;\n' "$trunc" >> "$restore_sql"
   # (b) pg_restore -> SQL-Text (kein eigener DB-Connect; laeuft so in unserer einen TX).
   # pg_restore (postgres via runuser) liest die Archiv-Datei nicht direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
@@ -1573,7 +1840,9 @@ _bkp_rs_apply() {
       [ -n "$qual" ] || continue; _bkp_qual_ok "$qual" || continue
       n="$(jq -r --arg k "$qual" '.verify_counts[$k] // empty' "$tmp/manifest.json")"
       [ -n "$n" ] || continue
-      printf "  IF (SELECT count(*) FROM %s WHERE %s) <> %s THEN RAISE EXCEPTION 'verify failed: %s count %% (expected %s)', (SELECT count(*) FROM %s WHERE %s); END IF;\n" "$qual" "$cond" "$n" "$qual" "$n" "$qual" "$cond"
+      # core.llm_usage fuehrt core.fn_backup_restore_filtered zusammen (die Kosten des Ziels bleiben): mindestens so viele Zeilen.
+      local cmp='<>'; [ "$qual" = core.llm_usage ] && cmp='<'
+      printf "  IF (SELECT count(*) FROM %s WHERE %s) %s %s THEN RAISE EXCEPTION 'verify failed: %s count %% (expected %s)', (SELECT count(*) FROM %s WHERE %s); END IF;\n" "$qual" "$cond" "$cmp" "$n" "$qual" "$n" "$qual" "$cond"
     done < <(_bkp_filtered)
     # shellcheck disable=SC2016  # $verify$ = SQL-Dollar-Quote-Tag (literal)
     printf 'END $verify$;\n'
@@ -1601,12 +1870,48 @@ _bkp_rs_apply() {
   # Ein Abbruch hier ist kein gescheiterter Restore: die Daten sind schon eingespielt, und die App sagt bei jedem Fehlschlag
   #   „Deine Daten sind unverändert“. Darum Warnung, im Hintergrund-Lauf zusaetzlich LAST_RESTORE_CONVERGE (restore-status:
   #   converged:false); Terminal und --json ohne --detach sehen nur die Warnung.
+  _bkp_restore_parts "$tmp" || true
+}
+
+# _bkp_restore_parts <arbeitsordner> — nach den Daten: Gespraeche (eigene TX), Abgleich mit dieser Version (_bkp_converge),
+#   geaenderte Einstellungen (nach dem Abgleich: erst dann gibt es die Zeilen eben eingerichteter Pakete), Zugaenge. Jeder Teil
+#   fuer sich: die Daten sind schon eingespielt, ein gescheiterter Teil wird gemeldet (restore-status: converged:false,
+#   parts_failed) und laesst sich mit `backup restore <datei> --parts` nachholen. Ein Teil, den die Sicherung nicht traegt
+#   (aeltere Sicherung), bleibt auf dem Ziel unberuehrt.
+_bkp_restore_parts() {
+  local tmp="$1" bad='' rc res
+  if _bkp_has_part "$tmp" memory; then
+    rc=0; _bkp_memory_restore "$tmp/memory.dump" "$tmp/memory.counts" || rc=$?
+    case "$rc" in
+      0) ;;
+      2) warn "Gespräche nicht übernommen: n8n hielt gerade eine Sperre."; bad+=' memory' ;;
+      *) warn "Gespräche nicht übernommen."; bad+=' memory' ;;
+    esac
+  else
+    log "Diese Sicherung enthält noch keine Gespräche — das Gesprächs-Gedächtnis bleibt, wie es ist."
+  fi
   log "Gleiche die eingespielten Daten mit dieser Version ab (Schema-Inits + Seed wie beim Update) ..."
   if ! _bkp_converge; then
     warn "Die Daten sind eingespielt, aber der Abgleich mit dieser Version brach ab: Bezeichnungen und Rollen-Zuordnungen können bis dahin aus dem Stand der Sicherung stammen. Abhilfe: lifeagents update"
     # shellcheck disable=SC2031  # _BKP_CHILD=1 setzt die Hintergrund-Unterschale, in der diese Funktion dann laeuft
     [ "$_BKP_CHILD" != 1 ] || _bkp_state_set LAST_RESTORE_CONVERGE fail
   fi
+  if _bkp_has_part "$tmp" config; then
+    if res="$(config_import_rows "$tmp/config.json")" && [ -n "$res" ]; then config_import_report "$res" || true
+    else warn "Einstellungen nicht übernommen."; bad+=' config'; fi
+  else
+    log "Diese Sicherung enthält noch keine Einstellungen — die Einstellungen bleiben, wie sie sind."
+  fi
+  if _bkp_has_part "$tmp" access; then
+    _bkp_access_inject "$tmp" || { warn "Zugänge nicht übernommen."; bad+=' access'; }
+  else
+    log "Diese Sicherung enthält noch keine Zugänge — die Zugänge bleiben, wie sie sind."
+  fi
+  [ -n "$bad" ] || return 0
+  warn "Nicht übernommen:${bad} — die Daten sind eingespielt; 'lifeagents backup restore <datei> --parts' holt es nach."
+  # shellcheck disable=SC2031  # _BKP_CHILD=1 setzt die Hintergrund-Unterschale, in der diese Funktion dann laeuft
+  if [ "$_BKP_CHILD" = 1 ]; then _bkp_state_set LAST_RESTORE_CONVERGE fail; _bkp_state_set LAST_RESTORE_PARTS "${bad# }"; fi
+  return 1
 }
 
 # _bkp_converge — nach dem Einspielen fuer Core und jedes aktive Paket dieselben Schritte wie ein Update (apply_schema, dann
@@ -1684,6 +1989,7 @@ MENU
     export)  backup_cmd_export "$@" ;;
     host-dir) backup_cmd_host_dir "$@" ;;
     auto)    backup_cmd_auto "$@" ;;
+    fingerprint) backup_fingerprint ;;
     restore) backup_cmd_restore "$@" ;;
     restore-status) backup_cmd_restore_status "$@" ;;
     list)    backup_cmd_list "$@" ;;
@@ -1729,6 +2035,10 @@ Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner A
                            Hintergrund; Stand: restore-status --json), --in-stdin (Sicherung + Blatt über stdin).
   list --json              Sicherungen im Rechner-Ordner (für die Start-App).
   restore-status --json    Stand der letzten Wiederherstellung im Hintergrund (für die Start-App).
+  restore <datei> --parts  Nur Gespräche, Einstellungen und Zugänge aus der Sicherung nachholen (die Daten bleiben, wie sie sind),
+                           wenn ein Teil beim Einspielen scheiterte (restore-status: parts_failed).
+  fingerprint              Vergleichswerte des ganzen Sicherungs-Umfangs (Zeilen + Prüfsummen, nie Werte); gleich vor dem
+                           Sichern und nach dem Einspielen = alles wie vorher (auch lifeagents move check).
 
 Automatisch (LXC/Server, klassischer Betrieb) — läuft von selbst, nichts einzurichten: der Timer lifeagents-backup sichert täglich ab
 03:30 (Haushalts-Zeitzone) nach /var/backups/lifeagents/daily und behält die letzten 14. Verlauf: journalctl -u lifeagents-backup;

@@ -7,12 +7,11 @@ MV="$W/mv"; MI="$W/mv_in"
 _mv_reset() { rm -rf "$MV" "$W/mv_etc" "$MI"; mkdir -p "$MV" "$W/mv_etc" "$MI"; : > "$STUB_LOG"; : > "${STUB_LOG}.put"; }
 _mv_log() { grep '^ev|' "$STUB_LOG" | sed 's/^ev|//'; }
 _mv_state() { read_env_value "$MV/move-open" "$1" 2>/dev/null || true; }
-# Umzugs-Ordner wie `lifeagents retire` ihn schreibt (B1): Manifest, Sicherung, Gedaechtnis-Abzug, Einstellungen, Vergleichswerte, Antworten.
+# Umzugs-Ordner wie `lifeagents retire` ihn schreibt (B1): Manifest, Sicherung (traegt Gespraeche, Einstellungen, Zugaenge), Vergleichswerte,
+# Antworten.
 _mv_folder() {
   printf 'FORMAT=1\nRELEASE=%s\nCREATED=%s\nRUNTIME=systemd\nBACKUP_FILE=b.nla.enc\nPACKAGES=career\n' "${F_REL:-v9.1.0}" "${F_MOVE:-2026-11-20T10:00:00Z}" > "$MI/move.manifest"
   printf 'enc' > "$MI/b.nla.enc"
-  if [ -z "${F_NOMEM:-}" ]; then printf 'dump' > "$MI/memory.dump"; printf 'agent.guide_chat_memory\t2\t7\n' > "$MI/memory.counts"; fi
-  printf '[{"package":"core","category":"cron_enable","key":"refresh_fx_rates","value":"false"}]' > "$MI/config.json"
   printf 'rows finance.accounts 3\nmd5 finance.accounts aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nmemory agent.guide_chat_memory 2\n' > "$MI/vorher.txt"
   printf "REACH_MODE='tunnel'\nTELEGRAM_BOT_TOKEN='123:abc'\n" > "$MI/move.env"
   chmod 0700 "$MI"; chmod 0600 "$MI"/*
@@ -65,49 +64,33 @@ printf 'rows finance.accounts 3\n' > "$W/v.vorher"
 ( PATH="$W/awkfail:$PATH"; move_compare "$W/v.vorher" "$W/v.nachher" ) >/dev/null 2>&1; eq MV-V.awk-fehler-rc 2 "$?"
 
 # ---------------------------------------------------------------------------- MV-C: config import (lib/config_cli.sh)
-# _cfg_psql ist die Attrappe: sie protokolliert das SQL und antwortet je nach Schluessel.
+# Die Regel (welche Zeile gesetzt, zurueckgesetzt oder uebersprungen wird) prueft tests/db/core/test_fn_config_import.sql; hier nur
+# der Weg drumherum: Ergebnis der fn melden (Namen + Grund, nie Werte), Zeitplaene je Paket einmal neu einspielen, Datei pruefen.
+# config_import_rows ist die Attrappe (liefert das Ergebnis der fn), _cfg_redeploy_pkg protokolliert.
 _ci() (
   ev() { printf 'ev|%s\n' "$*" >> "$STUB_LOG"; }
-  _cfg_resolve_db() { :; }
-  _cfg_psql() {
-    local sql="${*: -1}"
-    case "$sql" in
-      *"SELECT managed_by"*) case "$sql" in *"key = 'api_core_version'"*) printf 'system' ;; *"key = 'gibtsnicht'"*) printf '' ;; *) printf 'owner' ;; esac ;;
-      UPDATE*) ev "sql $sql"; case "$sql" in *"key = 'gibtsnicht'"*) printf '' ;; *) printf 'x' ;; esac ;;
-      *) printf '' ;;
-    esac
-  }
-  _cfg_apply_schedule() { ev "apply $1 $2"; }
+  config_import_rows() { ev "rows $1"; printf '%s' "${CI_RES:-}"; }
+  _cfg_redeploy_pkg() { ev "redeploy $1"; }
   config_cmd_import "$@"
 )
 _mv_reset
-cat > "$W/cfg.json" <<'JSON'
-[{"package":"core","category":"cron_enable","key":"refresh_fx_rates","value":"false"},
- {"package":"core","category":"cron_enable","key":"gibtsnicht","value":"x"},
- {"package":"core","category":"schedule","key":"score_jobs","value":"0 7 * * 1-5"},
- {"package":"core","category":"api","key":"api_core_version","value":"v0"},
- {"package":"core","category":"a'; DROP TABLE x; --","key":"k","value":"v"},
- {"package":"core","category":"note","key":"text","value":"it's \"quoted\""}]
-JSON
-_out="$(_ci "$W/cfg.json" 2>&1)"; _rc=$?
-eq MV-C.fehler-je-zeile-rc 1 "$_rc"
-_n="$(_mv_log | grep -c '^sql UPDATE')"
-eq MV-C.rest-laeuft 4 "$_n"
-case "$_out" in *gibtsnicht*) pass MV-C.unbekannter-schluessel-gemeldet ;; *) fail MV-C.unbekannter-schluessel-gemeldet "$_out" ;; esac
-case "$_out" in *api_core_version*) pass MV-C.systemwert-gemeldet ;; *) fail MV-C.systemwert-gemeldet "$_out" ;; esac
-if _mv_log | grep -q 'api_core_version'; then fail MV-C.systemwert-nie-geschrieben "UPDATE lief"; else pass MV-C.systemwert-nie-geschrieben; fi
-if _mv_log | grep -q 'DROP'; then fail MV-C.ident-geprueft "SQL mit Einschleusung"; else pass MV-C.ident-geprueft; fi
-case "$(_mv_log | grep "key = 'text'")" in *"it''s \"quoted\""*) pass MV-C.quote-verdoppelt ;; *) fail MV-C.quote-verdoppelt "$(_mv_log | grep "key = 'text'")" ;; esac
-# Werte stehen nie in der Ausgabe (Einstellungen koennen Eigenes tragen).
-case "$_out" in *quoted*|*'0 7 * * 1-5'*) fail MV-C.wert-nie-in-ausgabe "$_out" ;; *) pass MV-C.wert-nie-in-ausgabe ;; esac
-# Zeitplan: einzeln einspielen, ausser der Aufrufer macht es gesammelt (move apply spielt danach alle Workflows neu ein).
-eq MV-C.zeitplan-einzeln 1 "$(_mv_log | grep -c '^apply schedule score_jobs')"
+printf '[{"package":"core","category":"note","key":"text","value":"geheim-wert"}]' > "$W/cfg.json"
+CI_RES='{"ok":true,"applied":[{"package":"finance","category":"schedule","key":"a"},{"package":"finance","category":"schedule","key":"b"},{"package":"core","category":"note","key":"text"}],
+  "reset":[{"package":"career","category":"schedule","key":"c"}],
+  "skipped":[{"package":"core","category":"cron_enable","key":"gibtsnicht","reason":"unknown"},{"package":"core","category":"api","key":"core_version","reason":"system"}]}'
+_out="$(CI_RES="$CI_RES" _ci "$W/cfg.json" 2>&1)"; _rc=$?
+eq MV-C.uebersprungen-rc 1 "$_rc"
+case "$_out" in *"cron_enable.gibtsnicht: gibt es hier nicht"*) pass MV-C.unbekannt-gemeldet ;; *) fail MV-C.unbekannt-gemeldet "$_out" ;; esac
+case "$_out" in *"api.core_version: ist ein Systemwert"*) pass MV-C.systemwert-gemeldet ;; *) fail MV-C.systemwert-gemeldet "$_out" ;; esac
+case "$_out" in *geheim-wert*) fail MV-C.wert-nie-in-ausgabe "$_out" ;; *) pass MV-C.wert-nie-in-ausgabe ;; esac
+eq MV-C.zeitplan-je-paket-einmal 'redeploy career,redeploy finance,' "$(_mv_log | grep '^redeploy' | sort | tr '\n' ',')"
 _mv_reset
-( export LIFEAGENTS_CONFIG_DEFER_APPLY=1; _ci "$W/cfg.json" ) >/dev/null 2>&1
-eq MV-C.zeitplan-gesammelt 0 "$(_mv_log | grep -c '^apply ')"
-printf '[]' > "$W/cfg0.json"; _ci "$W/cfg0.json" >/dev/null 2>&1; eq MV-C.leer-ok 0 "$?"
+( export LIFEAGENTS_CONFIG_DEFER_APPLY=1; CI_RES="$CI_RES" _ci "$W/cfg.json" ) >/dev/null 2>&1
+eq MV-C.zeitplan-gesammelt 0 "$(_mv_log | grep -c '^redeploy')"
+printf '[]' > "$W/cfg0.json"; CI_RES='{"ok":true,"applied":[],"reset":[],"skipped":[]}' _ci "$W/cfg0.json" >/dev/null 2>&1; eq MV-C.leer-ok 0 "$?"
 printf 'kein json' > "$W/cfg1.json"; _ci "$W/cfg1.json" >/dev/null 2>&1; eq MV-C.kaputt-rc 1 "$?"
 _ci "$W/nichtda.json" >/dev/null 2>&1; eq MV-C.fehlende-datei-rc 1 "$?"
+CI_RES='' _ci "$W/cfg.json" >/dev/null 2>&1; eq MV-C.fn-scheitert-rc 1 "$?"
 
 # ---------------------------------------------------------------------------- MV-U: Update-Sperre „Umzug offen“
 # shellcheck source=/dev/null
@@ -172,7 +155,7 @@ eq MV-U.auftrag-kein-netz 0 "$(_mv_log | grep -c '^gh_http')"
 # _ua <args…> — move_cli in einer Subshell; Steuerung ueber die Umgebung:
 #   RT = Betriebsart, OWNER = Owner-chat_id der „frischen“ Maschine (leer = ungekoppelt), INST_REL = installierte Version,
 #   PLAN_CODE = Fehlercode des Probelaufs (key_needed …), PLAN_REL = Release der Sicherung, FAIL_AT = Stufe, die scheitert
-#   (restore|memory_import|config_import|finalize|menu), CFG_RC, REACH = Tunnel-Zustaende je Abfrage, IA = Terminal (1), ASK_KEY.
+#   (restore|finalize|menu), REACH = Tunnel-Zustaende je Abfrage, IA = Terminal (1), ASK_KEY.
 _ua() (
   # hand-injected: Betriebsart, Merker- und Env-Ordner im Wegwerf-Verzeichnis; der echte Weg (klassisch) laeuft in tests/backup/move_cases.sh
   export LIFEAGENTS_RUNTIME="${RT:-systemd}" LIFEAGENTS_STATE_DIR="$MV" LIFEAGENTS_DIR="$W/mv_etc" N8N_ENV_FILE="$W/mv_etc/n8n.env"
@@ -196,17 +179,12 @@ _ua() (
       *) ev "restore key=${key:+ja}"; [ "${FAIL_AT:-}" != restore ] ;;
     esac
   }
-  memory_import() { ev memory_import; [ "${FAIL_AT:-}" != memory_import ]; }
-  # config_import scheitert hart (wie `die` im echten Code, z. B. Datei unlesbar) bei FAIL_AT; CFG_RC = abgelehnte Zeilen, nicht fatal
-  config_cmd_import() { ev "config_import lazy=${LIFEAGENTS_CONFIG_DEFER_APPLY:-0}"; [ "${FAIL_AT:-}" != config_import ] || exit 1; return "${CFG_RC:-0}"; }
   _oc_finalize_verified() { ev finalize; if [ "${FAIL_AT:-}" = finalize ]; then OC_FINALIZE_REASON=placeholders_left; return 1; fi; OC_FINALIZE_REASON=''; }
   _set_bot_menu_buttons() { ev menu; }
   owner_tg_token() { printf 'tok'; }
   _ret_sql() {
     case "$1" in
       *"count(*)"*"'owner'"*) [ -z "${OWNER_QFAIL:-}" ] || return 1; if [ -n "${OWNER:-}" ]; then printf 1; else printf 0; fi ;;
-      *"telegram_user_id"*) [ -z "${IDS_FAIL:-}" ] || return 1; printf '111\n222\n' ;;
-      *fn_should_notify*) [ -z "${LATCH_FAIL:-}" ] || return 1; ev "latch $1" ;;
       *) printf '' ;;
     esac
   }
@@ -273,22 +251,17 @@ eq MV.lauf-ok 0 "$_rc"
 [ "$_rc" = 0 ] || printf '# %s\n' "$(tail -n6 "$W/mv.err")"
 _seq="$(_mv_log | grep -vE '^(host_|ask_key)' | sed -E 's/ key=.*$//; s/^latch .*$/latch/; s/ lazy=.*$//' | tr '\n' ',')"
 case "$_seq" in
-  'plan,restore,memory_import,config_import,latch,latch,finalize,menu,') pass MV.reihenfolge ;;
+  'plan,restore,finalize,menu,') pass MV.reihenfolge ;;
   *) fail MV.reihenfolge "$_seq" ;; esac
 eq MV.stufe-angewendet applied "$(_mv_state STAGE)"
 eq MV.merker-move 2026-11-20T10:00:00Z "$(_mv_state MOVE)"
-eq MV.config-ohne-einzeldeploy 'config_import lazy=1' "$(_mv_log | grep '^config_import')"
-for _f in move.env memory.dump memory.counts; do
-  [ ! -e "$MI/$_f" ] && pass "MV.geloescht-$_f" || fail "MV.geloescht-$_f" "liegt noch"
-done
+[ ! -e "$MI/move.env" ] && pass MV.geloescht-move.env || fail MV.geloescht-move.env "liegt noch"
 [ -e "$MI/b.nla.enc" ] && [ -e "$MI/move.manifest" ] && pass MV.sicherung-bleibt || fail MV.sicherung-bleibt "weg"
 [ -s "$MI/nachher.txt" ] && pass MV.nachher-geschrieben || fail MV.nachher-geschrieben "fehlt"
 case "$(cat "$W/mv.out" "$W/mv.err")" in *'move done'*) pass MV.satz-abnahme ;; *) fail MV.satz-abnahme "$(tail -n4 "$W/mv.err")" ;; esac
-# Intro-Latch fuer jede Person der family-Fakten, vor dem Menue-Lauf.
-case "$(_mv_log | grep '^latch')" in *"'app_intro', '111'"*"'app_intro', '222'"*) pass MV.intro-latch-je-person ;; *) fail MV.intro-latch-je-person "$(_mv_log | grep '^latch')" ;; esac
 # Zweiter Lauf desselben Umzugs: nichts mehr einspielen (sonst gingen Daten der letzten Tage verloren).
 : > "$STUB_LOG"; _ua apply "$MI" >/dev/null 2>"$W/mv.err"; _rc=$?
-if _mv_log | grep -qE '^(plan|restore|memory_import|config_import|finalize)'; then fail MV.nochmal-kein-restore "$(_mv_log | tr '\n' ' ')"; else pass MV.nochmal-kein-restore; fi
+if _mv_log | grep -qE '^(plan|restore|finalize)'; then fail MV.nochmal-kein-restore "$(_mv_log | tr '\n' ' ')"; else pass MV.nochmal-kein-restore; fi
 eq MV.nochmal-rc 0 "$_rc"
 # Ein anderer Umzug, solange dieser offen ist -> Abbruch.
 _mv_folder_new() { F_MOVE=2026-11-25T10:00:00Z _mv_folder; }
@@ -298,11 +271,11 @@ if _mv_log | grep -qE '^(plan|restore)'; then fail MV.anderer-move-nichts "$(_mv
 grep -q 'move done' "$W/mv.err" && pass MV.anderer-move-satz || fail MV.anderer-move-satz "$(tail -n2 "$W/mv.err")"
 # Verbund: Geheimnisse ueber den Rechner-Ordner loeschen (rt_host_rm), nie ueber die Platte des master.
 _mv_run true; ( RT=compose _ua apply "$MI" ) >/dev/null 2>&1
-case "$(_mv_log | grep '^host_rm')" in *'move.env'*'memory.dump'*'memory.counts'*) pass MV.verbund-loescht-ueber-rechner ;; *) fail MV.verbund-loescht-ueber-rechner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
+case "$(_mv_log | grep '^host_rm')" in *'move.env'*) pass MV.verbund-loescht-ueber-rechner ;; *) fail MV.verbund-loescht-ueber-rechner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
 case "$(_mv_log | grep '^host_put')" in *nachher.txt*) pass MV.verbund-nachher-in-ordner ;; *) fail MV.verbund-nachher-in-ordner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
 
 # Abbruch an jeder Stufe: Stand bleibt, Geheimnisse bleiben, ein neuer Lauf macht dort weiter und spielt nichts doppelt ein.
-for _s in restore:started memory_import:restored config_import:memory finalize:config; do
+for _s in restore:started finalize:restored; do
   _at="${_s%%:*}"; _st="${_s##*:}"
   _mv_run true; ( FAIL_AT="$_at" _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; _rc=$?
   eq "MV.bricht-ab-$_at-rc" 1 "$_rc"
@@ -314,17 +287,10 @@ for _s in restore:started memory_import:restored config_import:memory finalize:c
   _n="$(_mv_log | grep -c '^restore')"
   if [ "$_at" = restore ]; then eq "MV.weiter-nach-$_at-restore-neu" 1 "$_n"; else eq "MV.weiter-nach-$_at-kein-zweites-restore" 0 "$_n"; fi
 done
-# Einstellungen teils abgelehnt: der Lauf geht weiter (Stufe config zaehlt), der Vergleich zeigt es.
-_mv_run true; ( CFG_RC=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"
-eq MV.config-abgelehnt-weiter applied "$(_mv_state STAGE)"
 # Vergleich rot: Lauf gelungen, aber Exit 1 und die Abweichung steht da.
 _mv_run true; ( NACHHER_ABWEICHT=1 _ua apply "$MI" ) >"$W/mv.out" 2>"$W/mv.err"; _rc=$?
 eq MV.vergleich-rot-rc 1 "$_rc"
 eq MV.vergleich-rot-stufe applied "$(_mv_state STAGE)"
-# Ohne Gedaechtnis-Abzug: Stufe wird uebersprungen.
-_mv_run true; rm -f "$MI/memory.dump" "$MI/memory.counts"; ( _ua apply "$MI" ) >/dev/null 2>&1
-eq MV.ohne-gedaechtnis-ok applied "$(_mv_state STAGE)"
-eq MV.ohne-gedaechtnis-kein-import 0 "$(_mv_log | grep -c '^memory_import')"
 # Nur Umzugs-Ordner und Wort: ohne Argument/Option -> Abbruch.
 _mv_run true; _ua apply >/dev/null 2>&1; eq MV.apply-ohne-ordner-rc 1 "$?"
 _ua brandneu >/dev/null 2>&1; eq MV.unbekanntes-verb-rc 1 "$?"
@@ -341,12 +307,6 @@ grep -q 'move.env' "$W/mv.err" && pass MV.loeschen-scheitert-satz || fail MV.loe
 : > "$STUB_LOG"; ( RT=compose _ua apply "$MI" ) >/dev/null 2>&1; eq MV.loeschen-nochmal-rc 0 "$?"
 eq MV.loeschen-nochmal-stufe applied "$(_mv_state STAGE)"
 eq MV.loeschen-nochmal-kein-restore 0 "$(_mv_log | grep -cE '^(restore|memory_import|finalize)')"
-# Intro-Latch: ein Fehler ist sichtbar (Warnung), haelt den Umzug aber nicht auf.
-for _lf in IDS_FAIL LATCH_FAIL; do
-  _mv_run true; ( export "$_lf=1"; _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq "MV.latch-fehler-$_lf-rc" 0 "$?"
-  eq "MV.latch-fehler-$_lf-stufe" applied "$(_mv_state STAGE)"
-  grep -qi 'Ankündigung' "$W/mv.err" && pass "MV.latch-fehler-$_lf-sichtbar" || fail "MV.latch-fehler-$_lf-sichtbar" "$(tail -n3 "$W/mv.err")"
-done
 # abort: der Ausweg aus einem stehengebliebenen Umzug (hebt nur die Update-Sperre auf, ruehrt keine Daten an).
 _mv_run true; _ua abort >/dev/null 2>&1; eq MV.abort-ohne-move 0 "$?"
 printf 'STAGE=restored\nMOVE=m\nAT=x\nDIR=%s\n' "$MI" > "$MV/move-open"

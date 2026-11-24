@@ -190,7 +190,7 @@ cli move check; _rcc=$?; eq A.check-gleich 0 "$_rcc"
 [ "$_rcc" = 0 ] || printf '# %s
 ' "$(cat "$W/out.$n")" | tail -n 12
 cli move status; eq A.status-offen 11 "$?"
-# Die Intro-Merker sind gesetzt (kein zweites Mal die Animation fuer jede Person der family-Fakten).
+# Die Intro-Merker reisen mit (core.notification_state in der Sicherung): kein zweites Mal die Animation fuer jede Person.
 _ids="$(sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name='family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}\$'")"
 _miss=0; for _i in $_ids; do [ "$(sql "SELECT core.fn_app_intro_pending('${_i}')")" = f ] || _miss=$((_miss + 1)); done
 eq A.intro-merker-gesetzt 0 "$_miss"

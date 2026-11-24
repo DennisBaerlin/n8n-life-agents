@@ -107,5 +107,9 @@
     ],
     "tail": []
   },
+  "backup": {
+    "_comment": "Paperless haelt keine eigenen Daten (keine Tabellen im Bundle). Der Block macht das Paket einspielbar: ein Restore richtet es ein bzw. schaltet es ein, statt es zu ueberspringen; Adresse (general.paperless_url) und Zugang (PAPERLESS_API_TOKEN) reisen als Bundle-Teile config.json und access.json (provisioning/lib/backup_cli.sh).",
+    "schema_dump": false
+  },
   "migrations": "db"
 }

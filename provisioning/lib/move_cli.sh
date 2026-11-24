@@ -3,7 +3,8 @@
 # owner_connect.sh liefert _oc_finalize_verified). Mechanik: docs/reference/provisioning.md *Umzug*.
 #
 #   apply <ordner>   Umzugs-Ordner einspielen (Ordner = Ergebnis von `retire`; Verbund: Pfad auf dem Rechner). Vorpruefungen aendern
-#                    nichts; danach in Stufen started -> restored -> memory -> config -> finalized -> applied.
+#                    nichts; danach in Stufen started -> restored -> finalized -> applied. Die Sicherung bringt Gespraeche,
+#                    geaenderte Einstellungen und Paket-Zugaenge selbst mit (backup_cli.sh _bkp_restore_parts).
 #   check [<ordner>] Vergleich vorher.txt (alte Maschine) gegen nachher.txt (hier, move_snapshot aus retire_cli.sh): generisch je
 #                    Tabelle Zeilenzahl und md5, kein Paket-Code im Kern.
 #   status           Stand (Exit 0 = kein Umzug offen, 10 = mitten drin, 11 = eingespielt, wartet auf die Abnahme).
@@ -16,10 +17,10 @@
 # Exit: 0 ok; 1 Abbruch bzw. Vergleich mit Abweichung (Grund auf stderr); 2 Vergleich unmoeglich.
 
 MOVE_FORMAT=1
-MOVE_STAGES="started restored memory config finalized applied"
+MOVE_STAGES="started restored finalized applied"
 MOVE_TUNNEL_WAIT_SECS="${MOVE_TUNNEL_WAIT_SECS:-600}"
 MOVE_TUNNEL_POLL_SECS="${MOVE_TUNNEL_POLL_SECS:-5}"
-MOVE_SECRET_FILES="move.env memory.dump memory.counts"
+MOVE_SECRET_FILES="move.env"
 
 move_usage() {
   cat >&2 <<'USAGE'
@@ -28,7 +29,7 @@ lifeagents move — Daten von der alten Maschine auf diese (neue) Maschine über
 Usage: lifeagents move apply <ordner>
        lifeagents move check [<ordner>] | status | done [--yes] | abort [--yes]
 
-  apply <ordner>  Einspielen: Vorprüfungen (ändern nichts), dann Sicherung, Gesprächs-Gedächtnis, geänderte Einstellungen,
+  apply <ordner>  Einspielen: Vorprüfungen (ändern nichts), dann die Sicherung (mit Gesprächen, Einstellungen und Zugängen),
                   Bot fest auf dich einstellen, Übersicht-Knopf mit der neuen Adresse, Geheimnis-Dateien im Ordner löschen,
                   Vergleich. Bricht es ab, macht ein neuer Lauf dort weiter. <ordner> = der Umzugs-Ordner der alten Maschine
                   (Docker-Verbund: Pfad auf dem Rechner, z. B. /root/lifeagents-move).
@@ -191,26 +192,7 @@ _mv_tunnel() {
 }
 
 # --- Stufen --------------------------------------------------------------------------------------------------------------
-# _mv_intro_latch — die Ankuendigung der Uebersicht (Animation) kam auf der alten Maschine schon bei jedem an; der Merker
-#   (core.notification_state) wird nicht gesichert, ohne ihn schickte der Menue-Lauf sie ein zweites Mal. Alle Personen der
-#   family-Fakten gelten als angekuendigt (dieselbe fn wie der Installer: core.fn_should_notify).
-_mv_intro_latch() {
-  local ids id bad=0
-  if ! ids="$(_ret_sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) p
-                         WHERE c.name = 'family' AND COALESCE(p->>'telegram_user_id', '') ~ '^[0-9]{1,18}\$'" 2>/dev/null)"; then
-    warn "Ankündigung der Übersicht: die Personen ließen sich nicht lesen — jede bekommt die Animation unter Umständen ein zweites Mal."
-    return 0
-  fi
-  for id in $ids; do
-    [[ $id =~ ^[0-9]{1,18}$ ]] || continue
-    _ret_sql "SELECT core.fn_should_notify('app_intro', '${id}')" >/dev/null 2>&1 || bad=$((bad + 1))
-  done
-  [ "$bad" -eq 0 ] || warn "Ankündigung der Übersicht: ${bad} Merker ließen sich nicht setzen — diese Personen bekommen die Animation unter Umständen ein zweites Mal."
-  return 0
-}
-
-# _mv_wipe_secrets <ordner-wie-angegeben> <lokaler-ordner> — die Antwort-Datei (Schluessel) und den Gedaechtnis-Abzug (Gespraeche)
-#   nach dem Einspielen loeschen; die verschluesselte Sicherung bleibt (Sicherheitsnetz bis `done`). Verbund: ueber den Rechner-Ordner.
+# _mv_wipe_secrets <ordner-wie-angegeben> <lokaler-ordner> — die Antwort-Datei (Schluessel) nach dem Einspielen loeschen; die verschluesselte Sicherung bleibt (Sicherheitsnetz bis `done`). Verbund: ueber den Rechner-Ordner.
 _mv_wipe_secrets() {
   local dir="$1" d="$2" f
   if rt_is_compose; then
@@ -273,24 +255,9 @@ move_cmd_apply() {
       || die "Wiederherstellen gescheitert — die Daten sind unverändert (atomar). Noch einmal: lifeagents move apply ${dir}"
     _mv_set STAGE restored
   fi
-  if ! _mv_reached memory; then
-    if [ -r "$d/memory.dump" ] && [ -r "$d/memory.counts" ]; then
-      memory_import "$d/memory.dump" "$d/memory.counts" || die "Gesprächs-Gedächtnis ließ sich nicht einspielen. Noch einmal: lifeagents move apply ${dir}"
-    else
-      log "Kein Gesprächs-Gedächtnis im Umzugs-Ordner — übersprungen."
-    fi
-    _mv_set STAGE memory
-  fi
-  if ! _mv_reached config; then
-    if [ -r "$d/config.json" ]; then
-      LIFEAGENTS_CONFIG_DEFER_APPLY=1 config_cmd_import "$d/config.json" || warn "Nicht jede Einstellung ließ sich übernehmen (Namen oben) — der Vergleich unten zeigt es."
-    fi
-    _mv_set STAGE config
-  fi
   if ! _mv_reached finalized; then
     load_install_env
     _pkg_resolve_env
-    _mv_intro_latch
     _oc_finalize_verified \
       || die "Der Bot ließ sich nicht fest auf dich einstellen (${OC_FINALIZE_REASON:-?}); Details oben. Der Stand ist gespeichert — noch einmal: lifeagents move apply ${dir}"
     _set_bot_menu_buttons "$(owner_tg_token)"

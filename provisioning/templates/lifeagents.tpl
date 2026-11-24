@@ -71,7 +71,7 @@ Usage: lifeagents <befehl> [optionen]
   retire      Umzug auf eine neue Maschine: diese Installation stilllegen und alles für die neue in einen
               Ordner legen; --check (Trockenlauf), --status, --undo [--restore <ordner>] (zurück).
               `lifeagents retire help` für Details. Braucht root.
-  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt Sicherung, Gedächtnis und Einstellungen ein,
+  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt die Sicherung ein (mit Gesprächen, Einstellungen, Zugängen),
               check (Vergleich mit der alten Maschine), status, done (Abnahme; bis dahin keine Updates), abort (Ausweg).
               `lifeagents move help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.

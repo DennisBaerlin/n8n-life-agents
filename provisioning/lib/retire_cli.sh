@@ -9,10 +9,10 @@
 #   -> drained (keine laufende Ausfuehrung mehr in der DB) -> done (Ordner geschrieben).
 # Ein neuer Lauf setzt nach der letzten erledigten Stufe fort; `--undo` geht aus jeder Stufe zurueck. PostgreSQL bleibt immer an.
 #
-# Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc), memory.dump + memory.counts (agent.*_chat_memory), config.json
-#   (vom Owner geaenderte Einstellungen), move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
-#   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. memory_import und move_snapshot nutzt
-#   auch `lifeagents move` (B2) — eine Adresse.
+# Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc; traegt auch Gespraeche, geaenderte Einstellungen und Paket-Zugaenge),
+#   move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
+#   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. move_snapshot nutzt auch
+#   `lifeagents move` (B2); es fuehrt auf backup_cli.sh backup_fingerprint.
 #
 # Exit: 0 ok; 1 Abbruch (Grund auf stderr, nichts weiter geaendert); --status: 0 nicht stillgelegt, 10 mitten drin, 11 fertig.
 
@@ -153,19 +153,13 @@ _ret_verify_drained() {
 # _ret_q <wert> -> 'wert' fuer eine .env-Antwort-Datei (install_answers_load liest '…' woertlich, ' als '\'').
 _ret_q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) ohne Proxy-Werte, die
-#   Haushalts-Zeitzone und die Zugaenge der aktiven Pakete (Manifest credentials). Abgeleitet, keine eigene Liste.
+# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) ohne Proxy-Werte und die
+#   Haushalts-Zeitzone. Die Zugaenge der Pakete reisen in der Sicherung (access.json, backup_cli.sh), nicht hier.
 _ret_answer_keys() {
-  local k pkg mf core; core="$(lifeagents_env_file core)"
+  local k core; core="$(lifeagents_env_file core)"
   for k in $_INSTALL_ENV_KEYS HOUSEHOLD_TIMEZONE; do
     case "$k" in REACH_MODE|DOMAIN|TRUSTED_PROXIES) continue ;; esac
     printf '%s\t%s\n' "$core" "$k"
-  done
-  for pkg in $(_bkp_active_names); do
-    [ "$pkg" = core ] && continue
-    mf="$(_pkg_dir)/$pkg/manifest.json"; [ -r "$mf" ] || continue
-    jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf" 2>/dev/null \
-      | while IFS= read -r k; do printf '%s\t%s\n' "$(lifeagents_env_file "$pkg")" "$k"; done
   done
 }
 # _ret_write_answers <datei> <release> [backup-dir] — Antwort-Datei fuer `setup.sh --answers`. Nie TELEGRAM_WEBHOOK_TAKEOVER: ohne
@@ -187,69 +181,8 @@ _ret_write_answers() {
   } > "$out"
 }
 
-_ret_write_config() {
-  _ret_sql "SELECT core.fn_config_export()" > "$1" \
-    || die "Geänderte Einstellungen ließen sich nicht lesen."
-}
-
-_ret_memory_tables() {
-  _ret_sql "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname = 'agent' AND tablename LIKE '%\_chat\_memory' ORDER BY 1"
-}
-# _ret_write_memory <ordner> — memory.dump (Aufbau + Daten, pg_dump -Fc) und memory.counts ("tabelle\tzeilen\tmax_id").
-_ret_write_memory() {
-  local d="$1" t v args=() rc=0
-  : > "$d/memory.counts"
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    _bkp_qual_ok "$t" || continue
-    args+=(-t "$t")
-    v="$(_ret_sql "SELECT count(*) || E'\t' || COALESCE(max(id), 0) FROM ${t}")" || die "Gesprächs-Gedächtnis ${t} ließ sich nicht zählen."
-    [[ $v =~ ^[0-9]+$'\t'[0-9]+$ ]] || die "Gesprächs-Gedächtnis ${t} ließ sich nicht zählen."
-    printf '%s\t%s\n' "$t" "$v" >> "$d/memory.counts"
-  done < <(_ret_memory_tables)
-  [ "${#args[@]}" -gt 0 ] || return 0
-  pg_su_exec pg_dump -d "$N8N_DB_NAME" -Fc "${args[@]}" > "$d/memory.dump" 2> "$d/memory.err" || rc=$?
-  rm -f "$d/memory.err"
-  [ "$rc" -eq 0 ] || die "Gesprächs-Gedächtnis ließ sich nicht sichern (pg_dump)."
-}
-
-# move_snapshot -> Vergleichswerte (sortiert, eine Zeile je Wert): Zeilenzahl + md5 je gesicherter Tabelle (Manifest-backup-Block),
-#   Zeilenzahl je gefilterter Tabelle (der Restore setzt dort Zeitstempel neu), Einstellungs-Abweichungen (md5 des Werts),
-#   Zeilen je Gedaechtnis-Tabelle. Generisch: kein Paket hat hier eigenen Code. B2 vergleicht vorher.txt mit nachher.txt.
-#   System-Tabellen (backup.system_tables) nur mit Zeilenzahl: der Abgleich nach dem Restore (_bkp_converge) fuellt sie neu, ein md5
-#   meldete dort eine Abweichung, die keine ist. rc 1, sobald eine Abfrage scheitert (nie eine Zeile ohne Wert).
-#   Der md5 haengt nicht an der Maschine: Text der Zeilen mit festen Sitzungs-Einstellungen (Zeitzone/Datumsform setzt ein LXC aus
-#   der System-Locale, das Docker-Abbild auf UTC), sortiert und verbunden werden je Zeile md5-Werte (hex: Sortierung ohne Collation,
-#   feste Laenge statt einer Tabelle als ein Text bis zur 1-GB-Grenze).
-RETIRE_MD5_SET="SET TimeZone = 'UTC'; SET DateStyle = 'ISO, YMD'; SET IntervalStyle = 'postgres'; SET extra_float_digits = 1;"
-move_snapshot() {
-  local t qual cond v sys out=''
-  sys=$'\n'"$(_bkp_system_tables)"$'\n'
-  while IFS= read -r t; do
-    if [ -z "$t" ] || ! _bkp_qual_ok "$t"; then continue; fi
-    v="$(_ret_sql "SELECT count(*) FROM ${t}")" || return 1; [ -n "$v" ] || return 1
-    out+="rows ${t} ${v}"$'\n'
-    [[ "$sys" == *$'\n'"$t"$'\n'* ]] && continue
-    v="$(_ret_sql "${RETIRE_MD5_SET} SELECT md5(COALESCE(string_agg(md5(x::text), '' ORDER BY md5(x::text) COLLATE \"C\"), '')) FROM ${t} x")" || return 1
-    v="${v##*$'\n'}"   # psql gibt je SET eine Zeile „SET“ aus, das Ergebnis steht zuletzt
-    [[ $v =~ ^[0-9a-f]{32}$ ]] || return 1
-    out+="md5 ${t} ${v}"$'\n'
-  done < <(_bkp_bulk_tables)
-  while IFS=$'\t' read -r qual cond; do
-    if [ -z "$qual" ] || ! _bkp_qual_ok "$qual"; then continue; fi
-    v="$(_ret_sql "SELECT count(*) FROM ${qual} WHERE ${cond}")" || return 1; [ -n "$v" ] || return 1
-    out+="rows ${qual}[filtered] ${v}"$'\n'
-  done < <(_bkp_filtered)
-  v="$(_ret_sql "SELECT 'config ' || package || '.' || category || '.' || key || ' ' || md5(COALESCE(value, ''))
-                   FROM core.config WHERE managed_by = 'owner' AND value IS DISTINCT FROM default_value")" || return 1
-  out+="${v}"$'\n'
-  while IFS= read -r t; do
-    if [ -z "$t" ] || ! _bkp_qual_ok "$t"; then continue; fi
-    v="$(_ret_sql "SELECT count(*) FROM ${t}")" || return 1; [ -n "$v" ] || return 1
-    out+="memory ${t} ${v}"$'\n'
-  done < <(_ret_memory_tables)
-  printf '%s' "$out" | grep -v '^$' | LC_ALL=C sort
-}
+# move_snapshot -> Vergleichswerte fuer vorher.txt/nachher.txt: der Fingerabdruck der Sicherung (backup_cli.sh backup_fingerprint).
+move_snapshot() { backup_fingerprint; }
 
 _ret_next_steps() {
   local pk="$1" dir="$2" base
@@ -338,8 +271,6 @@ _ret_export() {
   name="$(_bkp_file_name "$(date -u +%Y%m%d%H%M%S)" "$(printf '%s' "$key" | backup_key_id)" "$rel")"
   # Eigene Subshell: backup_cmd_export setzt seinen EXIT-Trap und beendet sich per die.
   ( backup_cmd_export "$st/$name" ) || die "Sicherung ließ sich nicht schreiben — nichts verloren, erneut: lifeagents retire"
-  _ret_write_memory "$st"
-  _ret_write_config "$st/config.json"
   _ret_write_answers "$st/move.env" "$rel" "$bdir"
   move_snapshot > "$st/vorher.txt" || die "Vergleichswerte ließen sich nicht lesen."
   pk="$(for p in $(_bkp_active_names); do [ "$p" = core ] || printf '%s\n' "$p"; done | paste -sd, -)"
@@ -384,7 +315,7 @@ _ret_fetch_dir() {
   trap "rm -rf -- '$st'" EXIT
   rt_host_get "$(_bkp_hd "$src")" move.manifest > "$st/move.manifest" 2>/dev/null || die "In '${src}' liegt kein Umzugs-Ordner (move.manifest fehlt)."
   f="$(read_env_value "$st/move.manifest" BACKUP_FILE)"
-  for f in "$f" memory.dump memory.counts config.json vorher.txt; do
+  for f in "$f" vorher.txt; do
     rt_host_get "$(_bkp_hd "$src")" "$f" > "$st/$f" 2>/dev/null || rm -f "$st/$f"
   done
   _RET_DIR="$st"
@@ -403,47 +334,8 @@ _ret_restore_from() {
     || die "Die Rück-Sicherung lässt sich hier nicht einspielen ($(printf '%s' "$plan" | jq -r '.detail // .reason // "Prüfung gescheitert"' 2>/dev/null)). Es wurde nichts geändert."
   [ -n "$prel" ] && [ "$prel" = "$rel" ] \
     || die "Die Rück-Sicherung stammt aus ${prel:-einer unbekannten Version}, hier ist ${rel:-keine Version} installiert — nur dieselbe Version geht zurück. Es wurde nichts geändert."
+  # Die Sicherung traegt Gespraeche, Einstellungen und Zugaenge selbst (backup_cli.sh _bkp_restore_parts).
   ( backup_cmd_restore "$d/$f" --yes ) || die "Wiederherstellen gescheitert — die Daten sind unverändert (atomar). Die Sperre bleibt."
-  if [ -r "$d/memory.dump" ]; then memory_import "$d/memory.dump" "$d/memory.counts"; fi
-}
-
-# memory_import <memory.dump> <memory.counts> — Gespraechs-Gedaechtnis einspielen, eine Transaktion: Tabellen ersetzen (Aufbau +
-#   Daten + Folge-Nummern aus dem Abzug), Wasserstand des Lern-Laufs je Tabelle auf max(id) (sonst laese er alle alten Gespraeche
-#   erneut: doppelte Vorschlaege, Kosten), Zeilen gegen memory.counts. Angelegt wird wie vom n8n-Knoten selbst: als n8n-Rolle dieser
-#   Maschine (ihr Name kann anders sein), ohne Rechte und Trigger aus dem Abzug — Rechte gelten wie fuer jede neue Tabelle, den
-#   Guard haengt der Event-Trigger beim CREATE TABLE an (agent.chat_memory_guard_init.sql; die n8n-Rolle darf die Guard-Funktion
-#   nicht selbst in einen Trigger setzen).
-memory_import() {
-  local dump="$1" counts="$2" t n owner agent rc=0 wd sql
-  [ -r "$dump" ] && [ -r "$counts" ] || die "Gedächtnis-Abzug unvollständig (memory.dump/memory.counts)."
-  _bkp_resolve_db
-  owner="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" DB_POSTGRESDB_USER 2>/dev/null || true)"
-  [[ $owner =~ ^[a-z_][a-z0-9_]*$ ]] || die "n8n-Datenbank-Rolle unbekannt (DB_POSTGRESDB_USER in n8n.env)."
-  # Das SQL traegt Gespraechs-Inhalte -> in den 0700-Arbeitsordner (tmpfs), nie neben den Abzug.
-  wd="$(_bkp_tmpdir)" || die "Arbeitsordner ließ sich nicht anlegen."; sql="$wd/memory.sql"
-  {
-    printf '\\set ON_ERROR_STOP on\n'
-    while IFS=$'\t' read -r t _ _; do
-      [[ $t =~ ^agent\.[a-z][a-z0-9_]*_chat_memory$ ]] || die "Ungültige Gedächtnis-Tabelle in memory.counts: $t"
-      printf 'DROP TABLE IF EXISTS %s CASCADE;\n' "$t"
-    done < "$counts"
-    printf 'SET ROLE %s;\n' "$owner"
-    pg_su_stdin pg_restore --no-owner --no-acl -f - < "$dump" | sed '/^CREATE TRIGGER trg_chat_memory_strip_thinking /d' || rc=$?
-    printf 'RESET ROLE;\n'
-    while IFS=$'\t' read -r t n _; do
-      agent="${t#agent.}"; agent="${agent%_chat_memory}"
-      printf "INSERT INTO agent.guide_learn_watermark(agent_name, last_seen_id) SELECT '%s', COALESCE(max(id), 0) FROM %s\n" "$agent" "$t"
-      printf '  ON CONFLICT (agent_name) DO UPDATE SET last_seen_id = EXCLUDED.last_seen_id;\n'
-      printf "DO \$\$ BEGIN IF (SELECT count(*) FROM %s) <> %s THEN RAISE EXCEPTION 'Zeilen in %s weichen ab'; END IF; END \$\$;\n" "$t" "${n:-0}" "$t"
-    done < "$counts"
-  } > "$sql"
-  [ "$rc" -eq 0 ] || { rm -rf -- "$wd"; die "Gedächtnis-Abzug nicht lesbar (pg_restore)."; }
-  rc=0
-  # Ueber stdin: psql laeuft als postgres und darf den root-eigenen 0700-Arbeitsordner nicht lesen.
-  pg_su_psql -X -q -1 -d "$N8N_DB_NAME" -f - < "$sql" >/dev/null || rc=$?
-  rm -rf -- "$wd"
-  [ "$rc" -eq 0 ] || die "Gesprächs-Gedächtnis ließ sich nicht einspielen — nichts geändert (eine Transaktion)."
-  ok "Gesprächs-Gedächtnis eingespielt ($(grep -c . "$counts") Tabelle(n)), Lern-Lauf setzt danach an."
 }
 
 # --- Verben --------------------------------------------------------------------------------------------------------------

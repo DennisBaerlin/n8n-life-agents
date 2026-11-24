@@ -268,7 +268,7 @@ config_cmd_import() {
   local file="${1:-}" res
   [ -n "$file" ] && [ -r "$file" ] || die "Usage: lifeagents config import <config.json>"
   jq -e 'type == "array"' "$file" >/dev/null 2>&1 || die "${file} ist keine Liste von Einstellungen (config.json aus lifeagents retire)."
-  res="$(config_import_rows "$file")" || die "Einstellungen ließen sich nicht einspielen (Grund oben)."
+  res="$(config_import_rows "$file")" && [ -n "$res" ] || die "Einstellungen ließen sich nicht einspielen (Grund oben)."
   config_import_report "$res"
 }
 

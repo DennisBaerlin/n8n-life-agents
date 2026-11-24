@@ -6,7 +6,9 @@ Dein Assistent sichert deine Daten verschlüsselt. Diese Seite erklärt, was ges
 
 ## Was gesichert wird {#was}
 
-Gesichert werden deine **Nutzerdaten**: Finanzen, Haushalt und Profil, Pläne, Erinnerungen und was die Agenten über dich wissen. Nicht in der Sicherung stehen das Programm selbst und deine Zugangsdaten (Telegram-Bot, Anthropic- und Google-Schlüssel). Beides fragt eine neue Einrichtung wieder ab.
+Gesichert werden deine **Nutzerdaten**: Finanzen, Haushalt und Profil, Pläne, Erinnerungen und was die Agenten über dich wissen. Dazu kommen deine geänderten Einstellungen, die bisherigen Gespräche, der Verlauf der KI-Kosten und die Zugänge, die du für Module eingegeben hast (etwa für Paperless oder die Sprachnachrichten). Nicht in der Sicherung stehen das Programm selbst, der Telegram-Bot-Schlüssel und der Anthropic-Schlüssel; die fragt eine neue Einrichtung ohnehin ab.
+
+Die Sicherung ist verschlüsselt. Wer die Datei und dein Notfallblatt hat, hat damit auch deine eingegebenen Zugänge. Ist eines von beiden verloren gegangen, erneuere die Zugänge beim jeweiligen Anbieter.
 
 Jede Sicherung ist eine Datei mit einem Namen wie `lifeagents-backup-20261112033000-k1a2b3c4d-v0.44.0.nla.enc`:
 

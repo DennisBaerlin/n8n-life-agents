@@ -236,8 +236,7 @@ inject_credentials() {
 
   # 5) Google Gemini (PaLM).  (allowedDomains ist Pflichtfeld des Credential-Validators.)
   if [ -n "${GOOGLE_API_KEY:-}" ]; then
-    _cred_stage 'Google Gemini(PaLM) Api account' 'googlePalmApi' \
-         "$(_cred_json '{host:"https://generativelanguage.googleapis.com", apiKey:env.LA_C_K, allowedDomains:""}' "LA_C_K=$GOOGLE_API_KEY")"
+    _cred_stage_google "$GOOGLE_API_KEY"
   else
     note "GOOGLE_API_KEY fehlt — Credential 'Google Gemini(PaLM) Api account' uebersprungen."
   fi
@@ -266,6 +265,27 @@ inject_credentials() {
 
   _cred_import_and_test
   ok "Host-Credentials gesetzt."
+}
+
+# _cred_stage_google <schluessel> — die Gemini-Credential der Sprachnachrichten stagen (Host-Zugang, auch fuer den Restore).
+_cred_stage_google() {
+  _cred_stage 'Google Gemini(PaLM) Api account' 'googlePalmApi' \
+       "$(_cred_json '{host:"https://generativelanguage.googleapis.com", apiKey:env.LA_C_K, allowedDomains:""}' "LA_C_K=$1")"
+}
+
+# inject_access_credentials [<pkg>…] — nur die vom Nutzer eingegebenen Dienst-Zugaenge neu setzen (Restore mit access.json,
+#   backup_cli.sh _bkp_access_inject): Google (GOOGLE_API_KEY aus der Prozess-Umgebung, sonst core.env) und die Manifest-Creds der
+#   genannten Pakete aus ihrer env-Datei. Postgres-, Bot- und Anthropic-Credentials bleiben unberuehrt. Upsert + Test wie oben.
+inject_access_credentials() {
+  local g="${GOOGLE_API_KEY:-}" pkg n
+  _inject_preflight
+  _CRED_ITEMS='[]'; _CRED_TEST_IDS=''
+  [ -n "$g" ] || g="$(read_env_value "$(lifeagents_env_file core)" GOOGLE_API_KEY 2>/dev/null || true)"
+  [ -z "$g" ] || _cred_stage_google "$g"
+  for pkg in "$@"; do _inject_manifest_credentials "$pkg"; done
+  n="$(jq 'length' <<<"$_CRED_ITEMS" 2>/dev/null || echo 0)"
+  [ "$n" -gt 0 ] || return 0
+  _cred_import_and_test
 }
 
 # _cred_assemble_data <type> <fields_json>  — n8n-Credential-data-JSON je Typ. Die Typ-Quirks

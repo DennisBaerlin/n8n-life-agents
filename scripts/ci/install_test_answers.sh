@@ -65,8 +65,10 @@ if [ -n "${TEST_TS_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_TS_OAUTH_CLIENT_SECRET:
                  cfg data "$body"; } | api)" || rc=$?
   unset tok
   code="${res##*$'\n'}"; key="$(printf '%s' "${res%$'\n'*}" | jq -r '.key // empty' 2>/dev/null || true)"
+  # Dieselbe Praefix-Pruefung wie der Installer (_answers_ts_authkey_guard); tskey-auth- verlangte im Test einen Wert
+  # in echter Anbieter-Form (standin_lint Teil E).
   case "$rc:$code:$key" in
-    0:200:tskey-auth-?*) mask "$key" ;;
+    0:200:tskey-?*) mask "$key" ;;
     *) api_fail "$rc" "$code" 'Anmeldeschlüssel' ;;
   esac
 else

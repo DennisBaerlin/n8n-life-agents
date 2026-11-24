@@ -35,11 +35,11 @@ reply() { printf '%s\n%s' "$1" "$2"; exit 0; }
 case "$cfg" in
   *'url = "https://api.tailscale.com/api/v2/oauth/token"'*)
     [ "$mode" = oauth_denied ] && reply '{"message":"invalid client"}' 401
-    reply '{"access_token":"tskey-api-FAKEaccess","token_type":"Bearer","expires_in":3600}' 200 ;;
+    reply '{"access_token":"test-fake-FAKEaccess","token_type":"Bearer","expires_in":3600}' 200 ;;
   *'url = "https://api.tailscale.com/api/v2/tailnet/-/keys"'*)
     [ "$mode" = no_key ] && reply '{"message":"requested tags are invalid or not permitted"}' 400
-    printf '%s' "$cfg" | grep -q 'Authorization: Bearer tskey-api-FAKEaccess' || reply '{}' 401
-    reply '{"id":"kFake1","key":"tskey-auth-FAKEminted"}' 200 ;;
+    printf '%s' "$cfg" | grep -q 'Authorization: Bearer test-fake-FAKEaccess' || reply '{}' 401
+    reply '{"id":"kFake1","key":"tskey-FAKEminted"}' 200 ;;
   *) exit 6 ;;
 esac
 C
@@ -51,8 +51,8 @@ run() {   # run <ziel> — Helfer mit den Test-Zugaengen aus der Umgebung; Ausga
   bash "$H" "$1" >"$W/out" 2>&1 || RC=$?
 }
 creds() {
-  export TEST_TELEGRAM_BOT_TOKEN='123456:FAKEbot' TEST_ANTHROPIC_API_KEY='sk-ant-FAKEanthropic'  # hand-injected: erfundene Werte, die curl-Attrappe kennt nur FAKE-Muster
-  export TEST_TS_OAUTH_CLIENT_ID='kFAKEclient' TEST_TS_OAUTH_CLIENT_SECRET='tskey-client-kFAKEclient-FAKEsecret'  # hand-injected: erfundene Werte, die curl-Attrappe kennt nur FAKE-Muster
+  export TEST_TELEGRAM_BOT_TOKEN='123456:FAKEbot' TEST_ANTHROPIC_API_KEY='test-fake-FAKEanthropic'  # hand-injected: erfundene Werte, die curl-Attrappe kennt nur FAKE-Muster
+  export TEST_TS_OAUTH_CLIENT_ID='kFAKEclient' TEST_TS_OAUTH_CLIENT_SECRET='test-fake-client-FAKEsecret'  # hand-injected: erfundene Werte, die curl-Attrappe kennt nur FAKE-Muster
 }
 
 # --- A: voller Lauf in CI ---------------------------------------------------------------------------------------------
@@ -62,9 +62,9 @@ eq A_rc 0 "$RC"
 eq A_mode 600 "$(stat -c %a "$W/a.env" 2>/dev/null)"
 A="$(cat "$W/a.env" 2>/dev/null)"
 has A_tunnel "REACH_MODE='tunnel'" "$A"
-has A_key "TS_AUTHKEY='tskey-auth-FAKEminted'" "$A"
+has A_key "TS_AUTHKEY='tskey-FAKEminted'" "$A"
 has A_bot "TELEGRAM_BOT_TOKEN='123456:FAKEbot'" "$A"
-has A_llm "ANTHROPIC_API_KEY='sk-ant-FAKEanthropic'" "$A"
+has A_llm "ANTHROPIC_API_KEY='test-fake-FAKEanthropic'" "$A"
 has A_takeover "TELEGRAM_WEBHOOK_TAKEOVER='1'" "$A"
 has A_no_keepalive "LLM_GATEWAY_KEEPALIVE_HOURS='0'" "$A"
 has A_owner "OWNER_BIRTH_DATE='1990-01-01'" "$A"
@@ -80,8 +80,8 @@ L="$(cat "$W/m/calls.log")"
 for v in FAKEsecret FAKEaccess FAKEminted FAKEbot FAKEanthropic; do hasnt "A_argv_no_$v" "$v" "$L"; done
 grep -c -- '-K -' "$W/m/calls.log" | grep -qx 2 && pass A_curl_config_stdin || fail A_curl_config_stdin "$L"
 O="$(cat "$W/out")"
-has A_mask_key '::add-mask::tskey-auth-FAKEminted' "$O"
-has A_mask_access '::add-mask::tskey-api-FAKEaccess' "$O"
+has A_mask_key '::add-mask::tskey-FAKEminted' "$O"
+has A_mask_access '::add-mask::test-fake-FAKEaccess' "$O"
 for v in FAKEsecret FAKEbot FAKEanthropic; do hasnt "A_out_no_$v" "$v" "$O"; done
 # Ausserhalb von CI: keine ::add-mask::-Zeile (sie zeigte den Wert im Terminal).
 unset GITHUB_ACTIONS; run "$W/a2.env"

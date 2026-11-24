@@ -621,12 +621,12 @@ test('Abschluss: Fehlerbericht zeigt Grund und Protokoll, aber keine Geheimnisse
     pairNow(w);
     await failedPage(w);
     fs.appendFileSync(path.join(w.dir, 'state', 'finalize.log'),
-      'curl https://api.telegram.org/bot123456789:AAbcdefghijklmnopqrstuvwxyz012345678/getMe start=0123456789abcdef chat 987654321\n');
+      'curl https://api.telegram.org/bot12345:test-fake-telegram-0000000000/getMe start=0123456789abcdef chat 987654321\n');
     const t = (await req(w, 'GET', '/api/report', { headers: { Cookie: w.cookie } })).json.text;
     assert.match(t, /finalize_reason: placeholders_left/);
     assert.match(t, /finalize_attempts: 3/);
     assert.match(t, /Beispiel-Zeile aus dem Einspielen/);
-    assert.doesNotMatch(t, /AAbcdefghij|0123456789abcdef|987654321/);
+    assert.doesNotMatch(t, /test-fake-telegram|0123456789abcdef|987654321/);
   } finally { await w.stop(); }
 });
 

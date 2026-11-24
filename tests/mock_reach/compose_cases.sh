@@ -239,28 +239,28 @@ rt_edge_exec_in() {
   [ "$1" = tailscale ] || return 2; shift
   printf 'execin %s\n' "$*" >> "$LOG"
   local k; k="$(cat)"; printf '%s' "$k" > "$W/key_seen"; env | grep -c '^TS_AUTHKEY=' > "$W/env_seen"
-  if [ "$k" = tskey-auth-FAKEgood ]; then ts_json Running '' '["https","funnel"]' > "$W/ts.json"
+  if [ "$k" = tskey-FAKEgood ]; then ts_json Running '' '["https","funnel"]' > "$W/ts.json"
   else printf 'backend error: invalid key: %s\n' "$k" >&2; return 1; fi
 }
 kc() { cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$W/ts.json" "$W/funnel.json" "$W/key_seen"; : > "$LOG"
        A_TS_JSON="$1"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1; DOMAIN=""; _reach_authkey="$2"; }
-kc "$(ts_json NeedsLogin '' '[]')" tskey-auth-FAKEgood
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEgood
 reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
 eq K_domain_after_key "bot.tail-fantasy.ts.net|" "${DOMAIN:-}|${_reach_authkey:-}"
 eq K_domain_stored bot.tail-fantasy.ts.net "$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null)"
 grep -q '^execin tailscale up --auth-key=file:/dev/stdin --hostname=bot --accept-dns=false --timeout=90s$' "$LOG" \
   && pass K_up_by_file || fail K_up_by_file "$(tr '\n' ';' < "$LOG")"
 grep -q FAKEgood "$LOG" && fail K_argv_no_key "Schluessel in argv" || pass K_argv_no_key
-eq K_key_via_stdin tskey-auth-FAKEgood "$(cat "$W/key_seen" 2>/dev/null)"
+eq K_key_via_stdin tskey-FAKEgood "$(cat "$W/key_seen" 2>/dev/null)"
 eq K_child_no_env 0 "$(cat "$W/env_seen" 2>/dev/null)"
 case "$out" in *FAKEgood*) fail K_output_no_key "Schluessel in der Ausgabe" ;; *) pass K_output_no_key ;; esac
 grep -q FAKEgood "$REACH_CORE_ENV" && fail K_core_env_no_key "Schluessel in core.env" || pass K_core_env_no_key
 # Schon angemeldet (Update, Zweitlauf): kein Schluessel-Aufruf.
-kc "$(ts_json Running '' '["https","funnel"]')" tskey-auth-FAKEgood
+kc "$(ts_json Running '' '["https","funnel"]')" tskey-FAKEgood
 reach_prepare >/dev/null 2>&1
 grep -q '^execin' "$LOG" && fail K_running_untouched "$(tr '\n' ';' < "$LOG")" || pass K_running_untouched
 # Abgelehnt: Meldung ohne Wert, keine Adresse.
-kc "$(ts_json NeedsLogin '' '[]')" tskey-auth-FAKEbad
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEbad
 reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
 case "$out" in *abgelehnt*) pass K_rejected_msg ;; *) fail K_rejected_msg "$out" ;; esac
 case "$out" in *FAKEbad*) fail K_rejected_no_key "Schluessel in der Ausgabe" ;; *) pass K_rejected_no_key ;; esac

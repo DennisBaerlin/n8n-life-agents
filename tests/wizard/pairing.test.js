@@ -111,8 +111,8 @@ test('finalize: zweiter gleichzeitiger Lauf startet nicht', () => {
 });
 
 test('finalize: Protokoll enthält keine Token, Codes oder chat_ids', () => {
-  const { log } = logged(`_oc_finalize() { echo 'bot123456789:AAbcdefghijklmnopqrstuvwxyz012345678 start=0123456789abcdef X-N8N-API-KEY: geheim123 chat 987654321 sk-ant-abc123def456'; }; ${GOOD}`);
-  assert.doesNotMatch(log, /AAbcdefghij|0123456789abcdef|geheim123|987654321|sk-ant-abc/);
+  const { log } = logged(`_oc_finalize() { echo 'bot12345:test-fake-telegram-0000000000 start=0123456789abcdef X-N8N-API-KEY: geheim123 chat 987654321 sk-ant-abc123def456'; }; ${GOOD}`);
+  assert.doesNotMatch(log, /test-fake-telegram|0123456789abcdef|geheim123|987654321|sk-ant-abc/);
 });
 
 test('finalize: Filter lässt Fehlermeldungen lesbar, schwärzt aber Schlüssel=Werte', () => {

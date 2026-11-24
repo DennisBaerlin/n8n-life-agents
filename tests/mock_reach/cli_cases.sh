@@ -113,7 +113,7 @@ case "$1 $2" in
     # Anmeldeschluessel-Weg: Wert kommt ueber stdin; erbt der Prozess TS_AUTHKEY, steht das in env_seen. Die Ablehnung
     # spiegelt den Schluessel absichtlich auf stderr: der Lib-Code muss die Ausgabe verwerfen.
     k="$(cat)"; printf '%s' "$k" > "$S/key_seen"; env | grep -c '^TS_AUTHKEY=' > "$S/env_seen"
-    if [ "$k" = tskey-auth-FAKEgood ]; then
+    if [ "$k" = tskey-FAKEgood ]; then
       jq -nc '{BackendState:"Running", Self:{DNSName:"bot.tail-fantasy.ts.net.", CapMap:{https:null, funnel:null}}}' > "$S/status.json"
       echo 1 > "$S/allowed"
     else printf 'backend error: invalid key: %s\n' "$k" >&2; exit 1; fi ;;
@@ -309,12 +309,12 @@ eq A_conn_other_mode '' "$(cat "$TS_MOCK_DIR/calls.log" 2>/dev/null)"
 export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
 ans() { printf "TS_AUTHKEY='%s'\nREACH_MODE=tunnel\n" "$1" > "$W/answers.env"; install_answers_load "$W/answers.env" 2>"$W/ans.err"; }
 UNATTENDED=1; ui_interactive() { [ "${UNATTENDED:-0}" -ne 1 ]; }
-newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-auth-FAKEgood
-eq K_loaded_not_exported "tskey-auth-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
+newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-FAKEgood
+eq K_loaded_not_exported "tskey-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
 reach_tunnel_connect >"$W/out" 2>&1; out="$(cat "$W/out")"
 has K_up_by_file 'up --auth-key=file:/dev/stdin --hostname=' "$(cat "$TS_MOCK_DIR/calls.log")"
 hasnt K_argv_no_key FAKEgood "$(cat "$TS_MOCK_DIR/calls.log")"
-eq K_key_via_stdin tskey-auth-FAKEgood "$(cat "$TS_MOCK_DIR/key_seen" 2>/dev/null)"
+eq K_key_via_stdin tskey-FAKEgood "$(cat "$TS_MOCK_DIR/key_seen" 2>/dev/null)"
 eq K_child_no_env 0 "$(cat "$TS_MOCK_DIR/env_seen" 2>/dev/null)"
 eq K_unattended_ready "$DNS|$DNS" "${DOMAIN:-}|$(read_env_value "$INSTALL_ENV_FILE" DOMAIN)"
 hasnt K_core_env_no_key FAKEgood "$(cat "$INSTALL_ENV_FILE" 2>/dev/null)"
@@ -322,7 +322,7 @@ hasnt K_output_no_key FAKEgood "$out"
 eq K_used_once '' "${_reach_authkey:-}"
 # Schon angemeldet (eigener Knoten, Zweitlauf) oder angehalten: der Schluessel bleibt unbenutzt.
 for st in Running Stopped; do
-  newrun; ts_reset; ts_state "$st" '' '["https","funnel"]'; echo 1 > "$TS_MOCK_DIR/allowed"; ans tskey-auth-FAKEgood
+  newrun; ts_reset; ts_state "$st" '' '["https","funnel"]'; echo 1 > "$TS_MOCK_DIR/allowed"; ans tskey-FAKEgood
   reach_tunnel_connect >/dev/null 2>&1
   hasnt "K_${st}_untouched" 'auth-key' "$(cat "$TS_MOCK_DIR/calls.log" 2>/dev/null)"
 done
@@ -332,17 +332,17 @@ eq K_bad_prefix_dropped '' "${_reach_authkey:-}${TS_AUTHKEY:-}"
 has K_bad_prefix_warn 'TS_AUTHKEY' "$(cat "$W/ans.err")"
 hasnt K_bad_prefix_no_value FAKEodd "$(cat "$W/ans.err")"
 # Abgelehnt: Meldung ohne Wert, keine Adresse, unbeaufsichtigt kein Abbruch.
-newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-auth-FAKEbad
+newrun; ts_reset; ts_state NeedsLogin '' '[]'; ans tskey-FAKEbad
 reach_tunnel_connect >"$W/out" 2>&1; rc=$?; out="$(cat "$W/out")"
 eq K_rejected_rc 0 "$rc"
 has K_rejected_msg 'abgelehnt' "$out"
 hasnt K_rejected_no_key FAKEbad "$out"
 eq K_rejected_no_domain '' "${DOMAIN:-}"
 # Wizard-Form der Antwort-Datei: ebenfalls nicht exportiert.
-newrun; printf '# lifeagents-answers v1\nTS_AUTHKEY=tskey-auth-FAKEgood\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
-eq K_wizard_not_exported "tskey-auth-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
+newrun; printf '# lifeagents-answers v1\nTS_AUTHKEY=tskey-FAKEgood\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
+eq K_wizard_not_exported "tskey-FAKEgood||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEgood)"
 # hand-injected: ein TS_AUTHKEY aus der Umgebung des Aufrufers zaehlt nie (nur die Datei) und wird nicht weitergereicht.
-export TS_AUTHKEY=tskey-auth-FAKEenv; printf 'REACH_MODE=tunnel\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
+export TS_AUTHKEY=tskey-FAKEenv; printf 'REACH_MODE=tunnel\n' > "$W/answers.env"; install_answers_load "$W/answers.env" 2>/dev/null
 eq K_env_ignored "||0" "${_reach_authkey:-}|${TS_AUTHKEY:-}|$(env | grep -c FAKEenv)"
 unset TS_AUTHKEY _reach_authkey; UNATTENDED=0; ui_interactive() { return 0; }
 

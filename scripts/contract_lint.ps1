@@ -789,12 +789,16 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 # (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): kein Paket darf den Backup-Key oder einen
 #     Code-Seed in ein Export-Bundle ziehen. Geprueft wird der manifest-`backup`-Block (von backup_cli.sh
 #     gelesen): die gedumpten Tabellen (full_tables + filtered_tables-Keys; exclude_tables ist die
-#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core`
-#     noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
+#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core` (ausser der
+#     Positivliste $coreBackupAllowed) noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
 # ---------------------------------------------------------------
 # Code-geseedete Tabellen (managed_by<>'agent' = Repo-Code, vom Installer neu geseedet): gehoeren nie
 # in ein Bundle. core.* faengt schon (8a) ab; agent.ai_models ist der einzige Code-Seed ausserhalb core.
 $codeSeedTables = @('agent.ai_models', 'core.config')
+# Positivliste: einzelne Nutzerdaten-Tabellen im Schema core, die ein backup-Block nennen darf (Kostenverlauf und
+# "schon gezeigt"-Merker, Restore-Regeln in core.fn_backup_restore_filtered). core.backup_key, core.app_secret, core.config und
+# Schema core als Ganzes bleiben verboten.
+$coreBackupAllowed = @('core.llm_usage', 'core.notification_state')
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
     $mf  = Read-Manifest $pkg
@@ -810,7 +814,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($bk.filtered_tables) { foreach ($p in $bk.filtered_tables.PSObject.Properties) { $dumped.Add($p.Name) } }
 
     foreach ($t in $dumped) {
-        if ($t -match '^core\.') {
+        if ($t -match '^core\.' -and $coreBackupAllowed -notcontains $t) {
             $errors.Add("BACKUP-BLOCK core-SCHEMA: $pkg/manifest.json backup-Block dumpt '$t' (Schema core) -- Schema core darf NIE in einem backup-Block stehen, sonst rutscht core.backup_key (der Restore-Schluessel selbst) ins Bundle (arch-3 Obj 3).")
         }
         if ($codeSeedTables -contains $t) {

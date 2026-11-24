@@ -13,6 +13,11 @@
 --     * agent.monitor_triggers (origin='user'): DELETE origin='user' (observations CASCADE) + Fresh-id-
 --       Insert (kein UNIQUE(domain,lower(label))-Bruch gegen bestehende user-Zeilen; nichts referenziert
 --       Trigger-ids ausser den ausgeschlossenen observations).
+--     * core.llm_usage (KI-Kostenverlauf): zusammenfuehren (INSERT ON CONFLICT (id) DO NOTHING) statt ersetzen -> die Kosten
+--       des Ziels seit seiner Installation bleiben; der Count-Verify der CLI prueft hier nur ">=".
+--     * core.notification_state ("schon gezeigt"-Merker): die Zeilen ausser denen dieser Installation
+--       (core.fn_notify_installation_source) ersetzen; die Installations-Merker des neuen Bots bleiben.
+--   Fehlt ein Schluessel im Bundle (aeltere Sicherung), bleibt die Tabelle unberuehrt.
 --   filtered_tables ist strukturell Core-Sache: das Schema agent ist geteilter Host-Raum; Domaenen-Pakete
 --   besitzen ihr eigenes Schema voll (Voll-Wipe).
 --
@@ -22,12 +27,27 @@
 --   kryptischen FK-Fehler. Ueberspringen scheidet aus: der Count-Verify der CLI (verify_counts) fiele dann
 --   ohnehin; die alte Welt bleibt durch die eine Restore-TX intakt.
 --   Eingabe p (jsonb, Schluessel = qualifizierte Tabellennamen wie im core-Manifest backup.filtered_tables):
---     { "agent.core_contexts": [ {row}, ... ], "agent.monitor_triggers": [ {row}, ... ] }   (Keys optional)
---   Rueckgabe: { ok:true, core_contexts:n, monitor_triggers:n }; Fehler sind RAISE (keine ok:false-Rueckgabe).
+--     { "agent.core_contexts": [...], "agent.monitor_triggers": [...], "core.llm_usage": [...], "core.notification_state": [...] }
+--     (Keys optional)
+--   Rueckgabe: { ok:true, core_contexts:n, monitor_triggers:n, llm_usage:n, notification_state:n }; Fehler sind RAISE (keine ok:false-Rueckgabe).
 --   Atomar via die aufrufende TX (SECURITY INVOKER): jeder Fehler -> RAISE -> der CLI-`psql -1`-Restore
 --   rollt alles (inkl. pg_restore-Bulk + TRUNCATE) zurueck. Laeuft als postgres-Superuser (CLI).
 --   search_path=pg_catalog gepinnt (alle Objekte schema-qualifiziert, CVE-2018-1058).
 -- ============================================================
+-- core.fn_notify_installation_source(source, key) -> boolean: ein Merker in core.notification_state, der zu dieser Installation
+--   gehoert und darum nie mit Sicherung oder Umzug reist: app_button/* (Menue-Knopf dieses Bots belegt), app_intro/legacy_checked
+--   (einmalige Pruefung des Installers), heartbeat/* (Waechter des Hintergrund-Teils), release_update/* (Update-Karten dieser
+--   Installation). Die eine Adresse fuer den Filter im core-Manifest (backup.filtered_tables) und fuer den Restore unten.
+--   Setzer: provisioning/lib/deploy_workflows.sh (app_button, app_intro), core.fn_heartbeat_claim, core.fn_release_card_sent.
+CREATE OR REPLACE FUNCTION core.fn_notify_installation_source(p_source text, p_key text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog
+AS $$
+    SELECT p_source IN ('app_button', 'heartbeat', 'release_update') OR (p_source = 'app_intro' AND p_key = 'legacy_checked');
+$$;
+
 CREATE OR REPLACE FUNCTION core.fn_backup_restore_filtered(p jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -37,6 +57,10 @@ AS $$
 DECLARE
     v_cc      JSONB := p->'agent.core_contexts';
     v_mt      JSONB := p->'agent.monitor_triggers';
+    v_lu      JSONB := p->'core.llm_usage';
+    v_ns      JSONB := p->'core.notification_state';
+    v_lu_n    INT := 0;
+    v_ns_n    INT := 0;
     v_row     JSONB;
     v_cc_n    INT := 0;
     v_mt_n    INT := 0;
@@ -127,9 +151,27 @@ BEGIN
         END LOOP;
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'core_contexts', v_cc_n, 'monitor_triggers', v_mt_n);
+    -- core.llm_usage: zusammenfuehren (id = Gateway-Schluessel, idempotent wie core.fn_import_llm_usage).
+    IF jsonb_typeof(v_lu) = 'array' THEN
+        INSERT INTO core.llm_usage SELECT * FROM jsonb_populate_recordset(NULL::core.llm_usage, v_lu) ON CONFLICT (id) DO NOTHING;
+        GET DIAGNOSTICS v_lu_n = ROW_COUNT;
+    END IF;
+
+    -- core.notification_state: Nutzer-Merker = Stand der Sicherung, Installations-Merker dieses Bots bleiben.
+    IF jsonb_typeof(v_ns) = 'array' THEN
+        DELETE FROM core.notification_state WHERE NOT core.fn_notify_installation_source(source, key);
+        INSERT INTO core.notification_state
+        SELECT * FROM jsonb_populate_recordset(NULL::core.notification_state, v_ns) r
+         WHERE NOT core.fn_notify_installation_source(r.source, r.key)
+        ON CONFLICT (source, key) DO NOTHING;
+        GET DIAGNOSTICS v_ns_n = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('ok', true, 'core_contexts', v_cc_n, 'monitor_triggers', v_mt_n,
+                              'llm_usage', v_lu_n, 'notification_state', v_ns_n);
 END;
 $$;
 
 -- Restore-Primitive: nie fuer die Paket-Leserollen (laeuft nur ueber den CLI-Superuser).
 REVOKE ALL ON FUNCTION core.fn_backup_restore_filtered(jsonb) FROM public;
+REVOKE ALL ON FUNCTION core.fn_notify_installation_source(text, text) FROM public;

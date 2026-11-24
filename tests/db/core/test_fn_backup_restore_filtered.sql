@@ -232,4 +232,46 @@ BEGIN
   RAISE NOTICE 'PASS fn_backup_restore_filtered [unbekannte/neutral-Persona verworfen, bekannte bleibt]';
 END $$;
 
+-- Kostenverlauf und Hinweis-Merker (core.llm_usage, core.notification_state).
+DO $$
+DECLARE v_result jsonb; v_n int;
+BEGIN
+  DELETE FROM core.llm_usage; DELETE FROM core.notification_state;
+  -- Ziel: eine eigene Kosten-Zeile, ein Installations-Merker dieses Bots, ein Nutzer-Merker, der nach der Sicherung kam.
+  INSERT INTO core.llm_usage (id, ts, model, input_tokens) VALUES ('1763000000000-aaaaaa-000001', now(), 'm', 7);
+  INSERT INTO core.notification_state (source, key, state) VALUES ('app_button', 'ready', 'fired'), ('app_intro', 'legacy_checked', 'fired'),
+                                                                  ('plan_news', 'spaeter', 'fired');
+  IF NOT core.fn_notify_installation_source('app_button', 'ready') OR NOT core.fn_notify_installation_source('app_intro', 'legacy_checked')
+     OR core.fn_notify_installation_source('app_intro', '4711') OR core.fn_notify_installation_source('plan_news', 'x') THEN
+    RAISE EXCEPTION 'FAIL notify-Quellen [Zuordnung Installation/Nutzer]'; END IF;
+
+  -- Alte Sicherung ohne die Teile: beide Tabellen bleiben unberuehrt.
+  v_result := core.fn_backup_restore_filtered('{}'::jsonb);
+  IF (SELECT count(*) FROM core.llm_usage) <> 1 OR (SELECT count(*) FROM core.notification_state) <> 3 THEN
+    RAISE EXCEPTION 'FAIL restore_filtered [alte Sicherung leert neue Tabellen]'; END IF;
+  RAISE NOTICE 'PASS fn_backup_restore_filtered [alte Sicherung: llm_usage/notification_state unberuehrt]';
+
+  v_result := core.fn_backup_restore_filtered(jsonb_build_object(
+    'core.llm_usage', jsonb_build_array(
+       jsonb_build_object('id', '1762000000000-bbbbbb-000001', 'ts', '2026-11-01T10:00:00Z', 'wf', NULL, 'model', 'm', 'keepalive', false, 'status', 200,
+         'input_tokens', 3, 'cache_creation_input_tokens', 0, 'ephemeral_1h_input_tokens', 0, 'cache_read_input_tokens', 0, 'output_tokens', 1,
+         'web_search_requests', 0, 'imported_at', '2026-11-01T11:00:00Z'),
+       jsonb_build_object('id', '1763000000000-aaaaaa-000001', 'ts', '2026-11-02T10:00:00Z', 'wf', NULL, 'model', 'm', 'keepalive', false, 'status', 200,
+         'input_tokens', 99, 'cache_creation_input_tokens', 0, 'ephemeral_1h_input_tokens', 0, 'cache_read_input_tokens', 0, 'output_tokens', 1,
+         'web_search_requests', 0, 'imported_at', '2026-11-02T11:00:00Z')),
+    'core.notification_state', jsonb_build_array(
+       jsonb_build_object('source', 'app_intro', 'key', '4711', 'state', 'fired', 'last_fired_at', NULL, 'expires_at', NULL, 'updated_at', '2026-11-01T10:00:00Z'),
+       jsonb_build_object('source', 'plan_news', 'key', 'alt', 'state', 'fired', 'last_fired_at', NULL, 'expires_at', NULL, 'updated_at', '2026-11-01T10:00:00Z'))));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL restore_filtered [neue Teile ok] %', v_result; END IF;
+  IF (SELECT count(*) FROM core.llm_usage) <> 2 OR (SELECT input_tokens FROM core.llm_usage WHERE id = '1763000000000-aaaaaa-000001') <> 7 THEN
+    RAISE EXCEPTION 'FAIL restore_filtered [llm_usage nicht zusammengefuehrt]'; END IF;
+  RAISE NOTICE 'PASS fn_backup_restore_filtered [llm_usage zusammengefuehrt, vorhandene Zeile bleibt]';
+  SELECT count(*) INTO v_n FROM core.notification_state;
+  IF v_n <> 4 OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'app_button' AND key = 'ready')
+     OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'app_intro' AND key = '4711')
+     OR EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'plan_news' AND key = 'spaeter') THEN
+    RAISE EXCEPTION 'FAIL restore_filtered [notification_state: Installation bleibt, Nutzer = Sicherung] n=%', v_n; END IF;
+  RAISE NOTICE 'PASS fn_backup_restore_filtered [notification_state ohne Installations-Merker ersetzt]';
+END $$;
+
 ROLLBACK;

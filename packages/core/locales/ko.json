@@ -400,6 +400,7 @@
   "core.backup.kit.title": "Life Agents – 백업 비상 시트",
   "core.backup.kit.meta": "키 {id} · {date}부터 사용",
   "core.backup.kit.intro": "새 컴퓨터에서는 이 키 없이 백업을 하나도 열 수 없어요. 이 시트를 인쇄하거나 비밀번호 관리자에 저장해 주세요. 백업 폴더에는 두지 마세요.",
+  "core.backup.kit.contains": "백업에는 모듈에 입력한 접속 키(예: Paperless, 음성 메시지)도 들어 있어요. 이 시트나 백업 파일을 잃어버렸다면 각 서비스에서 해당 키를 새로 발급받으세요.",
   "core.backup.kit.key_title": "비상 키",
   "core.backup.kit.check_hint": "한 줄이에요. 두 번 클릭하면 전체가 선택되니 복사하세요. 복원할 때 붙여 넣으면 돼요. 내장된 체크섬이 입력·복사 실수를 바로 알려 줘요.",
   "core.backup.kit.older_title": "이전 백업용 (키 {id}):",

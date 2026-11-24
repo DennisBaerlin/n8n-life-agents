@@ -83,7 +83,8 @@ try {
         & git -C $RepoRoot archive --format=tar -o $tar $AgainstRef provisioning packages
         if ($LASTEXITCODE -ne 0) { throw "git archive $AgainstRef scheiterte" }
         [void](Invoke-Native docker @('cp', $tar, "${Master}:/tmp/rt/old.tar"))
-        $r = Invoke-Native docker @('exec', $Master, 'sh', '-c', 'rm -rf /opt/rt_old && mkdir -p /opt/rt_old && tar -xf /tmp/rt/old.tar -C /opt/rt_old && sed "s|@@LIBDIR@@|/opt/rt_old|" /opt/rt_old/provisioning/templates/lifeagents.tpl > /opt/rt_old/lifeagents && chmod 0700 /opt/rt_old/lifeagents')
+        # sed-Ausdruck ohne doppelte Anfuehrungszeichen: PowerShell 5.1 zerlegt sie beim Aufruf von docker (sed: unterminated s).
+        $r = Invoke-Native docker @('exec', $Master, 'sh', '-c', 'rm -rf /opt/rt_old && mkdir -p /opt/rt_old && tar -xf /tmp/rt/old.tar -C /opt/rt_old && sed s,@@LIBDIR@@,/opt/rt_old, /opt/rt_old/provisioning/templates/lifeagents.tpl > /opt/rt_old/lifeagents && chmod 0700 /opt/rt_old/lifeagents')
         if ($r.Code -ne 0) { throw "alter Baum im master: $($r.Output -join ' | ')" }
         foreach ($f in 'rt.nla.enc', 'rt.key') { [void](Invoke-Native docker @('cp', (Join-Path $Local $f), "${Master}:/tmp/rt/$f")) }
         Suspend-TestStackTick -Master $Master

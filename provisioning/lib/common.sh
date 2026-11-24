@@ -1135,7 +1135,7 @@ _backup_key_show() { local k; k="$(cat)"; printf '%s' "$k" | backup_key_token ||
 #   aeltere (prev) darunter, wo die Sicherungen liegen, wie man auf einem neuen Rechner wiederherstellt. Keine Personen-
 #   oder Haushaltsnamen. rc 1 = kein Schluessel. Ausgabe nur an Kanaele ohne Log (Terminal, --file, Start-App-Pipe).
 #   Die Schritte tragen "1:" … "3:": die Start-App bis Stufe 2 nimmt beim Speichern nur ein Blatt mit einer Zeile "1:" an
-#   (desktop/core/src/backup.rs save_kit), und ein Update tauscht den master, nicht die App -> dauerhaft so lassen.
+#   (desktop/core/src/backup.rs save_kit), und ein Update tauscht den master, nicht die App -> so lassen, solange solche Apps laufen.
 backup_kit_text() {
   local keys=() k i kid folder ver since
   mapfile -t keys < <(backup_key_candidates 2>/dev/null || true)

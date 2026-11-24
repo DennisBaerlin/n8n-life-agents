@@ -460,7 +460,9 @@ _bkp_access_inject() {
 # backup_fingerprint -> Vergleichswerte des ganzen Sicherungs-Umfangs (sortiert, eine Zeile je Wert "<art> <name> <wert>"):
 #   bulk-Tabelle: Zeilen + md5 (System-Tabellen nur Zeilen: der Abgleich setzt sie auf den Stand dieser Version); gefilterte
 #   Tabelle: Zeilen + md5 der gefilterten Zeilen, ausser agent.core_contexts und agent.monitor_triggers (nur Zeilen: der Restore
-#   setzt dort Zeitstempel bzw. ids neu) und core.llm_usage (zusammengefuehrt, das Ziel hat eigene Zeilen); Einstellungen
+#   setzt dort Zeitstempel bzw. ids neu); ohne core.llm_usage und core.notification_state: das Ziel schreibt dort nach dem
+#   Einspielen eigene Zeilen (Kosten; Merker wie das Intro, das apply einer Person zeigt, die es auf der alten Maschine nie sah);
+#   Einstellungen
 #   (core.fn_config_export) je md5 des Werts; Gespraeche je Tabelle Zeilen + md5 mit id (der Restore uebernimmt ids und
 #   Folge-Nummern); Zugaenge (access.json-Umfang) nur md5 des Werts, nie der Wert.
 #   Gleich auf beiden Seiten = alles wie vorher. Nutzer: move (vorher.txt/nachher.txt) und tests/backup/roundtrip_cases.sh.
@@ -488,8 +490,8 @@ backup_fingerprint() {
   done < <(_bkp_bulk_tables)
   while IFS=$'\t' read -r qual cond; do
     if [ -z "$qual" ] || ! _bkp_qual_ok "$qual"; then continue; fi
-    # core.llm_usage fuehrt der Restore zusammen: das Ziel darf eigene Zeilen haben (roundtrip_cases.sh prueft die Teilmenge).
-    [ "$qual" != core.llm_usage ] || continue
+    # Das Ziel darf hier eigene Zeilen haben (Kopf); roundtrip_cases.sh `subset` prueft, dass die der Quelle ankommen.
+    case "$qual" in core.llm_usage|core.notification_state) continue ;; esac
     v="$(_bkp_psql_scalar "SELECT count(*) FROM ${qual} WHERE ${cond}")" || return 1; [ -n "$v" ] || return 1
     out+="rows ${qual}[filtered] ${v}"$'\n'
     case "$qual" in agent.core_contexts|agent.monitor_triggers) continue ;; esac

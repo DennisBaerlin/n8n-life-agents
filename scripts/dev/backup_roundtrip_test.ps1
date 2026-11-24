@@ -63,17 +63,17 @@ try {
         if ($r.Code -ne 0) { throw "docker cp $f aus dem master: $($r.Output -join ' | ')" }
     }
 
-    # Frischer Verbund, Sicherung dieses Stands einspielen: Fingerabdruck gleich, KI-Kosten der Quelle enthalten.
+    # Frischer Verbund, Sicherung dieses Stands einspielen: Fingerabdruck gleich, KI-Kosten und Merker der Quelle enthalten.
     Fresh
     foreach ($f in 'rt.nla.enc', 'rt.key') { [void](Invoke-Native docker @('cp', (Join-Path $Local $f), "${Master}:/tmp/rt/$f")) }
     Suspend-TestStackTick -Master $Master
     [void](Step @('restore'))
     [void](Step @('fp', '/tmp/rt/b.fp'))
-    $c = Step @('costs')
+    $c = Step @('subset')
     Resume-TestStackTick -Master $Master
     [void](Invoke-Native docker @('cp', "${Master}:/tmp/rt/b.fp", (Join-Path $Local 'b.fp')))
     Compare-Fp 'b' $true
-    if ((@($c.Output) | Where-Object { "$_" -match '^\d+$' } | Select-Object -Last 1) -ne '1') { Fail "b: KI-Kosten der Quelle fehlen nach dem Einspielen" }
+    if ((@($c.Output) | Where-Object { "$_" -match '^\d+$' } | Select-Object -Last 1) -ne '2') { Fail "b: KI-Kosten oder Merker der Quelle fehlen nach dem Einspielen" }
 
     if ($AgainstRef) {
         # Gegenlauf: dieselbe Sicherung mit der CLI des Stands $AgainstRef einspielen (Baum wie backup_test.ps1 nach /opt/rt_old).

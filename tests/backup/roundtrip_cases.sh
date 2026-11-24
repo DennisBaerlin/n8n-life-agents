@@ -6,7 +6,8 @@
 #   export    Sicherung + Notfallblatt nach /tmp/rt (Blatt = Schluessel der Quelle; das frische Ziel hat einen eigenen).
 #   restore   die Sicherung aus /tmp/rt mit dem Blatt einspielen (wie die Start-App ohne Terminal).
 #   fp <datei> Fingerabdruck (lifeagents backup fingerprint) in die Datei; immer mit der CLI dieses Abbilds.
-#   costs     die KI-Kosten-Zeilen der Quelle (Teilmenge: das Ziel fuehrt zusammen, backup_fingerprint laesst die Tabelle aus).
+#   subset    Anzahl der geseedeten KI-Kosten- und Merker-Zeilen auf dem Ziel (Soll 2; backup_fingerprint laesst beide Tabellen
+#             aus, weil das Ziel dort eigene Zeilen schreibt).
 # Testdaten erfunden (tests/fixtures/README.md). Ausgabe "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
 # real-path-test: dieser Test ist der echte Weg (Docker-Verbund, echtes PostgreSQL und n8n, Attrappen nur fuer Telegram/KI/Paperless).
 # shellcheck disable=SC2016,SC2015  # SQL-Literale in einfachen Quotes; "a && pass || fail" ist das Fall-Muster (fail zaehlt nur)
@@ -55,9 +56,10 @@ case "${1:-}" in
   fp)
     lifeagents backup fingerprint > "$2" 2> "$D/fp.err" && [ -s "$2" ] && pass "fp.$(basename "$2")" || fail "fp.$(basename "$2")" "$(tail -n3 "$D/fp.err")"
     ;;
-  costs)
-    sql "SELECT count(*) FROM core.llm_usage WHERE id = '1762000000000-abcdef-000001'"
+  subset)
+    sql "SELECT (SELECT count(*) FROM core.llm_usage WHERE id = '1762000000000-abcdef-000001')
+              + (SELECT count(*) FROM core.notification_state WHERE source = 'plan_news' AND key = 'rt-erfunden')"
     ;;
-  *) printf 'Usage: roundtrip_cases.sh seed|export|restore|fp <datei>|costs\n' >&2; exit 2 ;;
+  *) printf 'Usage: roundtrip_cases.sh seed|export|restore|fp <datei>|subset\n' >&2; exit 2 ;;
 esac
 exit "$fails"

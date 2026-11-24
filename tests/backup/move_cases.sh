@@ -136,6 +136,9 @@ if [ "$(owner_chat_placeholder_count)" != 0 ]; then
   ( _oc_finalize ) >"$W/prep.out" 2>&1 || { fail setup "Workflows mit chat_id einspielen: $(tail -n3 "$W/prep.out" | tr '\n' ' ')"; exit "$fails"; }
 fi
 cli config set ${CK} "$CV2" || { fail setup "config set: $(last)"; exit "$fails"; }
+# Der Owner hat das Intro auf der alten Maschine nie gesehen: apply zeigt es ihm und setzt den Merker hier neu. Kein Verlust beim
+# Umzug, also kein Unterschied im Vergleich (backup_fingerprint laesst core.notification_state aus).
+sql "DELETE FROM core.notification_state WHERE source = 'app_intro' AND key = '${OWNER_BEFORE}'" >/dev/null
 cli backup auto || { fail setup "backup auto: $(last)"; exit "$fails"; }
 cli retire --out "$OUT"; rc=$?
 eq E.retire-ok 0 "$rc"

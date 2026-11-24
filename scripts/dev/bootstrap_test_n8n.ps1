@@ -341,7 +341,18 @@ function Show-InstallCoreHint {
 if ($Down) {
     Assert-Docker
     if (Get-ContainerId) {
-        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
+        # Echter Test-Bot (Marker aus dem Echt-Lauf): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine tote Adresse.
+        # Massgeblich ist der Marker im Container, nicht die Umgebungsvariable dieses Aufrufs. Der Dev-Install behaelt das Token nicht in
+        # core.env, darum geht es per stdin an `lifeagents telegram release-webhook` (nie im argv). Best effort.
+        $mk = Invoke-Native docker @('exec', $Container, 'test', '-e', '/root/.n8ntest_real_telegram')
+        if ($mk.Code -eq 0) {
+            $realTok = Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN'   # real-token: nur zum Freigeben des Webhooks beim Abbau eines Echt-Bot-Substrats
+            if ($realTok) {
+                $rw = $realTok | & docker exec -i $Container sh -c 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook' 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw -join ' | ')" }
+                else { Write-Host "Webhook des echten Test-Bots freigegeben." }
+            } else { Write-Warning 'Echt-Bot-Substrat, aber kein TEST_TELEGRAM_BOT_TOKEN in .env: Webhook nicht freigegeben.' }
+        }        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
         # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
         Invoke-Native docker @('rm','-fv',$Container) | Out-Null
         Write-Host "Container $Container entfernt."
@@ -438,6 +449,8 @@ if ($SkipInstall) {
 $envMap = Get-TestInstallEnvMap $RepoRoot
 $envValues = @{}
 foreach ($k in $envMap.Keys) { $v = Get-EnvValue $k; if ($v) { $envValues[$k] = $v } }
+# Ein Substrat bekommt nie den echten Test-Bot, ausser mit N8NTEST_REAL_TELEGRAM=1 (Begruendung: Resolve-TestTelegramToken).
+$envValues['TEST_TELEGRAM_BOT_TOKEN'] = Resolve-TestTelegramToken $envValues['TEST_TELEGRAM_BOT_TOKEN']
 $envLines = ConvertTo-TestEnvFileLines -Map $envMap -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS)
 
 # Release-Pin (-Version): install.sh --version laedt anonym aus dem oeffentlichen Repo (kein Token).
@@ -450,8 +463,9 @@ if ($Version) {
 if (-not (Get-EnvValue 'TEST_HARNESS_SECRET')) {
     Write-Warning "TEST_HARNESS_SECRET fehlt in .env — die Harness-Header-Auth-Credential wird uebersprungen; infra_test/n8n_test bekaemen 403."
 }
-if (-not (Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN')) {
-    Write-Warning "TEST_TELEGRAM_BOT_TOKEN fehlt — Telegram-Credential uebersprungen (Orchestrator-Trigger aktiviert ggf. nicht; infra_test braucht ihn nicht)."
+if ($env:N8NTEST_REAL_TELEGRAM -eq '1') {
+    if ($envValues['TEST_TELEGRAM_BOT_TOKEN'] -eq $script:TestInventedBotToken) { throw 'N8NTEST_REAL_TELEGRAM=1, aber TEST_TELEGRAM_BOT_TOKEN fehlt in .env.' }
+    Write-Warning 'ECHTER Test-Bot: n8n biegt beim Aktivieren des Orchestrators dessen Webhook auf dieses Substrat (jede andere Installation mit demselben Bot wird stumm). -Down gibt den Webhook wieder frei.'
 }
 
 $tmpEnv = Join-Path ([System.IO.Path]::GetTempPath()) "n8ntest_install_env.$PID.tmp"
@@ -503,7 +517,7 @@ if ($Version) {
     $entryScript  = "$ContainerRoot/provisioning/provision.sh"
     $installFlags = "--profile dev --packages all --unattended $EnvFileInC"
 }
-Write-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
+if ($env:N8NTEST_REAL_TELEGRAM -eq '1') { [void](Invoke-Native docker @('exec', $Container, 'touch', '/root/.n8ntest_real_telegram')) }   # -Down gibt den Webhook dann freiWrite-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
 $remote = @"
 trap 'shred -u $EnvFileInC 2>/dev/null || rm -f $EnvFileInC' EXIT
 set -e

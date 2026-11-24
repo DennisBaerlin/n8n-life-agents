@@ -381,7 +381,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_n8n_runtime_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test))\.ps1$
+        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test|bootstrap_test_n8n))\.ps1$
 
       - id: precondition-lint-test
         name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)

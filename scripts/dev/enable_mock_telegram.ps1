@@ -25,9 +25,9 @@
 # Attrappe (Test-Weiche LIFEAGENTS_TELEGRAM_API, scripts/lib/test_stack.ps1); hier wird nichts umgebogen: die Test-Dokumente
 # (Platzhalter aufgeloest) gehen in einen Ordner im Log-Ordner des Verbunds, die Attrappe <p>-tgmock startet mit ihm neu
 # (tests/mock_pod/start_mocks.sh tg, MOCK_TG_DOCS), das Gateway-Ziel wird geprueft; Trigger-Routen und Bot-Name wie unten.
-# -Down entfernt Attrappe und Block, die Ziele bleiben. TEST_TELEGRAM_BOT_TOKEN braucht der Verbund nicht.
+# -Down entfernt Attrappe und Block, die Ziele bleiben.
 #
-# Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json) + TEST_TELEGRAM_BOT_TOKEN in .env
+# Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json); das Token ist ein erfundenes (Resolve-TestTelegramToken)
 # (die Credential muss existieren — inject_credentials legt sie nur bei vorhandenem Token an; der Mock
 # selbst ignoriert den Token, aber der Telegram-Node braucht eine gebundene Credential).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
@@ -79,7 +79,7 @@ function Set-TelegramBaseUrl {
 # --- Bot-Token (Credential-data verlangt accessToken beim PATCH): classic TEST_TELEGRAM_BOT_TOKEN, Verbund das der Installation --
 $Token = Get-TestBotToken -Target $Target
 if (-not $Token) {
-    throw "TEST_TELEGRAM_BOT_TOKEN fehlt in .env — ohne Token existiert die 'Telegram account'-Credential nicht (inject_credentials ueberspringt sie) und das Gate kann nicht senden."
+    throw "Kein Bot-Token fuer die Telegram-Credential ermittelbar (Get-TestBotToken)."
 }
 
 # --- Gateway-Telegram-Relay per Laufzeit-Drop-in umbiegen ($Api = $null -> Drop-in weg = echtes Telegram) ------------
@@ -106,7 +106,7 @@ function Set-GatewayTelegramApi {
 }
 
 $credId = Get-TelegramCredId
-if (-not $credId) { throw "Keine telegramApi-Credential gefunden — wurde das Substrat mit TEST_TELEGRAM_BOT_TOKEN gebaut?" }
+if (-not $credId) { throw "Keine telegramApi-Credential gefunden — wurde das Substrat mit einem Bot-Token gebaut (Resolve-TestTelegramToken)?" }
 
 # --- Teardown ---------------------------------------------------------------------------------------
 if ($Down -and $Target.Runtime -eq 'compose') {

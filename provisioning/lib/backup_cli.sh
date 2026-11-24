@@ -152,34 +152,47 @@ _bkp_tmpdir() {
 # Nachricht (disable_notification) erzeugt bei Telegram einen Hinweis und zaehlt als ungelesen, ein Bearbeiten nicht.
 # Schalter = core.config cron_enable.backup_telegram_copy (Haushalts-Erinnerung: Knopf cron_off:<key> an der Nachricht,
 # wieder an per /reminders oder `lifeagents config set`; docs/package-contract.md *Cron-Toggle-Modell*).
-# backup.state: NOTIFY_DOC=<chat>:<message_id> (die Nachricht), NOTIFY_SHOWN=on|off (was sie zeigt; leer = altes Verfahren
-# Nachricht-pro-Nacht, wird beim naechsten Austausch uebernommen und angeheftet), NOTIFY_DATE=YYYY-MM-DD (Datum der Datei).
-# Datenschutz: das Chiffrat liegt im Telegram-Cloud-Speicher (gpg-Schluessel nur offline) -> Telegram sieht nie Klartext.
+# backup.state: NOTIFY_DOC=<chat>:<message_id> (die Nachricht), NOTIFY_SHOWN=on|off (was sie zeigt; leer bei gesetztem
+# NOTIFY_DOC = Altbestand ohne Zustand, wird beim naechsten Austausch ergaenzt), NOTIFY_PINNED=1|0 (leer = unbekannt, wird
+# angeheftet), NOTIFY_DATE=YYYY-MM-DD (Datum der Datei in der Nachricht).
 # Key und Knopf stehen als Literal im Code (nicht in einer Variable): contract_lint (7) und cron_toggle_lint lesen sie statisch.
+# Datenschutz: das Chiffrat liegt im Telegram-Cloud-Speicher (gpg-Schluessel nur offline) -> Telegram sieht nie Klartext.
 # Tests: tests/mock_telegram/backup_notify_cases.sh
 # Telegram-Antworten (.description), nach denen die Nachricht nicht mehr bearbeitbar ist -> einmal neu anlegen.
 BACKUP_COPY_GONE_RE="message to edit not found|message can't be edited|MESSAGE_ID_INVALID"
 
-# _bkp_copy_enabled -> rc 0 = Kopie an. Nur der Wert 'false' schaltet aus; fehlende Zeile oder DB-Fehler = an (Sicherheitsnetz,
-#   und ohne lesbare DB scheitert die Sicherung ohnehin).
+# _bkp_copy_enabled -> rc 0 = Kopie an. Gleiche Regel wie /reminders (core.fn_reminder_allowed: nur 'true' ist an, fehlende
+#   Zeile = aus); nur eine nicht lesbare DB zaehlt als an (die Kopie ist ein Sicherheitsnetz, ohne DB scheitert die Sicherung
+#   ohnehin). Kein `set -e`-Abbruch: der Fehler wird ueber rc ausgewertet.
 _bkp_copy_enabled() {
-  local v; v="$(_bkp_psql_scalar "SELECT core.fn_config_get('core','cron_enable','backup_telegram_copy')" 2>/dev/null || true)"
-  [ "$v" != false ]
+  local v rc=0
+  v="$(_bkp_psql_scalar "SELECT core.fn_config_get('core','cron_enable','backup_telegram_copy')" 2>/dev/null)" || rc=$?
+  [ "$rc" -ne 0 ] || [ "$v" = true ]
 }
 
-# _bkp_copy_date <YYYY-MM-DD> -> Datum in der Owner-Sprache (core.fn_fmt_date), sonst ISO.
+# _bkp_household_day [<epoch>] -> YYYY-MM-DD in der Haushalts-Zeitzone (nie die Container-Zeitzone), ohne Argument heute.
+_bkp_household_day() {
+  local tz; tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
+  if [ -n "${1:-}" ]; then TZ="${tz:-Europe/Berlin}" date -d "@$1" +%Y-%m-%d; else TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d; fi
+}
+
+# _bkp_copy_date <YYYY-MM-DD> -> Datum in der Owner-Sprache (core.fn_fmt_date), sonst ISO. Braucht _BACKUP_LANG.
 _bkp_copy_date() {
-  local d; d="$(_bkp_psql_scalar "SELECT core.fn_fmt_date('$1'::date, '${_BACKUP_LANG:-$(backup_kit_lang)}')" 2>/dev/null || true)"
+  local d; d="$(_bkp_psql_scalar "SELECT core.fn_fmt_date('$1'::date, '${_BACKUP_LANG:-de}')" 2>/dev/null || true)"
   printf '%s' "${d:-$1}"
 }
 
-# _bkp_tg_state -> gone | unchanged | other: Einordnung der letzten Telegram-Fehlantwort (TG_BODY .description; TG_ERR ist der
-#   gekuerzte, erklaerte Text und taugt nicht zum Vergleich).
+# _bkp_tg_state -> unchanged | gone | permanent | transient: Einordnung der letzten Telegram-Fehlantwort (TG_BODY;
+#   TG_ERR ist der gekuerzte, erklaerte Text und taugt nicht zum Vergleich). permanent = sonstige 4xx ausser 429 (ein
+#   Wiederholen aendert nichts), transient = 5xx, 429, keine Verbindung (der naechste Lauf versucht es erneut).
 _bkp_tg_state() {
-  local d; d="$(printf '%s' "$TG_BODY" | jq -r '.description // empty' 2>/dev/null || true)"
+  local d c
+  d="$(printf '%s' "$TG_BODY" | jq -r '.description // empty' 2>/dev/null || true)"
+  c="$(printf '%s' "$TG_BODY" | jq -r '.error_code // empty' 2>/dev/null || true)"
   if [[ "$d" == *'message is not modified'* ]]; then printf unchanged
   elif [[ "$d" =~ $BACKUP_COPY_GONE_RE ]]; then printf gone
-  else printf other; fi
+  elif [[ "$c" =~ ^4[0-9][0-9]$ ]] && [ "$c" != 429 ]; then printf permanent
+  else printf transient; fi
 }
 
 # _bkp_copy_target <chat> -> message_id der gemerkten Nachricht, wenn sie in <chat> liegt (ein anderer Chat = neues Owner-Pairing:
@@ -189,32 +202,49 @@ _bkp_copy_target() {
   if [[ "$m" =~ ^(-?[0-9]+):([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" = "$1" ]; then printf '%s' "${BASH_REMATCH[2]}"; fi
 }
 
-# _bkp_copy_chat -> Owner-chat_id auf stdout, rc 1 (mit Warnung) ohne curl/Token/Pairing. Braucht N8N_DB_NAME (_bkp_resolve_db),
-#   sonst faellt _resolve_owner_chat_id still auf '0'.
+# _bkp_copy_chat -> Owner-chat_id auf stdout, rc 1 (mit Warnung) ohne curl/Token/Pairing. Der Aufrufer loest vorher die DB auf
+#   (_bkp_resolve_db in der eigenen Shell): der Aufruf hier laeuft in $(...), sonst fiele _resolve_owner_chat_id still auf '0'.
 _bkp_copy_chat() {
   need_cmd curl || { warn "curl fehlt -> Kopie im Telegram-Chat uebersprungen."; return 1; }
   [ -n "$(owner_tg_token)" ] || { warn "Kein TELEGRAM_BOT_TOKEN in $(lifeagents_env_file core) -> Kopie im Telegram-Chat uebersprungen."; return 1; }
-  _bkp_resolve_db
   local chat; chat="$(owner_tg_chat_id)"
   [ -n "$chat" ] || { warn "Owner-chat_id unbekannt/ungepairt -> Kopie im Telegram-Chat uebersprungen."; return 1; }
   printf '%s' "$chat"
 }
 
-# _bkp_copy_pin <token> <chat> <message_id> — anheften ohne Hinweis; ein Fehler bleibt eine Log-Zeile.
-_bkp_copy_pin() {
-  _tg_post "$1" pinChatMessage "{\"chat_id\":$2,\"message_id\":$3,\"disable_notification\":true}" ||
-    log "Kopie im Telegram-Chat ließ sich nicht anheften (${TG_ERR}) — unkritisch."
+# _bkp_copy_prepare -> DB und Owner-Sprache in der aufrufenden Shell aufloesen (die Texte entstehen in $(...)-Teilschalen;
+#   ohne das fragte jede einzeln die DB, und vor _bkp_resolve_db die falsche).
+_bkp_copy_prepare() {
+  _bkp_resolve_db
+  [ -n "${_BACKUP_LANG:-}" ] || _BACKUP_LANG="$(backup_kit_lang)"
+}
+
+# _bkp_copy_pin_state <token> <chat> <message_id> <1|0> — Nachricht an- bzw. losheften (ohne Hinweis), nur wenn NOTIFY_PINNED
+#   etwas anderes sagt. rc 0 = Zustand erreicht oder nicht erreichbar (4xx, etwa vom Owner schon losgeheftet: kein Wiederholen);
+#   rc 1 = voruebergehender Fehler, der naechste Lauf versucht es erneut. So bleibt ein Losheften durch den Owner bestehen.
+_bkp_copy_pin_state() {
+  local token="$1" chat="$2" mid="$3" want="$4" method=pinChatMessage body
+  [ "$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_PINNED 2>/dev/null || true)" != "$want" ] || return 0
+  body="{\"chat_id\":${chat},\"message_id\":${mid},\"disable_notification\":true}"
+  if [ "$want" = 0 ]; then method=unpinChatMessage; body="{\"chat_id\":${chat},\"message_id\":${mid}}"; fi
+  if ! _tg_post "$token" "$method" "$body" && [ "$(_bkp_tg_state)" = transient ]; then
+    log "Kopie im Telegram-Chat: ${method} gescheitert (${TG_ERR}) — nächster Versuch beim nächsten Lauf."
+    return 1
+  fi
+  _bkp_state_set NOTIFY_PINNED "$want"
 }
 
 # _bkp_notify_telegram <datei> -> die fertige (verschluesselte) Sicherung in die Kopie-Nachricht des Owner-Chats.
-#   Gemerkte Nachricht da: Datei, Text und Knopf darin tauschen; angeheftet nur beim Zustandswechsel (Uebernahme aus dem alten
-#   Verfahren, wieder an), ein Losheften durch den Owner bleibt. Neu (sendDocument stumm + pinChatMessage) nur ohne Nachricht
-#   oder wenn Telegram sie nicht mehr kennt; 'not modified' = Erfolg; jeder andere Fehler (5xx, Zeitablauf) nur Warnung, kein
-#   Neuversand (sonst Doppel-Nachricht mit Hinweis). Folgt nicht dem Schalter: das entscheiden die Aufrufer (--notify-telegram).
+#   Schalter an: Text doc_pinned + Knopf, angeheftet. Schalter aus (nur ueber --notify-telegram von Hand): Text doc_off ohne
+#   Knopf, losgeheftet, damit der stuendliche Abgleich nichts zurueckdreht. Gemerkte Nachricht da: Datei, Text und Knopf darin
+#   tauschen. Neu (sendDocument stumm) nur ohne Nachricht oder wenn Telegram sie nicht mehr kennt; 'not modified' = Erfolg;
+#   jeder andere Fehler nur Warnung, kein Neuversand (sonst Doppel-Nachricht mit Hinweis); die alte Nachricht geht erst nach
+#   der neuen. Ob die Kopie ueberhaupt laeuft, entscheiden die Aufrufer (backup auto gibt --notify-telegram nur bei Schalter an).
 #   Best-effort: immer rc 0 (die Sicherung ist schon geschrieben; der geerbte `set -e` braeche sonst den Export ab). Token nie
 #   ins argv (_tg_upload/_tg_post). Der Dateiname bleibt: die Schluessel-ID traegt _bkp_rotate_victims.
 _bkp_notify_telegram() {
-  local file="$1" chat token size tz day cap kb media mid shown newid=''
+  local file="$1" chat token size day on=1 cap kb media mid newid='' state
+  _bkp_copy_prepare
   chat="$(_bkp_copy_chat)" || return 0
   token="$(owner_tg_token)"
   # 50-MB-Grenze (Telegram-Limit fuer Dateien; unsere Bundles <<1 MB). Numerischer Guard vor -gt (set -e).
@@ -224,11 +254,15 @@ _bkp_notify_telegram() {
     warn "Backup ${size} Byte > 50 MB (Telegram-Limit) -> Kopie im Telegram-Chat uebersprungen. Backup liegt lokal: $file"
     return 0
   fi
-  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
-  day="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"
-  cap="$(backup_text notify.doc_pinned date "$(_bkp_copy_date "$day")")"
-  kb="$(jq -nc --arg t "$(backup_text notify.btn_off)" --arg cb "cron_off:backup_telegram_copy" '{inline_keyboard:[[{text:$t,callback_data:$cb}]]}')"
-  shown="$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_SHOWN 2>/dev/null || true)"
+  _bkp_copy_enabled || on=0
+  day="$(_bkp_household_day)"
+  if [ "$on" = 1 ]; then
+    cap="$(backup_text notify.doc_pinned date "$(_bkp_copy_date "$day")")"
+    kb="$(jq -nc --arg t "$(backup_text notify.btn_off)" --arg cb "cron_off:backup_telegram_copy" '{inline_keyboard:[[{text:$t,callback_data:$cb}]]}')"
+  else
+    cap="$(backup_text notify.doc_off date "$(_bkp_copy_date "$day")")"
+    kb='{"inline_keyboard":[]}'
+  fi
   mid="$(_bkp_copy_target "$chat")"
 
   if [ -n "$mid" ]; then
@@ -237,67 +271,76 @@ _bkp_notify_telegram() {
          --form-string "media=${media}" --form-string "reply_markup=${kb}" -F "doc=@${file}"; then
       newid="$mid"
     else
-      case "$(_bkp_tg_state)" in
+      state="$(_bkp_tg_state)"
+      case "$state" in
         unchanged) newid="$mid" ;;
         gone) ;;
         *) warn "Kopie im Telegram-Chat nicht ausgetauscht (${TG_ERR:-Telegram-Antwort unklar}) -> unkritisch, nächster Versuch mit der nächsten Sicherung."
            return 0 ;;
       esac
     fi
-    if [ -n "$newid" ]; then
-      [ "$shown" = on ] || _bkp_copy_pin "$token" "$chat" "$mid"
-      _bkp_state_set NOTIFY_SHOWN on; _bkp_state_set NOTIFY_DATE "$day"
-      ok "Kopie der Sicherung im Telegram-Chat ausgetauscht (${size} Byte)."
-      return 0
-    fi
   fi
 
-  if _tg_upload "$token" sendDocument --form-string "chat_id=${chat}" -F "document=@${file}" --form-string "caption=${cap}" \
-       --form-string "disable_notification=true" --form-string "reply_markup=${kb}"; then
-    newid="$(printf '%s' "$TG_BODY" | jq -r '.result.message_id // empty' 2>/dev/null || true)"
-    [ -z "$TG_RETRIED" ] || note "Kopie an den Telegram-Chat: erster Versuch scheiterte (${TG_RETRIED}), zweiter gelungen."
-  fi
   if [ -z "$newid" ]; then
-    warn "Kopie an den Telegram-Chat nicht gesendet (${TG_ERR:-Telegram-Antwort unklar}) -> unkritisch, Backup liegt lokal: $file"
-    return 0
+    if _tg_upload "$token" sendDocument --form-string "chat_id=${chat}" -F "document=@${file}" --form-string "caption=${cap}" \
+         --form-string "disable_notification=true" --form-string "reply_markup=${kb}"; then
+      newid="$(printf '%s' "$TG_BODY" | jq -r '.result.message_id // empty' 2>/dev/null || true)"
+      [ -z "$TG_RETRIED" ] || note "Kopie an den Telegram-Chat: erster Versuch scheiterte (${TG_RETRIED}), zweiter gelungen."
+    fi
+    if [ -z "$newid" ]; then
+      warn "Kopie an den Telegram-Chat nicht gesendet (${TG_ERR:-Telegram-Antwort unklar}) -> unkritisch, Backup liegt lokal: $file"
+      return 0
+    fi
+    _bkp_state_set NOTIFY_DOC "${chat}:${newid}"; _bkp_state_set NOTIFY_PINNED 0
+    if [ -n "$mid" ]; then
+      _tg_post "$token" deleteMessage "{\"chat_id\":${chat},\"message_id\":${mid}}" ||
+        log "Die alte Kopie ließ sich im Chat nicht entfernen (${TG_ERR}) — unkritisch."
+    fi
   fi
-  _bkp_state_set NOTIFY_DOC "${chat}:${newid}"; _bkp_state_set NOTIFY_SHOWN on; _bkp_state_set NOTIFY_DATE "$day"
-  _bkp_copy_pin "$token" "$chat" "$newid"
-  ok "Kopie der Sicherung an den Telegram-Chat gesendet und angeheftet (${size} Byte)."
-  # Eine noch vorhandene alte Nachricht im selben Chat erst jetzt entfernen; ein Fehler bleibt still.
-  if [ -n "$mid" ]; then
-    _tg_post "$token" deleteMessage "{\"chat_id\":${chat},\"message_id\":${mid}}" ||
-      log "Die alte Kopie ließ sich im Chat nicht entfernen (${TG_ERR}) — unkritisch."
+  _bkp_state_set NOTIFY_DATE "$day"
+  env_remove_key "$BACKUP_STATE_FILE" NOTIFY_EXPLAINED 2>/dev/null || true   # Merker ohne Leser (Text fuer das erste Mal)
+  if [ "$on" = 1 ]; then
+    _bkp_copy_pin_state "$token" "$chat" "$newid" 1 || true
+    _bkp_state_set NOTIFY_SHOWN on
+    ok "Kopie der Sicherung im Telegram-Chat abgelegt (${size} Byte)."
+  else
+    # Losheften gescheitert -> NOTIFY_SHOWN bleibt 'on', der stuendliche Abgleich holt es nach.
+    if _bkp_copy_pin_state "$token" "$chat" "$newid" 0; then _bkp_state_set NOTIFY_SHOWN off; else _bkp_state_set NOTIFY_SHOWN on; fi
+    ok "Kopie der Sicherung im Telegram-Chat abgelegt (${size} Byte; Kopie ist ausgeschaltet, daher ohne Knopf)."
   fi
   return 0
 }
 
-# _bkp_notify_reconcile — Abgleich der Kopie-Nachricht mit dem Schalter, am Anfang jedes automatischen Laufs (stuendlich ab
-#   BACKUP_AUTO_AT): Schalter aus und die Nachricht zeigt noch 'an' -> einmal Aus-Text ohne Knopf (editMessageCaption, die Datei
-#   bleibt) und losheften. Der Knopf-Tipp selbst kann die Nachricht nicht aendern (der Orchestrator-Arm bearbeitet nur Text-
-#   Nachrichten). Nachricht weg -> Zustand off; anderer Fehler -> naechster Lauf. Immer rc 0; ohne gemerkte Nachricht weder DB-
-#   noch Telegram-Aufruf.
+# _bkp_notify_reconcile — Abgleich der Kopie-Nachricht mit dem Schalter, am Anfang jedes automatischen Laufs (ab BACKUP_AUTO_AT
+#   stuendlich, auch wenn die Sicherung des Tages schon gelang): Schalter aus und die Nachricht zeigt noch 'an' -> Aus-Text ohne
+#   Knopf (editMessageCaption, die Datei bleibt) und losheften. Noetig, weil der Knopf-Tipp die Datei-Nachricht nicht aendert:
+#   der cron_off-Arm des Orchestrators antwortet mit Toast und einer neuen Text-Nachricht. Nachricht weg oder 4xx -> Zustand
+#   off; voruebergehender Fehler -> naechster Lauf. Immer rc 0; ohne gemerkte Nachricht weder DB- noch Telegram-Aufruf.
 _bkp_notify_reconcile() {
-  local chat token mid day cap
+  local chat token mid day ok_at cap
   [ "$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_SHOWN 2>/dev/null || true)" != off ] || return 0
   [ -n "$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_DOC 2>/dev/null || true)" ] || return 0
+  _bkp_copy_prepare
   ! _bkp_copy_enabled || return 0
   chat="$(_bkp_copy_chat)" || return 0
   mid="$(_bkp_copy_target "$chat")"; [ -n "$mid" ] || return 0
   token="$(owner_tg_token)"
   day="$(read_env_value "$BACKUP_STATE_FILE" NOTIFY_DATE 2>/dev/null || true)"
-  [[ "$day" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || day="$(date +%Y-%m-%d)"
+  if ! [[ "$day" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    # Altbestand ohne Datum: die letzte gelungene Sicherung war die letzte Kopie.
+    ok_at="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"
+    if [[ "$ok_at" =~ ^[0-9]+$ ]]; then day="$(_bkp_household_day "$ok_at")"; else day="$(_bkp_household_day)"; fi
+  fi
   cap="$(backup_text notify.doc_off date "$(_bkp_copy_date "$day")")"
   if ! _tg_post "$token" editMessageCaption "$(jq -nc --argjson c "$chat" --argjson m "$mid" --arg t "$cap" \
          '{chat_id:$c,message_id:$m,caption:$t,reply_markup:{inline_keyboard:[]}}')"; then
     case "$(_bkp_tg_state)" in
       unchanged) ;;
-      gone) _bkp_state_set NOTIFY_SHOWN off; return 0 ;;
-      *) log "Kopie im Telegram-Chat: Aus-Hinweis nicht gesetzt (${TG_ERR}) — nächster Versuch beim nächsten Lauf."; return 0 ;;
+      transient) log "Kopie im Telegram-Chat: Aus-Hinweis nicht gesetzt (${TG_ERR}) — nächster Versuch beim nächsten Lauf."; return 0 ;;
+      *) _bkp_state_set NOTIFY_SHOWN off; return 0 ;;
     esac
   fi
-  _tg_post "$token" unpinChatMessage "{\"chat_id\":${chat},\"message_id\":${mid}}" ||
-    log "Kopie im Telegram-Chat ließ sich nicht losheften (${TG_ERR}) — unkritisch."
+  _bkp_copy_pin_state "$token" "$chat" "$mid" 0 || return 0
   _bkp_state_set NOTIFY_SHOWN off
   return 0
 }
@@ -555,11 +598,12 @@ _bkp_auto_local() {
 # backup_cmd_auto [--scheduled] — taegliche Sicherung.
 #   Verbund: in den Rechner-Ordner (Tick im master, update_runner.sh: stuendlich ab BACKUP_AUTO_AT). Ohne gemerkten Ordner nur
 #   der Vermerk "nofolder" (doctor ROT + Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft.
-#   Danach ggf. der Chat-Hinweis.
-#   Klassisch (systemd): nach BACKUP_LOCAL_DIR. Beide Betriebsarten: zuerst der Abgleich der Kopie-Nachricht
-#   (_bkp_notify_reconcile), bei Schalter an danach die Kopie im Owner-Chat (_bkp_notify_telegram). `--scheduled` (Timer lifeagents-backup bzw. Tick, stuendlich ab BACKUP_AUTO_AT) tut in beiden Betriebsarten
-#   nichts, wenn seit BACKUP_AUTO_AT schon eine Sicherung gelang; ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler
-#   stehen in backup.state).
+#   Danach ggf. die Erinnerung bei veralteter Sicherung (_bkp_stale_notify).
+#   Klassisch (systemd): nach BACKUP_LOCAL_DIR.
+#   Beide Betriebsarten: zuerst, bei jedem Lauf, der Abgleich der Kopie-Nachricht (_bkp_notify_reconcile); bei Schalter an
+#   geht die neue Sicherung danach in die Kopie im Owner-Chat (--notify-telegram). `--scheduled` (Timer lifeagents-backup
+#   bzw. Tick, stuendlich ab BACKUP_AUTO_AT) sichert nicht noch einmal, wenn seit BACKUP_AUTO_AT schon eine Sicherung gelang;
+#   ohne die Option sichert der Aufruf immer. Immer rc 0 (Fehler stehen in backup.state).
 backup_cmd_auto() {
   local scheduled=0 a
   for a in "$@"; do
@@ -1655,7 +1699,8 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
                            NICHT Code/Workflows/Geheimnisse (die stellt der Installer wieder her).
                            --notify-telegram legt die fertige .nla.enc zusätzlich in die angeheftete Kopie-Nachricht
                            im Owner-Telegram-Chat (tauscht die Datei darin aus, keine neue Nachricht; gilt auch bei
-                           ausgeschalteter Kopie; best-effort: schlaegt der Versand fehl, bleibt das lokale Backup gueltig).
+                           ausgeschalteter Kopie, dann ohne Knopf und nicht angeheftet; best-effort: schlaegt der Versand fehl, bleibt das
+                           lokale Backup gueltig).
   restore <datei> [--key-stdin] [--yes]
                            Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
                            zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Ein fehlendes Bundle-Paket wird

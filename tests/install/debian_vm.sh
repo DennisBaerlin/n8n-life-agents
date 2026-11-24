@@ -309,6 +309,8 @@ step_second() {
 
 # Abbau mit Daten: nichts bleibt zurueck (keine Container, Volumes, Abbilder), Docker selbst bleibt.
 step_uninstall() {
+  # Die Attrappe gehoert nicht zum Verbund: der Abbau haelt ein Abbild zurueck, das noch ein Container nutzt.
+  vm 'sudo docker rm -fv lifeagents-tgmock >/dev/null 2>&1 || true'
   vm_setup --uninstall --delete-data
   vm 'bash -s' <<'VM'
 # shellcheck disable=SC2016,SC2029  # die vm()-Befehle sind Text fuer die Shell in der VM: Variablen gehoeren dort aufgeloest, nicht hier

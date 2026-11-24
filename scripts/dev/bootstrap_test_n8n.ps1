@@ -341,9 +341,11 @@ function Show-InstallCoreHint {
 if ($Down) {
     Assert-Docker
     if (Get-ContainerId) {
-        # Echter Test-Bot (N8NTEST_REAL_TELEGRAM=1): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine tote Adresse.
-        # Best effort; der Befehl liest den Schluessel selbst aus core.env im Container.
-        if ($env:N8NTEST_REAL_TELEGRAM -eq '1') {
+        # Echter Test-Bot (Token in core.env ist nicht der erfundene): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine
+        # tote Adresse. Massgeblich ist das installierte Token, nicht die Umgebungsvariable dieses Aufrufs. Best effort; der Befehl
+        # liest den Schluessel selbst aus core.env im Container.
+        $inv = Invoke-Native docker @('exec', $Container, 'grep', '-qxF', "TELEGRAM_BOT_TOKEN=$($script:TestInventedBotToken)", '/etc/lifeagents/core.env')
+        if ($inv.Code -ne 0) {
             $rw = Invoke-Native docker @('exec', $Container, 'lifeagents', 'telegram', 'release-webhook')
             if ($rw.Code -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw.Output -join ' | ')" }
             else { Write-Host "Webhook des echten Test-Bots freigegeben." }

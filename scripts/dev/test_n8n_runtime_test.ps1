@@ -135,12 +135,13 @@ try {
 # Jede Stelle, die den .env-Token liest, geht durch Resolve-TestTelegramToken (sonst biegt ein Substrat den Test-Bot um:
 # n8n ruft beim Aktivieren des Orchestrators setWebhook am echten Telegram auf).
 $readers = New-Object System.Collections.Generic.List[string]
-foreach ($f in (Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1 | Where-Object { $_.Name -ne 'test_n8n_runtime_test.ps1' })) {
+foreach ($f in (Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1 | Where-Object { $_.Name -notin @('test_n8n_runtime_test.ps1', 'test_stack_test.ps1') })) {
     $ln = 0
     foreach ($line in [System.IO.File]::ReadAllLines($f.FullName, $utf8)) {
         $ln++
         if ($line.TrimStart().StartsWith('#')) { continue }
-        if ($line -match 'Get-(Test)?EnvValue\s+''TEST_TELEGRAM_BOT_TOKEN''|\$(script:)?TEST_TELEGRAM_BOT_TOKEN' -and $line -notmatch 'Resolve-TestTelegramToken') {
+        # Leser: Get-(Test)EnvValue 'TEST_...' (auch in Klammern/Anfuehrungszeichen), $TEST_... bzw. $x.TEST_..., Index ['TEST_...']
+        if ($line -match 'Get-(Test)?EnvValue\s*\(?\s*[''"]TEST_TELEGRAM_BOT_TOKEN[''"]|\$[\w:]*\.?TEST_TELEGRAM_BOT_TOKEN|\[[''"]TEST_TELEGRAM_BOT_TOKEN[''"]\]' -and $line -notmatch 'Resolve-TestTelegramToken|TestInventedBotToken') {
             $readers.Add("$($f.Name):$ln")
         }
     }

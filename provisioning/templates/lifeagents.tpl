@@ -136,7 +136,7 @@ _retired_allows() {
   local verb="$1"; shift
   case "$verb" in
     retire|doctor|version|--version|-v|help|--help|-h|images|uninstall) return 0 ;;
-    telegram)  case "${1:-}" in release-webhook|help|--help|-h) return 0 ;; esac ;;   # relink holt den Bot zurueck: auf einer stillgelegten Installation nie
+    telegram)  case "${1:-}" in release-webhook|help|--help|-h|"") return 0 ;; esac ;;   # relink holt den Bot zurueck: auf einer stillgelegten Installation nie
     update) [ "${1:-}" = --tick ]; return ;;
     backup)
       case "${1:-}" in

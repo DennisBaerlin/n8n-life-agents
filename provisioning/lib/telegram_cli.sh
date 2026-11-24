@@ -72,6 +72,8 @@ telegram_cmd_relink() {
   url="$(printf '%s' "$info" | jq -r '.result.url // ""')"
   if tg_webhook_foreign "$info" "$DOMAIN"; then
     log "Telegram stellt den Bot gerade an $(url_host "$url") zu — ein anderes System nutzt denselben Bot. Es wird jetzt auf diese Installation zurueckgestellt; das andere System bekommt dann keine Nachrichten mehr."
+  else
+    log "Telegram stellt an ${DOMAIN} nicht zu ($(printf '%s' "$info" | jq -r '.result.pending_update_count // 0') Nachricht(en) warten, Fehler: $(printf '%s' "$info" | jq -r '.result.last_error_message // "unbekannt"')) — die Adresse wird neu angemeldet; bei Telegram wartende Nachrichten koennen dabei verloren gehen."
   fi
   st="$(n8n_orchestrator_state "$N8N_API_KEY" "$N8N_URL")"
   if [ -z "$st" ]; then warn "n8n antwortet nicht oder der Bot-Workflow fehlt (lifeagents doctor zeigt Details)."; return 1; fi
@@ -79,7 +81,7 @@ telegram_cmd_relink() {
   # Abmelden + neu veroeffentlichen erzwingt ein frisches setWebhook; ein Neustart von n8n tut das nicht. Nachrichten, die
   # Telegram noch fuer die fremde Adresse vorhielt, gehen dabei verloren.
   if ! _oc_activate_orchestrator "$id"; then
-    warn "n8n konnte den Bot nicht neu veroeffentlichen: ${_OC_ACT_ERR}"
+    warn "n8n konnte den Bot nicht neu veroeffentlichen: ${_OC_ACT_ERR}. Der Bot ist jetzt abgemeldet und empfaengt nichts — bitte gleich noch einmal: lifeagents telegram relink"
     return 1
   fi
   info="$(_oc_webhook_info)"

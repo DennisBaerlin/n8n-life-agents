@@ -71,6 +71,7 @@ run "$PORT" env
 eq 'Publish scheitert: Exit 1' 1 "$RC"
 has 'Publish scheitert: Grund steht da' 'IP address is not allowed' "$OUT"
 hasnt 'Publish scheitert: kein Bot-Schluessel' 'MARKERTOKEN' "$OUT"
+has 'Publish scheitert: sagt, dass der Bot jetzt abgemeldet ist' 'abgemeldet' "$OUT"
 
 # 5) Publish ok, aber Telegram hat danach keine Adresse fuer die Domain.
 hook 'url=https%3A%2F%2Fexample.com%2Fwebhook%2Fabc%2Fwebhook'; mode noop
@@ -108,6 +109,8 @@ has 'stillgelegt: Satz nennt den Umzug' 'stillgelegt' "$OUT"
 eq 'stillgelegt: n8n unberuehrt' "$before" "$(n8n_calls)"
 OUT="$(env -u TELEGRAM_BOT_TOKEN LIFEAGENTS_DIR="$W/etc" LIFEAGENTS_STATE_DIR="$W/state" LIFEAGENTS_TELEGRAM_API="http://127.0.0.1:$PORT" bash "$W/lifeagents" telegram release-webhook 2>&1)"; RC=$?
 eq 'stillgelegt: release-webhook laeuft weiter' 0 "$RC"
+OUT="$(LIFEAGENTS_DIR="$W/etc" LIFEAGENTS_STATE_DIR="$W/state" bash "$W/lifeagents" telegram 2>&1)"; RC=$?
+eq 'stillgelegt: nacktes telegram zeigt die Hilfe' 0 "$RC"
 rm -f "$W/state/retired"
 
 # 9) Hilfe und doctor nennen den Befehl; die Diagnose-Helfer trennen fremd von eigen.

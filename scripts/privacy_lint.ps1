@@ -79,7 +79,7 @@ $hostRegex = '\b[a-z0-9-]+\.(fritz\.box|myfritz\.net)\b'
 $pathRegex = '\b[a-z]:[\\/]+users[\\/]+[a-z]'
 $wordTermRegex = '^\w(.*\w)?$'
 $pathspec = @('.') + @($exempt | ForEach-Object { ":(exclude)$_" })
-$binaryRegex = '(?i)\.(pdf|xlsx|xls|docx|png|webp|jpe?g|gif|ico|zip|gz|tgz|gpg)$'
+$binaryRegex = '(?i)\.(pdf|xlsx|xls|docx|png|webp|jpe?g|gif|mp4|ico|zip|gz|tgz|gpg)$'
 $binaryAllow = @('docs/site/public/img/', 'docs/site/static/img/', 'packages/core/build/stickers/', 'packages/core/build/bot_profile/','provisioning/keys/', 'tests/mock_telegram/docs/')
 
 # Das eine Regex aus der Begriffsliste (Baum und Text-Modi): Wort-Begriffe mit Grenze, der Rest als Teilstring. Grenze = kein

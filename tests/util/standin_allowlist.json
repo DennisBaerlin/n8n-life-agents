@@ -25,7 +25,6 @@
     "tests/mock_runtime/cases.sh|LA_PG_IMAGE": "Das Image-Pin kommt im echten Weg aus dem Release; ein Update-Lauf aus echtem Release fehlt.",
     "tests/mock_runtime/cases.sh|PG_VERSION": "Die Version liest der echte Weg aus dem laufenden Postgres; Lauf gegen echten Container fehlt.",
     "tests/mock_telegram/app_intro_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
-    "tests/mock_telegram/backup_notify_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
     "tests/mock_telegram/bot_username_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
     "tests/mock_telegram/menu_once_cases.sh|N8N_DB_NAME": "Der Name kommt im echten Weg aus der n8n-Env-Datei; ein Lauf gegen die echte DB-Konfiguration fehlt.",
     "tests/mock_telegram/profile_photo_cases.sh|stub": "Der curl-Stub reicht an echtes curl durch und protokolliert nur; der Telegram-Dienst ist der Mock-Server, ein Lauf gegen echtes Telegram fehlt (Live-Dienst)."

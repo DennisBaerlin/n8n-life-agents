@@ -93,11 +93,11 @@ Auf **Windows** legt die App ein eigenes Energieschema an (kein Standby, Bildsch
 
 ## Im Alltag
 
-Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Assistent läuft** oder **Assistent ist aus: Docker läuft nicht**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Notfallblatt speichern …**, **Sicherungsordner ändern …**, **Sicherung wiederherstellen …**, **Deinstallieren** und **App beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
+Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Assistent läuft** oder **Assistent ist aus: Docker läuft nicht**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Notfallblatt speichern …**, **Notfallschlüssel kopieren**, **Sicherungsordner ändern …**, **Sicherung wiederherstellen …**, **Deinstallieren** und **App beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
 
 Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf **Jetzt aktualisieren** sichert vorher deine Daten ([mehr zu Updates](installation.html#funktionen-hinzufügen)). Eine neue Fassung der Start-App selbst lädst du bei Bedarf von der Release-Seite, wie in Schritt 1.
 
-Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern …**, eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
+Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern …** oder **Notfallschlüssel kopieren** (für deinen Passwort-Manager), eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
 
 ## Wenn etwas nicht klappt
 

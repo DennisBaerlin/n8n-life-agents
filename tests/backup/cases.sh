@@ -91,10 +91,18 @@ if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
 KB="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
 KC="$(printf 'fedcba9876543210%.0s' 1 2 3 4)"
-printf '%s\n%s\n%s\n' "$KA" "$KB" "$KC" > "$W/needles"
-for k in "$KA" "$KB" "$KC"; do printf '%s' "${k:0:16}" >> "$W/needles"; printf '\n' >> "$W/needles"; done
+# Nadeln der Leck-Probe je Schluessel: Hex ganz und die ersten 16, das Token, sein 56er-Rumpf, die RFC-4648-Form vor base32 -d
+# und je die ersten 16 Zeichen davon (Suche ohne Gross/klein: grep -iF).
+: > "$W/needles"
+for k in "$KA" "$KB" "$KC"; do
+  t="$(printf '%s' "$k" | backup_key_token)"; r="${t#"${BACKUP_TOKEN_PREFIX}_"}"; f="$(printf '%s' "$r" | tr "$_BK_B32_CRO" "$_BK_B32_RFC")"
+  for v in "$k" "$t" "$r" "$f"; do printf '%s\n%s\n' "$v" "${v:0:16}" >> "$W/needles"; done
+done
 kidA="$(printf '%s' "$KA" | backup_key_id)"
-paper() { printf '%s' "$1" | backup_key_paper; }
+# shellcheck source=old_sheet_lib.sh
+. "$ROOT/backup/old_sheet_lib.sh"
+paper() { printf '%s' "$1" | old_paper; }   # gedrucktes Blatt im alten Format (bleibt gueltig)
+token() { printf '%s\n' "$(printf '%s' "$1" | backup_key_token)"; }
 N0="$(rows)"
 BACKUP_RESTORE_LOCK_T="$W/restore.lock"
 : > "$W/bk_before"; for _f in /var/backups/lifeagents/lifeagents-backup-*.nla.enc; do [ -e "$_f" ] && printf '%s\n' "$_f" >> "$W/bk_before"; done
@@ -158,7 +166,8 @@ done
 ok_if E.kopf-nennt-alle-aktiven-pakete '[ -n "$act" ] && [ "$(jq -r ".packages[].name" "$EX/manifest.json" | sort)" = "$act" ]' "aktiv: ${act//$'\n'/ } / Kopf: $(jq -r '.packages[].name' "$EX/manifest.json" 2>/dev/null | sort | tr '\n' ' ')"
 ok_if E.alle-bloecke-im-export '[ "$checked" -gt 0 ] && [ -z "$miss" ]' "geprueft=$checked, fehlt: $miss"
 ok_if E.paket-ohne-block-hat-keine-tabellen '[ -z "$blockless" ]' "Paket ohne backup-Block, aber mit eigenen Tabellen (landet nicht im Export): $blockless"
-ok_if E.export-ohne-core-schluessel '[ "$(jq -r "[.verify_counts | keys[] | select(startswith(\"core.\"))] | length" "$EX/manifest.json")" = 0 ] && ! grep -q "^core\." "$EX/toc"' "core.* im Export"
+# Schema core nur mit den Tabellen der Positivliste (contract_lint 8a: Kosten, Hinweis-Merker), nie core.backup_key.
+ok_if E.export-ohne-core-schluessel '[ "$(jq -r "[.verify_counts | keys[] | select(startswith(\"core.\") and . != \"core.llm_usage\" and . != \"core.notification_state\")] | length" "$EX/manifest.json")" = 0 ] && ! grep -q "^core\." "$EX/toc" && ! grep -q backup_key "$EX/shared.json"' "core.* im Export"
 
 # Sicherung mit dem "frischen" Schluessel KB (fuer den prev-Fall), dann ist KB aktiv wie auf einem neuen Rechner.
 set_active "$KB"
@@ -178,9 +187,16 @@ l3="$(paper "$KA" | sed -n 3p | sed -E 's/^3:[[:space:]]+//; s/-//g; s/[[:space:
 c3="$(typo_char 3 "$l3")"
 bash "$ROOT/backup/typo_lib_test.sh" "$ROOT" > "$W/typo_lib.out" 2>&1; rc=$?
 ok_if R.typo-lib '[ "$rc" -eq 0 ] && [ -n "$c3" ]' "rc=$rc c3='$c3' $(tail -n 5 "$W/typo_lib.out" | tr '\n' ' ')"
+# Kein Zugangsschluessel im argv beim Bau der Credentials (Restore setzt Zugaenge ueber denselben Weg).
+bash "$ROOT/backup/secret_argv_cases.sh" "$ROOT" > "$W/secret_argv.out" 2>&1; rc=$?
+ok_if S.secret-argv '[ "$rc" -eq 0 ] && grep -q "^PASS" "$W/secret_argv.out"' "rc=$rc $(grep '^FAIL' "$W/secret_argv.out" | tr '\n' ' ')"
 paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
 cli_in "$W/typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && active_is "$KB"' "rc=$rc"
+# Notfallschluessel als Token mit einem Tippfehler (typo_token: Ersatz, bei dem die Pruefsumme sicher nicht passt).
+typo_token "$(printf '%s' "$KA" | backup_key_token)" > "$W/tok_typo"
+cli_in "$W/tok_typo" backup restore "$A" --key-stdin --yes; rc=$?
+ok_if R.token-tippfehler '[ -s "$W/tok_typo" ] && [ "$rc" -ne 0 ] && said "hat einen Fehler" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
 # Beschaedigt: gleicher Name (ID passt), halbe Datei; mit dem passenden Blatt -> "beschaedigt", nichts geaendert.
 mkdir -p "$W/kaputt"; head -c "$(( $(stat -c %s "$A") / 2 ))" "$A" > "$W/kaputt/$fa"
 paper "$KA" > "$W/ka"; cli_in "$W/ka" backup restore "$W/kaputt/$fa" --key-stdin --yes; rc=$?
@@ -194,15 +210,16 @@ if [ "${N0:-0}" -gt 0 ]; then
 else
   fail R.tx-fehler-nichts-geaendert "keine Agenten-Kontexte im Substrat"
 fi
-# Mit dem Blatt (Grossbuchstaben, Bindestriche) — dabei /proc beobachten (Leck-Probe L).
-paper "$KA" | tr 'a-f' 'A-F' > "$W/kaU"
+# Nur der Notfallschluessel (eine Zeile, wie kopiert) — dabei /proc beobachten (Leck-Probe L). Das alte Blatt fuehrt unten
+# (K.altes-blatt-gueltig, P.hintergrund-*) ebenfalls bis zur Uebernahme.
+token "$KA" > "$W/kaT"
 : > "$W/proc_hits"
-( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaU"; echo $? > "$W/rc.r4" ) &
+( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaT"; echo $? > "$W/rc.r4" ) &
 bg=$!
 while kill -0 "$bg" 2>/dev/null; do
   for p in /proc/[0-9]*; do
     [ "${p#/proc/}" = "$BASHPID" ] && continue
-    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits"
+    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qiFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits"
   done
 done
 wait "$bg"; rc="$(cat "$W/rc.r4")"
@@ -241,6 +258,15 @@ ok_if P.probe-falsches-blatt '[ "$(js .code)" = key_foreign ] && [ "$(js .id)" =
 printf 'Einkaufsliste: Milch\n' > "$W/keinblatt"; frame "$W/keinblatt" "$A"
 n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"
 ok_if P.probe-kein-blatt '[ "$(js .code)" = key_format ]' "$(js .code)"
+# Notfallschluessel als Token: als Datei-Inhalt, und so, wie die heutige App das Feld "Zeile 1" schickt (restore::Sheet::typed).
+frame "$W/kaT" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token '[ "$rc" -eq 0 ] && [ "$(js .adopt_key_id)" = "$kidA" ] && [ "$(fp)" = "$F0" ]' "rc=$rc $(js .code)"
+printf '1: %s\n2: \n3: \n4: \n' "$(printf '%s' "$KA" | backup_key_token)" > "$W/kaF1"
+frame "$W/kaF1" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token-app-feld1 '[ "$rc" -eq 0 ] && [ "$(js .adopt_key_id)" = "$kidA" ]' "rc=$rc $(js .code)"
+# Kaputtes Token: fuer die Start-App key_line mit Zeile 1 (eine aeltere App kennt keinen neuen Code).
+frame "$W/tok_typo" "$A"; n=$((n + 1)); "$CLI" backup restore "$(basename "$A")" --in-stdin --plan --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
+ok_if P.probe-token-tippfehler '[ "$rc" -ne 0 ] && [ "$(js .code)" = key_line ] && [ "$(js .line)" = 1 ] && [ "$(fp)" = "$F0" ]' "$(js .code)/$(js .line)"
 # Sperre: laeuft schon eine Wiederherstellung, startet keine zweite.
 ( flock "$BACKUP_RESTORE_LOCK_T" sleep 4 ) & lk=$!; sleep 1
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
@@ -254,13 +280,13 @@ ok_if P.hintergrund-startet '[ "$rc" -eq 0 ] && [ "$(js .ok)" = true ]' "rc=$rc 
 for _ in $(seq 1 240); do
   for p in /proc/[0-9]*; do
     [ "${p#/proc/}" = "$BASHPID" ] && continue
-    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits2"
+    { tr '\0' '\n' < "$p/cmdline"; tr '\0' '\n' < "$p/environ"; } 2>/dev/null | grep -qiFf "$W/needles" && printf '%s\n' "${p#/proc/}" >> "$W/proc_hits2"
   done
   [ "$(rs_state)" = running: ] || break
   sleep 0.5
 done
 ok_if P.hintergrund-fertig '[ "$(rs_state)" = ok: ] && active_is "$KA" && prev_has "$KB" && [ "$(rows)" = "$N0" ]' "$(rs_state)"
-ok_if P.hintergrund-kein-leck '[ ! -s "$W/proc_hits2" ] && ! grep -qFf "$W/needles" "$W/log/restore.log" "$BACKUP_STATE_FILE"' "Schluessel in /proc, Protokoll oder backup.state"
+ok_if P.hintergrund-kein-leck '[ ! -s "$W/proc_hits2" ] && ! grep -qiFf "$W/needles" "$W/log/restore.log" "$BACKUP_STATE_FILE"' "Schluessel in /proc, Protokoll oder backup.state"
 # Abbruch mitten im Lauf (kill -9 vor der TX, Kind sichert gerade vorab): Stand „nicht abgeschlossen“, nichts geaendert.
 set_active "$KB"; env_upsert "$BACKUP_STATE_FILE" LAST_RESTORE_PID ''
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"
@@ -415,8 +441,17 @@ ok_if S.vorbereitet '[ "${S_RO%%:*}" -gt 0 ] && [ "$(pg_su_psql -X -tA -d "$N8N_
 q "UPDATE career.onboarding_state SET for_roles = NULL; UPDATE career.onboarding_state SET status = 'skipped' WHERE section_key = 'profile_basics'; UPDATE estate.directive_types SET label = 'bk alt' WHERE doc_type = 'testament'"
 S1="$(vexp abgleich)"
 q "UPDATE career.onboarding_state SET status = 'unknown' WHERE section_key = 'profile_basics'"
+# hand-injected: Registry-Altreste, wie sie ein frueherer Stand hinterlaesst (Eintrag aus dem Manifest entfernt, Zeile aus der Zeit
+# vor der package-Spalte). Der Abgleich nach dem Einspielen (seed_data) muss sie entfernen; Manifest-Zeilen bleiben.
+q "INSERT INTO core.context_validators (context_name, validate_fn, package) VALUES ('career_planning', 'career.fn_validate_career_planning', 'career'), ('bk_ohne_paket', 'core.fn_bk_alt', '') ON CONFLICT DO NOTHING;
+   INSERT INTO core.context_scopes (context_name, scope, write_permission, package) VALUES ('bk_alt_scope', 'household', 'owner_only', 'core') ON CONFLICT DO NOTHING;
+   INSERT INTO core.context_renderers (context_name, render_fn, package) VALUES ('bk_alt_render', 'core.fn_bk_alt', 'core') ON CONFLICT DO NOTHING"
+regn() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT (SELECT count(*) FROM core.context_validators WHERE context_name IN ('career_planning','bk_ohne_paket')) + (SELECT count(*) FROM core.context_scopes WHERE context_name = 'bk_alt_scope') + (SELECT count(*) FROM core.context_renderers WHERE context_name = 'bk_alt_render')"; }
+regk() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM core.context_validators WHERE context_name = 'career_profile'"; }
+S_REG="$(regn)"
 vyes "$S1"; rc=$?
 ok_if S.rollen '[ "$rc" -eq 0 ] && [ "$(cro)" = "$S_RO" ]' "rc=$rc $(js .code) / Abschnitte $(cro) statt $S_RO / $(tail -n2 "$W/err.$n")"
+ok_if S.registry-altreste '[ "$S_REG" = 4 ] && [ "$(regn)" = 0 ] && [ "$(regk)" = 1 ]' "vorher $S_REG Altreste, nachher $(regn); career_profile $(regk)"
 ok_if S.katalog '[ "$(dlab)" = "$S_LAB" ]' "Bezeichnung '$(dlab)'"
 ok_if S.nutzerwert '[ "$(cst)" = skipped ]' "Status '$(cst)' statt skipped aus der Sicherung"
 # Bricht der Abgleich ab, sind die Daten trotzdem eingespielt: der Hintergrund-Lauf endet ok, restore-status meldet
@@ -433,24 +468,72 @@ ok_if S.abgleich-scheitert '[ "$(rs_state)" = ok: ] && [ "$(rcv)" = false ] && [
   "$(rs_state) converged=$(rcv) Status=$(cst) / $(tail -n2 "$W/log/restore.log" 2>/dev/null)"
 q "UPDATE career.onboarding_state SET status = '${S_ST}' WHERE section_key = 'profile_basics'"
 
+# ---------------------------------------------------------------------------- B: vollstaendige Sicherung (Kosten, Merker, Sperrliste)
+# Kostenverlauf wird zusammengefuehrt (die Kosten des Ziels bleiben), "schon gezeigt"-Merker = Stand der Sicherung ohne die
+# Installations-Merker dieses Bots, Sperrliste fremder Telegram-Nutzer reist ganz mit. Eine Sicherung vom Stand davor laesst
+# alle drei auf dem Ziel unberuehrt.
+LU_A='1762000000000-bbbbbb-000001'; LU_B='1763000000000-cccccc-000001'
+bsum() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT (SELECT string_agg(id, ',' ORDER BY id) FROM core.llm_usage WHERE id IN ('$LU_A','$LU_B'))
+  || '|' || (SELECT COALESCE(string_agg(source || '/' || key, ',' ORDER BY source, key), '') FROM core.notification_state WHERE key IN ('bk_alt','bk_spaeter','ready'))
+  || '|' || (SELECT COALESCE(string_agg(telegram_user_id::text, ',' ORDER BY telegram_user_id), '') FROM agent.access_blocks WHERE telegram_user_id IN (90001, 90002))"; }
+q "DELETE FROM core.llm_usage WHERE id IN ('$LU_A','$LU_B'); DELETE FROM core.notification_state WHERE key IN ('bk_alt','bk_spaeter');
+   DELETE FROM agent.access_blocks WHERE telegram_user_id IN (90001, 90002);
+   INSERT INTO core.llm_usage (id, ts, model, input_tokens) VALUES ('$LU_A', now(), 'bk', 3);
+   INSERT INTO core.notification_state (source, key, state) VALUES ('plan_news', 'bk_alt', 'fired'), ('app_button', 'ready', 'fired') ON CONFLICT DO NOTHING;
+   INSERT INTO agent.access_blocks (telegram_user_id, reason) VALUES (90001, 'bk')"
+B1="$(vexp voll)"
+q "DELETE FROM core.llm_usage WHERE id = '$LU_A'; INSERT INTO core.llm_usage (id, ts, model, input_tokens) VALUES ('$LU_B', now(), 'bk', 5);
+   DELETE FROM core.notification_state WHERE key = 'bk_alt'; INSERT INTO core.notification_state (source, key, state) VALUES ('plan_news', 'bk_spaeter', 'fired');
+   DELETE FROM agent.access_blocks WHERE telegram_user_id = 90001; INSERT INTO agent.access_blocks (telegram_user_id) VALUES (90002)"
+vyes "$B1"; rc=$?
+ok_if B.voll-eingespielt '[ "$rc" -eq 0 ] && [ "$(bsum)" = "$LU_A,$LU_B|app_button/ready,plan_news/bk_alt|90001" ]' \
+  "rc=$rc $(js .code) / $(bsum) / $(tail -n2 "$W/err.$n")"
+# hand-injected: eine Sicherung vom Stand vor diesen Teilen gibt es im Substrat nicht; ein Manifest ohne sie erzeugt dieselbe Form.
+cp "$ROOT/packages/core/manifest.json" "$W/core.manifest"
+jq '.backup.full_tables -= ["agent.access_blocks"] | del(.backup.filtered_tables["core.llm_usage"], .backup.filtered_tables["core.notification_state"])' \
+  "$W/core.manifest" > "$ROOT/packages/core/manifest.json"
+B0="$(vexp alt)"
+cp "$W/core.manifest" "$ROOT/packages/core/manifest.json"
+B_VOR="$(bsum)"
+vyes "$B0"; rc=$?
+ok_if B.alte-sicherung-laesst-neue-teile '[ "$rc" -eq 0 ] && [ -n "$B_VOR" ] && [ "$(bsum)" = "$B_VOR" ]' "rc=$rc $(js .code) / vorher $B_VOR nachher $(bsum)"
+q "DELETE FROM core.llm_usage WHERE id IN ('$LU_A','$LU_B'); DELETE FROM core.notification_state WHERE key IN ('bk_alt','bk_spaeter');
+   DELETE FROM agent.access_blocks WHERE telegram_user_id IN (90001, 90002)"
+
 # ---------------------------------------------------------------------------- N: fehlende Pakete, Start-App (ohne Terminal)
-# Neuer Rechner ohne Karriere und Paperless. Paperless sichert keine Daten (kein backup-Block) -> uebersprungen; Karriere hat
-# Daten und nur freiwillige Zugaenge -> ohne sie eingerichtet, Daten eingespielt, fehlender Zugang gemeldet.
+# Neuer Rechner ohne Karriere und Paperless. Beide werden eingerichtet (Paperless hat keine Daten, sein backup-Block macht es
+# einspielbar). Zugaenge kommen aus der Sicherung (access.json): Karriere traegt nur den JSearch-Schluessel, Adzuna fehlt -> der
+# Zugang gilt weiter als fehlend; Paperless traegt seinen Schluessel, wenn das Substrat einen hat.
+# hand-injected: das Substrat installiert Karriere ohne Fremd-Schluessel; ein erfundener JSearch-Wert zeigt den Rueckweg.
+ZK='bk-jsearch-erfunden-0042'
+( umask 077; env_upsert "$(lifeagents_env_file career)" JSEARCH_API_KEY "$ZK" )
+ZP="$(read_env_value "$(lifeagents_env_file paperless)" PAPERLESS_API_TOKEN 2>/dev/null || true)"
 NB="$(vexp pakete)"
+mkdir -p "$W/v/zg"; gpg_sym_decrypt "$KA" "$NB" > "$W/v/zg/b.tgz" < /dev/null; tar -xzf "$W/v/zg/b.tgz" -C "$W/v/zg"
+ok_if Z.zugang-im-bundle '[ "$(jq -r ".career.JSEARCH_API_KEY // empty" "$W/v/zg/access.json")" = "$ZK" ] && [ "$(jq -r ".parts | index(\"access\") != null" "$W/v/zg/manifest.json")" = true ]' \
+  "$(jq -c 'keys' "$W/v/zg/access.json" 2>/dev/null) / $(jq -c .parts "$W/v/zg/manifest.json" 2>/dev/null)"
+rm -rf "$W/v/zg"
 cli package uninstall career --purge --yes; cli package uninstall paperless --purge --yes
 reg() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT COALESCE(string_agg(package || ':' || status, ',' ORDER BY package), '') FROM core.package_registry WHERE package IN ('career', 'paperless')"; }
 ok_if N.vorbereitet '[ -z "$(reg)" ]' "$(reg)"
 # hand-injected: kein ausgeliefertes Paket hat einen Pflicht-Zugang; das Manifest wird nur fuer diesen Fall umgestellt.
 cp "$ROOT/packages/career/manifest.json" "$W/career.manifest"
-jq '.credentials.jsearch.required = true' "$W/career.manifest" > "$ROOT/packages/career/manifest.json"
+jq '.credentials.adzuna.required = true' "$W/career.manifest" > "$ROOT/packages/career/manifest.json"
 vplan "$NB"; ok_if N.pflicht-zugang '[ "$(js .code)" = needs_setup ] && [ "$(js .pkg)" = career ]' "$(js .code)/$(js .pkg)"
+# Pflicht-Zugang, den die Sicherung traegt (JSearch): kein Abbruch, die Einrichtung liest ihn aus access.json.
+jq '.credentials.jsearch.required = true' "$W/career.manifest" > "$ROOT/packages/career/manifest.json"
+vplan "$NB"; ok_if N.pflicht-zugang-im-bundle '[ "$(js .ok)" = true ]' "$(js .code)/$(js .pkg)"
 cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
+ZEXP='["career","paperless"]'; [ -z "$ZP" ] || ZEXP='["career"]'   # Paperless-Zugang deckt die Sicherung, wenn das Substrat einen hat
 vplan "$NB"
-ok_if N.probelauf '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"career\") | .state")" = install ] && [ "$(js ".packages[] | select(.name == \"paperless\") | .state")" = skip ] && [ "$(js ".missing_access | tojson")" = "[\"career\"]" ] && [ -z "$(reg)" ]' \
+ok_if N.probelauf '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"career\") | .state")" = install ] && [ "$(js ".packages[] | select(.name == \"paperless\") | .state")" = install ] && [ "$(js ".missing_access | tojson")" = "$ZEXP" ] && [ -z "$(reg)" ]' \
   "$(js .code) / $(js ".packages | tojson") / $(js ".missing_access | tojson") / $(reg)"
 n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$NB" --yes --detach --json > "$W/out.$n" 2>/dev/null < /dev/null
 for _ in $(seq 1 600); do case "$(rs_state)" in running:|idle:|"") sleep 0.5 ;; *) break ;; esac; done
-ok_if N.eingespielt '[ "$(rs_state)" = ok: ] && [ "$(reg)" = career:active ] && grep -q "package reconfigure career" "$W/log/restore.log"' "$(rs_state) / $(reg) / $(tail -c 300 "$W/out.$n") / $(tail -n3 "$W/log/restore.log" 2>/dev/null)"
+ok_if N.eingespielt '[ "$(rs_state)" = ok: ] && [ "$(reg)" = career:active,paperless:active ] && grep -q "package reconfigure career" "$W/log/restore.log"' "$(rs_state) / $(reg) / $(tail -c 300 "$W/out.$n") / $(tail -n3 "$W/log/restore.log" 2>/dev/null)"
+ok_if Z.zugang-zurueck '[ "$(read_env_value "$(lifeagents_env_file career)" JSEARCH_API_KEY 2>/dev/null)" = "$ZK" ] && grep -q "JSearch RapidAPI" "$W/log/restore.log" && ! grep -qF "$ZK" "$W/log/restore.log"' \
+  "career.env JSEARCH=$(read_env_value "$(lifeagents_env_file career)" JSEARCH_API_KEY 2>/dev/null | head -c 4)… / $(grep -c "JSearch" "$W/log/restore.log" 2>/dev/null)"
+if [ -n "$ZP" ]; then ok_if Z.paperless-zugang '[ "$(read_env_value "$(lifeagents_env_file paperless)" PAPERLESS_API_TOKEN 2>/dev/null)" = "$ZP" ]' "Paperless-Schluessel fehlt nach dem Einspielen"; fi
 # Erst eingerichtetes Paket mit abweichendem Aufbau: der Probelauf kann es nicht pruefen, der Hintergrund-Lauf prueft nach dem
 # Einrichten und bricht vor der Vorab-Sicherung ab; restore-status nennt die Release fuer den App-Text.
 ct="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'career' AND table_type = 'BASE TABLE' ORDER BY table_name LIMIT 1")"
@@ -474,11 +557,18 @@ cli backup key; rc=$?
 ok_if K.ohne-terminal-abbruch '[ "$rc" -ne 0 ] && said "Kein Terminal"' "rc=$rc"
 cli backup key --file "$W/blatt.txt"; rc=$?
 ok_if K.datei-0600 '[ "$rc" -eq 0 ] && [ "$(stat -c %a "$W/blatt.txt")" = 600 ]' "rc=$rc"
-ok_if K.datei-inhalt '[ "$(grep -cE "^  [1-4]:  [0-9a-f]{4}(-[0-9a-f]{4}){3}  [0-9a-f]{2}$" "$W/blatt.txt")" = 8 ] && grep -qF "$kidA" "$W/blatt.txt"' "erwartet 2 Schluessel à 4 Zeilen + ID"
+# Je Schluessel eine Token-Zeile, keine Zeilen des alten Blatts, ID, und eine Zeile "1:" (Pruefung der heutigen Start-App beim Speichern).
+ok_if K.blatt-token '[ "$(grep -cE "^  labk1_[0-9a-hjkmnp-tv-z]{56}$" "$W/blatt.txt")" = 2 ] && ! grep -qE "^ *[1-4]: +[0-9a-f]{4}-" "$W/blatt.txt" && grep -qF "$kidA" "$W/blatt.txt" && grep -qF "$(printf "%s" "$KA" | backup_key_token)" "$W/blatt.txt" && grep -qE "^1: " "$W/blatt.txt"' \
+  "erwartet 2 Token-Zeilen + ID + Schritt 1:"
 cli backup key --file "$W/blatt.txt"; rc=$?
 ok_if K.nie-ueberschreiben '[ "$rc" -ne 0 ] && [ "$(stat -c %a "$W/blatt.txt")" = 600 ]' "rc=$rc"
-cli backup key --file -; rc=$?
+cli backup key --file -; rc=$?; k_stdout_n=$n   # diese Ausgabe ist das Blatt selbst (L ueberspringt sie)
 ok_if K.stdout '[ "$rc" -eq 0 ] && said "$kidA"' "rc=$rc"
+# Nur der Notfallschluessel (Start-App „Notfallschluessel kopieren“): genau eine Zeile, das Token des aktiven Schluessels.
+cli backup key --token; rc=$?; k_token_n=$n   # diese Ausgabe ist der Schluessel selbst (L ueberspringt sie)
+ok_if K.token-nur-zeile '[ "$rc" -eq 0 ] && [ "$(cat "$W/out.$n")" = "$(printf "%s" "$KA" | backup_key_token)" ] && [ "$(wc -l < "$W/out.$n")" = 1 ]' "rc=$rc"
+cli backup key --token --file -; rc=$?
+ok_if K.token-nicht-mit-file '[ "$rc" -ne 0 ]' "rc=$rc"
 # Die gespeicherte Datei taugt als Eingabe auf einem neuen Rechner (traegt den aktuellen und den aelteren Schluessel).
 set_active "$KB"
 cli_in "$W/blatt.txt" backup restore "$A" --key-stdin --yes; rc=$?
@@ -488,6 +578,11 @@ ok_if K.datei-als-eingabe '[ "$rc" -eq 0 ] && active_is "$KA" && prev_has "$KB"'
 set_active "$KC"
 cli_in "$W/blatt.txt" backup restore "$B" --key-stdin --yes; rc=$?
 ok_if K.blatt-aelterer-passt '[ "$rc" -eq 0 ] && active_is "$KB" && prev_has "$KA" && prev_has "$KC"' "rc=$rc"
+# Gedrucktes Blatt im alten Format (fixtures/notfallblatt-alt.txt: Ausgabe vor dem Token, erfundene Schluessel KB aktuell + KC
+# aelter) bleibt gueltig: Sicherung B (KB) auf einem Rechner mit KC.
+set_active "$KC"
+cli_in "$ROOT/backup/fixtures/notfallblatt-alt.txt" backup restore "$B" --key-stdin --yes; rc=$?
+ok_if K.altes-blatt-gueltig '[ "$rc" -eq 0 ] && active_is "$KB" && prev_has "$KC"' "rc=$rc"
 
 # ---------------------------------------------------------------------------- U: Rueckweg behaelt den Blatt-Schluessel
 # Lage nach pg_restore --create: die hergestellte DB traegt den alten Schluessel (KB), die beiseitegelegte den uebernommenen
@@ -515,7 +610,7 @@ cli backup auto; rc=$?
 ok_if_local F.auto-schreibt-in-ordner '[ "$rc" -eq 0 ] && [ "$(own_n)" = 1 ]' "rc=$rc n=$(own_n)"
 ok_if_local F.ordner-nur-fuer-root '[ "$(stat -c %a "$W/local")" = 700 ]'
 ok_if F.auto-last-ok '[ "$(( $(date +%s) - $(read_env_value "$BACKUP_STATE_FILE" LAST_OK) ))" -lt 120 ]'
-ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qFf "$W/needles" "$W/out.$n"'
+ok_if F.auto-ohne-schluessel-in-ausgabe '! grep -qiFf "$W/needles" "$W/out.$n"'
 erste="$(ls -1 "$W/local" | head -n1)"
 # --scheduled: heute schon gesichert -> nichts; seit 3 Tagen nicht -> eine neue Datei.
 cli backup auto --scheduled; rc=$?
@@ -563,6 +658,7 @@ dr_backup() {   # dr_backup <LAST_OK-Alter in s|-> <grund|-> <VERSION-Alter-Tage
   local st="$W/dr.state" ver="$W/dr.VERSION"; rm -f "$st"; : > "$ver"
   [ "$1" = - ] || env_upsert "$st" LAST_OK "$(( $(date +%s) - $1 ))"
   [ "$2" = - ] || env_upsert "$st" LAST_FAIL_REASON "$2"
+  [ -z "${DR_SIZE:-}" ] || env_upsert "$st" LAST_SIZE "$DR_SIZE"
   touch -d "$3 days ago" "$ver"
   ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
     BACKUP_STATE_FILE="$st"; _fail=0; unset LIFEAGENTS_RUNTIME
@@ -573,6 +669,7 @@ out="$(dr_backup 3600 - 30)"; ok_if F.doctor-heute-gruen 'printf "%s" "$out" | g
 out="$(dr_backup $((3 * 86400)) - 30)"; ok_if F.doctor-veraltet-rot 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung: vor 3 Tagen — Verlauf: journalctl -u lifeagents-backup" && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
 out="$(dr_backup $((3 * 86400)) encrypt 30)"; ok_if F.doctor-volles-ziel-rot-mit-platzhinweis 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung.*Platz prüfen: df -h " && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
 out="$(dr_backup - - 0)"; ok_if F.doctor-frische-installation-gruen 'printf "%s" "$out" | grep -q "^  \[ OK \] Letzte Sicherung: noch keine erfasst" && [ "$(printf "%s" "$out" | tail -n1)" = fail=0 ]' "$out"
+out="$(DR_SIZE=$((45 * 1024 * 1024)) dr_backup 3600 - 30)"; ok_if F.doctor-grosse-sicherung-gelb 'printf "%s" "$out" | grep -q "Sicherung ist 45 MB groß" && [ "$(printf "%s" "$out" | tail -n1)" = fail=0 ]' "$out"
 out="$(dr_backup - - 5)"; ok_if F.doctor-nie-gesichert-nach-frist-rot 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung: noch keine" && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
 export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
 
@@ -580,11 +677,12 @@ export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
 leak=0
 for f in "$W"/out.* ; do
   [ -f "$f" ] || continue
-  grep -qFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
+  [ "$f" != "$W/out.${k_stdout_n:-x}" ] && [ "$f" != "$W/out.${k_token_n:-x}" ] || continue
+  grep -qiFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
 done
 ok_if L.kein-schluessel-in-ausgaben '[ "$leak" = 0 ]' "Schluessel in einer CLI-Ausgabe"
 printf '%s\n' "$KA" > "$W/needle_a"
-ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Papierform"
+ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Token"
 ok_if L.tmpfs-leer '[ -z "$(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null)" ]' "Reste im tmpfs"
 
 exit "$fails"

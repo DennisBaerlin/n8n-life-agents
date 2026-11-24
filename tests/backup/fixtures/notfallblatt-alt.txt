@@ -1,0 +1,27 @@
+Life Agents – Notfallblatt für deine Sicherungen
+Schlüssel ka8ae6e6e · gültig seit 2026-11-12
+
+Auf einem neuen Rechner lässt sich ohne diesen Schlüssel keine deiner Sicherungen öffnen. Drucke das Blatt aus oder speichere es in deinem Passwort-Manager. Lege es nicht in den Sicherungsordner.
+
+Sicherungs-Schlüssel
+  1:  0123-4567-89ab-cdef  73
+  2:  0123-4567-89ab-cdef  d3
+  3:  0123-4567-89ab-cdef  c2
+  4:  0123-4567-89ab-cdef  33
+Die zwei Zeichen am Ende jeder Zeile sind Prüfzeichen. Sie zeigen einen Tippfehler sofort an.
+
+Für ältere Sicherungen (Schlüssel k7b9d07f2):
+  1:  fedc-ba98-7654-3210  66
+  2:  fedc-ba98-7654-3210  05
+  3:  fedc-ba98-7654-3210  bc
+  4:  fedc-ba98-7654-3210  01
+
+Noch ist kein Sicherungsordner gewählt, darum gibt es noch keine tägliche Sicherung.
+
+So stellst du auf einem neuen Rechner wieder her
+- Installiere Life Agents in der Version, die im Namen der Sicherung steht (zum Beispiel „-v0.50.0.nla.enc“). Wie das geht, steht in der Anleitung unten.
+- Wähle in der Start-App im Menü „Sicherung wiederherstellen …“. Gib dann diese Datei an oder tippe die vier Zeilen ab.
+- Danach gilt der Schlüssel, der zur Sicherung passt. Bewahre dieses Blatt auf, auch wenn du später ein neues ausdruckst.
+
+Schritt für Schritt: https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung.html
+Dieses Blatt jederzeit wieder: in der Start-App im Menü „Notfallblatt speichern“.

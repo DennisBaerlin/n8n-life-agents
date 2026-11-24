@@ -381,7 +381,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_n8n_runtime_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test))\.ps1$
+        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test|bootstrap_test_n8n))\.ps1$
 
       - id: precondition-lint-test
         name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)
@@ -591,6 +591,14 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_tag_test.ps1
         pass_filenames: false
         files: ^(scripts/(lib/release_tag|release_meta|sign_release|build_master_image|dev/release_tag_test)\.ps1|\.github/workflows/release\.yml)$
+
+      - id: apt-repo-test
+        name: apt_repo_test (fresh debian:12 container, real apt + pkgs.tailscale.com - without gpg, key/source registration never leaves an unsigned source; the documented first step works without curl; needs Docker + network)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/apt_repo_test.ps1
+        pass_filenames: false
+        files: ^(provisioning/(setup\.sh|install\.sh|lib/common\.sh|lib/reach_cli\.sh)|tests/util/apt_repo/.*|scripts/dev/apt_repo_test\.ps1)$
+        stages: [pre-push]
 
       - id: capabilities-catalog
         name: build.ps1 -VerifyCatalog (capabilities catalog drift)

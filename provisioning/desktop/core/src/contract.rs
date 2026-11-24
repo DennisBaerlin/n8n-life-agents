@@ -82,6 +82,9 @@ pub enum MasterCmd {
     /// Notfallblatt (Sicherungs-Schlüssel) auf stdout. Geheim: die Ausgabe geht nur in die Datei in Downloads, nie in
     /// Fehlerbericht, Journal oder Log (`backup.rs`).
     BackupKit,
+    /// Nur der aktive Notfallschlüssel (Token) auf stdout, für „Notfallschlüssel kopieren“. Geheim wie `BackupKit`: geht
+    /// nur in die Zwischenablage (`backup.rs` `copy_key`).
+    BackupToken,
     /// Wiederherstellen (`restore.rs`, Codes im Kopf von `_bkp_rdie` in backup_cli.sh), je eine JSON-Zeile:
     /// Sicherungen im Sicherungsordner.
     BackupList,
@@ -112,6 +115,7 @@ impl MasterCmd {
             MasterCmd::PowerDone => vec!["node", WIZARD_CTL, "power-done"],
             MasterCmd::ReleaseWebhook => vec!["lifeagents", "telegram", "release-webhook"],
             MasterCmd::BackupKit => vec!["lifeagents", "backup", "key", "--file", "-"],
+            MasterCmd::BackupToken => vec!["lifeagents", "backup", "key", "--token"],
             MasterCmd::BackupList => vec!["lifeagents", "backup", "list", "--json"],
             MasterCmd::RestoreStatus => vec!["lifeagents", "backup", "restore-status", "--json"],
             MasterCmd::RestorePlan { name, file, key } => return restore(name, &["--plan", "--json"], *file, *key),

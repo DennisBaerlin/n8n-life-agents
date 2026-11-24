@@ -74,9 +74,12 @@ ALTER TABLE core.config ADD COLUMN IF NOT EXISTS summary text NOT NULL DEFAULT '
 --   'owner'  = Einstellung des Owners (lifeagents config list/set/reset zeigen + aendern sie).
 --   'system' = Systemwert, den jedes Update neu setzt (z. B. api.core_version) -> fn_config_seed ueberschreibt
 --              ihn immer, die CLI blendet ihn aus (eine Zeile, die `config list` zeigt, muss auch wirken).
+--   'instance' = Wissen dieser Installation (z. B. telegram.bot_username, setzt der Installer per getMe): ueberlebt
+--              Updates wie ein Owner-Wert, reist aber nie mit Sicherung oder Umzug (core.fn_config_export/import).
 -- Wie description immer aus dem Manifest (`.config.<c>.<k>.managed_by`, Default owner).
-ALTER TABLE core.config ADD COLUMN IF NOT EXISTS managed_by text NOT NULL DEFAULT 'owner'
-    CONSTRAINT config_managed_by_check CHECK (managed_by IN ('owner', 'system'));
+ALTER TABLE core.config ADD COLUMN IF NOT EXISTS managed_by text NOT NULL DEFAULT 'owner';
+ALTER TABLE core.config DROP CONSTRAINT IF EXISTS config_managed_by_check;
+ALTER TABLE core.config ADD CONSTRAINT config_managed_by_check CHECK (managed_by IN ('owner', 'system', 'instance'));
 
 -- value_type + minimum/maximum (Muster pg_settings.vartype/min_val/max_val; Feldnamen im Manifest nach JSON Schema
 -- `type`/`minimum`/`maximum`): welche Werte eine Zeile annimmt. Die DB prueft jeden neuen Wert (Trigger 3 unten) —

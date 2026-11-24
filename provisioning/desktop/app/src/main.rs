@@ -9,7 +9,7 @@ use std::time::Duration;
 use lifeagents_desktop_core::autostart::AUTOSTART_ARG;
 use lifeagents_desktop_core::host::RealHost;
 use lifeagents_desktop_core::journal::{Journal, Status};
-use lifeagents_desktop_core::{lang, texts};
+use lifeagents_desktop_core::{backup, lang, texts};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
@@ -81,6 +81,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
     let report = item("report", "core.desktop.tray.report", true)?;
     let ready = commands::setup_done();
     let kit = item("backup-kit", "core.desktop.tray.backup_kit", ready)?;
+    let copy = item("backup-copy", "core.desktop.tray.backup_copy", ready)?;
     let folder = item("backup-dir", "core.desktop.tray.backup_dir", ready)?;
     let restore = item("backup-restore", "core.desktop.tray.backup_restore", ready)?;
     let uninstall = item("uninstall", "core.desktop.tray.uninstall", true)?;
@@ -88,7 +89,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu =
-        Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &restore, &sep2, &uninstall, &quit])?;
+        Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &copy, &folder, &restore, &sep2, &uninstall, &quit])?;
     let mut tray =
         TrayIconBuilder::with_id("main").menu(&menu).tooltip("lifeagents").show_menu_on_left_click(true).on_menu_event(|app, event| {
             match event.id.as_ref() {
@@ -99,6 +100,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
                 "power-restore" => show(app, "power-restore"),
                 "report" => show(app, "report"),
                 "backup-kit" => show(app, "backup-kit"),
+                "backup-copy" => show(app, "backup-copy"),
                 "backup-dir" => show(app, "backup-dir"),
                 "backup-restore" => show(app, "backup-restore"),
                 "uninstall" => show(app, "uninstall"),
@@ -118,12 +120,13 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
             (power, "core.desktop.tray.power_restore"),
             (report, "core.desktop.tray.report"),
             (kit.clone(), "core.desktop.tray.backup_kit"),
+            (copy.clone(), "core.desktop.tray.backup_copy"),
             (folder.clone(), "core.desktop.tray.backup_dir"),
             (restore.clone(), "core.desktop.tray.backup_restore"),
             (uninstall, "core.desktop.tray.uninstall"),
             (quit, "core.desktop.tray.quit"),
         ],
-        after_setup: vec![kit, folder],
+        after_setup: vec![kit, copy, folder],
         restore,
     })
 }
@@ -172,6 +175,7 @@ fn main() {
             commands::open_wizard,
             commands::wizard_status,
             commands::save_backup_kit,
+            commands::copy_backup_key,
             commands::kit_status,
             commands::confirm_kit,
             commands::change_backup_folder,
@@ -180,7 +184,7 @@ fn main() {
             commands::restore_select,
             commands::restore_pick_file,
             commands::restore_pick_sheet,
-            commands::restore_type_sheet,
+            commands::restore_paste_sheet,
             commands::restore_forget,
             commands::restore_plan,
             commands::restore_run,
@@ -225,8 +229,14 @@ fn main() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("lifeagents konnte nicht starten");
+        .build(tauri::generate_context!())
+        .expect("lifeagents konnte nicht starten")
+        .run(|_app, event| {
+            // Beim Beenden den noch kopierten Notfallschlüssel aus der Zwischenablage nehmen (der 60-s-Zeitgeber endet mit).
+            if let tauri::RunEvent::Exit = event {
+                backup::clear_copied(&RealHost, None);
+            }
+        });
 }
 
 /// Owner-Entscheid „ein Fenster“: Die Fragebogen-Seite (fremde Adresse auf 127.0.0.1) läuft im App-Fenster, darf aber

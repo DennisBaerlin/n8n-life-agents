@@ -64,14 +64,14 @@ Usage: lifeagents <befehl> [optionen]
   backup      Nutzerdaten sichern/wiederherstellen: export/restore/key (verschluesselt, paket-bewusst,
               atomar); im Docker-Verbund außerdem host-dir/auto (Sicherungs-Ordner auf dem Rechner).
               `lifeagents backup help` für Details. Braucht root.
-  telegram    Telegram-Bot warten: release-webhook (Webhook loesen; ruft die Start-App beim Abbau).
-              Exit 0 = geloest oder nichts zu loesen. `lifeagents telegram help` für Details.
+  telegram    Telegram-Bot warten: release-webhook (Webhook loesen; ruft die Start-App beim Abbau), relink (Bot wieder
+              mit dieser Installation verbinden, wenn Telegram ihn nicht erreicht). `lifeagents telegram help` für Details.
   images      Docker-Verbund: keep = Abbilder, die Betrieb und Rückweg noch brauchen (JSON für die Start-App;
               nur lesen, löscht nichts). `lifeagents images help` für Details. Braucht root.
   retire      Umzug auf eine neue Maschine: diese Installation stilllegen und alles für die neue in einen
               Ordner legen; --check (Trockenlauf), --status, --undo [--restore <ordner>] (zurück).
               `lifeagents retire help` für Details. Braucht root.
-  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt Sicherung, Gedächtnis und Einstellungen ein,
+  move        Umzug auf dieser (neuen) Maschine annehmen: apply <ordner> spielt die Sicherung ein (mit Gesprächen, Einstellungen, Zugängen),
               check (Vergleich mit der alten Maschine), status, done (Abnahme; bis dahin keine Updates), abort (Ausweg).
               `lifeagents move help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
@@ -135,7 +135,8 @@ fi
 _retired_allows() {
   local verb="$1"; shift
   case "$verb" in
-    retire|doctor|version|--version|-v|help|--help|-h|telegram|images|uninstall) return 0 ;;
+    retire|doctor|version|--version|-v|help|--help|-h|images|uninstall) return 0 ;;
+    telegram)  case "${1:-}" in release-webhook|help|--help|-h|"") return 0 ;; esac ;;   # relink holt den Bot zurueck: auf einer stillgelegten Installation nie
     update) [ "${1:-}" = --tick ]; return ;;
     backup)
       case "${1:-}" in
@@ -279,21 +280,21 @@ case "$cmd" in
     # Backup/Restore der Nutzerdaten: common.sh + backup_cli.sh + die Install-Primitive
     # (Restore-vor-Install ruft pkg_install_one --no-seed). Braucht root (pg_dump/pg_restore + core.backup_key
     # + ggf. per-Paket-Install). Derselbe Install-Code wie `lifeagents package install`.
-    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do
+    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
     [ "$(id -u)" -eq 0 ] || { printf 'lifeagents backup: braucht root (DB-Zugriff).\n' >&2; exit 1; }
     # shellcheck source=/dev/null
     . "${LIFEAGENTS_PROV}/lib/common.sh"
-    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do
+    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh; do
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done
     backup_cli "$@"
     ;;
   telegram)
-    # Bot-Wartung (release-webhook fuer die Start-App beim Abbau). Kein root-Zwang: der Schluessel kommt aus Env/core.env.
-    for f in common.sh deploy_workflows.sh telegram_cli.sh; do
+    # Bot-Wartung (release-webhook fuer die Start-App beim Abbau, relink). Kein root-Zwang: der Schluessel kommt aus Env/core.env.
+    for f in common.sh deploy_workflows.sh owner_connect.sh telegram_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
@@ -313,12 +314,12 @@ case "$cmd" in
   retire)
     # Umzug (lib/retire_cli.sh): Sicherung + Restore wie der backup-Arm, Bot ueber telegram_cli.sh, Unit-Namen aus den
     # Install-Libs der Timer und des Gateways (nur Namen, nichts wird installiert).
-    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+    for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
     # shellcheck source=/dev/null
     . "${LIFEAGENTS_PROV}/lib/common.sh"
-    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
+    for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh config_cli.sh telegram_cli.sh install_update_timers.sh install_backup_timer.sh install_llm_gateway.sh retire_cli.sh; do
       # shellcheck source=/dev/null
       . "${LIFEAGENTS_PROV}/lib/$f"
     done

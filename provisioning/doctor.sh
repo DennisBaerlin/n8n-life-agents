@@ -260,6 +260,14 @@ _doctor_release_version() {
   _red "Keine Versionsnummer eingetragen (VERSION: ${shown}) — Update-Hinweise im Chat kommen so nicht an. ${fix}"
 }
 
+# _doctor_backup_size — die Kopie im Telegram-Chat traegt hoechstens 50 MB (_bkp_notify_telegram); ab 40 MB GELB, damit es vorher
+#   auffaellt (das Gespraechs-Gedaechtnis waechst ohne Grenze mit). Groesse der letzten Sicherung aus backup.state (LAST_SIZE).
+_doctor_backup_size() {
+  local sz; sz="$(read_env_value "$BACKUP_STATE_FILE" LAST_SIZE 2>/dev/null || true)"; case "$sz" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$sz" -ge $((40 * 1024 * 1024)) ] || return 0
+  _warn "Sicherung ist $((sz / 1024 / 1024)) MB groß — ab 50 MB kommt keine Kopie mehr in den Telegram-Chat (die Sicherung im Ordner bleibt)."
+}
+
 # _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
 #   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: ebenso ROT (Timer lifeagents-backup).
 #   Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
@@ -272,6 +280,7 @@ _doctor_backup() {
   age=$(( $(date +%s) - ok_at )); days=$(( age / 86400 ))
   if [ "$ok_at" -gt 0 ] && [ "$age" -le "$BACKUP_STALE_S" ]; then
     if [ "$days" -eq 0 ]; then _pass "Letzte Sicherung: heute${folder:+ (Ordner auf dem Rechner)}"; else _pass "Letzte Sicherung: vor ${days} Tag(en)"; fi
+    _doctor_backup_size
     return 0
   fi
   # Frische Installation (VERSION juenger als die Frist): noch nicht veraltet. Im Verbund ohne Ordner (nur ueber eine
@@ -702,7 +711,9 @@ main() {
       if [ -z "$_wh" ]; then _skip "Telegram-Webhook-Check (Telegram-API nicht erreichbar)"
       elif [ -z "$_wh_url" ]; then _red "Telegram kennt keine Webhook-Adresse — der Bot empfängt nichts (Reparatur: lifeagents reconfigure → Grundsystem → Unverändert neu anwenden; noch nie mit Telegram verbunden: lifeagents household pair-owner)"
       elif [ "${_wh_pending:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - ${_wh_err_date:-0} )) -lt 900 ] 2>/dev/null; then
-        _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}"
+        _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}. Abhilfe: lifeagents telegram relink$(tg_webhook_foreign "$_wh" "$DOMAIN" && printf ' — Telegram stellt an %s zu: ein anderes System nutzt denselben Bot, relink holt ihn hierher zurück' "$(url_host "$_wh_url")")"
+      elif tg_webhook_foreign_blocking "$_wh" "$DOMAIN"; then
+        _red "Telegram stellt den Bot an $(url_host "$_wh_url") zu, nicht an ${DOMAIN} — ein anderes System nutzt denselben Bot. Abhilfe: lifeagents telegram relink (danach bekommt das andere System keine Nachrichten mehr)"
       else _pass "Telegram stellt an ${_wh_url%%/webhook/*}/… zu"; fi
       # Nur wenn Telegram an genau diese Domain zustellt, gilt ein IPv4-Fehlschlag in (5) als Hairpin (neutral).
       if tg_webhook_delivers "$_wh" "$DOMAIN"; then _tg_ok=1; fi

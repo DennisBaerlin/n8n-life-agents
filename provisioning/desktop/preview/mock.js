@@ -83,6 +83,7 @@
       if (q.get('kitfail')) throw q.get('kitfail');
       return { file: ((q.get('lang') || 'de') === 'de' ? 'Life-Agents-Notfallblatt' : 'Life-Agents-Emergency-Sheet') + '-2026-11-12.txt' };
     },
+    copy_backup_key: async () => { await wait(200); if (q.get('kitfail') === 'kit-unavailable') throw 'kit-unavailable'; },
     confirm_kit: async () => wait(100),
     change_backup_folder: async () => (await wait(600), q.get('kitfail') !== 'kit-unavailable'),
     // Wiederherstellen (?restore=<fall>): own | foreign (Standard) | empty | nofolder | folder | keyline | keyformat |
@@ -120,7 +121,7 @@
         restore_forget: async () => {},
         restore_pick_file: async () => (await wait(300), 'lifeagents-backup-20261101033000-k9f8e7d6c-v0.44.0.nla.enc'),
         restore_pick_sheet: async () => { await wait(300); sheetGiven = 'file'; return true; },
-        restore_type_sheet: async () => { await wait(100); sheetGiven = 'typed'; },
+        restore_paste_sheet: async () => { await wait(100); sheetGiven = 'typed'; },
         restore_plan: async () => (await wait(500), plan()),
         restore_run: async () => { await wait(400); started = 1794571200; return { ok: true }; },
         restore_status: async () => {

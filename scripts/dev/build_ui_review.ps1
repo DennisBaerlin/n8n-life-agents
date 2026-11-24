@@ -98,7 +98,7 @@ if ($Capture) {
             'dk-fetch-fail:missing:dkFetch:fail=signature-failed', 'dk-stopped:stopped:docker', 'dk-ready:ready:docker', 'dk-orbstack:ready-orbstack:docker',
             'dk-old:old:docker', 'dk-memory:memory:docker', 'dk-other:other:docker', 'dk-help:colima:docker', 'dk-remote:remote:docker',
             'dk-foreign:foreign:docker', 'core-start:wizard:coreStart:hold=1', 'wizard-missing:missing:wizardMissing', 'power:missing:power',
-            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'done-trashed:missing:finish:click=trash', 'done-no-download:ready:finish','home:complete:home', 'report:missing:report',
+            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'done-copied:missing:finish:click=kit-copy', 'done-trashed:missing:finish:click=trash', 'done-no-download:ready:finish','home:complete:home', 'report:missing:report',
             'uninstall:missing:uninstall', 'uninstalled:missing:uninstall:click=next', 'power-restore:missing:powerRestore',
             'power-restored:missing:powerRestore:click=next', 'win-sys:hints:sys:os=win', 'win-power:missing:power:os=win', 'win-dk-missing:missing:docker:os=win',
             # Sprachen (Systemsprache bzw. Wahl im Fragebogen): je Sprache die Seiten mit dem meisten Text
@@ -110,7 +110,7 @@ if ($Capture) {
             'restore-card:complete:home:restore=foreign', 'restore-list:complete:restoreList:restore=foreign', 'restore-list-nofolder:complete:restoreList:restore=nofolder',
             'restore-key:complete:restorePlan:restore=foreign', 'restore-preview:complete:restorePlan:restore=own', 'restore-preview-data:complete:restorePlan:restore=data',
             'restore-older:complete:restorePlan:restore=older', 'restore-running:complete:home:restore=running', 'restore-done:complete:home:restore=done',
-            'restore-unfinished:complete:home:restore=unfinished', 'en-restore-preview-data:complete:restorePlan:restore=data&lang=en', 'ko-restore-key:complete:restorePlan:restore=foreign&lang=ko')
+            'restore-unfinished:complete:home:restore=unfinished', 'backup-copy:complete:backupCopy', 'en-restore-preview-data:complete:restorePlan:restore=data&lang=en', 'ko-restore-key:complete:restorePlan:restore=foreign&lang=ko')
         if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
         $deskHtml = {
             param([string]$Params, [bool]$Full)
@@ -139,9 +139,23 @@ if ($Capture) {
             }
             Write-Host "  [OK] $Capture/$n" -ForegroundColor Green
         }
-        # Schema des Menues am Symbol (zeichnet macOS bzw. Windows selbst; Eintraege wie in app/src/main.rs)
+        # Schema des Menues am Symbol (zeichnet macOS bzw. Windows selbst). Eintraege, Reihenfolge und Trenner liest es aus
+        # app/src/main.rs (Menu::with_items, item("<id>", "<text-key>", …)), die Texte aus dem deutschen Katalog: eine
+        # eingetippte Liste lief der App davon (die Sicherungs-Punkte fehlten).
         if (-not $Screens.Count -or $Screens -contains 'tray') {
-            $items = '<div class="t-dis">Assistent läuft</div><hr><div>Fenster öffnen</div><div>Telegram öffnen</div><div>Dauerbetrieb zurückstellen</div><div>Fehlerbericht</div><hr><div>Deinstallieren</div><div>App beenden</div>'
+            $mainRs = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\desktop\app\src\main.rs'), $Utf8NoBom)
+            $de = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\locales\de.json'), $Utf8NoBom) | ConvertFrom-Json
+            $keyOf = @{}
+            foreach ($m in [regex]::Matches($mainRs, 'let (\w+) = item\("[^"]+", "([^"]+)"')) { $keyOf[$m.Groups[1].Value] = $m.Groups[2].Value }
+            $order = [regex]::Match($mainRs, 'Menu::with_items\(app, &\[(.*?)\]\)', 'Singleline')
+            if (-not $order.Success -or $keyOf.Count -eq 0) { throw 'Menue am Symbol: Menu::with_items/item(...) in app/src/main.rs nicht gefunden' }
+            $items = ''
+            foreach ($v in ($order.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().TrimStart('&') } | Where-Object { $_ })) {
+                if ($v -like 'sep*') { $items += '<hr>'; continue }
+                if ($v -eq 'status') { $items += '<div class="t-dis">' + [System.Net.WebUtility]::HtmlEncode($de.'core.desktop.tray.running') + '</div>'; continue }
+                if (-not $keyOf.ContainsKey($v)) { throw "Menue am Symbol: kein Text-Schluessel fuer '$v' in app/src/main.rs" }
+                $items += '<div>' + [System.Net.WebUtility]::HtmlEncode($de.($keyOf[$v])) + '</div>'
+            }
             $css = '<style>body{padding:24px}.cap{font-size:13px;color:var(--gray);margin-bottom:10px}.t-menu{width:260px;border:1px solid var(--hairline);border-radius:var(--radius-sm);background:var(--bg-soft);padding:6px 0;font-size:14px}.t-menu div{padding:5px 16px}.t-menu .t-dis{color:var(--gray)}.t-menu hr{border:0;border-top:1px solid var(--hairline);margin:5px 0}</style>'
             foreach ($scheme in 'light', 'dark') {
                 $h = "<!doctype html><html lang=`"de`" data-theme=`"$scheme`"><head><meta charset=`"utf-8`"><link rel=`"stylesheet`" href=`"$(& $url (Join-Path $ui 'app.css'))`">$css</head><body><div class=`"cap`">Schema: Menü am Symbol der App in der Menüleiste bzw. neben der Uhr. Das System zeichnet es in seinem eigenen Stil; ist Docker aus, zeigt die erste Zeile: Assistent ist aus: Docker läuft nicht.</div><div class=`"t-menu`">$items</div></body></html>"

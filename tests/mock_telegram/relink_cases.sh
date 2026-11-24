@@ -129,5 +129,18 @@ OUT="$(. "$ROOT/provisioning/lib/common.sh"
   tg_webhook_foreign "$leer" home.example.test || printf 'leer-nein '
   tg_webhook_foreign '' home.example.test || printf 'unbekannt-nein')"
 eq 'tg_webhook_foreign: nur eine fremde Adresse zaehlt' 'fremd-ja eigen-nein leer-nein unbekannt-nein' "$OUT"
+# doctor: fremde Adresse ist nur dann rot, wenn sie dem Bot wirklich schadet (Stau + frischer Fehler). Das Dev-Profil traegt absichtlich
+# eine Platzhalter-Adresse (https://example.com/) ohne Stau und ohne Fehler: kein Rot, sonst kippen genericity und free-gates.
+OUT="$(. "$ROOT/provisioning/lib/common.sh"
+  now="$(date +%s)"
+  mk() { printf '{"ok":true,"result":{"url":"%s","pending_update_count":%s,"last_error_date":%s,"last_error_message":"%s"}}' "$1" "$2" "$3" "$4"; }
+  tg_webhook_foreign_blocking "$(mk https://example.com/webhook/a/webhook 3 "$now" 'Wrong response: 405')" home.example.test && printf 'stau-fehler-ja '
+  tg_webhook_foreign_blocking "$(mk https://example.com/webhook/a/webhook 0 0 '')" home.example.test || printf 'platzhalter-nein '
+  tg_webhook_foreign_blocking "$(mk https://example.com/webhook/a/webhook 3 "$((now - 7200))" 'alt')" home.example.test && printf 'stau-allein-ja '
+  tg_webhook_foreign_blocking "$(mk https://example.com/webhook/a/webhook 0 "$((now - 7200))" 'alt')" home.example.test || printf 'alter-fehler-nein '
+  tg_webhook_foreign_blocking "$(mk https://example.com/webhook/a/webhook 0 "$now" 'Wrong response: 405')" home.example.test && printf 'frischer-fehler-ja '
+  tg_webhook_foreign_blocking "$(mk https://home.example.test/webhook/a/webhook 3 "$now" 'x')" home.example.test || printf 'eigene-adresse-nein '
+  tg_webhook_foreign_blocking '' home.example.test || printf 'unbekannt-nein')"
+eq 'doctor-Regel: fremde Adresse nur mit Stau oder frischem Fehler rot' 'stau-fehler-ja platzhalter-nein stau-allein-ja alter-fehler-nein frischer-fehler-ja eigene-adresse-nein unbekannt-nein' "$OUT"
 
 exit "$fails"

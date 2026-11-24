@@ -1557,6 +1557,17 @@ tg_webhook_foreign() {
   url="$(printf '%s' "$1" | jq -r '.result.url // ""' 2>/dev/null || true)"
   [ -n "$url" ] && ! tg_webhook_points_to "$1" "$2"
 }
+# tg_webhook_foreign_blocking <getWebhookInfo-JSON> <domain> -> 0, wenn die fremde Adresse dem Bot schadet: Telegram haelt
+#   Nachrichten zurueck oder meldet einen frischen (< 15 Min) Zustellfehler. Eine fremde Adresse ohne beides ist kein Befund:
+#   das Dev-Profil traegt absichtlich https://example.com/ (kein Stau, kein Fehler), doctor darf dort nicht rot werden.
+tg_webhook_foreign_blocking() {
+  local pending errd
+  tg_webhook_foreign "$1" "$2" || return 1
+  pending="$(printf '%s' "$1" | jq -r '.result.pending_update_count // 0' 2>/dev/null || echo 0)"
+  errd="$(printf '%s' "$1" | jq -r '.result.last_error_date // 0' 2>/dev/null || echo 0)"
+  [ "${pending:-0}" -gt 0 ] 2>/dev/null && return 0
+  [ "${errd:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - errd )) -lt 900 ] 2>/dev/null
+}
 # tg_webhook_delivers <getWebhookInfo-JSON> <domain> -> 0, wenn Telegram nachweislich an https://<domain>/ zustellt:
 #   gueltige Antwort, Webhook zeigt auf genau diese Adresse, kein Stau mit frischem Zustellfehler (< 15 Min; dieselbe
 #   Regel wie doctor (3) ROT). Eine Adresse fuer doctor + Installer (telegram_ok von reach_assess). Braucht jq.

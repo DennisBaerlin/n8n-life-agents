@@ -21,7 +21,7 @@ Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank li
 - **Kopieren statt abtippen.** Ein Doppelklick markiert die ganze Zeile. Kopiere sie in deinen Passwort-Manager und füge sie beim Wiederherstellen ein. Eine eingebaute Prüfsumme meldet Tipp- und Kopierfehler sofort. Vom Papier abtippen geht auch: Groß und klein ist egal, 0 und o sowie 1, i und l zählen gleich.
 - **Ältere Blätter gelten weiter.** Ein Blatt, auf dem der Schlüssel noch in vier Zeilen steht, funktioniert genauso.
 - **Ausdrucken oder im Passwort-Manager speichern.** Lege das Blatt nicht in den Sicherungsordner, sonst liegen Schloss und Schlüssel zusammen.
-- **Wieder holen:** in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt **Notfallblatt speichern …**. Auf einem Server im Terminal: `lifeagents backup key`.
+- **Wieder holen:** in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt **Notfallblatt speichern …** oder **Notfallschlüssel kopieren**. Kopiert legt die App ihn so in die Zwischenablage, dass er nicht im Zwischenablage-Verlauf und nicht auf anderen Geräten landet, und leert sie nach 60 Sekunden wieder. Auf einem Server im Terminal: `lifeagents backup key`.
 - **Gilt weiter:** Nach einer Wiederherstellung auf einem neuen Rechner gilt der Schlüssel deines Notfallblatts weiter. Druckst du später ein neues Blatt, steht der ältere Schlüssel darauf unter „Für ältere Sicherungen“. Bewahre das alte Blatt trotzdem auf.
 
 ## Mit der Start-App (Mac, Windows) {#start-app}
@@ -51,7 +51,7 @@ Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, u
    - Start-App: Liegen im Sicherungsordner Sicherungen deines alten Rechners, zeigt die Fertig-Seite gleich die Karte **Sicherung vom alten Rechner zurückholen**. Sonst im Symbol **Sicherung wiederherstellen …** wählen. Die Liste zeigt die Sicherungen im Ordner, die deines alten Rechners stehen oben. Liegt die Sicherung woanders (USB-Stick, Downloads), nimm **Andere Datei wählen …**.
    - Server: `lifeagents backup restore` (Auswahl aus dem aktuellen Ordner) oder `lifeagents backup restore <datei>`.
 3. **Notfallblatt geben.**
-   - Start-App: **Notfallblatt-Datei wählen …** oder den Notfallschlüssel in das erste Feld einfügen. Bei einem älteren Blatt tippst du die vier Zeilen ab; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.
+   - Start-App: **Notfallblatt-Datei wählen …** oder den Notfallschlüssel in das Feld einfügen. Bei einem älteren Blatt tippst du die vier Zeilen hintereinander in dasselbe Feld; Leerzeichen und Bindestriche sind egal. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.
    - Server: Füge den Notfallschlüssel ein, wenn danach gefragt wird; die Eingabe bleibt unsichtbar. Stattdessen kannst du die Notfallblatt-Datei mitgeben: `lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt`.
 4. **Bestätigen.** Vorher siehst du, von wann die Sicherung ist und was zurückkommt. Hast du auf diesem Rechner schon eigene Daten, legt der Assistent vorher eine Sicherung davon an und du bestätigst mit einem Haken, dass sie ersetzt werden. Danach sind deine Daten zurück; in der Start-App läuft das weiter, auch wenn du das Fenster schließt.
 5. **Danach.** Ab jetzt gilt das Notfallblatt deines alten Rechners. Speichere in der Start-App gleich das neue Blatt (es enthält beide Schlüssel). Lass den alten Rechner nicht mehr in denselben Ordner sichern, sonst räumen sich beide gegenseitig alte Sicherungen weg. Nutzt du einen neuen Telegram-Bot, starten die anderen im Haushalt ihn einmal selbst.
@@ -78,4 +78,4 @@ Es wird bei jedem dieser Fehler nichts geändert: Eine Wiederherstellung gelingt
 docker exec -i lifeagents-master sh -c "tr -d ' \n' | cut -c7- | tr 'a-z' 'A-Z' | tr '0-9A-HJKMNP-TV-Z' 'A-Z2-7' | base32 -d | head -c 32 | od -An -v -tx1 | tr -d ' \n' | fold -w16; echo"
 ```
 
-Heraus kommen vier Zeilen zu je 16 Zeichen, wie auf einem älteren Blatt. Gib sie bei den Fragen „Zeile 1“ bis „Zeile 4“ ein, in der Start-App in die vier Felder.
+Heraus kommen vier Zeilen zu je 16 Zeichen, wie auf einem älteren Blatt. Gib sie bei den Fragen „Zeile 1“ bis „Zeile 4“ ein, in der Start-App (alte Version) in die vier Felder.

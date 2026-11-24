@@ -1,6 +1,7 @@
 //! Wiederherstellen ohne Terminal (Plan „restore-ohne-terminal“): Sicherungen im Sicherungsordner auflisten, eine
-//! wählen (oder eine Datei vom Rechner), Notfallblatt als Datei oder getippt, Probelauf, Hintergrund-Lauf und Stand —
-//! alles über `lifeagents backup …` im `master` (`provisioning/lib/backup_cli.sh`, Codes dort im Kopf von `_bkp_rdie`).
+//! wählen (oder eine Datei vom Rechner), Notfallblatt als Datei oder Notfallschlüssel eingefügt, Probelauf,
+//! Hintergrund-Lauf und Stand — alles über `lifeagents backup …` im `master` (`provisioning/lib/backup_cli.sh`, Codes dort
+//! im Kopf von `_bkp_rdie`).
 //!
 //! **Geheim:** Das Notfallblatt trägt den Sicherungs-Schlüssel. Es lebt nur in `Sheet` (beim Fallenlassen
 //! überschrieben), geht nur über stdin von `docker exec --interactive` in den `master` und nie ins Fenster, ins Journal,
@@ -30,24 +31,17 @@ pub const INTERNAL: &str = "internal";
 pub struct Sheet(Zeroizing<String>);
 
 impl Sheet {
-    /// Vier getippte Zeilen; jede bekommt ihre Nummer vorn (`1: …`), sonst wäre eine Zeile ohne Prüfzeichen nur ein
-    /// Form-Fehler statt „Zeile n stimmt nicht“. Alles leer = kein Blatt.
-    pub fn typed(lines: &[String]) -> Result<Sheet, &'static str> {
-        if lines.len() != 4 || lines.iter().all(|l| l.trim().is_empty()) {
+    /// Eingefügter Notfallschlüssel aus dem einen Feld, roh (ohne „1: “ davor): Token, alter Schlüssel am Stück oder die
+    /// vier alten Zeilen hintereinander; was davon gilt, entscheidet der `master` (`backup_key_parse`). Leer = kein Blatt.
+    pub fn pasted(text: &str) -> Result<Sheet, &'static str> {
+        if text.len() as u64 > SHEET_MAX {
+            return Err(SHEET_TOO_BIG);
+        }
+        let t = text.trim();
+        if t.is_empty() {
             return Err(SHEET_INVALID);
         }
-        let mut s = Zeroizing::new(String::new());
-        for (i, l) in lines.iter().enumerate() {
-            if l.contains(['\n', '\r']) {
-                return Err(SHEET_INVALID);
-            }
-            // Stückweise in den Zeroizing-Puffer (ein format!-Zwischenwert bliebe unüberschrieben im Speicher).
-            s.push(char::from(b'1' + i as u8));
-            s.push_str(": ");
-            s.push_str(l.trim());
-            s.push('\n');
-        }
-        Ok(Sheet(s))
+        Ok(Sheet(Zeroizing::new(t.to_string())))
     }
 
     /// Inhalt einer Notfallblatt-Datei: UTF-8 (mit oder ohne BOM) oder UTF-16 (Windows-Editor „Unicode“). Ob es wirklich
@@ -74,7 +68,7 @@ impl Sheet {
     }
 }
 
-/// Getippte Zeilen, wie sie aus dem Fenster kamen, nach dem Übernehmen überschreiben (die App-Hülle hat keine eigene
+/// Eingefügten Text aus dem Fenster nach dem Übernehmen überschreiben (die App-Hülle hat keine eigene
 /// zeroize-Abhängigkeit).
 pub fn wipe(lines: &mut [String]) {
     use zeroize::Zeroize;
@@ -162,6 +156,9 @@ pub struct Plan {
     pub code: Option<String>,
     #[serde(default)]
     pub line: Option<u8>,
+    /// Fehler im Notfallschlüssel (Token) statt in einer Zeile des alten Blatts; `line` ist dann 1 für ältere Apps.
+    #[serde(default)]
+    pub token: bool,
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -388,22 +385,16 @@ mod tests {
         assert_eq!(base64("한".as_bytes()), "7ZWc");
     }
 
+    // Das eine Feld geht roh an den `master` (ohne „1: “ davor): Token, alter Schlüssel am Stück oder die vier alten Zeilen
+    // hintereinander liest dort `backup_key_parse`.
     #[test]
-    fn typed_lines_get_their_number_and_empty_is_no_sheet() {
-        let s = Sheet::typed(&["0123-4567-89ab-cdef 73".into(), "a".into(), "b".into(), " c ".into()]).unwrap();
-        assert_eq!(s.text(), "1: 0123-4567-89ab-cdef 73\n2: a\n3: b\n4: c\n");
-        assert!(Sheet::typed(&["".into(), " ".into(), "".into(), "".into()]).is_err());
-        assert!(Sheet::typed(&["a\nb".into(), "".into(), "".into(), "".into()]).is_err());
-        assert!(Sheet::typed(&["a".into()]).is_err());
-    }
-
-    // Notfallschlüssel (Token, erfundener Schlüssel) ins Feld „Zeile 1“: genau diese Bytes liest der `master` an
-    // (tests/mock_runtime/cases.sh B.token-app-feld1 nutzt dasselbe Literal).
-    #[test]
-    fn token_in_the_first_field_keeps_its_exact_bytes() {
+    fn pasted_text_goes_raw_and_empty_is_no_sheet() {
         let t = "labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy";
-        let s = Sheet::typed(&[format!(" {t} "), "".into(), "".into(), "".into()]).unwrap();
-        assert_eq!(s.text(), format!("1: {t}\n2: \n3: \n4: \n"));
+        assert_eq!(Sheet::pasted(&format!("  {t}\n")).unwrap().text(), t);
+        let old = "0123-4567-89ab-cdef 73 0123-4567-89ab-cdef d3";
+        assert_eq!(Sheet::pasted(old).unwrap().text(), old);
+        assert_eq!(Sheet::pasted(" \n ").err(), Some(SHEET_INVALID));
+        assert_eq!(Sheet::pasted(&"x".repeat(SHEET_MAX as usize + 1)).err(), Some(SHEET_TOO_BIG));
     }
 
     #[test]
@@ -465,6 +456,20 @@ mod tests {
         let h4 = FakeHost::mac();
         assert_eq!(plan(&h4, &d(), &Source::Folder("--yes.nla.enc".into()), None).code.as_deref(), Some(UNREADABLE));
         assert!(h4.calls.borrow().is_empty(), "ungültiger Name erreicht Docker nie");
+    }
+
+    // Fehler im Notfallschlüssel kommt als key_line/1 mit token:true (ältere master ohne das Feld: false).
+    #[test]
+    fn a_broken_key_is_told_apart_from_line_one_of_an_old_sheet() {
+        let call = cmd(DockerCall::Master(MasterCmd::RestorePlan { name: NAME.into(), file: false, key: false }));
+        for (json, token) in [
+            ("{\"ok\":false,\"code\":\"key_line\",\"line\":1,\"token\":true}", true),
+            ("{\"ok\":false,\"code\":\"key_line\",\"line\":1}", false),
+        ] {
+            let h = FakeHost::mac().on(&call, CmdOut::fail(1, "").with_stdout(&format!("{json}\n")));
+            let p = plan(&h, &d(), &Source::Folder(NAME.into()), None);
+            assert_eq!((p.code.as_deref(), p.line, p.token), (Some("key_line"), Some(1), token));
+        }
     }
 
     #[test]

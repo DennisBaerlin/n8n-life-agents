@@ -1,18 +1,127 @@
 //! Sicherung aus Sicht der App (Plan „Backup-Notfall“ B-6, Owner-Entscheid F6: Notfallblatt nur in der App, nie im
-//! Fragebogen): das Notfallblatt in „Downloads“ speichern und den Fragebogen im Änderungs-Modus öffnen (Menüpunkt
-//! „Sicherungsordner ändern …“, Owner 2026-11-12: dieselbe Seite „Wohin sichern?“, kein zweiter Weg).
+//! Fragebogen): das Notfallblatt in „Downloads“ speichern, den Notfallschlüssel in die Zwischenablage kopieren und den
+//! Fragebogen im Änderungs-Modus öffnen (Menüpunkt „Sicherungsordner ändern …“, Owner 2026-11-12: dieselbe Seite
+//! „Wohin sichern?“, kein zweiter Weg).
 //!
-//! **Geheim:** Der Text des Notfallblatts trägt den Sicherungs-Schlüssel. Er geht nur in die neue Datei, nie ins Fenster,
-//! ins Journal, in den Fehlerbericht (`report.rs` kennt ihn nicht) oder in eine Fehlermeldung; Fehler sind feste Codes.
-//! Eine neue Datei in Downloads ist keine System-Änderung (nichts zum Zurücknehmen), darum kein Journal-Eintrag.
+//! **Geheim:** Blatt und Notfallschlüssel tragen den Sicherungs-Schlüssel. Sie gehen nur in die neue Datei bzw. in die
+//! Zwischenablage, nie ins Fenster, ins Journal, in den Fehlerbericht (`report.rs` kennt sie nicht) oder in eine
+//! Fehlermeldung; Fehler sind feste Codes. Eine neue Datei in Downloads ist keine System-Änderung (nichts zum
+//! Zurücknehmen), darum kein Journal-Eintrag.
 
 use crate::contract::MasterCmd;
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host, Os};
+use std::sync::Mutex;
+use zeroize::{Zeroize, Zeroizing};
 
-/// Fehler-Codes (`report::ERROR_CODES`-Stil): Docker/master antwortet nicht, kein Schlüssel, Datei nicht schreibbar.
+/// Fehler-Codes (`report::ERROR_CODES`-Stil): Docker/master antwortet nicht oder kein Schlüssel; Datei nicht schreibbar;
+/// Zwischenablage nicht beschreibbar (gesperrt, keine Desktop-Sitzung).
 pub const KIT_UNAVAILABLE: &str = "kit-unavailable";
 pub const KIT_WRITE: &str = "kit-write";
+pub const KIT_CLIPBOARD: &str = "kit-clipboard";
+
+/// Nach so vielen Sekunden leert die App die Zwischenablage wieder, wenn dort noch der Notfallschlüssel steht.
+pub const KEY_CLEAR_SECS: u64 = 60;
+
+/// Form des Notfallschlüssels (`common.sh` `backup_key_token`): `labk1_` + 56 Zeichen Crockford-Base32, klein.
+pub fn token_ok(s: &str) -> bool {
+    s.len() == 62
+        && s.starts_with("labk1_")
+        && s[6..].bytes().all(|b| b.is_ascii_digit() || (b.is_ascii_lowercase() && !matches!(b, b'i' | b'l' | b'o' | b'u')))
+}
+
+// Zwischenablage mit Schutz-Markierung. Der Wert kommt nur über stdin (nie argv: die Prozessliste ist für andere
+// Programme lesbar).
+// macOS: prepareForNewContentsWithOptions(1) = NSPasteboardContentsCurrentHostOnly, nur dieser Mac, kein Abgleich per
+// Handoff/Universal Clipboard (https://developer.apple.com/documentation/appkit/nspasteboard/contentsoptions/currenthostonly);
+// dazu der Typ org.nspasteboard.ConcealedType (https://nspasteboard.org/), an den sich Verlaufs-Werkzeuge und
+// Passwort-Manager halten (eine Absprache unter Programmen, keine Sperre des Systems).
+const MAC_SET: &str = "ObjC.import('AppKit');\
+var d=$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;\
+var s=$.NSString.alloc.initWithDataEncoding(d,$.NSUTF8StringEncoding).js.trim();\
+var p=$.NSPasteboard.generalPasteboard;p.prepareForNewContentsWithOptions(1);\
+if(!p.setStringForType($(s),'public.utf8-plain-text')||!p.setStringForType($('1'),'org.nspasteboard.ConcealedType')){throw 'clipboard';}";
+const MAC_CLEAR: &str = "ObjC.import('AppKit');\
+var d=$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;\
+var s=$.NSString.alloc.initWithDataEncoding(d,$.NSUTF8StringEncoding).js.trim();\
+var p=$.NSPasteboard.generalPasteboard;var c=p.stringForType('public.utf8-plain-text');\
+if(!c.isNil()&&c.js===s){p.clearContents;}";
+// Windows: die drei Formate, die Microsoft für Inhalte ohne Verlauf und ohne Abgleich auf andere Geräte vorsieht
+// (https://learn.microsoft.com/en-us/windows/win32/dataxchg/clipboard-formats, „Cloud Clipboard and Clipboard History
+// Formats“); DWORD 0 als vier Null-Bytes. WinForms legt einen Stream als HGLOBAL mit genau diesen Bytes ab. -STA ist
+// Pflicht für die OLE-Zwischenablage; Setzen und Leeren je 10 Versuche im Abstand von 100 ms, weil ein anderes Programm
+// sie kurz sperren kann. Ohne Desktop-Sitzung (Dienst, Fernzugriff ohne Fenster) scheitert jeder Zugriff → KIT_CLIPBOARD.
+const WIN_SET: &str = "$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Windows.Forms;\
+$s=[Console]::In.ReadToEnd().Trim();$o=New-Object System.Windows.Forms.DataObject;\
+$o.SetData([System.Windows.Forms.DataFormats]::UnicodeText,$s);\
+foreach($f in 'ExcludeClipboardContentFromMonitorProcessing','CanIncludeInClipboardHistory','CanUploadToCloudClipboard')\
+{$o.SetData($f,(New-Object System.IO.MemoryStream(,[byte[]](0,0,0,0))))};\
+[System.Windows.Forms.Clipboard]::SetDataObject($o,$true,10,100)";
+const WIN_CLEAR: &str = "$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Windows.Forms;\
+$s=[Console]::In.ReadToEnd().Trim();\
+for($i=0;$i -lt 10;$i++){try{if([System.Windows.Forms.Clipboard]::GetText() -ceq $s){[System.Windows.Forms.Clipboard]::Clear()};exit 0}\
+catch{Start-Sleep -Milliseconds 100}};exit 1";
+
+fn clip_cmd(os: Os, mac: &str, win: &str) -> (&'static str, Vec<String>) {
+    match os {
+        Os::Mac => ("/usr/bin/osascript", vec!["-l".into(), "JavaScript".into(), "-e".into(), mac.into()]),
+        Os::Windows => {
+            ("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-Command", win].iter().map(|s| s.to_string()).collect())
+        }
+    }
+}
+
+/// Befehl, der den Notfallschlüssel von stdin in die Zwischenablage legt.
+fn clip_set_cmd(os: Os) -> (&'static str, Vec<String>) {
+    clip_cmd(os, MAC_SET, WIN_SET)
+}
+
+/// Befehl, der die Zwischenablage leert, wenn dort noch genau der Wert von stdin steht (sonst bliebe etwas, das der Nutzer
+/// inzwischen kopiert hat, nicht stehen).
+fn clip_clear_cmd(os: Os) -> (&'static str, Vec<String>) {
+    clip_cmd(os, MAC_CLEAR, WIN_CLEAR)
+}
+
+/// Notfallschlüssel aus dem `master` holen, in die Zwischenablage legen und sich merken. Ergebnis: die Nummer dieses
+/// Kopierens für `clear_copied` nach `KEY_CLEAR_SECS`. Ohne gültigen Schlüssel (alter master ohne `--token`) bleibt die
+/// Zwischenablage unberührt.
+pub fn copy_key(host: &dyn Host, d: &Docker) -> Result<u64, &'static str> {
+    let mut out = d.call(host, DockerCall::Master(MasterCmd::BackupToken)).map_err(|_| KIT_UNAVAILABLE)?;
+    let key = Zeroizing::new(out.stdout.trim().to_string());
+    out.stdout.zeroize();
+    if !out.success() || !token_ok(&key) {
+        return Err(KIT_UNAVAILABLE);
+    }
+    let (program, args) = clip_set_cmd(host.os());
+    match host.run_stdin(program, &args, &key) {
+        Ok(o) if o.success() => Ok(remember(key)),
+        _ => Err(KIT_CLIPBOARD),
+    }
+}
+
+// Zuletzt kopierter Schlüssel mit Nummer: Nur das jüngste Kopieren darf leeren (sonst kürzte ein älterer Zeitgeber ein
+// zweites Kopieren ab), und beim Beenden leert die App, was noch offen ist.
+static COPIED: Mutex<(u64, Option<Zeroizing<String>>)> = Mutex::new((0, None));
+
+fn remember(key: Zeroizing<String>) -> u64 {
+    let mut c = COPIED.lock().unwrap_or_else(|e| e.into_inner());
+    c.0 += 1;
+    c.1 = Some(key);
+    c.0
+}
+
+/// Zwischenablage leeren, wenn dort noch der gemerkte Schlüssel steht. `Some(n)`: nur, wenn `n` das jüngste Kopieren
+/// ist (Zeitgeber); `None`: was noch offen ist (Beenden der App).
+pub fn clear_copied(host: &dyn Host, n: Option<u64>) {
+    let mut c = COPIED.lock().unwrap_or_else(|e| e.into_inner());
+    if n.is_some_and(|n| n != c.0) {
+        return;
+    }
+    if let Some(key) = c.1.take() {
+        let (program, args) = clip_clear_cmd(host.os());
+        let _ = host.run_stdin(program, &args, &key);
+    }
+}
 
 /// Datum `JJJJ-MM-TT` aus Sekunden seit 1970 (UTC; reicht für den Dateinamen).
 pub fn day(epoch: u64) -> String {
@@ -39,8 +148,9 @@ pub fn downloads(host: &dyn Host) -> String {
 /// `-2`, `-3` …; nie überschreiben). Ergebnis: voller Pfad der Datei.
 pub fn save_kit(host: &dyn Host, d: &Docker, base: &str) -> Result<String, &'static str> {
     let out = d.call(host, DockerCall::Master(MasterCmd::BackupKit)).map_err(|_| KIT_UNAVAILABLE)?;
-    // Plausibel nur mit Schlüssel-Zeilen; sonst (alter master ohne `backup key`) nichts schreiben.
-    if !out.success() || !out.stdout.lines().any(|l| l.trim_start().starts_with("1:")) {
+    // Plausibel nur mit einem Schlüssel: Token-Zeile oder Zeile „1:“ (Blatt mit vier Zeilen); sonst (alter master ohne
+    // `backup key`) nichts schreiben.
+    if !out.success() || !out.stdout.lines().any(|l| token_ok(l.trim()) || l.trim_start().starts_with("1:")) {
         return Err(KIT_UNAVAILABLE);
     }
     let dir = downloads(host);
@@ -141,6 +251,112 @@ mod tests {
         let h = FakeHost::mac().on(&cmd(DockerCall::Master(MasterCmd::BackupKit)), CmdOut::ok(sheet));
         let p = save_kit(&h, &d(), "Life-Agents-Notfallblatt").unwrap();
         assert_eq!(h.files.borrow().get(&p).map(String::as_str), Some(sheet));
+    }
+
+    #[test]
+    fn a_sheet_with_only_token_lines_is_saved_too() {
+        let sheet = "Life Agents – Notfallblatt\nNotfallschlüssel\n  labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy\n";
+        let h = FakeHost::mac().on(&cmd(DockerCall::Master(MasterCmd::BackupKit)), CmdOut::ok(sheet));
+        assert!(save_kit(&h, &d(), "x").is_ok());
+    }
+
+    // Notfallschlüssel in die Zwischenablage (erfundener Schlüssel). Der Wert geht nur über stdin, nie in eine Befehlszeile.
+    const TOKEN: &str = "labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy";
+    fn line(p: (&str, Vec<String>)) -> String {
+        format!("{} {}", p.0, p.1.join(" "))
+    }
+
+    #[test]
+    fn token_form() {
+        assert!(token_ok(TOKEN));
+        assert!(!token_ok(&TOKEN.to_uppercase()));
+        assert!(!token_ok(&TOKEN[..61]));
+        assert!(!token_ok(&format!("{}u", &TOKEN[..61])));
+        assert!(!token_ok("Usage: lifeagents backup …"));
+    }
+
+    // Die Merk-Stelle des kopierten Schlüssels ist global: Tests, die kopieren oder leeren, laufen nacheinander.
+    static CLIP_TESTS: Mutex<()> = Mutex::new(());
+    fn clip_lock() -> std::sync::MutexGuard<'static, ()> {
+        CLIP_TESTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    fn copying(h: FakeHost) -> FakeHost {
+        let set = line(clip_set_cmd(h.os));
+        let clear = line(clip_clear_cmd(h.os));
+        h.on(&cmd(DockerCall::Master(MasterCmd::BackupToken)), CmdOut::ok(&format!("{TOKEN}\n")))
+            .on(&set, CmdOut::ok(""))
+            .on(&clear, CmdOut::ok(""))
+    }
+
+    #[test]
+    fn copy_on_the_mac_stays_on_this_mac_and_is_concealed() {
+        let _l = clip_lock();
+        let set = line(clip_set_cmd(Os::Mac));
+        for f in ["/usr/bin/osascript ", "prepareForNewContentsWithOptions(1)", "org.nspasteboard.ConcealedType"] {
+            assert!(set.contains(f), "{f} fehlt: {set}");
+        }
+        let h = copying(FakeHost::mac());
+        copy_key(&h, &d()).unwrap();
+        assert_eq!(h.stdin_log.borrow().last().cloned(), Some((set, TOKEN.to_string())));
+        assert!(h.calls.borrow().iter().all(|c| !c.contains(&TOKEN[6..])), "Schlüssel in einer Befehlszeile");
+        clear_copied(&h, None);
+    }
+
+    #[test]
+    fn copy_on_windows_keeps_the_key_out_of_history_and_cloud() {
+        let _l = clip_lock();
+        let set = line(clip_set_cmd(Os::Windows));
+        for f in [
+            "ExcludeClipboardContentFromMonitorProcessing",
+            "CanIncludeInClipboardHistory",
+            "CanUploadToCloudClipboard",
+            "-STA",
+            ",10,100)",
+        ] {
+            assert!(set.contains(f), "{f} fehlt: {set}");
+        }
+        assert!(line(clip_clear_cmd(Os::Windows)).contains("for($i=0;$i -lt 10;"), "Leeren ohne Wiederholung");
+        let h = copying(FakeHost::windows());
+        copy_key(&h, &d()).unwrap();
+        assert_eq!(h.stdin_log.borrow().last().map(|x| x.1.clone()), Some(TOKEN.to_string()));
+        clear_copied(&h, None);
+    }
+
+    #[test]
+    fn no_token_from_the_master_touches_no_clipboard() {
+        let _l = clip_lock();
+        for out in [CmdOut::ok("Usage: lifeagents backup …\n"), CmdOut::fail(1, ""), CmdOut::ok("")] {
+            let h = FakeHost::mac().on(&cmd(DockerCall::Master(MasterCmd::BackupToken)), out);
+            assert_eq!(copy_key(&h, &d()).err(), Some(KIT_UNAVAILABLE));
+            assert!(h.stdin_log.borrow().is_empty());
+        }
+        let set = line(clip_set_cmd(Os::Mac));
+        let h = FakeHost::mac().on(&cmd(DockerCall::Master(MasterCmd::BackupToken)), CmdOut::ok(TOKEN)).on(&set, CmdOut::fail(1, "x"));
+        assert_eq!(copy_key(&h, &d()).err(), Some(KIT_CLIPBOARD), "Zwischenablage nicht beschreibbar");
+    }
+
+    // Nur das jüngste Kopieren leert nach Ablauf; beim Beenden wird geleert, was offen ist; danach nichts mehr. Der Wert
+    // zum Vergleichen geht nur über stdin.
+    #[test]
+    fn only_the_latest_copy_clears_and_quitting_clears_what_is_left() {
+        let _l = clip_lock();
+        assert_eq!(KEY_CLEAR_SECS, 60);
+        let h = copying(FakeHost::mac());
+        let clear = line(clip_clear_cmd(Os::Mac));
+        let cleared = |h: &FakeHost| h.stdin_log.borrow().iter().filter(|x| x.0 == clear).count();
+        let first = copy_key(&h, &d()).unwrap();
+        let second = copy_key(&h, &d()).unwrap();
+        clear_copied(&h, Some(first));
+        assert_eq!(cleared(&h), 0, "älterer Zeitgeber kürzt das zweite Kopieren ab");
+        clear_copied(&h, Some(second));
+        assert_eq!(cleared(&h), 1);
+        assert_eq!(h.stdin_log.borrow().last().cloned(), Some((clear.clone(), TOKEN.to_string())));
+        clear_copied(&h, None);
+        assert_eq!(cleared(&h), 1, "nichts mehr offen");
+        copy_key(&h, &d()).unwrap();
+        clear_copied(&h, None);
+        assert_eq!(cleared(&h), 2, "Beenden leert, was offen ist");
+        assert!(!clear.contains(&TOKEN[6..]));
     }
 
     #[test]

@@ -210,9 +210,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .restore-list { display: grid; gap: 8px; margin: 12px 0; }
 .restore-list .choice { width: 100%; text-align: left; }
 .key-or { color: var(--gray); margin: 14px 0 6px; }
-.key-lines { display: grid; gap: 8px; max-width: 420px; }
+.key-lines { display: grid; gap: 8px; max-width: 520px; }
+.kit-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .key-line { font-family: var(--font-mono); font-size: 15px; padding: 8px 10px; border: 1px solid var(--gray); border-radius: var(--radius-sm); background: var(--bg); color: var(--ink); }
 .key-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.key-line::placeholder { color: var(--gray); opacity: 1; }
 .note.restore-card h2 { margin-top: 0; }
 .note.restore-card p { margin-bottom: 10px; }
 

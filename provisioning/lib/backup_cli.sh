@@ -683,7 +683,8 @@ _bkp_try_parsed() {
   done <<<"$all"
   case "$_BKP_TRY_ERR" in
     # Kaputtes Token: fuer die Start-App key_line mit Zeile 1 — eine aeltere App kennt keinen neuen Code (Rust macht daraus
-    #   internal und verliesse das Eingabe-Fenster) und zeigt so "Zeile 1 stimmt nicht", passend zum Token in Feld 1.
+    #   internal und verliesse das Eingabe-Fenster) und zeigt so "Zeile 1 stimmt nicht", passend zum Token in Feld 1. Das
+    #   Feld token:true (_bkp_brought_key) trennt es fuer die neue App von einer falschen Zeile 1 eines alten Blatts.
     token)     _BKP_TRY_CODE=key_line; _BKP_TRY_LINE=1; _BKP_TRY_MSG="$(backup_text msg.token)" ;;
     line[1-4]) _BKP_TRY_CODE=key_line; _BKP_TRY_LINE="${_BKP_TRY_ERR#line}"; _BKP_TRY_MSG="$(backup_text msg.line n "$_BKP_TRY_LINE")" ;;
     length)    _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.length)" ;;
@@ -761,7 +762,7 @@ _bkp_brought_key() {
       parsed="$(backup_key_parse)"
     fi
     _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid" && return 0
-    _bkp_rdie "$_BKP_TRY_CODE" "${_BKP_TRY_MSG} ${un}" --arg id "$fkid" --argjson line "${_BKP_TRY_LINE:-0}"
+    _bkp_rdie "$_BKP_TRY_CODE" "${_BKP_TRY_MSG} ${un}" --arg id "$fkid" --argjson line "${_BKP_TRY_LINE:-0}" --argjson token "$( [ "$_BKP_TRY_ERR" = token ] && echo true || echo false)"
   fi
   if [ "$_BKP_JSON" = 1 ] || ! ui_interactive; then
     if rt_is_compose; then cmd="$(rt_master_cli_hint) backup restore <datei> --key-stdin < Notfallblatt.txt"
@@ -1515,20 +1516,32 @@ _bkp_converge() {
 # ============================================================
 # key — Notfallblatt
 # ============================================================
-# backup_cmd_key [--file <pfad>|-] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
+# backup_cmd_key [--file <pfad>|-|--token] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
 #   ein Log); --file <pfad> legt eine neue 0600-Datei an (vorhandene wird nie ueberschrieben); --file - schreibt auf stdout
 #   (Start-App, MasterCmd::BackupKit: `lifeagents backup key --file -` im master, Ausgabe nur in deren Datei).
+#   --token: nur der aktive Notfallschluessel als eine Zeile auf stdout (Start-App „Notfallschluessel kopieren“,
+#   MasterCmd::BackupToken; die Ausgabe geht dort nur in die Zwischenablage).
 backup_cmd_key() {
-  local file='' a want=0 kit
+  local file='' a want=0 kit token=0 k
   for a in "$@"; do
     if [ "$want" = 1 ]; then file="$a"; want=0; continue; fi
     case "$a" in
       --file)   want=1 ;;
       --file=*) file="${a#--file=}" ;;
-      *)        die "Unbekannte Option: $a (erlaubt: --file <pfad> oder --file -)" ;;
+      --token)  token=1 ;;
+      *)        die "Unbekannte Option: $a (erlaubt: --file <pfad>, --file - oder --token)" ;;
     esac
   done
   [ "$want" = 0 ] || die "--file braucht einen Pfad (oder - für die Ausgabe auf stdout)."
+  if [ "$token" = 1 ]; then
+    [ -z "$file" ] || die "--token und --file gehen nicht zusammen."
+    _bkp_resolve_db
+    # Lesefehler (DB weg) endet in derselben Meldung statt im stillen Abbruch durch errexit/pipefail des Aufrufers.
+    k="$(backup_key_read 2>/dev/null | tr -d '\n' || true)"
+    printf '%s' "$k" | backup_key_token \
+      || die "Kein Sicherungs-Schlüssel gespeichert (core.backup_key) — die Installation ist nicht fertig; 'lifeagents doctor' zeigt, was fehlt."
+    printf '\n'; return 0
+  fi
   if [ -z "$file" ]; then
     tty_usable || die "Kein Terminal: das Notfallblatt erscheint nur im Terminal oder mit --file <pfad> (neue Datei, nur für root lesbar)."
   elif [ "$file" != - ] && { [ -e "$file" ] || [ -L "$file" ]; }; then
@@ -1601,6 +1614,7 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
   key [--file <pfad>|-]    Notfallblatt mit dem Sicherungs-Schlüssel: ohne Option nur aufs Terminal; --file legt eine
                            neue Datei an (nur für root lesbar), --file - schreibt auf stdout. Ausdrucken oder im
                            Passwort-Manager ablegen — ohne den Schlüssel lässt sich keine Sicherung öffnen.
+  key --token              Nur der Notfallschlüssel als eine Zeile (zum Kopieren in den Passwort-Manager).
   auto [--scheduled]       Tägliche Sicherung jetzt machen (Docker: in den Rechner-Ordner, ohne Ordner nur ein Vermerk; LXC/Server:
                            nach /var/backups/lifeagents/daily). --scheduled (nur der Timer) tut nichts, wenn heute schon eine gelang.
 

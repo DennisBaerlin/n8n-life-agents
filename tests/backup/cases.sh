@@ -503,6 +503,11 @@ cli backup key --file "$W/blatt.txt"; rc=$?
 ok_if K.nie-ueberschreiben '[ "$rc" -ne 0 ] && [ "$(stat -c %a "$W/blatt.txt")" = 600 ]' "rc=$rc"
 cli backup key --file -; rc=$?; k_stdout_n=$n   # diese Ausgabe ist das Blatt selbst (L ueberspringt sie)
 ok_if K.stdout '[ "$rc" -eq 0 ] && said "$kidA"' "rc=$rc"
+# Nur der Notfallschluessel (Start-App „Notfallschluessel kopieren“): genau eine Zeile, das Token des aktiven Schluessels.
+cli backup key --token; rc=$?; k_token_n=$n   # diese Ausgabe ist der Schluessel selbst (L ueberspringt sie)
+ok_if K.token-nur-zeile '[ "$rc" -eq 0 ] && [ "$(cat "$W/out.$n")" = "$(printf "%s" "$KA" | backup_key_token)" ] && [ "$(wc -l < "$W/out.$n")" = 1 ]' "rc=$rc"
+cli backup key --token --file -; rc=$?
+ok_if K.token-nicht-mit-file '[ "$rc" -ne 0 ]' "rc=$rc"
 # Die gespeicherte Datei taugt als Eingabe auf einem neuen Rechner (traegt den aktuellen und den aelteren Schluessel).
 set_active "$KB"
 cli_in "$W/blatt.txt" backup restore "$A" --key-stdin --yes; rc=$?
@@ -609,7 +614,7 @@ export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
 leak=0
 for f in "$W"/out.* ; do
   [ -f "$f" ] || continue
-  [ "$f" != "$W/out.${k_stdout_n:-x}" ] || continue
+  [ "$f" != "$W/out.${k_stdout_n:-x}" ] && [ "$f" != "$W/out.${k_token_n:-x}" ] || continue
   grep -qiFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
 done
 ok_if L.kein-schluessel-in-ausgaben '[ "$leak" = 0 ]' "Schluessel in einer CLI-Ausgabe"

@@ -127,8 +127,16 @@ _cred_test() {
 # _pg_cred_data <user> <password>  → n8n-postgres-Credential-data-JSON (lokale DB). Die Datenform entspricht dem
 #   verifizierten REST-POST-Payload (Validator: sshTunnel:false Pflicht).
 _pg_cred_data() {
-  jq -n --arg h '127.0.0.1' --arg db "$N8N_DB_NAME" --arg u "$1" --arg p "$2" \
-    '{host:$h, port:5432, database:$db, user:$u, password:$p, ssl:"disable", sshTunnel:false}'
+  _cred_json '{host:"127.0.0.1", port:5432, database:env.LA_C_DB, user:env.LA_C_U, password:env.LA_C_P, ssl:"disable", sshTunnel:false}' \
+    "LA_C_DB=$N8N_DB_NAME" "LA_C_U=$1" "LA_C_P=$2"
+}
+
+# _cred_json <jq-programm> [NAME=wert]... -> kompaktes JSON. Geheimnisse nie ins argv (/proc/<pid>/cmdline ist fuer jeden
+#   lesbar): die Werte gehen als exportierte Variablen in eine Teilschale, jq liest sie per env.NAME (/proc/<pid>/environ
+#   liest nur der Eigentuemer). Test: tests/backup/secret_argv_cases.sh
+_cred_json() {
+  local prog="$1"; shift
+  ( for _a in "$@"; do export "${_a?}"; done; jq -cn "$prog" )
 }
 
 # _cred_stage <name> <type> <data>  — id aufloesen (Discovery oder Erstinstall-Generierung) + {id,name,type,data}
@@ -141,8 +149,9 @@ _cred_stage() {
   # provision.sh still abbrechen. head liefert trotzdem die erste id.
   id="$(_cred_matching_ids "$name" "$type" | head -n1 || true)"
   [ -n "$id" ] || id="$(_gen_cred_id)"
-  _CRED_ITEMS="$(jq -c --arg i "$id" --arg n "$name" --arg t "$type" --argjson d "$data" \
-                   '. + [{id:$i, name:$n, type:$t, data:$d}]' <<<"$_CRED_ITEMS")"
+  # data traegt das Geheimnis -> ueber stdin, nie als --argjson.
+  _CRED_ITEMS="$(printf '%s\n%s\n' "$_CRED_ITEMS" "$data" | jq -cn --arg i "$id" --arg n "$name" --arg t "$type" \
+                   '[inputs] as [$items, $d] | $items + [{id:$i, name:$n, type:$t, data:$d}]')"
   _CRED_TEST_IDS="${_CRED_TEST_IDS}${id}"$'\t'"${name}"$'\n'
 }
 
@@ -215,12 +224,12 @@ inject_credentials() {
   # 4) Telegram Bot.
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
     _cred_stage 'Telegram account' 'telegramApi' \
-         "$(jq -n --arg t "$TELEGRAM_BOT_TOKEN" --arg b "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}" '{accessToken:$t, baseUrl:$b}')"
+         "$(_cred_json '{accessToken:env.LA_C_T, baseUrl:env.LA_C_B}' "LA_C_T=$TELEGRAM_BOT_TOKEN" "LA_C_B=${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}")"
     # 4b) Dasselbe Token als Header fuer den Telegram-Relay des LLM-Gateways (Reaktion + Sticker, Kopf von
     #     llm_gateway/server.js): der telegramApi-Typ hat kein authenticate, ein HTTP-Knoten kaeme sonst nicht an
     #     das Token. Jeder Lauf setzt beide aus TELEGRAM_BOT_TOKEN -> ein Token-Wechsel (reconfigure/update) zieht mit.
     _cred_stage 'Telegram relay (gateway)' 'httpHeaderAuth' \
-         "$(jq -n --arg v "$TELEGRAM_BOT_TOKEN" '{name:"x-telegram-bot-token", value:$v, allowedDomains:""}')"
+         "$(_cred_json '{name:"x-telegram-bot-token", value:env.LA_C_T, allowedDomains:""}' "LA_C_T=$TELEGRAM_BOT_TOKEN")"
   else
     note "TELEGRAM_BOT_TOKEN fehlt — Credentials 'Telegram account' + 'Telegram relay (gateway)' uebersprungen."
   fi
@@ -228,7 +237,7 @@ inject_credentials() {
   # 5) Google Gemini (PaLM).  (allowedDomains ist Pflichtfeld des Credential-Validators.)
   if [ -n "${GOOGLE_API_KEY:-}" ]; then
     _cred_stage 'Google Gemini(PaLM) Api account' 'googlePalmApi' \
-         "$(jq -n --arg h 'https://generativelanguage.googleapis.com' --arg k "$GOOGLE_API_KEY" '{host:$h, apiKey:$k, allowedDomains:""}')"
+         "$(_cred_json '{host:"https://generativelanguage.googleapis.com", apiKey:env.LA_C_K, allowedDomains:""}' "LA_C_K=$GOOGLE_API_KEY")"
   else
     note "GOOGLE_API_KEY fehlt — Credential 'Google Gemini(PaLM) Api account' uebersprungen."
   fi
@@ -238,7 +247,7 @@ inject_credentials() {
   #    reicht an api.anthropic.com weiter. Jeder Lauf setzt url neu -> Bestands-Installationen wechseln beim Update.
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     _cred_stage 'Anthropic account' 'anthropicApi' \
-         "$(jq -n --arg k "$ANTHROPIC_API_KEY" --arg u "${LLM_GATEWAY_URL:-http://127.0.0.1:8090}" '{apiKey:$k, url:$u, headerName:"", headerValue:"", allowedDomains:""}')"
+         "$(_cred_json '{apiKey:env.LA_C_K, url:env.LA_C_U, headerName:"", headerValue:"", allowedDomains:""}' "LA_C_K=$ANTHROPIC_API_KEY" "LA_C_U=${LLM_GATEWAY_URL:-http://127.0.0.1:8090}")"
   else
     note "ANTHROPIC_API_KEY fehlt — Credential 'Anthropic account' uebersprungen."
   fi
@@ -247,7 +256,7 @@ inject_credentials() {
   #    Standard 'Header Auth account'): deploy_workflows erkennt eine Test-Instanz an genau dieser Credential.
   if [ -n "${TEST_HARNESS_SECRET:-}" ]; then
     _cred_stage 'lifeagents test harness auth' 'httpHeaderAuth' \
-         "$(jq -n --arg n "${TEST_HARNESS_HEADER:-x-harness-secret}" --arg v "$TEST_HARNESS_SECRET" '{name:$n, value:$v, allowedDomains:""}')"
+         "$(_cred_json '{name:env.LA_C_N, value:env.LA_C_V, allowedDomains:""}' "LA_C_N=${TEST_HARNESS_HEADER:-x-harness-secret}" "LA_C_V=$TEST_HARNESS_SECRET")"
   else
     note "TEST_HARNESS_SECRET fehlt — Credential 'lifeagents test harness auth' uebersprungen (nur Dev/Test)."
   fi
@@ -305,7 +314,7 @@ _inject_manifest_credentials() {
         # kein Template-Marker (§3.8). Fall: Paperless-Token muss als "Token <wert>" in den
         # Authorization-Header, der Owner gibt das rohe Token ein.
         [ -n "$eprefix" ] && v="${eprefix}${v}"
-        fields="$(jq -c --arg f "$efield" --arg v "$v" '. + {($f): $v}' <<<"$fields")"
+        fields="$(printf '%s' "$fields" | ( export "LA_C_V=$v"; jq -c --arg f "$efield" '. + {($f): env.LA_C_V}' ))"
       else
         missing="${missing}${missing:+/}$ekey"
       fi

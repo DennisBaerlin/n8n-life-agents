@@ -178,6 +178,9 @@ l3="$(paper "$KA" | sed -n 3p | sed -E 's/^3:[[:space:]]+//; s/-//g; s/[[:space:
 c3="$(typo_char 3 "$l3")"
 bash "$ROOT/backup/typo_lib_test.sh" "$ROOT" > "$W/typo_lib.out" 2>&1; rc=$?
 ok_if R.typo-lib '[ "$rc" -eq 0 ] && [ -n "$c3" ]' "rc=$rc c3='$c3' $(tail -n 5 "$W/typo_lib.out" | tr '\n' ' ')"
+# Kein Zugangsschluessel im argv beim Bau der Credentials (Restore setzt Zugaenge ueber denselben Weg).
+bash "$ROOT/backup/secret_argv_cases.sh" "$ROOT" > "$W/secret_argv.out" 2>&1; rc=$?
+ok_if S.secret-argv '[ "$rc" -eq 0 ] && grep -q "^PASS" "$W/secret_argv.out"' "rc=$rc $(grep '^FAIL' "$W/secret_argv.out" | tr '\n' ' ')"
 paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
 cli_in "$W/typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && active_is "$KB"' "rc=$rc"

@@ -1515,20 +1515,31 @@ _bkp_converge() {
 # ============================================================
 # key — Notfallblatt
 # ============================================================
-# backup_cmd_key [--file <pfad>|-] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
+# backup_cmd_key [--file <pfad>|-|--token] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
 #   ein Log); --file <pfad> legt eine neue 0600-Datei an (vorhandene wird nie ueberschrieben); --file - schreibt auf stdout
 #   (Start-App, MasterCmd::BackupKit: `lifeagents backup key --file -` im master, Ausgabe nur in deren Datei).
+#   --token: nur der aktive Notfallschluessel als eine Zeile auf stdout (Start-App „Notfallschluessel kopieren“,
+#   MasterCmd::BackupToken; die Ausgabe geht dort nur in die Zwischenablage).
 backup_cmd_key() {
-  local file='' a want=0 kit
+  local file='' a want=0 kit token=0 k
   for a in "$@"; do
     if [ "$want" = 1 ]; then file="$a"; want=0; continue; fi
     case "$a" in
       --file)   want=1 ;;
       --file=*) file="${a#--file=}" ;;
-      *)        die "Unbekannte Option: $a (erlaubt: --file <pfad> oder --file -)" ;;
+      --token)  token=1 ;;
+      *)        die "Unbekannte Option: $a (erlaubt: --file <pfad>, --file - oder --token)" ;;
     esac
   done
   [ "$want" = 0 ] || die "--file braucht einen Pfad (oder - für die Ausgabe auf stdout)."
+  if [ "$token" = 1 ]; then
+    [ -z "$file" ] || die "--token und --file gehen nicht zusammen."
+    _bkp_resolve_db
+    k="$(backup_key_read | tr -d '\n')"
+    printf '%s' "$k" | backup_key_token \
+      || die "Kein Sicherungs-Schlüssel gespeichert (core.backup_key) — die Installation ist nicht fertig; 'lifeagents doctor' zeigt, was fehlt."
+    printf '\n'; return 0
+  fi
   if [ -z "$file" ]; then
     tty_usable || die "Kein Terminal: das Notfallblatt erscheint nur im Terminal oder mit --file <pfad> (neue Datei, nur für root lesbar)."
   elif [ "$file" != - ] && { [ -e "$file" ] || [ -L "$file" ]; }; then
@@ -1601,6 +1612,7 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
   key [--file <pfad>|-]    Notfallblatt mit dem Sicherungs-Schlüssel: ohne Option nur aufs Terminal; --file legt eine
                            neue Datei an (nur für root lesbar), --file - schreibt auf stdout. Ausdrucken oder im
                            Passwort-Manager ablegen — ohne den Schlüssel lässt sich keine Sicherung öffnen.
+  key --token              Nur der Notfallschlüssel als eine Zeile (zum Kopieren in den Passwort-Manager).
   auto [--scheduled]       Tägliche Sicherung jetzt machen (Docker: in den Rechner-Ordner, ohne Ordner nur ein Vermerk; LXC/Server:
                            nach /var/backups/lifeagents/daily). --scheduled (nur der Timer) tut nichts, wenn heute schon eine gelang.
 

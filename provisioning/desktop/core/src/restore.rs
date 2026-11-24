@@ -30,24 +30,17 @@ pub const INTERNAL: &str = "internal";
 pub struct Sheet(Zeroizing<String>);
 
 impl Sheet {
-    /// Vier getippte Zeilen; jede bekommt ihre Nummer vorn (`1: …`), sonst wäre eine Zeile ohne Prüfzeichen nur ein
-    /// Form-Fehler statt „Zeile n stimmt nicht“. Alles leer = kein Blatt.
-    pub fn typed(lines: &[String]) -> Result<Sheet, &'static str> {
-        if lines.len() != 4 || lines.iter().all(|l| l.trim().is_empty()) {
+    /// Eingefügter Notfallschlüssel aus dem einen Feld, roh (ohne „1: “ davor): Token, alter Schlüssel am Stück oder die
+    /// vier alten Zeilen hintereinander; was davon gilt, entscheidet der `master` (`backup_key_parse`). Leer = kein Blatt.
+    pub fn pasted(text: &str) -> Result<Sheet, &'static str> {
+        if text.len() as u64 > SHEET_MAX {
+            return Err(SHEET_TOO_BIG);
+        }
+        let t = text.trim();
+        if t.is_empty() {
             return Err(SHEET_INVALID);
         }
-        let mut s = Zeroizing::new(String::new());
-        for (i, l) in lines.iter().enumerate() {
-            if l.contains(['\n', '\r']) {
-                return Err(SHEET_INVALID);
-            }
-            // Stückweise in den Zeroizing-Puffer (ein format!-Zwischenwert bliebe unüberschrieben im Speicher).
-            s.push(char::from(b'1' + i as u8));
-            s.push_str(": ");
-            s.push_str(l.trim());
-            s.push('\n');
-        }
-        Ok(Sheet(s))
+        Ok(Sheet(Zeroizing::new(t.to_string())))
     }
 
     /// Inhalt einer Notfallblatt-Datei: UTF-8 (mit oder ohne BOM) oder UTF-16 (Windows-Editor „Unicode“). Ob es wirklich
@@ -388,22 +381,16 @@ mod tests {
         assert_eq!(base64("한".as_bytes()), "7ZWc");
     }
 
+    // Das eine Feld geht roh an den `master` (ohne „1: “ davor): Token, alter Schlüssel am Stück oder die vier alten Zeilen
+    // hintereinander liest dort `backup_key_parse`.
     #[test]
-    fn typed_lines_get_their_number_and_empty_is_no_sheet() {
-        let s = Sheet::typed(&["0123-4567-89ab-cdef 73".into(), "a".into(), "b".into(), " c ".into()]).unwrap();
-        assert_eq!(s.text(), "1: 0123-4567-89ab-cdef 73\n2: a\n3: b\n4: c\n");
-        assert!(Sheet::typed(&["".into(), " ".into(), "".into(), "".into()]).is_err());
-        assert!(Sheet::typed(&["a\nb".into(), "".into(), "".into(), "".into()]).is_err());
-        assert!(Sheet::typed(&["a".into()]).is_err());
-    }
-
-    // Notfallschlüssel (Token, erfundener Schlüssel) ins Feld „Zeile 1“: genau diese Bytes liest der `master` an
-    // (tests/mock_runtime/cases.sh B.token-app-feld1 nutzt dasselbe Literal).
-    #[test]
-    fn token_in_the_first_field_keeps_its_exact_bytes() {
+    fn pasted_text_goes_raw_and_empty_is_no_sheet() {
         let t = "labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy";
-        let s = Sheet::typed(&[format!(" {t} "), "".into(), "".into(), "".into()]).unwrap();
-        assert_eq!(s.text(), format!("1: {t}\n2: \n3: \n4: \n"));
+        assert_eq!(Sheet::pasted(&format!("  {t}\n")).unwrap().text(), t);
+        let old = "0123-4567-89ab-cdef 73 0123-4567-89ab-cdef d3";
+        assert_eq!(Sheet::pasted(old).unwrap().text(), old);
+        assert_eq!(Sheet::pasted(" \n ").err(), Some(SHEET_INVALID));
+        assert_eq!(Sheet::pasted(&"x".repeat(SHEET_MAX as usize + 1)).err(), Some(SHEET_TOO_BIG));
     }
 
     #[test]

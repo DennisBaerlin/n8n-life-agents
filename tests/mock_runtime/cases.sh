@@ -608,7 +608,7 @@ eq B.token-crlf "key:$K1" "$(printf '%s\r\n' "$T1" | backup_key_parse)"
 eq B.token-nbsp "key:$K1" "$(printf '%s\xc2\xa0%s\n' "${T1:0:20}" "${T1:20}" | backup_key_parse)"
 eq B.token-crockford "key:$K1" "$(printf 'labk1_%s\n' "$(printf '%s' "${T1#labk1_}" | tr '01' 'oI')" | backup_key_parse)"
 eq B.token-praefix-tolerant "key:$K1 key:$K2" "$(printf 'LABKL-%s\nlabk1 %s\n' "${T1#labk1_}" "${T2#labk1_}" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
-# Heutige Start-App, Token ins Feld "Zeile 1": genau die Bytes von restore::Sheet::typed([token, "", "", ""]) (Rust-Test haelt sie fest).
+# Start-App vor dem Ein-Feld-Fenster, Token ins Feld "Zeile 1": so schickte sie die vier Felder (je Feld eine Zeile "n: …").
 eq B.token-app-feld1 "key:$K1" "$(printf '1: %s\n2: \n3: \n4: \n' "$T1" | backup_key_parse)"
 # Tippfehler: 2 <-> 3 ist kein Crockford-Alias (o/0, i/l/1 waeren keine Fehler).
 case "${T1:15:1}" in 2) _tbad="${T1:0:15}3${T1:16}" ;; *) _tbad="${T1:0:15}2${T1:16}" ;; esac
@@ -639,6 +639,11 @@ for _l in de en ko; do
   eq "B.blatt-eine-zeile-$_l" "2:0" "$(printf '%s\n' "$_k" | grep -cE '^  labk1_[0-9a-hjkmnp-tv-z]{56}$'):$(printf '%s\n' "$_k" | grep -cE '^ *[1-4]: +[0-9a-f]{4}-')"
   if printf '%s\n' "$_k" | grep -qE '^[[:space:]]*1:'; then pass "B.blatt-alte-app-$_l"; else fail "B.blatt-alte-app-$_l" "keine Zeile mit 1: (alte Start-App lehnt das Blatt ab)"; fi
 done
+# `backup key --token` (Start-App „Notfallschluessel kopieren“): genau das Token des aktiven Schluessels, eine Zeile;
+# nicht zusammen mit --file.
+eq B.key-token "$T1" "$( ( _bkp_resolve_db() { :; }; backup_key_read() { printf '%s\n' "$K1"; }; backup_cmd_key --token ) 2>/dev/null )"
+if ( _bkp_resolve_db() { :; }; backup_key_read() { printf '%s\n' "$K1"; }; backup_cmd_key --token --file - ) >/dev/null 2>&1; then
+  fail B.key-token-nicht-mit-file "angenommen"; else pass B.key-token-nicht-mit-file; fi
 # Terminal-Frage (_bkp_ask_key_tty, auch vom Umzug): Antworten der Reihe nach; Ergebnis "<ausgabe>|<anzahl fragen>".
 tty_case() (
   _pkg_dir() { printf '%s' "$ROOT/packages"; }; backup_kit_lang() { printf de; }; _BACKUP_LANG=''

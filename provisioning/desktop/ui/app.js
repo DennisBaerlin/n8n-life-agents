@@ -59,18 +59,19 @@ const UI_TEXT = {
     "core.desktop.backup_restore.err.internal": "Etwas ist schiefgegangen.",
     "core.desktop.backup_restore.err.key_expired": "Die App vergisst das Notfallblatt nach 15 Minuten. Wähle oder tippe es bitte noch einmal.",
     "core.desktop.backup_restore.err.key_foreign": "Dieses Notfallblatt gehört nicht zu dieser Sicherung. Gesucht ist das Blatt mit dem Schlüssel {id}.",
-    "core.desktop.backup_restore.err.key_format": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
+    "core.desktop.backup_restore.err.key_format": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder füge den Notfallschlüssel ein.",
     "core.desktop.backup_restore.err.key_line": "Zeile {n} stimmt nicht. Prüfe sie Zeichen für Zeichen.",
     "core.desktop.backup_restore.err.key_needed": "Diese Sicherung braucht das Notfallblatt eines anderen Rechners.",
     "core.desktop.backup_restore.err.key_no_open": "Kein Schlüssel auf diesem Blatt öffnet die Sicherung. Ist es das Blatt vom alten Rechner?",
+    "core.desktop.backup_restore.err.key_token": "Der Notfallschlüssel hat einen Fehler. Kopiere die ganze Zeile noch einmal vom Notfallblatt.",
     "core.desktop.backup_restore.err.needs_setup": "Die Sicherung enthält den Bereich „{pkg}“. Richte ihn zuerst ein, dann versuch es noch einmal.",
     "core.desktop.backup_restore.err.no_tables": "In dieser Installation ist nichts zum Zurückholen eingerichtet.",
     "core.desktop.backup_restore.err.nofolder": "Es sind schon eigene Daten da. Wähle zuerst einen Sicherungsordner (Menü › „Sicherungsordner ändern …“), damit vorher gesichert werden kann.",
     "core.desktop.backup_restore.err.package_unknown": "Diese Sicherung enthält einen Bereich, den diese Version nicht kennt. Aktualisiere zuerst.",
     "core.desktop.backup_restore.err.safety": "Die Sicherung deiner jetzigen Daten hat nicht geklappt, darum wurde nichts ersetzt. Prüfe den Sicherungsordner.",
     "core.desktop.backup_restore.err.setup": "Die Einrichtung ist noch nicht fertig.",
-    "core.desktop.backup_restore.err.sheet_invalid": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
-    "core.desktop.backup_restore.err.sheet_too_big": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
+    "core.desktop.backup_restore.err.sheet_invalid": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder füge den Notfallschlüssel ein.",
+    "core.desktop.backup_restore.err.sheet_too_big": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder füge den Notfallschlüssel ein.",
     "core.desktop.backup_restore.err.unfinished": "Die Wiederherstellung wurde unterbrochen (Rechner oder Docker aus).",
     "core.desktop.backup_restore.err.unreadable": "Diese Datei lässt sich nicht lesen. Wähle eine Datei, die auf „.nla.enc“ endet.",
     "core.desktop.backup_restore.err.version_newer": "Diese Sicherung stammt aus einer neueren Version ({release}). Aktualisiere zuerst, dann versuch es noch einmal.",
@@ -80,10 +81,11 @@ const UI_TEXT = {
     "core.desktop.backup_restore.go_replace": "Ja, ersetzen",
     "core.desktop.backup_restore.guide": "Anleitung „Sicherung & neuer Rechner“",
     "core.desktop.backup_restore.key_check": "Prüfen",
+    "core.desktop.backup_restore.key_field": "Notfallschlüssel einfügen",
     "core.desktop.backup_restore.key_file": "Notfallblatt-Datei wählen …",
-    "core.desktop.backup_restore.key_lead": "Diese Sicherung stammt von einem anderen Rechner. Sie öffnet sich nur mit dem Schlüssel auf dessen Notfallblatt.",
-    "core.desktop.backup_restore.key_line": "Zeile {n}",
-    "core.desktop.backup_restore.key_or": "Oder tippe die vier Zeilen vom Papier ab:",
+    "core.desktop.backup_restore.key_lead": "Diese Sicherung stammt von einem anderen Rechner. Sie öffnet sich nur mit dem Notfallschlüssel von dessen Notfallblatt (die Zeile unter „Notfallschlüssel“).",
+    "core.desktop.backup_restore.key_old_hint": "Steht der Schlüssel auf deinem Blatt noch in vier Zeilen? Tippe alle vier hintereinander in dieses Feld. Leerzeichen und Bindestriche sind egal.",
+    "core.desktop.backup_restore.key_or": "Oder füge den Notfallschlüssel ein:",
     "core.desktop.backup_restore.key_title": "Notfallblatt",
     "core.desktop.backup_restore.list_empty": "Im Sicherungsordner liegt noch keine Sicherung. Liegt sie woanders, wähle die Datei.",
     "core.desktop.backup_restore.list_folder": "Der Sicherungsordner ist gerade nicht erreichbar. Prüfe, ob er noch da ist, oder wähle die Datei direkt.",
@@ -209,10 +211,13 @@ const UI_TEXT = {
     "core.desktop.home.title": "Dein Assistent ist eingerichtet",
     "core.desktop.kit.busy_title": "Notfallblatt wird gespeichert …",
     "core.desktop.kit.button": "Notfallblatt speichern",
-    "core.desktop.kit.check": "Ich habe das Notfallblatt ausgedruckt oder sicher gespeichert.",
+    "core.desktop.kit.check": "Ich habe das Notfallblatt oder den Notfallschlüssel sicher aufbewahrt.",
     "core.desktop.kit.close": "Fertig",
+    "core.desktop.kit.copied": "Notfallschlüssel kopiert. Füge ihn jetzt in deinen Passwort-Manager ein. In 60 Sekunden leert die App die Zwischenablage wieder.",
+    "core.desktop.kit.copy_busy": "Notfallschlüssel wird kopiert …",
+    "core.desktop.kit.copy_button": "Notfallschlüssel kopieren",
     "core.desktop.kit.file_name": "Life-Agents-Notfallblatt",
-    "core.desktop.kit.lead": "Auf einem neuen Rechner öffnet sich eine Sicherung nur mit dem Schlüssel auf diesem Blatt. Drucke es aus oder lege es in deinen Passwort-Manager. Leg es nicht in den Sicherungsordner.",
+    "core.desktop.kit.lead": "Auf einem neuen Rechner öffnet sich eine Sicherung nur mit dem Notfallschlüssel auf diesem Blatt. Speichere das Blatt und drucke es aus, oder kopiere nur den Notfallschlüssel in deinen Passwort-Manager. Eins von beiden reicht. Leg nichts davon in den Sicherungsordner.",
     "core.desktop.kit.menu_title": "Notfallblatt",
     "core.desktop.kit.next_hint": "„{button}“ geht, sobald du das abgehakt hast.",
     "core.desktop.kit.saved": "Gespeichert in Downloads: {file}. Lösche diese Datei, sobald das Blatt ausgedruckt oder sicher gespeichert ist.",
@@ -322,6 +327,7 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "Aufgeräumt",
     "core.desktop.tidy.text": "Die geladene Datei {file} brauchst du nicht mehr. Die App legt sie in den Papierkorb.",
     "core.desktop.tidy.title": "Zum Schluss: aufräumen",
+    "core.desktop.tray.backup_copy": "Notfallschlüssel kopieren",
     "core.desktop.tray.backup_dir": "Sicherungsordner ändern …",
     "core.desktop.tray.backup_kit": "Notfallblatt speichern …",
     "core.desktop.tray.backup_restore": "Sicherung wiederherstellen …",
@@ -417,18 +423,19 @@ const UI_TEXT = {
     "core.desktop.backup_restore.err.internal": "Something went wrong.",
     "core.desktop.backup_restore.err.key_expired": "The app forgets the emergency sheet after 15 minutes. Please choose or type it again.",
     "core.desktop.backup_restore.err.key_foreign": "This emergency sheet does not belong to this backup. The sheet with the key {id} is needed.",
-    "core.desktop.backup_restore.err.key_format": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
+    "core.desktop.backup_restore.err.key_format": "This is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or paste the emergency key.",
     "core.desktop.backup_restore.err.key_line": "Line {n} is not right. Check it character by character.",
     "core.desktop.backup_restore.err.key_needed": "This backup needs the emergency sheet of another computer.",
     "core.desktop.backup_restore.err.key_no_open": "No key on this sheet opens the backup. Is it the sheet of the old computer?",
+    "core.desktop.backup_restore.err.key_token": "The emergency key has a mistake. Copy the whole line from the emergency sheet again.",
     "core.desktop.backup_restore.err.needs_setup": "The backup contains the area “{pkg}”. Set it up first, then try again.",
     "core.desktop.backup_restore.err.no_tables": "Nothing is set up in this installation that could be brought back.",
     "core.desktop.backup_restore.err.nofolder": "There is already data of your own. Choose a backup folder first (menu › “Change backup folder …”) so that a backup can be made first.",
     "core.desktop.backup_restore.err.package_unknown": "This backup contains an area this version does not know. Update first.",
     "core.desktop.backup_restore.err.safety": "Backing up your current data did not work, so nothing was replaced. Check the backup folder.",
     "core.desktop.backup_restore.err.setup": "The setup is not finished yet.",
-    "core.desktop.backup_restore.err.sheet_invalid": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
-    "core.desktop.backup_restore.err.sheet_too_big": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
+    "core.desktop.backup_restore.err.sheet_invalid": "This is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or paste the emergency key.",
+    "core.desktop.backup_restore.err.sheet_too_big": "This is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or paste the emergency key.",
     "core.desktop.backup_restore.err.unfinished": "The restore was interrupted (computer or Docker switched off).",
     "core.desktop.backup_restore.err.unreadable": "This file cannot be read. Choose a file that ends in “.nla.enc”.",
     "core.desktop.backup_restore.err.version_newer": "This backup comes from a newer version ({release}). Update first, then try again.",
@@ -438,10 +445,11 @@ const UI_TEXT = {
     "core.desktop.backup_restore.go_replace": "Yes, replace",
     "core.desktop.backup_restore.guide": "Guide “Backup & new computer”",
     "core.desktop.backup_restore.key_check": "Check",
+    "core.desktop.backup_restore.key_field": "Paste the emergency key",
     "core.desktop.backup_restore.key_file": "Choose emergency sheet file …",
-    "core.desktop.backup_restore.key_lead": "This backup comes from another computer. It only opens with the key on that computer's emergency sheet.",
-    "core.desktop.backup_restore.key_line": "Line {n}",
-    "core.desktop.backup_restore.key_or": "Or type the four lines from the paper:",
+    "core.desktop.backup_restore.key_lead": "This backup comes from another computer. It only opens with the emergency key from that computer's emergency sheet (the line under “Emergency key”).",
+    "core.desktop.backup_restore.key_old_hint": "Is the key on your sheet still in four lines? Type all four one after another into this field. Spaces and dashes do not matter.",
+    "core.desktop.backup_restore.key_or": "Or paste the emergency key:",
     "core.desktop.backup_restore.key_title": "Emergency sheet",
     "core.desktop.backup_restore.list_empty": "There is no backup in the backup folder yet. If it is somewhere else, choose the file.",
     "core.desktop.backup_restore.list_folder": "The backup folder cannot be reached right now. Check that it is still there, or choose the file directly.",
@@ -567,10 +575,13 @@ const UI_TEXT = {
     "core.desktop.home.title": "Your assistant is set up",
     "core.desktop.kit.busy_title": "Saving the emergency sheet …",
     "core.desktop.kit.button": "Save emergency sheet",
-    "core.desktop.kit.check": "I have printed the emergency sheet or stored it safely.",
+    "core.desktop.kit.check": "I have stored the emergency sheet or the emergency key safely.",
     "core.desktop.kit.close": "Done",
+    "core.desktop.kit.copied": "Emergency key copied. Paste it into your password manager now. In 60 seconds the app clears the clipboard again.",
+    "core.desktop.kit.copy_busy": "Copying the emergency key …",
+    "core.desktop.kit.copy_button": "Copy emergency key",
     "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
-    "core.desktop.kit.lead": "On a new computer a backup only opens with the key on this sheet. Print it or put it in your password manager. Don't put it in the backup folder.",
+    "core.desktop.kit.lead": "On a new computer, a backup only opens with the emergency key on this sheet. Save the sheet and print it, or copy just the emergency key into your password manager. One of the two is enough. Don't put either into the backup folder.",
     "core.desktop.kit.menu_title": "Emergency sheet",
     "core.desktop.kit.next_hint": "“{button}” works once you have ticked this.",
     "core.desktop.kit.saved": "Saved in Downloads: {file}. Delete this file once the sheet is printed or stored safely.",
@@ -680,6 +691,7 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "Tidied up",
     "core.desktop.tidy.text": "You no longer need the downloaded file {file}. The app moves it to the trash.",
     "core.desktop.tidy.title": "Last step: tidy up",
+    "core.desktop.tray.backup_copy": "Copy emergency key",
     "core.desktop.tray.backup_dir": "Change backup folder …",
     "core.desktop.tray.backup_kit": "Save emergency sheet …",
     "core.desktop.tray.backup_restore": "Restore a backup …",
@@ -775,18 +787,19 @@ const UI_TEXT = {
     "core.desktop.backup_restore.err.internal": "문제가 생겼어요.",
     "core.desktop.backup_restore.err.key_expired": "앱은 15분이 지나면 비상 시트를 잊어요. 다시 고르거나 입력하세요.",
     "core.desktop.backup_restore.err.key_foreign": "이 비상 시트는 이 백업의 것이 아니에요. 키 {id}가 있는 시트가 필요해요.",
-    "core.desktop.backup_restore.err.key_format": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
+    "core.desktop.backup_restore.err.key_format": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 비상 키를 붙여 넣으세요.",
     "core.desktop.backup_restore.err.key_line": "{n}번째 줄이 맞지 않아요. 한 글자씩 확인하세요.",
     "core.desktop.backup_restore.err.key_needed": "이 백업에는 다른 컴퓨터의 비상 시트가 필요해요.",
     "core.desktop.backup_restore.err.key_no_open": "이 시트의 어떤 키로도 백업이 열리지 않아요. 이전 컴퓨터의 시트가 맞나요?",
+    "core.desktop.backup_restore.err.key_token": "비상 키에 오류가 있어요. 비상 시트에서 줄 전체를 다시 복사해 주세요.",
     "core.desktop.backup_restore.err.needs_setup": "백업에 “{pkg}” 영역이 들어 있어요. 먼저 설정한 뒤 다시 시도하세요.",
     "core.desktop.backup_restore.err.no_tables": "이 설치에는 되살릴 수 있는 것이 설정되어 있지 않아요.",
     "core.desktop.backup_restore.err.nofolder": "이미 내 데이터가 있어요. 먼저 백업할 수 있도록 백업 폴더를 고르세요 (메뉴 › “백업 폴더 변경 …”).",
     "core.desktop.backup_restore.err.package_unknown": "이 백업에는 이 버전이 모르는 영역이 있어요. 먼저 업데이트하세요.",
     "core.desktop.backup_restore.err.safety": "지금 데이터를 백업하지 못해서 아무것도 바꾸지 않았어요. 백업 폴더를 확인하세요.",
     "core.desktop.backup_restore.err.setup": "아직 설정이 끝나지 않았어요.",
-    "core.desktop.backup_restore.err.sheet_invalid": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
-    "core.desktop.backup_restore.err.sheet_too_big": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
+    "core.desktop.backup_restore.err.sheet_invalid": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 비상 키를 붙여 넣으세요.",
+    "core.desktop.backup_restore.err.sheet_too_big": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 비상 키를 붙여 넣으세요.",
     "core.desktop.backup_restore.err.unfinished": "복원이 중단되었어요 (컴퓨터나 Docker가 꺼졌어요).",
     "core.desktop.backup_restore.err.unreadable": "이 파일을 읽을 수 없어요. “.nla.enc”로 끝나는 파일을 고르세요.",
     "core.desktop.backup_restore.err.version_newer": "이 백업은 더 새로운 버전({release})에서 만들었어요. 먼저 업데이트한 뒤 다시 시도하세요.",
@@ -796,10 +809,11 @@ const UI_TEXT = {
     "core.desktop.backup_restore.go_replace": "네, 바꾸기",
     "core.desktop.backup_restore.guide": "안내 “백업 & 새 컴퓨터”",
     "core.desktop.backup_restore.key_check": "확인",
+    "core.desktop.backup_restore.key_field": "비상 키 붙여 넣기",
     "core.desktop.backup_restore.key_file": "비상 시트 파일 선택 …",
-    "core.desktop.backup_restore.key_lead": "이 백업은 다른 컴퓨터에서 만들었어요. 그 컴퓨터의 비상 시트에 있는 키로만 열려요.",
-    "core.desktop.backup_restore.key_line": "{n}번째 줄",
-    "core.desktop.backup_restore.key_or": "또는 종이에 적힌 네 줄을 입력하세요:",
+    "core.desktop.backup_restore.key_lead": "이 백업은 다른 컴퓨터에서 만들어졌어요. 그 컴퓨터의 비상 시트에 있는 비상 키(“비상 키” 아래 줄)가 있어야 열 수 있어요.",
+    "core.desktop.backup_restore.key_old_hint": "시트에 키가 아직 네 줄로 적혀 있나요? 네 줄을 모두 이 칸에 차례로 이어서 입력하세요. 띄어쓰기와 하이픈은 상관없어요.",
+    "core.desktop.backup_restore.key_or": "또는 비상 키를 붙여 넣으세요:",
     "core.desktop.backup_restore.key_title": "비상 시트",
     "core.desktop.backup_restore.list_empty": "백업 폴더에 아직 백업이 없어요. 다른 곳에 있다면 파일을 고르세요.",
     "core.desktop.backup_restore.list_folder": "지금은 백업 폴더에 접근할 수 없어요. 폴더가 그대로 있는지 확인하거나 파일을 직접 고르세요.",
@@ -925,10 +939,13 @@ const UI_TEXT = {
     "core.desktop.home.title": "어시스턴트 설정이 끝났어요",
     "core.desktop.kit.busy_title": "비상 시트를 저장하는 중 …",
     "core.desktop.kit.button": "비상 시트 저장",
-    "core.desktop.kit.check": "비상 시트를 인쇄했거나 안전하게 보관했어요.",
+    "core.desktop.kit.check": "비상 시트나 비상 키를 안전하게 보관했어요.",
     "core.desktop.kit.close": "완료",
+    "core.desktop.kit.copied": "비상 키를 복사했어요. 지금 비밀번호 관리자에 붙여 넣으세요. 60초 뒤 앱이 클립보드를 다시 비워요.",
+    "core.desktop.kit.copy_busy": "비상 키를 복사하는 중 …",
+    "core.desktop.kit.copy_button": "비상 키 복사",
     "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
-    "core.desktop.kit.lead": "새 컴퓨터에서는 이 시트의 키가 있어야 백업을 열 수 있어요. 인쇄하거나 비밀번호 관리자에 넣어 주세요. 백업 폴더에는 넣지 마세요.",
+    "core.desktop.kit.lead": "새 컴퓨터에서는 이 시트의 비상 키가 있어야 백업을 열 수 있어요. 시트를 저장해 인쇄하거나, 비상 키만 복사해 비밀번호 관리자에 넣으세요. 둘 중 하나면 충분해요. 어느 것도 백업 폴더에 두지 마세요.",
     "core.desktop.kit.menu_title": "비상 시트",
     "core.desktop.kit.next_hint": "체크하면 “{button}”을 누를 수 있어요.",
     "core.desktop.kit.saved": "다운로드에 저장했어요: {file}. 시트를 인쇄하거나 안전하게 보관한 뒤 이 파일은 지워 주세요.",
@@ -1038,6 +1055,7 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "정리했어요",
     "core.desktop.tidy.text": "내려받은 파일({file})은 더 이상 필요 없어요. 앱이 휴지통으로 옮겨요.",
     "core.desktop.tidy.title": "마지막으로 정리하기",
+    "core.desktop.tray.backup_copy": "비상 키 복사",
     "core.desktop.tray.backup_dir": "백업 폴더 변경 …",
     "core.desktop.tray.backup_kit": "비상 시트 저장 …",
     "core.desktop.tray.backup_restore": "백업 복원 …",
@@ -1749,6 +1767,19 @@ const SCREENS = {
     show('kit', { title: t('core.desktop.kit.menu_title'), body: text, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
   },
 
+  // Symbol-Menü „Notfallschlüssel kopieren“: kopiert sofort; der Schlüssel erscheint nie im Fenster.
+  async backupCopy() {
+    busy('done', t('core.desktop.kit.copy_busy'), '');
+    let text;
+    try {
+      await invoke('copy_backup_key');
+      text = [h('p', { class: 'lead' }, t('core.desktop.kit.copied'))];
+    } catch (e) {
+      text = [note('bad', t('core.desktop.kit.unavailable'))];
+    }
+    show('kit', { title: t('core.desktop.kit.menu_title'), body: text, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
+  },
+
   // Symbol-Menü „Sicherungsordner ändern …“: die Fragebogen-Seite „Wohin sichern?“ öffnet sich im Fenster (commands.rs).
   async backupDir() {
     busy('done', t('core.desktop.backup_dir.busy_title'), '');
@@ -1823,12 +1854,13 @@ const SCREENS = {
   },
 
   restoreKey(p) {
-    const lines = [1, 2, 3, 4].map((n) => h('input', { type: 'text', class: 'key-line', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off', 'aria-label': t('core.desktop.backup_restore.key_line', { n }), placeholder: t('core.desktop.backup_restore.key_line', { n }) }));
-    const problem = p && p.code && p.code !== 'key_needed' ? note('bad', restoreText(p.code, p)) : null;
+    const field = h('input', { type: 'text', class: 'key-line', id: 'key-field', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off', 'aria-label': t('core.desktop.backup_restore.key_field'), placeholder: t('core.desktop.backup_restore.key_field') });
+    const code = p && p.code === 'key_line' && Number(p.line) === 1 ? 'key_token' : p && p.code;
+    const problem = code && code !== 'key_needed' ? note('bad', restoreText(code, p)) : null;
     const check = async () => {
-      const v = lines.map((i) => i.value);
-      lines.forEach((i) => { i.value = ''; });
-      try { await invoke('restore_type_sheet', { lines: v }); } catch (e) { return SCREENS.restoreKey({ code: String(e) }); }
+      const v = field.value;
+      field.value = '';
+      try { await invoke('restore_paste_sheet', { text: v }); } catch (e) { return SCREENS.restoreKey({ code: String(e) }); }
       return SCREENS.restorePlan();
     };
     show('restore', {
@@ -1840,7 +1872,8 @@ const SCREENS = {
           if (ok) return SCREENS.restorePlan();
         }) }, t('core.desktop.backup_restore.key_file')),
         h('p', { class: 'key-or' }, t('core.desktop.backup_restore.key_or')),
-        h('div', { class: 'key-lines' }, lines)],
+        h('div', { class: 'key-lines' }, field),
+        h('p', { class: 'kit-hint' }, t('core.desktop.backup_restore.key_old_hint'))],
       next: { label: t('core.desktop.backup_restore.key_check'), run: check },
       back: () => SCREENS.restoreList(),
     });
@@ -2003,6 +2036,15 @@ function kitCard(onDone, nextHint) {
       msg.textContent = t(String(e) === 'kit-write' ? 'core.desktop.kit.write_failed' : 'core.desktop.kit.unavailable');
     }
   };
+  const copy = async () => {
+    try {
+      await invoke('copy_backup_key');
+      msg.textContent = t('core.desktop.kit.copied');
+      box.disabled = false;
+    } catch (e) {
+      msg.textContent = t('core.desktop.kit.unavailable');
+    }
+  };
   box.addEventListener('change', async () => {
     if (!box.checked) return;
     await invoke('confirm_kit');
@@ -2012,7 +2054,9 @@ function kitCard(onDone, nextHint) {
   card.append(...[
     h('h2', {}, t('core.desktop.kit.title')),
     h('p', {}, t('core.desktop.kit.lead')),
-    h('button', { type: 'button', id: 'kit-save', onclick: (e) => run(e.currentTarget, save) }, t('core.desktop.kit.button')),
+    h('div', { class: 'kit-buttons' },
+      h('button', { type: 'button', id: 'kit-save', onclick: (e) => run(e.currentTarget, save) }, t('core.desktop.kit.button')),
+      h('button', { type: 'button', id: 'kit-copy', onclick: (e) => run(e.currentTarget, copy) }, t('core.desktop.kit.copy_button'))),
     msg,
     h('label', { class: 'kit-check' }, box, ' ', t('core.desktop.kit.check')),
     hint].filter(Boolean));
@@ -2149,7 +2193,7 @@ function checkLine(c) {
 
 async function boot() {
   listen('show-screen', (id) => {
-    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore, 'backup-kit': SCREENS.backupKit, 'backup-dir': SCREENS.backupDir, 'backup-restore': SCREENS.restoreList }[id];
+    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore, 'backup-kit': SCREENS.backupKit, 'backup-copy': SCREENS.backupCopy, 'backup-dir': SCREENS.backupDir, 'backup-restore': SCREENS.restoreList }[id];
     if (go) go();
   });
   const s = await invoke('startup');
@@ -2162,7 +2206,7 @@ async function boot() {
   // Zurück aus dem Fragebogen (main.rs lädt die App mit `#power`): weiter mit dem Dauerbetrieb.
   if (location.hash === '#power') return SCREENS.power();
   // Aus dem Menü des Symbols, während der Fragebogen im Fenster stand (main.rs lädt dann mit `#…` neu).
-  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore, '#backup-kit': SCREENS.backupKit, '#backup-dir': SCREENS.backupDir, '#backup-restore': SCREENS.restoreList }[location.hash];
+  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore, '#backup-kit': SCREENS.backupKit, '#backup-copy': SCREENS.backupCopy, '#backup-dir': SCREENS.backupDir, '#backup-restore': SCREENS.restoreList }[location.hash];
   if (fromTray) return fromTray();
   if (!s.journal) return failed('journal-unreadable');
   const k = s.journal.kind;

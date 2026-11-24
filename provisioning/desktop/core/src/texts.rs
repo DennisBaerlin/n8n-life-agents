@@ -27,7 +27,7 @@ pub fn text(lang: &str, key: &str) -> String {
 }
 
 /// Schlüssel der Texte im Menü am Symbol (`app/src/main.rs`).
-pub const TRAY_KEYS: [&str; 13] = [
+pub const TRAY_KEYS: [&str; 14] = [
     "core.desktop.tray.checking",
     "core.desktop.tray.running",
     "core.desktop.tray.stopped",
@@ -36,6 +36,7 @@ pub const TRAY_KEYS: [&str; 13] = [
     "core.desktop.tray.power_restore",
     "core.desktop.tray.report",
     "core.desktop.tray.backup_kit",
+    "core.desktop.tray.backup_copy",
     "core.desktop.tray.backup_dir",
     "core.desktop.tray.backup_restore",
     "core.desktop.tray.restoring",

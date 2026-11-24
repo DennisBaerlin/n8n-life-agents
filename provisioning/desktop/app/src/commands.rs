@@ -552,10 +552,10 @@ pub fn save_backup_kit(app: AppHandle) -> Result<KitSaved, String> {
 #[tauri::command(async)]
 pub fn copy_backup_key(app: AppHandle) -> Result<(), String> {
     let d = docker_if_ready().ok_or_else(|| fail(&app, backup::KIT_UNAVAILABLE))?;
-    let key = backup::copy_key(&RealHost, &d).map_err(|c| fail(&app, c))?;
+    let n = backup::copy_key(&RealHost, &d).map_err(|c| fail(&app, c))?;
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(backup::KEY_CLEAR_SECS));
-        backup::clear_key_if(&RealHost, &key);
+        backup::clear_copied(&RealHost, Some(n));
     });
     Ok(())
 }

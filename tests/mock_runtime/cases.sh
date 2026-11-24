@@ -584,6 +584,9 @@ eq B.roh-ohne-pruefzeichen "key:$K1" "$(printf '  %s\n' "$K1" | backup_key_parse
 eq B.zeile-ohne-pruefzeichen 0123456789abcdef "$(printf '1: 0123-4567-89AB-cdef' | backup_key_line 1)"
 _bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1f/')"
 [ "$_bad" != "$_paper" ] || _bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1e/')"
+# Die vier Zeilen mit "1:" … "4:" hintereinander in einem Feld (Start-App): wie vier Zeilen; Tippfehler bleibt zeilengenau.
+eq B.alte-zeilen-in-einem-feld "key:$K1" "$(printf '%s' "$_paper" | tr '\n' ' ' | backup_key_parse)"
+eq B.alte-zeilen-in-einem-feld-tippfehler err:line3 "$(printf '%s\n' "$_bad" | tr '\n' ' ' | backup_key_parse)"
 eq B.tippfehler-zeile3 err:line3 "$(printf '%s\n' "$_bad" | backup_key_parse)"
 # Zeile 2 unter Zeile 1 abgetippt (ohne Nummern): die Pruefzeichen haengen an der Zeilennummer.
 _swap="$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | awk 'NR==1{a=$0;next} NR==2{print; print a; next} {print}')"
@@ -608,7 +611,7 @@ eq B.token-crlf "key:$K1" "$(printf '%s\r\n' "$T1" | backup_key_parse)"
 eq B.token-nbsp "key:$K1" "$(printf '%s\xc2\xa0%s\n' "${T1:0:20}" "${T1:20}" | backup_key_parse)"
 eq B.token-crockford "key:$K1" "$(printf 'labk1_%s\n' "$(printf '%s' "${T1#labk1_}" | tr '01' 'oI')" | backup_key_parse)"
 eq B.token-praefix-tolerant "key:$K1 key:$K2" "$(printf 'LABKL-%s\nlabk1 %s\n' "${T1#labk1_}" "${T2#labk1_}" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
-# Start-App vor dem Ein-Feld-Fenster, Token ins Feld "Zeile 1": so schickte sie die vier Felder (je Feld eine Zeile "n: …").
+# Aeltere Start-Apps schicken ihre vier Felder als Zeilen "n: …"; ein Token im ersten Feld muss der master weiter lesen.
 eq B.token-app-feld1 "key:$K1" "$(printf '1: %s\n2: \n3: \n4: \n' "$T1" | backup_key_parse)"
 # Tippfehler: 2 <-> 3 ist kein Crockford-Alias (o/0, i/l/1 waeren keine Fehler).
 case "${T1:15:1}" in 2) _tbad="${T1:0:15}3${T1:16}" ;; *) _tbad="${T1:0:15}2${T1:16}" ;; esac

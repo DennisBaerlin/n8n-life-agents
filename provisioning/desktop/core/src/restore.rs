@@ -1,6 +1,7 @@
 //! Wiederherstellen ohne Terminal (Plan „restore-ohne-terminal“): Sicherungen im Sicherungsordner auflisten, eine
-//! wählen (oder eine Datei vom Rechner), Notfallblatt als Datei oder getippt, Probelauf, Hintergrund-Lauf und Stand —
-//! alles über `lifeagents backup …` im `master` (`provisioning/lib/backup_cli.sh`, Codes dort im Kopf von `_bkp_rdie`).
+//! wählen (oder eine Datei vom Rechner), Notfallblatt als Datei oder Notfallschlüssel eingefügt, Probelauf,
+//! Hintergrund-Lauf und Stand — alles über `lifeagents backup …` im `master` (`provisioning/lib/backup_cli.sh`, Codes dort
+//! im Kopf von `_bkp_rdie`).
 //!
 //! **Geheim:** Das Notfallblatt trägt den Sicherungs-Schlüssel. Es lebt nur in `Sheet` (beim Fallenlassen
 //! überschrieben), geht nur über stdin von `docker exec --interactive` in den `master` und nie ins Fenster, ins Journal,
@@ -67,7 +68,7 @@ impl Sheet {
     }
 }
 
-/// Getippte Zeilen, wie sie aus dem Fenster kamen, nach dem Übernehmen überschreiben (die App-Hülle hat keine eigene
+/// Eingefügten Text aus dem Fenster nach dem Übernehmen überschreiben (die App-Hülle hat keine eigene
 /// zeroize-Abhängigkeit).
 pub fn wipe(lines: &mut [String]) {
     use zeroize::Zeroize;
@@ -155,6 +156,9 @@ pub struct Plan {
     pub code: Option<String>,
     #[serde(default)]
     pub line: Option<u8>,
+    /// Fehler im Notfallschlüssel (Token) statt in einer Zeile des alten Blatts; `line` ist dann 1 für ältere Apps.
+    #[serde(default)]
+    pub token: bool,
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -452,6 +456,20 @@ mod tests {
         let h4 = FakeHost::mac();
         assert_eq!(plan(&h4, &d(), &Source::Folder("--yes.nla.enc".into()), None).code.as_deref(), Some(UNREADABLE));
         assert!(h4.calls.borrow().is_empty(), "ungültiger Name erreicht Docker nie");
+    }
+
+    // Fehler im Notfallschlüssel kommt als key_line/1 mit token:true (ältere master ohne das Feld: false).
+    #[test]
+    fn a_broken_key_is_told_apart_from_line_one_of_an_old_sheet() {
+        let call = cmd(DockerCall::Master(MasterCmd::RestorePlan { name: NAME.into(), file: false, key: false }));
+        for (json, token) in [
+            ("{\"ok\":false,\"code\":\"key_line\",\"line\":1,\"token\":true}", true),
+            ("{\"ok\":false,\"code\":\"key_line\",\"line\":1}", false),
+        ] {
+            let h = FakeHost::mac().on(&call, CmdOut::fail(1, "").with_stdout(&format!("{json}\n")));
+            let p = plan(&h, &d(), &Source::Folder(NAME.into()), None);
+            assert_eq!((p.code.as_deref(), p.line, p.token), (Some("key_line"), Some(1), token));
+        }
     }
 
     #[test]

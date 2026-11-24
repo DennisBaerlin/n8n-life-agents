@@ -212,6 +212,7 @@ const UI_TEXT = {
     "core.desktop.kit.busy_title": "Notfallblatt wird gespeichert …",
     "core.desktop.kit.button": "Notfallblatt speichern",
     "core.desktop.kit.check": "Ich habe das Notfallblatt oder den Notfallschlüssel sicher aufbewahrt.",
+    "core.desktop.kit.clipboard_failed": "Die Zwischenablage ließ sich gerade nicht beschreiben. Versuche es gleich noch einmal oder speichere das Notfallblatt.",
     "core.desktop.kit.close": "Fertig",
     "core.desktop.kit.copied": "Notfallschlüssel kopiert. Füge ihn jetzt in deinen Passwort-Manager ein. In 60 Sekunden leert die App die Zwischenablage wieder.",
     "core.desktop.kit.copy_busy": "Notfallschlüssel wird kopiert …",
@@ -576,6 +577,7 @@ const UI_TEXT = {
     "core.desktop.kit.busy_title": "Saving the emergency sheet …",
     "core.desktop.kit.button": "Save emergency sheet",
     "core.desktop.kit.check": "I have stored the emergency sheet or the emergency key safely.",
+    "core.desktop.kit.clipboard_failed": "The clipboard could not be written just now. Try again in a moment or save the emergency sheet.",
     "core.desktop.kit.close": "Done",
     "core.desktop.kit.copied": "Emergency key copied. Paste it into your password manager now. In 60 seconds the app clears the clipboard again.",
     "core.desktop.kit.copy_busy": "Copying the emergency key …",
@@ -940,6 +942,7 @@ const UI_TEXT = {
     "core.desktop.kit.busy_title": "비상 시트를 저장하는 중 …",
     "core.desktop.kit.button": "비상 시트 저장",
     "core.desktop.kit.check": "비상 시트나 비상 키를 안전하게 보관했어요.",
+    "core.desktop.kit.clipboard_failed": "지금은 클립보드에 쓸 수 없어요. 잠시 후 다시 시도하거나 비상 시트를 저장하세요.",
     "core.desktop.kit.close": "완료",
     "core.desktop.kit.copied": "비상 키를 복사했어요. 지금 비밀번호 관리자에 붙여 넣으세요. 60초 뒤 앱이 클립보드를 다시 비워요.",
     "core.desktop.kit.copy_busy": "비상 키를 복사하는 중 …",
@@ -1754,8 +1757,10 @@ const SCREENS = {
     addRestoreCard();
   },
 
-  // Symbol-Menü „Notfallblatt speichern …“: speichert sofort und zeigt das Ergebnis mit demselben Hinweis.
+  // Symbol-Menü „Notfallblatt speichern …“: speichert sofort und zeigt das Ergebnis mit demselben Hinweis. Der Hash geht
+  // vorher weg: ein späteres Neuladen des Fensters speichert sonst ungefragt noch einmal.
   async backupKit() {
+    history.replaceState(null, '', location.pathname + location.search);
     busy('done', t('core.desktop.kit.busy_title'), '');
     let text;
     try {
@@ -1767,15 +1772,16 @@ const SCREENS = {
     show('kit', { title: t('core.desktop.kit.menu_title'), body: text, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
   },
 
-  // Symbol-Menü „Notfallschlüssel kopieren“: kopiert sofort; der Schlüssel erscheint nie im Fenster.
+  // Symbol-Menü „Notfallschlüssel kopieren“: kopiert sofort; der Schlüssel erscheint nie im Fenster. Hash weg wie bei backupKit.
   async backupCopy() {
+    history.replaceState(null, '', location.pathname + location.search);
     busy('done', t('core.desktop.kit.copy_busy'), '');
     let text;
     try {
       await invoke('copy_backup_key');
       text = [h('p', { class: 'lead' }, t('core.desktop.kit.copied'))];
     } catch (e) {
-      text = [note('bad', t('core.desktop.kit.unavailable'))];
+      text = [note('bad', t(String(e) === 'kit-clipboard' ? 'core.desktop.kit.clipboard_failed' : 'core.desktop.kit.unavailable'))];
     }
     show('kit', { title: t('core.desktop.kit.menu_title'), body: text, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
   },
@@ -1796,7 +1802,7 @@ const SCREENS = {
   },
 
   // --- Wiederherstellen (Plan restore-ohne-terminal; Kern core/src/restore.rs, Befehle commands.rs) ---------------------
-  // Auswahl → (Notfallblatt) → Vorschau → läuft → Ergebnis. Der Schlüssel erreicht dieses Fenster nur beim Abtippen; die
+  // Auswahl → (Notfallblatt) → Vorschau → läuft → Ergebnis. Der Schlüssel erreicht dieses Fenster nur über das Eingabefeld; die
   // Datei liest der Rust-Teil. Antworten kommen als feste Felder (Codes), nie als Text des master.
   async restoreList() {
     busy('done', t('core.desktop.backup_restore.busy_list'), '');
@@ -1855,7 +1861,7 @@ const SCREENS = {
 
   restoreKey(p) {
     const field = h('input', { type: 'text', class: 'key-line', id: 'key-field', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off', 'aria-label': t('core.desktop.backup_restore.key_field'), placeholder: t('core.desktop.backup_restore.key_field') });
-    const code = p && p.code === 'key_line' && Number(p.line) === 1 ? 'key_token' : p && p.code;
+    const code = p && p.code === 'key_line' && p.token ? 'key_token' : p && p.code;
     const problem = code && code !== 'key_needed' ? note('bad', restoreText(code, p)) : null;
     const check = async () => {
       const v = field.value;
@@ -2018,8 +2024,9 @@ const SCREENS = {
  * Letzter Schritt auf der Fertig-Seite: die geladene Datei auf Wunsch in den Papierkorb (Owner: am Ende, nicht am Anfang;
  * nie ungefragt, nur bei genau einem Treffer). Das Auswerfen der DMG macht die App schon beim Start.
  */
-// kitCard(onDone, nextHint) -> Schritt „Notfallblatt speichern“ (Fertig- und Startseite): Knopf legt eine neue Datei in
-//   Downloads ab, der Haken wird erst danach frei und bleibt gemerkt (confirm_kit). Der Schlüssel erscheint nie im Fenster.
+// kitCard(onDone, nextHint) -> Schritt „Notfallblatt speichern“ (Fertig- und Startseite): Notfallblatt als neue Datei in
+//   Downloads speichern oder nur den Notfallschlüssel kopieren; danach wird der Haken frei und bleibt gemerkt (confirm_kit).
+//   Der Schlüssel erscheint nie im Fenster.
 //   warn, solange offen: ohne den Schlüssel lassen sich Sicherungen auf einem neuen Rechner nicht öffnen. nextHint = die
 //   Seite sperrt ihren Hauptknopf bis zum Haken und sagt das.
 function kitCard(onDone, nextHint) {
@@ -2042,7 +2049,7 @@ function kitCard(onDone, nextHint) {
       msg.textContent = t('core.desktop.kit.copied');
       box.disabled = false;
     } catch (e) {
-      msg.textContent = t('core.desktop.kit.unavailable');
+      msg.textContent = t(String(e) === 'kit-clipboard' ? 'core.desktop.kit.clipboard_failed' : 'core.desktop.kit.unavailable');
     }
   };
   box.addEventListener('change', async () => {

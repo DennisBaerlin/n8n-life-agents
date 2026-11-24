@@ -683,7 +683,8 @@ _bkp_try_parsed() {
   done <<<"$all"
   case "$_BKP_TRY_ERR" in
     # Kaputtes Token: fuer die Start-App key_line mit Zeile 1 — eine aeltere App kennt keinen neuen Code (Rust macht daraus
-    #   internal und verliesse das Eingabe-Fenster) und zeigt so "Zeile 1 stimmt nicht", passend zum Token in Feld 1.
+    #   internal und verliesse das Eingabe-Fenster) und zeigt so "Zeile 1 stimmt nicht", passend zum Token in Feld 1. Das
+    #   Feld token:true (_bkp_brought_key) trennt es fuer die neue App von einer falschen Zeile 1 eines alten Blatts.
     token)     _BKP_TRY_CODE=key_line; _BKP_TRY_LINE=1; _BKP_TRY_MSG="$(backup_text msg.token)" ;;
     line[1-4]) _BKP_TRY_CODE=key_line; _BKP_TRY_LINE="${_BKP_TRY_ERR#line}"; _BKP_TRY_MSG="$(backup_text msg.line n "$_BKP_TRY_LINE")" ;;
     length)    _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.length)" ;;
@@ -761,7 +762,7 @@ _bkp_brought_key() {
       parsed="$(backup_key_parse)"
     fi
     _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid" && return 0
-    _bkp_rdie "$_BKP_TRY_CODE" "${_BKP_TRY_MSG} ${un}" --arg id "$fkid" --argjson line "${_BKP_TRY_LINE:-0}"
+    _bkp_rdie "$_BKP_TRY_CODE" "${_BKP_TRY_MSG} ${un}" --arg id "$fkid" --argjson line "${_BKP_TRY_LINE:-0}" --argjson token "$( [ "$_BKP_TRY_ERR" = token ] && echo true || echo false)"
   fi
   if [ "$_BKP_JSON" = 1 ] || ! ui_interactive; then
     if rt_is_compose; then cmd="$(rt_master_cli_hint) backup restore <datei> --key-stdin < Notfallblatt.txt"
@@ -1535,7 +1536,8 @@ backup_cmd_key() {
   if [ "$token" = 1 ]; then
     [ -z "$file" ] || die "--token und --file gehen nicht zusammen."
     _bkp_resolve_db
-    k="$(backup_key_read | tr -d '\n')"
+    # Lesefehler (DB weg) endet in derselben Meldung statt im stillen Abbruch durch errexit/pipefail des Aufrufers.
+    k="$(backup_key_read 2>/dev/null | tr -d '\n' || true)"
     printf '%s' "$k" | backup_key_token \
       || die "Kein Sicherungs-Schlüssel gespeichert (core.backup_key) — die Installation ist nicht fertig; 'lifeagents doctor' zeigt, was fehlt."
     printf '\n'; return 0

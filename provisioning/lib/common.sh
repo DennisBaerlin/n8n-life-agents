@@ -1188,10 +1188,11 @@ backup_key_parse() {
 }
 # _backup_key_parse_old (stdin: Text) -> wie backup_key_parse, nur das alte Blatt: Zeilen "1:" … "4:" bilden je einen Block
 #   (die Datei traegt den aktuellen und aeltere Schluessel); ohne solche Zeilen zaehlt der ganze Text: 64 Hex = Schluessel
-#   ohne Pruefung, 72 Hex = 4 Zeilen mit Pruefzeichen.
+#   ohne Pruefung, 72 Hex = 4 Zeilen mit Pruefzeichen. Die vier Zeilen samt "2:" … "4:" hintereinander in einer Zeile (das
+#   eine Eingabefeld der Start-App) werden vorher wieder in Zeilen geteilt.
 _backup_key_parse_old() {
   local txt line n acc='' want=1 rc d all out='' i re='^[[:space:]]*([1-4])[[:space:]]*:'
-  txt="$(cat)"
+  txt="$(sed -E 's/[[:space:]]+([2-4])[[:space:]]*:/\n\1:/g')"
   if printf '%s\n' "$txt" | grep -qE '^[[:space:]]*[1-4][[:space:]]*:'; then
     while IFS= read -r line; do
       [[ "$line" =~ $re ]] || continue

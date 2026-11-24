@@ -9,7 +9,7 @@ use std::time::Duration;
 use lifeagents_desktop_core::autostart::AUTOSTART_ARG;
 use lifeagents_desktop_core::host::RealHost;
 use lifeagents_desktop_core::journal::{Journal, Status};
-use lifeagents_desktop_core::{lang, texts};
+use lifeagents_desktop_core::{backup, lang, texts};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
@@ -229,8 +229,14 @@ fn main() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("lifeagents konnte nicht starten");
+        .build(tauri::generate_context!())
+        .expect("lifeagents konnte nicht starten")
+        .run(|_app, event| {
+            // Beim Beenden den noch kopierten Notfallschlüssel aus der Zwischenablage nehmen (der 60-s-Zeitgeber endet mit).
+            if let tauri::RunEvent::Exit = event {
+                backup::clear_copied(&RealHost, None);
+            }
+        });
 }
 
 /// Owner-Entscheid „ein Fenster“: Die Fragebogen-Seite (fremde Adresse auf 127.0.0.1) läuft im App-Fenster, darf aber

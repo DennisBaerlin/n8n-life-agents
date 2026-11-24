@@ -383,6 +383,7 @@
   "core.desktop.backup_restore.err.setup": "The setup is not finished yet.",
   "core.desktop.backup_restore.err.internal": "Something went wrong.",
   "core.desktop.kit.unavailable": "Docker is not running right now. Start Docker and try again.",
+  "core.desktop.kit.clipboard_failed": "The clipboard could not be written just now. Try again in a moment or save the emergency sheet.",
   "core.desktop.kit.write_failed": "The emergency sheet could not be saved in “Downloads”.",
   "core.desktop.kit.busy_title": "Saving the emergency sheet …",
   "core.desktop.kit.copy_busy": "Copying the emergency key …",

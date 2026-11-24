@@ -383,6 +383,7 @@
   "core.desktop.backup_restore.err.setup": "Die Einrichtung ist noch nicht fertig.",
   "core.desktop.backup_restore.err.internal": "Etwas ist schiefgegangen.",
   "core.desktop.kit.unavailable": "Docker läuft gerade nicht. Starte Docker und versuche es noch einmal.",
+  "core.desktop.kit.clipboard_failed": "Die Zwischenablage ließ sich gerade nicht beschreiben. Versuche es gleich noch einmal oder speichere das Notfallblatt.",
   "core.desktop.kit.write_failed": "Das Notfallblatt ließ sich nicht in „Downloads“ speichern.",
   "core.desktop.kit.busy_title": "Notfallblatt wird gespeichert …",
   "core.desktop.kit.copy_busy": "Notfallschlüssel wird kopiert …",

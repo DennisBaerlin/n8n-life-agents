@@ -383,6 +383,7 @@
   "core.desktop.backup_restore.err.setup": "아직 설정이 끝나지 않았어요.",
   "core.desktop.backup_restore.err.internal": "문제가 생겼어요.",
   "core.desktop.kit.unavailable": "지금 Docker가 실행 중이 아니에요. Docker를 켜고 다시 시도해 주세요.",
+  "core.desktop.kit.clipboard_failed": "지금은 클립보드에 쓸 수 없어요. 잠시 후 다시 시도하거나 비상 시트를 저장하세요.",
   "core.desktop.kit.write_failed": "비상 시트를 “다운로드”에 저장할 수 없었어요.",
   "core.desktop.kit.busy_title": "비상 시트를 저장하는 중 …",
   "core.desktop.kit.copy_busy": "비상 키를 복사하는 중 …",

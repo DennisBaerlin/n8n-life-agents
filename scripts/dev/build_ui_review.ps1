@@ -140,8 +140,8 @@ if ($Capture) {
             Write-Host "  [OK] $Capture/$n" -ForegroundColor Green
         }
         # Schema des Menues am Symbol (zeichnet macOS bzw. Windows selbst). Eintraege, Reihenfolge und Trenner liest es aus
-        # app/src/main.rs (Menu::with_items, item("<id>", "<text-key>", …)), die Texte aus dem deutschen Katalog: eine
-        # eingetippte Liste lief der App davon (die Sicherungs-Punkte fehlten).
+        # app/src/main.rs (Menu::with_items, item("<id>", "<text-key>", …)) und die Texte aus dem deutschen Katalog, damit das
+        # Schema der App folgt.
         if (-not $Screens.Count -or $Screens -contains 'tray') {
             $mainRs = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\desktop\app\src\main.rs'), $Utf8NoBom)
             $de = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\locales\de.json'), $Utf8NoBom) | ConvertFrom-Json

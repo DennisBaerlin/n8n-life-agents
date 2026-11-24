@@ -18,6 +18,8 @@ provisioning/** text eol=lf
 *.yaml text eol=lf
 *.tpl  text eol=lf
 *.toml text eol=lf
+# Notfallblatt-Fixtures: byte-gleich mit der Ausgabe im Container (Rust include_str!, backup_test).
+tests/backup/fixtures/*.txt text eol=lf
 *.example text eol=lf
 # Extensionless Dockerfile (test-substrate base image, built on Linux) — keep LF like the rest of the tree.
 Dockerfile text eol=lf

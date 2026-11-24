@@ -16,8 +16,10 @@ Jede Sicherung ist eine Datei mit einem Namen wie `lifeagents-backup-20261112033
 
 ## Das Notfallblatt {#notfallblatt}
 
-Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank liegt. Geht der Rechner kaputt, ist auch dieser Schlüssel weg. **Ohne den Schlüssel lässt sich keine Sicherung öffnen, auch nicht von uns.** Darum gibt es das Notfallblatt: Darauf steht der Schlüssel in vier Zeilen. Die zwei Zeichen am Ende jeder Zeile sind Prüfzeichen und zeigen einen Tippfehler sofort an.
+Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank liegt. Geht der Rechner kaputt, ist auch dieser Schlüssel weg. **Ohne den Schlüssel lässt sich keine Sicherung öffnen, auch nicht von uns.** Darum gibt es das Notfallblatt: Darauf steht der Schlüssel als eine einzige Zeile, der **Notfallschlüssel**. Er beginnt mit `labk1_`, danach folgen 56 Buchstaben und Ziffern.
 
+- **Kopieren statt abtippen.** Ein Doppelklick markiert die ganze Zeile. Kopiere sie in deinen Passwort-Manager und füge sie beim Wiederherstellen ein. Eine eingebaute Prüfsumme meldet Tipp- und Kopierfehler sofort. Vom Papier abtippen geht auch: Groß und klein ist egal, 0 und o sowie 1, i und l zählen gleich.
+- **Ältere Blätter gelten weiter.** Ein Blatt, auf dem der Schlüssel noch in vier Zeilen steht, funktioniert genauso.
 - **Ausdrucken oder im Passwort-Manager speichern.** Lege das Blatt nicht in den Sicherungsordner, sonst liegen Schloss und Schlüssel zusammen.
 - **Wieder holen:** in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt **Notfallblatt speichern …**. Auf einem Server im Terminal: `lifeagents backup key`.
 - **Gilt weiter:** Nach einer Wiederherstellung auf einem neuen Rechner gilt der Schlüssel deines Notfallblatts weiter. Druckst du später ein neues Blatt, steht der ältere Schlüssel darauf unter „Für ältere Sicherungen“. Bewahre das alte Blatt trotzdem auf.
@@ -49,8 +51,8 @@ Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, u
    - Start-App: Liegen im Sicherungsordner Sicherungen deines alten Rechners, zeigt die Fertig-Seite gleich die Karte **Sicherung vom alten Rechner zurückholen**. Sonst im Symbol **Sicherung wiederherstellen …** wählen. Die Liste zeigt die Sicherungen im Ordner, die deines alten Rechners stehen oben. Liegt die Sicherung woanders (USB-Stick, Downloads), nimm **Andere Datei wählen …**.
    - Server: `lifeagents backup restore` (Auswahl aus dem aktuellen Ordner) oder `lifeagents backup restore <datei>`.
 3. **Notfallblatt geben.**
-   - Start-App: **Notfallblatt-Datei wählen …** oder die vier Zeilen vom Papier abtippen. Leerzeichen und Bindestriche sind egal; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.
-   - Server: Die Eingabe im Terminal bleibt unsichtbar. Statt zu tippen kannst du die Notfallblatt-Datei mitgeben: `lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt`.
+   - Start-App: **Notfallblatt-Datei wählen …** oder den Notfallschlüssel in das erste Feld einfügen. Bei einem älteren Blatt tippst du die vier Zeilen ab; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.
+   - Server: Füge den Notfallschlüssel ein, wenn danach gefragt wird; die Eingabe bleibt unsichtbar. Stattdessen kannst du die Notfallblatt-Datei mitgeben: `lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt`.
 4. **Bestätigen.** Vorher siehst du, von wann die Sicherung ist und was zurückkommt. Hast du auf diesem Rechner schon eigene Daten, legt der Assistent vorher eine Sicherung davon an und du bestätigst mit einem Haken, dass sie ersetzt werden. Danach sind deine Daten zurück; in der Start-App läuft das weiter, auch wenn du das Fenster schließt.
 5. **Danach.** Ab jetzt gilt das Notfallblatt deines alten Rechners. Speichere in der Start-App gleich das neue Blatt (es enthält beide Schlüssel). Lass den alten Rechner nicht mehr in denselben Ordner sichern, sonst räumen sich beide gegenseitig alte Sicherungen weg. Nutzt du einen neuen Telegram-Bot, starten die anderen im Haushalt ihn einmal selbst.
 
@@ -61,7 +63,9 @@ Ohne Start-App geht es auch im Terminal: `docker exec -it lifeagents-master life
 | Meldung | Was du tun kannst |
 |---|---|
 | „Dieser Schlüssel gehört nicht zu dieser Sicherung“ | Das Blatt gehört zu einem anderen Rechner. Die Meldung nennt beide Kennungen; nimm das Blatt mit der Kennung der Sicherung. |
-| „Zeile 3 stimmt nicht“ | Diese Zeile noch einmal genau abtippen (0 und o, 1 und l verwechselt?). |
+| „Der Notfallschlüssel hat einen Fehler“ | Die ganze Zeile noch einmal vom Blatt kopieren. Beim Abtippen auf fehlende oder vertauschte Zeichen achten. |
+| „Zeile 3 stimmt nicht“ (älteres Blatt mit vier Zeilen) | Diese Zeile noch einmal genau abtippen (0 und o, 1 und l verwechselt?). |
+| Eine Sicherung von vor v0.51.0 lässt sich nur in ihrer alten Version zurückspielen | Die alte Version kennt den Notfallschlüssel als eine Zeile noch nicht. Nimm dein älteres Notfallblatt mit vier Zeilen. |
 | „Die Datei ist beschädigt“ | Eine ältere Sicherung wählen. |
 | „Versions-Konflikt … die Sicherung ist älter“ | Ein Update hilft hier nicht. Installiere die Version aus dem Dateinamen neu (Schritt 1). |
 | „Versions-Konflikt … die Sicherung ist neuer“ | Erst `lifeagents update`, dann noch einmal wiederherstellen. |

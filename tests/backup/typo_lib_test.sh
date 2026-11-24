@@ -32,4 +32,9 @@ for i in $(seq 1 24); do
   [ "$(_backup_key_check $(( i % 4 + 1 )) "${c}${d:1}")" != "$(_backup_key_check $(( i % 4 + 1 )) "$d")" ] || bad=$((bad + 1))
 done
 ok '24 Zufallszeilen: das Pruefzeichen faellt immer durch' '[ "$bad" = 0 ]'
+# typo_token: ein erfundener Schluessel als Token, der Tausch faellt sicher durch die Pruefsumme.
+T="$(printf "%s" "$D3$D3$D3$D3" | backup_key_token)"
+bt="$(typo_token "$T")"
+ok "typo_token aendert genau ein Zeichen" '[ ${#bt} = ${#T} ] && [ "$bt" != "$T" ]'
+ok "typo_token faellt durch die Pruefsumme" '! printf "%s" "${bt#*_}" | backup_key_untoken >/dev/null'
 exit "$fails"

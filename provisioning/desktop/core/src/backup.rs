@@ -133,6 +133,16 @@ mod tests {
         assert_eq!(h.files.borrow().get(&p2).map(String::as_str), Some(KIT));
     }
 
+    // Das Blatt mit dem Notfallschlüssel als Token (erfundene Schlüssel, Ausgabe von `lifeagents backup key --file -`) muss die
+    // Prüfung oben bestehen: ein Update tauscht den `master`, nicht die App (Schritte „1:“ auf dem Blatt, common.sh backup_kit_text).
+    #[test]
+    fn token_sheet_passes_the_check_of_this_app() {
+        let sheet = include_str!("../../../../tests/backup/fixtures/notfallblatt-token.txt");
+        let h = FakeHost::mac().on(&cmd(DockerCall::Master(MasterCmd::BackupKit)), CmdOut::ok(sheet));
+        let p = save_kit(&h, &d(), "Life-Agents-Notfallblatt").unwrap();
+        assert_eq!(h.files.borrow().get(&p).map(String::as_str), Some(sheet));
+    }
+
     #[test]
     fn windows_lines_and_folder() {
         let h = FakeHost::windows().on(&cmd(DockerCall::Master(MasterCmd::BackupKit)), CmdOut::ok(KIT));

@@ -397,6 +397,15 @@ mod tests {
         assert!(Sheet::typed(&["a".into()]).is_err());
     }
 
+    // Notfallschlüssel (Token, erfundener Schlüssel) ins Feld „Zeile 1“: genau diese Bytes liest der `master` an
+    // (tests/mock_runtime/cases.sh B.token-app-feld1 nutzt dasselbe Literal).
+    #[test]
+    fn token_in_the_first_field_keeps_its_exact_bytes() {
+        let t = "labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy";
+        let s = Sheet::typed(&[format!(" {t} "), "".into(), "".into(), "".into()]).unwrap();
+        assert_eq!(s.text(), format!("1: {t}\n2: \n3: \n4: \n"));
+    }
+
     #[test]
     fn sheet_file_utf8_bom_and_utf16() {
         let mut bom = vec![0xEF, 0xBB, 0xBF];

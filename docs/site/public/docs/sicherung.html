@@ -235,8 +235,10 @@
 <li><code>v0.44.0</code> ist die Version, mit der sie geschrieben wurde.</li>
 </ul>
 <h2 id="notfallblatt">Das Notfallblatt</h2>
-<p>Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank liegt. Geht der Rechner kaputt, ist auch dieser Schlüssel weg. <strong>Ohne den Schlüssel lässt sich keine Sicherung öffnen, auch nicht von uns.</strong> Darum gibt es das Notfallblatt: Darauf steht der Schlüssel in vier Zeilen. Die zwei Zeichen am Ende jeder Zeile sind Prüfzeichen und zeigen einen Tippfehler sofort an.</p>
+<p>Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank liegt. Geht der Rechner kaputt, ist auch dieser Schlüssel weg. <strong>Ohne den Schlüssel lässt sich keine Sicherung öffnen, auch nicht von uns.</strong> Darum gibt es das Notfallblatt: Darauf steht der Schlüssel als eine einzige Zeile, der <strong>Notfallschlüssel</strong>. Er beginnt mit <code>labk1_</code>, danach folgen 56 Buchstaben und Ziffern.</p>
 <ul>
+<li><strong>Kopieren statt abtippen.</strong> Ein Doppelklick markiert die ganze Zeile. Kopiere sie in deinen Passwort-Manager und füge sie beim Wiederherstellen ein. Eine eingebaute Prüfsumme meldet Tipp- und Kopierfehler sofort. Vom Papier abtippen geht auch: Groß und klein ist egal, 0 und o sowie 1, i und l zählen gleich.</li>
+<li><strong>Ältere Blätter gelten weiter.</strong> Ein Blatt, auf dem der Schlüssel noch in vier Zeilen steht, funktioniert genauso.</li>
 <li><strong>Ausdrucken oder im Passwort-Manager speichern.</strong> Lege das Blatt nicht in den Sicherungsordner, sonst liegen Schloss und Schlüssel zusammen.</li>
 <li><strong>Wieder holen:</strong> in der Start-App über das Symbol in der Menüleiste bzw. neben der Uhr, Menüpunkt <strong>Notfallblatt speichern …</strong>. Auf einem Server im Terminal: <code>lifeagents backup key</code>.</li>
 <li><strong>Gilt weiter:</strong> Nach einer Wiederherstellung auf einem neuen Rechner gilt der Schlüssel deines Notfallblatts weiter. Druckst du später ein neues Blatt, steht der ältere Schlüssel darauf unter „Für ältere Sicherungen“. Bewahre das alte Blatt trotzdem auf.</li>
@@ -265,8 +267,8 @@
 </li>
 <li><strong>Notfallblatt geben.</strong>
 <ul>
-<li>Start-App: <strong>Notfallblatt-Datei wählen …</strong> oder die vier Zeilen vom Papier abtippen. Leerzeichen und Bindestriche sind egal; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.</li>
-<li>Server: Die Eingabe im Terminal bleibt unsichtbar. Statt zu tippen kannst du die Notfallblatt-Datei mitgeben: <code>lifeagents backup restore &lt;datei&gt; --key-stdin &lt; Notfallblatt.txt</code>.</li>
+<li>Start-App: <strong>Notfallblatt-Datei wählen …</strong> oder den Notfallschlüssel in das erste Feld einfügen. Bei einem älteren Blatt tippst du die vier Zeilen ab; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.</li>
+<li>Server: Füge den Notfallschlüssel ein, wenn danach gefragt wird; die Eingabe bleibt unsichtbar. Stattdessen kannst du die Notfallblatt-Datei mitgeben: <code>lifeagents backup restore &lt;datei&gt; --key-stdin &lt; Notfallblatt.txt</code>.</li>
 </ul>
 </li>
 <li><strong>Bestätigen.</strong> Vorher siehst du, von wann die Sicherung ist und was zurückkommt. Hast du auf diesem Rechner schon eigene Daten, legt der Assistent vorher eine Sicherung davon an und du bestätigst mit einem Haken, dass sie ersetzt werden. Danach sind deine Daten zurück; in der Start-App läuft das weiter, auch wenn du das Fenster schließt.</li>
@@ -287,8 +289,16 @@
 					<td>Das Blatt gehört zu einem anderen Rechner. Die Meldung nennt beide Kennungen; nimm das Blatt mit der Kennung der Sicherung.</td>
 			</tr>
 			<tr>
-					<td>„Zeile 3 stimmt nicht“</td>
+					<td>„Der Notfallschlüssel hat einen Fehler“</td>
+					<td>Die ganze Zeile noch einmal vom Blatt kopieren. Beim Abtippen auf fehlende oder vertauschte Zeichen achten.</td>
+			</tr>
+			<tr>
+					<td>„Zeile 3 stimmt nicht“ (älteres Blatt mit vier Zeilen)</td>
 					<td>Diese Zeile noch einmal genau abtippen (0 und o, 1 und l verwechselt?).</td>
+			</tr>
+			<tr>
+					<td>Eine Sicherung von vor v0.51.0 lässt sich nur in ihrer alten Version zurückspielen</td>
+					<td>Die alte Version kennt den Notfallschlüssel als eine Zeile noch nicht. Nimm dein älteres Notfallblatt mit vier Zeilen. Hast du nur das neue Blatt, rechne den Schlüssel um (siehe unten).</td>
 			</tr>
 			<tr>
 					<td>„Die Datei ist beschädigt“</td>
@@ -305,6 +315,9 @@
 	</tbody>
 </table>
 <p>Es wird bei jedem dieser Fehler nichts geändert: Eine Wiederherstellung gelingt ganz oder gar nicht.</p>
+<p><strong>Notfallschlüssel für eine Version vor v0.51.0 umrechnen.</strong> Starte im Terminal diesen Befehl (auf einem Server ohne das vordere <code>docker exec -i lifeagents-master</code>), füge den Notfallschlüssel ein und drücke Enter, dann Strg+D:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>docker exec -i lifeagents-master sh -c <span style="color:#e6db74">&#34;tr -d &#39; \n&#39; | cut -c7- | tr &#39;a-z&#39; &#39;A-Z&#39; | tr &#39;0-9A-HJKMNP-TV-Z&#39; &#39;A-Z2-7&#39; | base32 -d | head -c 32 | od -An -v -tx1 | tr -d &#39; \n&#39; | fold -w16; echo&#34;</span>
+</span></span></code></pre></div><p>Heraus kommen vier Zeilen zu je 16 Zeichen, wie auf einem älteren Blatt. Gib sie bei den Fragen „Zeile 1“ bis „Zeile 4“ ein, in der Start-App in die vier Felder.</p>
 
   </article>
 </div>

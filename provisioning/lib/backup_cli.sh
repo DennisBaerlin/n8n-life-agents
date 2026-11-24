@@ -682,6 +682,9 @@ _bkp_try_parsed() {
     if [ -n "$fkid" ]; then _BKP_TRY_FINAL=1; _BKP_TRY_CODE=corrupt; _BKP_TRY_MSG="$(backup_text msg.corrupt id "$fkid")"; return 1; fi
   done <<<"$all"
   case "$_BKP_TRY_ERR" in
+    # Kaputtes Token: fuer die Start-App key_line mit Zeile 1 — eine aeltere App kennt keinen neuen Code (Rust macht daraus
+    #   internal und verliesse das Eingabe-Fenster) und zeigt so "Zeile 1 stimmt nicht", passend zum Token in Feld 1.
+    token)     _BKP_TRY_CODE=key_line; _BKP_TRY_LINE=1; _BKP_TRY_MSG="$(backup_text msg.token)" ;;
     line[1-4]) _BKP_TRY_CODE=key_line; _BKP_TRY_LINE="${_BKP_TRY_ERR#line}"; _BKP_TRY_MSG="$(backup_text msg.line n "$_BKP_TRY_LINE")" ;;
     length)    _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.length)" ;;
     chars)     _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.chars)" ;;
@@ -692,20 +695,46 @@ _bkp_try_parsed() {
   return 1
 }
 
-# _bkp_ask_key_tty -> Eingabe vom Notfallblatt am Terminal (verdeckt) im Format von backup_key_parse. Zeile fuer Zeile mit
-#   sofortiger Pruefung und eigener Meldung je Ursache (Pruefzeichen vs. Form), bis zu 3 Versuche je Zeile, danach
-#   "err:line<n>"; wer in Zeile 1 den ganzen Schluessel eingibt, ist sofort fertig.
+# _bkp_ask_key_tty -> Eingabe vom Notfallblatt am Terminal (verdeckt) im Format von backup_key_parse. Erste Frage: der ganze
+#   Notfallschluessel (Token oder alter Schluessel am Stueck). Ein Token mit zu wenig Zeichen (beim Einfuegen umbrochen) bekommt
+#   je Versuch "Rest einfuegen"; ein kaputtes Token bis zu 3 Versuche, danach "err:token". Eine Zeile des alten Blatts fuehrt
+#   Zeile fuer Zeile weiter (eigene Meldung je Ursache, 3 Versuche je Zeile, danach "err:line<n>").
 _bkp_ask_key_tty() {
-  local n line d acc='' rc tries msg
+  local n line d acc='' rc tries msg p k
+  tries=0
+  while :; do
+    tries=$((tries + 1))
+    line="$(ui_input "$(backup_text ask.paste)" 1)"
+    if p="$(printf '%s\n' "$line" | _backup_token_scan)"; then
+      if ! printf '%s\n' "$p" | grep -q '^key:' && printf '%s\n' "$p" | grep -qx 'err:short'; then
+        line="${line} $(ui_input "$(backup_text ask.rest)" 1)"
+        p="$(printf '%s\n' "$line" | _backup_token_scan)"
+      fi
+      k="$(printf '%s\n' "$p" | grep -m1 '^key:' || true)"
+      if [ -n "$k" ]; then
+        { printf '  %s\n' "$(backup_text ask.recognized id "$(printf '%s' "${k#key:}" | backup_key_id)")" > /dev/tty; } 2>/dev/null || true
+        printf '%s\n' "$k"; return 0
+      fi
+      if [ "$tries" -ge 3 ]; then printf 'err:token\n'; return 0; fi
+      { printf '  %s\n' "$(backup_text msg.token)" > /dev/tty; } 2>/dev/null || true
+      continue
+    fi
+    if [ "$(printf '%s' "$line" | backup_key_normalize | wc -c)" -ge 64 ]; then
+      printf '%s' "$line" | backup_key_parse; return 0
+    fi
+    # Eine Zeile des alten Blatts fuehrt in die Zeilen-Fragen, auch mit Tippfehler (dort die Meldung je Ursache): Zeilennummer
+    #   vorn, Form einer Zeile (backup_key_line rc 0/1) oder ungefaehr ihre Laenge. Alles andere ist ein misslungenes Einfuegen.
+    rc=0; printf '%s' "$line" | backup_key_line 1 > /dev/null || rc=$?
+    d="$(printf '%s' "$line" | backup_key_normalize)"
+    if [ "$rc" -ne 2 ] || [[ "$line" =~ ^[[:space:]]*[1-4][[:space:]]*: ]] || { [ "${#d}" -ge 14 ] && [ "${#d}" -le 20 ]; }; then break; fi
+    if [ "$tries" -ge 3 ]; then printf 'err:chars\n'; return 0; fi
+    { printf '  %s\n' "$(backup_text msg.chars)" > /dev/tty; } 2>/dev/null || true
+  done
   for n in 1 2 3 4; do
     tries=0
     while :; do
       tries=$((tries + 1))
-      if [ "$n" = 1 ]; then line="$(ui_input "$(backup_text ask.line1)" 1)"
-      else line="$(ui_input "$(backup_text ask.line n "$n")" 1)"; fi
-      if [ "$n" = 1 ] && [ "$(printf '%s' "$line" | backup_key_normalize | wc -c)" -ge 64 ]; then
-        printf '%s' "$line" | backup_key_parse; return 0
-      fi
+      [ "$n" = 1 ] && [ "$tries" = 1 ] || line="$(ui_input "$(backup_text ask.line n "$n")" 1)"
       rc=0; d="$(printf '%s' "$line" | backup_key_line "$n")" || rc=$?
       [ "$rc" -eq 0 ] && break
       if [ "$tries" -ge 3 ]; then printf 'err:line%s\n' "$n"; return 0; fi

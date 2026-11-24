@@ -1041,21 +1041,62 @@ backup_key_normalize() {
 #   jeder Sicherung (Diagnose "falscher Schluessel" vs. "beschaedigt", Aufraeumen nur eigener Sicherungen); 32 Bit eines
 #   Hashs verraten nichts ueber einen 256-Bit-Schluessel.
 backup_key_id() { printf 'k%s' "$(sha256sum | cut -c1-8)"; }
-# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen der Zeile (die Nummer geht mit ein, damit
-#   vertauschte Zeilen auffallen).
+# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen einer Zeile des Blatts mit vier Zeilen (die Nummer geht
+#   mit ein, damit vertauschte Zeilen auffallen). Gebraucht zum Einlesen gedruckter Blaetter.
 _backup_key_check() { printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-2; }
-# backup_key_paper (stdin) -> der Schluessel als 4 Zeilen "n:  xxxx-xxxx-xxxx-xxxx  pp" (pp = Pruefzeichen). Kein
-#   64-Hex-Schluessel (nie vom Installer erzeugt) -> unveraendert in einer Zeile.
-backup_key_paper() {
-  local k n d; k="$(cat)"
-  case "$k" in
-    *[!0-9a-f]*) printf '%s\n' "$k"; return 0 ;;
-  esac
-  [ "${#k}" -eq 64 ] || { printf '%s\n' "$k"; return 0; }
-  for n in 1 2 3 4; do
-    d="${k:$(( (n - 1) * 16 )):16}"
-    printf '%s:  %s-%s-%s-%s  %s\n' "$n" "${d:0:4}" "${d:4:4}" "${d:8:4}" "${d:12:4}" "$(_backup_key_check "$n" "$d")"
+# Notfallschluessel als Token: "labk1_" + 56 Zeichen Crockford-Base32 (klein) ueber 35 Bytes = 32 Schluessel-Bytes + 3 Pruef-Bytes
+#   (SHA-256 von "labk1:" + Schluessel-Bytes); 280 Bit = 56 x 5, also ohne Fuellzeichen. Eine Zeile ohne Leerraum und Bindestrich,
+#   damit ein Doppelklick sie ganz markiert (Vorbild GitHub-Token-Format); Crockford-Alphabet ohne i/l/o/u, gelesen wird o->0,
+#   i/l->1. Nur eine Schreibweise des 64-Hex-Werts in core.backup_key: die gpg-Passphrase bleibt der Hex-Text.
+#   Bytes laufen nur durch Pipes (eine bash-Variable verliert NUL-Bytes); `od -v`, sonst fasst od gleiche 16-Byte-Zeilen zu "*".
+#   Format-Doku: docs/reference/provisioning.md *Backup/Restore*; feste Pruefwerte: tests/mock_runtime/cases.sh B.token-bekannt.
+BACKUP_TOKEN_PREFIX=labk1
+_BK_B32_RFC='A-Z2-7'
+_BK_B32_CRO='0-9a-hjkmnp-tv-z'
+# shellcheck disable=SC2059  # Format aus geprueftem Hex gebaut (\xNN); printf ist eingebaut -> der Schluessel erscheint nie in argv
+_backup_hex_bytes() { local h i; h="$(cat)"; for ((i = 0; i < ${#h}; i += 2)); do printf "\\x${h:i:2}"; done; }
+_backup_token_check() { { printf '%s:' "$BACKUP_TOKEN_PREFIX"; printf '%s' "$1" | _backup_hex_bytes; } | sha256sum | cut -c1-6; }
+# backup_key_token (stdin: 64 Hex) -> Token; rc 1 bei anderem Wert.
+backup_key_token() {
+  local k; k="$(cat)"
+  [[ "$k" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s_%s' "$BACKUP_TOKEN_PREFIX" \
+    "$(printf '%s%s' "$k" "$(_backup_token_check "$k")" | _backup_hex_bytes | base32 -w0 | tr "$_BK_B32_RFC" "$_BK_B32_CRO")"
+}
+# backup_key_untoken (stdin: 56 Zeichen Rumpf, klein, Aliase schon zugeordnet) -> 64 Hex; rc 1 = Form oder Pruefsumme falsch.
+backup_key_untoken() {
+  local b h
+  b="$(cat)"
+  [[ "$b" =~ ^[0-9a-hjkmnp-tv-z]{56}$ ]] || return 1
+  h="$(printf '%s' "$b" | tr "$_BK_B32_CRO" "$_BK_B32_RFC" | base32 -d 2>/dev/null | od -An -v -tx1 | tr -d ' \n')"
+  [ "${#h}" -eq 70 ] && [ "${h:64:6}" = "$(_backup_token_check "${h:0:64}")" ] || return 1
+  printf '%s' "${h:0:64}"
+}
+# Praefix tolerant gelesen (vom Papier abgetippt: LABKL-, labk1 …), aber nur als eigenes Wort mit Trenner danach: sonst passte
+#   jedes "Labki…" (z. B. ein Ordnername auf dem Blatt) und verdraengte als Token-Fehler die richtige Meldung (key_foreign). Kein
+#   fester Text auf dem Blatt und kein Katalog-Text darf darauf passen (Test B.blatt-nur-schluessel-*).
+_BK_TOKEN_RE='(^|[^[:alnum:]])[Ll][Aa][Bb][Kk][1IiLl][_[:space:]-]'
+# _backup_token_scan (stdin: Text) -> je Praefix-Fund "key:<64 hex>", "err:short" (Text endet vor 56 Zeichen: abgeschnitten
+#   kopiert) oder "err:token" (fremdes Zeichen, Pruefsumme); rc 1 = kein Praefix im Text. Leerraum im Rumpf wird uebersprungen
+#   (Token beim Kopieren umbrochen); die Crockford-Zuordnung gilt nur fuer die 56 Zeichen, nie fuer den ganzen Text (sonst
+#   wuerde aus dem Praefix "1abk1_").
+_backup_token_scan() {
+  local txt rest body c i k found=1
+  txt="$(LC_ALL=C sed 's/\xc2\xa0/ /g' | tr '\r' ' ')"
+  while [[ "$txt" =~ $_BK_TOKEN_RE ]]; do
+    found=0
+    rest="${txt#*"${BASH_REMATCH[0]}"}"; body=''; i=0
+    while [ "${#body}" -lt 56 ] && [ "$i" -lt "${#rest}" ]; do
+      c="${rest:i:1}"; i=$((i + 1))
+      case "$c" in [[:space:]]) ;; *) body="${body}${c}" ;; esac
+    done
+    # Nach einem Fehlversuch geht die Suche direkt hinter dem Praefix weiter: ein echtes Token gleich danach bliebe sonst im
+    #   verbrauchten Rumpf stecken.
+    if [ "${#body}" -lt 56 ]; then printf 'err:short\n'; txt="$rest"
+    elif k="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]' | tr 'oil' '011' | backup_key_untoken)"; then printf 'key:%s\n' "$k"; txt="${rest:i}"
+    else printf 'err:token\n'; txt="$rest"; fi
   done
+  return "$found"
 }
 # backup_key_line <n> (stdin: eine abgetippte Zeile) -> 16 Hex auf stdout. Nimmt "n:"-Praefix, Leerzeichen, Bindestriche,
 #   Grossbuchstaben; mit Pruefzeichen (18 Hex) wird geprueft, ohne (16 Hex) nicht. rc 1 = Pruefzeichen falsch, rc 2 = Form.
@@ -1090,10 +1131,15 @@ backup_text() {
   while [ "$#" -ge 2 ]; do t="${t//"{$1}"/"$2"}"; shift 2; done
   printf '%s' "$t"
 }
-# backup_kit_text -> das Notfallblatt (Klartext, erste Zeile = Titel): aktueller Schluessel als Papier-Schluessel mit
+# _backup_key_show (stdin: Schluessel) -> eine Zeile fuers Blatt: Token; ein Wert, der kein 64-Hex-Schluessel ist (vom Installer
+#   nie erzeugt), unveraendert.
+_backup_key_show() { local k; k="$(cat)"; printf '%s' "$k" | backup_key_token || printf '%s' "$k"; printf '\n'; }
+# backup_kit_text -> das Notfallblatt (Klartext, erste Zeile = Titel): aktueller Schluessel als Token-Zeile mit
 #   ID und Datum (seit wann er gilt, nicht Druckdatum: zwei Ausdrucke desselben Schluessels sollen gleich aussehen),
 #   aeltere (prev) darunter, wo die Sicherungen liegen, wie man auf einem neuen Rechner wiederherstellt. Keine Personen-
 #   oder Haushaltsnamen. rc 1 = kein Schluessel. Ausgabe nur an Kanaele ohne Log (Terminal, --file, Start-App-Pipe).
+#   Die Schritte tragen "1:" … "3:": Start-Apps vor dem Ein-Feld-Fenster nehmen beim Speichern nur ein Blatt mit einer Zeile "1:" an
+#   (desktop/core/src/backup.rs save_kit), und ein Update tauscht den master, nicht die App -> so lassen, solange solche Apps laufen.
 backup_kit_text() {
   local keys=() k i kid folder ver since
   mapfile -t keys < <(backup_key_candidates 2>/dev/null || true)
@@ -1106,11 +1152,11 @@ backup_kit_text() {
   folder="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
   printf '%s\n%s\n\n%s\n\n%s\n' "$(backup_text kit.title)" "$(backup_text kit.meta id "$kid" date "${since:-?}")" \
     "$(backup_text kit.intro)" "$(backup_text kit.key_title)"
-  printf '%s' "${keys[0]}" | backup_key_paper | sed 's/^/  /'
+  printf '%s' "${keys[0]}" | _backup_key_show | sed 's/^/  /'
   printf '%s\n' "$(backup_text kit.check_hint)"
   for ((i = 1; i < ${#keys[@]}; i++)); do
     printf '\n%s\n' "$(backup_text kit.older_title id "$(printf '%s' "${keys[$i]}" | backup_key_id)")"
-    printf '%s' "${keys[$i]}" | backup_key_paper | sed 's/^/  /'
+    printf '%s' "${keys[$i]}" | _backup_key_show | sed 's/^/  /'
   done
   if [ -n "$folder" ]; then k="$(backup_text kit.where_folder folder "$folder")"
   elif rt_is_compose; then k="$(backup_text kit.where_none)"
@@ -1118,17 +1164,32 @@ backup_kit_text() {
   printf '\n%s\n\n%s\n' "$k" "$(backup_text kit.restore_title)"
   # Docker-Weg: Menuepunkt der Start-App statt Terminal.
   local r2=kit.restore_2; rt_is_compose && r2=kit.restore_2_app
-  printf -- '- %s\n- %s\n- %s\n\n' "$(backup_text kit.restore_1 version "$ver")" "$(backup_text "$r2")" "$(backup_text kit.restore_3)"
+  printf -- '1: %s\n2: %s\n3: %s\n\n' "$(backup_text kit.restore_1 version "$ver")" "$(backup_text "$r2")" "$(backup_text kit.restore_3)"
   if rt_is_compose; then k="$(backup_text kit.again_app)"; else k="$(backup_text kit.again)"; fi
   printf '%s\n%s\n' "$(backup_text kit.guide url "$BACKUP_GUIDE_URL")" "$k"
 }
 BACKUP_GUIDE_URL="https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung.html"
 # backup_key_parse (stdin: Text vom Notfallblatt oder die ganze Notfallblatt-Datei) -> je gefundenem Schluessel eine
-#   Zeile "key:<64 hex>" und je fehlerhaftem Block eine Zeile "err:<code>" (line<n> = Pruefzeichen/Form dieser Zeile,
-#   length, chars); der Aufrufer waehlt den Schluessel, der zur Sicherung passt. Zeilen "1:" … "4:" bilden je einen Block
-#   (die Datei traegt den aktuellen und aeltere Schluessel); ohne solche Zeilen zaehlt der ganze Text: 64 Hex = Schluessel
-#   ohne Pruefung, 72 Hex = 4 Zeilen mit Pruefzeichen. Nur "n:" ist Zeilen-Praefix (die Schritte auf dem Blatt tragen keins).
+#   Zeile "key:<64 hex>" und je fehlerhaftem Teil eine Zeile "err:<code>" (token = Token kaputt; line<n> = Pruefzeichen/Form
+#   einer Zeile des alten Blatts; length, chars); der Aufrufer waehlt den Schluessel, der zur Sicherung passt. Erst die Tokens
+#   (_backup_token_scan), dann das alte Format. Steht ein Token im Text, liest der alte Weg nur reine Blatt-Zeilen ("n:" + Hex)
+#   und nur deren Schluessel: die Schritte "1: …" des neuen Blatts sind kein Block, ein leeres "2: " aus der Start-App kein Fehler.
 backup_key_parse() {
+  local txt tok old
+  txt="$(cat)"
+  tok="$(printf '%s\n' "$txt" | _backup_token_scan | sed 's/^err:short$/err:token/' || true)"
+  if [ -n "$tok" ]; then
+    old="$(printf '%s\n' "$txt" | grep -E '^[[:space:]]*[1-4][[:space:]]*:[[:space:]0-9A-Fa-f-]*[0-9A-Fa-f][[:space:]0-9A-Fa-f-]*$' || true)"
+    [ -z "$old" ] || old="$(printf '%s\n' "$old" | _backup_key_parse_old | grep '^key:' || true)"
+    printf '%s\n' "$tok"; [ -z "$old" ] || printf '%s\n' "$old"
+    return 0
+  fi
+  printf '%s' "$txt" | _backup_key_parse_old
+}
+# _backup_key_parse_old (stdin: Text) -> wie backup_key_parse, nur das alte Blatt: Zeilen "1:" … "4:" bilden je einen Block
+#   (die Datei traegt den aktuellen und aeltere Schluessel); ohne solche Zeilen zaehlt der ganze Text: 64 Hex = Schluessel
+#   ohne Pruefung, 72 Hex = 4 Zeilen mit Pruefzeichen.
+_backup_key_parse_old() {
   local txt line n acc='' want=1 rc d all out='' i re='^[[:space:]]*([1-4])[[:space:]]*:'
   txt="$(cat)"
   if printf '%s\n' "$txt" | grep -qE '^[[:space:]]*[1-4][[:space:]]*:'; then

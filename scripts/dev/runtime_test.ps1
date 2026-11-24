@@ -38,7 +38,8 @@ foreach ($d in Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory) {
     if ($r.Code -ne 0) { throw "Paket-Verzeichnis $($d.Name) nicht anlegbar: $($r.Output -join ' | ')" }
     $manifestPairs += , @("packages\$($d.Name)\manifest.json", "packages/$($d.Name)/manifest.json")
 }
-foreach ($pair in (@(@('provisioning', 'provisioning'), @('packages\core\locales', 'packages/core/locales'), @('tests\mock_llm', 'tests/mock_llm'), @('tests\mock_runtime', 'mock_runtime')) + $manifestPairs)) {
+# tests/backup: altes Notfallblatt (fixtures/) und sein Erzeuger old_sheet_lib.sh fuer die Schluessel-Faelle B.*.
+foreach ($pair in (@(@('provisioning', 'provisioning'), @('packages\core\locales', 'packages/core/locales'), @('tests\mock_llm', 'tests/mock_llm'), @('tests\mock_runtime', 'mock_runtime'), @('tests\backup', 'backup')) + $manifestPairs)) {
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot $pair[0]), "${Container}:$root/$($pair[1])")
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }

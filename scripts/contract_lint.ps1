@@ -2207,7 +2207,7 @@ $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s
 # Release-Asset ohne Baum (kein Sourcing, es gibt noch keine lib/), muss Docker einrichten und den Kern starten. Erlaubt sind nur
 # die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
 $setupRel = 'provisioning/setup.sh'
-$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
+$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+-i\s+"\$P-master"\s+stack\s+wizard-url\s+--hints-stdin\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
 $setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|(--now\s+)?"\$UNIT_NAME")\s+>&2|^\s+start\s+"\$UNIT_NAME"\s+>&2|^\s+is-active\s+--quiet\s+"\$UNIT_NAME"|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
@@ -2274,7 +2274,8 @@ foreach ($sa in @(
     @{ n = 'setup: version ok';      r = $setupRel; t = "  docker version >/dev/null 2>&1 || die x`n";           want = 0 },
     @{ n = 'setup: Kern-Aufruf ok';  r = $setupRel; t = "  docker `"`${a[@]}`" < `"`$in`" | tee `"`$OUT`" | jq x`n";  want = 0 },
     @{ n = 'setup: image rm ok';     r = $setupRel; t = "  docker image rm `"`$img`" >/dev/null 2>&1`n";          want = 0 },
-    @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec `"`$P-master`" stack wizard-url --json`n"; want = 0 },
+    @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec -i `"`$P-master`" stack wizard-url --hints-stdin --json`n"; want = 0 },
+    @{ n = 'setup: exec frei';       r = $setupRel; t = "  docker exec -i `"`$P-master`" sh -c x`n";              want = 1 },
     @{ n = 'setup: enable Docker ok'; r = $setupRel; t = "  systemctl enable --now docker >&2`n";                 want = 0 },
     @{ n = 'setup: kill frei';       r = $setupRel; t = "  docker kill `"`$P-core`"`n";                             want = 1 },
     @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },

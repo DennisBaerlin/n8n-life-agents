@@ -66,6 +66,7 @@ const FINALIZE_LOG = path.join(STATE_DIR, 'finalize.log');
 const FINALIZE_TIMEOUT_MS = Math.max(100, parseInt(process.env.WIZARD_FINALIZE_TIMEOUT_MS || String(20 * 60 * 1000), 10));
 const FINALIZE_RETRY_MS = Math.max(0, parseInt(process.env.WIZARD_FINALIZE_RETRY_MS || '20000', 10));
 const FINALIZE_TRIES = 3;
+const NOAPP_EXIT_MS = Math.max(0, parseInt(process.env.WIZARD_NOAPP_EXIT_MS || '60000', 10));
 const FINALIZE_BUSY_MAX = 60;   // „läuft schon“ zählt nicht als Fehlversuch, aber nicht endlos
 // Merker „Einrichtung abgeschlossen“ (ohne Inhalt): der master startet den Wizard bei jedem Hochfahren; steht der Merker,
 // endet der Server sofort, statt einen neuen Fragebogen zu beginnen (P1, compose: init + Ruhe-Prozess danach).
@@ -437,16 +438,24 @@ function pageFor(id) {
         help: [{ p: T('core.wizard.page.backup_fail_help') }], note: { kind: 'bad', text: T('core.wizard.page.backup_fail_note') },
         next: T('core.wizard.page.backup_retry') });
     }
-    case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
-      next: T('core.wizard.page.review_next') });
-    case 'confirm': return Object.assign(base, { kind: 'confirm', title: T('core.wizard.page.confirm_title'), help: P1('core.wizard.page.confirm_help'),
-      groups: confirmGroups(), next: T('core.wizard.page.confirm_next') });
+    case 'review': {
+      // Die Übersicht ist die letzte Seite vor dem Start (keine eigene Bestätigung). Tunnel: als Nächstes die Anmeldung.
+      const tunnel = flow.reachMode(P.A) !== 'fritzbox';
+      return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
+        note: tunnel ? { kind: '', text: T('core.wizard.page.review_tunnel_note') } : undefined,
+        next: T(tunnel ? 'core.wizard.page.review_next' : 'core.wizard.page.review_start') });
+    }
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
-    case 'handoff': return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
-      help: [{ p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') },
-        { p: T('core.wizard.page.handoff_awake') }],
-      next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
+    case 'handoff': {
+      const tg = { p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') };
+      // Ohne Start-App (setup.sh) übernimmt niemand: Seite zum Schließen, der Wizard räumt danach selbst auf (noAppExit).
+      if (noApp()) return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
+        help: [tg, { p: T('core.wizard.page.handoff_close') }] });
+      return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
+        help: [tg, { p: T('core.wizard.page.handoff_awake') }],
+        next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
+    }
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }
 }
@@ -495,6 +504,15 @@ function hints() {
   return v;
 }
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
+// Ohne Start-App geöffnet: setup.sh gibt LA_HANDOFF=none mit (ausdrücklich, nicht aus fehlenden Hinweisen geraten: eine App,
+// die einmal keine hints.env schreibt, bekäme sonst das falsche Ende).
+function noApp() { return hints().LA_HANDOFF === 'none'; }
+// Statt `ctl.js finish` der App: nach einer Frist, in der der Browser die Fertig-Seite noch holt (Abfrage alle 1,5 s).
+let noAppTimer = null;
+function noAppExit() {
+  if (noAppTimer || P.phase !== 'connected' || !noApp()) return;
+  noAppTimer = setTimeout(finishAll, NOAPP_EXIT_MS);
+}
 
 // --- Wohin sichern? -------------------------------------------------------------------------------------------
 function backupCandidates() { return flow.backupCandidates(hints().LA_BACKUP_CANDIDATES); }
@@ -649,15 +667,6 @@ function reviewRows() {
     }
   }
   return rows;
-}
-function confirmGroups() {
-  const mode = flow.reachMode(P.A);
-  return [
-    { title: T('core.wizard.confirm.new_title'), items: [T('core.wizard.confirm.new_area'),
-      T(mode === 'fritzbox' ? 'core.wizard.confirm.new_fritzbox' : 'core.wizard.confirm.new_tunnel'), T('core.wizard.confirm.new_bot')] },
-    { title: T('core.wizard.confirm.keep_title'), items: [T('core.wizard.confirm.keep_programs'), T('core.wizard.confirm.keep_files'),
-      T('core.wizard.confirm.keep_energy')] },
-  ];
 }
 
 // Fortschritt der Installation: die Schritt-Codes aus provision.sh (ui_step <text> <stage>) in sechs Gruppen.
@@ -912,9 +921,8 @@ async function answer(id, raw, skip) {
         const r = await setBackupDir(P.A.__backup_choice || 'other', P.A.__backup_dir);
         if (r.error) { delete P.A.__backup_dir; P.cursor = firstOpen(); save(); return r; }
       }
-      P.cursor = 'confirm'; save(); return { ok: true };
+      return startInstall();
     }
-    case 'confirm': return startInstall();
     default: return { error: T('core.wizard.msg.unknown_page') };
   }
   if (MODE_BACKUP && firstOpen() === 'backup_result' && !P.notes.backup) await applyBackupDir();
@@ -930,8 +938,8 @@ function back() {
   if (i > 0) { P.cursor = s[i - 1]; save(); }
 }
 function gotoStep(id) {
-  if (P.phase !== 'questions' || !['review', 'confirm'].includes(cursor())) return { error: T('core.wizard.msg.change_in_review') };
-  if (!list().includes(id) || ['review', 'confirm', 'install', 'connect', 'handoff'].includes(id)) return { error: T('core.wizard.msg.unknown_item') };
+  if (P.phase !== 'questions' || cursor() !== 'review') return { error: T('core.wizard.msg.change_in_review') };
+  if (!list().includes(id) || ['review', 'install', 'connect', 'handoff'].includes(id)) return { error: T('core.wizard.msg.unknown_item') };
   P.cursor = id;
   save();
   return { ok: true };
@@ -989,7 +997,7 @@ function startInstall() {
 function retry() {
   if (P.phase !== 'failed') return;
   P.phase = 'questions';
-  P.cursor = 'confirm';
+  P.cursor = 'review';
   save();
 }
 
@@ -1080,6 +1088,7 @@ async function connectTick(force) {
         PAIR = null;
         P.phase = 'connected';
         P.cursor = 'handoff';
+        noAppExit();
       } else finalizeMiss(c, f);
     }
     save();
@@ -1359,6 +1368,7 @@ async function main() {
   loadCatalog();
   P = loadProgress();
   await loadQuestions();
+  noAppExit();   // Neustart in der Frist: das Aufräumen nicht verlieren
   }
   startCtl();
   httpServer = http.createServer((req, res) => {

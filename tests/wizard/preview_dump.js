@@ -94,10 +94,8 @@ async function step(w, id, value, opt) {
     await shot(w, 'backup_dir_custom-fremde');
     fs.rmSync(path.join(w.fake, 'backup_foreign'));
     await step(w, 'backup_dir_custom', '/Users/erika/Sicherung');
-    await step(w, 'review', null);
-    await shot(w, 'confirm');
     fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'workflows');
-    await answer(w, 'confirm', null);
+    await step(w, 'review', null);
     await waitFor(async () => (((await state(w)).json.page.items || [])[4] || {}).state === 'run');   // 5. Stufe (workflows) läuft
     await shot(w, 'install');
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
@@ -106,7 +104,7 @@ async function step(w, id, value, opt) {
     await shot(w, 'install-fehler');
     fs.rmSync(path.join(w.fake, 'fail_stage'));
     await post(w, '/api/action', { name: 'retry' });
-    await answer(w, 'confirm', null);
+    await answer(w, 'review', null);
     await waitFor(async () => (await state(w)).json.page.id === 'connect');
     const pg = await waitFor(async () => { const p = (await state(w)).json.page; return p.qr ? p : null; });
     out.push({ name: 'connect', page: pg });
@@ -167,9 +165,8 @@ async function step(w, id, value, opt) {
       await answer(t, 'backup_dir', 'other');
       await answer(t, 'backup_dir_custom', '/Users/erika/Sicherung');
       if (!sfx) await shot(t, 'review-tunnel');
-      await answer(t, 'review', null);
       fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
-      await answer(t, 'confirm', null);
+      await answer(t, 'review', null);
       const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
       out.push({ name: 'connect-tailscale' + sfx, page: p });
       fs.writeFileSync(path.join(t.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));

@@ -188,12 +188,11 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     rv = await page(w);
     assert.equal(rv.id, 'review');
     assert.equal((await post(w, '/api/goto', { id: 'install' })).status, 422);
+    // Keine eigene Bestätigungs-Seite: die Übersicht startet die Installation.
+    assert.equal(rv.next, 'Alles richtig, Installation starten');
+    assert.equal(rv.note, undefined, 'FritzBox-Weg: kein Tailscale-Hinweis');
+    assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'answers.env')), 'vor dem Start keine Antwort-Datei');
     await expectOk(await answer(w, 'review', null));
-    const cf = await page(w);
-    assert.equal(cf.id, 'confirm');
-    assert.equal(cf.next, 'Einverstanden, Installation starten');
-    assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'answers.env')), 'vor der zweiten Bestätigung keine Antwort-Datei');
-    await expectOk(await answer(w, 'confirm', null));
 
     // Installation gegen die Attrappe; Antwort-Datei danach gelöscht.
     await waitFor(async () => (await page(w)).id === 'connect');
@@ -218,6 +217,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
     const ho = await waitFor(async () => { const p = await page(w); return p.id === 'handoff' ? p : null; });
     assert.match(ho.help[0].p, /Haushalt einrichten/);
+    assert.match(ho.help[1].p, /wach bleiben/, 'mit Start-App (ohne LA_HANDOFF) folgt der Dauerbetrieb');
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'pair_calls'), 'utf8').trim().split('\n'), ['arm', 'finalize']);
     await expectOk(await post(w, '/api/action', { name: 'handoff' }));
     assert.deepEqual(await ctl(w, 'status'), { phase: 'handoff', step: 'handoff', lang: 'de', bot: 'beispiel_bot' }, 'Bot-Name für „Telegram öffnen“ der App');
@@ -273,11 +273,13 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await backupPage(w);
     assert.equal((await page(w)).id, 'review');
     assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale nach der Installation)');
-    await expectOk(await answer(w, 'review', null));
+    const rvt = await page(w);
+    assert.equal(rvt.next, 'Alles richtig, weiter');
+    assert.equal(rvt.note.text, 'Als Nächstes meldest du dich bei Tailscale an. Danach richtet sich alles von allein ein.');
 
-    // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Bestätigung erneut.
+    // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht erneut.
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
-    await expectOk(await answer(w, 'confirm', null));
+    await expectOk(await answer(w, 'review', null));
     const failed = await waitFor(async () => { const p = await page(w); return p.failed ? p : null; });
     assert.deepEqual(failed.items.map((i) => i.state), ['ok', 'ok', 'ok', 'ok', 'bad', '']);
     const rep = (await (require('./helpers').req)(w, 'GET', '/api/report', { headers: { Cookie: w.cookie } })).json.text;
@@ -285,9 +287,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.ok(!/Erika|Muster|beispiel/.test(rep));
     fs.rmSync(path.join(w.fake, 'fail_stage'));
     await expectOk(await post(w, '/api/action', { name: 'retry' }));
-    assert.equal((await page(w)).id, 'confirm');
+    assert.equal((await page(w)).id, 'review');
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');   // Tunnel wartet auf die Anmeldung
-    await expectOk(await answer(w, 'confirm', null));
+    await expectOk(await answer(w, 'review', null));
     await waitFor(async () => (await page(w)).id === 'connect');
     assert.equal(fs.readFileSync(path.join(w.fake, 'runs'), 'utf8').trim(), '2');
     const parsed = JSON.parse(fs.readFileSync(path.join(w.fake, 'parsed.json'), 'utf8'));
@@ -476,14 +478,14 @@ test('Sprache: Antippen stellt die Einrichtung sofort um, die Auswahl bleibt in 
 
 // Live-Fund: Direkt nach dem Einrichten antwortet die Adresse oft noch nicht (Zertifikat, DNS). Nur dann wartet die Seite
 // sichtbar; was Zeit nicht heilt, meldet sie sofort.
-async function toConnect(env, signal) {
-  const w = await startWizard({ hints: {}, env });
+async function toConnect(env, signal, hints = {}) {
+  const w = await startWizard({ hints, env });
   await login(w);
   fs.writeFileSync(path.join(w.fake, signal), '');
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
     ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['backup_dir', 'other'],
-    ['backup_dir_custom', '/daten/sicherung'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
+    ['backup_dir_custom', '/daten/sicherung'], ['review', null]]) await expectOk(await answer(w, id, v));
   await waitFor(async () => (await page(w)).id === 'connect');
   return w;
 }
@@ -547,6 +549,26 @@ for (const [name, line] of [['ok:false', '{"ok":false,"reason":"finalize_failed"
     } finally { await w.stop(); }
   });
 }
+
+// Linux-Server über setup.sh: keine Start-App, die nach „Weiter“ übernimmt (Dauerbetrieb, `ctl.js finish`).
+test('Ende ohne Start-App (LA_HANDOFF=none): Fertig-Seite zum Schließen, danach räumt der Wizard selbst auf', async () => {
+  const w = await toConnect(Object.assign({ WIZARD_NOAPP_EXIT_MS: '3000' }, FIN), 'paired_later', { LA_HANDOFF: 'none' });
+  try {
+    pairNow(w);
+    const p = await waitFor(async () => { const x = await page(w); return x.id === 'handoff' ? x : null; });
+    assert.equal(p.title, 'lifeagents ist eingerichtet');
+    const help = p.help.map((x) => x.p).join(' ');
+    assert.match(help, /Telegram/);
+    assert.match(help, /Du kannst es jetzt schließen/);
+    assert.ok(!/wach bleiben/.test(help), 'kein Dauerbetrieb-Satz ohne App');
+    assert.equal(p.next || null, null, 'kein Knopf');
+    assert.ok(!p.done, 'keine Warte-Zeile „Einen Moment …“');
+    assert.ok(!p.poll);
+    assert.equal(await w.exited, 0, 'beendet sich wie nach `ctl.js finish`');
+    assert.ok(fs.existsSync(path.join(w.dir, 'state', 'done')), 'wizard-url meldet danach „abgeschlossen“');
+    assert.ok(!fs.existsSync(path.join(w.dir, 'state', 'progress.json')), 'Fortschritt samt Geheimnissen gelöscht');
+  } finally { await w.stop(); }
+});
 
 test('Abschluss: ein Fehlversuch heilt von selbst, ohne Meldung', async () => {
   const w = await toConnect(FIN, 'paired_later');

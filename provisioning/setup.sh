@@ -311,7 +311,8 @@ set -euo pipefail
 P='@P@'
 case "${1:-}" in
   wizard-url)
-    r="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rc 'fromjson? | select(type == "object" and .type == "result")' | tail -n1 || true)"
+    # Ohne Start-App: der Wizard endet mit „Fenster schließen“ und räumt selbst auf (LA_HANDOFF, wizard/server.js noApp).
+    r="$(printf 'LA_HANDOFF=none\n' | docker exec -i "$P-master" stack wizard-url --hints-stdin --json 2>/dev/null | jq -Rc 'fromjson? | select(type == "object" and .type == "result")' | tail -n1 || true)"
     [ -n "$r" ] || r='{}'
     if [ "$(jq -r '.ok // false' <<<"$r")" = true ]; then jq -r '.url' <<<"$r"; else
       printf 'Kein Link: %s\n' "$(jq -r '.detail // "der Verbund läuft nicht?"' <<<"$r")" >&2; exit 1
@@ -411,7 +412,7 @@ url=''
 # Ein laufender Verbund ohne Wizard (Einrichtung abgeschlossen, Zweitlauf) hat keinen Link: dann nicht lange warten.
 tries=15; [ "$changed" = true ] || tries=3
 for _ in $(seq 1 "$tries"); do
-  url="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
+  url="$(printf 'LA_HANDOFF=none\n' | docker exec -i "$P-master" stack wizard-url --hints-stdin --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
   [ -z "$url" ] || break
   sleep "${LA_SETUP_WAIT:-2}"
 done

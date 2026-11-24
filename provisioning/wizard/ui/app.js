@@ -401,9 +401,6 @@ const UiNudge = {
       kids.push(h('dl', null, (p.rows || []).map((r) => h('div', { class: 'rv' }, h('dt', { text: r.label }), h('dd', { text: String(r.value).replace(/\.(?=\S)/g, '.​') }),
         h('button', { type: 'button', 'aria-label': T.change_label.replace('{label}', r.label), on: { click: () => post('/api/goto', { id: r.goto }) } }, T.change)))));
     }
-    if (p.kind === 'confirm') {
-      for (const g of p.groups || []) kids.push(h('p', { class: 'group-title', text: g.title }), h('ul', null, g.items.map((t) => h('li', { text: t }))));
-    }
     if (p.kind === 'install') {
       kids.push(h('ul', { class: 'steps' }, (p.items || []).map((it) => h('li', { class: it.state }, h('i', { 'aria-hidden': 'true', text: it.state === 'ok' ? '✓' : it.state === 'bad' ? '!' : '' }), it.text))));
     }

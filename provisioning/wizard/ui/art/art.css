@@ -13,7 +13,9 @@
 .art ~ .spacer { min-height: 0; }
 /* Schmales Fenster (Handy-Breite): natürliche Höhe statt Restplatz, damit die Schrittliste als Rückfall ganz zu sehen ist */
 @media (max-width: 600px) { .art.art-guide { container-type: inline-size; flex: none; max-height: none; } }
-.art.art-guide { overflow-y: auto; }
+/* Rechner-Fenster: die Animation behält ihre Höhe (auch neben dem QR-Code), stattdessen scrollt die ganze Seite; kein
+   eigener Scroll-Kasten im Bild. Damit greift die Rückfall-Liste nur noch über die Breite. */
+@media (min-width: 601px) { .art.art-guide { min-height: 360px; } }
 .art-frame { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: var(--radius); overflow: hidden; background: var(--bg-soft); }
 .art-guide .art-stage { flex: 1 1 auto; min-height: 0; }
 .art-stage svg { display: block; width: 100%; height: 100%; }
@@ -180,12 +182,9 @@
 .ts .post, .ts[data-done="1"] .pre { display: none; }
 .ts[data-done="1"] .post { display: inline; }
 
-/* Lupe braucht Breite (Start-App 760 px) und etwas Höhe; sonst entfällt die Animation */
+/* Lupe braucht Breite (Start-App 760 px); sonst entfällt die Animation */
 /* Zu wenig Platz: Zeichnung und Schritt-Knöpfe weg; sichtbar bleiben die Schritte als Liste, der Hinweis und der Link */
 @container art (max-width: 460px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
-  .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin: 10px 0 0; }
-  .art-guide .art-list.sr { position: static; left: auto; order: -1; margin: 0 0 12px 22px; padding: 0; } }
-@container art (max-height: 220px) { .art-guide .art-stage, .art-guide .art-bar { display: none; } .art-guide .art-hint[hidden] { display: block; }
   .art-guide .art-frame { border: 0; background: none; flex: none; } .art-guide .art-guide-link { position: static; align-self: flex-start; margin: 10px 0 0; }
   .art-guide .art-list.sr { position: static; left: auto; order: -1; margin: 0 0 12px 22px; padding: 0; } }
 

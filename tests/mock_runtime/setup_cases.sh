@@ -57,7 +57,8 @@ case "${1:-}" in
     exit "${!r:-0}" ;;
   exec)
     d='{"v":1,"type":"result","verb":"wizard-url","ok":true,"url":"http://127.0.0.1:5881/start?t=abc123"}'
-    case "$a" in *'|wizard-url|'*) printf '%s\n' "${STUB_URL_JSON:-$d}"; exit "${STUB_URL_RC:-0}" ;; esac
+    # stdin (--hints-stdin) = hints.env fuer den Wizard: mitschreiben (setup.sh hat keine Start-App, LA_HANDOFF=none).
+    case "$a" in *'|wizard-url|'*) cat > "$STUB_LOG.hints"; printf '%s\n' "${STUB_URL_JSON:-$d}"; exit "${STUB_URL_RC:-0}" ;; esac
     # reach_ctl.sh status (Tunnel-Stand): eine JSON-Zeile; STUB_REACH_RC = Abfrage scheitert.
     r='{"mode":"none","state":"unavailable","url":"","dns_name":""}'
     case "$a" in *'reach_ctl.sh|status|'*) [ -z "${STUB_REACH_RC:-}" ] || exit "$STUB_REACH_RC"; printf '%s\n' "${STUB_REACH_JSON:-$r}"; exit 0 ;; esac
@@ -273,7 +274,8 @@ bash -n "$CMD" 2>/dev/null && pass SU.befehl-syntax || fail SU.befehl-syntax "ba
 : > "$SUL"; STUB_LOG="$SUL" PATH="$SUB:$PATH" "$CMD" doctor </dev/null >/dev/null 2>&1
 eq SU.befehl-reicht-durch 'docker|exec|-i|lifeagents-master|lifeagents|doctor|' "$(grep '^docker|exec' "$SUL" | head -1)|"
 : > "$SUL"; STUB_LOG="$SUL" PATH="$SUB:$PATH" "$CMD" wizard-url </dev/null 2>/dev/null
-su_has SU.befehl-wizard-url "$(grep '^docker|exec' "$SUL" | head -1)" 'lifeagents-master|stack|wizard-url|--json'
+su_has SU.befehl-wizard-url "$(grep '^docker|exec' "$SUL" | head -1)" '|-i|lifeagents-master|stack|wizard-url|--hints-stdin|--json'
+eq SU.befehl-wizard-url-ohne-app 'LA_HANDOFF=none' "$(cat "$SUL.hints")"
 out="$(STUB_LOG="$SUL" PATH="$SUB:$PATH" "$CMD" wizard-url </dev/null 2>/dev/null)"
 eq SU.befehl-wizard-url-nur-url 'http://127.0.0.1:5881/start?t=abc123' "$out"
 : > "$SUL"; STUB_LOG="$SUL" STUB_MASTER_IMAGE='reg.example/master@sha256:bbbb' PATH="$SUB:$PATH" "$CMD" boot-start </dev/null >/dev/null 2>&1
@@ -323,6 +325,7 @@ su_root debian 12 bookworm
 SU_USER=alice sux --yes --image "$IMG"
 su_has SU.ausgabe-ssh "$(cat "$SUD/out")" 'ssh -L 5881:127.0.0.1:5881 alice@192.0.2.10'
 su_has SU.ausgabe-link "$(cat "$SUD/out")" 'http://127.0.0.1:5881/start?t=abc123'
+eq SU.einrichten-ohne-app 'LA_HANDOFF=none' "$(cat "$SUL.hints" 2>/dev/null)"
 su_has SU.ausgabe-zehn-minuten "$(cat "$SUD/out")" '10 Minuten'
 su_has SU.ausgabe-neuer-link "$(cat "$SUD/out")" 'lifeagents wizard-url'
 su_root debian 12 bookworm

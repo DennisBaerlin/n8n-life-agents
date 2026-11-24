@@ -115,6 +115,9 @@
 #   (41) Pruef-fn ohne Registry: jede <pkg>.fn_validate_<x>(p_facts jsonb) ist im context_validators-Block oder als advisors.*.plan_validate_fn
 #       ihres Manifests gebunden; ein Kontext hat nur eine der beiden Pruefungen;
 #       Ausnahmeliste scripts/build/validator_registry_allowlist.json (Ratchet). Selbst-Asserts.
+#   (42) Test-Zugaenge in CI: ein Workflow, der TEST_-Secrets oder das Environment install-test nennt, laeuft nur per
+#       schedule/workflow_dispatch, liest Secrets nur im env: eines Schritts eines Jobs mit environment install-test,
+#       ohne Sammel-Zugriff, Eingaben im Befehl, ungepinnte Actions oder Artefakte. Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -2991,6 +2994,113 @@ foreach ($sa in @(
 }
 if ($vrDefined -notcontains 'finance.fn_validate_finance_profile' -or $vrBound -notcontains 'finance.fn_validate_finance_profile') {
     $errors.Add("Pruef-fn Selbst-Assert 'Bestand': finance.fn_validate_finance_profile nicht als definiert und gebunden erkannt -- Check 41 liest Dateien oder Manifeste falsch.")
+}
+
+# (42) TEST-ZUGAENGE IN CI: Die Secrets im Environment install-test (Test-Bot, Tailscale-OAuth, Anthropic) liest ein Job nur,
+#      der das Environment nennt; dessen Branch-Regel (nur main) schuetzt aber nicht vor Ausloesern, die auf main mit fremdem
+#      Inhalt laufen (pull_request_target, workflow_run, issue_comment). Darum Positivliste statt Sperrliste. Zeilenbasiert
+#      (kein YAML-Parser in PS 5.1): erwartet Block-Stil mit Leerzeichen-Einrueckung, wie alle Workflows im Repo.
+#      Regeln und Begruendung: docs/reference/tests.md *Test-Zugänge*.
+function Get-CiSecretIssues([string[]]$L) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $txt = $L -join "`n"
+    # Jede Erwaehnung (auch in Anfuehrungszeichen) zaehlt: GitHub loest environment: "install-test" genauso auf.
+    if ($txt -notmatch 'secrets\.TEST_|install-test') { return @() }
+    $ind = { param($s) $s.Length - $s.TrimStart(' ').Length }
+    $skip = { param($s) (-not $s.Trim()) -or $s -match '^\s*#' }
+    # Ausloeser: Schluessel eine Ebene unter `on:` (Einrueckung des ersten Schluessels; oder `on: x` / `on: [a, b]`).
+    for ($i = 0; $i -lt $L.Count; $i++) {
+        if ($L[$i] -match '^(on|"on"|''on''):\s*(.*)$') {
+            $rest = $Matches[2].Trim(); $trig = @(); $lvl = -1
+            if ($rest) { $trig = @($rest.Trim('[', ']') -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+            else {
+                for ($j = $i + 1; $j -lt $L.Count; $j++) {
+                    if (& $skip $L[$j]) { continue }
+                    if ($L[$j] -match '^\S') { break }
+                    if ($lvl -lt 0) { $lvl = & $ind $L[$j] }
+                    if ((& $ind $L[$j]) -eq $lvl -and $L[$j] -match '^\s*([A-Za-z_]+):') { $trig += $Matches[1] }
+                }
+            }
+            foreach ($t in $trig) { if ($t -notin @('schedule', 'workflow_dispatch')) { $iss.Add("Ausloeser '$t' (erlaubt nur schedule, workflow_dispatch)") } }
+        }
+    }
+    if ($txt -match 'toJSON\(\s*secrets\s*\)|secrets\s*\[|secrets:\s*inherit') { $iss.Add('Sammel-Zugriff auf Secrets (toJSON(secrets), secrets[...] oder secrets: inherit)') }
+    if ($txt -match 'upload-artifact') { $iss.Add('upload-artifact (Artefakte werden nicht geschwaerzt)') }
+    for ($i = 0; $i -lt $L.Count; $i++) {
+        $s = $L[$i]
+        if ($s -match '\$\{\{\s*(inputs|github\.event)\.' -and $s -notmatch '^\s*(-\s*)?if:') { $iss.Add("Zeile $($i + 1): `${{ inputs.* }}/`${{ github.event.* }} ausserhalb von if:") }
+        if ($s -match '^\s*(-\s*)?uses:\s*([^\s#]+)') {
+            $u = $Matches[2]
+            if ($u -notmatch '^\./' -and $u -notmatch '@[0-9a-f]{40}$') { $iss.Add("Zeile $($i + 1): Action '$u' nicht per SHA gepinnt") }
+        }
+        if ($s -match 'secrets\.') {
+            if ($s -notmatch '^\s*[A-Z_][A-Z0-9_]*:\s*\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}\s*$') { $iss.Add("Zeile $($i + 1): Secret nicht als eigene env:-Zeile NAME: `${{ secrets.NAME }}"); continue }
+            # Eltern-Schluessel muss env: sein, und env: muss zu einem Listeneintrag (Schritt) gehoeren.
+            $me = & $ind $s; $envAt = -1
+            for ($j = $i - 1; $j -ge 0; $j--) { if ($L[$j].Trim() -and (& $ind $L[$j]) -lt $me) { $envAt = $j; break } }
+            $okStep = $false
+            if ($envAt -ge 0 -and $L[$envAt] -match '^\s*-\s+env:\s*$') { $okStep = $true }
+            elseif ($envAt -ge 0 -and $L[$envAt] -match '^\s*env:\s*$') {
+                $ei = & $ind $L[$envAt]
+                for ($j = $envAt - 1; $j -ge 0; $j--) { if ($L[$j].Trim() -and (& $ind $L[$j]) -lt $ei) { $okStep = ($L[$j] -match '^\s*-\s'); break } }
+            }
+            if (-not $okStep) { $iss.Add("Zeile $($i + 1): Secret nicht im env: eines Schritts (Job-/Workflow-Ebene sieht jede Action)") }
+        }
+    }
+    # Je Job: Secrets nur mit environment install-test; permissions contents: read; checkout ohne gespeicherte Zugangsdaten.
+    $jobsAt = [array]::IndexOf($L, ($L | Where-Object { $_ -match '^jobs:\s*$' } | Select-Object -First 1))
+    if ($jobsAt -ge 0) {
+        $lvl = -1; $last = $L.Count
+        $starts = @(for ($i = $jobsAt + 1; $i -lt $L.Count; $i++) {
+            if (& $skip $L[$i]) { continue }
+            if ($L[$i] -match '^\S') { $last = $i; break }
+            if ($lvl -lt 0) { $lvl = & $ind $L[$i] }
+            if ((& $ind $L[$i]) -eq $lvl -and $L[$i] -match '^\s*[A-Za-z0-9_-]+:\s*$') { $i }
+        })
+        $q = '["'']?'
+        for ($k = 0; $k -lt $starts.Count; $k++) {
+            $end = if ($k + 1 -lt $starts.Count) { $starts[$k + 1] } else { $last }
+            $job = ($L[$starts[$k]..($end - 1)] -join "`n"); $jn = $L[$starts[$k]].Trim().TrimEnd(':')
+            if ($job -notmatch 'secrets\.|environment:') { continue }
+            if ($job -notmatch "environment:\s*${q}install-test${q}\s*(\n|$)" -and $job -notmatch "environment:\s*\n\s+name:\s*${q}install-test${q}") { $iss.Add("Job '$jn': liest Secrets ohne environment: install-test") }
+            $perm = ($txt -match '(?m)^permissions:\s*\n\s+contents:\s*read') -or ($job -match 'permissions:\s*\n\s+contents:\s*read')
+            # Schreibrechte irgendwo in der Datei (Workflow- oder Job-Ebene) gaelten auch fuer diesen Job.
+            if (-not $perm -or $txt -match 'write-all|:\s*write\s*(\n|$)') { $iss.Add("Job '$jn': permissions nicht auf contents: read begrenzt") }
+            $co = ([regex]::Matches($job, 'uses:\s*actions/checkout@')).Count
+            if ($co -gt ([regex]::Matches($job, 'persist-credentials:\s*false')).Count) { $iss.Add("Job '$jn': actions/checkout ohne persist-credentials: false") }
+        }
+    }
+    return @($iss)
+}
+foreach ($wf in (Get-ChildItem (Join-Path $RepoRoot '.github\workflows') -File | Where-Object { $_.Extension -in '.yml', '.yaml' })) {
+    foreach ($i in (Get-CiSecretIssues ([System.IO.File]::ReadAllLines($wf.FullName, $Utf8NoBom)))) { $errors.Add("CI-Test-Zugaenge: .github/workflows/$($wf.Name): $i") }
+}
+$sha = '0123456789abcdef0123456789abcdef01234567'
+$ciOk = @('name: t', 'on:', '  schedule:', "    - cron: '0 3 * * 1'", '  workflow_dispatch:', 'permissions:', '  contents: read', 'jobs:', '  install:',
+    '    runs-on: ubuntu-24.04', '    environment: install-test', '    steps:', "      - uses: actions/checkout@$sha", '        with:', '          persist-credentials: false',
+    '      - name: answers', '        env:', '          TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}', '        run: bash scripts/ci/install_test_answers.sh x')
+function Set-CiLine([string[]]$a, [int]$i, [string]$v) { $b = @($a); $b[$i] = $v; return $b }
+foreach ($sc in @(
+    @{ n = 'gruen';              l = $ciOk; want = 0 },
+    @{ n = 'ohne Secrets egal';  l = @('on:', '  pull_request:', 'jobs:', '  a:', '    steps:', '      - run: echo'); want = 0 },
+    @{ n = 'pull_request_target'; l = (Set-CiLine $ciOk 4 '  pull_request_target:'); want = 1 },
+    @{ n = 'push inline';        l = (Set-CiLine $ciOk 1 'on: [push, workflow_dispatch]'); want = 1 },
+    @{ n = 'kein environment';   l = (Set-CiLine $ciOk 10 '    timeout-minutes: 30'); want = 1 },
+    @{ n = 'Secret im run';      l = (Set-CiLine $ciOk 18 '        run: echo ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}'); want = 1 },
+    @{ n = 'Job-env';            l = @($ciOk[0..9]) + @('    env:', '      TEST_X: ${{ secrets.TEST_X }}') + @($ciOk[10..12]) + @($ciOk[13..14]); want = 1 },
+    @{ n = 'toJSON';             l = $ciOk + @('      - run: echo "${{ toJSON(secrets) }}" > /dev/null'); want = 1 },
+    @{ n = 'inputs im run';      l = $ciOk + @('      - run: echo ${{ inputs.ref }}'); want = 1 },
+    @{ n = 'ungepinnt';          l = (Set-CiLine $ciOk 12 '      - uses: actions/checkout@v4'); want = 1 },
+    @{ n = 'Artefakt';           l = $ciOk + @("      - uses: actions/upload-artifact@$sha"); want = 1 },
+    @{ n = 'Zugangsdaten bleiben'; l = (Set-CiLine $ciOk 14 '          fetch-depth: 1'); want = 1 },
+    @{ n = 'permissions fehlt';  l = @($ciOk[0..4]) + @($ciOk[7..18]); want = 1 },
+    @{ n = 'Schreibrecht oben';  l = @($ciOk[0..6]) + @('  packages: write') + @($ciOk[7..18]); want = 1 },
+    @{ n = 'environment quotiert + pull_request_target'; l = (Set-CiLine (Set-CiLine $ciOk 10 '    environment: "install-test"') 4 '  pull_request_target:'); want = 1 },
+    @{ n = '4 Leerzeichen unter on'; l = @('on:', '    pull_request_target:') + @($ciOk[5..18]); want = 1 },
+    @{ n = 'Kommentar zwischen Jobs'; l = $ciOk + @('# --- zweiter Job ---', '  b:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: x', '        env:',
+        '          TEST_X: ${{ secrets.TEST_X }}', '        run: true'); want = 1 })) {
+    $got = @(Get-CiSecretIssues $sc.l).Count
+    if ($got -ne $sc.want) { $errors.Add("CI-Test-Zugaenge Selbst-Assert '$($sc.n)': erwartet $($sc.want), gefunden $got ($((Get-CiSecretIssues $sc.l) -join ' | ')) -- Check 42 ist defekt.") }
 }
 
 # ---------------------------------------------------------------

@@ -49,9 +49,15 @@ _cfg_managed_by() {
 #   trotzdem gespeichert und wirkt beim naechsten `lifeagents update`.
 _cfg_apply_schedule() {
   [ "$1" = "schedule" ] || return 0
-  local pkg status
+  local pkg
   pkg="$(_cfg_psql -tA -c "SELECT package FROM core.config WHERE category = 'schedule' AND key = '$2'" 2>/dev/null || true)"
   _cfg_ident_ok "$pkg" || { warn "Besitzendes Paket von schedule/$2 unbekannt — Zeitplan wirkt nach 'lifeagents update'."; return 0; }
+  _cfg_redeploy_pkg "$pkg" "$2"
+}
+
+# _cfg_redeploy_pkg <pkg> [<key>] — Workflows eines installierten Pakets neu einspielen, damit ein geaenderter Zeitplan gilt.
+_cfg_redeploy_pkg() {
+  local pkg="$1" status
   status="$(_cfg_psql -tA -c "SELECT status FROM core.package_registry WHERE package = '${pkg}'" 2>/dev/null || true)"
   case "$status" in
     active|inactive) ;;
@@ -62,7 +68,7 @@ _cfg_apply_schedule() {
   # DEPLOY_STRICT_ACTIVATE=1: lief ein deaktivierter Workflow danach nicht wieder an, ist das ein Fehler (sonst
   # meldete die CLI "aktiv", waehrend der Zeitplan-Workflow stillsteht).
   if ( DEPLOY_STRICT_ACTIVATE=1 deploy_workflows "$pkg" ); then
-    ok "Neuer Zeitplan für ${2} ist aktiv."
+    ok "Neuer Zeitplan für ${2:-$pkg} ist aktiv."
   else
     warn "Workflows von '$pkg' konnten nicht (vollständig) neu eingespielt bzw. aktiviert werden — der Wert ist gespeichert; 'lifeagents doctor' prüft, 'lifeagents update' spielt erneut ein."
   fi
@@ -222,40 +228,48 @@ config_cmd_set() {
   _cfg_apply_schedule "$category" "$key"
 }
 
-# --- import: Einstellungen aus config.json einspielen (die Datei schreibt `lifeagents retire`, Umzug) ------------------------------
-# Liste [{package,category,key,value}]. Je Zeile dieselbe Pruefung wie `set` (Namen, kein Systemwert, nur bestehende Zeile, die DB
-# prueft den Wert); eine abgelehnte Zeile wird mit Namen gemeldet (nie mit Wert), die uebrigen laufen weiter, rc 1 bei mindestens
-# einer Ablehnung. Zeitplaene spielt jede Zeile einzeln ein (_cfg_apply_schedule), ausser LIFEAGENTS_CONFIG_DEFER_APPLY=1: dann macht
-# der Aufrufer es gesammelt (move apply spielt danach ohnehin alle Workflows neu ein).
+# --- import: geaenderte Einstellungen aus Sicherung oder Umzug einspielen ------------------------------------------------------------
+# Liste [{package,category,key,value}] (core.fn_config_export). Die Regel lebt in core.fn_config_import (Test
+# tests/db/core/test_fn_config_import.sql): nur bekannte Owner-Zeilen mit gueltigem Wert, alles andere mit Grund in skipped[], nicht
+# genannte Owner-Zeilen zurueck auf den Standard. Gerufen von `config import`, `backup restore` und `move apply`.
+
+# config_import_rows <datei> -> Ergebnis-JSON von core.fn_config_import auf stdout. Der Inhalt geht als base64 im SQL ueber stdin
+#   (nie argv, kein Quoting-Risiko); pg_su_stdin, weil psql im klassischen Betrieb als postgres laeuft und die root-Datei nicht liest.
+config_import_rows() {
+  local b64
+  b64="$(base64 -w0 "$1" 2>/dev/null || base64 "$1" | tr -d '\n')"
+  _cfg_resolve_db
+  printf "SELECT core.fn_config_import(jsonb_build_object('rows', convert_from(decode('%s','base64'),'UTF8')::jsonb));\n" "$b64" |
+    pg_su_stdin psql -v ON_ERROR_STOP=1 -X -q -tA -d "$N8N_DB_NAME" -f -
+}
+
+# config_import_report <ergebnis-json> — meldet Uebernommenes und Uebersprungenes (Namen + Grund, nie Werte) und spielt je
+#   betroffenem Paket die Workflows einmal neu ein, wenn ein Zeitplan sich geaendert hat (ausser LIFEAGENTS_CONFIG_DEFER_APPLY=1:
+#   der Aufrufer spielt danach ohnehin alles neu ein). rc 1, wenn etwas uebersprungen wurde.
+config_import_report() {
+  local res="$1" n_app n_res n_skip line pkg
+  n_app="$(jq '.applied | length' <<<"$res" 2>/dev/null || echo 0)"
+  n_res="$(jq '.reset | length' <<<"$res" 2>/dev/null || echo 0)"
+  n_skip="$(jq '.skipped | length' <<<"$res" 2>/dev/null || echo 0)"
+  while IFS= read -r line; do
+    [ -n "$line" ] && warn "$line"
+  done < <(jq -r '.skipped[] | "\(.category).\(.key): " + ({unknown: "gibt es hier nicht", system: "ist ein Systemwert",
+      instance: "gehört zu dieser Installation", invalid: "Wert passt hier nicht"}[.reason] // .reason) + " — nicht übernommen."' <<<"$res" 2>/dev/null)
+  ok "Einstellungen: ${n_app} übernommen, ${n_res} auf den Standard zurückgesetzt${n_skip:+, ${n_skip} nicht übernommen}."
+  if [ "${LIFEAGENTS_CONFIG_DEFER_APPLY:-0}" != 1 ]; then
+    while IFS= read -r pkg; do
+      [ -n "$pkg" ] && _cfg_redeploy_pkg "$pkg"
+    done < <(jq -r '[(.applied + .reset)[] | select(.category == "schedule") | .package] | unique[]' <<<"$res" 2>/dev/null)
+  fi
+  [ "$n_skip" = 0 ]
+}
+
 config_cmd_import() {
-  local file="${1:-}" total i ok_n=0 bad=0 category key value v_esc updated
+  local file="${1:-}" res
   [ -n "$file" ] && [ -r "$file" ] || die "Usage: lifeagents config import <config.json>"
   jq -e 'type == "array"' "$file" >/dev/null 2>&1 || die "${file} ist keine Liste von Einstellungen (config.json aus lifeagents retire)."
-  total="$(jq 'length' "$file")"
-  for ((i = 0; i < total; i++)); do
-    category="$(jq -r ".[$i].category // \"\"" "$file")"; key="$(jq -r ".[$i].key // \"\"" "$file")"
-    # -j + Marke: ein Wert mit Zeilenumbruch am Ende bleibt, wie er war ($(…) frisst sonst den letzten).
-    value="$(jq -j ".[$i].value // \"\"" "$file"; printf x)"; value="${value%x}"
-    if ! _cfg_ident_ok "$category" || ! _cfg_ident_ok "$key"; then
-      warn "Einstellung Nr. $((i + 1)): ungültiger Name — nicht übernommen."; bad=$((bad + 1)); continue
-    fi
-    if [ "$(_cfg_managed_by "$category" "$key")" = system ]; then
-      warn "${category}.${key} ist ein Systemwert — nicht übernommen."; bad=$((bad + 1)); continue
-    fi
-    v_esc="${value//\'/\'\'}"
-    if ! updated="$(_cfg_psql -tA -c \
-        "UPDATE core.config SET value = '${v_esc}' WHERE category = '${category}' AND key = '${key}' AND managed_by = 'owner' RETURNING key")"; then
-      warn "${category}.${key}: Wert abgelehnt (Grund oben) — nicht übernommen."; bad=$((bad + 1)); continue
-    fi
-    if [ -z "$updated" ]; then
-      warn "${category}.${key}: gibt es hier nicht — nicht übernommen."; bad=$((bad + 1)); continue
-    fi
-    ok_n=$((ok_n + 1))
-    [ "${LIFEAGENTS_CONFIG_DEFER_APPLY:-0}" = 1 ] || _cfg_apply_schedule "$category" "$key"
-  done
-  if [ "$bad" -eq 0 ]; then ok "Einstellungen: ${ok_n} von ${total} übernommen."; return 0; fi
-  warn "Einstellungen: ${ok_n} von ${total} übernommen, ${bad} nicht."
-  return 1
+  res="$(config_import_rows "$file")" || die "Einstellungen ließen sich nicht einspielen (Grund oben)."
+  config_import_report "$res"
 }
 
 # --- Dispatcher: `lifeagents config <verb> [args]` ------------------------------------------------

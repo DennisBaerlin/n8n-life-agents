@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 589 fn-Dateien.
+Umfang: 590 fn-Dateien.
 
 ## finance.fn_account_confirmed_until (READ, STABLE) -- bis zu welchem Tag der Stand eines Kontos bestaetigt ist
 - `finance.fn_account_confirmed_until(p_account_id int) -> date`
@@ -635,6 +635,12 @@ Umfang: 589 fn-Dateien.
 - `core.fn_config_get(p_package text, p_category text, p_key text) -> text`
 - jsonb-Keys: --
 - Liefert den Wert einer core.config-Zeile (package/category/key); NULL wenn keine Zeile. Das eine generische read-all-Fenster: jede enge Paket-Rolle (<pkg>_rw/<pkg>_ro) darf jede Config lesen, egal von welchem Paket; Schreiben dagegen ist host-vermittelt + paket-skopiert (Seeder/CLI), nie eine Paket-DB-Rolle. Eine Paket-Rolle hat kein direktes SELECT auf core.config (core-Schema gesperrt) -> sie liest ueber diese fn. Eingabe: p_package, p_category, p_key. Rueckgabe: text-Wert oder NULL. Typischer Aufrufer: die Paket-Crons laufen unter ihren Paket-DB-Rollen (Least Privilege) und pruefen ihren Enable-Flag ueber das kombinierte Gate-SQL (DB entscheidet den Vergleich): SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','<cron>') = 'true', false); fehlende Zeile -> NULL -> COALESCE(..., false) = fail-closed; der Seeder garantiert je deklariertem Cron die Default-Zeile (always-on 'true', opt-in 'false'). Haertung (Pflicht bei SECURITY DEFINER): * search_path hart auf pg_catalog gepinnt + Objekt schema-qualifiziert (CVE-2018-1058). * REVOKE ALL FROM PUBLIC + gezieltes GRANT EXECUTE nur an die Paket-Rollen (das macht core.fn_provision_package_roles, to_regprocedure-guarded). Keine Secrets in core.config (Backup-Key lebt in core.backup_key, ACL-gefenct) -> read-all unkritisch.
+
+## core.fn_config_import
+- `core.fn_config_export() -> jsonb`
+- `core.fn_config_import(p jsonb) -> jsonb`
+- jsonb-Keys: category, key, package, rows, value
+- fn_config_export + fn_config_import — geaenderte Einstellungen fuer Sicherung und Umzug fn_config_export() -> jsonb-Array [{package, category, key, value}] Die eine Regel, welche Einstellung reist: managed_by = 'owner' und value IS DISTINCT FROM default_value. managed_by 'system' (setzt jedes Update) und 'instance' (Wissen dieser Installation, z. B. telegram.bot_username per getMe) reisen nie. Geordnet nach package, category, key. fn_config_import(p jsonb {rows: [{package?, category, key, value}]}) -> {ok, applied, reset, skipped} | {ok:false, reason} Je Zeile: bekannte owner-Zeile + Wert, den die Pruef-Trigger annehmen (Typ, Grenzen, Modell) -> gesetzt (applied[]). Sonst skipped[] {package, category, key, reason}: unknown (Zeile fehlt hier) | system | instance | invalid (der Trigger lehnt ab). Nie der Wert in der Antwort (Zugangs-Adressen o. ae.). Danach geht jede owner-Zeile, die rows nicht nennt und vom Standard abweicht, auf default_value zurueck (reset[]): der Stand nach dem Einspielen ist der der Sicherung, auch auf demselben Rechner. Uebersprungene Zeilen bleiben unberuehrt. applied/reset: [{package, category, key}] (der Aufrufer deployt bei category 'schedule' das Paket neu). reason (ok:false): rows_required. Kein RAISE fuer einzelne Zeilen. Aufrufer: lifeagents backup restore, move apply, config import (postgres-Superuser). SECURITY INVOKER. Tests: tests/db/core/test_fn_config_export.sql, tests/db/core/test_fn_config_import.sql
 
 ## core.fn_config_seed + fn_config_reset — dpkg-conffile-Semantik fuer core.config
 - `core.fn_config_seed(p jsonb) -> jsonb`

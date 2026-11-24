@@ -188,9 +188,7 @@ _ret_write_answers() {
 }
 
 _ret_write_config() {
-  _ret_sql "SELECT COALESCE(jsonb_agg(jsonb_build_object('package', package, 'category', category, 'key', key, 'value', value)
-              ORDER BY package, category, key), '[]'::jsonb)
-              FROM core.config WHERE managed_by = 'owner' AND value IS DISTINCT FROM default_value" > "$1" \
+  _ret_sql "SELECT core.fn_config_export()" > "$1" \
     || die "Geänderte Einstellungen ließen sich nicht lesen."
 }
 

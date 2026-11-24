@@ -922,17 +922,17 @@ _set_bot_menu_buttons() {
 }
 # _app_intro_announce <token> <chat> <lang> <core_loc> <listed> — einmalige Ankuendigung der Uebersicht mit Animation, nachdem
 #   der Knopf gesetzt ist. listed=1: der Chat hatte den Knopf schon, nur merken. Erst senden, dann merken: ein gescheiterter
-#   Versand kommt beim naechsten Menue-Lauf nach (rc 1, der Lauf zaehlt ihn als Fehlschlag). Datei aus scripts/dev/render_app_intro.ps1.
+#   Versand kommt beim naechsten Menue-Lauf nach (rc 1, der Lauf zaehlt ihn als Fehlschlag). Datei aus scripts/dev/render_app_intro.ps1 (H.264-MP4: ein GIF schrumpft Telegram selbst auf ~206 x 320 und komprimiert hart).
 _app_intro_announce() {
   local token="$1" tid="$2" lang="$3" core_loc="$4" listed="$5" due file caption
   due="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_app_intro_pending('$tid')" 2>/dev/null || true)"
   [ "$due" = t ] || return 0
   if [ "$listed" != 1 ]; then
-    file="${core_loc%/locales}/build/stickers/app_intro_${lang}.gif"
-    [ -r "$file" ] || { lang=en; file="${core_loc%/locales}/build/stickers/app_intro_en.gif"; }
+    file="${core_loc%/locales}/build/stickers/app_intro_${lang}.mp4"
+    [ -r "$file" ] || { lang=en; file="${core_loc%/locales}/build/stickers/app_intro_en.mp4"; }
     [ -r "$file" ] || { warn "Übersicht-Animation fehlt im Installer-Baum — Ankündigung übersprungen."; return 0; }
     caption="$(jq -r '."core.app.intro_caption" // empty' "$core_loc/$lang.json" 2>/dev/null || true)"
-    if ! tg_api_curl "$token" sendAnimation -fsS --max-time 60 -F "chat_id=$tid" -F "animation=@$file" --form-string "caption=$caption" >/dev/null 2>&1; then
+    if ! tg_api_curl "$token" sendAnimation -fsS --max-time 60 -F "chat_id=$tid" -F "animation=@$file" -F width=720 -F height=1120 -F duration=5 --form-string "caption=$caption" >/dev/null 2>&1; then
       warn "Ankündigung der Übersicht nicht gesendet — nächster Menü-Lauf versucht es neu."
       return 1
     fi

@@ -393,6 +393,7 @@
   "core.backup.kit.title": "Life Agents – Notfallblatt für deine Sicherungen",
   "core.backup.kit.meta": "Schlüssel {id} · gültig seit {date}",
   "core.backup.kit.intro": "Auf einem neuen Rechner lässt sich ohne diesen Schlüssel keine deiner Sicherungen öffnen. Drucke das Blatt aus oder speichere es in deinem Passwort-Manager. Lege es nicht in den Sicherungsordner.",
+  "core.backup.kit.contains": "Deine Sicherungen enthalten auch die Zugänge, die du für Module eingegeben hast (etwa Paperless oder Sprachnachrichten). Ist das Blatt oder eine Sicherungs-Datei verloren, erneuere diese Zugänge beim jeweiligen Anbieter.",
   "core.backup.kit.key_title": "Notfallschlüssel",
   "core.backup.kit.check_hint": "Eine Zeile: Ein Doppelklick markiert sie ganz, dann kopieren. Beim Wiederherstellen fügst du sie ein. Eine eingebaute Prüfsumme meldet Tipp- und Kopierfehler sofort.",
   "core.backup.kit.older_title": "Für ältere Sicherungen (Schlüssel {id}):",

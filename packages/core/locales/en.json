@@ -393,6 +393,7 @@
   "core.backup.kit.title": "Life Agents – emergency sheet for your backups",
   "core.backup.kit.meta": "Key {id} · valid since {date}",
   "core.backup.kit.intro": "On a new computer none of your backups can be opened without this key. Print this sheet or store it in your password manager. Do not put it in the backup folder.",
+  "core.backup.kit.contains": "Your backups also contain the access keys you entered for modules (for example Paperless or voice messages). If this sheet or a backup file is lost, renew those keys with each provider.",
   "core.backup.kit.key_title": "Emergency key",
   "core.backup.kit.check_hint": "One line: a double-click selects all of it, then copy. When restoring, you paste it. A built-in checksum reports typing and copying mistakes right away.",
   "core.backup.kit.older_title": "For older backups (key {id}):",

@@ -28,7 +28,8 @@
 #   (7) CRON-ENABLE: jeder gegatete Cron liest sein Enable-Flag ueber
 #       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal muss im Manifest
 #       (.config.cron_enable.<key>) deklariert sein (sonst seedet der Host die Zeile nicht ->
-#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest).
+#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest). Gates = die
+#       Postgres-Knoten der Workflows und die Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Host-Schalter).
 #   (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): der manifest-`backup`-Block darf den
 #       Backup-Key und Code-Seeds nie in ein Bundle ziehen. (8a) Schema `core` nie in einem backup-Block
 #       (kein `core.<tabelle>` in full_tables/filtered_tables; kein schema_dump auf einem Paket, das Schema

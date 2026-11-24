@@ -11,7 +11,8 @@
 # registriert, (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung, (k) Tagesbudget (Details an den Bloecken).
 # Geprueft wird die Toggle-Oberflaeche (die gebauten Inline-Keyboard-Buttons), nicht der Cron-Node. Quelle der Keys und
 # Defaults = die Manifest-`.config.cron_enable`-Bloecke (wie contract_lint F9); Quelle der Buttons = die getrackten
-# gebauten Workflow-JSONs (kein dist/). Fail-closed:
+# gebauten Workflow-JSONs (kein dist/) und cron_on:/cron_off:-Literale in Nicht-Kommentar-Zeilen von provisioning/lib/*.sh
+# (Knoepfe, die der Host-Teil selbst sendet, z. B. die Kopie der Sicherung). Fail-closed:
 #   (a) jeder Opt-in-Key hat einen erreichbaren cron_off:<key> (der Abschaltknopf);
 #   (b) jeder Opt-in-Key hat einen erreichbaren cron_on:<key> (die Setup-Aktivierung; alle Opt-in-Crons starten AUS);
 #   (c) Always-on: Haushalts-Erinnerung -> cron_off:<key> oder Fusszeile core.reminders.card_footer an der Karte;

@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
-# Fehlfall von scripts/cron_toggle_lint.ps1 Regel (k): ein neuer Telegram-sendender Cron ohne Budget-Weg muss rot werden.
-# Legt einen Wegwerf-Workflow im Temp-Ordner an, faehrt den Lint einmal ohne und einmal mit ihm. Kein Docker.
+# Fehlfaelle von scripts/cron_toggle_lint.ps1: Regel (k) ein neuer Telegram-sendender Cron ohne Budget-Weg, Regel (d) ein
+# Host-Knopf (provisioning/lib/*.sh) auf einen nicht deklarierten Key; beide muessen rot werden.
+# Legt Wegwerf-Dateien im Temp-Ordner an (-ExtraWorkflowDir, -ExtraHostDir) und faehrt den Lint je Fall. Kein Docker.
 # Usage: .\scripts\dev\cron_toggle_lint_test.ps1   Exit-Code 0 = ok.
 $ErrorActionPreference = 'Stop'
 $lint = Join-Path $PSScriptRoot '..\cron_toggle_lint.ps1'

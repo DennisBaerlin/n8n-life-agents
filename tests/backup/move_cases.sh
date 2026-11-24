@@ -136,9 +136,9 @@ if [ "$(owner_chat_placeholder_count)" != 0 ]; then
   ( _oc_finalize ) >"$W/prep.out" 2>&1 || { fail setup "Workflows mit chat_id einspielen: $(tail -n3 "$W/prep.out" | tr '\n' ' ')"; exit "$fails"; }
 fi
 cli config set ${CK} "$CV2" || { fail setup "config set: $(last)"; exit "$fails"; }
-# Der Owner hat das Intro auf der alten Maschine nie gesehen: apply zeigt es ihm und setzt den Merker hier neu. Kein Verlust beim
-# Umzug, also kein Unterschied im Vergleich (backup_fingerprint laesst core.notification_state aus).
-sql "DELETE FROM core.notification_state WHERE source = 'app_intro' AND key = '${OWNER_BEFORE}'" >/dev/null
+# Der Intro-Merker des Owners steht in der Sicherung, damit A.intro-merker-gesetzt das Mitreisen prueft. Setzen statt dem Substrat
+# ueberlassen: der Menue-Lauf merkt ihn nur bei bereitem Uebersicht-Knopf (core.fn_app_button_ready, haengt am Onboarding-Stand).
+sql "SELECT core.fn_should_notify('app_intro', '${OWNER_BEFORE}')" >/dev/null
 cli backup auto || { fail setup "backup auto: $(last)"; exit "$fails"; }
 cli retire --out "$OUT"; rc=$?
 eq E.retire-ok 0 "$rc"
@@ -189,7 +189,11 @@ BF="$(read_env_value "$OUT/move.manifest" BACKUP_FILE)"
 [ -s "$OUT/nachher.txt" ] && pass A.nachher-geschrieben || fail A.nachher-geschrieben "fehlt"
 eq A.ordner-rechte 700 "$(stat -c %a "$OUT")"
 eq A.dateien-rechte 600 "$(stat -c %a "$OUT"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
+# Das Ziel merkt sich nach dem Einspielen eigene Hinweise (Intro fuer jemanden, der es auf der alten Maschine nie sah): kein
+# Unterschied im Vergleich (backup_fingerprint laesst core.notification_state aus). Direkt gesetzt, Grund wie beim Owner-Merker oben.
+sql "SELECT core.fn_should_notify('app_intro', '4711999')" >/dev/null
 cli move check; _rcc=$?; eq A.check-gleich 0 "$_rcc"
+sql "DELETE FROM core.notification_state WHERE source = 'app_intro' AND key = '4711999'" >/dev/null
 [ "$_rcc" = 0 ] || printf '# %s
 ' "$(cat "$W/out.$n")" | tail -n 12
 cli move status; eq A.status-offen 11 "$?"

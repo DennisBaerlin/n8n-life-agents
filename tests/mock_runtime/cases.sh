@@ -615,6 +615,10 @@ case "${T1:15:1}" in 2) _tbad="${T1:0:15}3${T1:16}" ;; *) _tbad="${T1:0:15}2${T1
 eq B.token-tippfehler err:token "$(printf '%s\n' "$_tbad" | backup_key_parse)"
 eq B.token-zu-kurz err:token "$(printf '%s\n' "${T1:0:61}" | backup_key_parse)"
 eq B.token-fremdes-zeichen err:token "$(printf '%s\n' "${T1:0:20}u${T1:21}" | backup_key_parse)"
+# Praefix nur als eigenes Wort mit Trenner: ein Ordnername wie "LabKit-Backups" auf dem Blatt ist kein Token-Versuch.
+eq B.token-praefix-nicht-im-wort "key:$K1" "$(printf 'Ordner /Users/x/LabKit-Backups\n  %s\n' "$T1" | backup_key_parse)"
+# Ein falscher Treffer vor dem echten Token verbraucht dessen Zeichen nicht.
+eq B.token-nach-fehlstueck "err:token key:$K1" "$(printf 'labkl- notiz %s\n' "$T1" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
 eq B.token-zwei "key:$K1 key:$K2" "$(printf 'Notfallschluessel\n  %s\nFuer aeltere:\n  %s\n' "$T1" "$T2" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
 # Passwort-Manager-Notiz mit altem Block und Token: beide; nummerierte Schritte auf dem neuen Blatt sind kein Zeilen-Block.
 eq B.mischtext "key:$K2 key:$K1" "$(printf '%s\n%s\n1: Installiere die Version.\n2: Fuege ein.\n' "$T2" "$_paper" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
@@ -627,6 +631,8 @@ kit_case() (   # kit_case <lang> -> backup_kit_text mit K1 aktiv, K2 aelter
   read_env_value() { return 1; }; rt_is_compose() { return 0; }
   backup_kit_text
 )
+# Die eingecheckte Datei des neuen Blatts (Rust-Test der Start-App liest sie) ist genau die heutige Ausgabe.
+eq B.blatt-fixture-aktuell "$(cat "$ROOT/backup/fixtures/notfallblatt-token.txt")" "$(kit_case de)"
 for _l in de en ko; do
   _k="$(kit_case "$_l")"
   eq "B.blatt-nur-schluessel-$_l" "key:$K1 key:$K2" "$(printf '%s\n' "$_k" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
@@ -645,6 +651,9 @@ eq B.tty-token-fehler-dann-richtig "key:$K1|2" "$(tty_case "$_tbad" "$T1")"
 eq B.tty-token-dreimal-falsch "err:token|3" "$(tty_case "$_tbad" "$_tbad" "$_tbad")"
 eq B.tty-token-rest-einfuegen "key:$K1|2" "$(tty_case "${T1:0:30}" "${T1:30}")"
 eq B.tty-alter-ganzer-schluessel "key:$K1|1" "$(tty_case "$K1")"
+eq B.tty-token-nach-fehlstueck "key:$K1|1" "$(tty_case "labkl- notiz $T1")"
+# Alte Zeile 1 mit Tippfehler (g statt f): bleibt in den Zeilen-Fragen ("Zeile 1: …"), nicht "kein Notfallschluessel".
+eq B.tty-alte-zeile-tippfehler "err:line1|3" "$(tty_case '1: 0123-4567-89ab-cdeg 73' '1: 0123-4567-89ab-cdeg 73' '1: 0123-4567-89ab-cdeg 73')"
 mapfile -t _lines < <(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //; s/ +/-/g')
 eq B.tty-alte-vier-zeilen "key:$K1|4" "$(tty_case "${_lines[@]}")"
 _id1="$(printf '%s' "$K1" | backup_key_id)"; _id2="$(printf '%s' "$K2" | backup_key_id)"

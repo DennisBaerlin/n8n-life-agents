@@ -1072,12 +1072,14 @@ backup_key_untoken() {
   [ "${#h}" -eq 70 ] && [ "${h:64:6}" = "$(_backup_token_check "${h:0:64}")" ] || return 1
   printf '%s' "${h:0:64}"
 }
-# Praefix tolerant gelesen (vom Papier abgetippt: LABKL-, labk1 …). Kein fester Text auf dem Blatt und kein Katalog-Text darf
-#   darauf passen, sonst meldete jedes korrekte Blatt einen Token-Fehler (Test B.blatt-nur-schluessel-*).
-_BK_TOKEN_RE='[Ll][Aa][Bb][Kk][1IiLl][_ -]?'
-# _backup_token_scan (stdin: Text) -> je Praefix-Fund "key:<64 hex>" oder "err:token" (Rumpf kuerzer als 56, fremdes Zeichen,
-#   Pruefsumme); rc 1 = kein Praefix im Text. Leerraum im Rumpf wird uebersprungen (Token beim Kopieren umbrochen); die
-#   Crockford-Zuordnung gilt nur fuer die 56 Zeichen, nie fuer den ganzen Text (sonst wuerde aus dem Praefix "1abk1_").
+# Praefix tolerant gelesen (vom Papier abgetippt: LABKL-, labk1 …), aber nur als eigenes Wort mit Trenner danach: sonst passte
+#   jedes "Labki…" (z. B. ein Ordnername auf dem Blatt) und verdraengte als Token-Fehler die richtige Meldung (key_foreign). Kein
+#   fester Text auf dem Blatt und kein Katalog-Text darf darauf passen (Test B.blatt-nur-schluessel-*).
+_BK_TOKEN_RE='(^|[^[:alnum:]])[Ll][Aa][Bb][Kk][1IiLl][_[:space:]-]'
+# _backup_token_scan (stdin: Text) -> je Praefix-Fund "key:<64 hex>", "err:short" (Text endet vor 56 Zeichen: abgeschnitten
+#   kopiert) oder "err:token" (fremdes Zeichen, Pruefsumme); rc 1 = kein Praefix im Text. Leerraum im Rumpf wird uebersprungen
+#   (Token beim Kopieren umbrochen); die Crockford-Zuordnung gilt nur fuer die 56 Zeichen, nie fuer den ganzen Text (sonst
+#   wuerde aus dem Praefix "1abk1_").
 _backup_token_scan() {
   local txt rest body c i k found=1
   txt="$(LC_ALL=C sed 's/\xc2\xa0/ /g' | tr '\r' ' ')"
@@ -1088,9 +1090,11 @@ _backup_token_scan() {
       c="${rest:i:1}"; i=$((i + 1))
       case "$c" in [[:space:]]) ;; *) body="${body}${c}" ;; esac
     done
-    txt="${rest:i}"
-    if k="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]' | tr 'oil' '011' | backup_key_untoken)"; then printf 'key:%s\n' "$k"
-    else printf 'err:token\n'; fi
+    # Nach einem Fehlversuch geht die Suche direkt hinter dem Praefix weiter: ein echtes Token gleich danach bliebe sonst im
+    #   verbrauchten Rumpf stecken.
+    if [ "${#body}" -lt 56 ]; then printf 'err:short\n'; txt="$rest"
+    elif k="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]' | tr 'oil' '011' | backup_key_untoken)"; then printf 'key:%s\n' "$k"; txt="${rest:i}"
+    else printf 'err:token\n'; txt="$rest"; fi
   done
   return "$found"
 }
@@ -1173,7 +1177,8 @@ BACKUP_GUIDE_URL="https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung
 backup_key_parse() {
   local txt tok old
   txt="$(cat)"
-  if tok="$(printf '%s\n' "$txt" | _backup_token_scan)"; then
+  tok="$(printf '%s\n' "$txt" | _backup_token_scan | sed 's/^err:short$/err:token/' || true)"
+  if [ -n "$tok" ]; then
     old="$(printf '%s\n' "$txt" | grep -E '^[[:space:]]*[1-4][[:space:]]*:[[:space:]0-9A-Fa-f-]*[0-9A-Fa-f][[:space:]0-9A-Fa-f-]*$' || true)"
     [ -z "$old" ] || old="$(printf '%s\n' "$old" | _backup_key_parse_old | grep '^key:' || true)"
     printf '%s\n' "$tok"; [ -z "$old" ] || printf '%s\n' "$old"

@@ -700,21 +700,21 @@ _bkp_try_parsed() {
 #   einmal "Rest einfuegen"; ein kaputtes Token bis zu 3 Versuche, danach "err:token". Eine Zeile des alten Blatts fuehrt
 #   Zeile fuer Zeile weiter wie bisher (eigene Meldung je Ursache, 3 Versuche je Zeile, danach "err:line<n>").
 _bkp_ask_key_tty() {
-  local n line d acc='' rc tries msg p rest
+  local n line d acc='' rc tries msg p k
   tries=0
   while :; do
     tries=$((tries + 1))
     line="$(ui_input "$(backup_text ask.paste)" 1)"
     if p="$(printf '%s\n' "$line" | _backup_token_scan)"; then
-      rest="$(printf '%s' "$line" | sed -E "s/^.*${_BK_TOKEN_RE}//" | tr -d '[:space:]')"
-      if [ "$p" = err:token ] && [ "${#rest}" -lt 56 ]; then
-        line="${line}$(ui_input "$(backup_text ask.rest)" 1)"
+      if ! printf '%s\n' "$p" | grep -q '^key:' && printf '%s\n' "$p" | grep -qx 'err:short'; then
+        line="${line} $(ui_input "$(backup_text ask.rest)" 1)"
         p="$(printf '%s\n' "$line" | _backup_token_scan)"
       fi
-      case "$p" in key:*)
-        { printf '  %s\n' "$(backup_text ask.recognized id "$(printf '%s' "${p#key:}" | backup_key_id)")" > /dev/tty; } 2>/dev/null || true
-        printf '%s\n' "$p"; return 0 ;;
-      esac
+      k="$(printf '%s\n' "$p" | grep -m1 '^key:' || true)"
+      if [ -n "$k" ]; then
+        { printf '  %s\n' "$(backup_text ask.recognized id "$(printf '%s' "${k#key:}" | backup_key_id)")" > /dev/tty; } 2>/dev/null || true
+        printf '%s\n' "$k"; return 0
+      fi
       if [ "$tries" -ge 3 ]; then printf 'err:token\n'; return 0; fi
       { printf '  %s\n' "$(backup_text msg.token)" > /dev/tty; } 2>/dev/null || true
       continue
@@ -722,9 +722,11 @@ _bkp_ask_key_tty() {
     if [ "$(printf '%s' "$line" | backup_key_normalize | wc -c)" -ge 64 ]; then
       printf '%s' "$line" | backup_key_parse; return 0
     fi
-    # Nur eine Zeile des alten Blatts (Hex) fuehrt in die Zeilen-Fragen; alles andere ist ein misslungenes Einfuegen.
-    d="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*[1-4][[:space:]]*://' | backup_key_normalize)"
-    case "$d" in ''|*[!0-9a-f]*) ;; *) break ;; esac
+    # Eine Zeile des alten Blatts fuehrt in die Zeilen-Fragen, auch mit Tippfehler (dort die Meldung je Ursache): Zeilennummer
+    #   vorn, Form einer Zeile (backup_key_line rc 0/1) oder ungefaehr ihre Laenge. Alles andere ist ein misslungenes Einfuegen.
+    rc=0; printf '%s' "$line" | backup_key_line 1 > /dev/null || rc=$?
+    d="$(printf '%s' "$line" | backup_key_normalize)"
+    if [ "$rc" -ne 2 ] || [[ "$line" =~ ^[[:space:]]*[1-4][[:space:]]*: ]] || { [ "${#d}" -ge 14 ] && [ "${#d}" -le 20 ]; }; then break; fi
     if [ "$tries" -ge 3 ]; then printf 'err:chars\n'; return 0; fi
     { printf '  %s\n' "$(backup_text msg.chars)" > /dev/tty; } 2>/dev/null || true
   done

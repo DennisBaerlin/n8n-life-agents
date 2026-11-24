@@ -65,9 +65,17 @@ Ohne Start-App geht es auch im Terminal: `docker exec -it lifeagents-master life
 | „Dieser Schlüssel gehört nicht zu dieser Sicherung“ | Das Blatt gehört zu einem anderen Rechner. Die Meldung nennt beide Kennungen; nimm das Blatt mit der Kennung der Sicherung. |
 | „Der Notfallschlüssel hat einen Fehler“ | Die ganze Zeile noch einmal vom Blatt kopieren. Beim Abtippen auf fehlende oder vertauschte Zeichen achten. |
 | „Zeile 3 stimmt nicht“ (älteres Blatt mit vier Zeilen) | Diese Zeile noch einmal genau abtippen (0 und o, 1 und l verwechselt?). |
-| Eine Sicherung von vor v0.51.0 lässt sich nur in ihrer alten Version zurückspielen | Die alte Version kennt den Notfallschlüssel als eine Zeile noch nicht. Nimm dein älteres Notfallblatt mit vier Zeilen. |
+| Eine Sicherung von vor v0.51.0 lässt sich nur in ihrer alten Version zurückspielen | Die alte Version kennt den Notfallschlüssel als eine Zeile noch nicht. Nimm dein älteres Notfallblatt mit vier Zeilen. Hast du nur das neue Blatt, rechne den Schlüssel um (siehe unten). |
 | „Die Datei ist beschädigt“ | Eine ältere Sicherung wählen. |
 | „Versions-Konflikt … die Sicherung ist älter“ | Ein Update hilft hier nicht. Installiere die Version aus dem Dateinamen neu (Schritt 1). |
 | „Versions-Konflikt … die Sicherung ist neuer“ | Erst `lifeagents update`, dann noch einmal wiederherstellen. |
 
 Es wird bei jedem dieser Fehler nichts geändert: Eine Wiederherstellung gelingt ganz oder gar nicht.
+
+**Notfallschlüssel für eine Version vor v0.51.0 umrechnen.** Starte im Terminal diesen Befehl (auf einem Server ohne das vordere `docker exec -i lifeagents-master`), füge den Notfallschlüssel ein und drücke Enter, dann Strg+D:
+
+```bash
+docker exec -i lifeagents-master sh -c "tr -d ' \n' | cut -c7- | tr 'a-z' 'A-Z' | tr '0-9A-HJKMNP-TV-Z' 'A-Z2-7' | base32 -d | head -c 32 | od -An -v -tx1 | tr -d ' \n' | fold -w16; echo"
+```
+
+Heraus kommen vier Zeilen zu je 16 Zeichen, wie auf einem älteren Blatt. Gib sie bei den Fragen „Zeile 1“ bis „Zeile 4“ ein, in der Start-App in die vier Felder.

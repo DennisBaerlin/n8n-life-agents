@@ -207,7 +207,7 @@ else
   fail R.tx-fehler-nichts-geaendert "keine Agenten-Kontexte im Substrat"
 fi
 # Nur der Notfallschluessel (eine Zeile, wie kopiert) — dabei /proc beobachten (Leck-Probe L). Das alte Blatt fuehrt unten
-# (K.datei-als-eingabe mit altem Blatt, P.hintergrund-*) ebenfalls bis zur Uebernahme.
+# (K.altes-blatt-gueltig, P.hintergrund-*) ebenfalls bis zur Uebernahme.
 token "$KA" > "$W/kaT"
 : > "$W/proc_hits"
 ( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaT"; echo $? > "$W/rc.r4" ) &

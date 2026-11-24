@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # old_sheet_lib.sh — Hilfe fuer tests/backup/cases.sh und tests/mock_runtime/cases.sh (gesourct, braucht _backup_key_check aus
-# provisioning/lib/common.sh). Das Notfallblatt zeigt den Schluessel als Token; gedruckte Blaetter im alten Format (vier Zeilen
-# "n:  xxxx-xxxx-xxxx-xxxx  pp") bleiben gueltig und muessen sich weiter einlesen lassen. Die Produktion erzeugt das alte Format
-# nicht mehr, darum lebt der Erzeuger hier. Beweis gegen das echte alte Format ist fixtures/notfallblatt-alt.txt (Ausgabe des
-# Stands vor dem Token, erfundene Schluessel); diese Funktion liefert dieselbe Form fuer beliebige Test-Schluessel.
+# provisioning/lib/common.sh). old_paper erzeugt das gedruckte Blatt mit vier Zeilen ("n:  xxxx-xxxx-xxxx-xxxx  pp") fuer beliebige
+# Test-Schluessel, damit die Einlese-Faelle dieses Format pruefen; die Produktion gibt es nicht mehr aus. Gegenprobe gegen eine
+# echte Ausgabe dieses Formats: fixtures/notfallblatt-alt.txt (erfundene Schluessel).
 
 # old_paper (stdin: 64 Hex) -> vier Zeilen "n:  xxxx-xxxx-xxxx-xxxx  pp".
 old_paper() {

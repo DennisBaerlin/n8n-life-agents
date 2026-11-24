@@ -1041,8 +1041,8 @@ backup_key_normalize() {
 #   jeder Sicherung (Diagnose "falscher Schluessel" vs. "beschaedigt", Aufraeumen nur eigener Sicherungen); 32 Bit eines
 #   Hashs verraten nichts ueber einen 256-Bit-Schluessel.
 backup_key_id() { printf 'k%s' "$(sha256sum | cut -c1-8)"; }
-# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen einer Zeile des alten Blatts (vier Zeilen; die Nummer geht
-#   mit ein, damit vertauschte Zeilen auffallen). Nur noch zum Einlesen: gedruckte alte Blaetter bleiben gueltig.
+# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen einer Zeile des Blatts mit vier Zeilen (die Nummer geht
+#   mit ein, damit vertauschte Zeilen auffallen). Gebraucht zum Einlesen gedruckter Blaetter.
 _backup_key_check() { printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-2; }
 # Notfallschluessel als Token: "labk1_" + 56 Zeichen Crockford-Base32 (klein) ueber 35 Bytes = 32 Schluessel-Bytes + 3 Pruef-Bytes
 #   (SHA-256 von "labk1:" + Schluessel-Bytes); 280 Bit = 56 x 5, also ohne Fuellzeichen. Eine Zeile ohne Leerraum und Bindestrich,
@@ -1138,7 +1138,7 @@ _backup_key_show() { local k; k="$(cat)"; printf '%s' "$k" | backup_key_token ||
 #   ID und Datum (seit wann er gilt, nicht Druckdatum: zwei Ausdrucke desselben Schluessels sollen gleich aussehen),
 #   aeltere (prev) darunter, wo die Sicherungen liegen, wie man auf einem neuen Rechner wiederherstellt. Keine Personen-
 #   oder Haushaltsnamen. rc 1 = kein Schluessel. Ausgabe nur an Kanaele ohne Log (Terminal, --file, Start-App-Pipe).
-#   Die Schritte tragen "1:" … "3:": die Start-App bis Stufe 2 nimmt beim Speichern nur ein Blatt mit einer Zeile "1:" an
+#   Die Schritte tragen "1:" … "3:": Start-Apps vor dem Ein-Feld-Fenster nehmen beim Speichern nur ein Blatt mit einer Zeile "1:" an
 #   (desktop/core/src/backup.rs save_kit), und ein Update tauscht den master, nicht die App -> so lassen, solange solche Apps laufen.
 backup_kit_text() {
   local keys=() k i kid folder ver since

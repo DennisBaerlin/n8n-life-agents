@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # typo_lib_test.sh — Selbsttest von typo_lib.sh ohne Substrat: ein Schluessel, dessen Zeile 3 den alten festen Tausch (erstes Zeichen
 # -> f, sonst e) ueberlebt, wuerde im Fall P.probe-tippfehler als "fremdes Blatt" statt "Zeile 3" erscheinen. typo_char muss dort ein
-# anderes Zeichen waehlen, und die Zeile muss danach wirklich durchfallen (backup_key_line rc 1).
+# anderes Zeichen waehlen, und die Zeile muss danach wirklich durchfallen (backup_key_line rc 1). Ebenso typo_token: genau ein
+# Zeichen anders, Pruefsumme faellt durch (backup_key_untoken rc 1).
 # Usage: bash tests/backup/typo_lib_test.sh [<root>]     Exit = Anzahl Fehler. Gate: der Fall R.typo-lib in cases.sh (backup-Suite).
 # shellcheck disable=SC2016,SC2034  # Pruef-Ausdruecke in einfachen Quotes (eval in ok), Variablen nur dort benutzt
 set -uo pipefail

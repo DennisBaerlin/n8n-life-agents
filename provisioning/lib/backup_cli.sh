@@ -697,8 +697,8 @@ _bkp_try_parsed() {
 
 # _bkp_ask_key_tty -> Eingabe vom Notfallblatt am Terminal (verdeckt) im Format von backup_key_parse. Erste Frage: der ganze
 #   Notfallschluessel (Token oder alter Schluessel am Stueck). Ein Token mit zu wenig Zeichen (beim Einfuegen umbrochen) bekommt
-#   einmal "Rest einfuegen"; ein kaputtes Token bis zu 3 Versuche, danach "err:token". Eine Zeile des alten Blatts fuehrt
-#   Zeile fuer Zeile weiter wie bisher (eigene Meldung je Ursache, 3 Versuche je Zeile, danach "err:line<n>").
+#   je Versuch "Rest einfuegen"; ein kaputtes Token bis zu 3 Versuche, danach "err:token". Eine Zeile des alten Blatts fuehrt
+#   Zeile fuer Zeile weiter (eigene Meldung je Ursache, 3 Versuche je Zeile, danach "err:line<n>").
 _bkp_ask_key_tty() {
   local n line d acc='' rc tries msg p k
   tries=0

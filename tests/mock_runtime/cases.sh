@@ -623,7 +623,7 @@ eq B.token-zwei "key:$K1 key:$K2" "$(printf 'Notfallschluessel\n  %s\nFuer aelte
 # Passwort-Manager-Notiz mit altem Block und Token: beide; nummerierte Schritte auf dem neuen Blatt sind kein Zeilen-Block.
 eq B.mischtext "key:$K2 key:$K1" "$(printf '%s\n%s\n1: Installiere die Version.\n2: Fuege ein.\n' "$T2" "$_paper" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
 # Das ganze Blatt in de/en/ko: nur key:-Zeilen (kein Katalog-Text darf das Praefix tragen), eine Token-Zeile je Schluessel,
-# Schritte mit "1:" (die Start-App bis Stufe 2 nimmt nur ein Blatt mit einer "1:"-Zeile an, desktop/core/src/backup.rs save_kit).
+# Schritte mit "1:" (Start-Apps vor dem Ein-Feld-Fenster nehmen nur ein Blatt mit einer "1:"-Zeile an, desktop/core/src/backup.rs save_kit).
 kit_case() (   # kit_case <lang> -> backup_kit_text mit K1 aktiv, K2 aelter
   _pkg_dir() { printf '%s' "$ROOT/packages"; }; backup_kit_lang() { printf '%s' "$KC_LANG"; }; KC_LANG="$1"; _BACKUP_LANG=''
   backup_key_candidates() { printf '%s\n' "$K1" "$K2"; }; pg_su_psql() { printf '2026-11-12\n'; }

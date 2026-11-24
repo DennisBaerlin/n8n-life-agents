@@ -251,7 +251,8 @@ _PKG_CRED_ROWS_JQ='(.credentials // {}) | to_entries[] | select(.key != "_commen
       | .key as $cred | .value as $c | [$c.env | to_entries[]] as $ks
       | ($ks | length) as $n | $ks | to_entries[]
       | {cred:$cred, i:.key, n:$n, k:.value.key, prompt:.value.value.prompt, help:.value.value.help,
-         secret:(.value.value.secret // false), validator:(.value.value.validator // "none"), required:($c.required // false)}'
+         secret:(.value.value.secret // false), validator:(.value.value.validator // "none"), required:($c.required // false),
+         requires_setting:($c.requires_setting // "")}'
 # shellcheck disable=SC2016  # s. o.
 _PKG_SETTING_ROWS_JQ='(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, prompt:.value.prompt, help:.value.help, validator:.value.validator, choices:.value.choices}'
 

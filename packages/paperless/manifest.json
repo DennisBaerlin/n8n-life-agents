@@ -89,6 +89,7 @@
       "name": "Paperless-NGX API",
       "type": "httpHeaderAuth",
       "required": false,
+      "requires_setting": "general.paperless_url",
       "env": {
         "PAPERLESS_API_TOKEN": { "field": "Authorization", "value_prefix": "Token ", "validator": "none", "secret": true, "prompt": "Paperless-Zugangstoken (Enter = überspringen): ", "help": "Damit der Bot in Paperless suchen und lesen kann (er schreibt nie etwas).\nEmpfehlung: in Paperless einen eigenen Nutzer nur mit Leserechten anlegen, der die gewünschten Dokumente UND deren Schlagworte, Korrespondenten und Dokumenttypen sehen darf. Alle erwachsenen Bot-Mitglieder sehen, was dieser Nutzer sieht — Kinder nicht.\nToken: als dieser Nutzer oben rechts Profil → „Mein Profil“ → „API-Auth-Token“ erzeugen/kopieren. Nur die Zeichenfolge einfügen (ohne das Wort „Token“).\nFür Inhaltsfragen (ask_documents) muss die KI in Paperless eingeschaltet sein; sie nutzt den KI-Anbieter, den du in Paperless eingestellt hast." }
       }

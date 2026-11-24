@@ -87,7 +87,7 @@ br_questions() {
        credentials:(reduce $creds[] as $r ([];
                  {env:$r.k, prompt:($r.prompt // ($r.k + ": ")), help:($r.help // ""), secret:$r.secret, validator:$r.validator} as $k
                  | if length > 0 and .[-1].id == $r.cred then .[-1].keys += [$k]
-                   else . + [{id:$r.cred, required:$r.required, keys:[$k]}] end))}' "$mf")"
+                   else . + [{id:$r.cred, required:$r.required, requires_setting:$r.requires_setting, keys:[$k]}] end))}' "$mf")"
     pkgs="$(jq -c --argjson one "$one" '. + [$one]' <<<"$pkgs")"
   done <<<"$(_bundled_packages)"
   prompts="$(jq -c '[.[] | (.settings[].prompt, .credentials[].keys[].prompt)]' <<<"$pkgs")"

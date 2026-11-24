@@ -950,7 +950,8 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
 #     Host-Sonderlocke (der Installationsprozess bleibt generisch). Teil-Checks (12e/12f = Manifest-`.config`-Eintraege, s. dort):
 #     (12a) SCHEMA: jeder manifest-`credentials`-Eintrag traegt placeholder (__CRED_*__-Form), name, type
 #           (∈ Assembler-Enum aus inject_credentials.sh::_cred_assemble_data — Fail beim Commit statt
-#           Install-die) + >=1 env-Key; validator ∈ geschlossenem Enum (none|url|email|live_check:<name>).
+#           Install-die) + >=1 env-Key; validator ∈ geschlossenem Enum (none|url|email|live_check:<name>);
+#           optionales requires_setting nennt eine fragbare `.config`-Einstellung und nur an einem optionalen Zugang.
 #     (12b) PARITAET (bidirektional, Vorlage Check 7): jedes __CRED_*__-Token in den gebauten Workflows
 #           eines Pakets ist Host-Map ∪ Rollen-Konvention (__CRED_POSTGRES_<PKG>_RW/RO__) ∪ deklariert
 #           (FEHLT = inject legt die Cred nie an -> dangling Platzhalter beim Deploy); jeder deklarierte
@@ -1106,6 +1107,17 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
             if (([string]$v.type) -eq 'httpHeaderAuth' -and $envProps.Count -gt 1) {
                 # Der Assembler nimmt to_entries[0]; ein 2. env-Key ginge still verloren.
                 $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name) (httpHeaderAuth) deklariert $($envProps.Count) env-Keys — der Typ traegt genau EIN Name/Value-Paar, weitere Keys wuerden still verworfen.")
+            }
+            if ($v.PSObject.Properties.Name -contains 'requires_setting') {
+                # Der Wizard (flow.js steps) laesst den Zugang weg, wenn diese Einstellung leer bleibt; ein Tippfehler liesse ihn nie weg.
+                $rs = [string]$v.requires_setting
+                $rsCat, $rsKey = $rs -split '\.', 2
+                $rsEntry = if ($rsKey -and $mf.config -and $mf.config.$rsCat) { $mf.config.$rsCat.$rsKey } else { $null }
+                if ($v.required -eq $true) {
+                    $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name) ist required und traegt requires_setting -- ein Pflicht-Zugang darf nicht entfallen.")
+                } elseif ($null -eq $rsEntry -or -not ($rsEntry.PSObject.Properties.Name -contains 'prompt')) {
+                    $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name).requires_setting='$rs' ist keine fragbare .config-Einstellung (<kategorie>.<schluessel> mit prompt).")
+                }
             }
             foreach ($e in $envProps) {
                 # Der Key-Name fliesst in bash-`eval` + grep-Regex (inject/wizard/env_has_key)

@@ -17,6 +17,8 @@ const Q = {
   packages: [
     { id: 'career', name: 'Karriere', summary: '', settings: [], credentials: [{ id: 'adzuna', required: false, keys: [{ env: 'ADZUNA_APP_ID', label: 'ID' }, { env: 'ADZUNA_APP_KEY', label: 'Key', secret: true }] }] },
     { id: 'estate', name: 'Nachlass', summary: '', settings: [{ id: 'general.bundesland', env: 'CONFIG_GENERAL_BUNDESLAND', label: 'Land', choices: [{ value: 'bayern', label: 'Bayern' }] }], credentials: [] },
+    { id: 'paperless', name: 'Dokumente', summary: '', settings: [{ id: 'general.paperless_url', env: 'CONFIG_GENERAL_PAPERLESS_URL', label: 'Adresse', choices: [] }],
+      credentials: [{ id: 'paperless_token', required: false, requires_setting: 'general.paperless_url', keys: [{ env: 'PAPERLESS_API_TOKEN', label: 'Token', secret: true }] }] },
   ],
 };
 
@@ -97,6 +99,15 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no' }), 'fritzbox');
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }).includes('fb_ports_busy'));
+});
+
+test('Ablauf: Zugang mit requires_setting entfällt, wenn die Einstellung übersprungen wurde', () => {
+  const tok = (A) => flow.steps(Q, Object.assign({ __packages: ['paperless'] }, A)).includes('c:paperless:PAPERLESS_API_TOKEN');
+  assert.ok(tok({}), 'Adresse noch offen: Token-Seite bleibt in der Liste');
+  assert.ok(tok({ CONFIG_GENERAL_PAPERLESS_URL: 'http://paperless.example:8000' }), 'Adresse gesetzt: Token wird gefragt');
+  assert.ok(!tok({ CONFIG_GENERAL_PAPERLESS_URL: '' }), 'Adresse übersprungen: Token-Seite entfällt');
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, { __packages: ['paperless'], CONFIG_GENERAL_PAPERLESS_URL: '' }, { PAPERLESS_API_TOKEN: 'alt-beispiel' }));
+  assert.ok(!flow.parseAnswers(txt).has('PAPERLESS_API_TOKEN'), 'ein früher eingetragener Token geht ohne Adresse nicht in die Antwort-Datei');
 });
 
 test('Projekt-Zeichen: ui/mark.html ist dasselbe SVG wie die Quelle der Site', () => {

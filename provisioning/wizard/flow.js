@@ -41,6 +41,9 @@ function steps(Q, A) {
     if (!sel.includes(p.id)) continue;
     for (const st of p.settings) s.push(`s:${p.id}:${st.id}`);
     for (const c of p.credentials) {
+      // Manifest `requires_setting`: ohne diese Einstellung (übersprungen = '') ist der Zugang nutzlos, also nicht fragen.
+      const need = c.requires_setting && p.settings.find((x) => x.id === c.requires_setting);
+      if (need && A[need.env] === '') continue;
       c.keys.forEach((k, i) => {
         // „Beide oder keine“ wie _pkg_secrets_wizard: bleibt beim optionalen Zugang der erste Wert leer, entfällt der Rest.
         if (i > 0 && !c.required && c.keys.length > 1 && A[c.keys[0].env] === '') return;

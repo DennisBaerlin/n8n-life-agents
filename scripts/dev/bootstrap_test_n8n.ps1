@@ -341,16 +341,18 @@ function Show-InstallCoreHint {
 if ($Down) {
     Assert-Docker
     if (Get-ContainerId) {
-        # Echter Test-Bot (Token in core.env ist nicht der erfundene): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine
-        # tote Adresse. Massgeblich ist das installierte Token, nicht die Umgebungsvariable dieses Aufrufs. Best effort; der Befehl
-        # liest den Schluessel selbst aus core.env im Container.
-        $inv = Invoke-Native docker @('exec', $Container, 'grep', '-qxF', "TELEGRAM_BOT_TOKEN=$($script:TestInventedBotToken)", '/etc/lifeagents/core.env')
-        if ($inv.Code -ne 0) {
-            $rw = Invoke-Native docker @('exec', $Container, 'lifeagents', 'telegram', 'release-webhook')
-            if ($rw.Code -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw.Output -join ' | ')" }
-            else { Write-Host "Webhook des echten Test-Bots freigegeben." }
-        }
-        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
+        # Echter Test-Bot (Marker aus dem Echt-Lauf): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine tote Adresse.
+        # Massgeblich ist der Marker im Container, nicht die Umgebungsvariable dieses Aufrufs. Der Dev-Install behaelt das Token nicht in
+        # core.env, darum geht es per stdin an `lifeagents telegram release-webhook` (nie im argv). Best effort.
+        $mk = Invoke-Native docker @('exec', $Container, 'test', '-e', '/root/.n8ntest_real_telegram')
+        if ($mk.Code -eq 0) {
+            $realTok = Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN'   # real-token: nur zum Freigeben des Webhooks beim Abbau eines Echt-Bot-Substrats
+            if ($realTok) {
+                $rw = $realTok | & docker exec -i $Container sh -c 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook' 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw -join ' | ')" }
+                else { Write-Host "Webhook des echten Test-Bots freigegeben." }
+            } else { Write-Warning 'Echt-Bot-Substrat, aber kein TEST_TELEGRAM_BOT_TOKEN in .env: Webhook nicht freigegeben.' }
+        }        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
         # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
         Invoke-Native docker @('rm','-fv',$Container) | Out-Null
         Write-Host "Container $Container entfernt."
@@ -515,7 +517,7 @@ if ($Version) {
     $entryScript  = "$ContainerRoot/provisioning/provision.sh"
     $installFlags = "--profile dev --packages all --unattended $EnvFileInC"
 }
-Write-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
+if ($env:N8NTEST_REAL_TELEGRAM -eq '1') { [void](Invoke-Native docker @('exec', $Container, 'touch', '/root/.n8ntest_real_telegram')) }   # -Down gibt den Webhook dann freiWrite-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
 $remote = @"
 trap 'shred -u $EnvFileInC 2>/dev/null || rm -f $EnvFileInC' EXIT
 set -e

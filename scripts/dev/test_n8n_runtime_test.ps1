@@ -141,7 +141,7 @@ foreach ($f in (Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1
         $ln++
         if ($line.TrimStart().StartsWith('#')) { continue }
         # Leser: Get-(Test)EnvValue 'TEST_...' (auch in Klammern/Anfuehrungszeichen), $TEST_... bzw. $x.TEST_..., Index ['TEST_...']
-        if ($line -match 'Get-(Test)?EnvValue\s*\(?\s*[''"]TEST_TELEGRAM_BOT_TOKEN[''"]|\$[\w:]*\.?TEST_TELEGRAM_BOT_TOKEN|\[[''"]TEST_TELEGRAM_BOT_TOKEN[''"]\]' -and $line -notmatch 'Resolve-TestTelegramToken|TestInventedBotToken') {
+        if ($line -match 'Get-(Test)?EnvValue\s*\(?\s*[''"]TEST_TELEGRAM_BOT_TOKEN[''"]|\$[\w:]*\.?TEST_TELEGRAM_BOT_TOKEN|\[[''"]TEST_TELEGRAM_BOT_TOKEN[''"]\]' -and $line -notmatch 'Resolve-TestTelegramToken|TestInventedBotToken|# real-token:') {
             $readers.Add("$($f.Name):$ln")
         }
     }
@@ -149,6 +149,7 @@ foreach ($f in (Get-ChildItem (Join-Path $repo 'scripts') -Recurse -Filter *.ps1
 Assert-That ($readers.Count -eq 0) ("kein Leser des .env-Tokens ohne Resolve-TestTelegramToken" + $(if ($readers.Count) { ': ' + ($readers -join ', ') } else { '' }))
 $bootstrap = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_n8n.ps1'), $utf8)
 Assert-That ($bootstrap -match "envValues\['TEST_TELEGRAM_BOT_TOKEN'\]\s*=\s*Resolve-TestTelegramToken") 'klassischer Bootstrap setzt den Installations-Token ueber Resolve-TestTelegramToken'
+Assert-That (([regex]::Matches($bootstrap, '\.n8ntest_real_telegram')).Count -eq 2 -and $bootstrap -notmatch "grep[^`n]*core\.env[^`n]*TestInventedBotToken") 'Bootstrap: Echt-Bot-Marker im Container setzt und prueft den Abbau (nicht core.env, der Dev-Install behaelt das Token dort nicht)'
 
 Write-Host "test_n8n_runtime_test: $failed Fehler."
 exit $failed

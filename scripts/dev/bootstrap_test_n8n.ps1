@@ -341,6 +341,13 @@ function Show-InstallCoreHint {
 if ($Down) {
     Assert-Docker
     if (Get-ContainerId) {
+        # Echter Test-Bot (N8NTEST_REAL_TELEGRAM=1): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine tote Adresse.
+        # Best effort; der Befehl liest den Schluessel selbst aus core.env im Container.
+        if ($env:N8NTEST_REAL_TELEGRAM -eq '1') {
+            $rw = Invoke-Native docker @('exec', $Container, 'lifeagents', 'telegram', 'release-webhook')
+            if ($rw.Code -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw.Output -join ' | ')" }
+            else { Write-Host "Webhook des echten Test-Bots freigegeben." }
+        }
         # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
         # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
         Invoke-Native docker @('rm','-fv',$Container) | Out-Null
@@ -438,6 +445,8 @@ if ($SkipInstall) {
 $envMap = Get-TestInstallEnvMap $RepoRoot
 $envValues = @{}
 foreach ($k in $envMap.Keys) { $v = Get-EnvValue $k; if ($v) { $envValues[$k] = $v } }
+# Ein Substrat bekommt nie den echten Test-Bot, ausser mit N8NTEST_REAL_TELEGRAM=1 (Begruendung: Resolve-TestTelegramToken).
+$envValues['TEST_TELEGRAM_BOT_TOKEN'] = Resolve-TestTelegramToken $envValues['TEST_TELEGRAM_BOT_TOKEN']
 $envLines = ConvertTo-TestEnvFileLines -Map $envMap -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS)
 
 # Release-Pin (-Version): install.sh --version laedt anonym aus dem oeffentlichen Repo (kein Token).
@@ -450,8 +459,9 @@ if ($Version) {
 if (-not (Get-EnvValue 'TEST_HARNESS_SECRET')) {
     Write-Warning "TEST_HARNESS_SECRET fehlt in .env — die Harness-Header-Auth-Credential wird uebersprungen; infra_test/n8n_test bekaemen 403."
 }
-if (-not (Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN')) {
-    Write-Warning "TEST_TELEGRAM_BOT_TOKEN fehlt — Telegram-Credential uebersprungen (Orchestrator-Trigger aktiviert ggf. nicht; infra_test braucht ihn nicht)."
+if ($env:N8NTEST_REAL_TELEGRAM -eq '1') {
+    if ($envValues['TEST_TELEGRAM_BOT_TOKEN'] -eq $script:TestInventedBotToken) { throw 'N8NTEST_REAL_TELEGRAM=1, aber TEST_TELEGRAM_BOT_TOKEN fehlt in .env.' }
+    Write-Warning 'ECHTER Test-Bot: n8n biegt beim Aktivieren des Orchestrators dessen Webhook auf dieses Substrat (jede andere Installation mit demselben Bot wird stumm). -Down gibt den Webhook wieder frei.'
 }
 
 $tmpEnv = Join-Path ([System.IO.Path]::GetTempPath()) "n8ntest_install_env.$PID.tmp"

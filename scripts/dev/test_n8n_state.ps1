@@ -116,7 +116,7 @@ function Get-TestEnvValue([string]$Name) {
 function Get-TestBotToken {
     param([Parameter(Mandatory)]$Target)
     if ($Target.Runtime -eq 'compose') { return $script:TestStackMockAnswers.TELEGRAM_BOT_TOKEN }
-    return (Get-TestEnvValue 'TEST_TELEGRAM_BOT_TOKEN')
+    return (Resolve-TestTelegramToken (Get-TestEnvValue 'TEST_TELEGRAM_BOT_TOKEN'))
 }
 
 # Wait-TestN8nReady -Url <bruecke> -- n8n nimmt Arbeit an (/healthz/readiness; /healthz meldet schon vor den Migrationen ok).
@@ -383,7 +383,7 @@ function Resolve-TestHitlBotToken {
         return $installed
     }
     if ($BotToken) { return $BotToken }
-    if ($ScriptToken) { return $ScriptToken }
+    if ($ScriptToken) { return (Resolve-TestTelegramToken $ScriptToken) }
     $t = Get-TestBotToken -Target $Target   # Aufrufer ohne .env-Import (real_ingress_test, Wait-ExecResolvingGates)
     if (-not $t) { throw "Get-HitlTelegramSecret: Bot-Token unbekannt (TEST_TELEGRAM_BOT_TOKEN aus .env oder -BotToken)." }
     return $t
@@ -392,7 +392,7 @@ $script:HitlSecretCache = @{}
 function Get-HitlTelegramSecret {
     param([Parameter(Mandatory)][string]$Container, [string]$BotToken)
     $target = Get-TestN8nTarget -Container $Container
-    $BotToken = Resolve-TestHitlBotToken -Target $target -BotToken $BotToken -ScriptToken $script:TEST_TELEGRAM_BOT_TOKEN
+    $BotToken = Resolve-TestHitlBotToken -Target $target -BotToken $BotToken -ScriptToken (Resolve-TestTelegramToken $script:TEST_TELEGRAM_BOT_TOKEN)
     $cacheKey = "$Container|$BotToken"
     if ($script:HitlSecretCache[$cacheKey]) { return $script:HitlSecretCache[$cacheKey] }
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

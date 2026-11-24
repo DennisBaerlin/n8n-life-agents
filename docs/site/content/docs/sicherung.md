@@ -26,6 +26,8 @@ Jede Sicherung ist mit einem Schlüssel verschlossen, der in deiner Datenbank li
 
 Bei der Einrichtung fragt der Fragebogen, **wohin gesichert werden soll**. Am besten wählst du einen Ordner in deiner Cloud (iCloud Drive, OneDrive, Dropbox): Dann liegt die Sicherung auch dann noch vor, wenn der Rechner kaputtgeht. Darin entsteht der Ordner „Life Agents Sicherungen“. Jede Nacht um halb vier legt dein Assistent dort eine neue Sicherung ab und behält die letzten 14. Klappt das nicht (Platte abgezogen, Ordner verschoben), versucht er es jede Stunde wieder und schreibt dir nach zwei Tagen im Chat.
 
+Zusätzlich liegt die neueste Sicherung als Kopie in deinem Telegram-Chat. Dafür gibt es eine einzige angeheftete Nachricht, in der der Bot jede Nacht still die Datei austauscht. Brauchst du sie nicht, tippe an der Nachricht auf „Kopie hier ausschalten“. Die Sicherung im Ordner läuft weiter, wieder einschalten geht mit /reminders.
+
 **Ordner ändern:** Im Symbol der Start-App **Sicherungsordner ändern …** wählen. Es öffnet sich dieselbe Seite „Wohin sichern?“ wie bei der Einrichtung; danach gehen neue Sicherungen in den neuen Ordner, die bisherigen bleiben im alten Ordner liegen. Ohne Start-App geht es auch im Terminal (Mac: Programm „Terminal“, Windows: „PowerShell“), mit deinem Ordner statt des Beispiels:
 
 ```bash
@@ -36,7 +38,7 @@ Unter Windows sieht der Ordner zum Beispiel so aus: `"D:\Sicherungen"`. Den gena
 
 ## Auf einem eigenen Server (LXC) {#server}
 
-Auf einem Server sichert der Assistent von selbst. Jede Nacht ab 03:30 Uhr legt er eine verschlüsselte Sicherung in `/var/backups/lifeagents/daily` ab (die letzten 14 bleiben) und schickt eine stille Kopie an deinen Telegram-Chat (ohne Ton; es bleibt immer nur die neueste dort liegen, die von gestern räumt er weg). Das erste Mal erklärt dir die Nachricht, was sie ist: eine verschlüsselte Kopie für den Fall, dass der Rechner ausfällt. Du musst nichts damit tun. Zum Wiederherstellen brauchst du diese Datei und dein Notfallblatt. Du musst nichts einrichten; eine frühere crontab-Zeile aus dieser Anleitung entfernt das Update selbst.
+Auf einem Server sichert der Assistent von selbst. Jede Nacht ab 03:30 Uhr legt er eine verschlüsselte Sicherung in `/var/backups/lifeagents/daily` ab (die letzten 14 bleiben) und legt eine Kopie in deinen Telegram-Chat. Dort gibt es dafür eine einzige angeheftete Nachricht. In ihr tauscht der Bot jede Nacht still die Datei aus, ohne neue Nachricht. Du musst nichts damit tun. Zum Wiederherstellen brauchst du diese Datei und dein Notfallblatt. Willst du die Kopie im Chat nicht, tippe an der Nachricht auf „Kopie hier ausschalten“. Die Sicherung selbst läuft weiter, wieder einschalten kannst du die Kopie mit /reminders. Du musst nichts einrichten; eine frühere crontab-Zeile aus dieser Anleitung entfernt das Update selbst.
 
 Klappt es länger als zwei Tage nicht, schreibt dir der Assistent in Telegram, und `lifeagents doctor` zeigt „Letzte Sicherung“ rot. Kopiere die Dateien zusätzlich regelmäßig vom Server weg, sonst liegt die Sicherung auf demselben Rechner wie die Daten. Eine Sicherung von Hand startest du mit `lifeagents backup auto`, den Verlauf zeigt `journalctl -u lifeagents-backup`.
 

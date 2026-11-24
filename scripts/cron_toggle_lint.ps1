@@ -26,7 +26,7 @@
 #       kein Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
 # Aufruf: .\scripts\cron_toggle_lint.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
-param([switch]$Verbose, [string]$ExtraWorkflowDir)   # -ExtraWorkflowDir: nur fuer den Fehlfall-Test scripts/dev/cron_toggle_lint_test.ps1
+param([switch]$Verbose, [string]$ExtraWorkflowDir, [string]$ExtraHostDir)   # -Extra*Dir: nur fuer den Fehlfall-Test scripts/dev/cron_toggle_lint_test.ps1
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -93,6 +93,20 @@ foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
                 if ($verb -eq 'on')  { $onKeys[$key]  = $wfName }
                 else                 { $offKeys[$key] = $wfName }
             }
+        }
+    }
+}
+# Knoepfe, die der Host-Teil selbst sendet (Kopie der Sicherung im Owner-Chat, provisioning/lib/backup_cli.sh): ein
+# cron_on:/cron_off:-Literal ausserhalb einer Kommentarzeile zaehlt wie ein Knopf im Graph, gilt also fuer (a)-(d).
+$hostDirs = @(Join-Path $RepoRoot 'provisioning\lib'); if ($ExtraHostDir) { $hostDirs += $ExtraHostDir }
+$hostRx = [regex]'cron_(on|off):([a-z][a-z0-9_]*)'
+foreach ($file in (Get-ChildItem $hostDirs -Filter '*.sh')) {
+    foreach ($line in [System.IO.File]::ReadAllLines($file.FullName, $u8)) {
+        if ($line -match '^\s*#') { continue }
+        if ($line -match 'cron_(on|off):\$') { Fail "$($file.Name): cron-callback_data aus einer Variable ('$($line.Trim())') entzieht sich dem Gate -- als Literal schreiben"; continue }
+        foreach ($m in $hostRx.Matches($line)) {
+            if ($m.Groups[1].Value -eq 'on') { $onKeys[$m.Groups[2].Value] = "host:$($file.Name)" }
+            else                             { $offKeys[$m.Groups[2].Value] = "host:$($file.Name)" }
         }
     }
 }

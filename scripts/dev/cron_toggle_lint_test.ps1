@@ -11,6 +11,12 @@ try {
     [System.IO.File]::WriteAllText((Join-Path $dir 'abcdefghijklmnop-x.cron_new.json'), $json, (New-Object System.Text.UTF8Encoding($false)))
     $out = & powershell.exe -NoProfile -File $lint -ExtraWorkflowDir $dir
     if ($LASTEXITCODE -eq 0 -or -not (($out -join ' ') -match 'zz_unbudgeted')) { Write-Host "FAIL: Lint hat den Cron ohne Budget-Weg nicht gemeldet: $out" -ForegroundColor Red; exit 1 }
+    # Fehlfall (d) fuer Host-Knoepfe: ein Bash-Knopf auf einen nicht deklarierten Key muss als Dangling rot werden.
+    $hostDir = Join-Path $dir 'host'
+    New-Item -ItemType Directory -Path $hostDir | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $hostDir 'x.sh'), "kb=`"cron_off:zz_host_dangling`"`n", (New-Object System.Text.UTF8Encoding($false)))
+    $out = & powershell.exe -NoProfile -File $lint -ExtraHostDir $hostDir
+    if ($LASTEXITCODE -eq 0 -or -not (($out -join ' ') -match 'zz_host_dangling')) { Write-Host "FAIL: Lint hat den Host-Knopf auf einen unbekannten Key nicht gemeldet: $out" -ForegroundColor Red; exit 1 }
     Write-Host 'PASS cron_toggle_lint_test' -ForegroundColor Green
     exit 0
 } finally { Remove-Item -Recurse -Force $dir }

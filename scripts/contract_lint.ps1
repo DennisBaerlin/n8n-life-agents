@@ -678,16 +678,24 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #     wenn das Paket-Manifest den Key deklariert (.config.cron_enable.<key>). Drift in eine Richtung
 #     (Gate liest nicht-deklariertes Flag) -> stiller fail-closed; Drift andersrum (deklariertes Flag,
 #     das kein Gate liest) -> tote Config. Scannt die Postgres-Node-Queries der getrackten Workflows
-#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal).
+#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal), dazu die
+#     Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Schalter, die der Host-Teil selbst liest: Kopie der Sicherung).
 # ---------------------------------------------------------------
 $cronEnableRefs = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Gate-Queries
+$cronEnableRx = "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)"
 foreach ($w in $workflows.Values) {
     foreach ($n in $w.Json.nodes) {
         if ($n.type -notin @('n8n-nodes-base.postgres', 'n8n-nodes-base.postgresTool')) { continue }
         $q = "$($n.parameters.query)"
-        foreach ($m in [regex]::Matches($q, "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)")) {
+        foreach ($m in [regex]::Matches($q, $cronEnableRx)) {
             [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)")
         }
+    }
+}
+foreach ($sh in (Get-ChildItem (Join-Path $RepoRoot 'provisioning\lib') -Filter '*.sh' -ErrorAction SilentlyContinue)) {
+    foreach ($line in [System.IO.File]::ReadAllLines($sh.FullName, [System.Text.Encoding]::UTF8)) {
+        if ($line -match '^\s*#') { continue }
+        foreach ($m in [regex]::Matches($line, $cronEnableRx)) { [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)") }
     }
 }
 $cronEnableDeclared = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Manifesten

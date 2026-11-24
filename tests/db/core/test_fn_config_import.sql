@@ -16,7 +16,10 @@ BEGIN
   UPDATE core.config SET value = 'nach-der-sicherung' WHERE category = '__tc' AND key = 'later';
   UPDATE core.config SET value = 'eigener-bot' WHERE category = '__tc' AND key = 'inst';
 
-  r := core.fn_config_import(jsonb_build_object('rows', jsonb_build_array(
+  PERFORM core.fn_config_seed('{"category":"__tc","key":"fremd","value":"f","package":"__tfremd"}');
+  UPDATE core.config SET value = 'eigener-wert' WHERE category = '__tc' AND key = 'fremd';
+  r := core.fn_config_import(jsonb_build_object('packages', jsonb_build_array('__tpkg'), 'rows', jsonb_build_array(
+         jsonb_build_object('key', 'ohne-kategorie', 'value', 'x'),
          jsonb_build_object('package', '__tpkg', 'category', '__tc', 'key', 'txt',  'value', 'b'),
          jsonb_build_object('package', '__tpkg', 'category', '__tc', 'key', 'num',  'value', '99'),
          jsonb_build_object('package', '__tpkg', 'category', '__tc', 'key', 'gone', 'value', 'x'),
@@ -39,7 +42,11 @@ BEGIN
 
   IF (SELECT value FROM core.config WHERE category = '__tc' AND key = 'later') <> 'd' THEN RAISE EXCEPTION 'FAIL [3 spaetere Aenderung blieb]'; END IF;
   IF NOT r->'reset' @> '[{"category":"__tc","key":"later"}]' THEN RAISE EXCEPTION 'FAIL [3 reset] %', r->'reset'; END IF;
-  RAISE NOTICE 'PASS [nicht genannte Owner-Zeile auf Standard]';
+  RAISE NOTICE 'PASS [nicht genannte Owner-Zeile auf Standard, auch neben einer Zeile ohne category]';
+
+  IF (SELECT value FROM core.config WHERE category = '__tc' AND key = 'fremd') <> 'eigener-wert' THEN
+    RAISE EXCEPTION 'FAIL [3b Paket ausserhalb der Sicherung zurueckgesetzt]'; END IF;
+  RAISE NOTICE 'PASS [Paket, das die Sicherung nicht kennt, behaelt seine Werte]';
 
   r := core.fn_config_import('{}'::jsonb);
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'rows_required' THEN RAISE EXCEPTION 'FAIL [4 ohne rows] %', r; END IF;

@@ -6,12 +6,13 @@
 --     managed_by 'system' (setzt jedes Update) und 'instance' (Wissen dieser Installation, z. B. telegram.bot_username
 --     per getMe) reisen nie. Geordnet nach package, category, key.
 --
---   fn_config_import(p jsonb {rows: [{package?, category, key, value}]}) -> {ok, applied, reset, skipped} | {ok:false, reason}
+--   fn_config_import(p jsonb {rows: [{package?, category, key, value}], packages?: [<pkg>…]}) -> {ok, applied, reset, skipped} | {ok:false, reason}
 --     Je Zeile: bekannte owner-Zeile + Wert, den die Pruef-Trigger annehmen (Typ, Grenzen, Modell) -> gesetzt (applied[]).
 --     Sonst skipped[] {package, category, key, reason}: unknown (Zeile fehlt hier) | system | instance | invalid (der
 --     Trigger lehnt ab). Nie der Wert in der Antwort (Zugangs-Adressen o. ae.). Danach geht jede owner-Zeile, die rows nicht
---     nennt und vom Standard abweicht, auf default_value zurueck (reset[]): der Stand nach dem Einspielen ist der der
---     Sicherung, auch auf demselben Rechner. Uebersprungene Zeilen bleiben unberuehrt.
+--     nennt und vom Standard abweicht, auf default_value zurueck (reset[]), aber nur fuer die Pakete in packages (die Pakete
+--     der Sicherung; ohne packages kein Zuruecksetzen): der Stand nach dem Einspielen ist der der Sicherung, auch auf demselben
+--     Rechner, und ein Paket, das die Sicherung nicht kennt, behaelt seine Werte. Uebersprungene Zeilen bleiben unberuehrt.
 --     applied/reset: [{package, category, key}] (der Aufrufer deployt bei category 'schedule' das Paket neu).
 --     reason (ok:false): rows_required. Kein RAISE fuer einzelne Zeilen.
 --     Aufrufer: lifeagents backup restore, move apply, config import (postgres-Superuser). SECURITY INVOKER.
@@ -48,7 +49,10 @@ BEGIN
     END IF;
 
     FOR v_row IN SELECT * FROM jsonb_array_elements(p->'rows') LOOP
-        v_named := v_named || ((v_row->>'category') || '/' || (v_row->>'key'));
+        -- Ohne category/key kein Eintrag: ein NULL in v_named machte "NOT x = ANY" fuer alle Zeilen NULL (kein Ruecksetzen).
+        IF v_row->>'category' IS NOT NULL AND v_row->>'key' IS NOT NULL THEN
+            v_named := v_named || ((v_row->>'category') || '/' || (v_row->>'key'));
+        END IF;
         v_reason := NULL;
         SELECT * INTO v_cfg FROM core.config WHERE category = v_row->>'category' AND key = v_row->>'key' FOR UPDATE;
         IF NOT FOUND THEN
@@ -74,6 +78,7 @@ BEGIN
         UPDATE core.config SET value = default_value
          WHERE managed_by = 'owner' AND default_value IS NOT NULL AND value IS DISTINCT FROM default_value
            AND NOT (category || '/' || key) = ANY (v_named)
+           AND package IN (SELECT jsonb_array_elements_text(COALESCE(p->'packages', '[]'::jsonb)))
         RETURNING package, category, key)
     SELECT COALESCE(jsonb_agg(jsonb_build_object('package', package, 'category', category, 'key', key)
                               ORDER BY package, category, key), '[]') INTO v_reset FROM r;

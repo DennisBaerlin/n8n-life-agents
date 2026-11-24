@@ -37,7 +37,7 @@ _cfg_psql() {
 # _cfg_ident_ok <s>  -> 0 wenn ^[a-z][a-z0-9_]*$ (category/key-Vertrag; Injection-Schutz vor Interpolation).
 _cfg_ident_ok() { printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_]*$'; }
 
-# _cfg_managed_by <category> <key>  -> 'owner' | 'system' | '' (Zeile fehlt). Argumente vorher ident-geprueft.
+# _cfg_managed_by <category> <key>  -> owner | system | instance | leer (Zeile fehlt). Argumente vorher ident-geprueft.
 _cfg_managed_by() {
   _cfg_psql -tA -c "SELECT managed_by FROM core.config WHERE category = '$1' AND key = '$2'" 2>/dev/null || true
 }
@@ -147,8 +147,10 @@ config_cmd_reset() {
   local category="$1" key="$2" res ok_flag val
   _cfg_ident_ok "$category" || die "Ungueltige category (erwarte ^[a-z][a-z0-9_]*\$): $category"
   _cfg_ident_ok "$key"      || die "Ungueltiger key (erwarte ^[a-z][a-z0-9_]*\$): $key"
-  [ "$(_cfg_managed_by "$category" "$key")" != "system" ] || \
-    die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar."
+  case "$(_cfg_managed_by "$category" "$key")" in
+    system)   die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar." ;;
+    instance) die "${category}.${key} gehört zu dieser Installation (setzt der Installer selbst) und ist nicht änderbar." ;;
+  esac
   res="$(_cfg_psql -tA -c "SELECT core.fn_config_reset(jsonb_build_object('category','${category}','key','${key}'))")" || \
     die "Config-Reset fehlgeschlagen (Schema angewandt?)."
   ok_flag="$(printf '%s' "$res" | jq -r '.ok // false' 2>/dev/null || echo false)"
@@ -209,8 +211,10 @@ config_cmd_set() {
   local category="$1" key="$2" value="$3"
   _cfg_ident_ok "$category" || die "Ungueltige category (erwarte ^[a-z][a-z0-9_]*\$): $category"
   _cfg_ident_ok "$key"      || die "Ungueltiger key (erwarte ^[a-z][a-z0-9_]*\$): $key"
-  [ "$(_cfg_managed_by "$category" "$key")" != "system" ] || \
-    die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar."
+  case "$(_cfg_managed_by "$category" "$key")" in
+    system)   die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar." ;;
+    instance) die "${category}.${key} gehört zu dieser Installation (setzt der Installer selbst) und ist nicht änderbar." ;;
+  esac
 
   # category/key sind ident-validiert; der Wert wird als SQL-Literal interpoliert -> Quotes verdoppeln.
   # UPDATE-only + RETURNING: matcht die (category,key)-Zeile nicht -> leere Rueckgabe -> Fehler (kein
@@ -233,13 +237,16 @@ config_cmd_set() {
 # tests/db/core/test_fn_config_import.sql): nur bekannte Owner-Zeilen mit gueltigem Wert, alles andere mit Grund in skipped[], nicht
 # genannte Owner-Zeilen zurueck auf den Standard. Gerufen von `config import`, `backup restore` und `move apply`.
 
-# config_import_rows <datei> -> Ergebnis-JSON von core.fn_config_import auf stdout. Der Inhalt geht als base64 im SQL ueber stdin
-#   (nie argv, kein Quoting-Risiko); pg_su_stdin, weil psql im klassischen Betrieb als postgres laeuft und die root-Datei nicht liest.
+# config_import_rows <datei> [<pakete-json>] -> Ergebnis-JSON von core.fn_config_import auf stdout. Der Inhalt geht als base64 im
+#   SQL ueber stdin (nie argv, kein Quoting-Risiko); pg_su_stdin, weil psql im klassischen Betrieb als postgres laeuft und die
+#   root-Datei nicht liest. <pakete-json> = Pakete der Sicherung (nur deren nicht genannte Werte gehen auf den Standard zurueck);
+#   ohne Angabe setzt der Import nichts zurueck.
 config_import_rows() {
-  local b64
+  local b64 pk
   b64="$(base64 -w0 "$1" 2>/dev/null || base64 "$1" | tr -d '\n')"
+  pk="$(printf '%s' "${2:-[]}" | base64 | tr -d '\n')"
   _cfg_resolve_db
-  printf "SELECT core.fn_config_import(jsonb_build_object('rows', convert_from(decode('%s','base64'),'UTF8')::jsonb));\n" "$b64" |
+  printf "SELECT core.fn_config_import(jsonb_build_object('rows', convert_from(decode('%s','base64'),'UTF8')::jsonb, 'packages', convert_from(decode('%s','base64'),'UTF8')::jsonb));\n" "$b64" "$pk" |
     pg_su_stdin psql -v ON_ERROR_STOP=1 -X -q -tA -d "$N8N_DB_NAME" -f -
 }
 
@@ -255,7 +262,8 @@ config_import_report() {
     [ -n "$line" ] && warn "$line"
   done < <(jq -r '.skipped[] | "\(.category).\(.key): " + ({unknown: "gibt es hier nicht", system: "ist ein Systemwert",
       instance: "gehört zu dieser Installation", invalid: "Wert passt hier nicht"}[.reason] // .reason) + " — nicht übernommen."' <<<"$res" 2>/dev/null)
-  ok "Einstellungen: ${n_app} übernommen, ${n_res} auf den Standard zurückgesetzt${n_skip:+, ${n_skip} nicht übernommen}."
+  local tail=''; [ "$n_skip" = 0 ] || tail=", ${n_skip} nicht übernommen"
+  ok "Einstellungen: ${n_app} übernommen, ${n_res} auf den Standard zurückgesetzt${tail}."
   if [ "${LIFEAGENTS_CONFIG_DEFER_APPLY:-0}" != 1 ]; then
     while IFS= read -r pkg; do
       [ -n "$pkg" ] && _cfg_redeploy_pkg "$pkg"

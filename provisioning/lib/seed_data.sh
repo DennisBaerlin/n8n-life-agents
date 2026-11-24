@@ -65,7 +65,8 @@ _seed_reconcile() {
 }
 
 # _seed_reconcile_unowned <tabelle> <schluessel-spalte> <sql-liste aller Manifeste> — Altzeilen ohne Paket (package = '' aus der
-#   Zeit vor der package-Spalte), die kein Manifest mehr nennt. Nur im Voll-Seed: ein Paket-Lauf kennt nicht alle Manifeste.
+#   Zeit vor der package-Spalte), die kein Manifest mehr nennt. Die Liste sammeln die Seeder ueber alle Manifeste, auch fuer
+#   uebersprungene Pakete; geloescht wird nur im Core- bzw. Voll-Lauf (ein Paket-Lauf raeumt keine fremden Zeilen).
 _seed_reconcile_unowned() {
   [ -z "${SEED_PKG:-}" ] || [ "$SEED_PKG" = core ] || return 0
   if [ -n "$3" ]; then printf "DELETE FROM %s WHERE package = '' AND %s <> ALL (ARRAY[%s]::text[]);\n" "$1" "$2" "$3"
@@ -394,8 +395,8 @@ _seed_context_validators() {
   local mf pkg cname fn rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.context_validators // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_validators // {}) | to_entries[]
            | select(.key != "_comment") | [.key, .value, $pkg] | @tsv' "$mf" |
     while IFS=$'\t' read -r cname fn pkg; do
@@ -430,8 +431,8 @@ _seed_context_scopes() {
   local mf pkg cname scope perm rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.context_scopes // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_scopes // {}) | to_entries[]
            | select(.key != "_comment")
            | .key as $cname | .value
@@ -495,8 +496,8 @@ _seed_context_renderers() {
   local mf pkg cname fn rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.context_renderers // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_renderers // {}) | to_entries[]
            | select(.key != "_comment") | [.key, .value, $pkg] | @tsv' "$mf" |
     while IFS=$'\t' read -r cname fn pkg; do
@@ -536,8 +537,8 @@ _seed_advisors() {
   local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn xfn xsql gaps_sql ready_sql rollout_sql pv_sql rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.advisors // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # learn_notes strikt boolean (Muster member_permeable der callback_handlers): nur ein echtes JSON-true
     # zaehlt, alles andere (fehlend/String/Zahl) -> false (fail-closed).
     jq -r '.name as $pkg | (.advisors // {}) | to_entries[]
@@ -623,8 +624,8 @@ _seed_cron_labels() {
   local mf pkg key scope def rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.cron_labels.list // [])[], ((.cron_labels.person // {}) | keys[] | select(. != "_comment")), (.cron_labels.mandatory // [])[]')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # "mandatory": ["<key>"] = Pflicht-Erinnerung (Haushalt, in /reminders nur Anzeige, nie schaltbar).
     # default_enabled per has() statt `// true`: jq-`//` ersetzt auch ein gesetztes false (sonst waere
     # score_jobs still fuer jede Person an).
@@ -727,8 +728,8 @@ _seed_callback_handlers() {
   local mf pkg prefix fn perm rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
-    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     rk="$(_seed_keys "$mf" '(.callback_handlers // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
+    _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # Nested-Schema { "<prefix>": { "handler_fn": "<pkg>.<fn>", "member_permeable": <bool> } } (Muster
     # _seed_context_scopes). member_permeable strikt boolean-getypt: nur exakt jq-true -> "true", jeder
     # andere/fehlende/falsch getypte Wert -> "false" = fail-closed (die Member-Route oeffnet nie versehentlich).

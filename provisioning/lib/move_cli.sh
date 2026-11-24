@@ -255,6 +255,14 @@ move_cmd_apply() {
       || die "Wiederherstellen gescheitert — die Daten sind unverändert (atomar). Noch einmal: lifeagents move apply ${dir}"
     _mv_set STAGE restored
   fi
+  # Gespraeche, Einstellungen oder Zugaenge nicht angekommen (backup_cli.sh _bkp_restore_parts): einmal nachholen, ohne die Daten
+  # erneut zu ersetzen; sonst hier anhalten, bevor move.env geloescht und der Umzug als eingespielt gilt.
+  if [ -n "$(read_env_value "$BACKUP_STATE_FILE" LAST_RESTORE_PARTS 2>/dev/null || true)" ]; then
+    log "Hole die nicht übernommenen Teile nach ..."
+    ( printf '%s' "$_MV_SHEET" | backup_cmd_restore "$d/$f" --yes --key-stdin --parts ) || true
+    [ -z "$(read_env_value "$BACKUP_STATE_FILE" LAST_RESTORE_PARTS 2>/dev/null || true)" ] \
+      || die "Nicht übernommen: $(read_env_value "$BACKUP_STATE_FILE" LAST_RESTORE_PARTS) (Gründe oben) — die Daten sind eingespielt. Noch einmal: lifeagents move apply ${dir}"
+  fi
   if ! _mv_reached finalized; then
     load_install_env
     _pkg_resolve_env

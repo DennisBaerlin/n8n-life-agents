@@ -409,16 +409,17 @@ _bkp_access_covers() {
       | .value.env | keys[]] | all(. as $k | (($a[0][$p] // {})[$k] // "") != "")' "$mf" >/dev/null 2>&1
 }
 
-# _bkp_access_write_env <arbeitsordner> — vor der Paket-Einrichtung die Werte aus access.json in die env-Dateien dieses Systems
+# _bkp_access_write_env <arbeitsordner> [<pakete>] — (mit <pakete> nur deren Schluessel) vor der Paket-Einrichtung bzw. nach der Daten-TX die Werte aus access.json in die env-Dateien dieses Systems
 #   schreiben, nur wo der Schluessel fehlt oder leer ist (die Installation liest sie dann wie eingegebene Werte). Ein vorhandener,
 #   anderer Wert bleibt (eben bei der Installation eingegeben) und wird gemeldet. Nur bekannte Schluessel: Manifest-`credentials`
 #   des Pakets bzw. BACKUP_HOST_ACCESS_KEYS; alles andere im Bundle wird ignoriert. Setzt _BKP_ACCESS_WRITTEN (Anzahl).
 _bkp_access_write_env() {
-  local d="$1" s k v f cur
+  local d="$1" only="${2:-}" s k v f cur
   _BKP_ACCESS_WRITTEN=0
   _bkp_has_part "$d" access && [ -r "$d/access.json" ] || return 0
   while IFS=$'\t' read -r s k v; do
     [ -n "$k" ] && [ -n "$v" ] || continue
+    [ -z "$only" ] || _bkp_is_active "$s" "$only" || continue
     if [ "$s" = host ]; then
       case " $BACKUP_HOST_ACCESS_KEYS " in *" $k "*) ;; *) continue ;; esac
       f="$(lifeagents_env_file core)"
@@ -1658,7 +1659,7 @@ backup_cmd_restore() {
   local adopt_id=''; [ -n "$brought" ] && adopt_id="$(printf '%s' "$brought" | backup_key_id)"
   # Ohne Ordner keine Vorab-Sicherung -> mit eigenen Daten keine Wiederherstellung (die Daten waeren ohne Rueckweg weg).
   # Schon im Probelauf, damit die Vorschau gar nicht erst zum Bestaetigen einlaedt.
-  if [ "$has_data" = 1 ] && rt_is_compose && [ -z "$(_bkp_host_dir)" ]; then
+  if [ "$has_data" = 1 ] && [ "$parts_only" != 1 ] && rt_is_compose && [ -z "$(_bkp_host_dir)" ]; then
     _bkp_rdie nofolder "Es sind schon eigene Daten da, aber kein Sicherungs-Ordner gewählt — erst einen wählen, dann wird vor dem Ersetzen gesichert."
   fi
 
@@ -1751,9 +1752,14 @@ backup_cmd_restore() {
 #   danach warnt nur, die Daten sind dann schon eingespielt.
 _bkp_rs_apply() {
   local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" pkg
-  # Zugaenge aus der Sicherung vor der Einrichtung: pkg_install_one liest sie dann wie eingegebene Werte (kein Nachfragen,
-  # kein Abbruch an einem Pflicht-Zugang).
-  _bkp_access_write_env "$tmp"
+  # --parts: nur die Teile nach den Daten (Gespraeche, Einstellungen, Zugaenge) nachholen: keine Paket-Einrichtung, keine
+  # Vorab-Sicherung, kein Ersetzen. parts_only ist die Option von backup_cmd_restore (bash sieht locals des Aufrufers). Ein
+  # gescheiterter Teil steht in backup.state (LAST_RESTORE_PARTS); rc 0, damit ein Hintergrund-Lauf sein Ergebnis noch schreibt.
+  if [ "$parts_only" = 1 ]; then _bkp_restore_parts "$tmp" || true; return 0; fi
+  # Zugaenge der einzurichtenden Pakete vor der Einrichtung: pkg_install_one liest sie dann wie eingegebene Werte (kein
+  # Nachfragen, kein Abbruch an einem Pflicht-Zugang). Die uebrigen erst nach der Daten-TX (_bkp_restore_parts), damit ein
+  # Abbruch davor die env-Dateien nicht veraendert hat.
+  [ -z "$to_install" ] || _bkp_access_write_env "$tmp" "$to_install"
   _pkg_menus_defer   # Menue einmal nach den Paketen (jeder Statuswechsel setzt es sonst neu)
   for pkg in $to_install; do
     log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
@@ -1781,10 +1787,6 @@ _bkp_rs_apply() {
   fi
   local bulk; bulk="$(_bkp_bulk_tables)"
   [ -n "$bulk" ] || _bkp_rdie no_tables "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
-
-  # --parts: nur die Teile nach den Daten (Gespraeche, Einstellungen, Zugaenge) nachholen, ohne die Daten erneut zu ersetzen.
-  # parts_only ist die Option von backup_cmd_restore (Aufrufer-Variable; bash sieht locals des Aufrufers).
-  if [ "$parts_only" = 1 ]; then _bkp_restore_parts "$tmp"; return; fi
 
   # Vorab-Sicherung: der einzige Rueckweg, wenn eigene Daten ersetzt werden. Eigene Teilschale (export setzt seinen Trap);
   # die Update-Sperre ist geerbt (LIFEAGENTS_UPDATE_LOCK_HELD).
@@ -1875,11 +1877,12 @@ _bkp_rs_apply() {
 
 # _bkp_restore_parts <arbeitsordner> — nach den Daten: Gespraeche (eigene TX), Abgleich mit dieser Version (_bkp_converge),
 #   geaenderte Einstellungen (nach dem Abgleich: erst dann gibt es die Zeilen eben eingerichteter Pakete), Zugaenge. Jeder Teil
-#   fuer sich: die Daten sind schon eingespielt, ein gescheiterter Teil wird gemeldet (restore-status: converged:false,
-#   parts_failed) und laesst sich mit `backup restore <datei> --parts` nachholen. Ein Teil, den die Sicherung nicht traegt
+#   fuer sich: die Daten sind schon eingespielt, ein gescheiterter Teil wird gemeldet (backup.state LAST_RESTORE_PARTS,
+#   restore-status parts_failed; converged bleibt dem Abgleich vorbehalten) und laesst sich mit `backup restore <datei> --parts` nachholen. Ein Teil, den die Sicherung nicht traegt
 #   (aeltere Sicherung), bleibt auf dem Ziel unberuehrt.
 _bkp_restore_parts() {
-  local tmp="$1" bad='' rc res
+  local tmp="$1" bad='' rc res pk
+  _bkp_state_set LAST_RESTORE_PARTS ''
   if _bkp_has_part "$tmp" memory; then
     rc=0; _bkp_memory_restore "$tmp/memory.dump" "$tmp/memory.counts" || rc=$?
     case "$rc" in
@@ -1897,20 +1900,21 @@ _bkp_restore_parts() {
     [ "$_BKP_CHILD" != 1 ] || _bkp_state_set LAST_RESTORE_CONVERGE fail
   fi
   if _bkp_has_part "$tmp" config; then
-    if res="$(config_import_rows "$tmp/config.json")" && [ -n "$res" ]; then config_import_report "$res" || true
+    pk="$(jq -c '[.packages[]?.name]' "$tmp/manifest.json" 2>/dev/null || printf '[]')"
+    if res="$(config_import_rows "$tmp/config.json" "$pk")" && [ -n "$res" ]; then config_import_report "$res" || true
     else warn "Einstellungen nicht übernommen."; bad+=' config'; fi
   else
     log "Diese Sicherung enthält noch keine Einstellungen — die Einstellungen bleiben, wie sie sind."
   fi
   if _bkp_has_part "$tmp" access; then
+    _bkp_access_write_env "$tmp"
     _bkp_access_inject "$tmp" || { warn "Zugänge nicht übernommen."; bad+=' access'; }
   else
     log "Diese Sicherung enthält noch keine Zugänge — die Zugänge bleiben, wie sie sind."
   fi
   [ -n "$bad" ] || return 0
   warn "Nicht übernommen:${bad} — die Daten sind eingespielt; 'lifeagents backup restore <datei> --parts' holt es nach."
-  # shellcheck disable=SC2031  # _BKP_CHILD=1 setzt die Hintergrund-Unterschale, in der diese Funktion dann laeuft
-  if [ "$_BKP_CHILD" = 1 ]; then _bkp_state_set LAST_RESTORE_CONVERGE fail; _bkp_state_set LAST_RESTORE_PARTS "${bad# }"; fi
+  _bkp_state_set LAST_RESTORE_PARTS "${bad# }"   # restore-status parts_failed; move apply holt sie nach
   return 1
 }
 

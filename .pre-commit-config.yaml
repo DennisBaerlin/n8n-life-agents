@@ -474,6 +474,12 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: test-stack-test
+        name: test_stack_test (building blocks of the test stack without Docker - names, ports, answers, invented keys, teardown match)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_stack_test.ps1
+        pass_filenames: false
+        always_run: true
       - id: desktop-paths-lint
         name: desktop_paths_lint (every file outside provisioning/desktop that the start app reads or its build reads is in both paths lists of desktop.yml, and both lists are equal)
         language: system

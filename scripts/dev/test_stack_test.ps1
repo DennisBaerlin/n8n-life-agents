@@ -119,7 +119,7 @@ $rows = @('s4t0-n8n|com.docker.compose.project=s4t0,io.lifeagents.install=s4t0',
           's4t0-core-next|io.lifeagents.install=s4t0', 's4t0-patchsrc|io.lifeagents.install=s4t0', 'fremd|io.lifeagents.install=other,lifeagents.worktree=C:/x')
 $side = @(Select-TestStackSideContainers -Rows $rows -Project 's4t0')
 Assert-That (($side -join ',') -eq 's4t0-testbridge,s4t0-tgmock') 'Neben-Container: Install- und Worktree-Etikett, ohne Compose-Projekt; nie Kurzlaeufe des Kerns, nie Fremdes'
-Assert-That ($script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -and $script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -match 'invented' -and $script:TestStackMockAnswers['TELEGRAM_BOT_TOKEN'] -match 'invented') 'Verbund: Bot-Token und KI-Schluessel erfunden (kein echter Zugang in der Installation)'
+Assert-That ($script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -and $script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -match 'test-fake' -and $script:TestStackMockAnswers['TELEGRAM_BOT_TOKEN'] -match 'invented') 'Verbund: Bot-Token und KI-Schluessel erfunden (kein echter Zugang in der Installation)'
 
 # --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'

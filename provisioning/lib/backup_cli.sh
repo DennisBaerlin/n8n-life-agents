@@ -383,23 +383,28 @@ _bkp_pkg_access_keys() {
   jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf" 2>/dev/null || true
 }
 
+# _bkp_access_put <json> <abschnitt> <schluessel> <wert> -> das JSON mit gesetztem Wert. Werte laufen nie durch TSV: dessen
+#   Escaping (Rueckwaertsstrich, Tab, Zeilenumbruch) hat beim Lesen niemand zurueckgenommen.
+_bkp_access_put() { jq -c --arg s "$2" --arg k "$3" --arg v "$4" '.[$s][$k] = $v' <<<"$1"; }
+
+# _bkp_access_rows <access.json> -> je Zugang Abschnitt, Schluessel und Wert, jedes mit NUL beendet (lesen mit `read -r -d ''`).
+_bkp_access_rows() { jq -j 'to_entries[] | .key as $s | .value | to_entries[] | "\($s)\u0000\(.key)\u0000\(.value)\u0000"' "$1" 2>/dev/null; }
+
 # _bkp_access_write_bundle <arbeitsordner> -> access.json aus den env-Dateien dieser Installation.
 _bkp_access_write_bundle() {
-  local d="$1" pkg k v
-  : > "$d/access.tsv"
+  local d="$1" pkg k v j='{}'
   for k in $BACKUP_HOST_ACCESS_KEYS; do
     v="$(read_env_value "$(lifeagents_env_file core)" "$k" 2>/dev/null || true)"
-    [ -z "$v" ] || printf 'host\t%s\t%s\n' "$k" "$v" >> "$d/access.tsv"
+    [ -z "$v" ] || j="$(_bkp_access_put "$j" host "$k" "$v")" || return 1
   done
   for pkg in $(_bkp_active_names); do
     while IFS= read -r k; do
       [ -n "$k" ] || continue
       v="$(read_env_value "$(lifeagents_env_file "$pkg")" "$k" 2>/dev/null || true)"
-      [ -z "$v" ] || printf '%s\t%s\t%s\n' "$pkg" "$k" "$v" >> "$d/access.tsv"
+      [ -z "$v" ] || j="$(_bkp_access_put "$j" "$pkg" "$k" "$v")" || return 1
     done < <(_bkp_pkg_access_keys "$pkg")
   done
-  jq -Rn 'reduce (inputs | split("\t")) as [$s, $k, $v] ({}; .[$s][$k] = $v)' < "$d/access.tsv" > "$d/access.json" || return 1
-  rm -f "$d/access.tsv"
+  printf '%s\n' "$j" > "$d/access.json"
 }
 
 # _bkp_access_covers <arbeitsordner> <pkg> [required] -> rc 0, wenn access.json alle env-Schluessel der (Pflicht-)Zugaenge des
@@ -420,7 +425,7 @@ _bkp_access_write_env() {
   local d="$1" only="${2:-}" s k v f cur
   _BKP_ACCESS_WRITTEN=0
   _bkp_has_part "$d" access && [ -r "$d/access.json" ] || return 0
-  while IFS=$'\t' read -r s k v; do
+  while IFS= read -r -d '' s && IFS= read -r -d '' k && IFS= read -r -d '' v; do
     [ -n "$k" ] && [ -n "$v" ] || continue
     [ -z "$only" ] || _bkp_is_active "$s" "$only" || continue
     if [ "$s" = host ]; then
@@ -438,7 +443,7 @@ _bkp_access_write_env() {
     elif [ "$cur" != "$v" ]; then
       warn "${s}: Zugang ${k} auf diesem System behalten (weicht von der Sicherung ab)."
     fi
-  done < <(jq -r 'to_entries[] | .key as $s | .value | to_entries[] | [$s, .key, .value] | @tsv' "$d/access.json" 2>/dev/null)
+  done < <(_bkp_access_rows "$d/access.json")
   [ "$_BKP_ACCESS_WRITTEN" = 0 ] || ok "Zugänge aus der Sicherung übernommen: ${_BKP_ACCESS_WRITTEN}."
 }
 
@@ -510,9 +515,9 @@ backup_fingerprint() {
   done < <(_bkp_memory_tables)
   d="$(_bkp_tmpdir)" || return 1
   if _bkp_access_write_bundle "$d"; then
-    while IFS=$'\t' read -r t qual v; do
+    while IFS= read -r -d '' t && IFS= read -r -d '' qual && IFS= read -r -d '' v; do
       [ -n "$qual" ] && out+="access ${t}.${qual} $(printf '%s' "$v" | md5sum | cut -c1-32)"$'\n'
-    done < <(jq -r 'to_entries[] | .key as $s | .value | to_entries[] | [$s, .key, .value] | @tsv' "$d/access.json" 2>/dev/null)
+    done < <(_bkp_access_rows "$d/access.json")
   fi
   rm -rf -- "$d"
   printf '%s' "$out" | grep -v '^$' | LC_ALL=C sort
@@ -1719,21 +1724,26 @@ backup_cmd_restore() {
   done < <(_bkp_filtered)
 
   # Wipe-Uebersicht immer ausweisen (via warn/log -> stderr; auch unter --yes sichtbar, z. B. im Cron-Log).
-  warn "RESTORE ueberschreibt ALLE aktuellen Nutzerdaten (Finanzen, Profil, Trigger, Plaene) mit dem Bundle-Inhalt. Betroffen:"
-  log "  Pakete (Bundle): ${pkg_summary:-?}"
-  [ -z "$to_install" ] || log "  Wird vorher eingerichtet (--no-seed): ${to_install% }"
-  [ -z "$to_activate" ] || log "  Wird vorher eingeschaltet: ${to_activate% }"
-  [ -z "$to_skip" ] || log "  Nicht eingerichtet (sichert keine Daten, bei Bedarf neu einrichten): ${to_skip% }"
-  log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): $(printf '%s' "$bulk" | tr '\n' ' ')"
-  log "  Zeilen-gefiltert, ${filt_n} Tabelle(n): ${filt_disp:-(keine)}"
-  [ "$has_data" = 1 ] && log "  Vorher wird eine Sicherung der jetzigen Daten geschrieben."
-  if [ -n "$brought" ]; then
-    log "  $(backup_text msg.adopt id "$adopt_id")"
+  # --parts ersetzt keine Daten und sagt das auch.
+  if [ "$parts_only" = 1 ]; then
+    warn "Nur Gespräche, Einstellungen und Zugänge aus der Sicherung werden nachgeholt — die übrigen Daten bleiben, wie sie sind."
+  else
+    warn "RESTORE ueberschreibt ALLE aktuellen Nutzerdaten (Finanzen, Profil, Trigger, Plaene) mit dem Bundle-Inhalt. Betroffen:"
+    log "  Pakete (Bundle): ${pkg_summary:-?}"
+    [ -z "$to_install" ] || log "  Wird vorher eingerichtet (--no-seed): ${to_install% }"
+    [ -z "$to_activate" ] || log "  Wird vorher eingeschaltet: ${to_activate% }"
+    [ -z "$to_skip" ] || log "  Nicht eingerichtet (sichert keine Daten, bei Bedarf neu einrichten): ${to_skip% }"
+    log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): $(printf '%s' "$bulk" | tr '\n' ' ')"
+    log "  Zeilen-gefiltert, ${filt_n} Tabelle(n): ${filt_disp:-(keine)}"
+    [ "$has_data" = 1 ] && log "  Vorher wird eine Sicherung der jetzigen Daten geschrieben."
+    if [ -n "$brought" ]; then
+      log "  $(backup_text msg.adopt id "$adopt_id")"
+    fi
   fi
 
   # --- (3b) TTY-Bestaetigung (destruktiv) ---
   if [ "$force" -ne 1 ]; then
-    tty_usable || die "Kein TTY und kein --yes -> Abbruch (Restore ueberschreibt ALLE Nutzerdaten)."
+    tty_usable || die "Kein TTY und kein --yes -> Abbruch ($([ "$parts_only" = 1 ] && printf %s "Restore holt Teile nach" || printf %s "Restore ueberschreibt ALLE Nutzerdaten"))."
     printf 'Wirklich wiederherstellen? [ja/NEIN]: ' > /dev/tty
     local ans=""; read -r ans < /dev/tty
     [ "$ans" = "ja" ] || die "Abgebrochen."
@@ -1766,7 +1776,7 @@ backup_cmd_restore() {
       # shellcheck disable=SC2034  # UNATTENDED liest ui_interactive (common.sh) in dieser Shell
       UNATTENDED=1
       _bkp_state_set LAST_RESTORE_PID "$BASHPID"
-      _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip"
+      _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip" "$parts_only"
       _bkp_state_set LAST_RESTORE_OK "$(date +%s)"
     ) &
     trap - EXIT
@@ -1778,18 +1788,18 @@ backup_cmd_restore() {
   # shellcheck disable=SC2034,SC2031  # UNATTENDED liest ui_interactive (common.sh); _BKP_JSON aendert nur der Hintergrund-Zweig
   [ "$_BKP_JSON" != 1 ] || UNATTENDED=1
   _BKP_JSON=0
-  _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip"
+  _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate" "$to_skip" "$parts_only"
 }
 
 # _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten>
-#   <pakete-uebersprungen> — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
+#   <pakete-uebersprungen> <nur-teile:0|1> — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
 #   einschalten, Aufbau ihrer Tabellen pruefen, Vorab-Sicherung der jetzigen Daten, eine TX, danach _bkp_converge. Jeder
 #   Abbruch bis einschliesslich der TX ueber _bkp_rdie (ein vorher eingerichtetes Paket bleibt); ein gescheiterter Abgleich
 #   danach warnt nur, die Daten sind dann schon eingespielt.
 _bkp_rs_apply() {
-  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" pkg
+  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" parts_only="${8:?parts_only (8. Argument: 0 oder 1) fehlt}" pkg
   # --parts: nur die Teile nach den Daten (Gespraeche, Einstellungen, Zugaenge) nachholen: keine Paket-Einrichtung, keine
-  # Vorab-Sicherung, kein Ersetzen. parts_only ist die Option von backup_cmd_restore (bash sieht locals des Aufrufers). Ein
+  # Vorab-Sicherung, kein Ersetzen. parts_only (8. Argument) ist die Option --parts von backup_cmd_restore. Ein
   # gescheiterter Teil steht in backup.state (LAST_RESTORE_PARTS); rc 0, damit ein Hintergrund-Lauf sein Ergebnis noch schreibt.
   if [ "$parts_only" = 1 ]; then _bkp_restore_parts "$tmp" || true; return 0; fi
   # Zugaenge der einzurichtenden Pakete vor der Einrichtung: pkg_install_one liest sie dann wie eingegebene Werte (kein

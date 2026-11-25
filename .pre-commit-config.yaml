@@ -488,6 +488,33 @@ repos:
         pass_filenames: false
         files: ^scripts/(gate_wiring_lint|dev/gate_wiring_lint_test)\.ps1$
 
+      - id: ps-glue-lint
+        name: ps_glue_lint (a command glued behind a comment - a lost line break - never runs; PowerShell parser tokens)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_glue_lint.ps1
+        files: \.ps1$
+
+      - id: ps-glue-lint-test
+        name: ps_glue_lint_test (a glued command turns ps_glue_lint red, compound words and strings stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ps_glue_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(ps_glue_lint|dev/ps_glue_lint_test)\.ps1$
+
+      - id: seed-reconcile-lint
+        name: seed_reconcile_lint (tables the seed reconciles = tables the DB test for blocking FKs/triggers lists)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seed_reconcile_lint.ps1
+        pass_filenames: false
+        files: ^(provisioning/lib/seed_data\.sh|tests/db/core/test_seed_reconcile_registry_unreferenced\.sql|scripts/seed_reconcile_lint\.ps1)$
+
+      - id: seed-reconcile-lint-test
+        name: seed_reconcile_lint_test (a table missing on either side turns seed_reconcile_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/seed_reconcile_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(seed_reconcile_lint|dev/seed_reconcile_lint_test)\.ps1$
+
       - id: release-notes-check-test
         name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
         language: system

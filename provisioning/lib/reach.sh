@@ -449,8 +449,9 @@ reach_wan_write_domain() {
 # reach_status_json — eine JSON-Zeile (Format: docs/reference/provisioning.md *Docker-Verbund: Erreichbarkeit*):
 #   {mode, state, url, dns_name, key_expiry, key_days_left, webhook, webhook_pending, webhook_error, webhook_error_at,
 #   ipv4, ipv4_reason, ts_hostname, reason}. ts_hostname = LA_TS_HOSTNAME des master (compose.yml), leer wenn ungueltig.
-#   ipv4 (own|none|unknown) nur beim FritzBox-Weg und vor der Wahl. Aendert nichts, ausser beim Tunnel
-#   den Funnel einzuschalten, sobald das Konto ihn erlaubt (die Zustimmung kam mit der 2. Bestaetigung). Prueft keine
+#   ipv4 (own|none|unknown) nur beim FritzBox-Weg und vor der Wahl. Aendert nichts, ausser beim Tunnel zweierlei: den Funnel
+#   einzuschalten, sobald das Konto ihn erlaubt (die Zustimmung kam mit der 2. Bestaetigung), und eine Anmeldung anzustossen,
+#   wenn der Knoten NeedsLogin meldet und kein Link da ist (reach_login_start; jeder andere Zustand bleibt unberuehrt). Prueft keine
 #   Ports: ports_busy ist das Ergebnis der letzten Pruefung in reach_converge (Marke ports-busy in reach_conf) — eine
 #   Probe je Abfrage kostete zwei Container und stiesse bei gleichzeitigen Abfragen (Wizard + App) auf den festen Namen.
 # reach_ipv4_cached — reach_ipv4_eval hoechstens alle 10 Min (der Wizard fragt alle paar Sekunden; der Echo-Dienst soll

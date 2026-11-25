@@ -941,8 +941,9 @@ async function answer(id, raw, skip) {
         const r = await setBackupDir(P.A.__backup_choice || 'other', P.A.__backup_dir);
         if (r.error) { delete P.A.__backup_dir; P.cursor = firstOpen(); save(); return r; }
       }
-      // Tunnel: erst anmelden, dann genau eine Installation, gleich mit der Adresse (kein zweiter Lauf per activate).
-      if (flow.reachMode(P.A) === 'tunnel' && !P.notes.tunnel_ready) return startTunnel();
+      // Tunnel: erst anmelden, dann genau eine Installation, gleich mit der Adresse (kein zweiter Lauf per activate). Immer
+      // über den Tunnel-Schritt, auch nach „Noch einmal versuchen“: steht er noch, geht es nach einem Abruf weiter.
+      if (flow.reachMode(P.A) === 'tunnel') return startTunnel();
       return startInstall();
     }
     default: return { error: T('core.wizard.msg.unknown_page') };
@@ -1091,8 +1092,8 @@ async function tunnelTick(force) {
     const r = readReach(await bridge(['reach-status'], { timeoutMs: 20000 }));
     if (P.phase !== 'tunnel') return;   // inzwischen „Zurück“
     // pending_activation = Tunnel steht, Telegram zeigt nur noch nicht darauf (das erledigt die Installation).
-    if (r.state === 'pending_activation' || r.state === 'ready') {
-      P.notes.tunnel_ready = true;
+    // Erst wenn reach_ctl.sh start fertig ist: beide schreiben core.env (reach_prepare), nie gleichzeitig.
+    if ((r.state === 'pending_activation' || r.state === 'ready') && !tunnelKick) {
       delete P.notes.tunnel;
       const s = startInstall();
       // Antwort fehlt oder ist kaputt: zurück zu den Fragen (startInstall setzt den Cursor), sonst bliebe die Seite stehen.

@@ -14,8 +14,8 @@
 #        (lib/move_cli.sh: neue Maschine, neue Adresse); der Wizard meldet vor der Installation an (`start`).
 #        Danach eine JSON-Zeile wie `status`. Exit = der des Installer-Laufs.
 #   bash /opt/lifeagents/provisioning/compose/reach_ctl.sh relogin    neu anmelden, z. B. nach abgelaufener Anmeldung
-#        (reach_login_start, bei Ablauf mit --force-reauth; ein Neustart des Containers gaebe ohne das Start-Programm des
-#        Images keinen Link mehr). Nie `tailscale reset`/`logout`: der Knoten bleibt derselbe. Nur beim Tunnel-Weg.
+#        (reach_relogin: Container neu starten, das verwirft einen alten Link, dann reach_login_start, bei Ablauf mit
+#        --force-reauth). Nie `tailscale reset`/`logout`: der Knoten bleibt derselbe. Nur beim Tunnel-Weg.
 # Voraussetzung: LIFEAGENTS_RUNTIME=compose (sonst Abbruch); start und activate brauchen root.
 # Exit: status 0; start 0; activate = Exit des Installer-Laufs; relogin 0; Abbruch per die 1; unbekanntes Verb 2.
 set -euo pipefail
@@ -44,7 +44,7 @@ case "${1:-}" in
     ;;
   relogin)
     [ "$(reach_mode)" = tunnel ] || die "relogin gibt es nur beim Tunnel-Weg."
-    reach_login_start >&2 || die "Tailscale-Anmeldung ließ sich nicht anstoßen ($(rt_edge_logs_hint tailscale))."
+    reach_relogin >&2 || die "Tailscale-Anmeldung ließ sich nicht anstoßen ($(rt_edge_logs_hint tailscale))."
     reach_status_json
     ;;
   *) printf 'Usage: reach_ctl.sh status | start | activate | relogin\n' >&2; exit 2 ;;

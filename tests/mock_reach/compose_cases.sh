@@ -105,6 +105,7 @@ rt_edge_exec() {
   case "$*" in
     'tailscale status --json --peers=false') if [ -s "$W/ts.json" ]; then cat "$W/ts.json"; else printf '%s' "$A_TS_JSON"; fi ;;
     'tailscale funnel status --json') if [ -s "$W/funnel.json" ]; then cat "$W/funnel.json"; else printf '%s' "$A_FUNNEL_JSON"; fi ;;
+    'pgrep -f tailscale up') [ "${A_TS_UP_RUNNING:-0}" = 1 ] ;;
     *'tailscale funnel --bg --yes http://127.0.0.1:8088')
       # Zustand in einer Datei: der Lib-Code ruft die Attrappe in $(…)-Subshells (wie Tailscale: bleibt gespeichert).
       if [ "$A_FUNNEL_ALLOWED" = 1 ]; then printf '%s' "$FUN_ON" > "$W/funnel.json"
@@ -296,6 +297,15 @@ tl "$(ts_json NeedsLogin '' '[]')"; reach_status_json >/dev/null 2>&1
 grep -q '^execd tailscale up ' "$LOG" && pass T_status_kicks_login || fail T_status_kicks_login "$(tr '\n' ';' < "$LOG")"
 tl "$(ts_json NeedsLogin "$LOGIN" '[]')"; reach_status_json >/dev/null 2>&1
 grep -q '^execd' "$LOG" && fail T_status_link_there_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_link_there_quiet
+# Nur lesen bei laufendem Knoten: ein Ablauf nach der eigenen Uhr erzwingt im Status keine Neu-Anmeldung (das tut relogin).
+tl "$(ts_json Running '' '["https","funnel"]' "$(iso 1700000000)")"; reach_status_json >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_status_running_expired_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_running_expired_quiet
+# Ein wartender `tailscale up` laeuft schon (Link kommt gleich): kein zweiter, der die Anmeldung neu starten koennte.
+A_TS_UP_RUNNING=1; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; A_TS_UP_RUNNING=0
+grep -q '^execd' "$LOG" && fail T_no_second_up "$(tr '\n' ';' < "$LOG")" || pass T_no_second_up
+# relogin: Container neu starten (verwirft einen alten, vielleicht abgelaufenen Link), dann neu anstossen.
+tl "$(ts_json NeedsLogin "$LOGIN" '[]' '' true)"; reach_relogin >/dev/null 2>&1
+grep -q '^restart tailscale$' "$LOG" && pass T_relogin_restarts || fail T_relogin_restarts "$(tr '\n' ';' < "$LOG")"
 LA_TS_HOSTNAME=calm-otter; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; unset LA_TS_HOSTNAME
 eq T_hostname_from_stack 'execd tailscale up --hostname=calm-otter --accept-dns=false --timeout=0' "$(grep '^execd' "$LOG")"
 # Installer-Haken: ein frisch gestarteter Knoten bekommt seinen Link schon in reach_prepare (Antwort-Datei-Weg von setup.sh).

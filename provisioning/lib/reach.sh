@@ -155,9 +155,19 @@ reach_login_start() {
     key_expired) force=--force-reauth ;;
     *) return 0 ;;
   esac
+  # Ein wartender `up` laeuft schon (sein Link erscheint gleich): ein zweiter startete die Anmeldung neu und machte einen
+  #   schon geoeffneten Link ungueltig.
+  if rt_edge_exec tailscale pgrep -f 'tailscale up' >/dev/null 2>&1; then return 0; fi
   _reach_ts_up_flags "$(_reach_ts_host)"
   rt_edge_exec_detached tailscale tailscale up "${REACH_TS_UP_FLAGS[@]}" --timeout=0 ${force:+"$force"} \
     || { warn "Tunnel: Tailscale-Anmeldung ließ sich nicht anstoßen ($(rt_edge_logs_hint tailscale))."; return 1; }
+}
+
+# reach_relogin — frischer Anmelde-Link (reach_ctl.sh relogin): Container neu starten (beendet einen wartenden `up` samt
+#   altem, vielleicht abgelaufenem Link; der Knoten bleibt derselbe, nie `reset`/`logout`), dann reach_login_start.
+reach_relogin() {
+  rt_edge_restart tailscale || return 1
+  reach_login_start
 }
 
 # _reach_key_wait <pruef-fn> — nach der Anmeldung bis REACH_KEY_SETTLE_SECS (60) alle 2 s pruefen; direkt nach `up` fehlen
@@ -482,9 +492,10 @@ reach_status_json() {
       if ! rt_edge_active tailscale; then reason='not_started'
       else
         reach_ts_eval "$(_reach_ts_status)"
-        # Kein Link, obwohl einer noetig ist (Neustart des Containers, Ablauf): anstossen, der naechste Abruf zeigt ihn (wie
-        # Funnel unten). Gilt fuer jeden Leser (Wizard, Umzug, Start-App), ohne Warten.
-        if [ -z "$REACH_TS_URL" ] && { [ "$REACH_TS_STATE" = key_expired ] || [ "$REACH_TS_BACKEND" = NeedsLogin ]; }; then
+        # Nicht angemeldet und kein Link (Neustart des Containers): anstossen, der naechste Abruf zeigt ihn (wie Funnel unten).
+        # Gilt fuer jeden Leser (Wizard, Umzug, Start-App), ohne Warten. Ein laufender Knoten wird hier nie neu angemeldet
+        # (Ablauf nach der eigenen Uhr: reach_ctl.sh relogin).
+        if [ -z "$REACH_TS_URL" ] && [ "$REACH_TS_BACKEND" = NeedsLogin ]; then
           REACH_KEY_WAIT_SECS=0 reach_login_start >/dev/null 2>&1 || true
         fi
         state="$REACH_TS_STATE"; url="$REACH_TS_URL"; dns="$REACH_TS_DNS"; kexp="$REACH_TS_KEY_EXPIRY"; kdays="$REACH_TS_KEY_DAYS"
@@ -544,9 +555,9 @@ reach_prepare() {
     _reach_key_wait _reach_ts_key_ready || true
   else
     reach_login_start || true   # ohne Schluessel: Anmelde-Link ausstellen (Wizard bzw. Antwort-Datei-Weg von setup.sh)
-    # Angemeldet, aber Name oder Funnel noch nicht da (kurz nach der Anmeldung, nach einem Neustart): bis
-    # REACH_KEY_SETTLE_SECS warten, sonst liefe die eine Installation aus dem Wizard ohne Adresse.
-    [ "$REACH_TS_BACKEND" != Running ] || _reach_key_wait _reach_ts_key_ready || true
+    # Angemeldet, aber Name oder Funnel noch nicht da (kurz nach der Anmeldung): bis REACH_KEY_SETTLE_SECS warten, sonst
+    # liefe die eine Installation aus dem Wizard ohne Adresse. Nur solange es noch keine Adresse gibt (Updates warten nie).
+    if [ -z "${DOMAIN:-}" ] && [ "$REACH_TS_BACKEND" = Running ]; then _reach_key_wait _reach_ts_key_ready || true; fi
   fi
   reach_ts_eval "$(_reach_ts_status)"
   if [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ] && reach_funnel_ensure "$REACH_TS_DNS"; then

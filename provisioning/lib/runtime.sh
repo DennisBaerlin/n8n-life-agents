@@ -632,7 +632,7 @@ rt_edge_active() {
   local c; c="$(_rt_edge_container "$1")" || return 2
   [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ]
 }
-# rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale stellt neu einen Link aus).
+# rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale verwirft einen wartenden Anmelde-Link, neu anstossen: reach_login_start).
 #   `docker restart` statt `compose restart`: tailscale/wan haengen an Profilen, die der Aufruf sonst erst aktivieren muesste.
 rt_edge_restart() {
   local c; c="$(_rt_edge_container "$1")" || return 2

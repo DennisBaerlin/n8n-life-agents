@@ -628,5 +628,72 @@
     "expected_route": "finance",
     "expected_behavior": "The bookkeeper reply is about raising the standing order Stromabschlag Stadtwerke to 95 euro (it proposes or confirms exactly that change, or says the confirmation card was declined). It does not talk about an unrelated topic and does not ask what the user means by that.",
     "notes": "Live-Eigenschaft: nach dem Wechsel Berater -> Buchhalter verstand der Buchhalter einen Satz ohne eigenen Bezug nicht. Der Block aus 'Previous specialist' traegt die Berater-Antwort aus router_history. Mock: Szenario mit gleichem match (mr_orch prueft nur das Routing)."
+  },
+  {
+    "id": "oc-resume-1",
+    "name": "Ruhender Finanz-Entwurf (3 Tage), Bitte um Weitermachen -> agent.finance_advisor, nicht die Hilfe",
+    "task": "Okay lass uns mit der Beratung weitermachen",
+    "chat_id": "test_oc_resume_1",
+    "package_onboarding": {"estate.documents": "unknown"},
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ Planfall Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ Planfall Konto','account_type','cash','currency','EUR','opening_balance',1000))); SELECT pg_temp.ok('__E2E__ Planfall Gehalt', finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ Planfall Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ Planfall Konto'),'direction','income','amount',5000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text))); SELECT pg_temp.ok('__E2E__ Entwurf Haushalt', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','household_basics','topic','Haushalt','section_content','Zwei Erwachsene, zwei Kinder. Netto 5000 Euro im Monat, davon 800 Euro Sparquote.'))); SELECT pg_temp.ok('__E2E__ Entwurf Notreserve', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld, die Reserve wird nicht angetastet.'))); ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%' AND updated_at < now() - interval '2 days' AND updated_at > now() - interval '30 days' AND jsonb_array_length(interview_state->'emergency_reserve'->'topics') = 1) AND (SELECT count(*) FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft') = 1 AND (SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Planfall Gehalt' AND status = 'active') = 1 AND EXISTS (SELECT 1 FROM estate.onboarding_state WHERE section_key = 'documents' AND status = 'unknown')",
+    "expected_route": "finance_advisor",
+    "timeout_s": 300,
+    "expected_behavior": "The finance advisor resumes the paused plan conversation: one sentence naming the last saved topic (Notreserve or Haushalt), then the next topic of the plan with exactly ONE question. It does not only announce that it will continue, does not recap the saved topics, does not list sections and gives the user no sentence to type. Talking about the open estate setup area instead of the plan is a FAIL.",
+    "notes": "Live-Fund L1 (S4 Nachfassen, Plan s4-ux-nachfassen §6.1 mt-resume-1): Entwurf aelter als 2 h -> interview_advisor none; core.fn_advisor_pins liefert paused_advisor, Router-Regel 3c. Ein fremder Einrichtungs-Bereich ist offen (wie live), die Hilfe-Beschreibung passt auf den Satz. Hier statt in multiturn_cases.json: jener Treiber feuert am Buchhalter-Harness und prueft kein Routing. Altern per setup_sql mit abgeschaltetem touch-Trigger (sonst setzt er updated_at auf jetzt). Mock: Szenario mit gleichem match."
+  },
+  {
+    "id": "oc-resume-2",
+    "name": "Ruhender Finanz-Entwurf, nur 'weiter' ohne offene Frage -> agent.finance_advisor",
+    "task": "weiter",
+    "chat_id": "test_oc_resume_2",
+    "package_onboarding": {"estate.documents": "unknown"},
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ Planfall Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ Planfall Konto','account_type','cash','currency','EUR','opening_balance',1000))); SELECT pg_temp.ok('__E2E__ Planfall Gehalt', finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ Planfall Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ Planfall Konto'),'direction','income','amount',5000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text))); SELECT pg_temp.ok('__E2E__ Entwurf Haushalt', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','household_basics','topic','Haushalt','section_content','Zwei Erwachsene, zwei Kinder. Netto 5000 Euro im Monat, davon 800 Euro Sparquote.'))); SELECT pg_temp.ok('__E2E__ Entwurf Notreserve', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld, die Reserve wird nicht angetastet.'))); ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%' AND updated_at < now() - interval '2 days' AND updated_at > now() - interval '30 days' AND jsonb_array_length(interview_state->'emergency_reserve'->'topics') = 1) AND (SELECT count(*) FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft') = 1 AND (SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Planfall Gehalt' AND status = 'active') = 1",
+    "expected_route": "finance_advisor",
+    "timeout_s": 300,
+    "notes": "Live-Fund L1 (Plan §6.1 mt-resume-2): der Satz der letzten Erinnerung (E2) soll 'Schreib einfach weiter' lauten; das traegt nur, wenn ein nacktes 'weiter' ohne offene Frage den ruhenden Berater erreicht (Regel 3c). Gleicher Vorzustand wie oc-resume-1, kein Verlauf. Mock: Szenario 'weiter' (kein anderer Fall-Task darf es als laengsten Treffer bekommen, mock_lint C1)."
+  },
+  {
+    "id": "oc-resume-3",
+    "name": "Ruhender Finanz-Entwurf, aber offene Frage des Buchhalters -> 'Weiter bitte.' bleibt bei agent.finance",
+    "task": "Weiter bitte.",
+    "chat_id": "test_oc_resume_3",
+    "router_history": {
+      "human": "Hier ist mein Kontoauszug vom Lindenbank Giro, bitte eintragen.",
+      "agent": "agent.finance",
+      "output": "Ich habe 12 Buchungen erkannt, 9 sind schon zugeordnet. Bei 3 Buchungen brauche ich dich noch. Soll ich mit der naechsten offenen Buchung weitermachen?"
+    },
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ Planfall Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ Planfall Konto','account_type','cash','currency','EUR','opening_balance',1000))); SELECT pg_temp.ok('__E2E__ Entwurf Notreserve', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld, die Reserve wird nicht angetastet.'))); ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%' AND updated_at < now() - interval '2 days' AND updated_at > now() - interval '30 days') AND (SELECT count(*) FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft') = 1",
+    "expected_route": "finance",
+    "timeout_s": 240,
+    "notes": "Negativ-Fall zu oc-resume-2 (Plan §6.1 mt-resume-3, Arch-Challenge 3c): eine offene Frage eines anderen Spezialisten geht vor (Regel 2b/Sticky); 3c greift bei nacktem Weiter nur ohne offene Frage. Die Runde 1 steht als router_history. Mock: Szenario 'weiter bitte' (laenger als 'weiter')."
+  },
+  {
+    "id": "oc-resume-4",
+    "name": "Kein Entwurf, offener Bereich: 'wo waren wir?' -> kein Berater, Router nennt den naechsten Schritt",
+    "task": "wo waren wir?",
+    "chat_id": "test_oc_resume_4",
+    "package_onboarding": {"estate.documents": "unknown"},
+    "expected_route": null,
+    "expected_behavior": "No advisor is called. The reply is one short sentence that suggests the next step from the system (the open setup area) in everyday words, followed by the button (the NEXT_STEP line is removed by the system) or one question. It does not claim that a plan or advice conversation was started, does not ask what the user means, and gives no sentence to type.",
+    "notes": "Negativ-Fall (Plan §6.1 mt-resume-4): ohne Entwurf ist paused_advisor none; Regel 8 ('what now?', 'wo waren wir?' steht in der Liste). Task bewusst ohne 'weiter': der Mock waehlt per Teilstring, ein 'weiter'-Task fiele auf das Szenario von oc-resume-2. NULL-Fall -> kein Mock-Szenario."
+  },
+  {
+    "id": "oc-resume-5",
+    "name": "Nach der Wiederaufnahme (Entwurf 5 Tage, Pin kalt): kurze Antwort bleibt beim Berater",
+    "task": "Ja, die haben wir fuer die ganze Familie.",
+    "chat_id": "test_oc_resume_5",
+    "router_history": {
+      "human": "lass uns weitermachen",
+      "agent": "agent.finance_advisor",
+      "output": "Gern, weiter mit deinem Finanzplan. Zuletzt haben wir die Notreserve festgehalten. Als Naechstes geht es um deine Absicherung: Hast du eine private Haftpflichtversicherung?"
+    },
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ Planfall Konto', finance.fn_create_account(jsonb_build_object('name','__E2E__ Planfall Konto','account_type','cash','currency','EUR','opening_balance',1000))); SELECT pg_temp.ok('__E2E__ Planfall Gehalt', finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ Planfall Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ Planfall Konto'),'direction','income','amount',5000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text))); SELECT pg_temp.ok('__E2E__ Entwurf Haushalt', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','household_basics','topic','Haushalt','section_content','Zwei Erwachsene, zwei Kinder. Netto 5000 Euro im Monat, davon 800 Euro Sparquote.'))); SELECT pg_temp.ok('__E2E__ Entwurf Notreserve', agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld, die Reserve wird nicht angetastet.'))); ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '5 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%' AND updated_at < now() - interval '4 days' AND updated_at > now() - interval '30 days') AND (SELECT count(*) FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft') = 1 AND (SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Planfall Gehalt' AND status = 'active') = 1",
+    "expected_route": "finance_advisor",
+    "timeout_s": 300,
+    "notes": "Zweite Runde von ac-resume-1 (Konzept beratung-erinnern §8): nach der Wiederaufnahme speichert der Berater erst mit dem bestaetigten Thema, der Pin bleibt also kalt (interview_advisor none, paused_advisor gesetzt). Die kurze Antwort auf seine Frage muss per Regel 2b beim Berater bleiben; Regel 3c darf das nicht stoeren. Mock: Szenario mit gleichem match."
   }
 ]

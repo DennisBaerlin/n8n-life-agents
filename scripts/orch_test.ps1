@@ -19,14 +19,16 @@
 #     mit button = true (ohne human) traegt agent.fn_set_router_button_turn den Turn ein wie der Knopf-Arm;
 #   expected_signal = FRAME|NOFRAME -> Router-Signal nach dem Spezialisten (Relay compose.signal, Regel 6 fuer alle);
 #   expected_mood = LOVE|CHEER|RELIEF|FUN|'' -> Stimmung der Router-Zeile (Relay compose.mood; '' = keine);
-#   expect_body_empty = true -> der Router antwortet nur mit einer Reaktion (Relay compose.body leer, kein Text).
+#   expect_body_empty = true -> der Router antwortet nur mit einer Reaktion (Relay compose.body leer, kein Text);
+#   setup_sql + precondition_sql (+ teardown_sql), package_onboarding -> Vorzustand wie in n8n_test/mock_route_test.
 #
-# Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
+# Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-CasesFile <gefilterte Kopie von orch_cases.json>] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. Kostet LLM-Credits (owner-gegatet).
 # Abbruch-Absicherung wie n8n_test (-MaxCostUsd, -ForceAbortId, finally-Aufraeumen; lib/paid_guard.ps1).
 param(
     [string]$Id,
     [int]$Timeout = 90,
+    [string]$CasesFile = 'tests\agent\core\orch_cases.json',   # gefilterte Fall-Datei fuer gezielte bezahlte Laeufe (wie n8n_test)
     [double]$MaxCostUsd = 10.0,   # haelt den Lauf vor dem naechsten Fall an (lib/paid_guard.ps1); 0 = aus
     [string]$ForceAbortId,        # wirft am Anfang dieses Falls: zeigt den Abbruch-Pfad, ohne dass ein Fall LLM-Kosten verursacht
     [switch]$Verbose
@@ -151,7 +153,7 @@ $PairedUid = $TestOwnerTelegramUid
 Set-OwnerTelegramPairing -Container $Container -Uid $PairedUid
 Write-Host "  Orchestrator: id=$OrchWfId   Ingress: $($ingress.Url)"
 
-$tcFile = Join-Path $RepoRoot 'tests\agent\core\orch_cases.json'
+$tcFile = if ([System.IO.Path]::IsPathRooted($CasesFile)) { $CasesFile } else { Join-Path $RepoRoot $CasesFile }
 $allCases = [System.IO.File]::ReadAllText($tcFile, $Utf8NoBom) | ConvertFrom-Json
 $cases = @(if ($Id) { $allCases | Where-Object { $_.id -eq $Id } } else { $allCases })
 . "$PSScriptRoot\lib\date_placeholder.ps1"
@@ -162,7 +164,7 @@ if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId
 Write-Host ""
 Write-Host "Orchestrator Routing Tests -- $($cases.Count) Testfall(e)  (echter Telegram-Ingress)"
 Write-Host ("-" * 64)
-$passed = 0; $failed = 0; $judgeBundle = @()
+$passed = 0; $failed = 0; $judgeBundle = @(); $pkgOnbDirty = $false
 $completed = $false
 
 try {
@@ -193,6 +195,20 @@ foreach ($tc in $cases) {
     $fuRes = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', $fuSql)
     if ($fuRes.Code -ne 0) { throw "[$($tc.id)] Folge-Bindung setzen fehlgeschlagen: $(($fuRes.Output | Where-Object { $_ }) -join ' ')" }
     if ($tc.PSObject.Properties['router_history'] -and $tc.router_history) { Set-TestRouterHistory -Container $Container -SessionId "$chatId" -Turn $tc.router_history }
+    # Vorzustand wie mock_route_test (eine Stelle: Invoke-TestCaseSetup), z. B. ein seit Tagen ruhender Plan-Entwurf fuer Regel 3c.
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
+    Register-TestCaseTeardown $tc
+    if ($tc.package_onboarding -or $pkgOnbDirty) {
+        Set-TestPackageOnboarding -Container $Container -Sections $tc.package_onboarding
+        $pkgOnbDirty = [bool]$tc.package_onboarding
+    }
+    # Ein Rest-Entwurf eines frueheren Falls setzte paused_advisor fuer alle folgenden Faelle -> scheiterndes Aufraeumen ist ein Abbruch.
+    $clr = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')
+    if ($clr.Code -ne 0) { throw "[$($tc.id)] fn_clear_e2e_data fehlgeschlagen: $(($clr.Output | Where-Object { $_ }) -join ' ')" }
+    if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
+        Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" -Precondition "$($tc.precondition_sql)"
+    }
     $base = Get-MaxExecId -WfId $OrchWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
     # Die Owner-Persona (Case-Feld persona) gilt nur fuer diesen Fall -> im finally wieder neutral, weil
@@ -277,6 +293,11 @@ $completed = $true
 } finally {
     # Auch bei Abbruch (Ctrl-C, Kostengrenze, Fehler): wartende Karten-Executions stoppen, Karten-Sperre loesen.
     Invoke-PaidRunCleanup -Container $Container -WorkflowId @($OrchWfId)
+    # setup_sql-Vorzustand und offene Bereiche nicht fuer die naechste Suite stehen lassen.
+    try { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) } catch { }
+    if ($pkgOnbDirty) { try { Set-TestPackageOnboarding -Container $Container -Sections $null } catch { } }
+    $tdErr = Complete-TestCaseTeardown -Container $Container
+    if ($tdErr) { Write-Host "    [FAIL] $tdErr" -ForegroundColor Red; $failed++ }
     if (-not $completed) { Write-LlmCostReport -Usage (Get-LlmUsage -Container $Container -AfterCursor $llmCursor) -Label 'orch_test (abgebrochen)' -RepoRoot $RepoRoot }
 }
 

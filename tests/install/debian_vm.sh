@@ -3,7 +3,7 @@
 # GitHub-Runner, darin der echte Linux-Einstieg provisioning/setup.sh wie bei einem Nutzer (Docker holen, Kern starten), dann der
 # Fragebogen im Browser (tests/install/wizard_klick.cjs), Kopplung, Pruefung am Ende, Zweitlauf, Abbau.
 # Aufruf (nur auf einem ubuntu-24.04-Runner, im Checkout):  bash tests/install/debian_vm.sh <schritt> [arg]
-#   kvm | registry | image | boot | setup | mocks | link | tunnel | browser | klick | tgreset | pair | verify | second | uninstall | summary | diag | stop
+#   kvm | registry | image | boot | setup | mocks | answers | setup_answers | reach | answers_cleanup | link | tunnel | browser | klick | pair | verify | second | uninstall | summary | diag | stop
 # Zustand liegt in $RUNNER_TEMP (Marken, Schluessel, VM-Ordner) und in $GITHUB_ENV (SETUP_IMAGE, VM_DIR).
 #
 # Grenzen (ohne echtes Telegram und echtes Anthropic gehen diese Stellen nur mit Ersatz, alles andere ist der echte Weg):
@@ -13,9 +13,13 @@
 #    die Adressen, der Fragebogen nimmt die Werte dann mit Hinweis "nicht online pruefbar" (wie ohne Netz) an; der Bot-Aufruf tg-check geht an die Attrappe.
 #  - Tunnel: der Klicker prueft die Tailscale-Seite (kommt vor der Installation, Anmelde-Link, neues Fenster, QR, Zurueck), kommt dort
 #    ohne Tailscale-Konto aber nicht weiter. Er wechselt ueber Zurueck und die Uebersicht auf die FritzBox-Adresse (erfundener Name)
-#    und installiert damit; echter Tunnel mit Test-Tailnet-Schluessel ist KLICK_FINISH_VIA=tunnel (eigenes Paket). Kopplung und
+#    und installiert damit; der echte Tunnel laeuft im Antwort-Datei-Weg (unten). Kopplung und
 #    Abschluss fahren danach wie im Verbund-Lauf von genericity.yml (pair_and_finalize.sh, Webhook-Update statt Telegram).
 #  - Paperless: die Adresse wird uebersprungen (optional); ein echtes Paperless im LAN fehlt dem Lauf.
+#  - Antwort-Datei-Weg (Schritte answers/setup_answers/reach): mit den Test-Zugaengen (nur Environment install-test auf main) echt - Tunnel,
+#    Test-Bot, Anthropic-Schluessel. Ohne sie (ANSWERS_STANDIN=1, Lauf auf Entwicklungs-Branches) erfundene Werte ohne Tailnet:
+#    Telegram-Attrappe und gesperrte Dienste wie im Klickweg, der Tunnel-Teil entfaellt. Gekoppelt wird dort nie: ein Bot kann sich kein
+#    /start schicken, und die Begruessung ginge an einen Chat, den es nicht gibt (Hand-Test des Owners).
 # shellcheck disable=SC2016,SC2029  # die vm()-Befehle sind Text fuer die Shell in der VM: Variablen gehoeren dort aufgeloest, nicht hier
 set -euo pipefail
 
@@ -34,12 +38,17 @@ SSH_O=(-F /dev/null -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFil
 vm() { ssh "${SSH_O[@]}" debian@127.0.0.1 "$@"; }
 vm_scp() { scp -F /dev/null -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P 2222 "$@"; }
 # setup.sh wie ein Nutzer als root, mit der Sprache einer Proxmox-Vorlage (LANG=C).
-vm_setup() { vm "sudo env -u LC_ALL LANG=C bash setup.sh --yes --image '$SETUP_IMAGE' $*"; }
+vm_setup() {
+  # hand-injected: im Lauf mit Telegram-Attrappe (ANSWERS_STANDIN=1, nach den Attrappen) geht jeder setup.sh-Aufruf an die Attrappe, auch Zweitlauf und Abbau
+  local e=''
+  { [ "${ANSWERS_STANDIN:-}" = 1 ] && [ -e "$RUNNER_TEMP/tgmock.up" ]; } && e='LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089'
+  vm "sudo env -u LC_ALL LANG=C $e bash setup.sh --yes --image '$SETUP_IMAGE' $*"
+}
 
 # Secrets: GitHub maskiert sie ohnehin; zusaetzlich hier, damit auch abgeleitete Zeilen nie im Log stehen. Nie ausgeben.
 mask_secrets() {
   local v
-  for v in TEST_TELEGRAM_BOT_TOKEN TEST_ANTHROPIC_API_KEY TEST_TS_AUTHKEY KLICK_TELEGRAM_TOKEN KLICK_ANTHROPIC_KEY; do [ -z "${!v:-}" ] || echo "::add-mask::${!v}"; done
+  for v in TEST_TELEGRAM_BOT_TOKEN TEST_ANTHROPIC_API_KEY TEST_TS_OAUTH_CLIENT_ID TEST_TS_OAUTH_CLIENT_SECRET; do [ -z "${!v:-}" ] || echo "::add-mask::${!v}"; done
 }
 
 step_kvm() {
@@ -162,7 +171,7 @@ step_setup() {
   mark setup_done
   # Der Einmal-Link gehoert in kein oeffentliches Log: Wert maskieren, bevor die Ausgabe erscheint.
   local tok
-  tok="$(cat "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" | grep -o 'start?t=[^[:space:]]*' | head -1 | sed 's/^start?t=//')"
+  tok="$(cat "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" | grep -o 'start?t=[^[:space:]]*' | head -1 | sed 's/^start?t=//' || true)"
   [ -z "$tok" ] || echo "::add-mask::$tok"
   cat "$RUNNER_TEMP/setup1.err" >&2
   cat "$RUNNER_TEMP/setup1.out"
@@ -174,14 +183,13 @@ step_setup() {
   # Passwort des Verbunds nie in der Ausgabe von setup.sh.
   local pw
   pw="$(vm 'sudo docker exec lifeagents-master printenv LA_PG_SUPERPW')"
+  [ -n "$pw" ] || { echo "::error::Kein Passwort des Verbunds im master (LA_PG_SUPERPW leer)"; exit 1; }
   echo "::add-mask::$pw"
   if grep -qF "$pw" "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err"; then echo "::error::Passwort in der Ausgabe von setup.sh"; exit 1; fi
   printf '%s' "$pw" | sha256sum | cut -c1-16 > "$RUNNER_TEMP/pw.hash"
 }
 
-# Ersatz nur dort, wo es die echte Gegenstelle im Lauf nicht gibt (Grenzen im Kopf). Mit den Secrets TEST_TELEGRAM_BOT_TOKEN und
-# TEST_ANTHROPIC_API_KEY (nur schedule/workflow_dispatch, nie pull_request) nimmt der Lauf den echten Weg; ohne sie die Attrappen.
-# Die Entscheidung steht in $RUNNER_TEMP/modes.env (tg=real|mock, ai=real|invented), die Folgeschritte lesen sie.
+# Ersatz nur dort, wo es die echte Gegenstelle im Lauf nicht gibt (Grenzen im Kopf): Telegram-Attrappe, erfundene Werte.
 mock_telegram_up() {
   vm 'mkdir -p ~/mocks/log'
   vm_scp tests/mock_telegram/server.js debian@127.0.0.1:mocks/server.js
@@ -218,34 +226,20 @@ echo "$h aus dem master: HTTP $code"
 VM
 }
 step_mocks() {
-  mask_secrets
   vm 'sudo mkdir -p /srv/lifeagents-backup && sudo chmod 777 /srv/lifeagents-backup'
-  local tg=mock ai=invented
-  [ -z "${TEST_TELEGRAM_BOT_TOKEN:-}" ] || tg=real
-  [ -z "${TEST_ANTHROPIC_API_KEY:-}" ] || ai=real
-  if [ "$tg" = mock ]; then mock_telegram_up; block_host api.telegram.org; else echo "Telegram: echter Test-Bot (Secret gesetzt), keine Attrappe"; fi
-  if [ "$ai" = invented ]; then block_host api.anthropic.com; else echo "Anthropic: echter Schluessel (Secret gesetzt), keine Sperre"; fi
-  [ -z "${TEST_TS_AUTHKEY:-}" ] || echo "Tailscale-Schluessel gesetzt: der Installer nimmt ihn noch nicht an (eigenes Paket), der Klickweg endet am Anmelde-Link."
-  printf 'tg=%s\nai=%s\n' "$tg" "$ai" > "$RUNNER_TEMP/modes.env"
+  mock_telegram_up
+  touch "$RUNNER_TEMP/tgmock.up"
+  block_host api.telegram.org
+  block_host api.anthropic.com
   mark mocks_ready
 }
-mode() { sed -n "s/^$1=//p" "$RUNNER_TEMP/modes.env" 2>/dev/null | head -1; }
-
-# Echter Test-Bot: ein Webhook aus einem frueheren Lauf wuerde der Fragebogen als "Bot haengt woanders" melden; nach dem Lauf
-# soll keiner auf eine tote Adresse zeigen. Der Token geht nur ueber die curl-Konfiguration auf stdin, nie ins argv oder Log.
-step_tgreset() {
-  mask_secrets
-  [ -n "${TEST_TELEGRAM_BOT_TOKEN:-}" ] || { echo "Kein echter Test-Bot, nichts zu tun."; return 0; }
-  printf 'url = "https://api.telegram.org/bot%s/deleteWebhook"\n' "$TEST_TELEGRAM_BOT_TOKEN" | curl -sS -o /dev/null -w 'deleteWebhook: HTTP %{http_code}\n' --max-time 20 -K -
-}
-
 # Frischer Link wie `lifeagents wizard-url` (der von setup.sh ist nach dem Neustart des Fragebogens nicht mehr gueltig), Tunnel wie am Laptop.
 step_link() {
   local url tok
   url="$(vm 'sudo lifeagents wizard-url' | grep -o 'http://127.0.0.1:5881/start?t=[^[:space:]]*' | head -1)"
   [ -n "$url" ] || { echo "::error::lifeagents wizard-url gab keinen Link"; exit 1; }
   tok="${url#*t=}"
-  echo "::add-mask::$tok"
+  [ -z "$tok" ] || echo "::add-mask::$tok"
   (umask 077; printf '%s' "$url" > "$RUNNER_TEMP/klick.url")
 }
 step_tunnel() {
@@ -260,9 +254,8 @@ step_browser() {
   npm ci --no-audit --no-fund --prefix tests/install
   npx --prefix tests/install playwright install --with-deps chromium
 }
-# Den Fragebogen durchklicken. Die echten Zugaenge (KLICK_TELEGRAM_TOKEN, KLICK_ANTHROPIC_KEY) kommen nur per Umgebung des Schritts.
+# Den Fragebogen durchklicken (erfundene Werte).
 step_klick() {
-  mask_secrets
   KLICK_URL="$(cat "$RUNNER_TEMP/klick.url")" KLICK_OUT="${KLICK_OUT:-$RUNNER_TEMP/klick-out}" node tests/install/wizard_klick.cjs
 }
 
@@ -270,11 +263,6 @@ step_klick() {
 # `lifeagents household pair-owner --machine`, schickt /start <Code> an den echten Webhook des Orchestrators und prueft Abschluss,
 # Begruessung (kommt bei der Attrappe an), chat_id in den Workflows und doctor. Der Fragebogen steht dabei auf der Seite "Verbinden"; sein eigenes Koppeln ist nicht Teil des Laufs.
 step_pair() {
-  if [ "$(mode tg)" = real ]; then
-    # Ein Bot kann sich nicht selbst /start schicken, und die Begruessung ginge an einen erfundenen Chat: ohne Menschen keine Kopplung.
-    echo "::notice::Kopplung uebersprungen: echter Test-Bot, es gibt keinen Chat (braucht einen Menschen)."
-    return 0
-  fi
   vm_scp tests/mock_telegram/pair_and_finalize.sh debian@127.0.0.1:mocks/pair_and_finalize.sh
   vm 'sudo bash /home/debian/mocks/pair_and_finalize.sh lifeagents /home/debian/mocks/log'
   mark paired
@@ -291,7 +279,8 @@ step_verify() {
   local total
   total="$(vm "sudo docker exec lifeagents-postgres psql -U postgres -d n8n -tAc 'SELECT count(*) FROM public.workflow_entity' | tr -d '[:space:]'")"
   echo "Workflows: $total"
-  [ "$total" -ge 100 ] || { echo "::error::Workflows: $total (erwartet >= 100)"; exit 1; }
+  local min="${MIN_WORKFLOWS:-100}"
+  [ "$total" -ge "$min" ] || { echo "::error::Workflows: $total (erwartet >= $min)"; exit 1; }
   vm "sudo docker exec lifeagents-postgres psql -U postgres -d n8n -tAc 'SELECT count(*) FROM public.workflow_entity WHERE \"activeVersionId\" IS NULL' | tr -d '[:space:]'" | grep -qx 0 \
     || { echo "::error::Unveroeffentlichte Workflows"; exit 1; }
   vm 'sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --format "{{.Names}} {{.ID}}" | sort' > "$RUNNER_TEMP/ids.1"
@@ -315,6 +304,8 @@ step_second() {
 step_uninstall() {
   # Die Attrappe gehoert nicht zum Verbund: der Abbau haelt ein Abbild zurueck, das noch ein Container nutzt.
   vm 'sudo docker rm -fv lifeagents-tgmock >/dev/null 2>&1 || true'
+  # Tunnel-Geraet abmelden, bevor sein Container verschwindet: es faellt sofort aus dem Tailnet statt erst nach der Frist.
+  vm 'sudo docker exec lifeagents-tailscale tailscale logout >/dev/null 2>&1 || true'
   vm_setup --uninstall --delete-data
   vm 'bash -s' <<'VM'
 # shellcheck disable=SC2016,SC2029  # die vm()-Befehle sind Text fuer die Shell in der VM: Variablen gehoeren dort aufgeloest, nicht hier
@@ -333,7 +324,6 @@ step_summary() {
   [ -s "$RUNNER_TEMP/marks.txt" ] || return 0
   {
     echo "## Debian-VM-Lauf"
-    echo "Telegram: $(mode tg), Anthropic-Schluessel: $(mode ai)"
     echo "| Phase | Sekunden seit der vorigen Marke |"
     echo "|---|---|"
     local prev='' t name first
@@ -358,10 +348,102 @@ step_stop() {
   pkill -f 'ssh -f -N' || true
 }
 
+# --- Antwort-Datei-Weg (unbeaufsichtigt, ohne Fragebogen): setup.sh --answers mit dem Helfer der Test-Zugaenge ----------------------
+# Der Helfer scripts/ci/install_test_answers.sh macht aus den Secrets (nur im env: des Schritts "answers") die Antwort-Datei samt
+# frischem Tailscale-Schluessel (1 h, einmalig). ANSWERS_STANDIN=1 (nur der Lauf ohne Secrets, erfundene Werte, kein Tailnet): wie im
+# Klickweg Telegram-Attrappe und gesperrte Dienste; setup.sh laeuft dann zweimal (erst der Kern, dann --answers), weil die Attrappe den
+# Namensraum des laufenden Verbunds braucht.
+step_answers() {
+  mask_secrets
+  (umask 077; bash scripts/ci/install_test_answers.sh "$RUNNER_TEMP/answers.env")
+  vm_scp "$RUNNER_TEMP/answers.env" debian@127.0.0.1:answers.env
+  vm 'chmod 600 ~/answers.env'
+  mark answers_ready
+}
+step_setup_answers() {
+  vm_scp provisioning/setup.sh debian@127.0.0.1:setup.sh
+  ssh -f -N -R 127.0.0.1:5001:127.0.0.1:5001 -o ExitOnForwardFailure=yes "${SSH_O[@]}" debian@127.0.0.1
+  if [ "${ANSWERS_STANDIN:-}" = 1 ]; then
+    vm_setup >/dev/null
+    step_mocks
+  fi
+  mark setup_start
+  local rc=0
+  vm_setup --answers /home/debian/answers.env > "$RUNNER_TEMP/setup1.out" 2> "$RUNNER_TEMP/setup1.err" || rc=$?
+  mark setup_done
+  [ "$rc" = 0 ] || { cat "$RUNNER_TEMP/setup1.err" >&2; cat "$RUNNER_TEMP/setup1.out"; echo "::error::setup.sh --answers Exit $rc"; exit 1; }
+  # Der Schluessel der Antwort-Datei darf nirgends in der Ausgabe stehen.
+  local k v
+  for k in TS_AUTHKEY TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY N8N_OWNER_PASSWORD; do
+    v="$(sed -n "s/^$k='\(.*\)'\$/\1/p" "$RUNNER_TEMP/answers.env" | head -1)"
+    [ -z "$v" ] || { ! grep -qF -- "$v" "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" || { echo "::error::$k steht in der Ausgabe von setup.sh"; exit 1; }; }
+  done
+  cat "$RUNNER_TEMP/setup1.err" >&2
+  cat "$RUNNER_TEMP/setup1.out"
+}
+
+# Nach der Installation mit Tunnel: Tunnel steht (ready = Adresse da und Telegram zeigt darauf), Adresse *.ts.net, getWebhookInfo ohne
+# Fehler, oeffentlicher Pfad ueber Funnel antwortet von n8n (404 von n8n, nicht von Tailscale; DNS neuer Funnel-Namen braucht bis 10 Min),
+# Kosten 0 (usage.jsonl leer). Ohne Tailnet im Lauf (kein REACH_MODE in der Antwort-Datei): nur der Hinweis.
+step_reach() {
+  mask_secrets
+  if ! grep -q "^REACH_MODE='tunnel'" "$RUNNER_TEMP/answers.env"; then
+    echo "::notice::Tunnel-Teil uebersprungen: kein Tailscale-Zugang in diesem Lauf."
+    return 0
+  fi
+  local _ st='' dom='' code=''
+  for _ in $(seq 1 90); do
+    st="$(vm 'sudo docker exec lifeagents-master bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status' 2>/dev/null | tail -n1 | jq -r '.state // empty' 2>/dev/null || true)"
+    [ "$st" = ready ] && break
+    sleep 10
+  done
+  [ "$st" = ready ] || { echo "::error::Tunnel nicht ready nach 15 Minuten (Zustand: ${st:-?})"; vm 'sudo docker exec lifeagents-master bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status' || true; exit 1; }
+  dom="$(vm "sudo docker exec lifeagents-master sh -c 'grep ^DOMAIN= /etc/lifeagents/core.env | cut -d= -f2-'" | tr -d "\r'\"")"
+  case "$dom" in *.ts.net) echo "Adresse: $dom" ;; *) echo "::error::DOMAIN ist keine ts.net-Adresse"; exit 1 ;; esac
+  local tok info
+  tok="$(sed -n "s/^TELEGRAM_BOT_TOKEN='\(.*\)'\$/\1/p" "$RUNNER_TEMP/answers.env" | head -1)"
+  info="$(printf 'url = "https://api.telegram.org/bot%s/getWebhookInfo"\n' "$tok" | curl -sS --max-time 20 -K -)"
+  jq -e --arg p "https://$dom/webhook/" '.result.url | startswith($p)' <<<"$info" >/dev/null || { echo "::error::Telegram zeigt nicht auf die Adresse des Rechners"; exit 1; }
+  jq -e '(.result.last_error_message // "") == ""' <<<"$info" >/dev/null || { echo "::error::getWebhookInfo meldet einen Zustellfehler"; exit 1; }
+  echo "getWebhookInfo: Adresse stimmt, kein Zustellfehler"
+  local body="$RUNNER_TEMP/probe.body"
+  for _ in $(seq 1 60); do
+    code="$(curl -s -o "$body" -w '%{http_code}' --max-time 10 "https://$dom/webhook/lifeagents-probe-ci" || true)"
+    # 404 von n8n nennt den Webhook; ein 404 von Tailscale oder einem Proxy davor tut das nicht.
+    [ "$code" = 404 ] && grep -qi 'webhook' "$body" && break
+    code=''
+    sleep 10
+  done
+  [ -n "$code" ] || { echo "::error::Oeffentlicher Pfad ueber $dom antwortet nicht von n8n (kein 404 mit n8n-Meldung)"; head -c 300 "$body" 2>/dev/null || true; exit 1; }
+  echo "Oeffentlicher Pfad ueber den Funnel: n8n antwortet (404 fuer unbekannten Webhook)"
+  vm 'sudo docker exec lifeagents-gateway true' || { echo "::error::Gateway-Container nicht erreichbar, Kosten nicht pruefbar"; exit 1; }
+  local n
+  n="$(vm "sudo docker exec lifeagents-gateway sh -c 'wc -l < /var/lib/lifeagents-llm-gateway/usage.jsonl 2>/dev/null || echo 0'" | tr -d '[:space:]')"
+  [ "${n:-0}" = 0 ] || { echo "::error::Das Gateway hat $n Anfragen mitgeschrieben (erwartet 0)"; exit 1; }
+  echo "Kosten: 0 Anfragen an Anthropic"
+  mark reach_ok
+}
+
+# Aufraeumen (auch nach Fehlern): Tailscale-Geraet abmelden, Webhook des Test-Bots loeschen (nie drop_pending_updates), Antwort-Dateien weg.
+# Der Token kommt aus der Antwort-Datei, damit kein weiterer Schritt Secrets braucht.
+step_answers_cleanup() {
+  vm 'sudo docker exec lifeagents-tailscale tailscale logout' >/dev/null 2>&1 || true
+  if [ -s "$RUNNER_TEMP/answers.env" ]; then
+    local tok
+    tok="$(sed -n "s/^TELEGRAM_BOT_TOKEN='\(.*\)'\$/\1/p" "$RUNNER_TEMP/answers.env" | head -1)"
+    [ -z "$tok" ] || echo "::add-mask::$tok"
+    if [ "${ANSWERS_STANDIN:-}" != 1 ] && [ -n "$tok" ]; then
+      printf 'url = "https://api.telegram.org/bot%s/deleteWebhook"\n' "$tok" | curl -sS -o /dev/null -w 'deleteWebhook: HTTP %{http_code}\n' --max-time 20 -K - || true
+    fi
+  fi
+  vm 'rm -f ~/answers.env' >/dev/null 2>&1 || true
+  rm -f "$RUNNER_TEMP/answers.env"
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   kvm) step_kvm ;; registry) step_registry ;; image) step_image ;; boot) step_boot ;; setup) step_setup ;;
-  mocks) step_mocks ;; tgreset) step_tgreset ;; link) step_link ;; tunnel) step_tunnel ;; browser) step_browser ;; klick) step_klick ;; pair) step_pair "$@" ;; verify) step_verify ;;
+  mocks) step_mocks ;; answers) step_answers ;; setup_answers) step_setup_answers ;; reach) step_reach ;; answers_cleanup) step_answers_cleanup ;; link) step_link ;; tunnel) step_tunnel ;; browser) step_browser ;; klick) step_klick ;; pair) step_pair "$@" ;; verify) step_verify ;;
   second) step_second ;; uninstall) step_uninstall ;; summary) step_summary ;; diag) step_diag ;; stop) step_stop ;;
-  *) echo "Aufruf: bash tests/install/debian_vm.sh kvm|registry|image|boot|setup|mocks|link|tunnel|browser|klick|tgreset|pair|verify|second|uninstall|summary|diag|stop" >&2; exit 64 ;;
+  *) echo "Aufruf: bash tests/install/debian_vm.sh kvm|registry|image|boot|setup|mocks|answers|setup_answers|reach|answers_cleanup|link|tunnel|browser|klick|pair|verify|second|uninstall|summary|diag|stop" >&2; exit 64 ;;
 esac

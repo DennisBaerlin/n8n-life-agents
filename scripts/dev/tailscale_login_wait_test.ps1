@@ -1,11 +1,10 @@
 ﻿#Requires -Version 5.1
 # tailscale_login_wait_test.ps1 -- Bleibt der Anmelde-Link des Tunnels stehen, bis ein Mensch sich anmeldet? Faehrt den
-# Dienst `tailscale` genau so, wie provisioning/compose/compose.yml ihn definiert (Image-Pin, Umgebung, entrypoint/command
-# aus `docker compose config`), ohne Anmeldeschluessel, und beobachtet ihn -WaitSeconds lang (Standard 180):
+# Dienst `tailscale` genau so, wie provisioning/compose/compose.yml ihn definiert (Image-Pin, entrypoint/command aus
+# `docker compose config`), ohne Anmeldeschluessel, stoesst die Anmeldung an wie der master (lib/reach.sh reach_login_start:
+# losgeloestes `tailscale up` mit denselben Schaltern) und beobachtet ihn -WaitSeconds lang (Standard 180):
 #   - der Container startet nicht neu (RestartCount 0),
-#   - es gibt einen Anmelde-Link (AuthURL login.tailscale.com), und er bleibt derselbe.
-# Stellt der Container nach 20 s selbst keinen Link aus, stoesst der Test die Anmeldung so an wie der master
-# (lib/reach.sh reach_login_start: losgeloestes `tailscale up` mit denselben Schaltern). Optional mit $env:TS_TEST_AUTHKEY
+#   - es gibt einen Anmelde-Link (AuthURL login.tailscale.com), und er bleibt derselbe. Optional mit $env:TS_TEST_AUTHKEY
 # (Einmal-Schluessel, z. B. scripts/ci/install_test_answers.sh): danach anmelden, Container neu starten, erwartet
 # BackendState Running ohne neue Anmeldung; am Ende `tailscale logout` (Geraet sofort weg).
 # Braucht Docker und Internet zu Tailscale (kostenlos, kein Konto ohne Schluessel). Eigene Namen: -Prefix (Container
@@ -53,7 +52,6 @@ if (-not $svc) { throw 'Dienst tailscale fehlt in compose.yml.' }
 $hostName = 'tstest-' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
 
 $run = @('run', '-d', '--name', $name, '--network', $net, '--restart', [string]$svc.restart, '-v', "${vol}:/var/lib/tailscale")
-foreach ($p in $svc.environment.PSObject.Properties) { $run += @('-e', "$($p.Name)=$([string]$p.Value)") }
 if ($svc.entrypoint) { $run += @('--entrypoint', [string]$svc.entrypoint[0]) }
 $run += [string]$svc.image
 if ($svc.entrypoint -and $svc.entrypoint.Count -gt 1) { $run += @($svc.entrypoint[1..($svc.entrypoint.Count - 1)] | ForEach-Object { [string]$_ }) }
@@ -66,18 +64,18 @@ try {
     Invoke-Docker $run | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Container $name startet nicht." }
 
-    # Link holen: erst selbst (Image-Start), sonst so anstossen wie reach_login_start.
+    # Link holen: sobald tailscaled NeedsLogin meldet, anstossen wie reach_login_start (ohne `up` stellt tailscaled keinen aus).
     $url = ''; $kicked = $false; $t0 = Get-Date
     while (((Get-Date) - $t0).TotalSeconds -lt 60 -and -not $url) {
         Start-Sleep -Seconds 2
         $st = Get-TsStatus
         if ($st -and $st.AuthURL) { $url = [string]$st.AuthURL; break }
-        if (-not $kicked -and ((Get-Date) - $t0).TotalSeconds -ge 20 -and $st -and $st.BackendState -eq 'NeedsLogin') {
+        if (-not $kicked -and $st -and $st.BackendState -eq 'NeedsLogin') {
             Invoke-Docker @('exec', '-d', $name, 'tailscale', 'up', "--hostname=$hostName", '--accept-dns=false', '--timeout=0') | Out-Null
             $kicked = $true
         }
     }
-    Check ($url -match '^https://login\.tailscale\.com/') "Anmelde-Link nach höchstens 60 s da$(if ($kicked) { ' (angestoßen wie reach_login_start)' })"
+    Check ($url -match '^https://login\.tailscale\.com/') 'Anmelde-Link nach höchstens 60 s da'
 
     $changed = 0; $t1 = Get-Date
     while (((Get-Date) - $t1).TotalSeconds -lt $WaitSeconds) {

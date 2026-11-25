@@ -584,6 +584,58 @@ function Resume-TestStackTick([Parameter(Mandatory)][string]$Master) {
     if ($r.Code -ne 0) { Write-Host "    [WARN] Tick-Schleife von $Master liess sich nicht fortsetzen (Exit $($r.Code)): $($r.Output -join ' | ') -- bootstrap_test_stack.ps1 -Reset stellt sie her." -ForegroundColor Yellow }
 }
 
+# Get-TestSubstrateTimerScript -Action pause|resume -- sh-Text fuer das klassische Substrat (systemd). Dort laufen die echten
+# lifeagents-Zeitgeber (update-run jede Minute, update-check, backup stuendlich) neben den Suiten; jeder nimmt oder probt die
+# Update-Sperre und liesse einen Runner-Fall mit "Sperre belegt" ins Leere laufen (die Sicherung haelt sie waehrend ihres Laufs).
+# Pausieren legt alle aktiven lifeagents-*.timer still, keine feste Liste: ein neuer Zeitgeber ist sofort mit dabei. Danach wartet es
+# auf einen schon laufenden Dienst gleichen Namens (nicht per `is-active --quiet`: ein laufender oneshot steht auf `activating`,
+# Exit 3, und gaelte als fertig). Die Liste steht in /run: ein Fortsetzen nach einem abgebrochenen Lauf findet dieselben
+# Zeitgeber, ein zweites Pausieren vergisst keinen.
+function Get-TestSubstrateTimerScript {
+    param([Parameter(Mandatory)][string]$Action)
+    $list = '/run/lifeagents-test-timers-stopped'
+    switch ($Action) {
+        'pause' { return @"
+L=$list; touch `$L
+for t in `$(systemctl list-units --type=timer --state=active --no-legend --plain 'lifeagents-*.timer' | awk '{print `$1}'); do
+  systemctl stop "`$t" || exit 1
+  grep -qxF "`$t" `$L || echo "`$t" >> `$L
+done
+i=0; busy=1
+while [ `$i -lt 300 ]; do
+  busy=0
+  for t in `$(cat `$L); do
+    u="`${t%.timer}.service"; s=`$(systemctl is-active "`$u")
+    case "`$s" in inactive|failed|unknown) ;; *) busy=1 ;; esac
+  done
+  [ `$busy = 0 ] && break
+  sleep 0.2; i=`$((i+1))
+done
+[ `$busy = 0 ]
+"@ }
+        'resume' { return @"
+L=$list; [ -s `$L ] || exit 0
+rc=0; while read -r t; do systemctl start "`$t" || rc=1; done < `$L
+rm -f `$L; exit `$rc
+"@ }
+        default { throw "Zeitgeber-Aktion '$Action' unbekannt (pause oder resume)." }
+    }
+}
+# Suspend-/Resume-TestTimers -Container <c> -Runtime classic|compose -- die eine Adresse, mit der eine Suite ihre Umgebung ruhig
+# stellt: im Verbund die Tick-Schleife des master (Suspend-TestStackTick), klassisch die Zeitgeber des Substrats. Resume gehoert in
+# ein finally. Je Substrat eine Suite zur Zeit (wie beim Tick: ein Schalter ohne Zaehler).
+function Suspend-TestTimers([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Runtime) {
+    if ($Runtime -eq 'compose') { Suspend-TestStackTick -Master $Container; return }
+    $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', (Get-TestSubstrateTimerScript -Action pause))
+    if ($r.Code -ne 0) { throw "Zeitgeber von $Container liessen sich nicht stilllegen (ein Stopp scheiterte oder ein Dienst lief nach 60 s noch): $($r.Output -join ' | ')" }
+}
+function Resume-TestTimers([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Runtime) {
+    if ($Runtime -eq 'compose') { Resume-TestStackTick -Master $Container; return }
+    $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', (Get-TestSubstrateTimerScript -Action resume))
+    # Kein throw: Resume laeuft im finally und darf einen Fehler der Suite nicht ueberdecken.
+    if ($r.Code -ne 0) { Write-Host "    [WARN] Zeitgeber von $Container liessen sich nicht fortsetzen (Exit $($r.Code)): $($r.Output -join ' | ')" -ForegroundColor Yellow }
+}
+
 # Get-TestStackUnitName -Project <p> -Unit <n8ntest-gwt…> -- Name des Container, der die gleichnamige systemd-Einheit der klassischen
 # Gateway-Suite ersetzt. Nie im Standard-Projekt (Assert-TestStackProject).
 function Get-TestStackUnitName {

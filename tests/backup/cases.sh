@@ -80,13 +80,10 @@ cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N
   [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"
   [ ! -s "$W/career.manifest" ] || cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
   [ ! -s "$W/career.sections" ] || cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
-  [ -z "${BKP_TIMER_STOPPED:-}" ] || systemctl start lifeagents-backup.timer 2>/dev/null
   rm -rf "$W"; }
 trap cleanup EXIT
-# Der echte Sicherungs-Timer des Substrats ruht waehrend der Faelle: sein `backup auto --scheduled` schriebe dasselbe
-# Lebenszeichen (Signal backup), das die F.hb-Faelle pruefen (Muster wie tests/mock_github/update_cases.sh).
-if systemctl is-active --quiet lifeagents-backup.timer 2>/dev/null; then systemctl stop lifeagents-backup.timer; BKP_TIMER_STOPPED=1; fi
-for _ in $(seq 1 150); do systemctl is-active --quiet lifeagents-backup.service || break; sleep 0.2; done
+# Die Zeitgeber des Substrats ruhen waehrend der Faelle (Suspend-TestTimers im Treiber, scripts/lib/test_stack.ps1): ein
+# 'backup auto --scheduled' schriebe dasselbe Lebenszeichen (Signal backup), das die F.hb-Faelle pruefen.
 if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein 64-Hex"; exit "$fails"; fi
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
 KB="$(printf '0123456789abcdef%.0s' 1 2 3 4)"

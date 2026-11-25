@@ -38,7 +38,12 @@ SSH_O=(-F /dev/null -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFil
 vm() { ssh "${SSH_O[@]}" debian@127.0.0.1 "$@"; }
 vm_scp() { scp -F /dev/null -i "$W/key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P 2222 "$@"; }
 # setup.sh wie ein Nutzer als root, mit der Sprache einer Proxmox-Vorlage (LANG=C).
-vm_setup() { vm "sudo env -u LC_ALL LANG=C ${SETUP_ENV:-} bash setup.sh --yes --image '$SETUP_IMAGE' $*"; }
+vm_setup() {
+  # hand-injected: im Lauf mit Telegram-Attrappe (ANSWERS_STANDIN=1, nach den Attrappen) geht jeder setup.sh-Aufruf an die Attrappe, auch Zweitlauf und Abbau
+  local e=''
+  { [ "${ANSWERS_STANDIN:-}" = 1 ] && [ -e "$RUNNER_TEMP/tgmock.up" ]; } && e='LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089'
+  vm "sudo env -u LC_ALL LANG=C $e bash setup.sh --yes --image '$SETUP_IMAGE' $*"
+}
 
 # Secrets: GitHub maskiert sie ohnehin; zusaetzlich hier, damit auch abgeleitete Zeilen nie im Log stehen. Nie ausgeben.
 mask_secrets() {
@@ -166,7 +171,7 @@ step_setup() {
   mark setup_done
   # Der Einmal-Link gehoert in kein oeffentliches Log: Wert maskieren, bevor die Ausgabe erscheint.
   local tok
-  tok="$(cat "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" | grep -o 'start?t=[^[:space:]]*' | head -1 | sed 's/^start?t=//')"
+  tok="$(cat "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" | grep -o 'start?t=[^[:space:]]*' | head -1 | sed 's/^start?t=//' || true)"
   [ -z "$tok" ] || echo "::add-mask::$tok"
   cat "$RUNNER_TEMP/setup1.err" >&2
   cat "$RUNNER_TEMP/setup1.out"
@@ -178,6 +183,7 @@ step_setup() {
   # Passwort des Verbunds nie in der Ausgabe von setup.sh.
   local pw
   pw="$(vm 'sudo docker exec lifeagents-master printenv LA_PG_SUPERPW')"
+  [ -n "$pw" ] || { echo "::error::Kein Passwort des Verbunds im master (LA_PG_SUPERPW leer)"; exit 1; }
   echo "::add-mask::$pw"
   if grep -qF "$pw" "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err"; then echo "::error::Passwort in der Ausgabe von setup.sh"; exit 1; fi
   printf '%s' "$pw" | sha256sum | cut -c1-16 > "$RUNNER_TEMP/pw.hash"
@@ -222,6 +228,7 @@ VM
 step_mocks() {
   vm 'sudo mkdir -p /srv/lifeagents-backup && sudo chmod 777 /srv/lifeagents-backup'
   mock_telegram_up
+  touch "$RUNNER_TEMP/tgmock.up"
   block_host api.telegram.org
   block_host api.anthropic.com
   mark mocks_ready
@@ -232,7 +239,7 @@ step_link() {
   url="$(vm 'sudo lifeagents wizard-url' | grep -o 'http://127.0.0.1:5881/start?t=[^[:space:]]*' | head -1)"
   [ -n "$url" ] || { echo "::error::lifeagents wizard-url gab keinen Link"; exit 1; }
   tok="${url#*t=}"
-  echo "::add-mask::$tok"
+  [ -z "$tok" ] || echo "::add-mask::$tok"
   (umask 077; printf '%s' "$url" > "$RUNNER_TEMP/klick.url")
 }
 step_tunnel() {
@@ -359,24 +366,20 @@ step_setup_answers() {
   if [ "${ANSWERS_STANDIN:-}" = 1 ]; then
     vm_setup >/dev/null
     step_mocks
-    # hand-injected: der Kern reicht LIFEAGENTS_TELEGRAM_API an provision.sh weiter (setup.sh TEST_SWITCHES); die Attrappe ersetzt den echten Bot
-    SETUP_ENV='LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:8089'
   fi
   mark setup_start
   local rc=0
   vm_setup --answers /home/debian/answers.env > "$RUNNER_TEMP/setup1.out" 2> "$RUNNER_TEMP/setup1.err" || rc=$?
   mark setup_done
-  cat "$RUNNER_TEMP/setup1.err" >&2
-  cat "$RUNNER_TEMP/setup1.out"
-  [ "$rc" = 0 ] || { echo "::error::setup.sh --answers Exit $rc"; exit 1; }
+  [ "$rc" = 0 ] || { cat "$RUNNER_TEMP/setup1.err" >&2; cat "$RUNNER_TEMP/setup1.out"; echo "::error::setup.sh --answers Exit $rc"; exit 1; }
   # Der Schluessel der Antwort-Datei darf nirgends in der Ausgabe stehen.
   local k v
   for k in TS_AUTHKEY TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY N8N_OWNER_PASSWORD; do
     v="$(sed -n "s/^$k='\(.*\)'\$/\1/p" "$RUNNER_TEMP/answers.env" | head -1)"
     [ -z "$v" ] || { ! grep -qF -- "$v" "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" || { echo "::error::$k steht in der Ausgabe von setup.sh"; exit 1; }; }
   done
-  vm 'sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --format "{{.Names}} {{.ID}}" | sort' > "$RUNNER_TEMP/ids.1"
-  vm 'sha256sum /usr/local/bin/lifeagents /etc/systemd/system/lifeagents-stack.service' > "$RUNNER_TEMP/files.1"
+  cat "$RUNNER_TEMP/setup1.err" >&2
+  cat "$RUNNER_TEMP/setup1.out"
 }
 
 # Nach der Installation mit Tunnel: Tunnel steht (ready = Adresse da und Telegram zeigt darauf), Adresse *.ts.net, getWebhookInfo ohne
@@ -403,13 +406,17 @@ step_reach() {
   jq -e --arg p "https://$dom/webhook/" '.result.url | startswith($p)' <<<"$info" >/dev/null || { echo "::error::Telegram zeigt nicht auf die Adresse des Rechners"; exit 1; }
   jq -e '(.result.last_error_message // "") == ""' <<<"$info" >/dev/null || { echo "::error::getWebhookInfo meldet einen Zustellfehler"; exit 1; }
   echo "getWebhookInfo: Adresse stimmt, kein Zustellfehler"
+  local body="$RUNNER_TEMP/probe.body"
   for _ in $(seq 1 60); do
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$dom/webhook/lifeagents-probe-ci" || true)"
-    [ "$code" = 404 ] && break
+    code="$(curl -s -o "$body" -w '%{http_code}' --max-time 10 "https://$dom/webhook/lifeagents-probe-ci" || true)"
+    # 404 von n8n nennt den Webhook; ein 404 von Tailscale oder einem Proxy davor tut das nicht.
+    [ "$code" = 404 ] && grep -qi 'webhook' "$body" && break
+    code=''
     sleep 10
   done
-  [ "$code" = 404 ] || { echo "::error::Oeffentlicher Pfad ueber $dom antwortet nicht von n8n (zuletzt HTTP ${code:-000})"; exit 1; }
+  [ -n "$code" ] || { echo "::error::Oeffentlicher Pfad ueber $dom antwortet nicht von n8n (kein 404 mit n8n-Meldung)"; head -c 300 "$body" 2>/dev/null || true; exit 1; }
   echo "Oeffentlicher Pfad ueber den Funnel: n8n antwortet (404 fuer unbekannten Webhook)"
+  vm 'sudo docker exec lifeagents-gateway true' || { echo "::error::Gateway-Container nicht erreichbar, Kosten nicht pruefbar"; exit 1; }
   local n
   n="$(vm "sudo docker exec lifeagents-gateway sh -c 'wc -l < /var/lib/lifeagents-llm-gateway/usage.jsonl 2>/dev/null || echo 0'" | tr -d '[:space:]')"
   [ "${n:-0}" = 0 ] || { echo "::error::Das Gateway hat $n Anfragen mitgeschrieben (erwartet 0)"; exit 1; }
@@ -424,7 +431,7 @@ step_answers_cleanup() {
   if [ -s "$RUNNER_TEMP/answers.env" ]; then
     local tok
     tok="$(sed -n "s/^TELEGRAM_BOT_TOKEN='\(.*\)'\$/\1/p" "$RUNNER_TEMP/answers.env" | head -1)"
-    echo "::add-mask::$tok"
+    [ -z "$tok" ] || echo "::add-mask::$tok"
     if [ "${ANSWERS_STANDIN:-}" != 1 ] && [ -n "$tok" ]; then
       printf 'url = "https://api.telegram.org/bot%s/deleteWebhook"\n' "$tok" | curl -sS -o /dev/null -w 'deleteWebhook: HTTP %{http_code}\n' --max-time 20 -K - || true
     fi

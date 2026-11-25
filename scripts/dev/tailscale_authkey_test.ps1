@@ -1,4 +1,5 @@
 ﻿#Requires -Version 5.1
+# gate: manual (braucht den OAuth-Schluessel eines echten Test-Tailnets aus .env)
 # tailscale_authkey_test.ps1 — echter Weg des Tailscale-Anmeldeschluessels (gratis, braucht ein Test-Tailnet):
 #   1. Schluessel je Lauf per OAuth-Client erzeugen (scripts/ci/install_test_answers.sh, echte Tailscale-API);
 #   2. offizielles Tailscale-Image (Digest aus provisioning/compose/compose.yml) wie im Verbund starten (tailscaled direkt,

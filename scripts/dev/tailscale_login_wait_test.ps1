@@ -1,4 +1,5 @@
 ﻿#Requires -Version 5.1
+# gate: manual (spricht mit dem echten Tailscale-Dienst und wartet minutenlang auf eine Anmeldung)
 # tailscale_login_wait_test.ps1 -- Bleibt der Anmelde-Link des Tunnels stehen, bis ein Mensch sich anmeldet? Faehrt den
 # Dienst `tailscale` genau so, wie provisioning/compose/compose.yml ihn definiert (Image-Pin, entrypoint/command aus
 # `docker compose config`), ohne Anmeldeschluessel, stoesst die Anmeldung an wie der master (lib/reach.sh reach_login_start:

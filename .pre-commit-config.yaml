@@ -474,6 +474,27 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: gate-wiring-lint
+        name: gate_wiring_lint (every test in scripts/dev hangs on a gate - commit hook, free suites, workflow - or carries a manual-gate marker with a reason)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate_wiring_lint.ps1
+        pass_filenames: false
+        files: ^(scripts/dev/[^/]+_test\.ps1|scripts/dev/run_free_gates\.ps1|scripts/gate_wiring_lint\.ps1|\.pre-commit-config\.yaml|\.github/workflows/.*\.ya?ml)$
+
+      - id: gate-wiring-lint-test
+        name: gate_wiring_lint_test (an unwired test, a marker without reason and a marker next to a gate turn gate_wiring_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/gate_wiring_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(gate_wiring_lint|dev/gate_wiring_lint_test)\.ps1$
+
+      - id: release-notes-check-test
+        name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_notes_check_test.ps1
+        pass_filenames: false
+        files: ^(scripts/(release_notes_check|dev/release_notes_check_test)\.ps1|tests/fixtures/release_notes/.*)$
+
       - id: test-stack-test
         name: test_stack_test (building blocks of the test stack without Docker - names, ports, answers, invented keys, teardown match)
         language: system

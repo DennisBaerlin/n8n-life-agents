@@ -638,6 +638,16 @@ rt_edge_restart() {
   local c; c="$(_rt_edge_container "$1")" || return 2
   docker restart "$c" >/dev/null
 }
+# rt_edge_stop <dienst> — Rand-Dienst anhalten, wenn der Weg nach aussen wechselt (tailscale samt Funnel bzw. wan auf 80/443
+#   blieben sonst oeffentlich). `compose stop` mit allen Profilen (COMPOSE_PROFILES wie rt_stack_start; tailscale/wan haengen
+#   an Profilen); der Container bleibt angelegt, `restart: unless-stopped` startet ihn nach einem Docker-Neustart nicht
+#   wieder, rt_stack_up beim Zurueckwechseln schon.
+rt_edge_stop() {
+  case "$1" in tailscale|wan) : ;; *) return 2 ;; esac   # nie edge: ohne ihn waeren Editor, Wizard und alle Pfade weg
+  local profiles
+  profiles="$(_rt_all_profiles)" || return 1
+  COMPOSE_PROFILES="$profiles" _rt_compose stop "$1" >/dev/null
+}
 # rt_edge_exec <dienst> <befehl…> — im Rand-Container ausfuehren (ohne stdin, s. pg_su_exec), z. B. `tailscale status`.
 rt_edge_exec() {
   local c; c="$(_rt_edge_container "$1")" || return 2

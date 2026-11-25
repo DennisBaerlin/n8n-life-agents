@@ -53,10 +53,7 @@ if (-not $svc) { throw 'Dienst tailscale fehlt in compose.yml.' }
 $hostName = 'tstest-' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
 
 $run = @('run', '-d', '--name', $name, '--network', $net, '--restart', [string]$svc.restart, '-v', "${vol}:/var/lib/tailscale")
-foreach ($p in $svc.environment.PSObject.Properties) {
-    $v = [string]$p.Value; if ($p.Name -eq 'TS_HOSTNAME') { $v = $hostName }
-    $run += @('-e', "$($p.Name)=$v")
-}
+foreach ($p in $svc.environment.PSObject.Properties) { $run += @('-e', "$($p.Name)=$([string]$p.Value)") }
 if ($svc.entrypoint) { $run += @('--entrypoint', [string]$svc.entrypoint[0]) }
 $run += [string]$svc.image
 if ($svc.entrypoint -and $svc.entrypoint.Count -gt 1) { $run += @($svc.entrypoint[1..($svc.entrypoint.Count - 1)] | ForEach-Object { [string]$_ }) }

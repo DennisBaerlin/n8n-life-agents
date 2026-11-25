@@ -96,6 +96,7 @@ _reach_upnp() {
 }
 rt_edge_active() { case "$1" in tailscale) [ "$A_TS_UP" = 1 ] ;; wan) [ "$A_WAN_UP" = 1 ] ;; *) return 2 ;; esac; }
 rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
+rt_edge_stop() { printf 'stop %s\n' "$1" >> "$LOG"; case "$1" in tailscale) A_TS_UP=0 ;; wan) A_WAN_UP=0 ;; esac; }
 rt_edge_logs_hint() { printf 'logs %s' "$1"; }
 rt_stack_up() { printf 'up %s\n' "$*" >> "$LOG"; case "$*" in *wan*) A_WAN_UP=1 ;; esac; }
 rt_host_port_free() { printf 'portprobe %s\n' "$1" >> "$LOG"; [ "$A_PORTS_FREE" = 1 ]; }
@@ -203,9 +204,26 @@ A_TS_JSON="$(ts_json Running '' '["https"]')"; rm -f "$W/funnel.json"; A_FUNNEL_
 reach_prepare >/dev/null 2>&1
 eq P_no_domain_without_funnel "|" "${DOMAIN}|$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null || true)"
 # FritzBox: Prepare startet nichts.
-cfg TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"; A_TS_UP=0
 REACH_MODE=fritzbox reach_prepare >/dev/null 2>&1
 [ -s "$LOG" ] && fail P_fb_prepare_quiet "$(tr '\n' ';' < "$LOG")" || pass P_fb_prepare_quiet
+# Weg gewechselt: der Rand-Dienst des alten Wegs haelt an (Tailscale samt Funnel bzw. wan auf 80/443 bliebe sonst
+# oeffentlich), aber erst, wenn der neue Weg steht (sonst waere der Bot dazwischen nicht erreichbar).
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; rm -rf "$REACH_CONF_DIR"; : > "$LOG"; A_TS_UP=1; A_WAN_UP=0; A_PORTS_FREE=1
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+eq P_fb_wan_then_stop_tailscale 'up --no-deps wan|stop tailscale' "$(grep -E '^(up|stop)' "$LOG" | paste -sd'|')"
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; rm -rf "$REACH_CONF_DIR"; : > "$LOG"; A_TS_UP=1; A_WAN_UP=0; A_PORTS_FREE=0
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+grep -qx 'stop tailscale' "$LOG" && fail P_fb_busy_keeps_tailscale "ohne wan angehalten" || pass P_fb_busy_keeps_tailscale
+# Zum Tunnel: wan haelt erst nach dem Deploy an (reach_converge) und nur, wenn DOMAIN schon der Tailscale-Name ist.
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"; A_WAN_UP=1; A_TS_UP=1; A_TS_JSON="$(ts_json NeedsLogin "$LOGIN" '[]')"
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+grep -qx 'stop wan' "$LOG" && fail P_tunnel_pending_keeps_wan "vor der Anmeldung angehalten" || pass P_tunnel_pending_keeps_wan
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"; A_WAN_UP=1; A_TS_UP=1; A_TS_JSON="$(ts_json Running '' '["https","funnel"]')"
+DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
+grep -qx 'stop wan' "$LOG" && pass P_tunnel_ready_stops_wan || fail P_tunnel_ready_stops_wan "$(tr '\n' ';' < "$LOG")"
+grep -qx 'stop tailscale' "$LOG" && fail P_tunnel_keeps_tailscale "Tunnel-Dienst angehalten" || pass P_tunnel_keeps_tailscale
+A_WAN_UP=0; A_PORTS_FREE=1; A_FUNNEL_ALLOWED=0; DOMAIN=''
 
 # reach_converge (FritzBox)
 cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; unset REACH_MODE
@@ -228,11 +246,15 @@ eq P_fb_bad_domain_untouched zweiter.deine-domain.myfritz.net "$(cat "$REACH_CON
 : > "$LOG"; DOMAIN=Zweiter.Deine-Domain.MyFritz.net reach_converge >/dev/null 2>&1
 eq P_fb_lowercase "zweiter.deine-domain.myfritz.net|" "$(cat "$REACH_CONF_DIR/domain")|$(cat "$LOG")"
 cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
-[ -s "$LOG" ] && fail P_tunnel_converge_noop "$(tr '\n' ';' < "$LOG")" || pass P_tunnel_converge_noop
+grep -qE '^(up|stop|restart) ' "$LOG" && fail P_tunnel_converge_noop "$(tr '\n' ';' < "$LOG")" || pass P_tunnel_converge_noop   # liest nur den Tailscale-Stand
 
 # Wrapper-Grenze (echter runtime.sh-Code, nicht die Attrappe): nur edge|tailscale|wan.
 ( unset -f rt_edge_exec; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_exec postgres true ) >/dev/null 2>&1
 eq P_wrapper_fixed_list 2 "$?"
+( unset -f rt_edge_stop; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_stop postgres ) >/dev/null 2>&1
+eq P_stop_fixed_list 2 "$?"
+( unset -f rt_edge_stop; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_stop edge ) >/dev/null 2>&1
+eq P_stop_never_edge 2 "$?"
 
 # --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) im Verbund -----------------------------------------------
 # Geprueft: Wert nur per stdin an `tailscale up --auth-key=file:/dev/stdin` im laufenden Container, nie in compose.yml/
@@ -244,7 +266,7 @@ rt_edge_exec_in() {
   if [ "$k" = tskey-FAKEgood ]; then ts_json Running '' '["https","funnel"]' > "$W/ts.json"
   else printf 'backend error: invalid key: %s\n' "$k" >&2; return 1; fi
 }
-kc() { cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$W/ts.json" "$W/funnel.json" "$W/key_seen"; : > "$LOG"
+kc() { cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$W/ts.json" "$W/funnel.json" "$W/key_seen"; : > "$LOG"; A_TS_UP=1
        A_TS_JSON="$1"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1; DOMAIN=""; _reach_authkey="$2"; }
 kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEgood
 reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"

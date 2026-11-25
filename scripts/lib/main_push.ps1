@@ -2,22 +2,22 @@
 # scripts/dev/main_push_guard_test.ps1 es an erfundenen Workflow-Texten und Lauf-Listen pruefen kann. Dot-sourcen;
 # braucht Get-CiWaitVerdict aus ci_wait.ps1.
 
-# Pfad-Filter des push-Ausloesers aus dem Text einer Workflow-Datei: @{ Paths; Ignore }. Die Filter stehen nur in der
+# Pfad-Filter eines Ausloesers (Standard push; auch pull_request) aus dem Text einer Workflow-Datei: @{ Paths; Ignore }. Die Filter stehen nur in der
 # Workflow-Datei; hier wird gelesen, nicht gespiegelt. Liest die Block-Form (push: / paths: / - 'muster'), die alle
 # Workflows dieses Repos nutzen; eine Inline-Liste (paths: [a, b]) wirft, damit die Sperre nicht still zu wenig verlangt.
-function Get-WorkflowPushFilter([string]$YamlText) {
+function Get-WorkflowPushFilter([string]$YamlText, [string]$Trigger = 'push') {
     $filter = @{ Paths = @(); Ignore = @() }
-    $inPush = $false; $pushIndent = -1; $key = $null
+    $inTrigger = $false; $triggerIndent = -1; $key = $null
     foreach ($line in ($YamlText -split "\r?\n")) {
         if ($line -match '^\s*(#.*)?$') { continue }
         $indent = ($line -replace '^(\s*).*$', '$1').Length
-        if (-not $inPush) {
-            if ($line -match '^\s+push:\s*(#.*)?$') { $inPush = $true; $pushIndent = $indent }
+        if (-not $inTrigger) {
+            if ($line -match "^\s+$([regex]::Escape($Trigger)):\s*(#.*)?$") { $inTrigger = $true; $triggerIndent = $indent }
             continue
         }
-        if ($indent -le $pushIndent) { break }
+        if ($indent -le $triggerIndent) { break }
         if ($line -match '^\s*(paths|paths-ignore):\s*(.*)$') {
-            if ($Matches[2] -and $Matches[2] -notmatch '^#') { throw "Pfad-Filter als Inline-Liste nicht lesbar: $($line.Trim())" }
+            if ($Matches[2] -and $Matches[2] -notmatch '^#') { throw "Pfad-Filter ($Trigger) als Inline-Liste nicht lesbar: $($line.Trim())" }
             $key = if ($Matches[1] -eq 'paths') { 'Paths' } else { 'Ignore' }
             continue
         }

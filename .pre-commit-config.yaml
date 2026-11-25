@@ -474,6 +474,20 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: desktop-paths-lint
+        name: desktop_paths_lint (every file outside provisioning/desktop that the start app reads or its build reads is in both paths lists of desktop.yml, and both lists are equal)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop_paths_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: desktop-paths-lint-test
+        name: desktop_paths_lint_test (a read file missing from one paths list, unequal lists and a dangling include turn desktop_paths_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/desktop_paths_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(desktop_paths_lint|lib/main_push|dev/desktop_paths_lint_test)\.ps1$
+
       - id: hook-path-lint
         name: hook_path_lint (every hook command in .claude/settings.json is anchored on CLAUDE_PROJECT_DIR or absolute and names an existing file; the test runs the lint on fixtures and on the real tree; no Docker)
         language: system

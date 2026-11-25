@@ -1,8 +1,9 @@
 // wizard_klick.cjs -- klickt den Einrichtungs-Fragebogen (provisioning/wizard) im echten Browser durch, mit erfundenen Werten, so
 // wie ein Nutzer am Laptop: Seite ueber den Einmal-Link, je Seite lesen, eintippen oder waehlen, "Weiter" druecken, ueber die
-// Installation bis zur Seite "Verbinden". Aufruf (Playwright aus tests/install/package-lock.json: npm ci --prefix tests/install):
-//   KLICK_URL=<einmal-link> [KLICK_OUT=<ordner>] [KLICK_SHOT=0] node tests/install/wizard_klick.cjs
-// Exit 0 = alle Seiten bedient und die Seite "Verbinden" zeigt den Anmelde-Link des Tunnels; Exit 1 = Seite oder Wert unbekannt oder
+// Installation bis zur Seite "Verbinden". Auf dem Weg prueft er die Eigenschaften des Fragebogens (Fall a-f, Kopf von checkTunnelPage).
+// Aufruf (Playwright aus tests/install/package-lock.json: npm ci --prefix tests/install):
+//   KLICK_URL=<einmal-link> [KLICK_OUT=<ordner>] [KLICK_SHOT=0] [KLICK_FINISH_VIA=fritzbox|tunnel] node tests/install/wizard_klick.cjs
+// Exit 0 = alle Seiten bedient und die Seite "Verbinden" (nach der Installation) erreicht; Exit 1 = Seite oder Wert unbekannt oder
 // abgelehnt, Installation gescheitert (die Meldung nennt die Seite, nie einen Wert). Screenshots je Seite in KLICK_OUT.
 // Den Seitenzustand liest der Klicker nur lesend ueber GET /api/state (dieselbe Abfrage wie die Seite selbst); alle Eingaben
 // laufen durch Tastatur und Maus. Eine neue Frage ohne Eintrag in FILL/CHOOSE bricht ab (wie render_ci_answers.js), statt still
@@ -29,16 +30,26 @@ const FILL = {
   backup_dir_custom: process.env.KLICK_BACKUP_DIR || '/srv/lifeagents-backup',
 };
 // Auswahl-Seiten: gewuenschter Wert; fehlt der Eintrag, nimmt der Klicker die vorgewaehlte Antwort (sonst die erste).
+// reach: erst der Tunnel (Seite "tunnel" mit Anmeldung bei Tailscale, Faelle c-e), danach je KLICK_FINISH_VIA der Weg zum Ende.
 const CHOOSE = {
-  'h:OWNER_LANGUAGE': 'de', 'h:OWNER_PERSONA': 'neutral', tg_why: 'both', voice: 'no', reach: 'tunnel', backup_dir: 'other',
+  'h:OWNER_LANGUAGE': 'de', 'h:OWNER_PERSONA': 'neutral', tg_why: 'both', voice: 'no', backup_dir: 'other', fb_dslite: 'no',
 };
-// Module: alle bis auf Paperless (dessen Adresse prueft der Fragebogen live gegen ein echtes Paperless im LAN).
-const PACKAGES_SKIP = new Set(['paperless']);
+// Ohne Tailscale-Konto geht der Tunnel-Weg nach der Anmeldeseite nicht weiter (die Installation laeuft erst danach). Der Lauf
+// wechselt dort ueber "Zurueck" und die Uebersicht auf die FritzBox-Adresse (fritzbox) und installiert so; mit einem
+// Test-Tailnet-Schluessel in den Antworten (tunnel) wartet er stattdessen, bis die Anmeldung durch ist.
+const FINISH_VIA = process.env.KLICK_FINISH_VIA || 'fritzbox';
+FILL['h:DOMAIN'] = 'ci-runner.example.org';
+// Module: alle. Die Paperless-Adresse wird uebersprungen (optional), der Fall a prueft, was danach kommt.
+const PACKAGES_SKIP = new Set();
 
 const log = (m) => process.stdout.write(`[klick] ${m}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let shot = 0;
-let connectWaits = 0;
+let tunnelDetour = 'todo';   // todo -> done, wenn die Tunnel-Seite geprueft und der Weg gewechselt ist
+let layoutChecked = false;
+const seenIds = [];
+
+function check(cond, msg) { if (!cond) throw new Error(`Pruefung verletzt: ${msg}`); log(`  ok: ${msg}`); }
 
 async function state(page) {
   return page.evaluate(async () => {
@@ -71,9 +82,62 @@ async function press(page, id) {
   if (!(await waitChange(page, id, 45000))) throw new Error(`Seite ${id}: nach "Weiter" kam keine neue Seite`);
 }
 
-async function handle(page, s) {
+// Fall f: bei 1280 px Breite steht das Logo buendig mit der Schritt-Leiste (Abstand der linken Kanten <= 2 px).
+async function checkLayout(page) {
+  const d = await page.evaluate(() => {
+    const w = document.querySelector('.wordmark'); const i = document.querySelector('.la-rail-step > i');
+    return w && i ? Math.abs(w.getBoundingClientRect().left - i.getBoundingClientRect().left) : null;
+  });
+  check(d !== null && d <= 2, `Logo buendig mit der Schritt-Leiste (Abstand ${d === null ? '?' : d.toFixed(1)} px)`);
+}
+
+// Faelle c-e auf der Tailscale-Seite (Seite "tunnel", vor der Installation); Merkmale ueber Seiten-id, Rail-Schritt und Elemente,
+// nicht ueber Wortlaute (die Texte aendern sich).
+//   c: Seite kommt VOR der Installation, die Leiste steht auf "install", bis hierhin lief keine Installation
+//   d: Knopf zur Tailscale-Anmeldung oeffnet ein neues Fenster, die Fragebogen-Adresse bleibt; QR-Code bei 1280 px sichtbar, bei 600 px nicht
+//   e: "Zurueck" fuehrt zur Uebersicht
+async function checkTunnelPage(ctx, page, s) {
+  const p = s.page;
+  check(!seenIds.includes('install'), 'Tailscale-Seite kommt vor der Installation');
+  check(p.step && p.step.current === 'install', 'Schritt-Leiste steht auf der Installation');
+  // Tailscale starten braucht beim ersten Mal das Abbild; "gestoert" bietet "Erneut pruefen" (#nx).
+  const link = page.locator('a[target="_blank"][href^="https://login.tailscale.com/"]').first();
+  const end = Date.now() + 8 * 60 * 1000;
+  while (!(await link.count())) {
+    if (Date.now() > end) throw new Error('Tailscale-Seite ohne Anmelde-Link (8 Min)');
+    const x = await state(page);
+    if (x.page && x.page.id !== 'tunnel') throw new Error(`Tailscale-Seite wechselte ohne Anmeldung zu ${x.page.id}`);
+    if (x.page && x.page.action && (await page.locator('#nx').count())) { await page.locator('#nx').click().catch(() => {}); }
+    await sleep(2000);
+  }
+  await snap(page, 'tunnel');
+  const before = page.url();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  check(await page.locator('.pair.qr-desk .qr svg').first().isVisible(), 'QR-Code bei 1280 px sichtbar');
+  await page.setViewportSize({ width: 600, height: 900 });
+  check(!(await page.locator('.pair.qr-desk .qr').first().isVisible()), 'QR-Code bei 600 px nicht sichtbar');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const [pop] = await Promise.all([page.waitForEvent('popup', { timeout: 15000 }), link.click()]);
+  check(!!pop, 'Anmeldung oeffnet ein neues Fenster');
+  await pop.close().catch(() => {});
+  check(page.url() === before, 'Adresse des Fragebogens bleibt gleich');
+  if (FINISH_VIA === 'tunnel') return 'wait';
+  await page.locator('#bk').click();
+  const x = await waitUntil(page, (st) => st.page && st.page.id === 'review', 30000);
+  check(!!x, 'Zurueck fuehrt zur Uebersicht');
+  return 'switch';
+}
+async function waitUntil(page, fn, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { const st = await state(page); if (fn(st)) return st; await sleep(500); }
+  return null;
+}
+
+async function handle(page, s, ctx) {
   const p = s.page;
   const id = p.id;
+  if (seenIds[seenIds.length - 1] !== id) seenIds.push(id);
+  if (!layoutChecked && !p.poll && p.title) { layoutChecked = true; await page.setViewportSize({ width: 1280, height: 900 }); await checkLayout(page); }
   if (p.poll && p.kind !== 'connect' && p.kind !== 'install') { await sleep(1000); return; }
   // Die Seite zeichnet nach einer Antwort erst nach einer kurzen Anzeige der Pruefmeldung (bis ~2 s) neu; wer vorher tippt,
   // tippt ins alte Feld. Darum erst handeln, wenn die Ueberschrift im Browser die der neuen Seite ist.
@@ -87,7 +151,7 @@ async function handle(page, s) {
   }
 
   if (p.kind === 'choice') {
-    const want = CHOOSE[id];
+    const want = id === 'reach' ? (FINISH_VIA === 'tunnel' || tunnelDetour === 'todo' ? 'tunnel' : 'fritzbox') : CHOOSE[id];
     const opts = await page.locator('[data-c]').evaluateAll((els) => els.map((e) => ({ v: e.dataset.c, sel: e.classList.contains('sel') })));
     if (!opts.length) throw new Error(`Seite ${id}: keine Antworten`);
     let pick = want;
@@ -114,7 +178,17 @@ async function handle(page, s) {
     if (FILL[id] !== undefined) {
       await inp.fill(FILL[id]);
     } else if (!have) {
-      if (p.optional) { await snap(page, id); await page.locator('#sk').click(); if (!(await waitChange(page, id, 45000))) throw new Error(`Seite ${id}: Ueberspringen ohne neue Seite`); return; }
+      if (p.optional) {
+        await snap(page, id);
+        await page.locator('#sk').click();
+        if (!(await waitChange(page, id, 45000))) throw new Error(`Seite ${id}: Ueberspringen ohne neue Seite`);
+        if (id.startsWith('s:paperless:')) {
+          // Fall a: ohne Paperless-Adresse fragt der Fragebogen nicht nach dem Zugangstoken (der waere ohne Adresse nutzlos).
+          const nx = await state(page);
+          check(!!nx.page && !String(nx.page.id).startsWith('c:paperless:'), 'nach uebersprungener Paperless-Adresse kein Zugangstoken-Frage');
+        }
+        return;
+      }
       throw new Error(`Pflichtfrage ohne erfundenen Wert: ${id} (in wizard_klick.cjs ergaenzen)`);
     }
     await snap(page, id);
@@ -138,16 +212,44 @@ async function handle(page, s) {
     }
     throw new Error('Installation: Zeitgrenze (40 Min)');
   }
+  if (p.kind === 'connect' && id === 'tunnel') {
+    // Anmeldung bei Tailscale VOR der Installation (Faelle c-e). Ohne Konto geht es hier nicht weiter: der Lauf wechselt ueber
+    // "Zurueck" zur Uebersicht und waehlt dort die FritzBox-Adresse (KLICK_FINISH_VIA=fritzbox) oder wartet auf die
+    // Anmeldung per Test-Tailnet-Schluessel (tunnel).
+    const r = tunnelDetour === 'todo' ? await checkTunnelPage(ctx, page, s) : 'wait';
+    tunnelDetour = 'done';
+    if (r === 'switch') return;
+    if (!(await waitChange(page, 'tunnel', 10 * 60 * 1000))) throw new Error('Tailscale-Anmeldung: keine neue Seite nach 10 Min');
+    return;
+  }
   if (p.kind === 'connect') {
-    // Letzte Seite des Klickwegs: mit dem Tunnel (Tailscale) steht hier der Anmelde-Link des echten Tailscale-Dienstes. Weiter geht es
-    // nur mit einem Konto; das gibt es im Lauf nicht (Grenze, im Kopf von debian_vm.sh). Die Seite fragt den Stand selbst weiter ab.
-    const href = await page.locator('a[href^="https://login.tailscale.com/"]').first().getAttribute('href', { timeout: 1500 }).catch(() => null);
-    if (!href) { connectWaits += 1; if (connectWaits > 180) throw new Error('Verbinden-Seite ohne Tailscale-Anmelde-Link'); await sleep(1000); return; }
+    // Seite "Verbinden" nach der Installation: ab hier kommt das Koppeln mit Telegram (naechster Schritt des Laufs, nicht des Klickers).
     await snap(page, id);
-    log('Verbinden: Anmelde-Link des Tunnels steht (ohne Tailscale-Konto endet der Klickweg hier)');
+    log('Verbinden erreicht (Installation fertig)');
     const e = new Error('__done__');
     e.done = true;
     throw e;
+  }
+  if (p.kind === 'review') {
+    // Fall b: keine eigene Bestaetigungsseite mehr; beim Tunnel-Weg steht ein Hinweis auf die Anmeldung auf der Uebersicht.
+    check(!seenIds.includes('confirm'), 'keine Seite "Das wird auf deinem Rechner geaendert"');
+    const viaTunnel = !!p.note;
+    if (tunnelDetour === 'todo') check(viaTunnel, 'Uebersicht (Tunnel) nennt die Anmeldung als naechsten Schritt');
+    else if (!viaTunnel) check(true, 'Uebersicht (FritzBox) ohne Tunnel-Hinweis');
+    await snap(page, id);
+    if (viaTunnel && tunnelDetour === 'done' && FINISH_VIA !== 'tunnel') {
+      // Zurueck von der Tailscale-Seite: Weg aendern (Zeile "Erreichbarkeit" -> Seite reach), dort die FritzBox-Adresse waehlen.
+      const at = p.rows.findIndex((r) => r.goto === 'reach');
+      if (at < 0) throw new Error('Uebersicht ohne Zeile zum Aendern des Wegs');
+      await page.locator('.rv button').nth(at).click();
+      if (!(await waitUntil(page, (st) => st.page && st.page.id === 'reach', 30000))) throw new Error('Uebersicht: "Aendern" fuehrte nicht zur Wahl des Wegs');
+      return;
+    }
+    if (!viaTunnel) return press(page, id);
+    // Tunnel: "Weiter" fuehrt zur Tailscale-Seite, nicht zur Installation.
+    await page.locator('#nx').click();
+    if (!(await waitUntil(page, (st) => st.page && st.page.id === 'tunnel', 45000))) throw new Error('Uebersicht (Tunnel): nach "Weiter" kam nicht die Tailscale-Seite');
+    return;
   }
   if (p.kind === 'handoff') {
     await snap(page, id);
@@ -166,7 +268,7 @@ async function handle(page, s) {
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 1000, height: 900 }, locale: 'de-DE' });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'de-DE' });
   const page = await ctx.newPage();
   const seen = [];
   let rc = 1;
@@ -176,7 +278,7 @@ async function handle(page, s) {
       const s = await state(page);
       if (s.offline || !s.page) { await sleep(1000); continue; }
       if (seen[seen.length - 1] !== s.page.id) { seen.push(s.page.id); log(`Seite ${seen.length}: ${s.page.id} (${s.page.kind})`); }
-      await handle(page, s);
+      await handle(page, s, ctx);
     }
     throw new Error('Zeitgrenze (60 Min) im Klickweg');
   } catch (e) {

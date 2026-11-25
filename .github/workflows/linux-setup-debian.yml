@@ -66,7 +66,7 @@ jobs:
           TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
         run: bash tests/install/debian_vm.sh tgreset
 
-      - name: Click through the questionnaire (all pages) up to the Connect page, installation included
+      - name: Click through the questionnaire (all pages) via the Tailscale page and the FritzBox way up to the Connect page, installation included
         timeout-minutes: 50
         env:
           KLICK_TELEGRAM_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
@@ -74,7 +74,7 @@ jobs:
           KLICK_SHOT: '0'
         run: bash tests/install/debian_vm.sh klick
 
-      - name: Pair the owner over the real ingress and finish (Telegram mock; the Tailscale login of the Connect page needs an account)
+      - name: Pair the owner over the real ingress and finish (Telegram mock)
         timeout-minutes: 15
         run: bash tests/install/debian_vm.sh pair
 

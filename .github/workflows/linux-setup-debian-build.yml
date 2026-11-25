@@ -44,11 +44,11 @@ jobs:
       - name: Link and tunnel like an owner's laptop; install the browser
         run: bash tests/install/debian_vm.sh browser
 
-      - name: Click through the questionnaire (all pages) up to the Connect page, installation included
+      - name: Click through the questionnaire (all pages) via the Tailscale page and the FritzBox way up to the Connect page, installation included
         timeout-minutes: 50
         run: bash tests/install/debian_vm.sh klick
 
-      - name: Pair the owner over the real ingress and finish (Telegram mock; the Tailscale login of the Connect page needs an account)
+      - name: Pair the owner over the real ingress and finish (Telegram mock)
         timeout-minutes: 15
         run: bash tests/install/debian_vm.sh pair
 

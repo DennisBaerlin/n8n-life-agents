@@ -11,9 +11,11 @@
 #    kennt die Test-Weiche LIFEAGENTS_TELEGRAM_API nicht (compose.yml setzt sie nicht), darum wird er mit ihr neu gestartet.
 #  - Telegram-Token und Anthropic-Schluessel: der Fragebogen prueft sie live gegen api.telegram.org und api.anthropic.com und lehnt erfundene ab. Die VM sperrt
 #    die Adressen, der Fragebogen nimmt die Werte dann mit Hinweis "nicht online pruefbar" (wie ohne Netz) an; der Bot-Aufruf tg-check geht an die Attrappe.
-#  - Kopplung: ohne Tailscale-Konto kommt der Fragebogen nicht ueber die Seite "Verbinden" (zeigt den echten Anmelde-Link); Kopplung und
+#  - Tunnel: der Klicker prueft die Tailscale-Seite (kommt vor der Installation, Anmelde-Link, neues Fenster, QR, Zurueck), kommt dort
+#    ohne Tailscale-Konto aber nicht weiter. Er wechselt ueber Zurueck und die Uebersicht auf die FritzBox-Adresse (erfundener Name)
+#    und installiert damit; echter Tunnel mit Test-Tailnet-Schluessel ist KLICK_FINISH_VIA=tunnel (eigenes Paket). Kopplung und
 #    Abschluss fahren danach wie im Verbund-Lauf von genericity.yml (pair_and_finalize.sh, Webhook-Update statt Telegram).
-#  - Paperless: das Modul bleibt weg (der Fragebogen prueft dessen Adresse live gegen ein Paperless im LAN).
+#  - Paperless: die Adresse wird uebersprungen (optional); ein echtes Paperless im LAN fehlt dem Lauf.
 # shellcheck disable=SC2016,SC2029  # die vm()-Befehle sind Text fuer die Shell in der VM: Variablen gehoeren dort aufgeloest, nicht hier
 set -euo pipefail
 
@@ -265,7 +267,7 @@ step_klick() {
 
 # Kopplung und Abschluss ohne echtes Telegram: dasselbe Skript wie in genericity.yml (Verbund-Lauf). Es armiert die Kopplung ueber
 # `lifeagents household pair-owner --machine`, schickt /start <Code> an den echten Webhook des Orchestrators und prueft Abschluss,
-# Begruessung (kommt bei der Attrappe an), chat_id in den Workflows und doctor. Der Fragebogen selbst kommt hier nicht weiter (Grenze).
+# Begruessung (kommt bei der Attrappe an), chat_id in den Workflows und doctor. Der Fragebogen steht dabei auf der Seite "Verbinden"; sein eigenes Koppeln ist nicht Teil des Laufs.
 step_pair() {
   if [ "$(mode tg)" = real ]; then
     # Ein Bot kann sich nicht selbst /start schicken, und die Begruessung ginge an einen erfundenen Chat: ohne Menschen keine Kopplung.

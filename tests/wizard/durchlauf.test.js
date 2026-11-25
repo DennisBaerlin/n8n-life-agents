@@ -288,8 +288,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.match(lg.qr, /^<svg /, 'QR-Code des Anmelde-Links fürs Handy');
     assert.equal(lg.qrDesk, true, 'nur am Rechner-Bildschirm (app.css blendet ihn unter 600 px aus)');
     assert.deepEqual(lg.help, [{ p: 'Dafür reicht ein Konto bei Google, Microsoft oder Apple, das du schon hast.' },
-      { p: 'Der Knopf öffnet die Anmeldung in einem neuen Fenster. Danach kommst du hierher zurück, den Rest richtet lifeagents von allein ein.' },
-      { p: 'Oder scanne den Code mit dem Handy und melde dich dort an.', desk: true }], 'Satz zum Code nur am Rechner (wie der Code)');
+      { p: 'Der Knopf öffnet die Anmeldung in einem neuen Fenster, am Handy scannst du den Code. Der Rest geht danach von allein.', desk: true },
+      { p: 'Der Knopf öffnet die Anmeldung in einem neuen Fenster. Der Rest geht danach von allein.', phone: true }],
+      'zweiter Satz je Bildschirm: mit Code am Rechner, ohne am Handy');
     assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
     assert.deepEqual(lg.ts, { host: 'brave-otter' }, 'nur der gewürfelte Tailscale-Name fürs Bild');
     assert.equal(lg.canBack, true, '„Zurück“ = Weg ändern');

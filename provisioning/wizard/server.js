@@ -731,7 +731,8 @@ function reachView(v, tun, R) {
   const href = tun.url || (tun.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
   const login = href && R.link === 'login_link';
   return Object.assign(v, { title: t('title'),
-    help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_more') }, { p: T('core.wizard.tunnel.login_qr'), desk: true }] : []),
+    // Zweiter Satz: am Rechner mit dem Hinweis auf den Code, am Handy (Code ausgeblendet) ohne; app.css blendet je einen aus.
+    help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_qr'), desk: true }, { p: T('core.wizard.tunnel.login_more'), phone: true }] : []),
     qr: login ? qr.toSvg(qr.encode(href)) : null, qrDesk: login,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
     note: R.note ? { kind: 'warn', text: t('note') } : null,
     link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && tun.host ? { host: tun.host } : null,

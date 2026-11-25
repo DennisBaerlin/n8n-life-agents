@@ -247,7 +247,7 @@ const UiNudge = {
   }
 
   function helpNodes(blocks) {
-    return (blocks || []).map((b) => (b.ol ? h('ol', null, b.ol.map((t) => h('li', { text: t }))) : h('p', { class: b.desk ? 'qr-desk-text' : null, text: b.p })));
+    return (blocks || []).map((b) => (b.ol ? h('ol', null, b.ol.map((t) => h('li', { text: t }))) : h('p', { class: b.desk ? 'qr-desk-text' : b.phone ? 'qr-phone-text' : null, text: b.p })));
   }
 
   // explainNode(x, value) -> {el, select}: Erklär-Bild als <img> (die SVG-Datei bringt Farben, Texte und Bewegung selbst mit;

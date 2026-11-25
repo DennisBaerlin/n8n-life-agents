@@ -5,6 +5,8 @@
 --   Nachricht -> Re-Arm). Je Person hoechstens EINE Karte pro Lauf, fuer den ersten offenen Bereich in Menue-
 --   Reihenfolge (p.order). Gefiltert ueber core.fn_reminder_allowed('onboarding_nudge', person) (Knopf "Nicht mehr erinnern").
 --   Mitglieder erst nach fertigem Haushalt und nur fuer persoenliche (per_user) Bereiche.
+--   Schweigt beim Owner, solange der naechste Schritt eine angefangene Beratung ist (core.fn_get_next_step kind plan,
+--   state draft); hoechstens eine Nachfass-Nachricht je Person und Tag (advisor_resume heute -> nichts, unverbraucht).
 -- db_test hat KEIN seed_data -> family/registry/sections self-seeden. BEGIN..ROLLBACK.
 BEGIN;
 
@@ -27,7 +29,11 @@ BEGIN
     ON CONFLICT (cron_key) DO UPDATE SET scope = 'person', default_enabled = true;
   INSERT INTO core.config (package, category, key, value) VALUES ('core', 'cron_enable', 'onboarding_nudge', 'true')
     ON CONFLICT (category, key) DO UPDATE SET value = 'true';
-  DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';
+  DELETE FROM core.notification_state WHERE source IN ('onboarding_nudge', 'advisor_resume');
+  -- Erinnerungs-Fenster ganztags, damit der Test zu jeder Uhrzeit laeuft
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'general', 'reminders_from', '0'), ('core', 'general', 'reminders_until', '24')
+    ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value;
+  DELETE FROM agent.advisor_plans;
   DELETE FROM finance.onboarding_state;
   DELETE FROM estate.onboarding_state;
   UPDATE agent.guide_onboarding_state SET status = 'completed', status_changed_at = now() - interval '20 days';
@@ -133,7 +139,34 @@ BEGIN
   r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
   IF EXISTS (SELECT 1 FROM core.proactive_budget WHERE person_id = '__nd_owner__') THEN RAISE EXCEPTION 'FAIL [10 Stufe 2 belegt Slot]'; END IF;
 
-  RAISE NOTICE 'PASS test_fn_onboarding_nudges_due (Stufe 1/2, Ruhe, Re-Arm bei neuem Paket, Reihenfolge, Opt-out)';
+  -- ---------- 11) Owner mit frischer, reifer Beratung und offenem Abschnitt -> keine Einrichtungs-Karte, unverbraucht ----------
+  DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  UPDATE finance.onboarding_state SET status = 'unknown', status_changed_at = now() - interval '20 days' WHERE section_key = 'loans';
+  DELETE FROM core.advisors;
+  INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, package, plan_step)
+    VALUES ('finance', 'financial_planning', 'finance.fn_advisor_review', 'agent.finance_advisor', 'finance', true);
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
+    VALUES ('finance', NULL, 'Plan', 'draft', 1, '{}');
+  r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'nudges') x WHERE x->>'person_id' = '__nd_owner__') THEN
+    RAISE EXCEPTION 'FAIL [11 Beratung laeuft -> keine Einrichtungs-Karte]: %', r; END IF;
+  IF core.fn_notify_told('onboarding_nudge', '__nd_owner__:1') THEN RAISE EXCEPTION 'FAIL [11 Stufe verbraucht]'; END IF;
+
+  -- ---------- 12) ohne Beratung, aber advisor_resume heute an den Owner -> nichts, unverbraucht ----------
+  DELETE FROM agent.advisor_plans;
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('advisor_resume', '__nd_owner__:finance:1:1', 'fired', now());
+  r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'nudges') x WHERE x->>'person_id' = '__nd_owner__') THEN
+    RAISE EXCEPTION 'FAIL [12 Quellen-Grenze]: %', r; END IF;
+  IF core.fn_notify_told('onboarding_nudge', '__nd_owner__:1') THEN RAISE EXCEPTION 'FAIL [12 Stufe verbraucht]'; END IF;
+  -- gestern -> die Karte kommt
+  UPDATE core.notification_state SET last_fired_at = now() - interval '1 day' WHERE source = 'advisor_resume';
+  r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'nudges') x WHERE x->>'person_id' = '__nd_owner__' AND (x->>'stage')::int = 1) THEN
+    RAISE EXCEPTION 'FAIL [12 gestern -> Karte]: %', r; END IF;
+
+  RAISE NOTICE 'PASS test_fn_onboarding_nudges_due (Stufe 1/2, Ruhe, Re-Arm bei neuem Paket, Reihenfolge, Opt-out, Beratung laeuft, Quellen-Grenze)';
 END $$;
 
 ROLLBACK;

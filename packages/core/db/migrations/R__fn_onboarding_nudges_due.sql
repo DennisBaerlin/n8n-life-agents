@@ -15,12 +15,14 @@
 --     * Stillstand = now() - letzter Fortschritt; letzter Fortschritt = max(status_changed_at) der relevanten
 --       Abschnitte; fuer Mitglieder mindestens der Zeitpunkt "Haushalt fertig" bzw. der Einloese-Zeitpunkt der
 --       Einladung (agent.pairing_state.claimed_at) -> nie eine Karte am Tag der Verbindung.
---     * Re-Arm: ein offener relevanter Abschnitt, dessen status_changed_at juenger ist als die letzte Nachfass-Karte
---       (neues Paket, neu geoeffneter Abschnitt) -> beide Stufen wieder scharf (core.fn_notify_resolve).
---     * Stufe 1: Stillstand >= 3 Tage und Latch '<pid>:1' frei. Stufe 2: Stillstand >= 10 Tage und Stufe 1 vor
---       >= 7 Tagen gesendet und Latch '<pid>:2' frei. Latch source 'onboarding_nudge' (core.fn_should_notify, NULL-TTL).
+--     * Owner: ist sein naechster Schritt eine angefangene Beratung (core.fn_get_next_step kind plan, state draft:
+--       "Angefangenes geht vor"), schweigt die Karte; dieselbe Tor-Logik wie die Beratungs-Erinnerung, gespiegelt.
+--     * Stufen ueber core.fn_nudge_stage (source 'onboarding_nudge', Merker '<pid>:1'/'<pid>:2', Slot
+--       'onboarding_nudge'): Stufe 1 nach >= 3 Tagen Stillstand, Stufe 2 nach >= 10 Tagen und >= 7 Tage nach Stufe 1;
+--       Re-Arm sofort (Abstand 0), wenn ein offener relevanter Abschnitt juenger ist als die letzte Karte (neues Paket,
+--       neu geoeffneter Abschnitt). Budget, Pause, Erinnerungs-Fenster und die Quellen-Grenze (advisor_resume hat der
+--       Person heute schon geschrieben -> heute nichts) lassen die Stufe unverbraucht.
 --     * hoechstens eine Karte je Person und Lauf: der erste offene Abschnitt in p.order-Reihenfolge, dann ord.
---   Budget je Person, Slot 'onboarding_nudge' normal, vor dem Merker: Ohne Platz bleibt die Stufe unverbraucht.
 --   RUECKGABE: {ok:true, nudges:[{person_id, chat_id, stage, package, section_key}]} (immer genau eine Zeile; der Cron
 --     faechert im Code-Node). VOLATILE (schreibt Latches) -> im Cron einmal in einer MATERIALIZED CTE aufrufen.
 --   INVOKER: laeuft unter der Core-Host-Cred des Crons (liest agent.* + ueber die DEFINER-Fenster alle Bereiche).
@@ -44,12 +46,9 @@ DECLARE
     v_secs      jsonb;
     v_next      jsonb;
     v_last      timestamptz;
-    v_idle      interval;
-    v_s1_state  text;
-    v_s1_at     timestamptz;
-    v_fired_at  timestamptz;
+    v_rearm     timestamptz;
+    v_step      jsonb;
     v_stage     int;
-    v_want      int;
 BEGIN
     SELECT NOT EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown'),
            max(status_changed_at)
@@ -90,31 +89,18 @@ BEGIN
                                (SELECT max(ps.claimed_at) FROM agent.pairing_state ps WHERE ps.person_id = r.person_id));
         END IF;
         CONTINUE WHEN v_last IS NULL;
-        v_idle := now() - v_last;
 
-        -- Re-Arm: offener Abschnitt juenger als die letzte Nachfass-Karte (neues Paket / wieder geoeffnet)
-        SELECT max(ns.last_fired_at) INTO v_fired_at FROM core.notification_state ns
-         WHERE ns.source = v_src AND ns.key IN (r.person_id || ':1', r.person_id || ':2') AND ns.state = 'fired';
-        IF v_fired_at IS NOT NULL AND EXISTS (
-               SELECT 1 FROM jsonb_array_elements(v_secs) s
-                WHERE s->>'status' = 'unknown' AND (s->>'changed_at')::timestamptz > v_fired_at) THEN
-            PERFORM core.fn_notify_resolve(v_src, r.person_id || ':1');
-            PERFORM core.fn_notify_resolve(v_src, r.person_id || ':2');
+        -- ohne order/plan_order: ob der Schritt ein angefangener Plan ist, haengt nicht von der Reihenfolge ab
+        IF v_owner THEN
+            v_step := core.fn_get_next_step(jsonb_build_object('chat_id', v_chat::text));
+            CONTINUE WHEN v_step->>'kind' = 'plan' AND v_step->>'state' = 'draft';
         END IF;
 
-        SELECT ns.state, ns.last_fired_at INTO v_s1_state, v_s1_at FROM core.notification_state ns
-         WHERE ns.source = v_src AND ns.key = r.person_id || ':1';
-        v_stage := NULL;
-        v_want := CASE WHEN v_idle >= interval '3 days' AND COALESCE(v_s1_state, 'ok') = 'ok' THEN 1
-                       WHEN v_idle >= interval '10 days' AND v_s1_state = 'fired' AND v_s1_at <= now() - interval '7 days' THEN 2 END;
-        -- Stufe 2 bliebe nach dem Senden taeglich wahr: erst told pruefen, sonst belegte sie einen Slot ohne Nachricht.
-        IF v_want IS NOT NULL AND NOT core.fn_notify_told(v_src, r.person_id || ':' || v_want) THEN
-            IF core.fn_proactive_claim(r.person_id, 'onboarding_nudge', 'normal')
-               AND core.fn_should_notify(v_src, r.person_id || ':' || v_want) THEN
-                v_stage := v_want;
-            END IF;
-        END IF;
-
+        SELECT max((s->>'changed_at')::timestamptz) INTO v_rearm FROM jsonb_array_elements(v_secs) s WHERE s->>'status' = 'unknown';
+        v_stage := core.fn_nudge_stage(jsonb_build_object(
+            'source', v_src, 'key_prefix', r.person_id, 'person_id', r.person_id, 'slot', 'onboarding_nudge',
+            'idle_since', v_last, 'rearm_since', v_rearm, 'first_days', 3, 'last_days', 10, 'gap_days', 7, 'rearm_days', 0,
+            'exclusive_sources', jsonb_build_array('advisor_resume')));
         IF v_stage IS NOT NULL THEN
             v_out := v_out || jsonb_build_object('person_id', r.person_id, 'chat_id', v_chat, 'stage', v_stage,
                                                  'package', v_next->>'package', 'section_key', v_next->>'key');

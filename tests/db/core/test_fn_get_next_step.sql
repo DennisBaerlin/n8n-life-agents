@@ -205,12 +205,92 @@ BEGIN
   UPDATE core.package_registry SET status = 'active' WHERE package = 'finance';
   IF core.fn_get_next_step_example(NULL, v_order) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [12 ohne Person]'; END IF;
 
+  -- ---------- (14) Angefangenes geht vor: frischer, reifer Entwurf vor offenem Abschnitt (nur Owner) ----------
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('finance.plan_step.btn_draft', 'de', 'Finanzplan fortsetzen', 'finance'),
+    ('career.plan_step.btn_draft', 'de', 'Karriereplan fortsetzen', 'career')
+  ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
+  DELETE FROM agent.advisor_plans WHERE domain IN ('finance', 'career');
+  UPDATE finance.onboarding_state SET status = 'unknown' WHERE section_key = 'goals';
+  ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, updated_at)
+  VALUES ('finance', NULL, 'Plan', 'draft', 1, '{}', now() - interval '3 days');
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'plan' OR v->>'state' <> 'draft' OR v->>'callback' <> 'plan:finance' OR v->>'label' <> 'Finanzplan fortsetzen'
+     OR v->>'button' <> (U&'\+01F449' || ' Weiter: Finanzplan fortsetzen') THEN
+    RAISE EXCEPTION 'FAIL [14 Entwurf vor Abschnitt]: %', v; END IF;
+  -- Partner unveraendert: sein offener persoenlicher Abschnitt bzw. none, nie der Plan
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '222', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' = 'plan' THEN RAISE EXCEPTION 'FAIL [14 Mitglied bekommt Plan]: %', v; END IF;
+  -- Vorrang endet mit der letzten Erinnerung: 15 Tage unberuehrt -> wieder der Abschnitt
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '15 days' WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' OR v->>'callback' <> 'onboarding:finance:goals' THEN RAISE EXCEPTION 'FAIL [14 Vorrang-Ende 15 Tage]: %', v; END IF;
+  -- Erinnerung an, letzte Stufe noch nicht gesendet -> Vorrang haelt (sonst laege Stufe 2 nie auf dem Plan); gesendet -> Ende
+  INSERT INTO core.cron_labels (cron_key, package, scope, default_enabled) VALUES ('advisor_resume', 'core', 'person', true)
+    ON CONFLICT (cron_key) DO UPDATE SET scope = 'person', default_enabled = true;
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'cron_enable', 'advisor_resume', 'true')
+    ON CONFLICT (category, key) DO UPDATE SET value = 'true';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'plan' THEN RAISE EXCEPTION 'FAIL [14 Stufe 2 steht aus -> Vorrang]: %', v; END IF;
+  INSERT INTO core.notification_state (source, key, state, last_fired_at)
+  SELECT 'advisor_resume', 'erika:finance:' || id || ':2', 'fired', now() FROM agent.advisor_plans WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' THEN RAISE EXCEPTION 'FAIL [14 Stufe 2 gesendet -> Vorrang-Ende]: %', v; END IF;
+  DELETE FROM core.notification_state WHERE source = 'advisor_resume';
+  INSERT INTO agent.reminder_prefs (person_id, cron_key, enabled) VALUES ('erika', 'advisor_resume', false);
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' THEN RAISE EXCEPTION 'FAIL [14 Erinnerung aus -> Ende nach 14 Tagen]: %', v; END IF;
+  DELETE FROM agent.reminder_prefs WHERE person_id = 'erika';
+  -- aelter als 30 Tage: auch mit ausstehender Stufe 2 kein Vorrang
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '31 days' WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' THEN RAISE EXCEPTION 'FAIL [14 31 Tage trotz ausstehender Stufe 2]: %', v; END IF;
+  DELETE FROM core.cron_labels WHERE cron_key = 'advisor_resume';
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '15 days' WHERE domain = 'finance';
+  -- Grenze aus core.config advisor.resume_last_days
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'advisor', 'resume_last_days', '20')
+  ON CONFLICT (category, key) DO UPDATE SET value = '20';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'plan' THEN RAISE EXCEPTION 'FAIL [14 resume_last_days aus core.config]: %', v; END IF;
+  DELETE FROM core.config WHERE category = 'advisor' AND key = 'resume_last_days';
+  -- aelter als 30 Tage -> Abschnitt
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '31 days' WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' THEN RAISE EXCEPTION 'FAIL [14 31 Tage]: %', v; END IF;
+  -- Mindestdaten fehlen (ready=false) -> kein Vorrang, der offene Abschnitt wie heute
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance';
+  PERFORM set_config('t.ready', '{"ready":false,"missing":[{"key":"accounts_min","section":"accounts"}]}', true);
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' OR v->>'callback' <> 'onboarding:finance:goals' THEN RAISE EXCEPTION 'FAIL [14 ready=false]: %', v; END IF;
+  PERFORM set_config('t.ready', '', true);
+  -- veroeffentlichter Plan ohne Entwurf -> Abschnitt
+  UPDATE agent.advisor_plans SET status = 'active', plan_md = 'p' WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'kind' <> 'section' THEN RAISE EXCEPTION 'FAIL [14 aktiver Plan ohne Entwurf]: %', v; END IF;
+  -- zwei Entwuerfe -> der erste in plan_order (nicht der juengste)
+  DELETE FROM agent.advisor_plans WHERE domain IN ('finance', 'career');
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, updated_at) VALUES
+    ('finance', NULL, 'Plan', 'draft', 1, '{}', now() - interval '5 days'),
+    ('career', 'erika', 'K', 'draft', 1, '{}', now() - interval '1 day');
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'callback' <> 'plan:finance' THEN RAISE EXCEPTION 'FAIL [14 zwei Entwuerfe plan_order]: %', v; END IF;
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["career","finance"]'::jsonb));
+  IF v->>'callback' <> 'plan:career' THEN RAISE EXCEPTION 'FAIL [14 zwei Entwuerfe plan_order umgekehrt]: %', v; END IF;
+  -- ein frischer und ein alter Entwurf: nur der frische hat Vorrang, auch wenn der alte in plan_order vorn steht
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '20 days' WHERE domain = 'finance';
+  v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
+  IF v->>'callback' <> 'plan:career' THEN RAISE EXCEPTION 'FAIL [14 nur frischer Entwurf]: %', v; END IF;
+  ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;
+  DELETE FROM agent.advisor_plans WHERE domain IN ('finance', 'career');
+  UPDATE finance.onboarding_state SET status = 'skipped' WHERE section_key = 'goals';
+
   -- ---------- (13) callback_data > 64 Byte -> kein Knopf (Telegram lehnt den Send sonst ab) ----------
   INSERT INTO finance.onboarding_state (section_key, ord, label) VALUES (long_key, 9, 'Lang');
   v := core.fn_get_next_step(jsonb_build_object('chat_id', '111', 'order', v_order, 'plan_order', '["finance","career"]'::jsonb));
   IF v->>'key' <> long_key OR v->>'button' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [13 Ueberlaenge]: %', v; END IF;
 
-  RAISE NOTICE 'PASS test_fn_get_next_step (Haushalt, order, plan_order, gaps, Zuerst, Drift, none+Beispiel, Partner/for_roles, Kind, wait, unbekannt, Beispiel-fn-Schutz, 64 Byte)';
+  RAISE NOTICE 'PASS test_fn_get_next_step (Haushalt, order, plan_order, gaps, Zuerst, Drift, none+Beispiel, Partner/for_roles, Kind, wait, unbekannt, Beispiel-fn-Schutz, Angefangenes zuerst, 64 Byte)';
 END $$;
 
 ROLLBACK;

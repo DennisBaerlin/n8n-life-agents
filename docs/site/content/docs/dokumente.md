@@ -28,7 +28,7 @@ Steht in einem Brief „Überweisen Sie sofort …", behandelt der Bot das als *
 
 ## Einrichten
 
-Beim Installieren des Pakets **Dokumente** fragt der Installer zwei Dinge (nachträglich änderbar mit `lifeagents reconfigure paperless`):
+Beim Installieren des Pakets **Dokumente** fragt der Installer zwei Dinge. Überspringst du die Adresse, fragt er das Token nicht, denn ohne Adresse nützt es nichts. Nachträglich änderst du die Adresse mit `lifeagents config set general paperless_url <adresse>` und das Token mit `lifeagents reconfigure paperless`:
 
 1. die **Adresse** deiner Paperless-Instanz — so, wie du sie im Browser aufrufst (z. B. `http://192.168.1.50:8000`); nötig ist Paperless-NGX 3.0 oder neuer,
 2. das **Zugangs-Token** des Lese-Nutzers (in Paperless: Profil → „Mein Profil" → API-Auth-Token).

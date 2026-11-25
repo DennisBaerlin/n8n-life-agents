@@ -67,14 +67,14 @@
     "reads": ["core.fn_core_api_version()"]
   },
   "config": {
-    "_comment": "Per-Paket-Config (docs/package-contract.md §3.6). general.paperless_url wird bei der Installation gefragt (prompt/validator/help, nachtragbar per lifeagents reconfigure paperless) und von den Werkzeugen ZUR LAUFZEIT gelesen (core.fn_config_get unter paperless_ro). Bestands-Installationen (v0.2.0/v0.3.0) behalten ihren Wert (Seed-Conffile-Semantik).",
+    "_comment": "Per-Paket-Config (docs/package-contract.md §3.6). general.paperless_url wird bei der Installation gefragt (prompt/validator/help, nachtragbar per lifeagents config set general paperless_url <url>; das Token danach per lifeagents reconfigure paperless) und von den Werkzeugen ZUR LAUFZEIT gelesen (core.fn_config_get unter paperless_ro). Bestands-Installationen (v0.2.0/v0.3.0) behalten ihren Wert (Seed-Conffile-Semantik).",
     "model": {
       "paperless_assistant": { "value": "claude-haiku-latest", "description": "LLM for the document assistant (agent.paperless_assistant): short tool loops (search -> read -> answer), no advisory depth -> the fast, cheap Haiku tier (Anthropic API = paid, no training on customer content - privacy hard rule for document contents; owner model rule 2026-10-19: former gemini-2.5-flash roles -> claude-haiku-latest). Swap = any model_key in agent.ai_models; runtime-switchable: lifeagents config set model paperless_assistant <key> (no rebuild).", "summary": "KI-Modell für den Dokumenten-Assistenten." }
     },
     "general": {
       "paperless_url": {
         "value": "",
-        "description": "Base URL of the household's Paperless-NGX instance (e.g. http://192.168.1.50:8000 - no trailing slash), Paperless-NGX 3.0 or newer. EMPTY by default: while unset, every document tool answers not_configured with a setup hint. Read at RUNTIME by the tools (core.fn_config_get under paperless_ro) -> no rebuild; change via lifeagents reconfigure paperless.",
+        "description": "Base URL of the household's Paperless-NGX instance (e.g. http://192.168.1.50:8000 - no trailing slash), Paperless-NGX 3.0 or newer. EMPTY by default: while unset, every document tool answers not_configured with a setup hint. Read at RUNTIME by the tools (core.fn_config_get under paperless_ro) -> no rebuild; change via lifeagents config set general paperless_url <url> (the access token then via lifeagents reconfigure paperless).",
         "summary": "Adresse deiner Paperless-Instanz, z. B. http://192.168.1.50:8000 (leer = aus).",
         "prompt": "Adresse deiner Paperless-Instanz",
         "validator": "url",

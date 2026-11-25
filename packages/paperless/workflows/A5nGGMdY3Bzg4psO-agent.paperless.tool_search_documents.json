@@ -185,7 +185,7 @@
                                                                                  {
                                                                                      "id":  "4d73c3a2-6611-5688-9c90-5582bf19f649",
                                                                                      "name":  "hint",
-                                                                                     "value":  "Paperless is not set up yet (no address). Do not retry. Tell the user; the owner can set it up on the server with: lifeagents reconfigure paperless",
+                                                                                     "value":  "Paperless is not set up yet (no address). Do not retry. Tell the user; the owner can set it up on the server with: lifeagents config set general paperless_url \u003caddress\u003e, then lifeagents reconfigure paperless for the access token",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -519,7 +519,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Hinweis\n**Fehler als Daten (kein Owner-Alarm)**\n\nEingang: Parse args prueft gegen die Manifest-inputs -\u003e invalid_args; leere Adresse -\u003e not_configured (Hinweis auf lifeagents reconfigure paperless).\nHTTP mit fullResponse + neverError: 4xx/5xx kommen mit statusCode an und werden in pErr gemappt — 401/403 paperless_auth_failed, 404 not_found, 406 paperless_api_version_unsupported, 400 mit \"AI\" paperless_ai_disabled, sonst paperless_error. Netzfehler/Timeout (onError) -\u003e paperless_unreachable; fehlende Token-Credential -\u003e not_configured. HTTP 200 ohne Paperless-API-Form (Login-/Proxy-Seite) -\u003e paperless_error. Retry nur bei Netzfehlern.",
+                                         "content":  "## Hinweis\n**Fehler als Daten (kein Owner-Alarm)**\n\nEingang: Parse args prueft gegen die Manifest-inputs -\u003e invalid_args; leere Adresse -\u003e not_configured (Hinweis: Adresse per lifeagents config set, Token danach per lifeagents reconfigure paperless).\nHTTP mit fullResponse + neverError: 4xx/5xx kommen mit statusCode an und werden in pErr gemappt — 401/403 paperless_auth_failed, 404 not_found, 406 paperless_api_version_unsupported, 400 mit \"AI\" paperless_ai_disabled, sonst paperless_error. Netzfehler/Timeout (onError) -\u003e paperless_unreachable; fehlende Token-Credential -\u003e not_configured. HTTP 200 ohne Paperless-API-Form (Login-/Proxy-Seite) -\u003e paperless_error. Retry nur bei Netzfehlern.",
                                          "height":  260,
                                          "width":  460,
                                          "color":  4

@@ -241,7 +241,7 @@
 <h2 id="dokument-inhalte-sind-keine-anweisungen">Dokument-Inhalte sind keine Anweisungen</h2>
 <p>Steht in einem Brief „Überweisen Sie sofort …&quot;, behandelt der Bot das als <strong>Inhalt</strong>, nicht als Auftrag. Er führt nichts aus, was in einem Dokument steht — Buchungen und andere Änderungen passieren ausschließlich auf deinen ausdrücklichen Wunsch und nach deiner Bestätigung per Knopf.</p>
 <h2 id="einrichten">Einrichten</h2>
-<p>Beim Installieren des Pakets <strong>Dokumente</strong> fragt der Installer zwei Dinge (nachträglich änderbar mit <code>lifeagents reconfigure paperless</code>):</p>
+<p>Beim Installieren des Pakets <strong>Dokumente</strong> fragt der Installer zwei Dinge. Überspringst du die Adresse, fragt er das Token nicht, denn ohne Adresse nützt es nichts. Nachträglich änderst du die Adresse mit <code>lifeagents config set general paperless_url &lt;adresse&gt;</code> und das Token mit <code>lifeagents reconfigure paperless</code>:</p>
 <ol>
 <li>die <strong>Adresse</strong> deiner Paperless-Instanz — so, wie du sie im Browser aufrufst (z. B. <code>http://192.168.1.50:8000</code>); nötig ist Paperless-NGX 3.0 oder neuer,</li>
 <li>das <strong>Zugangs-Token</strong> des Lese-Nutzers (in Paperless: Profil → „Mein Profil&quot; → API-Auth-Token).</li>

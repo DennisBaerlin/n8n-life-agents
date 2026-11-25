@@ -1131,6 +1131,7 @@
   "core.wizard.msg.unknown_item": "Unbekannte Angabe.",
   "core.wizard.msg.missing": "Eine Angabe fehlt noch.",
   "core.wizard.msg.bad_answer": "Eine Angabe passt nicht. Geh zurück zur Übersicht und prüfe sie.",
+  "core.wizard.msg.busy": "Einen Moment, der vorige Schritt ist noch nicht ganz fertig. Versuch es gleich noch einmal.",
   "core.wizard.msg.not_connected": "Noch nicht verbunden.",
   "core.wizard.msg.unknown_action": "Unbekannte Aktion.",
   "core.wizard.msg.no_questions": "Die Einrichtung konnte ihre Fragen nicht laden.",

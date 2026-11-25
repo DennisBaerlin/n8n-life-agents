@@ -295,6 +295,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['start']);
     await expectOk(await post(w, '/api/back', {}));
     assert.equal((await page(w)).id, 'review', 'Zurück führt zur Übersicht');
+    await waitFor(async () => fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').includes('stop'));   // Tailscale samt Funnel hält an
     await expectOk(await answer(w, 'review', null));
     assert.equal((await page(w)).id, 'tunnel');
     // Neustart des Wizards mitten im Tunnel-Schritt: er bleibt dort.

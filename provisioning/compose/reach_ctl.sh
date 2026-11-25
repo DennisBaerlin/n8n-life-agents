@@ -8,6 +8,9 @@
 #        merken, Tailscale-Container starten, Anmeldung anstossen (reach_prepare); ist der Knoten schon angemeldet und darf
 #        Funnel, steht sein Name danach als DOMAIN in core.env, und die eine Installation laeuft gleich mit der Adresse.
 #        Idempotent (ein Neustart des Wizards ruft es erneut). Danach eine JSON-Zeile wie `status`.
+#   bash /opt/lifeagents/provisioning/compose/reach_ctl.sh stop       Tailscale-Container anhalten („Zurück“ vom Tunnel-Schritt
+#        im Wizard): sein Funnel nimmt sonst weiter oeffentlich an. Anmeldung bleibt im Volume; `start` holt ihn zurueck.
+#        Danach eine JSON-Zeile wie `status`.
 #   bash /opt/lifeagents/provisioning/compose/reach_ctl.sh activate   Tunnel steht -> Adresse uebernehmen: derselbe
 #        Installer-Lauf wie ein Update (provision.sh --unattended, gespeicherte Antworten); n8n setzt dabei den
 #        Telegram-Webhook auf die neue Adresse. LIFEAGENTS_RESULT_FILE wird durchgereicht. Nur noch fuer den Umzug
@@ -17,7 +20,7 @@
 #        (reach_relogin: Container neu starten, das verwirft einen alten Link, dann reach_login_start, bei Ablauf mit
 #        --force-reauth). Nie `tailscale reset`/`logout`: der Knoten bleibt derselbe. Nur beim Tunnel-Weg.
 # Voraussetzung: LIFEAGENTS_RUNTIME=compose (sonst Abbruch); start und activate brauchen root.
-# Exit: status 0; start 0; activate = Exit des Installer-Laufs; relogin 0; Abbruch per die 1; unbekanntes Verb 2.
+# Exit: status 0; start 0; stop 0; activate = Exit des Installer-Laufs; relogin 0; Abbruch per die 1; unbekanntes Verb 2.
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +33,10 @@ case "${1:-}" in
   start)
     [ "$(id -u)" -eq 0 ] || die "reach_ctl.sh start braucht root."
     REACH_MODE=tunnel reach_prepare >&2
+    reach_status_json
+    ;;
+  stop)
+    rt_edge_active tailscale && { rt_edge_stop tailscale || die "Tailscale-Container ließ sich nicht anhalten ($(rt_edge_logs_hint tailscale))."; }
     reach_status_json
     ;;
   activate)
@@ -47,5 +54,5 @@ case "${1:-}" in
     reach_relogin >&2 || die "Tailscale-Anmeldung ließ sich nicht anstoßen ($(rt_edge_logs_hint tailscale))."
     reach_status_json
     ;;
-  *) printf 'Usage: reach_ctl.sh status | start | activate | relogin\n' >&2; exit 2 ;;
+  *) printf 'Usage: reach_ctl.sh status | start | stop | activate | relogin\n' >&2; exit 2 ;;
 esac

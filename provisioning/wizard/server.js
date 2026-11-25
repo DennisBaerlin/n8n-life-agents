@@ -955,8 +955,9 @@ async function answer(id, raw, skip) {
 }
 
 function back() {
-  // Tunnel-Schritt: „Zurück“ = Weg ändern (Übersicht, von dort z. B. FritzBox); der Tailscale-Container darf weiterlaufen.
-  if (P.phase === 'tunnel') { P.phase = 'questions'; P.cursor = 'review'; delete P.notes.tunnel; save(); return; }
+  // Tunnel-Schritt: „Zurück“ = Weg ändern (Übersicht, von dort z. B. FritzBox). Tailscale hält an (sein Funnel nähme sonst
+  // weiter öffentlich an); wer beim Tunnel bleibt, bekommt ihn mit reach_ctl.sh start zurück, die Anmeldung bleibt.
+  if (P.phase === 'tunnel') { P.phase = 'questions'; P.cursor = 'review'; delete P.notes.tunnel; save(); stopTunnel(); return; }
   if (P.phase !== 'questions') return;
   const s = list();
   const i = s.indexOf(cursor());
@@ -990,6 +991,8 @@ function firstMissing() {
 }
 function startInstall() {
   if (child) return { ok: true };
+  // Ein reach_ctl.sh start/stop vom Tunnel-Schritt läuft noch (gleich nach „Zurück“): es schreibt core.env wie provision.sh.
+  if (tunnelKick || tunnelStop) return { error: T('core.wizard.msg.busy') };
   const open = firstMissing();
   if (open) { P.cursor = open; save(); return { error: T('core.wizard.msg.missing') }; }
   let txt;
@@ -1066,18 +1069,33 @@ function startTunnel() {
 //   tailscaled); idempotent, auch nach einem Neustart des Wizards mitten im Schritt. Die Frist für den Störungs-Hinweis
 //   beginnt erst, wenn der Aufruf fertig ist (ein langsamer Download ist keine Störung).
 let tunnelKick = null;
-function kickTunnel() {
-  if (tunnelKick) return;
+let tunnelStop = null;
+// reachCtl(verb, then) — reach_ctl.sh <verb> im Hintergrund, Ausgabe ins Protokoll; then() genau einmal am Ende.
+function reachCtl(verb, then) {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   const log = fs.openSync(LOG_FILE, 'a', 0o600);
-  tunnelKick = spawn('bash', [REACH, 'start'], { stdio: ['ignore', log, log] });
+  const p = spawn('bash', [REACH, verb], { stdio: ['ignore', log, log] });
   fs.closeSync(log);
-  const done = () => {
+  let ended = false;
+  const end = () => { if (!ended) { ended = true; then(); } };
+  p.on('error', end);
+  p.on('close', end);
+  return p;
+}
+function kickTunnel() {
+  if (tunnelKick) return;
+  // Ein laufendes stop zuerst zu Ende (sein Abschluss startet dann): sonst hielte es den eben gestarteten Container wieder an.
+  if (tunnelStop) return;
+  tunnelKick = reachCtl('start', () => {
     tunnelKick = null;
     if (P.phase === 'tunnel' && P.notes.tunnel) { P.notes.tunnel.since = Date.now(); save(); }
-  };
-  tunnelKick.on('error', done);
-  tunnelKick.on('close', done);
+    else stopTunnel();   // inzwischen „Zurück“: start hätte den Container wieder gestartet
+  });
+}
+// stopTunnel — reach_ctl.sh stop im Hintergrund; läuft start noch, hält kickTunnel danach an.
+function stopTunnel() {
+  if (tunnelKick || tunnelStop) return;
+  tunnelStop = reachCtl('stop', () => { tunnelStop = null; if (P.phase === 'tunnel') kickTunnel(); });
 }
 let tunnelBusy = false;
 let lastTunnel = 0;
@@ -1093,15 +1111,15 @@ async function tunnelTick(force) {
     if (P.phase !== 'tunnel') return;   // inzwischen „Zurück“
     // pending_activation = Tunnel steht, Telegram zeigt nur noch nicht darauf (das erledigt die Installation).
     // Erst wenn reach_ctl.sh start fertig ist: beide schreiben core.env (reach_prepare), nie gleichzeitig.
-    if ((r.state === 'pending_activation' || r.state === 'ready') && !tunnelKick) {
+    if ((r.state === 'pending_activation' || r.state === 'ready') && !tunnelKick && !tunnelStop) {
       delete P.notes.tunnel;
       const s = startInstall();
       // Antwort fehlt oder ist kaputt: zurück zu den Fragen (startInstall setzt den Cursor), sonst bliebe die Seite stehen.
-      if (s && s.error) { P.phase = 'questions'; if (P.cursor === 'tunnel' || !P.cursor) P.cursor = 'review'; save(); }
+      if (s && s.error) { P.phase = 'questions'; if (P.cursor === 'tunnel' || !P.cursor) P.cursor = 'review'; save(); stopTunnel(); }
       return;
     }
     Object.assign(tun, { state: r.state, url: r.url, host: r.host });
-    if ((r.state !== 'starting' && r.state !== 'unavailable') || tunnelKick) tun.since = Date.now();
+    if ((r.state !== 'starting' && r.state !== 'unavailable') || tunnelKick || tunnelStop) tun.since = Date.now();
     else if (Date.now() - tun.since >= TUNNEL_GRACE_MS) tun.down = true;
     save();
   } finally { tunnelBusy = false; }

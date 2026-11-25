@@ -1131,6 +1131,7 @@
   "core.wizard.msg.unknown_item": "Unknown entry.",
   "core.wizard.msg.missing": "An entry is still missing.",
   "core.wizard.msg.bad_answer": "An entry does not fit. Go back to the overview and check it.",
+  "core.wizard.msg.busy": "One moment, the previous step is not quite done yet. Try again in a moment.",
   "core.wizard.msg.not_connected": "Not connected yet.",
   "core.wizard.msg.unknown_action": "Unknown action.",
   "core.wizard.msg.no_questions": "The setup could not load its questions.",

@@ -572,6 +572,19 @@ reach_prepare() {
   fi
 }
 
+# reach_stop_other <weg> — den Rand-Dienst des anderen Wegs anhalten, falls er laeuft: beim FritzBox-Weg tailscale (sein Funnel
+#   nimmt sonst weiter oeffentlich an), beim Tunnel wan (80/443). Aufrufer erst, wenn der neue Weg steht (sonst waere der Bot
+#   dazwischen nicht erreichbar): nach dem Deploy in reach_converge (Tunnel: DOMAIN ist der Tailscale-Name; FritzBox: wan
+#   laeuft). Nie reset/logout, die
+#   Anmeldung bleibt im Volume; wer zurueckwechselt, bekommt den Dienst per rt_stack_up wieder.
+reach_stop_other() {
+  local other
+  case "$1" in fritzbox) other=tailscale ;; tunnel) other=wan ;; *) return 0 ;; esac
+  rt_edge_active "$other" || return 0
+  if rt_edge_stop "$other"; then log "Weg nach außen: ${1} — ${other} angehalten."
+  else warn "Weg nach außen: ${other} ließ sich nicht anhalten ($(rt_edge_logs_hint "$other"))."; fi
+}
+
 # reach_converge — spaet im Lauf (nach dem Deploy): Rand und Gateway erneuern, FritzBox-Weg anwerfen. Adresse fuer wan schreiben; laeuft wan noch
 #   nicht, vorher 80/443 pruefen (belegt -> nichts starten, Hinweis auf den Tunnel); geaenderte Adresse -> wan neu starten.
 reach_converge() {
@@ -585,12 +598,20 @@ reach_converge() {
   fi
   # Beide Wege enden auf edge:8088: die Liste der oeffentlichen Pfade erst jetzt freigeben (n8n ist eingerichtet).
   if reach_edge_public_write; then log "Rand: Liste der öffentlichen Pfade aktualisiert (edge lädt sie binnen 5 s)."; fi
+  if [ "$(reach_mode)" = tunnel ]; then
+    # Nach dem Deploy zeigt Telegram auf die Tunnel-Adresse: erst jetzt wan (80/443) anhalten, und nur, wenn DOMAIN der
+    # Tailscale-Name ist (Tunnel stand in reach_prepare); sonst bliebe der Bot beim Wechsel ohne Weg.
+    reach_ts_eval "$(_reach_ts_status)"
+    if [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ] && [ "${DOMAIN:-}" = "$REACH_TS_DNS" ]; then reach_stop_other tunnel; fi
+    return 0
+  fi
   [ "$(reach_mode)" = fritzbox ] || return 0
   [ -n "${DOMAIN:-}" ] || { warn "FritzBox-Weg ohne Internet-Adresse (DOMAIN) — nichts gestartet."; return 0; }
   local changed=1
   reach_wan_write_domain "$DOMAIN" && changed=0
   if rt_edge_active wan; then
     [ "$changed" -eq 0 ] && { rt_edge_restart wan || warn "FritzBox-Weg: wan ließ sich nicht neu starten."; }
+    reach_stop_other fritzbox
     return 0
   fi
   if ! reach_ports_free; then
@@ -599,7 +620,8 @@ reach_converge() {
     return 0
   fi
   rm -f "$REACH_CONF_DIR/ports-busy"
-  rt_stack_up --no-deps wan >/dev/null 2>&1 || warn "FritzBox-Weg: wan ließ sich nicht starten ($(rt_edge_logs_hint wan))."
+  rt_stack_up --no-deps wan >/dev/null 2>&1 || { warn "FritzBox-Weg: wan ließ sich nicht starten ($(rt_edge_logs_hint wan))."; return 0; }
+  reach_stop_other fritzbox   # wan laeuft: erst jetzt Tailscale samt Funnel anhalten
 }
 
 # reach_lan_doctor — doctor im Verbund, nur FritzBox-Weg: antwortet wan (TCP 443) ueber die Adresse des Rechners?

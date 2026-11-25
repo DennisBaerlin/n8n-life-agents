@@ -1,12 +1,13 @@
 # Bau-Lauf von linux-setup-debian.yml auf dem Entwicklungs-Branch: dieselben Schritte (tests/install/debian_vm.sh), aber ohne
-# Environment und ohne secrets.* -> der Attrappen-Weg (erfundene Werte, Telegram-Attrappe, gesperrtes Anthropic). Noetig, weil
+# Environment und ohne secrets.* -> der Attrappen-Weg (erfundene Werte, Telegram-Attrappe, gesperrte Dienste, kein Tailnet). Noetig, weil
 # workflow_dispatch nur Dateien auf dem Default-Branch startet und Secrets nur dort gelten. Faellt vor dem Merge weg (Datei loeschen).
+# Zwei Jobs wie im echten Workflow: klick (Fragebogen im Browser) und answers (Antwort-Datei-Weg ohne Fragebogen).
 name: linux-setup-debian-build
 
 on:
   push:
     branches: [feat/s4-l2-debian-269b9b]
-    paths: ['.github/workflows/linux-setup-debian*.yml', 'tests/install/**']
+    paths: ['.github/workflows/linux-setup-debian*.yml', 'tests/install/**', 'scripts/ci/**']
 
 permissions:
   contents: read
@@ -17,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  debian:
+  klick:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -82,6 +83,70 @@ jobs:
           path: ${{ runner.temp }}/klick-out
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Stop the VM
+        if: always()
+        run: bash tests/install/debian_vm.sh stop
+
+  answers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ANSWERS_STANDIN: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: KVM (Runner-Ausfall, wenn es fehlt)
+        run: bash tests/install/debian_vm.sh kvm
+
+      - name: Build the master image and serve it from a registry without Docker (crane)
+        run: bash tests/install/debian_vm.sh registry
+
+      - name: Download Debian 12 cloud image (latest, checksum) and prepare disk and cloud-init seed (LANG=C)
+        run: bash tests/install/debian_vm.sh image
+
+      - name: Boot the VM and wait for SSH and cloud-init
+        timeout-minutes: 10
+        run: bash tests/install/debian_vm.sh boot
+
+      # Erfundene Werte statt der Test-Zugaenge; ohne Tailscale-Zugang meldet der Helfer "Tunnel-Teil uebersprungen".
+      - name: Answers file from the helper (invented values, no tailnet)
+        env:
+          TEST_TELEGRAM_BOT_TOKEN: '1000001:CIinventedTokenForMockTelegram0000'
+          TEST_ANTHROPIC_API_KEY: 'test-fake-ci-anthropic-key-0000000000'
+        run: bash tests/install/debian_vm.sh answers
+
+      - name: setup.sh --answers on the cold Debian (core first, stand-ins, then the unattended install)
+        timeout-minutes: 40
+        run: bash tests/install/debian_vm.sh setup_answers
+
+      - name: Tunnel, webhook and cost checks (skipped without a tailnet)
+        timeout-minutes: 30
+        run: bash tests/install/debian_vm.sh reach
+
+      - name: End check (n8n answers, stack healthy, doctor, workflows published)
+        run: bash tests/install/debian_vm.sh verify
+
+      - name: A second setup.sh run changes nothing
+        run: bash tests/install/debian_vm.sh second
+
+      - name: Uninstall with data leaves nothing behind
+        run: bash tests/install/debian_vm.sh uninstall
+
+      - name: Summary (times per phase)
+        if: always()
+        run: bash tests/install/debian_vm.sh summary
+
+      - name: Diagnostics on failure (VM console, containers, wizard log)
+        if: failure()
+        run: bash tests/install/debian_vm.sh diag
+
+      - name: Clean up (tunnel device, webhook, answers files)
+        if: always()
+        run: bash tests/install/debian_vm.sh answers_cleanup
 
       - name: Stop the VM
         if: always()

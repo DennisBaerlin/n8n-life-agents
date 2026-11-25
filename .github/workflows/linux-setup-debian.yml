@@ -1,11 +1,12 @@
-# Linux-Einstieg auf frischem Debian 12 (Paket L2), echter Weg: ein Debian-Cloud-Image laeuft als KVM-VM auf dem ubuntu-24.04-Runner,
-# mit LANG=C wie eine Proxmox-Vorlage und ohne vorinstalliertes Docker. Darin laeuft der echte Einstieg provisioning/setup.sh (Docker
-# holen, Kern starten), danach klickt ein Browser (Playwright) den Einrichtungs-Fragebogen durch; am Ende Kopplung und Kontrolle
-# (n8n antwortet, doctor, Workflows), Zweitlauf von setup.sh ohne Aenderung, Abbau ohne Reste. Ablauf und Grenzen (Telegram-Attrappe,
-# gesperrtes Anthropic, Kopplung per Webhook, Tunnel-Anmeldung) stehen im Kopf von tests/install/debian_vm.sh.
-# Secrets TEST_TELEGRAM_BOT_TOKEN, TEST_ANTHROPIC_API_KEY, TEST_TS_AUTHKEY nur ueber das Environment install-test (Branch-Regel main),
-# nur im env: der Schritte, die sie brauchen, nur bei schedule/workflow_dispatch (der Aufruf vor dem Release folgt mit dem Release-Paket), kein Artefakt-Upload in diesem Job.
-# Gesetzt = echter Weg, leer = Attrappen und Erfundenes. Den Lauf auf Entwicklungs-Branches ohne Secrets fuehrt linux-setup-debian-build.yml.
+# Linux-Einstieg auf frischem Debian 12 (Paket L2): ein Debian-Cloud-Image laeuft als KVM-VM auf dem ubuntu-24.04-Runner, mit LANG=C wie
+# eine Proxmox-Vorlage und ohne vorinstalliertes Docker. Darin laeuft der echte Einstieg provisioning/setup.sh. Zwei Jobs, ein Skript
+# (tests/install/debian_vm.sh, dort Ablauf und Grenzen):
+#   klick   - Fragebogen im Browser (Playwright) mit erfundenen Werten, Telegram-Attrappe; keine Secrets, kein Environment.
+#   answers - Antwort-Datei-Weg ohne Fragebogen mit den echten Test-Zugaengen: Tailscale-Tunnel (Funnel), Test-Bot, Anthropic-Schluessel;
+#             prueft Tunnel ready, getWebhookInfo, oeffentlichen Pfad, Kosten 0; danach Zweitlauf, Abbau, Abmelden.
+# Secrets nur ueber das Environment install-test (Branch-Regel main), nur im env: des einen Schritts "answers", nur bei
+# schedule/workflow_dispatch (der Aufruf vor dem Release folgt mit dem Release-Paket), kein Artefakt-Upload. Schnittstelle:
+# docs/reference/tests.md *Test-Zugaenge*. Den Lauf auf Entwicklungs-Branches ohne Secrets fuehrt linux-setup-debian-build.yml.
 # Rot ohne /dev/kvm = Runner-Ausfall (Meldung im Schritt "KVM"), Lauf wiederholen. Kein Required Check.
 name: linux-setup-debian
 
@@ -17,15 +18,14 @@ on:
 permissions:
   contents: read
 
-# Der Test-Bot hat genau einen Webhook: zwei Laeufe gleichzeitig nahmen ihn sich gegenseitig weg.
+# Der Test-Bot hat genau einen Webhook und das Test-Tailnet einen Namen je Lauf: zwei Laeufe gleichzeitig kaemen sich in die Quere.
 concurrency:
   group: install-test
   cancel-in-progress: false
 
 jobs:
-  debian:
+  klick:
     runs-on: ubuntu-24.04
-    environment: install-test
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -50,26 +50,15 @@ jobs:
         timeout-minutes: 30
         run: bash tests/install/debian_vm.sh setup
 
-      - name: Real test accounts if the secrets exist, else stand-ins (Telegram mock, questionnaire with the test switch, Anthropic blocked)
-        env:
-          TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
-          TEST_ANTHROPIC_API_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY }}
-          TEST_TS_AUTHKEY: ${{ secrets.TEST_TS_AUTHKEY }}
+      - name: Stand-ins for what the run does not have (Telegram mock, questionnaire with the test switch, Anthropic blocked)
         run: bash tests/install/debian_vm.sh mocks
 
       - name: Link and tunnel like an owner's laptop; install the browser
         run: bash tests/install/debian_vm.sh browser
 
-      - name: Test bot without a leftover webhook (only with the real test bot)
-        env:
-          TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
-        run: bash tests/install/debian_vm.sh tgreset
-
       - name: Click through the questionnaire (all pages) via the Tailscale page and the FritzBox way up to the Connect page, installation included
         timeout-minutes: 50
         env:
-          KLICK_TELEGRAM_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
-          KLICK_ANTHROPIC_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY }}
           KLICK_SHOT: '0'
         run: bash tests/install/debian_vm.sh klick
 
@@ -94,11 +83,71 @@ jobs:
         if: failure()
         run: bash tests/install/debian_vm.sh diag
 
-      - name: Test bot without a leftover webhook after the run
+      - name: Stop the VM
         if: always()
+        run: bash tests/install/debian_vm.sh stop
+
+  answers:
+    runs-on: ubuntu-24.04
+    environment: install-test
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: KVM (Runner-Ausfall, wenn es fehlt)
+        run: bash tests/install/debian_vm.sh kvm
+
+      - name: Build the master image and serve it from a registry without Docker (crane)
+        run: bash tests/install/debian_vm.sh registry
+
+      - name: Download Debian 12 cloud image (latest, checksum) and prepare disk and cloud-init seed (LANG=C)
+        run: bash tests/install/debian_vm.sh image
+
+      - name: Boot the VM and wait for SSH and cloud-init
+        timeout-minutes: 10
+        run: bash tests/install/debian_vm.sh boot
+
+      # Der eine Schritt mit den Secrets: der Helfer holt per OAuth einen frischen Tailscale-Schluessel (1 h, einmalig) und schreibt die
+      # Antwort-Datei; die Folgeschritte lesen nur diese Datei.
+      - name: Answers file from the helper (test bot, Anthropic key, fresh Tailscale key)
         env:
           TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}
-        run: bash tests/install/debian_vm.sh tgreset
+          TEST_ANTHROPIC_API_KEY: ${{ secrets.TEST_ANTHROPIC_API_KEY }}
+          TEST_TS_OAUTH_CLIENT_ID: ${{ secrets.TEST_TS_OAUTH_CLIENT_ID }}
+          TEST_TS_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_TS_OAUTH_CLIENT_SECRET }}
+        run: bash tests/install/debian_vm.sh answers
+
+      - name: setup.sh --answers on the cold Debian (unattended install with the tunnel and the test bot)
+        timeout-minutes: 40
+        run: bash tests/install/debian_vm.sh setup_answers
+
+      - name: Tunnel, webhook and cost checks (ready, ts.net address, getWebhookInfo, public path, no Anthropic calls)
+        timeout-minutes: 30
+        run: bash tests/install/debian_vm.sh reach
+
+      - name: End check (n8n answers, stack healthy, doctor, workflows published)
+        run: bash tests/install/debian_vm.sh verify
+
+      - name: A second setup.sh run changes nothing
+        run: bash tests/install/debian_vm.sh second
+
+      - name: Uninstall with data leaves nothing behind (signs the tunnel device out first)
+        run: bash tests/install/debian_vm.sh uninstall
+
+      - name: Summary (times per phase)
+        if: always()
+        run: bash tests/install/debian_vm.sh summary
+
+      - name: Diagnostics on failure (VM console, containers, wizard log)
+        if: failure()
+        run: bash tests/install/debian_vm.sh diag
+
+      - name: Clean up (tunnel device, webhook of the test bot, answers files)
+        if: always()
+        run: bash tests/install/debian_vm.sh answers_cleanup
 
       - name: Stop the VM
         if: always()

@@ -333,12 +333,31 @@ report_state() { sql "SELECT COALESCE(report_state,'') FROM core.update_requests
 fresh() { rm -f "$UP_STATE_FILE" "${UP_STATE_FILE}.stop"; installed v9.9.8; reset_db; tg_clear; scenario "$1"; }
 sign v9.9.10 'update-test project'
 
+# Lebt noch ein Runner (`lifeagents update --run-requested`)? Das Substrat hat kein pgrep, darum /proc. Die Befehlszeile ist am
+# Anfang verankert: eine Probe, die ihren eigenen Text traegt (grep), faende sich sonst selbst. Die Umleitung steht in der
+# Gruppe, sonst meldet bash selbst ein Prozessende zwischen Glob und Lesen.
+runner_alive() {
+  local c
+  for c in /proc/[0-9]*/cmdline; do
+    { tr '\0' ' ' < "$c"; } 2>/dev/null | grep -qE '^[^ ]*bash [^ ]*lifeagents update --run-requested' && return 0
+  done
+  return 1
+}
+
+# 17a Die Probe sieht einen echten, noch laufenden Lauf: sonst bliebe progress_no_leftover bei jedem uebrigen Prozess gruen.
+fresh steps; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+env "${RUNENV[@]}" ${EXTRA_ENV:+$EXTRA_ENV} lifeagents update --run-requested >/dev/null 2>&1 </dev/null & PROBE_RUN=$!
+seen=1; for _ in $(seq 1 100); do if runner_alive; then seen=0; break; fi; sleep 0.1; done
+wait "$PROBE_RUN" 2>/dev/null
+if [ "$seen" = 0 ] && ! runner_alive; then pass leftover_probe_sees_runner
+else fail leftover_probe_sees_runner "gesehen=$seen danach=$(runner_alive && echo noch-da || echo weg)"; fi
+
 # 18 Ablauf: eine Nachricht, Zahlen steigen, 100 % erst zum Schluss, danach die Ergebnis-Meldung; Auftragsnummer erreicht den Lauf
 fresh steps; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
 TOK_SEEN="$W/token_seen"; rm -f "$TOK_SEEN"
 ( for _ in $(seq 1 60); do
     for c in /proc/[0-9]*/cmdline; do
-      if tr '\0' ' ' < "$c" 2>/dev/null | grep -q '^curl.*mock-token'; then echo "$c" >> "$TOK_SEEN"; fi
+      if { tr '\0' ' ' < "$c"; } 2>/dev/null | grep -q '^curl.*mock-token'; then echo "$c" >> "$TOK_SEEN"; fi
     done; sleep 0.2
   done ) &
 SAMPLER=$!
@@ -350,7 +369,7 @@ if [ "${o%%|*}" = succeeded ] && [ "$(tg_n)" = 2 ] && [ "$(tg_edit_n)" -ge 4 ] &
 else fail progress_flow "outcome=$o sends=$(tg_n) edits=$(tg_edit_n) pct=[$pcts] $(show "$OUT")"; fi
 if [ "$(cat "$W/request_id" 2>/dev/null)" = "$id" ]; then pass request_id_passed; else fail request_id_passed "ist=$(cat "$W/request_id" 2>/dev/null) soll=$id"; fi
 if [ ! -e "$TOK_SEEN" ]; then pass token_not_in_argv; else fail token_not_in_argv "$(cat "$TOK_SEEN")"; fi
-if flock -n /run/lifeagents-update.lock true && ! pgrep -f 'lifeagents update --run-requested' >/dev/null; then pass progress_no_leftover
+if flock -n /run/lifeagents-update.lock true && ! runner_alive; then pass progress_no_leftover
 else fail progress_no_leftover "Sperre belegt oder Prozess uebrig"; fi
 if [ "$(report_state "$id")" = sent ] && [ ! -e "$UP_STATE_FILE" ]; then pass progress_cleaned; else fail progress_cleaned "state=$(report_state "$id")"; fi
 

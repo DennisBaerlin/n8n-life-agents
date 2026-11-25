@@ -128,6 +128,8 @@ jobs:
         run: bash tests/install/debian_vm.sh reach
 
       - name: End check (n8n answers, stack healthy, doctor, workflows published)
+        env:
+          MIN_WORKFLOWS: '30'
         run: bash tests/install/debian_vm.sh verify
 
       - name: A second setup.sh run changes nothing

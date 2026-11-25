@@ -272,7 +272,8 @@ step_verify() {
   local total
   total="$(vm "sudo docker exec lifeagents-postgres psql -U postgres -d n8n -tAc 'SELECT count(*) FROM public.workflow_entity' | tr -d '[:space:]'")"
   echo "Workflows: $total"
-  [ "$total" -ge 100 ] || { echo "::error::Workflows: $total (erwartet >= 100)"; exit 1; }
+  local min="${MIN_WORKFLOWS:-100}"
+  [ "$total" -ge "$min" ] || { echo "::error::Workflows: $total (erwartet >= $min)"; exit 1; }
   vm "sudo docker exec lifeagents-postgres psql -U postgres -d n8n -tAc 'SELECT count(*) FROM public.workflow_entity WHERE \"activeVersionId\" IS NULL' | tr -d '[:space:]'" | grep -qx 0 \
     || { echo "::error::Unveroeffentlichte Workflows"; exit 1; }
   vm 'sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --format "{{.Names}} {{.ID}}" | sort' > "$RUNNER_TEMP/ids.1"

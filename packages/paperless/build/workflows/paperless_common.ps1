@@ -40,7 +40,7 @@ function pErr(r) {
 function New-PaperlessErrorSticky {
     param([int[]]$Pos = @(1000, 300))
     Build-Sticky 'Doc: Fehler' $Pos 'Fehler als Daten (kein Owner-Alarm)' (@'
-Eingang: Parse args prueft gegen die Manifest-inputs -> invalid_args; leere Adresse -> not_configured (Hinweis auf lifeagents reconfigure paperless).
+Eingang: Parse args prueft gegen die Manifest-inputs -> invalid_args; leere Adresse -> not_configured (Hinweis: Adresse per lifeagents config set, Token danach per lifeagents reconfigure paperless).
 HTTP mit fullResponse + neverError: 4xx/5xx kommen mit statusCode an und werden in pErr gemappt — 401/403 paperless_auth_failed, 404 not_found, 406 paperless_api_version_unsupported, 400 mit "AI" paperless_ai_disabled, sonst paperless_error. Netzfehler/Timeout (onError) -> paperless_unreachable; fehlende Token-Credential -> not_configured. HTTP 200 ohne Paperless-API-Form (Login-/Proxy-Seite) -> paperless_error. Retry nur bei Netzfehlern.
 '@) 260 460 'Hinweis'
 }
@@ -118,7 +118,7 @@ function New-PaperlessToolHead {
     $notCfg = Build-Set 'Not configured' @(1000, 180) @(
         ,@('ok', 'false', 'boolean')
         ,@('error', 'not_configured', 'string')
-        ,@('hint', 'Paperless is not set up yet (no address). Do not retry. Tell the user; the owner can set it up on the server with: lifeagents reconfigure paperless', 'string')
+        ,@('hint', 'Paperless is not set up yet (no address). Do not retry. Tell the user; the owner can set it up on the server with: lifeagents config set general paperless_url <address>, then lifeagents reconfigure paperless for the access token', 'string')
     )
     $conns = [ordered]@{
         'Start'       = @{ main = @( ,@( E 'Parse args' ) ) }

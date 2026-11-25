@@ -28,7 +28,8 @@
 #   (7) CRON-ENABLE: jeder gegatete Cron liest sein Enable-Flag ueber
 #       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal muss im Manifest
 #       (.config.cron_enable.<key>) deklariert sein (sonst seedet der Host die Zeile nicht ->
-#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest).
+#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest). Gates = die
+#       Postgres-Knoten der Workflows und die Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Host-Schalter).
 #   (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): der manifest-`backup`-Block darf den
 #       Backup-Key und Code-Seeds nie in ein Bundle ziehen. (8a) Schema `core` nie in einem backup-Block
 #       (kein `core.<tabelle>` in full_tables/filtered_tables; kein schema_dump auf einem Paket, das Schema
@@ -114,6 +115,9 @@
 #   (41) Pruef-fn ohne Registry: jede <pkg>.fn_validate_<x>(p_facts jsonb) ist im context_validators-Block oder als advisors.*.plan_validate_fn
 #       ihres Manifests gebunden; ein Kontext hat nur eine der beiden Pruefungen;
 #       Ausnahmeliste scripts/build/validator_registry_allowlist.json (Ratchet). Selbst-Asserts.
+#   (42) Test-Zugaenge in CI: ein Workflow, der TEST_-Secrets oder das Environment install-test nennt, laeuft nur per
+#       schedule/workflow_dispatch, liest Secrets nur im env: eines Schritts eines Jobs mit environment install-test,
+#       ohne Sammel-Zugriff, Eingaben im Befehl, ungepinnte Actions oder Artefakte. Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -678,16 +682,24 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #     wenn das Paket-Manifest den Key deklariert (.config.cron_enable.<key>). Drift in eine Richtung
 #     (Gate liest nicht-deklariertes Flag) -> stiller fail-closed; Drift andersrum (deklariertes Flag,
 #     das kein Gate liest) -> tote Config. Scannt die Postgres-Node-Queries der getrackten Workflows
-#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal).
+#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal), dazu die
+#     Nicht-Kommentar-Zeilen von provisioning/lib/*.sh (Schalter, die der Host-Teil selbst liest: Kopie der Sicherung).
 # ---------------------------------------------------------------
 $cronEnableRefs = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Gate-Queries
+$cronEnableRx = "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)"
 foreach ($w in $workflows.Values) {
     foreach ($n in $w.Json.nodes) {
         if ($n.type -notin @('n8n-nodes-base.postgres', 'n8n-nodes-base.postgresTool')) { continue }
         $q = "$($n.parameters.query)"
-        foreach ($m in [regex]::Matches($q, "fn_config_get\(\s*'([a-z][a-z0-9_]*)'\s*,\s*'cron_enable'\s*,\s*'([a-z][a-z0-9_]*)'\s*\)")) {
+        foreach ($m in [regex]::Matches($q, $cronEnableRx)) {
             [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)")
         }
+    }
+}
+foreach ($sh in (Get-ChildItem (Join-Path $RepoRoot 'provisioning\lib') -Filter '*.sh' -ErrorAction SilentlyContinue)) {
+    foreach ($line in [System.IO.File]::ReadAllLines($sh.FullName, [System.Text.Encoding]::UTF8)) {
+        if ($line -match '^\s*#') { continue }
+        foreach ($m in [regex]::Matches($line, $cronEnableRx)) { [void]$cronEnableRefs.Add("$($m.Groups[1].Value)|$($m.Groups[2].Value)") }
     }
 }
 $cronEnableDeclared = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Manifesten
@@ -780,12 +792,16 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 # (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): kein Paket darf den Backup-Key oder einen
 #     Code-Seed in ein Export-Bundle ziehen. Geprueft wird der manifest-`backup`-Block (von backup_cli.sh
 #     gelesen): die gedumpten Tabellen (full_tables + filtered_tables-Keys; exclude_tables ist die
-#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core`
-#     noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
+#     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core` (ausser der
+#     Positivliste $coreBackupAllowed) noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
 # ---------------------------------------------------------------
 # Code-geseedete Tabellen (managed_by<>'agent' = Repo-Code, vom Installer neu geseedet): gehoeren nie
 # in ein Bundle. core.* faengt schon (8a) ab; agent.ai_models ist der einzige Code-Seed ausserhalb core.
 $codeSeedTables = @('agent.ai_models', 'core.config')
+# Positivliste: einzelne Nutzerdaten-Tabellen im Schema core, die ein backup-Block nennen darf (Kostenverlauf und
+# "schon gezeigt"-Merker, Restore-Regeln in core.fn_backup_restore_filtered). core.backup_key, core.app_secret, core.config und
+# Schema core als Ganzes bleiben verboten.
+$coreBackupAllowed = @('core.llm_usage', 'core.notification_state')
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
     $mf  = Read-Manifest $pkg
@@ -801,7 +817,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($bk.filtered_tables) { foreach ($p in $bk.filtered_tables.PSObject.Properties) { $dumped.Add($p.Name) } }
 
     foreach ($t in $dumped) {
-        if ($t -match '^core\.') {
+        if ($t -match '^core\.' -and $coreBackupAllowed -notcontains $t) {
             $errors.Add("BACKUP-BLOCK core-SCHEMA: $pkg/manifest.json backup-Block dumpt '$t' (Schema core) -- Schema core darf NIE in einem backup-Block stehen, sonst rutscht core.backup_key (der Restore-Schluessel selbst) ins Bundle (arch-3 Obj 3).")
         }
         if ($codeSeedTables -contains $t) {
@@ -950,7 +966,8 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
 #     Host-Sonderlocke (der Installationsprozess bleibt generisch). Teil-Checks (12e/12f = Manifest-`.config`-Eintraege, s. dort):
 #     (12a) SCHEMA: jeder manifest-`credentials`-Eintrag traegt placeholder (__CRED_*__-Form), name, type
 #           (∈ Assembler-Enum aus inject_credentials.sh::_cred_assemble_data — Fail beim Commit statt
-#           Install-die) + >=1 env-Key; validator ∈ geschlossenem Enum (none|url|email|live_check:<name>).
+#           Install-die) + >=1 env-Key; validator ∈ geschlossenem Enum (none|url|email|live_check:<name>);
+#           optionales requires_setting nennt eine fragbare `.config`-Einstellung und nur an einem optionalen Zugang.
 #     (12b) PARITAET (bidirektional, Vorlage Check 7): jedes __CRED_*__-Token in den gebauten Workflows
 #           eines Pakets ist Host-Map ∪ Rollen-Konvention (__CRED_POSTGRES_<PKG>_RW/RO__) ∪ deklariert
 #           (FEHLT = inject legt die Cred nie an -> dangling Platzhalter beim Deploy); jeder deklarierte
@@ -1106,6 +1123,17 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
             if (([string]$v.type) -eq 'httpHeaderAuth' -and $envProps.Count -gt 1) {
                 # Der Assembler nimmt to_entries[0]; ein 2. env-Key ginge still verloren.
                 $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name) (httpHeaderAuth) deklariert $($envProps.Count) env-Keys — der Typ traegt genau EIN Name/Value-Paar, weitere Keys wuerden still verworfen.")
+            }
+            if ($v.PSObject.Properties.Name -contains 'requires_setting') {
+                # Der Wizard (flow.js steps) laesst den Zugang weg, wenn diese Einstellung leer bleibt; ein Tippfehler liesse ihn nie weg.
+                $rs = [string]$v.requires_setting
+                $rsCat, $rsKey = $rs -split '\.', 2
+                $rsEntry = if ($rsKey -and $mf.config -and $mf.config.$rsCat) { $mf.config.$rsCat.$rsKey } else { $null }
+                if ($v.required -eq $true) {
+                    $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name) ist required und traegt requires_setting -- ein Pflicht-Zugang darf nicht entfallen.")
+                } elseif ($null -eq $rsEntry -or -not ($rsEntry.PSObject.Properties.Name -contains 'prompt')) {
+                    $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name).requires_setting='$rs' ist keine fragbare .config-Einstellung (<kategorie>.<schluessel> mit prompt).")
+                }
             }
             foreach ($e in $envProps) {
                 # Der Key-Name fliesst in bash-`eval` + grep-Regex (inject/wizard/env_has_key)
@@ -2195,7 +2223,7 @@ $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s
 # Release-Asset ohne Baum (kein Sourcing, es gibt noch keine lib/), muss Docker einrichten und den Kern starten. Erlaubt sind nur
 # die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
 $setupRel = 'provisioning/setup.sh'
-$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+"\$P-master"\s+stack\s+wizard-url\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
+$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+-i\s+"\$P-master"\s+stack\s+wizard-url\s+--hints-stdin\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
 $setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|(--now\s+)?"\$UNIT_NAME")\s+>&2|^\s+start\s+"\$UNIT_NAME"\s+>&2|^\s+is-active\s+--quiet\s+"\$UNIT_NAME"|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
@@ -2262,7 +2290,8 @@ foreach ($sa in @(
     @{ n = 'setup: version ok';      r = $setupRel; t = "  docker version >/dev/null 2>&1 || die x`n";           want = 0 },
     @{ n = 'setup: Kern-Aufruf ok';  r = $setupRel; t = "  docker `"`${a[@]}`" < `"`$in`" | tee `"`$OUT`" | jq x`n";  want = 0 },
     @{ n = 'setup: image rm ok';     r = $setupRel; t = "  docker image rm `"`$img`" >/dev/null 2>&1`n";          want = 0 },
-    @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec `"`$P-master`" stack wizard-url --json`n"; want = 0 },
+    @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec -i `"`$P-master`" stack wizard-url --hints-stdin --json`n"; want = 0 },
+    @{ n = 'setup: exec frei';       r = $setupRel; t = "  docker exec -i `"`$P-master`" sh -c x`n";              want = 1 },
     @{ n = 'setup: enable Docker ok'; r = $setupRel; t = "  systemctl enable --now docker >&2`n";                 want = 0 },
     @{ n = 'setup: kill frei';       r = $setupRel; t = "  docker kill `"`$P-core`"`n";                             want = 1 },
     @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },
@@ -2978,6 +3007,113 @@ foreach ($sa in @(
 }
 if ($vrDefined -notcontains 'finance.fn_validate_finance_profile' -or $vrBound -notcontains 'finance.fn_validate_finance_profile') {
     $errors.Add("Pruef-fn Selbst-Assert 'Bestand': finance.fn_validate_finance_profile nicht als definiert und gebunden erkannt -- Check 41 liest Dateien oder Manifeste falsch.")
+}
+
+# (42) TEST-ZUGAENGE IN CI: Die Secrets im Environment install-test (Test-Bot, Tailscale-OAuth, Anthropic) liest ein Job nur,
+#      der das Environment nennt; dessen Branch-Regel (nur main) schuetzt aber nicht vor Ausloesern, die auf main mit fremdem
+#      Inhalt laufen (pull_request_target, workflow_run, issue_comment). Darum Positivliste statt Sperrliste. Zeilenbasiert
+#      (kein YAML-Parser in PS 5.1): erwartet Block-Stil mit Leerzeichen-Einrueckung, wie alle Workflows im Repo.
+#      Regeln und Begruendung: docs/reference/tests.md *Test-Zugänge*.
+function Get-CiSecretIssues([string[]]$L) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $txt = $L -join "`n"
+    # Jede Erwaehnung (auch in Anfuehrungszeichen) zaehlt: GitHub loest environment: "install-test" genauso auf.
+    if ($txt -notmatch 'secrets\.TEST_|install-test') { return @() }
+    $ind = { param($s) $s.Length - $s.TrimStart(' ').Length }
+    $skip = { param($s) (-not $s.Trim()) -or $s -match '^\s*#' }
+    # Ausloeser: Schluessel eine Ebene unter `on:` (Einrueckung des ersten Schluessels; oder `on: x` / `on: [a, b]`).
+    for ($i = 0; $i -lt $L.Count; $i++) {
+        if ($L[$i] -match '^(on|"on"|''on''):\s*(.*)$') {
+            $rest = $Matches[2].Trim(); $trig = @(); $lvl = -1
+            if ($rest) { $trig = @($rest.Trim('[', ']') -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+            else {
+                for ($j = $i + 1; $j -lt $L.Count; $j++) {
+                    if (& $skip $L[$j]) { continue }
+                    if ($L[$j] -match '^\S') { break }
+                    if ($lvl -lt 0) { $lvl = & $ind $L[$j] }
+                    if ((& $ind $L[$j]) -eq $lvl -and $L[$j] -match '^\s*([A-Za-z_]+):') { $trig += $Matches[1] }
+                }
+            }
+            foreach ($t in $trig) { if ($t -notin @('schedule', 'workflow_dispatch')) { $iss.Add("Ausloeser '$t' (erlaubt nur schedule, workflow_dispatch)") } }
+        }
+    }
+    if ($txt -match 'toJSON\(\s*secrets\s*\)|secrets\s*\[|secrets:\s*inherit') { $iss.Add('Sammel-Zugriff auf Secrets (toJSON(secrets), secrets[...] oder secrets: inherit)') }
+    if ($txt -match 'upload-artifact') { $iss.Add('upload-artifact (Artefakte werden nicht geschwaerzt)') }
+    for ($i = 0; $i -lt $L.Count; $i++) {
+        $s = $L[$i]
+        if ($s -match '\$\{\{\s*(inputs|github\.event)\.' -and $s -notmatch '^\s*(-\s*)?if:') { $iss.Add("Zeile $($i + 1): `${{ inputs.* }}/`${{ github.event.* }} ausserhalb von if:") }
+        if ($s -match '^\s*(-\s*)?uses:\s*([^\s#]+)') {
+            $u = $Matches[2]
+            if ($u -notmatch '^\./' -and $u -notmatch '@[0-9a-f]{40}$') { $iss.Add("Zeile $($i + 1): Action '$u' nicht per SHA gepinnt") }
+        }
+        if ($s -match 'secrets\.') {
+            if ($s -notmatch '^\s*[A-Z_][A-Z0-9_]*:\s*\$\{\{\s*secrets\.[A-Z0-9_]+\s*\}\}\s*$') { $iss.Add("Zeile $($i + 1): Secret nicht als eigene env:-Zeile NAME: `${{ secrets.NAME }}"); continue }
+            # Eltern-Schluessel muss env: sein, und env: muss zu einem Listeneintrag (Schritt) gehoeren.
+            $me = & $ind $s; $envAt = -1
+            for ($j = $i - 1; $j -ge 0; $j--) { if ($L[$j].Trim() -and (& $ind $L[$j]) -lt $me) { $envAt = $j; break } }
+            $okStep = $false
+            if ($envAt -ge 0 -and $L[$envAt] -match '^\s*-\s+env:\s*$') { $okStep = $true }
+            elseif ($envAt -ge 0 -and $L[$envAt] -match '^\s*env:\s*$') {
+                $ei = & $ind $L[$envAt]
+                for ($j = $envAt - 1; $j -ge 0; $j--) { if ($L[$j].Trim() -and (& $ind $L[$j]) -lt $ei) { $okStep = ($L[$j] -match '^\s*-\s'); break } }
+            }
+            if (-not $okStep) { $iss.Add("Zeile $($i + 1): Secret nicht im env: eines Schritts (Job-/Workflow-Ebene sieht jede Action)") }
+        }
+    }
+    # Je Job: Secrets nur mit environment install-test; permissions contents: read; checkout ohne gespeicherte Zugangsdaten.
+    $jobsAt = [array]::IndexOf($L, ($L | Where-Object { $_ -match '^jobs:\s*$' } | Select-Object -First 1))
+    if ($jobsAt -ge 0) {
+        $lvl = -1; $last = $L.Count
+        $starts = @(for ($i = $jobsAt + 1; $i -lt $L.Count; $i++) {
+            if (& $skip $L[$i]) { continue }
+            if ($L[$i] -match '^\S') { $last = $i; break }
+            if ($lvl -lt 0) { $lvl = & $ind $L[$i] }
+            if ((& $ind $L[$i]) -eq $lvl -and $L[$i] -match '^\s*[A-Za-z0-9_-]+:\s*$') { $i }
+        })
+        $q = '["'']?'
+        for ($k = 0; $k -lt $starts.Count; $k++) {
+            $end = if ($k + 1 -lt $starts.Count) { $starts[$k + 1] } else { $last }
+            $job = ($L[$starts[$k]..($end - 1)] -join "`n"); $jn = $L[$starts[$k]].Trim().TrimEnd(':')
+            if ($job -notmatch 'secrets\.|environment:') { continue }
+            if ($job -notmatch "environment:\s*${q}install-test${q}\s*(\n|$)" -and $job -notmatch "environment:\s*\n\s+name:\s*${q}install-test${q}") { $iss.Add("Job '$jn': liest Secrets ohne environment: install-test") }
+            $perm = ($txt -match '(?m)^permissions:\s*\n\s+contents:\s*read') -or ($job -match 'permissions:\s*\n\s+contents:\s*read')
+            # Schreibrechte irgendwo in der Datei (Workflow- oder Job-Ebene) gaelten auch fuer diesen Job.
+            if (-not $perm -or $txt -match 'write-all|:\s*write\s*(\n|$)') { $iss.Add("Job '$jn': permissions nicht auf contents: read begrenzt") }
+            $co = ([regex]::Matches($job, 'uses:\s*actions/checkout@')).Count
+            if ($co -gt ([regex]::Matches($job, 'persist-credentials:\s*false')).Count) { $iss.Add("Job '$jn': actions/checkout ohne persist-credentials: false") }
+        }
+    }
+    return @($iss)
+}
+foreach ($wf in (Get-ChildItem (Join-Path $RepoRoot '.github\workflows') -File | Where-Object { $_.Extension -in '.yml', '.yaml' })) {
+    foreach ($i in (Get-CiSecretIssues ([System.IO.File]::ReadAllLines($wf.FullName, $Utf8NoBom)))) { $errors.Add("CI-Test-Zugaenge: .github/workflows/$($wf.Name): $i") }
+}
+$sha = '0123456789abcdef0123456789abcdef01234567'
+$ciOk = @('name: t', 'on:', '  schedule:', "    - cron: '0 3 * * 1'", '  workflow_dispatch:', 'permissions:', '  contents: read', 'jobs:', '  install:',
+    '    runs-on: ubuntu-24.04', '    environment: install-test', '    steps:', "      - uses: actions/checkout@$sha", '        with:', '          persist-credentials: false',
+    '      - name: answers', '        env:', '          TEST_TELEGRAM_BOT_TOKEN: ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}', '        run: bash scripts/ci/install_test_answers.sh x')
+function Set-CiLine([string[]]$a, [int]$i, [string]$v) { $b = @($a); $b[$i] = $v; return $b }
+foreach ($sc in @(
+    @{ n = 'gruen';              l = $ciOk; want = 0 },
+    @{ n = 'ohne Secrets egal';  l = @('on:', '  pull_request:', 'jobs:', '  a:', '    steps:', '      - run: echo'); want = 0 },
+    @{ n = 'pull_request_target'; l = (Set-CiLine $ciOk 4 '  pull_request_target:'); want = 1 },
+    @{ n = 'push inline';        l = (Set-CiLine $ciOk 1 'on: [push, workflow_dispatch]'); want = 1 },
+    @{ n = 'kein environment';   l = (Set-CiLine $ciOk 10 '    timeout-minutes: 30'); want = 1 },
+    @{ n = 'Secret im run';      l = (Set-CiLine $ciOk 18 '        run: echo ${{ secrets.TEST_TELEGRAM_BOT_TOKEN }}'); want = 1 },
+    @{ n = 'Job-env';            l = @($ciOk[0..9]) + @('    env:', '      TEST_X: ${{ secrets.TEST_X }}') + @($ciOk[10..12]) + @($ciOk[13..14]); want = 1 },
+    @{ n = 'toJSON';             l = $ciOk + @('      - run: echo "${{ toJSON(secrets) }}" > /dev/null'); want = 1 },
+    @{ n = 'inputs im run';      l = $ciOk + @('      - run: echo ${{ inputs.ref }}'); want = 1 },
+    @{ n = 'ungepinnt';          l = (Set-CiLine $ciOk 12 '      - uses: actions/checkout@v4'); want = 1 },
+    @{ n = 'Artefakt';           l = $ciOk + @("      - uses: actions/upload-artifact@$sha"); want = 1 },
+    @{ n = 'Zugangsdaten bleiben'; l = (Set-CiLine $ciOk 14 '          fetch-depth: 1'); want = 1 },
+    @{ n = 'permissions fehlt';  l = @($ciOk[0..4]) + @($ciOk[7..18]); want = 1 },
+    @{ n = 'Schreibrecht oben';  l = @($ciOk[0..6]) + @('  packages: write') + @($ciOk[7..18]); want = 1 },
+    @{ n = 'environment quotiert + pull_request_target'; l = (Set-CiLine (Set-CiLine $ciOk 10 '    environment: "install-test"') 4 '  pull_request_target:'); want = 1 },
+    @{ n = '4 Leerzeichen unter on'; l = @('on:', '    pull_request_target:') + @($ciOk[5..18]); want = 1 },
+    @{ n = 'Kommentar zwischen Jobs'; l = $ciOk + @('# --- zweiter Job ---', '  b:', '    runs-on: ubuntu-24.04', '    steps:', '      - name: x', '        env:',
+        '          TEST_X: ${{ secrets.TEST_X }}', '        run: true'); want = 1 })) {
+    $got = @(Get-CiSecretIssues $sc.l).Count
+    if ($got -ne $sc.want) { $errors.Add("CI-Test-Zugaenge Selbst-Assert '$($sc.n)': erwartet $($sc.want), gefunden $got ($((Get-CiSecretIssues $sc.l) -join ' | ')) -- Check 42 ist defekt.") }
 }
 
 # ---------------------------------------------------------------

@@ -120,5 +120,19 @@ Test-Case 'Ausnahme-Eintrag ohne Grund ist rot' @{
     $AL = '{"entries":{"tests/y/cases.sh|PROFILE":""}}'
 } $true 'Grund'
 
+# --- (E) erfundene Werte in der Form echter Anbieter-Schluessel ---
+# Proben zusammengesetzt: ausgeschrieben stuenden sie selbst in Anbieter-Form im Repo (Secret Scanning, Teil E).
+$S = 'scripts'; $tsk = 'tsk' + 'ey';$tgd = '1234' + '56789'; $ska = 'sk-' + 'ant'; $ghp = 'gh' + 'p_'
+Test-Case 'Tailscale-Form im Test ist rot' @{ "$T/y/cases.sh" = "#!/usr/bin/env bash`nk=$tsk-client-kAbc-Def`n" } $true 'Tailscale'
+Test-Case 'Tailscale-Form im Skript ausserhalb tests/ ist rot' @{ "$S/dev/x_test.ps1" ="`$k = '$tsk-auth-Abc'`n" } $true 'Tailscale'
+Test-Case 'Telegram-Form ist rot' @{ "$T/w/a.test.js" = "const t = '${tgd}:AAbcdefghijklmnopqrstuvwxyz012345678';`n" } $true 'Telegram'
+Test-Case 'Anthropic-Versionsform ist rot' @{ "$T/w/a.js" = "const k = '$ska-api03-invented';`n" } $true 'Anthropic'
+Test-Case 'GitHub-Token-Form ist rot' @{ '.github/workflows/a.yml' = "env:`n  T: ${ghp}abcdefghijklmnopqrstuvwxyz0123`n" } $true 'GitHub'
+Test-Case 'neutrale Testwerte und Produkt-Muster sind gruen' @{
+    "$T/y/cases.sh"             = "#!/usr/bin/env bash`nk=$tsk-test-fake-good`ncase x in $tsk-?*) ;; esac`n"
+    'provisioning/lib/a.sh'     = "sed -E 's/[0-9]{5,}:[A-Za-z0-9_-]{20,}/<token>/g'`n"
+    "$T/w/a.test.js"            = "const t = '12345:test-fake-telegram-bot-token-000000'; const k = '$ska-test-fake';`n"
+} $false ''
+
 if ($fails -eq 0) { Write-Host 'PASS standin_lint_test' -ForegroundColor Green } else { Write-Host "standin_lint_test: $fails Fehler" -ForegroundColor Red }
 exit $fails

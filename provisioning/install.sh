@@ -7,8 +7,8 @@
 #
 # Aufruf auf frischem Debian als root (install.sh ist Release-Asset; mit && verkettet, damit ein
 # fehlgeschlagener Download kein altes install.sh aus dem CWD ausfuehrt; nie `| bash`, ein abgebrochener
-# Download liefe halb):
-#   curl -fsSL https://github.com/<slug>/releases/latest/download/install.sh -o install.sh \
+# Download liefe halb). Frisches Debian hat kein curl -> vorher installieren (auf Rechnern mit curl ein No-op):
+#   apt-get update && apt-get install -y curl && curl -fsSL https://github.com/<slug>/releases/latest/download/install.sh -o install.sh \
 #     && bash install.sh
 #   bash install.sh --version vX.Y.Z   # eine bestimmte Version pinnen
 #

@@ -11,6 +11,8 @@
 #      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
 #   D  DS-Lite automatisch (reach_dslite): UPnP der FritzBox zuerst, dann MyFRITZ!; kein Wert in der Ausgabe.
 #   N  Tailscale-Rechnername: Wortliste, Pruefwerte der Zieh-Regel (auch fuer die Start-App), einmal ziehen, Bestand bleibt.
+#   K  Anmeldeschluessel TS_AUTHKEY im Verbund: per stdin in den laufenden Container, nie compose.yml/Stack-.env, nur bei
+#      NeedsLogin (echter Weg: scripts/dev/tailscale_authkey_test.ps1).
 # Die Attrappen ersetzen nur die Docker-/Telegram-Wrapper (rt_edge_*, rt_stack_up, rt_host_port_free, tg_api_curl);
 # alles andere ist der echte Lib-Code des Checkouts.
 #
@@ -101,8 +103,9 @@ rt_edge_exec() {
   [ "$1" = tailscale ] || return 2; shift
   printf 'exec %s\n' "$*" >> "$LOG"
   case "$*" in
-    'tailscale status --json --peers=false') printf '%s' "$A_TS_JSON" ;;
+    'tailscale status --json --peers=false') if [ -s "$W/ts.json" ]; then cat "$W/ts.json"; else printf '%s' "$A_TS_JSON"; fi ;;
     'tailscale funnel status --json') if [ -s "$W/funnel.json" ]; then cat "$W/funnel.json"; else printf '%s' "$A_FUNNEL_JSON"; fi ;;
+    'pgrep -f tailscale up') [ "${A_TS_UP_RUNNING:-0}" = 1 ] ;;
     *'tailscale funnel --bg --yes http://127.0.0.1:8088')
       # Zustand in einer Datei: der Lib-Code ruft die Attrappe in $(…)-Subshells (wie Tailscale: bleibt gespeichert).
       if [ "$A_FUNNEL_ALLOWED" = 1 ]; then printf '%s' "$FUN_ON" > "$W/funnel.json"
@@ -110,6 +113,7 @@ rt_edge_exec() {
     *) return 1 ;;
   esac
 }
+rt_edge_exec_detached() { [ "$1" = tailscale ] || return 2; shift; printf 'execd %s\n' "$*" >> "$LOG"; }
 tg_api_curl() { printf 'tg %s\n' "$2" >> "$LOG"; [ -n "$A_TG" ] && printf '%s' "$A_TG"; [ -n "$A_TG" ]; }
 tg_url() { jq -nc --arg u "$1" '{ok:true, result:{url:$u, pending_update_count:0}}'; }
 cfg() { rm -f "$REACH_CORE_ENV"; for kv in "$@"; do env_upsert "$REACH_CORE_ENV" "${kv%%=*}" "${kv#*=}"; done; }
@@ -171,6 +175,8 @@ A_TG="$(tg_url '')"; out="$(js)"
 eq S_fb_pending "pending_activation|none" "$(field "$out" state)|$(field "$out" webhook)"
 
 # --- P: Installer-Haken --------------------------------------------------------------------------------------------
+# hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen decken scripts/dev/tailscale_authkey_test.ps1 und tailscale_login_wait_test.ps1
+export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
 cfg TELEGRAM_BOT_TOKEN=123:fantasy
 ( REACH_MODE='tunnel;id' reach_prepare ) >/dev/null 2>&1 && fail P_bad_mode "ungueltiger Weg angenommen" || pass P_bad_mode
 eq P_bad_mode_not_saved "" "$(read_env_value "$REACH_CORE_ENV" REACH_MODE 2>/dev/null || true)"
@@ -227,6 +233,87 @@ cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge
 # Wrapper-Grenze (echter runtime.sh-Code, nicht die Attrappe): nur edge|tailscale|wan.
 ( unset -f rt_edge_exec; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_exec postgres true ) >/dev/null 2>&1
 eq P_wrapper_fixed_list 2 "$?"
+
+# --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) im Verbund -----------------------------------------------
+# Geprueft: Wert nur per stdin an `tailscale up --auth-key=file:/dev/stdin` im laufenden Container, nie in compose.yml/
+# LA_STACK_VARS (Grund: lib/reach.sh, Abschnitt Anmeldeschluessel), nur bei BackendState NeedsLogin.
+rt_edge_exec_in() {
+  [ "$1" = tailscale ] || return 2; shift
+  printf 'execin %s\n' "$*" >> "$LOG"
+  local k; k="$(cat)"; printf '%s' "$k" > "$W/key_seen"; env | grep -c '^TS_AUTHKEY=' > "$W/env_seen"
+  if [ "$k" = tskey-FAKEgood ]; then ts_json Running '' '["https","funnel"]' > "$W/ts.json"
+  else printf 'backend error: invalid key: %s\n' "$k" >&2; return 1; fi
+}
+kc() { cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$W/ts.json" "$W/funnel.json" "$W/key_seen"; : > "$LOG"
+       A_TS_JSON="$1"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1; DOMAIN=""; _reach_authkey="$2"; }
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEgood
+reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
+eq K_domain_after_key "bot.tail-fantasy.ts.net|" "${DOMAIN:-}|${_reach_authkey:-}"
+eq K_domain_stored bot.tail-fantasy.ts.net "$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null)"
+grep -q '^execin tailscale up --auth-key=file:/dev/stdin --hostname=bot --accept-dns=false --timeout=90s$' "$LOG" \
+  && pass K_up_by_file || fail K_up_by_file "$(tr '\n' ';' < "$LOG")"
+grep -q FAKEgood "$LOG" && fail K_argv_no_key "Schluessel in argv" || pass K_argv_no_key
+eq K_key_via_stdin tskey-FAKEgood "$(cat "$W/key_seen" 2>/dev/null)"
+eq K_child_no_env 0 "$(cat "$W/env_seen" 2>/dev/null)"
+case "$out" in *FAKEgood*) fail K_output_no_key "Schluessel in der Ausgabe" ;; *) pass K_output_no_key ;; esac
+grep -q FAKEgood "$REACH_CORE_ENV" && fail K_core_env_no_key "Schluessel in core.env" || pass K_core_env_no_key
+# Schon angemeldet (Update, Zweitlauf): kein Schluessel-Aufruf.
+kc "$(ts_json Running '' '["https","funnel"]')" tskey-FAKEgood
+reach_prepare >/dev/null 2>&1
+grep -q '^execin' "$LOG" && fail K_running_untouched "$(tr '\n' ';' < "$LOG")" || pass K_running_untouched
+# Abgelehnt: Meldung ohne Wert, keine Adresse.
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEbad
+reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
+case "$out" in *abgelehnt*) pass K_rejected_msg ;; *) fail K_rejected_msg "$out" ;; esac
+case "$out" in *FAKEbad*) fail K_rejected_no_key "Schluessel in der Ausgabe" ;; *) pass K_rejected_no_key ;; esac
+eq K_rejected_no_domain '' "${DOMAIN:-}"
+# Der Wert hat keinen Weg in den Stack: weder in LA_STACK_VARS noch in compose.yml.
+case " $LA_STACK_VARS " in *TS_AUTHKEY*) fail K_not_stack_var "in LA_STACK_VARS" ;; *) pass K_not_stack_var ;; esac
+grep -q 'TS_AUTHKEY' "$ROOT/provisioning/compose/compose.yml" && fail K_not_in_compose "compose.yml nennt TS_AUTHKEY" || pass K_not_in_compose
+unset _reach_authkey; rm -f "$W/ts.json"
+
+# --- T: Anmeldung ohne Schluessel (reach_login_start) ------------------------------------------------------------------
+# Der Dienst tailscale startet tailscaled direkt (kein containerboot, der nach 60 s neu startete und den Link verwarf):
+# die Anmeldung stoesst der master an, losgeloest im Container, mit denselben Schaltern wie der Schluessel-Weg (Fall K).
+# Echter Weg: scripts/dev/tailscale_login_wait_test.ps1.
+tl() { cfg REACH_MODE=tunnel; rm -f "$W/ts.json"; : > "$LOG"; A_TS_UP=1; A_TS_JSON="$1"; }
+tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1
+eq T_login_started 'execd tailscale up --hostname=bot --accept-dns=false --timeout=0' "$(grep '^execd' "$LOG")"
+tl "$(ts_json NeedsLogin "$LOGIN" '[]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_link_there_no_second "$(tr '\n' ';' < "$LOG")" || pass T_link_there_no_second
+tl "$(ts_json Running '' '["https","funnel"]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_running_untouched "$(tr '\n' ';' < "$LOG")" || pass T_running_untouched
+tl "$(ts_json NeedsLogin "$LOGIN" '[]' '' true)"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_expired_link_there "$(tr '\n' ';' < "$LOG")" || pass T_expired_link_there
+tl "$(ts_json NeedsLogin '' '[]' '' true)"; reach_login_start >/dev/null 2>&1
+eq T_expired_force 'execd tailscale up --hostname=bot --accept-dns=false --timeout=0 --force-reauth' "$(grep '^execd' "$LOG")"
+# Abgelaufen meldet tailscaled teils noch Running: auch dann neu anmelden.
+tl "$(ts_json Running '' '["https","funnel"]' "$(iso 1700000000)")"; reach_login_start >/dev/null 2>&1
+grep -q -- '--force-reauth$' "$LOG" && pass T_running_expired_force || fail T_running_expired_force "$(tr '\n' ';' < "$LOG")"
+tl "$(ts_json Stopped '' '[]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_stopped_stays "$(tr '\n' ';' < "$LOG")" || pass T_stopped_stays
+# Status-Abruf (Wizard, Umzug, Start-App): Link fehlt (Neustart des Containers) = anstossen, ohne zu warten.
+tl "$(ts_json NeedsLogin '' '[]')"; reach_status_json >/dev/null 2>&1
+grep -q '^execd tailscale up ' "$LOG" && pass T_status_kicks_login || fail T_status_kicks_login "$(tr '\n' ';' < "$LOG")"
+tl "$(ts_json NeedsLogin "$LOGIN" '[]')"; reach_status_json >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_status_link_there_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_link_there_quiet
+# Nur lesen bei laufendem Knoten: ein Ablauf nach der eigenen Uhr erzwingt im Status keine Neu-Anmeldung (das tut relogin).
+tl "$(ts_json Running '' '["https","funnel"]' "$(iso 1700000000)")"; reach_status_json >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_status_running_expired_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_running_expired_quiet
+# Ein wartender `tailscale up` laeuft schon (Link kommt gleich): kein zweiter, der die Anmeldung neu starten koennte.
+A_TS_UP_RUNNING=1; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; A_TS_UP_RUNNING=0
+grep -q '^execd' "$LOG" && fail T_no_second_up "$(tr '\n' ';' < "$LOG")" || pass T_no_second_up
+# relogin: Container neu starten (verwirft einen alten, vielleicht abgelaufenen Link), dann neu anstossen.
+tl "$(ts_json NeedsLogin "$LOGIN" '[]' '' true)"; reach_relogin >/dev/null 2>&1
+grep -q '^restart tailscale$' "$LOG" && pass T_relogin_restarts || fail T_relogin_restarts "$(tr '\n' ';' < "$LOG")"
+LA_TS_HOSTNAME=calm-otter; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; unset LA_TS_HOSTNAME
+eq T_hostname_from_stack 'execd tailscale up --hostname=calm-otter --accept-dns=false --timeout=0' "$(grep '^execd' "$LOG")"
+# Installer-Haken: ein frisch gestarteter Knoten bekommt seinen Link schon in reach_prepare (Antwort-Datei-Weg von setup.sh).
+tl "$(ts_json NeedsLogin '' '[]')"; DOMAIN=''; reach_prepare >/dev/null 2>&1
+grep -q '^execd tailscale up ' "$LOG" && pass T_prepare_starts_login || fail T_prepare_starts_login "$(tr '\n' ';' < "$LOG")"
+CYT="$(sed -n '/^  tailscale:/,/^  [a-z_]*:$/p' "$ROOT/provisioning/compose/compose.yml")"
+case "$CYT" in *'entrypoint: ["tailscaled",'*) pass T_compose_tailscaled ;; *) fail T_compose_tailscaled "Dienst tailscale startet nicht tailscaled direkt" ;; esac
+case "$CYT" in *' TS_HOSTNAME:'*|*' TS_AUTH_ONCE:'*|*' TS_STATE_DIR:'*) fail T_compose_no_containerboot_env "containerboot-Variablen uebrig" ;; *) pass T_compose_no_containerboot_env ;; esac
 
 # --- C: Rand-Konfiguration -----------------------------------------------------------------------------------------
 CY="$ROOT/provisioning/compose/compose.yml"

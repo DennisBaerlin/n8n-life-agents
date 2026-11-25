@@ -41,6 +41,9 @@ function steps(Q, A) {
     if (!sel.includes(p.id)) continue;
     for (const st of p.settings) s.push(`s:${p.id}:${st.id}`);
     for (const c of p.credentials) {
+      // Manifest `requires_setting`: ohne diese Einstellung (übersprungen = '') ist der Zugang nutzlos, also nicht fragen.
+      const need = c.requires_setting && p.settings.find((x) => x.id === c.requires_setting);
+      if (need && A[need.env] === '') continue;
       c.keys.forEach((k, i) => {
         // „Beide oder keine“ wie _pkg_secrets_wizard: bleibt beim optionalen Zugang der erste Wert leer, entfällt der Rest.
         if (i > 0 && !c.required && c.keys.length > 1 && A[c.keys[0].env] === '') return;
@@ -60,7 +63,7 @@ function steps(Q, A) {
   // Wohin sichern? (Docker-Weg, Owner-Entscheid F2: nicht überspringbar) — Antwort BACKUP_PARENT_DIR, provision.sh legt den Ordner an.
   s.push('backup_dir');
   if (A.__backup_choice === 'other') s.push('backup_dir_custom');
-  s.push('review', 'confirm', 'install', 'connect', 'handoff');
+  s.push('review', 'install', 'connect', 'handoff');
   return s;
 }
 
@@ -134,12 +137,13 @@ function question(Q, id) {
 // stepOf(id) -> {current, sub}: Platz einer Seite in der Schritt-Leiste.
 function stepOf(id) {
   if (id === 'install' || id === 'connect') return { current: id, sub: null };
+  if (id === 'tunnel') return { current: 'install', sub: null };   // Tailscale-Anmeldung = erster Teil der Einrichtung
   if (id === 'handoff') return { current: 'connect', sub: null };   // letzte Seite des Wizards, danach übernimmt die App
   let sub = 'about';
   if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';
   else if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') sub = 'modules';
   else sub = ({ tg_why: 'access', tg_phone: 'access', tg_pc: 'access', tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
-    review: 'check', confirm: 'check', backup_dir: 'check', backup_dir_custom: 'check' })[id] || 'about';
+    review: 'check', backup_dir: 'check', backup_dir_custom: 'check' })[id] || 'about';
   return { current: 'questions', sub };
 }
 
@@ -322,7 +326,7 @@ function userName(full) {
 //   der Leitung: keine Umgebungsvariablen, die stünden dauerhaft in `docker inspect`). Gelesen, nie ausgeführt, nach den
 //   Regeln der Antwort-Datei ohne Kopfzeile: KEY=wert roh, kein doppelter Schlüssel, keine Steuerzeichen (ein CR am
 //   Zeilenende wird geduldet). Eine verletzte Regel = gar kein Vorschlag; unbekannte Schlüssel und leere Werte zählen nicht.
-const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_FRITZ', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG', 'LA_BACKUP_CANDIDATES'];
+const HINT_KEYS = ['LA_HANDOFF', 'LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_FRITZ', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG', 'LA_BACKUP_CANDIDATES'];
 function parseHints(text) {
   if (typeof text !== 'string' || text.length > 8192) return {};
   const lines = text.split('\n');

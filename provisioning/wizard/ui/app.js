@@ -401,9 +401,6 @@ const UiNudge = {
       kids.push(h('dl', null, (p.rows || []).map((r) => h('div', { class: 'rv' }, h('dt', { text: r.label }), h('dd', { text: String(r.value).replace(/\.(?=\S)/g, '.​') }),
         h('button', { type: 'button', 'aria-label': T.change_label.replace('{label}', r.label), on: { click: () => post('/api/goto', { id: r.goto }) } }, T.change)))));
     }
-    if (p.kind === 'confirm') {
-      for (const g of p.groups || []) kids.push(h('p', { class: 'group-title', text: g.title }), h('ul', null, g.items.map((t) => h('li', { text: t }))));
-    }
     if (p.kind === 'install') {
       kids.push(h('ul', { class: 'steps' }, (p.items || []).map((it) => h('li', { class: it.state }, h('i', { 'aria-hidden': 'true', text: it.state === 'ok' ? '✓' : it.state === 'bad' ? '!' : '' }), it.text))));
     }
@@ -411,7 +408,7 @@ const UiNudge = {
       if (p.qr) {
         const box = h('div', { class: 'qr' });
         box.innerHTML = p.qr;   // eigener Code (qr.js), keine Nutzer- oder Fremddaten
-        kids.push(h('div', { class: 'pair' }, box, h('div', null, helpNodes(p.help))));
+        kids.push(h('div', { class: p.qrDesk ? 'pair qr-desk' : 'pair' }, box, h('div', null, helpNodes(p.help))));
       }
       // Knopf und Warte-Zeile in einer Reihe (umbrechend), damit ein Bild darunter Platz hat.
       const wait = p.wait ? h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.wait)) : null;

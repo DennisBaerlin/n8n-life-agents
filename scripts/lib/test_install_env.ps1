@@ -4,6 +4,20 @@
 # der Antwort-Datei ueber tests/wizard/render_ci_answers.js --extra-stdin). Test: scripts/dev/test_stack_test.ps1.
 # Dot-sourcen.
 
+# Bot-Token einer Test-Installation -- eine Adresse fuer beide Unterbauten. Ein Substrat bekommt ein ERFUNDENES Token: n8n ruft beim
+# Aktivieren des Orchestrators setWebhook auf und biegt den Webhook des Bots auf die Substrat-Adresse (Dev-Profil: https://example.com/),
+# ein echter Test-Bot waere danach fuer jede andere Installation stumm. Die Suiten brauchen den echten Bot nicht: sie laufen ueber
+# Harness-Webhooks und den Mock-Telegram (enable_mock_telegram.ps1), CI (new_ci_env.ps1) und der Verbund tun es schon so.
+# Der echte Token aus .env (TEST_TELEGRAM_BOT_TOKEN) gilt nur mit dem ausdruecklichen Schalter N8NTEST_REAL_TELEGRAM=1 (Ende-zu-Ende-Lauf
+# gegen echtes Telegram); der klassische Abbau gibt den Webhook dann frei (bootstrap_test_n8n.ps1 -Down). Waechter:
+# scripts/dev/test_n8n_runtime_test.ps1 (jeder Leser des .env-Tokens geht durch diese Funktion).
+$script:TestInventedBotToken = '1000001:inventedTokenForTheMockTelegram00'
+function Resolve-TestTelegramToken([string]$EnvToken) {
+    if ($env:N8NTEST_REAL_TELEGRAM -eq '1' -and -not [string]::IsNullOrWhiteSpace($EnvToken)) { return $EnvToken.Trim() }
+    return $script:TestInventedBotToken
+}
+
+
 # Get-TestInstallEnvMap <repo> -- feste Liste + je Paket die env-Namen aus manifest.json credentials (§3.8, env[] = der
 # Kern-Env-Name; das Substrat reicht TEST_<name> -> <name>, _inject_manifest_credentials liest env-override-first). doc_lint 7b
 # prueft die abgeleiteten TEST_*-Schluessel gegen .env.example mit derselben Ableitung.

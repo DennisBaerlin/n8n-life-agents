@@ -30,6 +30,8 @@ test('Fragen-Auszug = Host-Fragen der CLI (ohne n8n-Anmeldung und Proxy-Ort) + a
     assert.ok(p.name && p.summary, p.id + ': Name + Kurzbeschreibung aus dem Textkatalog');
     const envKeys = Object.entries(m.credentials || {}).filter(([k]) => k !== '_comment').flatMap(([, c]) => Object.keys(c.env));
     assert.deepEqual(p.credentials.flatMap((c) => c.keys.map((k) => k.env)), envKeys, p.id);
+    assert.deepEqual(p.credentials.map((c) => c.requires_setting),
+      Object.entries(m.credentials || {}).filter(([k]) => k !== '_comment').map(([, c]) => c.requires_setting || ''), p.id + ': requires_setting');
     for (const s of p.settings) assert.match(s.env, /^CONFIG_[A-Z0-9_]+$/);
     const cfg = Object.entries(m.config || {}).filter(([c]) => c !== '_comment')
       .flatMap(([c, v]) => Object.entries(v).filter(([, e]) => e && typeof e === 'object' && e.prompt).map(([k]) => c + '.' + k));

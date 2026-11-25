@@ -547,6 +547,19 @@ pub fn save_backup_kit(app: AppHandle) -> Result<KitSaved, String> {
     Ok(KitSaved { file })
 }
 
+/// Notfallschlüssel in die Zwischenablage (Fertig-Seite, Startseite, Menüpunkt); nach `KEY_CLEAR_SECS` leert ein eigener
+/// Faden sie wieder, wenn dort noch der Schlüssel steht. Der Wert geht nie ans Fenster; Fehler nur als fester Code.
+#[tauri::command(async)]
+pub fn copy_backup_key(app: AppHandle) -> Result<(), String> {
+    let d = docker_if_ready().ok_or_else(|| fail(&app, backup::KIT_UNAVAILABLE))?;
+    let n = backup::copy_key(&RealHost, &d).map_err(|c| fail(&app, c))?;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(backup::KEY_CLEAR_SECS));
+        backup::clear_copied(&RealHost, Some(n));
+    });
+    Ok(())
+}
+
 /// Haken „ausgedruckt oder sicher gespeichert“ (bis dahin zeigt die Startseite den Schritt weiter).
 #[tauri::command]
 pub fn kit_status() -> serde_json::Value {
@@ -673,11 +686,12 @@ pub fn restore_pick_sheet(app: AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Vier abgetippte Zeilen (das Fenster leert seine Felder danach).
+/// Eingefügter Notfallschlüssel aus dem einen Feld (das Fenster leert es danach).
 #[tauri::command]
-pub fn restore_type_sheet(app: AppHandle, mut lines: Vec<String>) -> Result<(), String> {
-    let r = restore::Sheet::typed(&lines);
-    restore::wipe(&mut lines);
+pub fn restore_paste_sheet(app: AppHandle, text: String) -> Result<(), String> {
+    let mut text = [text];
+    let r = restore::Sheet::pasted(&text[0]);
+    restore::wipe(&mut text);
     rstate(&app).sheet = Some((r?, Instant::now()));
     Ok(())
 }

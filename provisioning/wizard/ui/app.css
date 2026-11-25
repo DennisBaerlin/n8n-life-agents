@@ -100,6 +100,8 @@ a { color: var(--accent); text-decoration: underline; }
 a:hover { color: var(--accent-hover); }
 .top { border-bottom: 1px solid var(--hairline); }
 .top div { max-width: 46rem; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+/* Mit Schritt-Leiste: Logo bündig mit deren Punkten (gleicher linker Innenabstand wie .la-rail, ui.steps.css) */
+@media (min-width: 601px) { body:has(.la-rail:not([hidden])) .top div { max-width: none; margin: 0; padding-left: 22px; } }
 .wordmark { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 .wordmark .m1 { fill: var(--accent-pale); } .wordmark .m2 { fill: var(--accent); } .wordmark .m3 { fill: var(--ink); }
 .layout { max-width: 46rem; margin: 0 auto; padding: 32px 24px 40px; }
@@ -156,12 +158,12 @@ dl { margin: 0; }
 .rv dt { color: var(--gray); font-size: 14px; }
 .rv dd { margin: 0; grid-column: 1; overflow-wrap: break-word; min-width: 0; }
 .rv button { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-.group-title { font-weight: 600; margin: 14px 0 6px; }
 .pair { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin: 8px 0 14px; }
 /* Verbinden: Knopf und „Warte auf …“ in einer Reihe; eine Knopfleiste ohne Knopf entfällt (app.js setzt hidden). */
 .link-wait { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0 0 14px; }
 .link-wait .steps { margin: 0; }
 .actions[hidden] { display: none; }
+@media (max-width: 600px) { .pair.qr-desk .qr { display: none; } }   /* Tunnel-Link: einen Code auf dem Handy selbst scannt niemand */
 .qr { width: 196px; height: 196px; background: var(--bg); border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: 0; flex: none; }
 .qr svg { width: 100%; height: 100%; display: block; }
 .qr .qr-bg { fill: var(--bg); }

@@ -57,6 +57,8 @@ const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
 // Zertifikat und DNS brauchen nach dem Einrichten oft einige Minuten: so lange sichtbar warten (nur bei reach.wait, was Zeit nicht heilt, kommt sofort).
 const REACH_GRACE_MS = Math.max(0, parseInt(process.env.WIZARD_REACH_GRACE_MS || String(5 * 60 * 1000), 10));
+// Tunnel-Schritt: so lange darf Tailscale „startet“ melden, dann der Hinweis mit „Erneut prüfen“ und „Zurück“.
+const TUNNEL_GRACE_MS = Math.max(0, parseInt(process.env.WIZARD_TUNNEL_GRACE_MS || String(2 * 60 * 1000), 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
 const PROGRESS = path.join(STATE_DIR, 'progress.json');
@@ -66,6 +68,7 @@ const FINALIZE_LOG = path.join(STATE_DIR, 'finalize.log');
 const FINALIZE_TIMEOUT_MS = Math.max(100, parseInt(process.env.WIZARD_FINALIZE_TIMEOUT_MS || String(20 * 60 * 1000), 10));
 const FINALIZE_RETRY_MS = Math.max(0, parseInt(process.env.WIZARD_FINALIZE_RETRY_MS || '20000', 10));
 const FINALIZE_TRIES = 3;
+const NOAPP_EXIT_MS = Math.max(0, parseInt(process.env.WIZARD_NOAPP_EXIT_MS || '60000', 10));
 const FINALIZE_BUSY_MAX = 60;   // „läuft schon“ zählt nicht als Fehlversuch, aber nicht endlos
 // Merker „Einrichtung abgeschlossen“ (ohne Inhalt): der master startet den Wizard bei jedem Hochfahren; steht der Merker,
 // endet der Server sofort, statt einen neuen Fragebogen zu beginnen (P1, compose: init + Ruhe-Prozess danach).
@@ -204,6 +207,7 @@ function firstOpen() {
 function cursor() {
   const s = list();
   if (P.phase === 'installing' || P.phase === 'failed') return 'install';
+  if (P.phase === 'tunnel') return 'tunnel';
   if (P.phase === 'pairing') return 'connect';
   if (P.phase === 'handoff' || P.phase === 'connected') return 'handoff';
   if (!P.cursor || !s.includes(P.cursor) || ['install', 'connect', 'handoff'].includes(P.cursor)) P.cursor = firstOpen();
@@ -437,16 +441,25 @@ function pageFor(id) {
         help: [{ p: T('core.wizard.page.backup_fail_help') }], note: { kind: 'bad', text: T('core.wizard.page.backup_fail_note') },
         next: T('core.wizard.page.backup_retry') });
     }
-    case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
-      next: T('core.wizard.page.review_next') });
-    case 'confirm': return Object.assign(base, { kind: 'confirm', title: T('core.wizard.page.confirm_title'), help: P1('core.wizard.page.confirm_help'),
-      groups: confirmGroups(), next: T('core.wizard.page.confirm_next') });
+    case 'review': {
+      // Die Übersicht ist die letzte Seite vor dem Start (keine eigene Bestätigung). Tunnel: als Nächstes die Anmeldung.
+      const tunnel = flow.reachMode(P.A) !== 'fritzbox';
+      return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
+        note: tunnel ? { kind: '', text: T('core.wizard.page.review_tunnel_note') } : undefined,
+        next: T(tunnel ? 'core.wizard.page.review_next' : 'core.wizard.page.review_start') });
+    }
+    case 'tunnel': return Object.assign(base, tunnelView());
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
-    case 'handoff': return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
-      help: [{ p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') },
-        { p: T('core.wizard.page.handoff_awake') }],
-      next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
+    case 'handoff': {
+      const v = Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote() });
+      const tg = { p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') };
+      // Ohne Start-App (setup.sh) übernimmt niemand: Seite zum Schließen, der Wizard räumt danach selbst auf (noAppExit,
+      // hier erneut angestoßen, falls der Merker erst nach dem Abschluss kam). Leiste auf „Fertig“: kein Dauerbetrieb-Schritt.
+      if (noApp()) { noAppExit(); return Object.assign(v, { step: { current: 'done', sub: null }, help: [tg, { p: T('core.wizard.page.handoff_close') }] }); }
+      return Object.assign(v, { help: [tg, { p: T('core.wizard.page.handoff_awake') }],
+        next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
+    }
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }
 }
@@ -492,9 +505,20 @@ function hints() {
   let v = {};
   try { v = flow.parseHints(fs.readFileSync(HINTS_FILE, 'utf8')); } catch (_) { /* keine Vorschläge */ }
   hintsCache = { at: Date.now(), v };
+  // hints.env liegt im master unter /run (tmpfs) und fehlt nach einem Neustart: „ohne Start-App“ deshalb im Fortschritt merken.
+  if (v.LA_HANDOFF === 'none' && P && P.notes && !P.notes.no_app && !MODE_BACKUP) { P.notes.no_app = true; save(); }
   return v;
 }
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
+// Ohne Start-App geöffnet: setup.sh gibt LA_HANDOFF=none mit (ausdrücklich, nicht aus fehlenden Hinweisen geraten: eine App,
+// die einmal keine hints.env schreibt, bekäme sonst das falsche Ende).
+function noApp() { hints(); return !!P.notes.no_app; }
+// Statt `ctl.js finish` der App: nach einer Frist, in der der Browser die Fertig-Seite noch holt (Abfrage alle 1,5 s).
+let noAppTimer = null;
+function noAppExit() {
+  if (noAppTimer || P.phase !== 'connected' || !noApp()) return;
+  noAppTimer = setTimeout(finishAll, NOAPP_EXIT_MS);
+}
 
 // --- Wohin sichern? -------------------------------------------------------------------------------------------
 function backupCandidates() { return flow.backupCandidates(hints().LA_BACKUP_CANDIDATES); }
@@ -650,15 +674,6 @@ function reviewRows() {
   }
   return rows;
 }
-function confirmGroups() {
-  const mode = flow.reachMode(P.A);
-  return [
-    { title: T('core.wizard.confirm.new_title'), items: [T('core.wizard.confirm.new_area'),
-      T(mode === 'fritzbox' ? 'core.wizard.confirm.new_fritzbox' : 'core.wizard.confirm.new_tunnel'), T('core.wizard.confirm.new_bot')] },
-    { title: T('core.wizard.confirm.keep_title'), items: [T('core.wizard.confirm.keep_programs'), T('core.wizard.confirm.keep_files'),
-      T('core.wizard.confirm.keep_energy')] },
-  ];
-}
 
 // Fortschritt der Installation: die Schritt-Codes aus provision.sh (ui_step <text> <stage>) in sechs Gruppen.
 const STAGE_GROUPS = [
@@ -682,7 +697,7 @@ function installView() {
     poll: P.phase === 'installing' };
 }
 
-// Verbinden: beim Tunnel erst die Anmeldung bei Tailscale (Paket 3 meldet den Zustand), dann das Pairing per QR-Code.
+// Tunnel-Anmeldung vor der Installation (tunnelView) und Verbinden danach (connectView: Zustand des Wegs, dann Pairing per QR-Code).
 // Texte je Zustand des Tunnels (Paket 3, Katalog core.wizard.reach.*). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
 // art = Bild zum Zustand (page.art, ui/art/art.js); Zustände ohne art zeigen kein Bild.
 const REACH_TEXT = {
@@ -708,23 +723,37 @@ function webhookNote(c) {
   if (!w.error) return null;
   return { kind: 'warn', text: T(flow.reachMode(P.A) === 'fritzbox' ? 'core.wizard.webhook.fritzbox' : 'core.wizard.webhook.tunnel') };
 }
+// reachView(v, tunnel, R) — Seite zu einem Tunnel-Zustand (REACH_TEXT), vor der Installation (tunnelView) wie danach
+//   (connectView). Der Anmelde-Link kommt zusätzlich als QR-Code fürs Handy.
+function reachView(v, tun, R) {
+  const t = (k) => (R[k] ? T(`core.wizard.reach.${R[k]}`) : null);
+  // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
+  const href = tun.url || (tun.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
+  const login = href && R.link === 'login_link';
+  return Object.assign(v, { title: t('title'), help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_more') }] : []),
+    qr: login ? qr.toSvg(qr.encode(href)) : null, qrDesk: login,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
+    note: R.note ? { kind: 'warn', text: t('note') } : null,
+    link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && tun.host ? { host: tun.host } : null,
+    wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
+    poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? T('core.wizard.connect.check_again') : null });
+}
+// tunnelView — Tunnel VOR der Installation (Phase tunnel): Anmeldung bei Tailscale; meldet Tailscale länger als
+//   TUNNEL_GRACE_MS nur „startet“, ein Hinweis mit „Erneut prüfen“ (kein „Später anmelden“: ohne Tunnel kein Bot).
+function tunnelView() {
+  const tun = P.notes.tunnel || {};
+  const v = { kind: 'connect', title: T('core.wizard.connect.title'), poll: true };
+  if (tun.down) {
+    return Object.assign(v, { title: T('core.wizard.tunnel.down_title'), help: [{ p: T('core.wizard.tunnel.down_help') }],
+      note: { kind: 'warn', text: T('core.wizard.tunnel.down_note') }, poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
+  }
+  return reachView(v, tun, REACH_TEXT[tun.state] || REACH_TEXT.starting);
+}
 function connectView() {
   const c = P.notes.connect || {};
   const C = (k) => T(`core.wizard.connect.${k}`);
   const v = { kind: 'connect', title: C('title'), poll: true };
-  if (c.activating || (c.tunnel && c.tunnel.state === 'pending_activation')) {
-    return Object.assign(v, { help: [{ p: C('activating') }], wait: C('activating_wait') });
-  }
   const R = c.tunnel && REACH_TEXT[c.tunnel.state];
-  if (R) {
-    const t = (k) => (R[k] ? T(`core.wizard.reach.${R[k]}`) : null);
-    // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
-    const href = c.tunnel.url || (c.tunnel.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
-    return Object.assign(v, { title: t('title'), help: [{ p: t('help') }], note: R.note ? { kind: 'warn', text: t('note') } : null,
-      link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && c.tunnel.host ? { host: c.tunnel.host } : null,
-      wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
-      poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? C('check_again') : null });
-  }
+  if (R) return reachView(v, c.tunnel, R);
   // Nach den Tunnel-Zuständen: steht der Tunnel nicht, läuft der Abschluss gar nicht (connectTick), dann zählt dessen Anleitung.
   if (c.finalizeFailed) {
     return Object.assign(v, { help: [{ p: C('finalize_failed') }], note: { kind: 'warn', text: C('finalize_note') },
@@ -752,7 +781,7 @@ function connectView() {
 }
 // problemText — Grund beim Verbinden: eigene Codes aus dem Katalog; ein Text der CLI (deutsch) nur auf Deutsch, sonst allgemein.
 function problemText(p) {
-  if (p === 'code_failed' || p === 'activation_failed') return T(`core.wizard.connect.${p}`);
+  if (p === 'code_failed') return T(`core.wizard.connect.${p}`);
   return uiLang() === 'de' ? p : T('core.wizard.connect.not_reaching');
 }
 
@@ -761,7 +790,7 @@ function view() {
   const page = pageFor(id);
   const s = list();
   const i = s.indexOf(id);
-  page.canBack = P.phase === 'questions' && i > 0 && !['install', 'connect', 'handoff'].includes(id);
+  page.canBack = (P.phase === 'questions' && i > 0 && !['install', 'connect', 'handoff'].includes(id)) || P.phase === 'tunnel';
   page.lang = uiLang();
   page.t = uiTexts();
   return page;
@@ -912,9 +941,11 @@ async function answer(id, raw, skip) {
         const r = await setBackupDir(P.A.__backup_choice || 'other', P.A.__backup_dir);
         if (r.error) { delete P.A.__backup_dir; P.cursor = firstOpen(); save(); return r; }
       }
-      P.cursor = 'confirm'; save(); return { ok: true };
+      // Tunnel: erst anmelden, dann genau eine Installation, gleich mit der Adresse (kein zweiter Lauf per activate). Immer
+      // über den Tunnel-Schritt, auch nach „Noch einmal versuchen“: steht er noch, geht es nach einem Abruf weiter.
+      if (flow.reachMode(P.A) === 'tunnel') return startTunnel();
+      return startInstall();
     }
-    case 'confirm': return startInstall();
     default: return { error: T('core.wizard.msg.unknown_page') };
   }
   if (MODE_BACKUP && firstOpen() === 'backup_result' && !P.notes.backup) await applyBackupDir();
@@ -924,14 +955,16 @@ async function answer(id, raw, skip) {
 }
 
 function back() {
+  // Tunnel-Schritt: „Zurück“ = Weg ändern (Übersicht, von dort z. B. FritzBox); der Tailscale-Container darf weiterlaufen.
+  if (P.phase === 'tunnel') { P.phase = 'questions'; P.cursor = 'review'; delete P.notes.tunnel; save(); return; }
   if (P.phase !== 'questions') return;
   const s = list();
   const i = s.indexOf(cursor());
   if (i > 0) { P.cursor = s[i - 1]; save(); }
 }
 function gotoStep(id) {
-  if (P.phase !== 'questions' || !['review', 'confirm'].includes(cursor())) return { error: T('core.wizard.msg.change_in_review') };
-  if (!list().includes(id) || ['review', 'confirm', 'install', 'connect', 'handoff'].includes(id)) return { error: T('core.wizard.msg.unknown_item') };
+  if (P.phase !== 'questions' || cursor() !== 'review') return { error: T('core.wizard.msg.change_in_review') };
+  if (!list().includes(id) || ['review', 'install', 'connect', 'handoff'].includes(id)) return { error: T('core.wizard.msg.unknown_item') };
   P.cursor = id;
   save();
   return { ok: true };
@@ -949,9 +982,15 @@ function readResult() {
   } catch (_) { /* noch nichts */ }
   return out;
 }
+// firstMissing -> erste unbeantwortete Seite vor der Übersicht (sonst undefined): vor jedem Start prüfen.
+function firstMissing() {
+  const s = list();
+  const end = s.indexOf('review');
+  return s.find((id, i) => i < end && !flow.answered(Q, P.A, id));
+}
 function startInstall() {
   if (child) return { ok: true };
-  const open = list().find((id) => id !== 'review' && list().indexOf(id) < list().indexOf('review') && !flow.answered(Q, P.A, id));
+  const open = firstMissing();
   if (open) { P.cursor = open; save(); return { error: T('core.wizard.msg.missing') }; }
   let txt;
   try { txt = flow.renderAnswers(Q, flow.answerLines(Q, P.A, SECRETS)); } catch (_) { return { error: T('core.wizard.msg.bad_answer') }; }
@@ -989,7 +1028,7 @@ function startInstall() {
 function retry() {
   if (P.phase !== 'failed') return;
   P.phase = 'questions';
-  P.cursor = 'confirm';
+  P.cursor = 'review';
   save();
 }
 
@@ -1003,23 +1042,69 @@ const TS_URL = /^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.%:-]{1,300}$/;
 const REACH_STATES = ['unavailable', 'starting', 'needs_login', 'needs_machine_auth', 'needs_funnel', 'key_expired', 'ports_busy',
   'pending_activation', 'ready'];
 const REACH = process.env.LA_REACH || path.join(__dirname, '..', 'compose', 'reach_ctl.sh');
-// startActivation — nach der Tunnel-Anmeldung den Installer einmal nachfahren (Paket 3: reach_ctl.sh activate holt die
-//   Tunnel-Adresse, n8n setzt den Telegram-Webhook neu). Fortschritt wie bei der Installation über die Ergebnis-Datei.
-function startActivation(c) {
-  c.activating = true;
-  fs.mkdirSync(RUN_DIR, { recursive: true, mode: 0o700 });
+// readReach(r) -> {state, url, days, host}: Antwort von `bridge.sh reach-status` (Paket 3, reach_status_json), streng
+//   geprüft: nur bekannte Zustände, Links nur von login.tailscale.com, als Name nur ein gewürfelter Tailscale-Name (fürs Bild).
+function readReach(r) {
+  return { state: r && REACH_STATES.includes(r.state) ? r.state : 'unavailable', url: r && TS_URL.test(r.url || '') ? r.url : '',
+    days: r && Number.isInteger(r.key_days_left) ? r.key_days_left : null,
+    host: r && /^[a-z0-9-]{1,63}$/.test(r.ts_hostname || '') ? r.ts_hostname : '' };
+}
+// --- Tunnel vor der Installation (Phase tunnel) ---------------------------------------------------------------------
+// startTunnel — nach der Übersicht beim Tunnel-Weg: reach_ctl.sh start (Container, Anmeldung anstoßen), dann zeigt die Seite
+//   den Zustand, bis der Tunnel steht (tunnelTick). Erst danach startInstall: provision.sh übernimmt den Namen per
+//   reach_prepare als DOMAIN, ein zweiter Lauf (reach_ctl.sh activate) ist nicht nötig.
+function startTunnel() {
+  const open = firstMissing();
+  if (open) { P.cursor = open; save(); return { error: T('core.wizard.msg.missing') }; }
+  P.phase = 'tunnel';
+  P.notes.tunnel = { since: Date.now() };
+  save();
+  kickTunnel();
+  return { ok: true };
+}
+// kickTunnel — reach_ctl.sh start im Hintergrund (lädt beim ersten Mal das Tailscale-Abbild, wartet bis zu 30 s auf
+//   tailscaled); idempotent, auch nach einem Neustart des Wizards mitten im Schritt. Die Frist für den Störungs-Hinweis
+//   beginnt erst, wenn der Aufruf fertig ist (ein langsamer Download ist keine Störung).
+let tunnelKick = null;
+function kickTunnel() {
+  if (tunnelKick) return;
+  fs.mkdirSync(STATE_DIR, { recursive: true });
   const log = fs.openSync(LOG_FILE, 'a', 0o600);
-  const p = spawn('bash', [REACH, 'activate'], { env: Object.assign({}, process.env, { LIFEAGENTS_RESULT_FILE: RESULT }), stdio: ['ignore', log, log] });
+  tunnelKick = spawn('bash', [REACH, 'start'], { stdio: ['ignore', log, log] });
   fs.closeSync(log);
-  const done = (code) => {
-    c.activating = false;
-    if (code === 0) c.activated = true;
-    else c.problem = 'activation_failed';   // Code, Text beim Anzeigen (problemText)
-    delete c.tunnel;   // neu abfragen
-    save();
+  const done = () => {
+    tunnelKick = null;
+    if (P.phase === 'tunnel' && P.notes.tunnel) { P.notes.tunnel.since = Date.now(); save(); }
   };
-  p.on('error', () => done(127));
-  p.on('close', (code) => done(code ?? 1));
+  tunnelKick.on('error', done);
+  tunnelKick.on('close', done);
+}
+let tunnelBusy = false;
+let lastTunnel = 0;
+async function tunnelTick(force) {
+  if (P.phase !== 'tunnel' || tunnelBusy) return;
+  if (!force && Date.now() - lastTunnel < Math.max(POLL_MS, 2500)) return;
+  const tun = P.notes.tunnel || (P.notes.tunnel = { since: Date.now() });
+  if (tun.down) return;   // wartet auf „Erneut prüfen“
+  tunnelBusy = true;
+  lastTunnel = Date.now();
+  try {
+    const r = readReach(await bridge(['reach-status'], { timeoutMs: 20000 }));
+    if (P.phase !== 'tunnel') return;   // inzwischen „Zurück“
+    // pending_activation = Tunnel steht, Telegram zeigt nur noch nicht darauf (das erledigt die Installation).
+    // Erst wenn reach_ctl.sh start fertig ist: beide schreiben core.env (reach_prepare), nie gleichzeitig.
+    if ((r.state === 'pending_activation' || r.state === 'ready') && !tunnelKick) {
+      delete P.notes.tunnel;
+      const s = startInstall();
+      // Antwort fehlt oder ist kaputt: zurück zu den Fragen (startInstall setzt den Cursor), sonst bliebe die Seite stehen.
+      if (s && s.error) { P.phase = 'questions'; if (P.cursor === 'tunnel' || !P.cursor) P.cursor = 'review'; save(); }
+      return;
+    }
+    Object.assign(tun, { state: r.state, url: r.url, host: r.host });
+    if ((r.state !== 'starting' && r.state !== 'unavailable') || tunnelKick) tun.since = Date.now();
+    else if (Date.now() - tun.since >= TUNNEL_GRACE_MS) tun.down = true;
+    save();
+  } finally { tunnelBusy = false; }
 }
 async function connectTick(force) {
   if (P.phase !== 'pairing' || connectBusy) return;
@@ -1028,19 +1113,14 @@ async function connectTick(force) {
   lastConnect = Date.now();
   const c = P.notes.connect || (P.notes.connect = {});
   try {
-    // Zustand des Wegs zu Telegram (Paket 3, reach_status_json): Tunnel-Anmeldung/-Freigabe, belegte Ports, Aktivierung.
-    if (!(c.tunnel && c.tunnel.state === 'ready') && !c.activating) {
-      const r = await bridge(['reach-status'], { timeoutMs: 20000 });
-      const state = r && REACH_STATES.includes(r.state) ? r.state : 'unavailable';
-      c.tunnel = { state, url: r && TS_URL.test(r.url || '') ? r.url : '',
-        days: r && Number.isInteger(r.key_days_left) ? r.key_days_left : null,
-        // Gewürfelter Tailscale-Name (Paket 3 ts_hostname, nie der Rechnername) nur fürs Bild auf „Verbinden“, streng geprüft.
-        host: r && /^[a-z0-9-]{1,63}$/.test(r.ts_hostname || '') ? r.ts_hostname : '' };
-      // Tunnel steht, Telegram zeigt noch nicht darauf: einmal den Installer nachfahren lassen (reach_ctl.sh activate).
-      if (state === 'pending_activation' && !c.activated) { startActivation(c); save(); return; }
-      if (state !== 'ready' && state !== 'unavailable') { save(); return; }
+    // Zustand des Wegs zu Telegram (Paket 3, reach_status_json): Tunnel-Anmeldung/-Freigabe, belegte Ports.
+    if (!(c.tunnel && c.tunnel.state === 'ready')) {
+      c.tunnel = readReach(await bridge(['reach-status'], { timeoutMs: 20000 }));
+      const state = c.tunnel.state;
+      // pending_activation nach der Installation = der Webhook steht nicht: kein zweiter Installer-Lauf, sondern die
+      // Prüfung unten (lifeagents … reach) meldet „Telegram erreicht deinen Rechner nicht“, mit Fehlerbericht.
+      if (!['ready', 'unavailable', 'pending_activation'].includes(state)) { save(); return; }
     }
-    if (c.activating) return;
     if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
       if (reach && reach.ok === false) {
@@ -1080,6 +1160,7 @@ async function connectTick(force) {
         PAIR = null;
         P.phase = 'connected';
         P.cursor = 'handoff';
+        noAppExit();
       } else finalizeMiss(c, f);
     }
     save();
@@ -1102,6 +1183,9 @@ async function action(name) {
       connectTick(true).catch(() => {});   // nicht abwarten: der Lauf dauert Minuten und hielte alle Anfragen auf (serial)
       return { ok: true };
     case 'connect_retry': delete c.problem; delete c.tunnel; await connectTick(true); return { ok: true };
+    case 'tunnel_retry':
+      if (P.phase !== 'tunnel') return { ok: true };
+      P.notes.tunnel = { since: Date.now() }; save(); kickTunnel(); await tunnelTick(true); return { ok: true };
     case 'pair_new': delete c.expired; await connectTick(true); return { ok: true };
     case 'handoff':
       if (P.phase !== 'connected') return { error: T('core.wizard.msg.not_connected') };
@@ -1239,6 +1323,7 @@ async function handle(req, res) {
       if (!Q) await loadQuestions();
       if (!Q) return send(res, 503, { error: T('core.wizard.msg.no_questions') });
       connectTick(false).catch(() => {});   // im Hintergrund: finalize dauert Minuten, die Seite zeigt bis dahin „Warte …“
+      tunnelTick(false).catch(() => {});
       return send(res, 200, { csrf: session.csrf, page: view() });
     }
     if (url.pathname === '/api/report') return send(res, 200, { text: report() });
@@ -1311,7 +1396,8 @@ function startCtl() {
       else if (cmd === 'status' && MODE_BACKUP) {
         s.end(JSON.stringify({ phase: P.notes.backup && P.notes.backup.ok ? 'backup_done' : 'backup_dir', step: Q ? cursor() : '', lang: uiLang() }) + '\n');
       }
-      else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase, step: Q ? cursor() : '', lang: uiLang() }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
+      // tunnel = erster Teil der Einrichtung; die Start-App kennt die Phase nicht (contract: installing) und bliebe sonst stehen.
+      else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase === 'tunnel' ? 'installing' : P.phase, step: Q ? cursor() : '', lang: uiLang() }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
       else if (cmd === 'finish') { s.end(JSON.stringify({ ok: true }) + '\n', MODE_BACKUP ? finishBackupMode : finishAll); }
       else s.end(JSON.stringify({ error: 'unknown' }) + '\n');
     });
@@ -1359,6 +1445,8 @@ async function main() {
   loadCatalog();
   P = loadProgress();
   await loadQuestions();
+  noAppExit();   // Neustart in der Frist: das Aufräumen nicht verlieren
+  if (P.phase === 'tunnel') kickTunnel();   // Neustart mitten im Tunnel-Schritt: Anmeldung erneut anstoßen (idempotent)
   }
   startCtl();
   httpServer = http.createServer((req, res) => {

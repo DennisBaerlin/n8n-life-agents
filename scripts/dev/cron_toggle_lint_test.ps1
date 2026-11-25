@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
-# Fehlfall von scripts/cron_toggle_lint.ps1 Regel (k): ein neuer Telegram-sendender Cron ohne Budget-Weg muss rot werden.
-# Legt einen Wegwerf-Workflow im Temp-Ordner an, faehrt den Lint einmal ohne und einmal mit ihm. Kein Docker.
+# Fehlfaelle von scripts/cron_toggle_lint.ps1: Regel (k) ein neuer Telegram-sendender Cron ohne Budget-Weg, Regel (d) ein
+# Host-Knopf (provisioning/lib/*.sh) auf einen nicht deklarierten Key; beide muessen rot werden.
+# Legt Wegwerf-Dateien im Temp-Ordner an (-ExtraWorkflowDir, -ExtraHostDir) und faehrt den Lint je Fall. Kein Docker.
 # Usage: .\scripts\dev\cron_toggle_lint_test.ps1   Exit-Code 0 = ok.
 $ErrorActionPreference = 'Stop'
 $lint = Join-Path $PSScriptRoot '..\cron_toggle_lint.ps1'
@@ -11,6 +12,12 @@ try {
     [System.IO.File]::WriteAllText((Join-Path $dir 'abcdefghijklmnop-x.cron_new.json'), $json, (New-Object System.Text.UTF8Encoding($false)))
     $out = & powershell.exe -NoProfile -File $lint -ExtraWorkflowDir $dir
     if ($LASTEXITCODE -eq 0 -or -not (($out -join ' ') -match 'zz_unbudgeted')) { Write-Host "FAIL: Lint hat den Cron ohne Budget-Weg nicht gemeldet: $out" -ForegroundColor Red; exit 1 }
+    # Fehlfall (d) fuer Host-Knoepfe: ein Bash-Knopf auf einen nicht deklarierten Key muss als Dangling rot werden.
+    $hostDir = Join-Path $dir 'host'
+    New-Item -ItemType Directory -Path $hostDir | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $hostDir 'x.sh'), "kb=`"cron_off:zz_host_dangling`"`n", (New-Object System.Text.UTF8Encoding($false)))
+    $out = & powershell.exe -NoProfile -File $lint -ExtraHostDir $hostDir
+    if ($LASTEXITCODE -eq 0 -or -not (($out -join ' ') -match 'zz_host_dangling')) { Write-Host "FAIL: Lint hat den Host-Knopf auf einen unbekannten Key nicht gemeldet: $out" -ForegroundColor Red; exit 1 }
     Write-Host 'PASS cron_toggle_lint_test' -ForegroundColor Green
     exit 0
 } finally { Remove-Item -Recurse -Force $dir }

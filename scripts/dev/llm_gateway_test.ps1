@@ -391,7 +391,7 @@ try {
     # (m) Telegram-Relay
     Write-Host '  (m) Telegram-Relay: Allowlist, Token-Form, Reaktion, Sticker Upload -> file_id, kein Leck'
     $TgLog = '/tmp/gwtest_tg.jsonl'
-    $TgToken = '123456789:AAFAKEtokenFAKEtokenFAKEtoken_0000'
+    $TgToken = '12345:test-fake-telegram-bot-token-000000'
     if (-not $IsCompose) { Invoke-InC @('sh', '-c', ": > $TgLog") | Out-Null }
     Start-TestUnit $Units.tgmock @('N8NTEST_MOCK_TG_PORT=8103', "N8NTEST_MOCK_TG_LOG=$TgLog") "$TgDir/server.js" 8103 `
         -Files @{ (Join-Path $RepoRoot 'tests\mock_telegram\server.js') = "$TgDir/server.js" }
@@ -456,7 +456,7 @@ try {
     else { Fail "Sticker-Name: $($res.Status)/$($res2.Status)" }
 
     $jr = @(Get-UnitJournal $Units.tg)
-    if (@($jr | Where-Object { $_.Contains('AAFAKEtoken') }).Count -eq 0) { Pass 'Bot-Token nie im Journal' } else { Fail 'Bot-Token im Journal' }
+    if (@($jr | Where-Object { $_.Contains('test-fake-telegram-bot-token') }).Count -eq 0) { Pass 'Bot-Token nie im Journal' } else { Fail 'Bot-Token im Journal' }
     $h = $null
     $hr = Invoke-InC @('curl', '-fsS', 'http://127.0.0.1:8102/__health')
     try { $h = ($hr.Output -join '') | ConvertFrom-Json } catch { }

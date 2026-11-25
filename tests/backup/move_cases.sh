@@ -136,6 +136,9 @@ if [ "$(owner_chat_placeholder_count)" != 0 ]; then
   ( _oc_finalize ) >"$W/prep.out" 2>&1 || { fail setup "Workflows mit chat_id einspielen: $(tail -n3 "$W/prep.out" | tr '\n' ' ')"; exit "$fails"; }
 fi
 cli config set ${CK} "$CV2" || { fail setup "config set: $(last)"; exit "$fails"; }
+# Der Intro-Merker des Owners steht in der Sicherung, damit A.intro-merker-gesetzt das Mitreisen prueft. Setzen statt dem Substrat
+# ueberlassen: der Menue-Lauf merkt ihn nur bei bereitem Uebersicht-Knopf (core.fn_app_button_ready, haengt am Onboarding-Stand).
+sql "SELECT core.fn_should_notify('app_intro', '${OWNER_BEFORE}')" >/dev/null
 cli backup auto || { fail setup "backup auto: $(last)"; exit "$fails"; }
 cli retire --out "$OUT"; rc=$?
 eq E.retire-ok 0 "$rc"
@@ -186,11 +189,15 @@ BF="$(read_env_value "$OUT/move.manifest" BACKUP_FILE)"
 [ -s "$OUT/nachher.txt" ] && pass A.nachher-geschrieben || fail A.nachher-geschrieben "fehlt"
 eq A.ordner-rechte 700 "$(stat -c %a "$OUT")"
 eq A.dateien-rechte 600 "$(stat -c %a "$OUT"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
+# Das Ziel merkt sich nach dem Einspielen eigene Hinweise (Intro fuer jemanden, der es auf der alten Maschine nie sah): kein
+# Unterschied im Vergleich (backup_fingerprint laesst core.notification_state aus). Direkt gesetzt, Grund wie beim Owner-Merker oben.
+sql "SELECT core.fn_should_notify('app_intro', '4711999')" >/dev/null
 cli move check; _rcc=$?; eq A.check-gleich 0 "$_rcc"
+sql "DELETE FROM core.notification_state WHERE source = 'app_intro' AND key = '4711999'" >/dev/null
 [ "$_rcc" = 0 ] || printf '# %s
 ' "$(cat "$W/out.$n")" | tail -n 12
 cli move status; eq A.status-offen 11 "$?"
-# Die Intro-Merker sind gesetzt (kein zweites Mal die Animation fuer jede Person der family-Fakten).
+# Die Intro-Merker reisen mit (core.notification_state in der Sicherung): kein zweites Mal die Animation fuer jede Person.
 _ids="$(sql "SELECT p->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name='family' AND COALESCE(p->>'telegram_user_id','') ~ '^[0-9]{1,18}\$'")"
 _miss=0; for _i in $_ids; do [ "$(sql "SELECT core.fn_app_intro_pending('${_i}')")" = f ] || _miss=$((_miss + 1)); done
 eq A.intro-merker-gesetzt 0 "$_miss"

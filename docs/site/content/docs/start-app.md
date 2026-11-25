@@ -56,9 +56,9 @@ Ab hier fragt die App, und du antwortest. Jede Antwort wird sofort gespeichert; 
 2. **Docker:** Fehlt es, erklärt die App in zwei Sätzen, was das ist, zeigt die Bedingungen von Docker und fragt dich. Erst nach deinem **Einverstanden** lädt sie Docker direkt beim Hersteller (gut ein halbes Gigabyte) und prüft dessen Unterschrift. Dein Rechner fragt dabei einmal nach seinem Passwort.
 3. **„Das wird geändert“:** Bevor irgendetwas passiert, zeigt die App eine Liste, was sie auf deinem Rechner einrichtet. Ohne dein Ja ändert sie nichts.
 4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, wohin die Sicherung geht (ein Ordner für die nächtliche Sicherung, am besten in der Cloud; siehe [Sicherung](sicherung.html#start-app)) und der Weg ins Internet (Tunnel oder FritzBox, siehe [unten](#tunnel-oder-fritzbox)).
-5. **Übersicht:** alle Antworten noch einmal zum Prüfen. Danach kommt eine letzte Seite: Sie nennt, was neu dazukommt und was unberührt bleibt. Erst mit **Einverstanden, Installation starten** geht es los; bis dahin kannst du noch abbrechen.
+5. **Übersicht:** alle Antworten noch einmal zum Prüfen; jede lässt sich hier noch ändern. Erst danach geht es los: beim FritzBox-Weg mit **Alles richtig, Installation starten**, beim Tunnel mit **Alles richtig, weiter** und zuerst der Anmeldung bei Tailscale.
 6. **Installation** mit Fortschrittsanzeige. Die App lädt dabei die Bausteine des Bots, gut ein halbes Gigabyte.
-7. **Verbinden:** Beim Tunnel meldest du dich hier bei Tailscale an ([Tunnel einrichten](tunnel.html)). Dann verbindest du Telegram per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.
+7. **Verbinden:** Du verbindest Telegram per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot. Beim Tunnel hast du dich schon vor der Installation bei Tailscale angemeldet ([Tunnel einrichten](tunnel.html)).
 8. **Dauerbetrieb:** ob der Rechner durchlaufen soll (siehe [unten](#dauerbetrieb)).
 
 Die Fragen und Prüfregeln sind dieselben wie bei der Installation auf einem Server. Die genauen Texte der App können sich bis zur ersten Version noch ändern.
@@ -93,11 +93,11 @@ Auf **Windows** legt die App ein eigenes Energieschema an (kein Standby, Bildsch
 
 ## Im Alltag
 
-Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Assistent läuft** oder **Assistent ist aus: Docker läuft nicht**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Notfallblatt speichern …**, **Sicherungsordner ändern …**, **Sicherung wiederherstellen …**, **Deinstallieren** und **App beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
+Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Assistent läuft** oder **Assistent ist aus: Docker läuft nicht**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Notfallblatt speichern …**, **Notfallschlüssel kopieren**, **Sicherungsordner ändern …**, **Sicherung wiederherstellen …**, **Deinstallieren** und **App beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
 
 Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf **Jetzt aktualisieren** sichert vorher deine Daten ([mehr zu Updates](installation.html#funktionen-hinzufügen)). Eine neue Fassung der Start-App selbst lädst du bei Bedarf von der Release-Seite, wie in Schritt 1.
 
-Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern …**, eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
+Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern …** oder **Notfallschlüssel kopieren** (für deinen Passwort-Manager), eine Sicherung zurück über **Sicherung wiederherstellen …**. Wie das auf einem neuen Rechner geht, steht unter [Sicherung & neuer Rechner](sicherung.html).
 
 ## Wenn etwas nicht klappt
 

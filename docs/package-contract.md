@@ -492,14 +492,22 @@ unlike `core.services`/`core.context_validators`, which exist for runtime SQL wi
 - **Restore is atomic** (`psql -1`): `pg_restore -f -` emits SQL text (no own DB connect) → TRUNCATE + restore
   SQL + the filtered fn + a count-verify (vs. `manifest.verify_counts`) run in one transaction. `--disable-
   triggers` (superuser) also disables the RI/FK triggers → no topo-sort needed. Mechanik → `provisioning/CLAUDE.md`.
+- **Further bundle parts** (not tables of a block, written by `backup_cli.sh`, listed in the header field `parts[]`; a part this
+  version does not know aborts the restore as `version_newer`, a missing part leaves the target as it is): changed owner settings
+  (`config.json`, rule in `core.fn_config_export`/`fn_config_import`; `managed_by` `system`/`instance` never travel), chat memory
+  (`memory.dump`, all `agent.*_chat_memory` replaced), user-entered service access (`access.json`: the env keys of the manifest
+  `credentials` blocks plus `GOOGLE_API_KEY`; restored into the env files, then the n8n credentials via the installer's id-stable
+  upsert). Instance secrets (`N8N_ENCRYPTION_KEY`, DB passwords, `N8N_API_KEY`, `INGRESS_ID_KEY`, `core.app_secret`) and the keys
+  every new installation asks for (Telegram bot token, Anthropic key) never travel; n8n credentials themselves are never in a bundle.
 - **Not backed up** (code/ephemeral; the complete list is the comment in the `backup` block of `packages/core/manifest.json`, e.g.): `*_instructions`/`capabilities_catalog` (`managed_by≠'agent'` = repo code),
-  `ai_models`/`config`, chat memory, `pairing_state`, `notification_state` (shared notify-dedup, ephemeral), `dispatch_followup` (button follow-up, 30 min), `monitor_observations`. The installer
-  rebuilds code/workflows/secrets; n8n credentials are **never** in a backup (tied to `N8N_ENCRYPTION_KEY`).
-- **Schema `core` is NEVER in a backup block (arch-challenge round-3 Obj 3 — two mandatory notes).** The
+  `ai_models`, `pairing_state`, `dispatch_followup` (button follow-up, 30 min), `monitor_observations`. The installer
+  rebuilds code/workflows/instance secrets.
+- **Schema `core` is NEVER in a backup block, except named user-data tables (arch-challenge round-3 Obj 3 — two mandatory notes).** The
   backup encryption key lives in `core.backup_key`; a bundle must not contain the very key that decrypts it.
-  Structurally it already cannot — `_bkp_bulk_tables` only dumps `schema_dump` schemas + `full_tables`, and no
-  package lists a `core.*` table (core's block is `agent.*` only). **Enforced** by `contract_lint.ps1` check (8):
-  no `core.<table>` in `full_tables`/`filtered_tables`, and no `schema_dump:true` on a package that owns schema
+  `_bkp_bulk_tables` only dumps `schema_dump` schemas + `full_tables`; core lists `agent.*` tables plus, as `filtered_tables`, the
+  allow-listed `core.llm_usage` (merged on restore) and `core.notification_state` (without this installation's markers,
+  `core.fn_notify_installation_source`). **Enforced** by `contract_lint.ps1` check (8):
+  no other `core.<table>` in `full_tables`/`filtered_tables`, and no `schema_dump:true` on a package that owns schema
   `core` (M4 also bans code-seed tables `agent.ai_models`/`core.config` from a dump). **(Note a)** the DB copy
   of the key is only the *operative* one — an **offline copy of `core.backup_key` is a DR requirement** (a wiped
   host loses the key; the bundle is then undecryptable). **(Note b)** restore is data-only into a **living** DB
@@ -541,6 +549,11 @@ core-single-package seam this block removes; `contract_lint` seam-guard fails an
   | tojson), allowedDomains:""}` (qs form — the only real one; headers/body forms are deferred to a future
   `custom_auth_in` field); `httpHeaderAuth` → `{name:<field>, value:<val>, allowedDomains:""}` (exactly one
   env key; `field` = header name); unknown type → `die` (and `contract_lint` fails it at commit already).
+- **`requires_setting`** (optional, only on a `required:false` credential): a `<category>.<key>` of an askable
+  `.config` entry. When the owner skips that setting (empty answer), neither the setup wizard nor the terminal
+  installer asks for this credential in the first round of questions; both ask a package's settings before its
+  credentials. `lifeagents reconfigure <pkg>` still asks it (consumer: paperless token without a Paperless address).
+  Checked by `contract_lint` 12a.
 - **`field`** is the type-dependent binding slot: `httpCustomAuth` = query-string parameter name,
   `httpHeaderAuth` = header name. (The former `googleApi` service-account type and the `generate:true` env field
   — installer-minted secrets — left with the retired paperless pipeline, v0.3.0: no other consumer.)

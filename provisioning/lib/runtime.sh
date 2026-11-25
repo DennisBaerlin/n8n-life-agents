@@ -632,7 +632,7 @@ rt_edge_active() {
   local c; c="$(_rt_edge_container "$1")" || return 2
   [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ]
 }
-# rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale stellt neu einen Link aus).
+# rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale verwirft einen wartenden Anmelde-Link, neu anstossen: reach_login_start).
 #   `docker restart` statt `compose restart`: tailscale/wan haengen an Profilen, die der Aufruf sonst erst aktivieren muesste.
 rt_edge_restart() {
   local c; c="$(_rt_edge_container "$1")" || return 2
@@ -643,6 +643,19 @@ rt_edge_exec() {
   local c; c="$(_rt_edge_container "$1")" || return 2
   shift
   docker exec "$c" "$@"
+}
+# rt_edge_exec_in <dienst> <befehl…> — wie rt_edge_exec, aber mit stdin (`-i`): fuer Geheimnisse, die nie ins argv duerfen.
+rt_edge_exec_in() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  shift
+  docker exec -i "$c" "$@"
+}
+# rt_edge_exec_detached <dienst> <befehl…> — losgeloest im Rand-Container starten (`-d`, kehrt sofort zurueck), fuer einen
+#   Befehl, der dort weiterlaufen muss (reach_login_start: `tailscale up` wartet auf die Anmeldung).
+rt_edge_exec_detached() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  shift
+  docker exec -d "$c" "$@"
 }
 # rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
 rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }

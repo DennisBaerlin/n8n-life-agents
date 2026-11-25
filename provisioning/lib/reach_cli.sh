@@ -6,7 +6,7 @@
 # Ein Fakt REACH_MODE in core.env (derselbe Schluessel wie im Verbund), Werte in der CLI:
 #   tunnel   Tailscale Funnel. tailscaled laeuft direkt auf dem Rechner (offizielle apt-Quelle); ohne /dev/net/tun
 #            (unprivilegierter LXC, Proxmox-Standard) im Userspace-Modus — Funnel/Serve brauchen kein TUN, der Verbund
-#            laeuft genauso (compose.yml TS_USERSPACE). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der einen
+#            laeuft genauso (compose.yml: tailscaled --tun=userspace-networking). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der einen
 #            Liste LA_PUBLIC_PATHS ein Serve-Eintrag auf 127.0.0.1:<n8n-port><pfad>, alles andere 404; n8n bleibt auf
 #            127.0.0.1 (TRUSTED_PROXIES=127.0.0.1), kein Caddy, keine Firewall-Oeffnung. Tailscale schneidet den Eintrags-
 #            Pfad vor dem Weiterreichen ab (tailscale/tailscale#6571) -> das Ziel traegt den Pfad selbst.
@@ -119,6 +119,25 @@ reach_cli_ts_login_start() {
   need_cmd tailscale || return 1
   ( setsid timeout 900 tailscale up --hostname="$(reach_cli_ts_host)" --accept-dns=false </dev/null >/dev/null 2>&1 & ) 2>/dev/null || true
   return 0
+}
+
+# reach_cli_ts_login_key — Anmeldung mit dem Schluessel aus der Antwort-Datei (Regeln: _reach_key_login in lib/reach.sh),
+#   danach bis REACH_KEY_SETTLE_SECS (60) fertigstellen (Funnel-Eintraege, DOMAIN). Auch unbeaufsichtigt: der Aufrufer
+#   ruft sie vor seiner Frage nach dem Anmelde-Link. rc wie _reach_key_login; REACH_CLI_STATE ist danach aktuell (bei rc 1
+#   unveraendert: der Aufrufer hat kurz vorher fertiggestellt).
+reach_cli_ts_login_key() {
+  local rc=0
+  need_cmd tailscale || { unset _reach_authkey; return 1; }
+  _reach_key_login reach_cli_ts_status _reach_cli_ts_up_key "$(reach_cli_ts_host)" || rc=$?
+  if [ "$rc" -ne 0 ]; then [ "$rc" -eq 2 ] && reach_cli_tunnel_settle "${N8N_PORT:-5678}"; return "$rc"; fi
+  _reach_key_wait _reach_cli_key_settled || true
+}
+_reach_cli_ts_up_key() { _reach_key_up "$1" timeout 100; }
+# _reach_cli_key_settled — fertigstellen und true bei einem Endzustand (needs_funnel kann direkt nach `up` noch kommen).
+_reach_cli_key_settled() {
+  reach_cli_tunnel_settle "${N8N_PORT:-5678}"
+  case "$REACH_CLI_STATE" in ready|busy|needs_machine_auth|key_expired) return 0 ;; esac
+  return 1
 }
 
 # reach_cli_ts_wait_url [sekunden] — bis zu N s (Standard 15) auf einen Anmelde-Link warten; Ergebnis in REACH_TS_*.

@@ -17,6 +17,8 @@ const Q = {
   packages: [
     { id: 'career', name: 'Karriere', summary: '', settings: [], credentials: [{ id: 'adzuna', required: false, keys: [{ env: 'ADZUNA_APP_ID', label: 'ID' }, { env: 'ADZUNA_APP_KEY', label: 'Key', secret: true }] }] },
     { id: 'estate', name: 'Nachlass', summary: '', settings: [{ id: 'general.bundesland', env: 'CONFIG_GENERAL_BUNDESLAND', label: 'Land', choices: [{ value: 'bayern', label: 'Bayern' }] }], credentials: [] },
+    { id: 'paperless', name: 'Dokumente', summary: '', settings: [{ id: 'general.paperless_url', env: 'CONFIG_GENERAL_PAPERLESS_URL', label: 'Adresse', choices: [] }],
+      credentials: [{ id: 'paperless_token', required: false, requires_setting: 'general.paperless_url', keys: [{ env: 'PAPERLESS_API_TOKEN', label: 'Token', secret: true }] }] },
   ],
 };
 
@@ -97,6 +99,15 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no' }), 'fritzbox');
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }).includes('fb_ports_busy'));
+});
+
+test('Ablauf: Zugang mit requires_setting entfällt, wenn die Einstellung übersprungen wurde', () => {
+  const tok = (A) => flow.steps(Q, Object.assign({ __packages: ['paperless'] }, A)).includes('c:paperless:PAPERLESS_API_TOKEN');
+  assert.ok(tok({}), 'Adresse noch offen: Token-Seite bleibt in der Liste');
+  assert.ok(tok({ CONFIG_GENERAL_PAPERLESS_URL: 'http://paperless.example:8000' }), 'Adresse gesetzt: Token wird gefragt');
+  assert.ok(!tok({ CONFIG_GENERAL_PAPERLESS_URL: '' }), 'Adresse übersprungen: Token-Seite entfällt');
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, { __packages: ['paperless'], CONFIG_GENERAL_PAPERLESS_URL: '' }, { PAPERLESS_API_TOKEN: 'alt-beispiel' }));
+  assert.ok(!flow.parseAnswers(txt).has('PAPERLESS_API_TOKEN'), 'ein früher eingetragener Token geht ohne Adresse nicht in die Antwort-Datei');
 });
 
 test('Projekt-Zeichen: ui/mark.html ist dasselbe SVG wie die Quelle der Site', () => {
@@ -208,8 +219,9 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_yes']) keys.add(`core.wizard.opt.${k}_desc`);
   for (const k of ['check', 'programs', 'database', 'access', 'bot', 'final']) keys.add(`core.wizard.stage.${k}`);
   for (const k of ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old']) keys.add(`core.wizard.paperless.${k}`);
-  for (const k of ['title', 'activating', 'activating_wait', 'not_reaching', 'check_again', 'expired', 'new_code', 'open_link', 'scan', 'tap_start',
-    'code_valid', 'connected_wait', 'waiting', 'preparing', 'preparing_wait', 'code_failed', 'activation_failed', 'key_expiry']) keys.add(`core.wizard.connect.${k}`);
+  for (const k of ['title', 'not_reaching', 'check_again', 'expired', 'new_code', 'open_link', 'scan', 'tap_start',
+    'code_valid', 'connected_wait', 'waiting', 'preparing', 'preparing_wait', 'code_failed', 'key_expiry']) keys.add(`core.wizard.connect.${k}`);
+  for (const k of ['login_more', 'down_title', 'down_help', 'down_note', 'check_again']) keys.add(`core.wizard.tunnel.${k}`);
   for (const m of src.matchAll(/(\w+): '([a-z_]+)'/g)) if (/_(title|help|link|wait|note)$/.test(m[2])) keys.add(`core.wizard.reach.${m[2]}`);
   for (const k of ['owner_language', 'owner_first_name', 'owner_last_name', 'owner_birth_date', 'owner_persona', 'telegram_bot_token', 'anthropic_api_key',
     'google_api_key', 'domain']) keys.add(`core.wizard.q.${k}.title`);

@@ -435,7 +435,7 @@ $script:TestStackMockSwitches = [ordered]@{ LIFEAGENTS_TELEGRAM_API = 'http://12
 # Weichen an die Attrappen; echte Zugaenge aus .env braucht der Verbund nicht und bekommt sie nie (faellt die KI-Weiche bei einem
 # spaeteren Lauf ohne sie weg, scheitert der Aufruf an api.anthropic.com am erfundenen Schluessel statt Kosten zu machen).
 $script:TestStackMockAnswers  = [ordered]@{ CONFIG_GENERAL_PAPERLESS_URL = 'http://127.0.0.1:8092'; PAPERLESS_API_TOKEN = 'mock-paperless-token'
-    TELEGRAM_BOT_TOKEN = '1000001:inventedTokenForTheMockTelegram00'; ANTHROPIC_API_KEY = 'sk-ant-api03-invented-key-for-the-mock-llm-0000000000' }
+    TELEGRAM_BOT_TOKEN = $script:TestInventedBotToken; ANTHROPIC_API_KEY = 'sk-ant-test-fake-key-for-the-mock-llm' }
 
 # Get-TestStackBash -- bash fuer start_mocks.sh: unter Windows das von Git (Git Bash, cygpath), nie das von WSL
 # (C:\Windows\System32\bash.exe kennt weder docker.exe noch die Windows-Pfade); sonst bash aus PATH.

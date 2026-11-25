@@ -36,8 +36,8 @@ function Get-ReleasePublishFlags([string]$Tag) {
 function Get-ReleaseInstallNote([string]$Slug, [string]$Tag) {
     $kind = Get-ReleaseTagKind $Tag
     $base = "https://github.com/$Slug/releases/download/$Tag"
-    $setup = "``curl -fsSL $base/setup.sh -o setup.sh && bash setup.sh``"
-    $classic = "``curl -fsSL $base/install.sh -o install.sh && bash install.sh --version $Tag``"
+    $setup = "``apt-get update && apt-get install -y curl && curl -fsSL $base/setup.sh -o setup.sh && bash setup.sh``"
+    $classic = "``apt-get update && apt-get install -y curl && curl -fsSL $base/install.sh -o install.sh && bash install.sh --version $Tag``"
     if ($kind -eq 'prerelease') {
         return "Pre-release for testing only: it is not offered as an update, and existing instances stay on the latest stable release. " +
             "Install on a test server (as root): $setup. Classic installation (without Docker): $classic."

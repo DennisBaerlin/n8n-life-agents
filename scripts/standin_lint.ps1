@@ -7,7 +7,11 @@
 #       `# real-path-test: none (<Grund>)`;
 #   (B) in .github/workflows/*.yml und tests/**/*.sh braucht `docker exec -e|--env NAME=...` sowie `NAME=... bash
 #       <...>provision.sh|install.sh` in derselben oder der Zeile davor `# hand-injected: <Grund>` (warum der echte Weg
-#       den Wert genauso liefert oder wo er getrennt geprueft ist).
+#       den Wert genauso liefert oder wo er getrennt geprueft ist);
+#   (C)/(D) Stubs ohne den Namen fake_ und `export NAME=<fester Wert>` (Ausnahmeliste tests/util/standin_allowlist.json);
+#   (E) kein erfundener Wert in der Form eines echten Anbieter-Schluessels (Tailscale, Telegram, Anthropic, GitHub) in
+#       tests/, scripts/, provisioning/, packages/, docs/, config/, .github/, .env.example (GitHub Secret Scanning meldet ihn;
+#       Muster unveroeffentlicht: docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns).
 # Aufruf: .\scripts\standin_lint.ps1 [-Root <Baum>]   (-Root nur fuer scripts/dev/standin_lint_test.ps1)
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
 param([string]$Root)
@@ -134,6 +138,38 @@ foreach ($f in $shFiles) {
 foreach ($k in $allow.Keys) {
     if (-not $allow[$k].Trim()) { Fail "standin_allowlist: Eintrag '$k' ohne Grund (welcher echte Test fehlt?)" }
     if (-not $used.ContainsKey($k)) { Fail "standin_allowlist: Eintrag '$k' ist veraltet (kein Fund mehr) -> entfernen; die Liste darf nur schrumpfen" }
+}
+
+# --- (E) erfundene Werte nie in der Form echter Anbieter-Schluessel ---
+# GitHub Secret Scanning meldet solche Werte als echte Schluessel (Alarm beim Owner, Partner-Meldung an den Anbieter);
+# GitHub veroeffentlicht die Muster nicht, darum hier die bekannte Form jedes Anbieters, eng genug fuer Produkt-Code
+# (Glob tskey-?*, Regex [0-9]{5,}:...). Echte Schluessel faengt gitleaks; dieser Teil haelt die Attrappen-Werte neutral.
+$secretShapes = [ordered]@{
+    'Tailscale' = '(?<![A-Za-z0-9])tskey-(?:auth|client|api|scim|webhook)-[A-Za-z0-9]'
+    'Telegram'  = '(?<![0-9])[0-9]{8,10}:[A-Za-z0-9_-]{30,}'
+    'Anthropic' = 'sk-ant-(?:api|admin|sid)[0-9]{2}-'
+    'GitHub'    = '(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
+}
+$textExt = @('.sh', '.ps1', '.psm1', '.psd1', '.js', '.mjs', '.cjs', '.ts', '.json', '.yml', '.yaml', '.toml', '.md', '.sql', '.env', '.example', '.txt', '.py', '.rs', '.html', '.css', '.tpl', '.conf', '')
+$shapeFiles = @()
+foreach ($d in @('tests', 'scripts', 'provisioning', 'packages', 'docs', 'config', '.github')) {
+    $p = Join-Path $Root $d
+    if (Test-Path $p) {
+        $shapeFiles += @(Get-ChildItem $p -Recurse -File | Where-Object {
+            $_.FullName -notmatch '[\\/](node_modules|target|public)[\\/]' -and $textExt -contains $_.Extension.ToLowerInvariant() })
+    }
+}
+$shapeFiles += @(Get-ChildItem $Root -File -Filter '.env.example' -ErrorAction SilentlyContinue)
+$shapeHits = 0
+foreach ($f in $shapeFiles) {
+    $txt = [System.IO.File]::ReadAllText($f.FullName, $u8)
+    foreach ($k in $secretShapes.Keys) {
+        foreach ($m in [regex]::Matches($txt, $secretShapes[$k])) {
+            $shapeHits++
+            $ln = ($txt.Substring(0, $m.Index) -split "`n").Count
+            Fail "$(Rel $f.FullName):${ln}: Wert in der Form eines echten $k-Schluessels (GitHub Secret Scanning meldet ihn als Leck) -> neutral erfinden, z. B. test-fake-... statt des Anbieter-Praefixes"
+        }
+    }
 }
 
 if ($fails -eq 0) { Write-Host "standin_lint: OK ($($fakes.Count) Attrappe(n) markiert, $hits begruendete Hand-Wert(e), $($allow.Count) Ausnahme(n))" -ForegroundColor Green }

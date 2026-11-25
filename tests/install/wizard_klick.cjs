@@ -25,7 +25,7 @@ const FILL = {
   'h:OWNER_BIRTH_DATE': '1990-01-01',
   // Mit den Secrets des Laufs (KLICK_TELEGRAM_TOKEN, KLICK_ANTHROPIC_KEY) die echten Werte, sonst die erfundenen; nie ausgeben.
   'h:TELEGRAM_BOT_TOKEN': process.env.KLICK_TELEGRAM_TOKEN || '1000001:CIinventedTokenForMockTelegram0000',
-  'h:ANTHROPIC_API_KEY': process.env.KLICK_ANTHROPIC_KEY || 'sk-ant-api03-ci-invented-key-00000000000000000000',
+  'h:ANTHROPIC_API_KEY': process.env.KLICK_ANTHROPIC_KEY || 'test-fake-ci-anthropic-key-0000000000',
   backup_dir_custom: process.env.KLICK_BACKUP_DIR || '/srv/lifeagents-backup',
 };
 // Auswahl-Seiten: gewuenschter Wert; fehlt der Eintrag, nimmt der Klicker die vorgewaehlte Antwort (sonst die erste).

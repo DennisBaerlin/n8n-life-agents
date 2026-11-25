@@ -94,10 +94,8 @@ async function step(w, id, value, opt) {
     await shot(w, 'backup_dir_custom-fremde');
     fs.rmSync(path.join(w.fake, 'backup_foreign'));
     await step(w, 'backup_dir_custom', '/Users/erika/Sicherung');
-    await step(w, 'review', null);
-    await shot(w, 'confirm');
     fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'workflows');
-    await answer(w, 'confirm', null);
+    await step(w, 'review', null);
     await waitFor(async () => (((await state(w)).json.page.items || [])[4] || {}).state === 'run');   // 5. Stufe (workflows) läuft
     await shot(w, 'install');
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
@@ -106,7 +104,7 @@ async function step(w, id, value, opt) {
     await shot(w, 'install-fehler');
     fs.rmSync(path.join(w.fake, 'fail_stage'));
     await post(w, '/api/action', { name: 'retry' });
-    await answer(w, 'confirm', null);
+    await answer(w, 'review', null);
     await waitFor(async () => (await state(w)).json.page.id === 'connect');
     const pg = await waitFor(async () => { const p = (await state(w)).json.page; return p.qr ? p : null; });
     out.push({ name: 'connect', page: pg });
@@ -124,6 +122,10 @@ async function step(w, id, value, opt) {
     fs.rmSync(path.join(w.fake, 'finalize_sleep'));
     await waitFor(async () => (await state(w)).json.page.id === 'handoff');
     await shot(w, 'handoff');
+    // Ohne Start-App (setup.sh): dieselbe Seite mit LA_HANDOFF=none; der Server liest hints.env je Aufruf frisch (1 s Puffer).
+    fs.writeFileSync(path.join(w.dir, 'run', 'hints.env'), 'LA_HANDOFF=none\n', { mode: 0o600 });
+    await new Promise((r) => setTimeout(r, 1200));
+    await shot(w, 'handoff-ohne-app');
   } catch (e) {
     process.stderr.write('letzte Seite: ' + JSON.stringify((await state(w)).json.page).slice(0, 900) + '\n');
     throw e;
@@ -147,7 +149,7 @@ async function step(w, id, value, opt) {
   // Sprachen (Bilder mit Texten aus core.wizard.art.*), die Sprache der Einrichtung lässt sich nur bei den Fragen umstellen.
   for (const lang of ['de', 'en', 'ko']) {
     const sfx = lang === 'de' ? '' : `-${lang}`;
-    const t = await startWizard();
+    const t = await startWizard({ env: { WIZARD_TUNNEL_GRACE_MS: '0' } });   // Störungs-Seite sofort statt nach 2 Min
     try {
       await login(t);
       for (const [id, v] of [['h:OWNER_LANGUAGE', lang], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
@@ -167,14 +169,17 @@ async function step(w, id, value, opt) {
       await answer(t, 'backup_dir', 'other');
       await answer(t, 'backup_dir_custom', '/Users/erika/Sicherung');
       if (!sfx) await shot(t, 'review-tunnel');
-      await answer(t, 'review', null);
       fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
-      await answer(t, 'confirm', null);
+      await answer(t, 'review', null);
       const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
       out.push({ name: 'connect-tailscale' + sfx, page: p });
       fs.writeFileSync(path.join(t.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
       const f = await waitFor(async () => { const x = (await state(t)).json.page; return x.link && x.link.href.includes('/f/funnel') ? x : null; });
       out.push({ name: 'connect-tailscale-funnel' + sfx, page: f });
+      if (!sfx) {   // Tailscale antwortet nicht: Hinweis mit „Erneut prüfen“ und „Zurück“
+        fs.writeFileSync(path.join(t.fake, 'reach'), 'starting');
+        out.push({ name: 'tunnel-stoerung', page: await waitFor(async () => { const x = (await state(t)).json.page; return x.action === 'tunnel_retry' ? x : null; }) });
+      }
     } finally { await t.stop(); }
   }
   // Paperless im Heimnetz: Suche läuft, mehrere gefunden (Auswahl), keiner gefunden. Attrappen auf den echten Suchports.

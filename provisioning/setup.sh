@@ -3,8 +3,9 @@
 # .../releases/latest/download/setup.sh). Er prueft den Rechner, richtet fehlendes Docker aus Dockers apt-Paketquelle ein,
 # ruft den Kern des Verbunds (`stack up`, Aufruf-Form im Kopf von compose/stack.sh) und gibt den SSH-Befehl fuer den Fragebogen aus.
 #
-# Aufruf als root auf Debian 12/13 oder Ubuntu 22.04/24.04 (amd64, arm64), nie `| bash` (ein abgebrochener Download liefe halb):
-#   curl -fsSL https://github.com/<slug>/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
+# Aufruf als root auf Debian 12/13 oder Ubuntu 22.04/24.04 (amd64, arm64), nie `| bash` (ein abgebrochener Download liefe halb).
+# Ein frisches Debian hat kein curl; das `apt-get install` davor ist auf einem Rechner mit curl ein No-op. Test: tests/util/apt_repo/first_step_cases.sh.
+#   apt-get update && apt-get install -y curl && curl -fsSL https://github.com/<slug>/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
 #   bash setup.sh --yes                       # Docker ohne Rueckfrage einrichten
 #   bash setup.sh --answers antworten.env     # statt Fragebogen: Antwort-Datei (nach `--` Optionen fuer provision.sh)
 #   bash setup.sh --uninstall [--delete-data] # Verbund entfernen; Docker bleibt
@@ -310,7 +311,8 @@ set -euo pipefail
 P='@P@'
 case "${1:-}" in
   wizard-url)
-    r="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rc 'fromjson? | select(type == "object" and .type == "result")' | tail -n1 || true)"
+    # Ohne Start-App: der Wizard endet mit „Fenster schließen“ und räumt selbst auf (LA_HANDOFF, wizard/server.js noApp).
+    r="$(printf 'LA_HANDOFF=none\n' | docker exec -i "$P-master" stack wizard-url --hints-stdin --json 2>/dev/null | jq -Rc 'fromjson? | select(type == "object" and .type == "result")' | tail -n1 || true)"
     [ -n "$r" ] || r='{}'
     if [ "$(jq -r '.ok // false' <<<"$r")" = true ]; then jq -r '.url' <<<"$r"; else
       printf 'Kein Link: %s\n' "$(jq -r '.detail // "der Verbund läuft nicht?"' <<<"$r")" >&2; exit 1
@@ -410,7 +412,7 @@ url=''
 # Ein laufender Verbund ohne Wizard (Einrichtung abgeschlossen, Zweitlauf) hat keinen Link: dann nicht lange warten.
 tries=15; [ "$changed" = true ] || tries=3
 for _ in $(seq 1 "$tries"); do
-  url="$(docker exec "$P-master" stack wizard-url --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
+  url="$(printf 'LA_HANDOFF=none\n' | docker exec -i "$P-master" stack wizard-url --hints-stdin --json 2>/dev/null | jq -Rr 'fromjson? | select(type == "object" and .type == "result" and .ok == true) | .url // empty' | tail -n1 || true)"
   [ -z "$url" ] || break
   sleep "${LA_SETUP_WAIT:-2}"
 done

@@ -297,6 +297,7 @@ mod tests {
             DockerCall::ProbeSocket { image: "busybox:1.37" },
             DockerCall::Master(MasterCmd::ReleaseWebhook),
             DockerCall::Master(MasterCmd::BackupKit),
+            DockerCall::Master(MasterCmd::BackupToken),
             DockerCall::MasterHints,
             DockerCall::MasterBackupDir,
             DockerCall::Master(MasterCmd::BackupList),

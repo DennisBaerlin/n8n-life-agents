@@ -486,10 +486,12 @@ jobs:
           # Erstinstallation ohne ts_state: der Kern zieht einen neutralen Namen aus lib/ts_names.json und legt ihn ab.
           ts="$(vol_cat var_la stack.env | sed -n 's/^LA_TS_HOSTNAME=//p')"
           [[ "$ts" =~ ^[a-z]+-[a-z]+$ ]] || { echo "FAIL kein gezogener Rechnername: '$ts'"; exit 1; }
-          # Der Dienst startet tailscaled direkt (das Start-Programm des Images gab ohne Schluessel nach 60 s auf und verwarf
-          # den Link); Rechnername und Schalter setzt der master per `tailscale up` (lib/reach.sh reach_login_start), keine TS_*-Umgebung.
+          # Der Dienst startet tailscaled direkt; Rechnername und Schalter setzt der master per `tailscale up` (lib/reach.sh
+          # reach_login_start), compose.yml gibt keine TS_*-Umgebung (gezaehlt nur, was nicht schon im Abbild steht).
           docker inspect -f '{{json .Config.Entrypoint}}' "$LA_PROJECT-tailscale" | grep -q '"tailscaled"'
-          if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$LA_PROJECT-tailscale" | grep -q '^TS_'; then echo "FAIL TS_*-Umgebung am Tailscale-Container"; exit 1; fi
+          envs() { docker "$@" -f '{{range .Config.Env}}{{println .}}{{end}}'; }
+          img="$(docker inspect -f '{{.Config.Image}}' "$LA_PROJECT-tailscale")"
+          if envs inspect "$LA_PROJECT-tailscale" | grep -vxF -f <(envs image inspect "$img") | grep -q '^TS_'; then echo "FAIL TS_*-Umgebung aus compose.yml am Tailscale-Container"; exit 1; fi
           # Wizard und App fragen den Stand ueber reach_ctl.sh status (eine JSON-Zeile).
           wait_login() {
             st=''
@@ -505,16 +507,16 @@ jobs:
           wait_login
           test "$(printf '%s' "$st" | jq -r .mode)" = tunnel
           test "$(docker exec "$LA_PROJECT-tailscale" tailscale debug prefs | jq -r .Hostname)" = "$ts"
-          # Der Link bleibt stehen: kein Neustart des Containers (frueher alle 60 s, jedes Mal ein neuer Link).
-          url1="$(printf '%s' "$st" | jq -r .url)"
-          sleep 70
-          test "$(docker inspect -f '{{.RestartCount}}' "$LA_PROJECT-tailscale")" = 0
-          test "$(docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status | jq -r .url)" = "$url1"
+          url1="$(printf '%s' "$st" | jq -r .url)"; t1="$(date +%s)"
           # Ohne Anmeldung gibt es keine Internet-Adresse: DOMAIN bleibt leer.
           if docker exec "$LA_PROJECT-master" grep -q '^DOMAIN=.' /etc/lifeagents/core.env; then echo "FAIL DOMAIN ohne Tunnel gesetzt"; exit 1; fi
           # Tailnet-Zugriff aus dem Tailscale-Container selbst (derselbe Namensraum): Editor gesperrt.
           if docker exec "$LA_PROJECT-tailscale" wget -q -O /dev/null -T 3 http://127.0.0.1:8080/healthz; then echo "FAIL Editor vom Tailscale-Knoten erreichbar"; exit 1; fi
           if docker ps --format '{{.Names}}' | grep -qx "$LA_PROJECT-wan"; then echo "FAIL wan laeuft beim Tunnel-Weg"; exit 1; fi
+          # Der Link bleibt stehen, bis jemand ihn benutzt: ueber 70 s kein Neustart, derselbe Link.
+          left=$((70 - ($(date +%s) - t1))); [ "$left" -le 0 ] || sleep "$left"
+          test "$(docker inspect -f '{{.RestartCount}}' "$LA_PROJECT-tailscale")" = 0
+          test "$(docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh status | jq -r .url)" = "$url1"
           # Neuer Link ohne Zuruecksetzen des Knotens: relogin startet den Container neu (verwirft den alten Link) und stoesst an.
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/compose/reach_ctl.sh relogin >/dev/null
           wait_login

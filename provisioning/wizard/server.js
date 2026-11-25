@@ -730,7 +730,8 @@ function reachView(v, tun, R) {
   // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
   const href = tun.url || (tun.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
   const login = href && R.link === 'login_link';
-  return Object.assign(v, { title: t('title'), help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_more') }] : []),
+  return Object.assign(v, { title: t('title'),
+    help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_more') }, { p: T('core.wizard.tunnel.login_qr'), desk: true }] : []),
     qr: login ? qr.toSvg(qr.encode(href)) : null, qrDesk: login,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
     note: R.note ? { kind: 'warn', text: t('note') } : null,
     link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && tun.host ? { host: tun.host } : null,
@@ -744,7 +745,9 @@ function tunnelView() {
   const v = { kind: 'connect', title: T('core.wizard.connect.title'), poll: true };
   if (tun.down) {
     return Object.assign(v, { title: T('core.wizard.tunnel.down_title'), help: [{ p: T('core.wizard.tunnel.down_help') }],
-      note: { kind: 'warn', text: T('core.wizard.tunnel.down_note') }, poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
+      // FritzBox nur vorschlagen, wenn gemessen: eigene IPv4 sicher erkannt und Ports frei (beim Wählen der FritzBox geprüft).
+      note: { kind: 'warn', text: T(P.A.__dslite_auto === 'no' && P.A.__ports !== 'busy' ? 'core.wizard.tunnel.down_note_fb' : 'core.wizard.tunnel.down_note') },
+      poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
   }
   return reachView(v, tun, REACH_TEXT[tun.state] || REACH_TEXT.starting);
 }

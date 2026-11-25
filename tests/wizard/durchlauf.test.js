@@ -272,9 +272,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await answer(w, 'fb_dslite', 'yes'));   // DS-Lite führt zum Tunnel
     await backupPage(w);
     assert.equal((await page(w)).id, 'review');
-    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale als nächster Schritt)');
+    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel über Tailscale', 'Anmeldung nur einmal genannt (Hinweis)');
     const rvt = await page(w);
-    assert.equal(rvt.next, 'Alles richtig, weiter');
+    assert.equal(rvt.next, 'Alles richtig, weiter zu Tailscale');
     assert.equal(rvt.note.text, 'Als Nächstes meldest du dich bei Tailscale an. Danach richtet sich alles von allein ein.');
 
     // Tunnel VOR der Installation: reach_ctl.sh start, Anmeldung mit Knopf und QR-Code; provision.sh läuft erst danach.
@@ -287,7 +287,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal(lg.link.href, 'https://login.tailscale.com/a/beispiel123');
     assert.match(lg.qr, /^<svg /, 'QR-Code des Anmelde-Links fürs Handy');
     assert.equal(lg.qrDesk, true, 'nur am Rechner-Bildschirm (app.css blendet ihn unter 600 px aus)');
-    assert.match(lg.help.map((x) => x.p).join(' '), /Am Handy: scanne den Code\. Am Rechner öffnet der Knopf einen neuen Tab/);
+    assert.deepEqual(lg.help, [{ p: 'Dafür reicht ein Konto bei Google, Microsoft oder Apple, das du schon hast.' },
+      { p: 'Der Knopf öffnet die Anmeldung in einem neuen Fenster. Danach kommst du hierher zurück, den Rest richtet lifeagents von allein ein.' },
+      { p: 'Oder scanne den Code mit dem Handy und melde dich dort an.', desk: true }], 'Satz zum Code nur am Rechner (wie der Code)');
     assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
     assert.deepEqual(lg.ts, { host: 'brave-otter' }, 'nur der gewürfelte Tailscale-Name fürs Bild');
     assert.equal(lg.canBack, true, '„Zurück“ = Weg ändern');
@@ -523,6 +525,7 @@ test('Tunnel: Tailscale antwortet nicht = Hinweis mit Erneut prüfen und Zurück
     assert.equal(p.next, 'Erneut prüfen');
     assert.equal(p.note.kind, 'warn');
     assert.match(p.note.text, /Zurück/);
+    assert.ok(!/FritzBox|später/.test(p.note.text), 'FritzBox nur nach Messung vorschlagen; kein „später“ ohne Knopf');
     assert.equal(p.canBack, true);
     assert.equal(p.poll, false);
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');
@@ -530,6 +533,25 @@ test('Tunnel: Tailscale antwortet nicht = Hinweis mit Erneut prüfen und Zurück
     await waitFor(async () => { const x = await page(w); return x.link && x.link.href ? x : null; });
     assert.ok(!fs.existsSync(path.join(w.fake, 'runs')), 'keine Installation ohne fertigen Tunnel');
     assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['start', 'start'], '„Erneut prüfen“ stößt erneut an');
+  } finally { await w.stop(); }
+});
+
+test('Tunnel: Tailscale stumm, FritzBox vorher gemessen (eigene IPv4, Ports frei) = Hinweis nennt die FritzBox', async () => {
+  const w = await startWizard({ hints: {}, env: { WIZARD_TUNNEL_GRACE_MS: '0' } });
+  try {
+    await login(w);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'dslite'), 'no');
+    await expectOk(await answer(w, 'reach', 'fritzbox'));
+    await expectOk(await post(w, '/api/back', {}));
+    assert.equal((await page(w)).id, 'reach');
+    for (const [id, v] of [['reach', 'tunnel'], ['backup_dir', 'other'], ['backup_dir_custom', '/daten/sicherung']]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'reach'), 'starting');
+    await expectOk(await answer(w, 'review', null));
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'tunnel_retry' ? x : null; });
+    assert.match(p.note.text, /FritzBox/);
   } finally { await w.stop(); }
 });
 

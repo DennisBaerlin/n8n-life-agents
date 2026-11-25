@@ -18,7 +18,7 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 1. **Tunnel wählen:** In der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über einen sicheren Tunnel** wählen. Diese Wahl ist schon vorausgewählt.
 
    *Erwartet:* Die App fragt die restlichen Angaben ab. Auf der Übersicht steht, dass als Nächstes die Anmeldung bei Tailscale kommt.
-2. **Anmelden:** Nach **Alles richtig, weiter** zeigt die App „Melde dich bei Tailscale an“, noch vor der Installation. Klick auf **Tailscale-Anmeldung öffnen**; der Knopf öffnet die Anmeldeseite von Tailscale in einem neuen Tab. Am Handy kannst du stattdessen den QR-Code scannen. Melde dich an oder leg dort ein Konto an. Der Link bleibt gültig, bis du ihn benutzt.
+2. **Anmelden:** Nach **Alles richtig, weiter zu Tailscale** zeigt die App „Melde dich bei Tailscale an“, noch vor der Installation. Klick auf **Tailscale-Anmeldung öffnen**; der Knopf öffnet die Anmeldeseite von Tailscale in einem neuen Fenster. Am Handy kannst du stattdessen den QR-Code scannen. Melde dich an oder leg dort ein Konto an. Der Link bleibt gültig, bis du ihn benutzt.
 
    *Erwartet:* Tailscale fragt, ob du das neue Gerät mit deinem Konto verbinden willst. Bestätige das.
 3. **Empfang erlauben:** Die App zeigt „Erlaube deinem Rechner den Empfang“. Klick auf **Freigabe-Seite öffnen**. Für eine öffentliche Adresse verlangt Tailscale, dass in deinem Konto Zertifikate (HTTPS) und Funnel erlaubt sind ([Tailscale Funnel](https://tailscale.com/kb/1223/funnel)). Stimme auf dieser Seite zu. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht [unten](#neutraler-name).

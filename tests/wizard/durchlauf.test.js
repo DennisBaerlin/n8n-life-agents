@@ -557,6 +557,7 @@ test('Ende ohne Start-App (LA_HANDOFF=none): Fertig-Seite zum Schließen, danach
     pairNow(w);
     const p = await waitFor(async () => { const x = await page(w); return x.id === 'handoff' ? x : null; });
     assert.equal(p.title, 'lifeagents ist eingerichtet');
+    assert.deepEqual(p.step, { current: 'done', sub: null }, 'Leiste ganz erledigt, kein offener Dauerbetrieb');
     const help = p.help.map((x) => x.p).join(' ');
     assert.match(help, /Telegram/);
     assert.match(help, /Du kannst es jetzt schließen/);

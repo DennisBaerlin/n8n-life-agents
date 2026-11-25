@@ -122,6 +122,10 @@ async function step(w, id, value, opt) {
     fs.rmSync(path.join(w.fake, 'finalize_sleep'));
     await waitFor(async () => (await state(w)).json.page.id === 'handoff');
     await shot(w, 'handoff');
+    // Ohne Start-App (setup.sh): dieselbe Seite mit LA_HANDOFF=none; der Server liest hints.env je Aufruf frisch (1 s Puffer).
+    fs.writeFileSync(path.join(w.dir, 'run', 'hints.env'), 'LA_HANDOFF=none\n', { mode: 0o600 });
+    await new Promise((r) => setTimeout(r, 1200));
+    await shot(w, 'handoff-ohne-app');
   } catch (e) {
     process.stderr.write('letzte Seite: ' + JSON.stringify((await state(w)).json.page).slice(0, 900) + '\n');
     throw e;

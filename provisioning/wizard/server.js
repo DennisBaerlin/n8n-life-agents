@@ -450,8 +450,9 @@ function pageFor(id) {
     case 'handoff': {
       const tg = { p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') };
       // Ohne Start-App (setup.sh) übernimmt niemand: Seite zum Schließen, der Wizard räumt danach selbst auf (noAppExit).
+      // Leiste auf „Fertig“: ein Server läuft ohnehin dauerhaft, der Schritt Dauerbetrieb der App entfällt als erledigt.
       if (noApp()) return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
-        help: [tg, { p: T('core.wizard.page.handoff_close') }] });
+        step: { current: 'done', sub: null }, help: [tg, { p: T('core.wizard.page.handoff_close') }] });
       return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
         help: [tg, { p: T('core.wizard.page.handoff_awake') }],
         next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });

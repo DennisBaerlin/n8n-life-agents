@@ -128,6 +128,9 @@ BEGIN
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111","via":"rollout"}');
   IF r->'msg'->'params'->'since' IS DISTINCT FROM core.fn_ui_date(core.fn_today(now() - interval '23 days')) OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN
     RAISE EXCEPTION 'FAIL [4 since alt]: %', r; END IF;
+  -- via resume = letzte Erinnerung an die Liste (core.fn_advisor_resume_due)
+  r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111","via":"resume"}');
+  IF r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_resume' THEN RAISE EXCEPTION 'FAIL [4 via resume]: %', r; END IF;
   UPDATE agent.handoff_tasks SET created_at = now() WHERE id = v_id1;
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"222"}');
   IF (r->>'count')::int <> 0 OR r->'max_task_id' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [4 andere Person]: %', r; END IF;

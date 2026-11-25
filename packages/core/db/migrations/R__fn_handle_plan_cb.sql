@@ -12,7 +12,11 @@
 --     * can_write=false (Mitglied am Haushalts-Plan, write_permission owner_only) -> Toast "pflegt der Haushalts-Owner";
 --     * ready=false (Mindestdaten fehlen, readiness_fn) -> Toast "fehlen noch Daten" (Schutz fuer alte Karten; das Menue
 --       zeigt dann statt des Plan-Knopfs "Zuerst: <Abschnitt>").
---   Verben (Plan teilen; share/explain/wish sind als Domain-Name reserviert):
+--   Verben (share/explain/wish/resume sind als Domain-Name reserviert):
+--     plan:resume:<domain>[:<plan_id>] -> [Weiter] der Beratungs-Erinnerung (core.fn_advisor_resume_due): Pruefungen wie der
+--       Start (Domain, can_write, ready) plus offene Karte -> Toast plan_card_open; liegt ein Entwurf vor -> verb start (derselbe
+--       Auftrag wie der Plan-Knopf, auch wenn die plan_id inzwischen eine andere ist: gewollt ist weitermachen, nicht eine
+--       Version); kein Entwurf mehr -> Toast plan_not_current (reason stale).
 --     plan:share:<domain>:<version> -> nur Owner, Version = aktive Version des Haushalts-Plans (sonst 'nicht aktuell')
 --     plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver
 --       Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar.
@@ -124,6 +128,29 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'limit', 'toast', core.fn_ui_text('core.toast.plan_verb_limit', v_lang));
         END IF;
         RETURN jsonb_build_object('ok', true, 'route', 'plan', 'verb', v_verb, 'domain', v_domain, 'version', v_active.version, 'data', v_out);
+    END IF;
+
+    -- [Weiter] der Beratungs-Erinnerung: eigener Zweig vor dem Start-Format (sonst laese es 'resume' als Domain).
+    IF v_verb = 'resume' THEN
+        v_domain := split_part(v_data, ':', 3);
+        v_ver    := split_part(v_data, ':', 4);
+        SELECT e INTO v_row FROM jsonb_array_elements(core.fn_advisor_plan_status(v_chat)) e WHERE e->>'domain' = v_domain;
+        IF v_row IS NULL OR split_part(v_data, ':', 5) <> '' OR (v_ver <> '' AND v_ver !~ '^[0-9]{1,9}$') THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'unknown_plan', 'toast', core.fn_ui_text('core.toast.area_unavailable', v_lang));
+        END IF;
+        IF (v_row->>'can_write')::boolean IS NOT TRUE THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'owner_only', 'toast', core.fn_ui_text('core.toast.plan_owner_only', v_lang));
+        END IF;
+        IF (v_row->>'ready')::boolean IS NOT TRUE THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'not_ready', 'toast', core.fn_ui_text('core.toast.plan_not_ready', v_lang));
+        END IF;
+        IF agent.fn_get_hitl_pending_state(v_chat::bigint) IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'card_open', 'toast', core.fn_ui_text('core.toast.plan_card_open', v_lang));
+        END IF;
+        IF v_row->>'state' <> 'draft' THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'stale', 'toast', core.fn_ui_text('core.toast.plan_not_current', v_lang));
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'route', 'plan', 'verb', 'start', 'domain', v_domain);
     END IF;
 
     -- Plan teilen: Verb zuerst (share/explain/wish sind als Domain-Name reserviert), sonst Start-Format.

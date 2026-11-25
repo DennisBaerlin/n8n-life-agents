@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_handoff_overview(p) — offene vereinbarte Plan-Aufgaben einer Person fuer die Uebersicht [Durchgehen]
 --   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' =
---   Erinnerung der gefuehrten Abfolge, sonst der Berater) }.
+--   Erinnerung der gefuehrten Abfolge, 'resume' = letzte Erinnerung von core.fn_advisor_resume_due, sonst der Berater) }.
 --   Rueckgabe {count, max_task_id (NULL ohne offene), items: [text, ...] in Anlage-Reihenfolge, msg: Text-Struktur
 --   core.handoff.overview (core.fn_ui_tpl) mit list (nummeriert), since (Tag des aeltesten offenen Punkts per
 --   core.fn_today: heute -> core.handoff.since_today, sonst core.fn_ui_date; "offen seit", kein Gespraechsdatum: Punkte
@@ -34,7 +34,9 @@ BEGIN
     RETURN v_out || jsonb_build_object('msg', core.fn_ui_tpl('core.handoff.overview', jsonb_build_object(
         'list', (SELECT string_agg(i || '. ' || (x #>> '{}'), E'\n' ORDER BY i) FROM jsonb_array_elements(v_out->'items') WITH ORDINALITY AS e(x, i)),
         'since', CASE WHEN v_since IS NULL OR v_since >= core.fn_today() THEN core.fn_ui_tpl('core.handoff.since_today') ELSE core.fn_ui_date(v_since) END,
-        'why', CASE WHEN p->>'via' = 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout') ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
+        'why', CASE p->>'via' WHEN 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout')
+                                   WHEN 'resume' THEN core.fn_ui_tpl('core.handoff.why_resume')
+                                   ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
 END;
 $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_overview(jsonb) FROM public;

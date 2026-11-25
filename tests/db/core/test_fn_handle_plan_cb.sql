@@ -116,7 +116,7 @@ BEGIN
 END $$;
 
 DO $$
-DECLARE r JSONB; v_cnt INT;
+DECLARE r JSONB; v_cnt INT; v_t text;
 BEGIN
   DELETE FROM core.notification_state WHERE source IN ('plan_verb', 'plan_verb_day');
   -- scan: aktuelle Version startet, Doppeltipp wird gesperrt
@@ -168,6 +168,38 @@ BEGIN
   DELETE FROM core.notification_state WHERE source = 'plan_verb' AND key LIKE 'watch%';
   r := core.fn_handle_plan_cb('{"data":"plan:watch:finance:3","chat_id":"111","chat_type":"private"}');
   IF r->>'reason' IS DISTINCT FROM 'limit' THEN RAISE EXCEPTION 'FAIL [Limit] %', r; END IF;
+
+  -- ---------- plan:resume:<domain>[:<plan_id>] = [Weiter] der Beratungs-Erinnerung (core.fn_advisor_resume_due) ----------
+  -- kein Entwurf (nur der aktive Plan) -> 'nicht aktuell', kein Berater-Start
+  r := core.fn_handle_plan_cb('{"data":"plan:resume:finance:999","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r ? 'route' OR r->>'reason' <> 'stale' OR r->>'toast' IS DISTINCT FROM 'DE:core.toast.plan_not_current' THEN
+    RAISE EXCEPTION 'FAIL [resume ohne Entwurf]: %', r; END IF;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state) VALUES ('finance', NULL, 'Plan', 'draft', 4, '{}');
+  -- Entwurf da -> derselbe Auftrag wie der Plan-Knopf (verb start), auch mit alter plan_id oder ohne
+  FOREACH v_t IN ARRAY ARRAY['plan:resume:finance:' || (SELECT id FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft'),
+                                 'plan:resume:finance:999', 'plan:resume:finance'] LOOP
+    r := core.fn_handle_plan_cb(jsonb_build_object('data', v_t, 'chat_id', '111', 'chat_type', 'private'));
+    IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'plan' OR r->>'verb' <> 'start' OR r->>'domain' <> 'finance' THEN
+      RAISE EXCEPTION 'FAIL [resume % -> start]: %', v_t, r; END IF;
+  END LOOP;
+  -- offene Karte -> Toast statt Start
+  INSERT INTO agent.hitl_pending (chat_id, execution_id, expires_at) VALUES (111, 'cb-res', now() + interval '5 minutes');
+  r := core.fn_handle_plan_cb('{"data":"plan:resume:finance","chat_id":"111","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'card_open' OR r ? 'route' THEN RAISE EXCEPTION 'FAIL [resume Karte offen]: %', r; END IF;
+  DELETE FROM agent.hitl_pending WHERE execution_id = 'cb-res';
+  -- Mitglied und Kind (weitergeleiteter alter Knopf) -> Owner-Toast
+  r := core.fn_handle_plan_cb('{"data":"plan:resume:finance","chat_id":"222","chat_type":"private"}');
+  IF r->>'toast' IS DISTINCT FROM 'EN:core.toast.plan_owner_only' OR r ? 'route' THEN RAISE EXCEPTION 'FAIL [resume Mitglied]: %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:resume:finance","chat_id":"333","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'owner_only' OR r ? 'route' THEN RAISE EXCEPTION 'FAIL [resume Kind]: %', r; END IF;
+  -- unbekannte Domain, kaputte plan_id, nackt 'plan:resume' (resume ist als Domain reserviert) -> nicht verfuegbar
+  FOREACH v_t IN ARRAY ARRAY['plan:resume:estate', 'plan:resume:finance:abc', 'plan:resume', 'plan:resume:finance:1:2'] LOOP
+    r := core.fn_handle_plan_cb(jsonb_build_object('data', v_t, 'chat_id', '111', 'chat_type', 'private'));
+    IF (r->>'ok')::boolean IS NOT FALSE OR r ? 'route' OR r->>'reason' <> 'unknown_plan' THEN RAISE EXCEPTION 'FAIL [resume % abgelehnt]: %', v_t, r; END IF;
+  END LOOP;
+  -- Gruppe -> nur Privatchat
+  r := core.fn_handle_plan_cb('{"data":"plan:resume:finance","chat_id":"111","chat_type":"group"}');
+  IF r->>'reason' IS DISTINCT FROM 'not_private_chat' THEN RAISE EXCEPTION 'FAIL [resume Gruppe]: %', r; END IF;
 END $$;
 
 ROLLBACK;

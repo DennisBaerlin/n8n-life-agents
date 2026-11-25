@@ -444,13 +444,12 @@ function pageFor(id) {
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
     case 'handoff': {
+      const v = Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote() });
       const tg = { p: T(P.notes.welcome_sent ? 'core.wizard.page.handoff_welcome' : 'core.wizard.page.handoff_start') };
-      // Ohne Start-App (setup.sh) übernimmt niemand: Seite zum Schließen, der Wizard räumt danach selbst auf (noAppExit).
-      // Leiste auf „Fertig“: ein Server läuft ohnehin dauerhaft, der Schritt Dauerbetrieb der App entfällt als erledigt.
-      if (noApp()) return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
-        step: { current: 'done', sub: null }, help: [tg, { p: T('core.wizard.page.handoff_close') }] });
-      return Object.assign(base, { kind: 'handoff', title: T('core.wizard.page.handoff_title'), note: keyExpiryNote(),
-        help: [tg, { p: T('core.wizard.page.handoff_awake') }],
+      // Ohne Start-App (setup.sh) übernimmt niemand: Seite zum Schließen, der Wizard räumt danach selbst auf (noAppExit,
+      // hier erneut angestoßen, falls der Merker erst nach dem Abschluss kam). Leiste auf „Fertig“: kein Dauerbetrieb-Schritt.
+      if (noApp()) { noAppExit(); return Object.assign(v, { step: { current: 'done', sub: null }, help: [tg, { p: T('core.wizard.page.handoff_close') }] }); }
+      return Object.assign(v, { help: [tg, { p: T('core.wizard.page.handoff_awake') }],
         next: P.phase === 'handoff' ? null : next, action: 'handoff', done: P.phase === 'handoff' });
     }
     default: return Object.assign(base, { kind: 'info', title: '…' });
@@ -498,12 +497,14 @@ function hints() {
   let v = {};
   try { v = flow.parseHints(fs.readFileSync(HINTS_FILE, 'utf8')); } catch (_) { /* keine Vorschläge */ }
   hintsCache = { at: Date.now(), v };
+  // hints.env liegt im master unter /run (tmpfs) und fehlt nach einem Neustart: „ohne Start-App“ deshalb im Fortschritt merken.
+  if (v.LA_HANDOFF === 'none' && P && P.notes && !P.notes.no_app && !MODE_BACKUP) { P.notes.no_app = true; save(); }
   return v;
 }
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
 // Ohne Start-App geöffnet: setup.sh gibt LA_HANDOFF=none mit (ausdrücklich, nicht aus fehlenden Hinweisen geraten: eine App,
 // die einmal keine hints.env schreibt, bekäme sonst das falsche Ende).
-function noApp() { return hints().LA_HANDOFF === 'none'; }
+function noApp() { hints(); return !!P.notes.no_app; }
 // Statt `ctl.js finish` der App: nach einer Frist, in der der Browser die Fertig-Seite noch holt (Abfrage alle 1,5 s).
 let noAppTimer = null;
 function noAppExit() {

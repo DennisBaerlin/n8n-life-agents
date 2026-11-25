@@ -3,7 +3,8 @@
    dort (Regel im Token-Block, wie .qr) immer die hellen Tokens. Regeln: docs/reference/ui.md. Bewegung ruhig, kein Schatten.
 
    Platz: Das Bild füllt nur den freien Raum zwischen Inhalt und angehefteter Knopfleiste (flex in main, app.css) und misst sich
-   selbst (Container „art“). Zu wenig Höhe oder Breite → weniger zeigen, zuletzt gar nichts. */
+   selbst (Container „art“). Zu wenig Platz → weniger zeigen, zuletzt gar nichts: Handy-Bilder nach der Höhe, die geführte
+   Animation nur nach der Breite (am Rechner hält sie ihre Mindesthöhe, im niedrigen Fenster scrollt die Seite). */
 
 .art { margin: 12px 0 0; min-width: 0; min-height: 0; flex: 1000 1 0; max-height: 560px; container: art / size; display: flex; flex-direction: column; }
 .art-cap { font-size: 14px; color: var(--gray); }

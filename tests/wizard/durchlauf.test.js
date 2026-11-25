@@ -572,6 +572,22 @@ test('Ende ohne Start-App (LA_HANDOFF=none): Fertig-Seite zum Schließen, danach
   } finally { await w.stop(); }
 });
 
+// hints.env liegt im master unter /run (tmpfs): nach einem Neustart fehlt sie, das Ende ohne App darf trotzdem nicht kippen.
+test('Ende ohne Start-App übersteht einen Neustart ohne hints.env', async () => {
+  const env = Object.assign({ WIZARD_NOAPP_EXIT_MS: '3000' }, FIN);
+  const w = await toConnect(env, 'paired_later', { LA_HANDOFF: 'none' });
+  try {
+    await w.stop();
+    fs.rmSync(path.join(w.dir, 'run', 'hints.env'));
+    Object.assign(w, await startWizard({ dir: w.dir, port: w.port, env }));
+    await login(w);
+    pairNow(w);
+    const p = await waitFor(async () => { const x = await page(w); return x.id === 'handoff' ? x : null; });
+    assert.match(p.help.map((x) => x.p).join(' '), /Du kannst es jetzt schließen/);
+    assert.equal(await w.exited, 0, 'räumt auch nach dem Neustart selbst auf');
+  } finally { await w.stop(); }
+});
+
 test('Abschluss: ein Fehlversuch heilt von selbst, ohne Meldung', async () => {
   const w = await toConnect(FIN, 'paired_later');
   try {

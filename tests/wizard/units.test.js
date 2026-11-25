@@ -98,6 +98,10 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'yes' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no' }), 'fritzbox');
+  // Dieselbe Regel für den Hinweis der Tunnel-Störung (gemessen, nicht geantwortet).
+  assert.equal(flow.fritzboxFits({ __dslite_auto: 'no' }, 'no'), true);
+  assert.equal(flow.fritzboxFits({ __dslite_auto: 'no', __ports: 'busy' }, 'no'), false);
+  assert.equal(flow.fritzboxFits({}, undefined), false, 'nicht gemessen = kein Vorschlag');
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }).includes('fb_ports_busy'));
 });
 
@@ -221,7 +225,7 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   for (const k of ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old']) keys.add(`core.wizard.paperless.${k}`);
   for (const k of ['title', 'not_reaching', 'check_again', 'expired', 'new_code', 'open_link', 'scan', 'tap_start',
     'code_valid', 'connected_wait', 'waiting', 'preparing', 'preparing_wait', 'code_failed', 'key_expiry']) keys.add(`core.wizard.connect.${k}`);
-  for (const k of ['login_more', 'down_title', 'down_help', 'down_note', 'check_again']) keys.add(`core.wizard.tunnel.${k}`);
+  for (const k of ['login_more', 'login_qr', 'down_title', 'down_help', 'down_note', 'down_note_fb', 'check_again']) keys.add(`core.wizard.tunnel.${k}`);
   for (const m of src.matchAll(/(\w+): '([a-z_]+)'/g)) if (/_(title|help|link|wait|note)$/.test(m[2])) keys.add(`core.wizard.reach.${m[2]}`);
   for (const k of ['owner_language', 'owner_first_name', 'owner_last_name', 'owner_birth_date', 'owner_persona', 'telegram_bot_token', 'anthropic_api_key',
     'google_api_key', 'domain']) keys.add(`core.wizard.q.${k}.title`);

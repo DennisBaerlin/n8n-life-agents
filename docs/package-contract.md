@@ -144,13 +144,17 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   and is stamped only by `fn_set_onboarding_section` / `fn_reset_onboarding_state` (status changes, not label resyncs).
 - **Plan step (2026-10-28):** an advisor domain with `advisors.<domain>.plan_step` (§1 table) gets a *recommended* step
   behind its package's sections — never a section: it counts neither in the progress nor in the "all set up" latch
-  (`fn_onboarding_progress_event` and the nudges read only `sections`), it never blocks the path to other areas, it
-  sends no reminders. The menu reads it from `core.fn_advisor_plan_status` (own DEFINER window for `core_ro`;
+  (`fn_onboarding_progress_event` and the setup nudges read only `sections`), it never blocks the path to other areas.
+  A started plan (draft) has its own reminder, `agent.advisor.cron_resume_nudge` (`core.fn_advisor_resume_due`: 4 / 14
+  idle days on the draft, then silence; once more about agreed items still open after publishing; texts name the plan
+  with `<pkg>.plan.name`). Both nudges share `core.fn_nudge_stage`: at most one follow-up per person and day across
+  them, and the setup nudge stays silent for the owner while a started plan is the next step. The menu reads it from `core.fn_advisor_plan_status` (own DEFINER window for `core_ro`;
   `fn_onboarding_overview` stays sections-only, its card/cron callers never pay for or fail on package fns; a failing
   package fn degrades to neutral) — the one address for state `none|draft|gaps|complete`, `open` = `gaps_fn`, `ready`/`missing` = `readiness_fn`, `can_write`
   = owner, as the plan tools are `owner_only`. Available once no *gating* section of the package is open (same
-  `gates_advisor` rule as the advisor gate). "Next" points to it on that package's done card, or when no section is
-  open anywhere; missing minimum data turn the button into "First: <section>" (`onboarding:<pkg>:<section>`).
+  `gates_advisor` rule as the advisor gate). "Next" points to it on that package's done card, when no section is
+  open anywhere, or (owner only, started advice comes first) while a ready draft is younger than
+  `advisor.resume_last_days` or its last reminder is still due (`core.fn_get_next_step` rule 3a); missing minimum data turn the button into "First: <section>" (`onboarding:<pkg>:<section>`).
   The button `plan:<domain>` is a `callback_handlers` prefix (`core.fn_handle_plan_cb`, member_permeable) → the
   orchestrator's build-time arm per domain starts the `advisor_agent` with a fixed English task + the tapper's reply
   language.

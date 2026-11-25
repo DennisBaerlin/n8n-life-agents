@@ -307,7 +307,7 @@ $budgetWays = @{
     reconcile_accounts = 'fn_proactive_claim'; remind_pension_statement = 'fn_proactive_claim'
     remind_bank_end = 'fn_bank_end_claim'; remind_bank_todo = 'fn_bank_todo_claim'
     remind_missing_prices = 'fn_price_gap_claim'; onboarding_nudge = 'fn_onboarding_nudges_due'
-    monitor_triggers = 'fn_monitor_evaluate'; plan_rollout = '"budget"'
+    monitor_triggers = 'fn_monitor_evaluate'; plan_rollout = '"budget"'; advisor_resume = 'fn_advisor_resume_due'
 }
 $budgetExempt = @{
     plan_review = 'Quartals-Rueckblick, immer ohne Ton'

@@ -750,6 +750,33 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_next_step]: erwartet role owner, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (DEFINER-Fenster)]';
 
+  -- ===== (3e-PINS) Router-Flags offener Entwurf: core.fn_advisor_pins laeuft nur unter der Host-Cred (Knoten Interview pin).
+  -- person_id/role kommen vom Aufrufer -> core_ro (freie Abfragen von guide/monitor) und Paket-Rollen werden abgewiesen.
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    PERFORM core.fn_advisor_pins(jsonb_build_object('person_id', 'owner', 'role', 'owner'));
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro NEGATIV]: core_ro konnte core.fn_advisor_pins aufrufen';
+  EXCEPTION
+    WHEN insufficient_privilege THEN RESET ROLE;
+    WHEN OTHERS THEN
+      RESET ROLE;
+      IF SQLERRM LIKE 'FAIL %' THEN RAISE; END IF;
+      RAISE EXCEPTION 'FAIL [core_ro NEGATIV fn_advisor_pins]: %', SQLERRM;
+  END;
+  BEGIN
+    SET LOCAL ROLE finance_ro;
+    PERFORM core.fn_advisor_pins('{}'::jsonb);
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: finance_ro konnte core.fn_advisor_pins aufrufen';
+  EXCEPTION
+    WHEN insufficient_privilege THEN RESET ROLE;
+    WHEN OTHERS THEN
+      RESET ROLE;
+      IF SQLERRM LIKE 'FAIL %' THEN RAISE; END IF;
+      RAISE EXCEPTION 'FAIL [finance_ro NEGATIV fn_advisor_pins]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [core.fn_advisor_pins nur Host: core_ro und finance_ro abgewiesen]';
   -- ===== (3e-CHILD) Kinder-Sicht: core_ro -> core.fn_sender_sees_household (Hilfe-Agent Household status read). Der
   -- Datei-Fixture-Owner (telegram_user_id 777) sieht den Haushalt; ein abgewiesener Aufruf wuerde vor dem Body werfen.
   BEGIN

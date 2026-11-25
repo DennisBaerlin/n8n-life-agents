@@ -61,6 +61,8 @@ DECLARE
     v_ready  boolean;
     v_gen    bigint;
     v_fresh  text[];
+    v_lastd  int;
+    v_staled int;
 BEGIN
     IF v_chat !~ '^[0-9]{1,18}$' THEN
         RETURN jsonb_build_object('ok', true, 'kind', 'none', 'example', NULL, 'offer', false, 'role', NULL, 'sees_household', false);
@@ -83,14 +85,14 @@ BEGIN
     END IF;
 
     -- 3a: frischer Entwurf des Owners vor offenen Abschnitten (Scope wie die generation-Abfrage unten)
-    IF v_owner THEN
+    IF v_owner AND EXISTS (SELECT 1 FROM agent.advisor_plans ap WHERE ap.status = 'draft' AND (ap.person_id IS NULL OR ap.person_id = v_pid)) THEN
+        v_lastd  := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'resume_last_days'), '')::int, 14);
+        v_staled := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'rollout_draft_stale_days'), '')::int, 30);
         SELECT array_agg(ap.domain) INTO v_fresh
         FROM agent.advisor_plans ap
         WHERE ap.status = 'draft' AND (ap.person_id IS NULL OR ap.person_id = v_pid)
-          AND ap.updated_at > now() - make_interval(days =>
-                COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'rollout_draft_stale_days'), '')::int, 30))
-          AND (ap.updated_at > now() - make_interval(days =>
-                   COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'resume_last_days'), '')::int, 14))
+          AND ap.updated_at > now() - make_interval(days => v_staled)
+          AND (ap.updated_at > now() - make_interval(days => v_lastd)
                OR (core.fn_reminder_allowed('advisor_resume', v_pid)
                    AND NOT core.fn_notify_told('advisor_resume', v_pid || ':' || ap.domain || ':' || ap.id || ':2')));
         IF v_fresh IS NOT NULL THEN

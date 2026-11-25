@@ -169,7 +169,7 @@ BEGIN
                 CONTINUE WHEN v_max IS NULL;
                 v_rkey := (v_pl->>'domain') || ':' || CASE WHEN (v_pl->>'per_user')::boolean THEN r.person_id ELSE 'household' END
                           || ':handoff:' || v_max;
-                CONTINUE WHEN core.fn_plan_rollout_latch(v_rkey) <> 'done';
+                CONTINUE WHEN core.fn_plan_rollout_latch(v_rkey) IS DISTINCT FROM 'done';
                 SELECT ns.last_fired_at INTO v_rat FROM core.notification_state ns WHERE ns.source = 'plan_rollout' AND ns.key = v_rkey;
                 v_stage := core.fn_nudge_stage(jsonb_build_object(
                     'source', 'advisor_resume', 'key_prefix', r.person_id || ':' || (v_pl->>'domain') || ':handoff:' || v_max,

@@ -13,15 +13,14 @@
 --   nur fuer role owner. Nie der Entwurf eines anderen Mitglieds.
 --   Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM).
 --   Rueckgabe jsonb genau { interview_advisor: text|null, paused_advisor: text|null }; wirft nie (Fehler -> beide null).
---   STABLE, SECURITY DEFINER (agent.advisor_plans hat RLS und ist fuer core_ro unsichtbar), search_path gepinnt, Body
---   schema-qualifiziert; EXECUTE an core_ro in util_create_core_ro.sql.
---   Tests: tests/db/core/test_fn_advisor_pins.sql, tests/db/cross/test_role_permissions.sql
+--   STABLE, INVOKER, nur Host-Cred (wie der heutige Knoten): person_id und role kommen vom Aufrufer, ein core_ro-Grant
+--   liesse jede freie core_ro-Abfrage (guide/monitor postgres_select) fremde Entwuerfe erfragen. search_path gepinnt.
+--   Tests: tests/db/core/test_fn_advisor_pins.sql, tests/db/cross/test_role_permissions.sql (core_ro abgewiesen)
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_pins(p jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
-SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
@@ -50,4 +49,3 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION core.fn_advisor_pins(jsonb) FROM public;
--- EXECUTE fuer core_ro (Orchestrator-Pin) erteilt packages/core/db/util/util_create_core_ro.sql.

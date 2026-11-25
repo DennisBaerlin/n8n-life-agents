@@ -17,7 +17,8 @@
 --     5. Quellen-Grenze: hat eine der exclusive_sources der Person heute (core.fn_today) schon geschrieben -> NULL,
 --        Stufe unverbraucht. Hoechstens eine Nachfass-Nachricht je Person und Tag; das Tagesbudget bleibt aussen.
 --     6. core.fn_proactive_claim(person, slot, 'normal') (voll/Pause -> NULL, unverbraucht), dann core.fn_should_notify.
---   Rueckgabe int 1 | 2 | NULL. Fehlender Pflichtwert -> NULL; wirft nie.
+--   Rueckgabe int 1 | 2 | NULL. Fehlender Pflichtwert -> NULL; ein echter Fehler wirft (der Cron-Lauf meldet ihn ueber
+--   core.sub_error_notify, statt still nie mehr zu erinnern).
 --   INVOKER (laeuft unter der Host-Cred der Crons), search_path gepinnt, Body schema-qualifiziert. EXECUTE nur Host.
 --   Tests: tests/db/core/test_fn_nudge_stage.sql
 -- ============================================================
@@ -80,8 +81,6 @@ BEGIN
     IF core.fn_proactive_claim(v_pid, v_slot, 'normal') AND core.fn_should_notify(v_src, v_prefix || ':' || v_want) THEN
         RETURN v_want;
     END IF;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
     RETURN NULL;
 END;
 $$;

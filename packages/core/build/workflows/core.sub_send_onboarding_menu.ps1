@@ -196,7 +196,8 @@ const planHint = (i) => i.ready ? PT(i.P, 'intro')
     }).join(', ') });
 // Naechster Schritt: die Fertig-Karte EINES Pakets (done_area) zeigt auf dessen offenen Plan; sonst eine angefangene
 // Beratung, die core.fn_get_next_step vor offene Abschnitte stellt (Angefangenes geht vor, gleicher Text wie der
-// Weiter-Knopf); sonst der erste offene Abschnitt und erst, wenn keiner mehr offen ist, der erste offene Plan (der Plan
+// Weiter-Knopf; auch bei offenem Sperr-Abschnitt, ein Entwurf hat das Tor schon einmal passiert); sonst der erste
+// offene Abschnitt und erst, wenn keiner mehr offen ist, der erste offene Plan (der Plan
 // blockiert nie den Weg zu den anderen Bereichen und ist keine Einrichtungspflicht).
 const doneArea = String($('Start').item.json.done_area || '');
 const doneMode = String($('Start').item.json.done_mode || '');
@@ -204,7 +205,7 @@ let ST = $json.step;
 if (typeof ST === 'string') { try { ST = JSON.parse(ST); } catch (e) { ST = null; } }
 const donePlan = PLANS.map(planOpen).find(i => i && i.P.package === doneArea) || null;
 const stepPlan = (!doneArea && ST && ST.ok === true && ST.kind === 'plan' && ST.state === 'draft')
-  ? (PLANS.map(planOpen).find(i => i && i.P.domain === ST.domain) || null) : null;
+  ? (PLANS.map(planInfo).find(i => i && i.P.domain === ST.domain && i.writable && i.ready && i.state === 'draft') || null) : null;
 const nextPlan = donePlan || stepPlan || (nextSection ? null : (PLANS.map(planOpen).find(i => i) || null));
 const next = nextPlan ? null : nextSection;
 const reqArea = String($('Start').item.json.area || '');

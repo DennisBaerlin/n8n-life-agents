@@ -83,5 +83,23 @@ Test-Case 'include_str auf eine Datei im Desktop-Ordner braucht keinen Eintrag: 
 
 Test-Case 'include_str auf eine fehlende Datei: rot' (With @{ "$D/core/src/texts.rs" = "static X: &str = include_str!(`"../../../../$L/fehlt.json`");`n" }) $true 'fehlt.json'
 
+$tok = 'scripts/lib/ui_tokens.ps1'
+$noTok = $all | Where-Object { $_ -ne $tok }
+$withTok = $all + $tok
+$dotBuild = "name: desktop-build`njobs:`n  app:`n    steps:`n      - run: |`n          . ./$tok`n"
+Test-Case 'Dot-Source mit ./ im Bau-Schritt fehlt in den Listen: rot' (With @{ "$tok" = "x`n"; '.github/workflows/desktop-build.yml' = $dotBuild }) $true 'ui_tokens.ps1'
+Test-Case 'Dot-Source mit ./ im Bau-Schritt steht in beiden Listen: gruen' (With @{ "$tok" = "x`n"; '.github/workflows/desktop-build.yml' = $dotBuild; '.github/workflows/desktop.yml' = New-Workflow $withTok $withTok }) $false ''
+
+$multi = "static X: &str = include_str!(`n    `"../../../../$T/notfallblatt-token.txt`",`n);`n"
+Test-Case 'mehrzeiliger include_str, Datei fehlt in den Listen: rot' (With @{ "$D/core/src/texts.rs" = $multi; "$D/core/src/backup.rs" = "x`n"; '.github/workflows/desktop.yml' = New-Workflow $noFix $noFix }) $true 'notfallblatt-token.txt'
+
+Test-Case 'include_str in einem Zeilenkommentar zaehlt nicht: gruen' (With @{ "$D/core/src/texts.rs" = "// include_str!(`"../../../../$L/fehlt.json`")`n" }) $false ''
+
+$arr = "{ `"bundle`": { `"resources`": [`"../../compose/compose.yml`"] } }`n"
+Test-Case 'bundle.resources als Liste, Datei fehlt in den Listen: rot' (With @{ "$D/app/tauri.conf.json" = $arr; '.github/workflows/desktop.yml' = New-Workflow $noCompose $noCompose; '.github/workflows/desktop-build.yml' = "name: desktop-build`n" }) $true 'compose.yml'
+
+$glob = "{ `"bundle`": { `"resources`": [`"../../compose/*.yml`"] } }`n"
+Test-Case 'bundle.resources mit Muster: rot (nicht aufloesbar)' (With @{ "$D/app/tauri.conf.json" = $glob }) $true 'Muster'
+
 if ($fails -eq 0) { Write-Host "desktop_paths_lint_test: OK" -ForegroundColor Green } else { Write-Host "desktop_paths_lint_test: $fails Fehler" -ForegroundColor Red }
 exit $fails

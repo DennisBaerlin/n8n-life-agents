@@ -1,6 +1,6 @@
 # Start-App auf Branch und PR: baut DMG (macOS arm64) und Setup (Windows) als Artefakte (desktop-build.yml). Die
 # Herstellerkennung von Docker prueft desktop-vendor-ids.yml. Von Hand: gh workflow run desktop.yml --ref <branch>
-# paths: beider Ausloeser = Dateien ausserhalb von provisioning/desktop, die die App einliest oder ihr Bau liest; scripts/desktop_paths_lint.ps1 haelt sie vollstaendig und gleich.
+# paths: beider Ausloeser = Dateien ausserhalb von provisioning/desktop, die die App einliest oder ihr Bau liest; scripts/desktop_paths_lint.ps1 haelt gleich und vollstaendig, soweit die Pfade als Text im Code stehen (Grenze im Kopf des Lints).
 name: desktop
 
 on:

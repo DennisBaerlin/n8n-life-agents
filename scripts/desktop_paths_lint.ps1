@@ -8,6 +8,8 @@
 #       desktop-build.yml (plus $ImplicitInputs) steht in push UND pull_request;
 #   (B) beide Workflow-Dateien stehen in beiden Listen;
 #   (C) push und pull_request nennen dieselben Muster (eine Liste, zwei Ausloeser: sonst baut der PR nicht, was der Push baut).
+# Grenze: Der Lint sieht nur Pfade, die als Text dastehen. Was ein Skript selbst nachlaedt (Read-UiTokens), steht in
+# $ImplicitInputs und ist von Hand zu pflegen.
 # Nicht aufgenommen: Shell-Skripte unter provisioning/lib, die die App nur ueber `docker run ... lifeagents <verb>` im master
 # erreicht. Der Lauf der App ruft sie nie auf; die Gegenstuecke (Blatt-Fixture, Vertrags-Konstanten) pruefen mock_runtime
 # (B.blatt-fixture-aktuell) und contract_lint 33, und die Fixture steht hier in der Liste.
@@ -54,14 +56,14 @@ if (Test-Path $desktopDir) {
     $incRx = [regex]'\binclude_(?:str|bytes)!\(\s*"([^"]+)"'
     foreach ($f in $rs) {
         $rel = Rel $f.FullName
-        $lines = [System.IO.File]::ReadAllLines($f.FullName, $u8)
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i].TrimStart().StartsWith('//')) { continue }
-            foreach ($m in $incRx.Matches($lines[$i])) {
-                $target = Resolve-Rel (Split-Path $rel -Parent).Replace('\', '/') $m.Groups[1].Value
-                if (-not (Test-Path -LiteralPath (Join-Path $Root $target))) { Fail "${rel}:$($i + 1): include verweist auf eine fehlende Datei: $target"; continue }
-                Add-Input $target "${rel}:$($i + 1)"
-            }
+        $text = [System.IO.File]::ReadAllText($f.FullName, $u8)
+        foreach ($m in $incRx.Matches($text)) {
+            $lineStart = $text.LastIndexOf("`n", $m.Index) + 1
+            if ($text.Substring($lineStart, $m.Index - $lineStart).TrimStart().StartsWith('//')) { continue }
+            $lineNo = ($text.Substring(0, $m.Index) -split "`n").Count
+            $target = Resolve-Rel (Split-Path $rel -Parent).Replace('\', '/') $m.Groups[1].Value
+            if (-not (Test-Path -LiteralPath (Join-Path $Root $target))) { Fail "${rel}:${lineNo}: include verweist auf eine fehlende Datei: $target"; continue }
+            Add-Input $target "${rel}:${lineNo}"
         }
     }
 }
@@ -71,12 +73,17 @@ if (Test-Path (Join-Path $Root $tauriRel)) {
     $conf = Read-Text $tauriRel | ConvertFrom-Json
     $res = $conf.bundle.resources
     if ($res) {
-        foreach ($p in $res.PSObject.Properties) { Add-Input (Resolve-Rel 'provisioning/desktop/app' $p.Name) "$tauriRel bundle.resources" }
+        # Tauri kennt Liste, Glob-Liste und Abbildung (Quelle -> Ziel); Schluessel bzw. Elemente sind die Quellpfade.
+        $srcs = if ($res -is [string] -or $res -is [array]) { @($res) } else { @($res.PSObject.Properties | ForEach-Object { $_.Name }) }
+        foreach ($s in $srcs) {
+            if ($s -match '[*?\[]') { Fail "$tauriRel bundle.resources: Muster '$s' kann der Lint nicht aufloesen; einzelne Dateien nennen."; continue }
+            Add-Input (Resolve-Rel 'provisioning/desktop/app' $s) "$tauriRel bundle.resources"
+        }
     }
 }
 
 if (Test-Path (Join-Path $Root $wfBuild)) {
-    $pathRx = [regex]'(?<![\w./-])((?:scripts|docs|config|packages|provisioning|tests)/[\w./-]+\.[A-Za-z0-9]+)'
+    $pathRx = [regex]'(?:(?<=\./)|(?<![\w./-]))((?:scripts|docs|config|packages|provisioning|tests)/[\w./-]+\.[A-Za-z0-9]+)'
     $blines = [System.IO.File]::ReadAllLines((Join-Path $Root $wfBuild), $u8)
     for ($i = 0; $i -lt $blines.Count; $i++) {
         foreach ($m in $pathRx.Matches($blines[$i])) {

@@ -7,17 +7,17 @@
 # Workflows dieses Repos nutzen; eine Inline-Liste (paths: [a, b]) wirft, damit die Sperre nicht still zu wenig verlangt.
 function Get-WorkflowPushFilter([string]$YamlText, [string]$Trigger = 'push') {
     $filter = @{ Paths = @(); Ignore = @() }
-    $inPush = $false; $pushIndent = -1; $key = $null
+    $inTrigger = $false; $triggerIndent = -1; $key = $null
     foreach ($line in ($YamlText -split "\r?\n")) {
         if ($line -match '^\s*(#.*)?$') { continue }
         $indent = ($line -replace '^(\s*).*$', '$1').Length
-        if (-not $inPush) {
-            if ($line -match "^\s+$([regex]::Escape($Trigger)):\s*(#.*)?$") { $inPush = $true; $pushIndent = $indent }
+        if (-not $inTrigger) {
+            if ($line -match "^\s+$([regex]::Escape($Trigger)):\s*(#.*)?$") { $inTrigger = $true; $triggerIndent = $indent }
             continue
         }
-        if ($indent -le $pushIndent) { break }
+        if ($indent -le $triggerIndent) { break }
         if ($line -match '^\s*(paths|paths-ignore):\s*(.*)$') {
-            if ($Matches[2] -and $Matches[2] -notmatch '^#') { throw "Pfad-Filter als Inline-Liste nicht lesbar: $($line.Trim())" }
+            if ($Matches[2] -and $Matches[2] -notmatch '^#') { throw "Pfad-Filter ($Trigger) als Inline-Liste nicht lesbar: $($line.Trim())" }
             $key = if ($Matches[1] -eq 'paths') { 'Paths' } else { 'Ignore' }
             continue
         }

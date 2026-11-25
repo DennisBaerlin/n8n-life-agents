@@ -810,6 +810,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(comment_lint|dev/comment_lint_test|lib/git_sandbox)\.ps1$
 
+      - id: session-stall-check-test
+        name: session_stall_check_test (a session blocked on an unanswered last tool call is reported; idle, fresh, deleted-worktree and copied-request lines are not; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/session_stall_check_test.ps1
+        pass_filenames: false
+        files: ^scripts/dev/session_stall_check(_test)?\.ps1$
+
       - id: layout-lint-test
         name: layout_lint_test (rule L8 - mojibake in a text file turns red, real umlauts/euro/Korean stay green; no Docker)
         language: system

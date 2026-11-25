@@ -50,7 +50,7 @@ Farben nur als `var(--token)`. Neue Farbe: Token mit Paarung in `config/ui.token
 
 ## 4. Selbst prüfen (feste Liste, kostet nichts)
 
-Im Browser-Bereich (`preview_start`, Handybreite mit `resize_window`, danach zurück auf `desktop`; die eigene Prüfung braucht kein Zutun des Owners):
+Im Browser-Bereich (`preview_start`, Handybreite mit `resize_window`, danach zurück auf `desktop`). Nur wenn der Owner am Rechner ist: `preview_start` kann auf eine Freigabe im Desktop-Fenster warten, die per Remote Control nicht erscheint, und die Session steht dann still, bis jemand am Rechner antwortet. Ist der Owner unterwegs oder läuft die Session unbeaufsichtigt, prüfst du über die Aufnahmen von `build_ui_review.ps1` (Bilder und `*.txt`) und den Prüf-Agenten (§5). Die Browser-Punkte trägst du als offen in die Fertig-Meldung ein.
 
 - [ ] Jeder betroffene Bildschirm in jedem betroffenen Zustand, hell und dunkel.
 - [ ] 320 px Breite: kein seitliches Überlaufen (`javascript_tool`: `document.documentElement.scrollWidth <= innerWidth`).

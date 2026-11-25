@@ -31,28 +31,24 @@ sql() { pg_su_psql -X -tA -q -v ON_ERROR_STOP=1 -d "$DB" -c "$1"; }
 if rt_is_compose; then RT_NAME=compose; else RT_NAME=systemd; fi
 
 ORIG_VER="$(cat "$VER" 2>/dev/null || printf dev)"
-MOCK_PID=''; TGMOCK_PID=''; STOPPED_TIMERS=()
+MOCK_PID=''; TGMOCK_PID=''
 # shellcheck disable=SC2329  # aufgerufen ueber trap EXIT
 cleanup() {
   [ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null
   [ -n "$TGMOCK_PID" ] && kill "$TGMOCK_PID" 2>/dev/null
   printf '%s\n' "$ORIG_VER" > "$VER"
   sql "DELETE FROM core.update_requests; DELETE FROM core.notification_state WHERE source = 'release_update';" >/dev/null 2>&1
-  for t in "${STOPPED_TIMERS[@]}"; do systemctl start "$t" 2>/dev/null; done
 }
 trap cleanup EXIT
 
-# Die echten Update-Timer des Substrats ruhen waehrend der Faelle: der minuetliche Runner uebernahm sonst einen
-# Test-Auftrag vor dem Fall (mit dem echten GitHub statt dem Mock -> "superseded", Flake sig_missing_refused 2026-10-31)
-# oder hielt zur vollen Minute die Update-Sperre (Flakes run_lock_busy 2026-10-26, run_interrupted 2026-10-30).
+# Ruhe-Waechter: die Zeitgeber des Substrats ruhen waehrend der Faelle (Suspend-TestTimers im Treiber, scripts/lib/test_stack.ps1).
+# Der Minuten-Runner uebernaehme sonst einen Test-Auftrag gegen den echten GitHub ("superseded") oder hielte zur vollen Minute die
+# Update-Sperre; jeder weitere Zeitgeber, der sie nimmt (Liste: scripts/timer_lock_lint.ps1), liesse den Runner den Auftrag
+# unangetastet ("Sperre belegt") und kippte Folgefaelle, die nichts damit zu tun haben: der stuendliche Sicherungs-Timer haelt sie
+# waehrend seiner Sicherung.
+tmr_active() { systemctl list-units --type=timer --state=active --no-legend --plain 'lifeagents-*.timer' 2>/dev/null | awk '{print $1}' | tr '\n' ' '; }
 if ! rt_is_compose; then
-  for t in lifeagents-update-run.timer lifeagents-update-check.timer; do
-    if systemctl is-active --quiet "$t"; then systemctl stop "$t"; STOPPED_TIMERS+=("$t"); fi
-  done
-  for _ in $(seq 1 150); do
-    systemctl is-active --quiet lifeagents-update-run.service || systemctl is-active --quiet lifeagents-update-check.service || break
-    sleep 0.2
-  done
+  if [ -z "$(tmr_active)" ]; then pass timers_quiet; else fail timers_quiet "laufende Zeitgeber: $(tmr_active)"; fi
 fi
 
 # --- Fake-Releases ---------------------------------------------------------------------------------------------

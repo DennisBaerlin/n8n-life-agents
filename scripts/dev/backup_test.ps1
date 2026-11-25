@@ -39,10 +39,10 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages')
 }
 
 try {
-    if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
+    Suspend-TestTimers -Container $Container -Runtime $suiteRuntime
     $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/cases.sh", $root)
 } finally {
-    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
+    Resume-TestTimers -Container $Container -Runtime $suiteRuntime
 }
 $lines = @($r.Output)
 foreach ($l in $lines) {

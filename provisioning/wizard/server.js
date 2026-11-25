@@ -730,7 +730,9 @@ function reachView(v, tun, R) {
   // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
   const href = tun.url || (tun.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
   const login = href && R.link === 'login_link';
-  return Object.assign(v, { title: t('title'), help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_more') }] : []),
+  return Object.assign(v, { title: t('title'),
+    // Zweiter Satz: am Rechner mit dem Hinweis auf den Code, am Handy (Code ausgeblendet) ohne; app.css blendet je einen aus.
+    help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_qr'), desk: true }, { p: T('core.wizard.tunnel.login_more'), phone: true }] : []),
     qr: login ? qr.toSvg(qr.encode(href)) : null, qrDesk: login,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
     note: R.note ? { kind: 'warn', text: t('note') } : null,
     link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && tun.host ? { host: tun.host } : null,
@@ -744,7 +746,9 @@ function tunnelView() {
   const v = { kind: 'connect', title: T('core.wizard.connect.title'), poll: true };
   if (tun.down) {
     return Object.assign(v, { title: T('core.wizard.tunnel.down_title'), help: [{ p: T('core.wizard.tunnel.down_help') }],
-      note: { kind: 'warn', text: T('core.wizard.tunnel.down_note') }, poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
+      // FritzBox nur vorschlagen, wenn gemessen: eigene IPv4 sicher erkannt und Ports frei (beim Wählen der FritzBox geprüft).
+      note: { kind: 'warn', text: T(flow.fritzboxFits(P.A, P.A.__dslite_auto) ? 'core.wizard.tunnel.down_note_fb' : 'core.wizard.tunnel.down_note') },
+      poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
   }
   return reachView(v, tun, REACH_TEXT[tun.state] || REACH_TEXT.starting);
 }
@@ -877,8 +881,8 @@ async function answer(id, raw, skip) {
     case 'reach':
       if (!['tunnel', 'fritzbox'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__reach = raw;
-      delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
       if (raw === 'fritzbox') {
+        delete P.A.__ports;   // jede FritzBox-Wahl misst neu (ein beendetes Programm gibt die Ports frei); beim Tunnel bleibt die Messung für den Störungs-Hinweis
         // Prüfliste Nr. 13: Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
         // Zugleich DS-Lite (Paket 3 reach_dslite, beim ersten Mal bis ~6 s): sicher erkannt ersetzt die Handfrage.
         const [r, d] = await Promise.all([bridge(['reach-ports'], { timeoutMs: 20000 }), bridge(['dslite'], { timeoutMs: 15000 })]);

@@ -67,9 +67,12 @@ function steps(Q, A) {
   return s;
 }
 
+// fritzboxFits(A, dslite) -> geht der FritzBox-Weg? Eigene IPv4 (dslite = 'no') und Ports 80/443 nicht belegt; die eine Regel
+//   für die Wahl (reachMode, Antwort __dslite) und den Hinweis der Tunnel-Störung (nur gemessen: __dslite_auto).
+function fritzboxFits(A, dslite) { return dslite === 'no' && A.__ports !== 'busy'; }
 // reachMode(A) -> 'tunnel' | 'fritzbox' (DS-Lite oder belegte Ports führen zum Tunnel, nie zum Löschen).
 function reachMode(A) {
-  return A.__reach === 'fritzbox' && A.__dslite === 'no' && A.__ports !== 'busy' ? 'fritzbox' : 'tunnel';
+  return A.__reach === 'fritzbox' && fritzboxFits(A, A.__dslite) ? 'fritzbox' : 'tunnel';
 }
 
 // answered(Q, A, id) -> ist die Seite beantwortet? (Fortsetzen nach einem Abbruch springt zur ersten offenen Seite.)
@@ -386,6 +389,6 @@ function packagesArg(Q, A) {
   return p.length ? p.join(',') : 'none';
 }
 
-module.exports = { steps, reachMode, answered, envOf, question, stepOf, helpBlocks, valueProblem,
+module.exports = { steps, reachMode, fritzboxFits, answered, envOf, question, stepOf, helpBlocks, valueProblem,
   allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, domainCheck, myfritzGuess,
   userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef, backupCandidates, backupSteps };

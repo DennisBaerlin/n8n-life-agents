@@ -119,7 +119,7 @@ $rows = @('s4t0-n8n|com.docker.compose.project=s4t0,io.lifeagents.install=s4t0',
           's4t0-core-next|io.lifeagents.install=s4t0', 's4t0-patchsrc|io.lifeagents.install=s4t0', 'fremd|io.lifeagents.install=other,lifeagents.worktree=C:/x')
 $side = @(Select-TestStackSideContainers -Rows $rows -Project 's4t0')
 Assert-That (($side -join ',') -eq 's4t0-testbridge,s4t0-tgmock') 'Neben-Container: Install- und Worktree-Etikett, ohne Compose-Projekt; nie Kurzlaeufe des Kerns, nie Fremdes'
-Assert-That ($script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -and $script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -match 'invented' -and $script:TestStackMockAnswers['TELEGRAM_BOT_TOKEN'] -match 'invented') 'Verbund: Bot-Token und KI-Schluessel erfunden (kein echter Zugang in der Installation)'
+Assert-That ($script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -and $script:TestStackMockAnswers['ANTHROPIC_API_KEY'] -match 'test-fake' -and $script:TestStackMockAnswers['TELEGRAM_BOT_TOKEN'] -match 'invented') 'Verbund: Bot-Token und KI-Schluessel erfunden (kein echter Zugang in der Installation)'
 
 # --- Etikett lesen: fehlendes Volume ist $null, ein gestoertes Docker ist ein Fehler (nie „gibt es nicht“) ------------------
 Assert-That ((ConvertFrom-TestStackLabelResult -Code 0 -Output @('{"io.lifeagents.install":"s4t0"}') -Label 'io.lifeagents.install') -eq 's4t0') 'Etikett gelesen'
@@ -257,12 +257,29 @@ Assert-That ($mk[-1] -eq '/tmp/gwtest_mock.js' -and $mk[-2] -eq 's4t3b-master:wt
 foreach ($s in @('update_chat_test', 'bot_menu_test', 'backup_test')) {
     $p = Join-Path $repo "scripts\dev\$s.ps1"
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$null, [ref]$null)
-    $sus = @(Get-SuiteCommands $p 'Suspend-TestStackTick')
+    $sus = @(Get-SuiteCommands $p 'Suspend-TestTimers')
     $inFinally = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $null -ne $n.Finally }, $true) |
-        Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Resume-TestStackTick' }, $true)).Count -gt 0 })
+        Where-Object { @($_.Finally.FindAll({ param($c) $c -is [System.Management.Automation.Language.CommandAst] -and $c.GetCommandName() -eq 'Resume-TestTimers' }, $true)).Count -gt 0 })
     # Jede Pause steht im Rumpf eines try, dessen finally fortsetzt: scheitert die Pause selbst (der Link ist dann schon getauscht), laeuft das finally trotzdem.
     $guarded = @($sus | Where-Object { $c = $_; @($inFinally | Where-Object { $c.Extent.StartOffset -ge $_.Body.Extent.StartOffset -and $c.Extent.EndOffset -le $_.Body.Extent.EndOffset }).Count -gt 0 })
-    Assert-That ($sus.Count -ge 1 -and $guarded.Count -eq $sus.Count) "$s : pausiert den Tick im Verbund im Rumpf eines try und setzt ihn in finally fort (auch wenn die Pause selbst scheitert)"
+    Assert-That ($sus.Count -ge 1 -and $guarded.Count -eq $sus.Count) "$s : legt die Zeitgeber (Verbund: den Tick) im Rumpf eines try still und setzt sie in finally fort (auch wenn die Pause selbst scheitert)"
+}
+# Klassisch: Suspend-TestTimers legt alle aktiven lifeagents-*.timer still (keine feste Liste), sonst brachte ein nicht gelisteter
+# Zeitgeber (die stuendliche Sicherung hielt die Update-Sperre) die Runner-Faelle mit "Sperre belegt" ins Leere.
+$tmOff = Get-TestSubstrateTimerScript -Action pause
+$tmOn = Get-TestSubstrateTimerScript -Action resume
+Assert-That ($tmOff -match [regex]::Escape("--type=timer --state=active") -and $tmOff -match [regex]::Escape("'lifeagents-*.timer'")) 'Zeitgeber: pausieren = alle aktiven lifeagents-*.timer, keine feste Liste'
+Assert-That ($tmOff -match 'systemctl stop' -and $tmOff -match 'systemctl is-active' -and $tmOff -notmatch 'is-active --quiet') 'Zeitgeber: pausieren stoppt die Timer und wartet auf einen schon laufenden Dienst'
+Assert-That ($tmOff -match 'lifeagents-test-timers-stopped' -and $tmOn -match 'lifeagents-test-timers-stopped' -and $tmOn -match 'systemctl start') 'Zeitgeber: fortsetzen startet genau die gemerkten Timer'
+Assert-That (Test-Throws { Get-TestSubstrateTimerScript -Action 'stop' }) 'Zeitgeber: unbekannte Aktion = Abbruch'
+$bashTm = Get-TestStackBash
+foreach ($pair in @(@('pause', $tmOff), @('resume', $tmOn))) {
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("tm_" + [guid]::NewGuid().ToString('N') + '.sh')
+    try {
+        [System.IO.File]::WriteAllText($tmp, ($pair[1] -replace "`r", ''), (New-Object System.Text.UTF8Encoding($false)))
+        $syn = Invoke-Native $bashTm @('-n', ($tmp -replace '\\', '/'))
+        Assert-That ($syn.Code -eq 0) "Zeitgeber: $($pair[0])-Skript ist gueltiges sh ($($syn.Output -join ' '))"
+    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
 }
 foreach ($s in @('update_chat_test', 'bot_menu_test', 'llm_gateway_test', 'backup_test', 'n8n_patch_test')) {
     $p = Join-Path $repo "scripts\dev\$s.ps1"

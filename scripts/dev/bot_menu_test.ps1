@@ -58,8 +58,7 @@ Write-Host ("-" * 64)
 # Der echte Minuten-Runner wuerde einen Menue-Auftrag mit dem echten Telegram-Endpunkt abarbeiten und mit dem Test
 # um den Auftrag konkurrieren -> fuer die Testdauer anhalten (am Ende wieder starten).
 try {
-if ($suiteRuntime -eq 'compose') { Suspend-TestStackTick -Master $Container }
-else { & docker exec $Container systemctl stop lifeagents-update-run.timer 2>$null | Out-Null }
+Suspend-TestTimers -Container $Container -Runtime $suiteRuntime
 $audienceBefore = Invoke-Sql "SELECT value FROM core.config WHERE category = 'app' AND key = 'audience';"
 [void](Invoke-Sql "UPDATE core.config SET value = 'owner' WHERE category = 'app' AND key = 'audience';")
 Clear-MockTelegramRequests -Container $Container
@@ -243,8 +242,7 @@ $prev4 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 [void](& docker exec $Container bash -c $sh 2>&1)
 $ErrorActionPreference = $prev4
 } finally {
-    if ($suiteRuntime -eq 'compose') { Resume-TestStackTick -Master $Container }
-    else { & docker exec $Container systemctl start lifeagents-update-run.timer 2>$null | Out-Null }
+    Resume-TestTimers -Container $Container -Runtime $suiteRuntime
 }
 
 Write-Host ("-" * 64)

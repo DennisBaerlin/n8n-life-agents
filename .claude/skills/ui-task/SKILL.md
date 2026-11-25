@@ -50,7 +50,7 @@ Farben nur als `var(--token)`. Neue Farbe: Token mit Paarung in `config/ui.token
 
 ## 4. Selbst prüfen (feste Liste, kostet nichts)
 
-Im Browser-Bereich (`preview_start`, Handybreite mit `resize_window`, danach zurück auf `desktop`). Nur wenn der Owner am Rechner ist: `preview_start` kann auf eine Freigabe im Desktop-Fenster warten, die per Remote Control nicht erscheint, und die Session steht dann still, bis jemand am Rechner antwortet. Ist der Owner unterwegs oder läuft die Session unbeaufsichtigt, prüfst du über die Aufnahmen von `build_ui_review.ps1` (Bilder und `*.txt`) und den Prüf-Agenten (§5). Die Browser-Punkte trägst du als offen in die Fertig-Meldung ein.
+Ist der Owner am Rechner, prüfst du im Browser-Bereich (`preview_start`, Handybreite mit `resize_window`, danach zurück auf `desktop`). Ist er unterwegs oder läuft die Session unbeaufsichtigt, nimmst du kein `preview_start`: Es kann auf eine Freigabe im Desktop-Fenster warten, die per Remote Control nicht erscheint, und die Session steht dann still. Stattdessen startest du das Vorschau-Skript aus `.claude/launch.json` als Hintergrund-Befehl und prüfst in Chrome über Claude in Chrome (eigener Tab, am Ende schließen). Fehlerkorrekturen ohne offene Entscheidung prüft die Session so selbst fertig. Was der Owner entscheiden muss, wartet auf §6.
 
 - [ ] Jeder betroffene Bildschirm in jedem betroffenen Zustand, hell und dunkel.
 - [ ] 320 px Breite: kein seitliches Überlaufen (`javascript_tool`: `document.documentElement.scrollWidth <= innerWidth`).

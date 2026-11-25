@@ -229,6 +229,12 @@ cli backup restore "$B" --yes; rc=$?
 ok_if R.prev-sicherung-aendert-nichts '[ "$rc" -eq 0 ] && active_is "$KA" && [ "$(prev_n)" = 1 ]' "rc=$rc"
 cli_in "$W/ka" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.zweimal-gleicher-schluessel '[ "$rc" -eq 0 ] && active_is "$KA" && [ "$(prev_n)" = 1 ]' "rc=$rc"
+# --parts holt nur Gespraeche, Einstellungen und Zugaenge nach: der Text behauptet kein Ersetzen aller Nutzerdaten.
+cli backup restore "$A" --parts --yes; rc=$?
+ok_if R.parts-text-wahr '[ "$rc" -eq 0 ] && ! said "ALLE aktuellen Nutzerdaten" && said "nachgeholt"' "rc=$rc $(head -c 160 "$W/out.$n" | tr '\n' ' ')"
+# _bkp_rs_apply liest die Option --parts aus seinen Argumenten, nicht aus einer Variablen des Aufrufers (set -u: sonst "unbound").
+mkdir -p "$W/leer"
+ok_if R.rs-apply-parts-ohne-aufrufer '( set -u; for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do . "$ROOT/provisioning/lib/$f"; done; unset parts_only; _bkp_rs_apply "$W/leer" "" "" 0 "" "" "" 1 ) > "$W/out.rsa" 2>&1' "$(head -c 200 "$W/out.rsa" 2>/dev/null | tr '\n' ' ')"
 
 # Jede Wiederherstellung mit eigenen Daten schreibt vorher eine Sicherung (Server: /var/backups/lifeagents).
 ok_if_local R.vorab-sicherung '[ -n "$(new_backups)" ]' \
@@ -502,7 +508,7 @@ q "DELETE FROM core.llm_usage WHERE id IN ('$LU_A','$LU_B'); DELETE FROM core.no
 # einspielbar). Zugaenge kommen aus der Sicherung (access.json): Karriere traegt nur den JSearch-Schluessel, Adzuna fehlt -> der
 # Zugang gilt weiter als fehlend; Paperless traegt seinen Schluessel, wenn das Substrat einen hat.
 # hand-injected: das Substrat installiert Karriere ohne Fremd-Schluessel; ein erfundener JSearch-Wert zeigt den Rueckweg.
-ZK='bk-jsearch-erfunden-0042'
+ZK='bk-jsearch\erfunden-0042'   # mit Rueckwaertsstrich: der Zugangs-Rundlauf darf ihn nicht veraendern
 ( umask 077; env_upsert "$(lifeagents_env_file career)" JSEARCH_API_KEY "$ZK" )
 ZP="$(read_env_value "$(lifeagents_env_file paperless)" PAPERLESS_API_TOKEN 2>/dev/null || true)"
 NB="$(vexp pakete)"

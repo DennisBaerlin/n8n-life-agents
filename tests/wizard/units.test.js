@@ -98,6 +98,10 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'yes' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no' }), 'fritzbox');
+  // Dieselbe Regel für den Hinweis der Tunnel-Störung (gemessen, nicht geantwortet).
+  assert.equal(flow.fritzboxFits({ __dslite_auto: 'no' }, 'no'), true);
+  assert.equal(flow.fritzboxFits({ __dslite_auto: 'no', __ports: 'busy' }, 'no'), false);
+  assert.equal(flow.fritzboxFits({}, undefined), false, 'nicht gemessen = kein Vorschlag');
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }).includes('fb_ports_busy'));
 });
 

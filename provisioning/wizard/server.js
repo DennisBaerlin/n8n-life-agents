@@ -747,7 +747,7 @@ function tunnelView() {
   if (tun.down) {
     return Object.assign(v, { title: T('core.wizard.tunnel.down_title'), help: [{ p: T('core.wizard.tunnel.down_help') }],
       // FritzBox nur vorschlagen, wenn gemessen: eigene IPv4 sicher erkannt und Ports frei (beim Wählen der FritzBox geprüft).
-      note: { kind: 'warn', text: T(P.A.__dslite_auto === 'no' && P.A.__ports !== 'busy' ? 'core.wizard.tunnel.down_note_fb' : 'core.wizard.tunnel.down_note') },
+      note: { kind: 'warn', text: T(flow.fritzboxFits(P.A, P.A.__dslite_auto) ? 'core.wizard.tunnel.down_note_fb' : 'core.wizard.tunnel.down_note') },
       poll: false, action: 'tunnel_retry', next: T('core.wizard.tunnel.check_again') });
   }
   return reachView(v, tun, REACH_TEXT[tun.state] || REACH_TEXT.starting);
@@ -881,8 +881,8 @@ async function answer(id, raw, skip) {
     case 'reach':
       if (!['tunnel', 'fritzbox'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__reach = raw;
-      delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
       if (raw === 'fritzbox') {
+        delete P.A.__ports;   // jede FritzBox-Wahl misst neu (ein beendetes Programm gibt die Ports frei); beim Tunnel bleibt die Messung für den Störungs-Hinweis
         // Prüfliste Nr. 13: Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
         // Zugleich DS-Lite (Paket 3 reach_dslite, beim ersten Mal bis ~6 s): sicher erkannt ersetzt die Handfrage.
         const [r, d] = await Promise.all([bridge(['reach-ports'], { timeoutMs: 20000 }), bridge(['dslite'], { timeoutMs: 15000 })]);

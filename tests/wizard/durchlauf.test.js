@@ -556,6 +556,26 @@ test('Tunnel: Tailscale stumm, FritzBox vorher gemessen (eigene IPv4, Ports frei
   } finally { await w.stop(); }
 });
 
+test('Tunnel: Tailscale stumm, FritzBox gemessen, aber Ports belegt = kein FritzBox-Vorschlag', async () => {
+  const w = await startWizard({ hints: {}, env: { WIZARD_TUNNEL_GRACE_MS: '0' } });
+  try {
+    await login(w);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'dslite'), 'no');
+    fs.writeFileSync(path.join(w.fake, 'ports'), 'busy');
+    await expectOk(await answer(w, 'reach', 'fritzbox'));
+    assert.equal((await page(w)).id, 'fb_ports_busy');
+    await expectOk(await post(w, '/api/back', {}));
+    for (const [id, v] of [['reach', 'tunnel'], ['backup_dir', 'other'], ['backup_dir_custom', '/daten/sicherung']]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'reach'), 'starting');
+    await expectOk(await answer(w, 'review', null));
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'tunnel_retry' ? x : null; });
+    assert.ok(!/FritzBox/.test(p.note.text), 'Ports belegt: der FritzBox-Weg führte gleich wieder zur Port-Meldung');
+  } finally { await w.stop(); }
+});
+
 test('Verbinden: Adresse noch nicht da = sichtbar warten mit Restzeit, dann geht es von allein weiter', async () => {
   const w = await toConnect({}, 'reach_wait');
   try {

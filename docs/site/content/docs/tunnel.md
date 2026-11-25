@@ -22,7 +22,7 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 
    *Erwartet:* Tailscale fragt, ob du das neue Gerät mit deinem Konto verbinden willst. Bestätige das.
 3. **Empfang erlauben:** Die App zeigt „Erlaube deinem Rechner den Empfang“. Klick auf **Freigabe-Seite öffnen**. Für eine öffentliche Adresse verlangt Tailscale, dass in deinem Konto Zertifikate (HTTPS) und Funnel erlaubt sind ([Tailscale Funnel](https://tailscale.com/kb/1223/funnel)). Stimme auf dieser Seite zu. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht [unten](#neutraler-name).
-4. **Zurück zur App:** Die App gibt deinem Rechner bei Tailscale einen neutralen Namen. Seine öffentliche Adresse endet auf `.ts.net`. Danach installiert die App, gleich mit dieser Adresse. Antwortet Tailscale zwei Minuten lang nicht, zeigt die App **Erneut prüfen**; mit **Zurück** wählst du stattdessen den Weg über die FritzBox.
+4. **Zurück zur App:** Die App gibt deinem Rechner bei Tailscale einen neutralen Namen. Seine öffentliche Adresse endet auf `.ts.net`. Danach installiert die App, gleich mit dieser Adresse. Antwortet Tailscale zwei Minuten lang nicht, zeigt die App **Erneut prüfen**; mit **Zurück** kommst du zur Übersicht und kannst den Weg ändern. Hat die App vorher gemessen, dass dein Anschluss für die FritzBox taugt, schlägt sie diesen Weg vor.
 
    *Erwartet:* Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut Tailscale bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Kommt Telegram nicht durch, warte ein paar Minuten und klick auf **Noch einmal prüfen**.
 

@@ -2,6 +2,7 @@ Life Agents – Notfallblatt für deine Sicherungen
 Schlüssel ka8ae6e6e · gültig seit 2026-11-12
 
 Auf einem neuen Rechner lässt sich ohne diesen Schlüssel keine deiner Sicherungen öffnen. Drucke das Blatt aus oder speichere es in deinem Passwort-Manager. Lege es nicht in den Sicherungsordner.
+Deine Sicherungen enthalten auch die Zugänge, die du für Module eingegeben hast (etwa Paperless oder Sprachnachrichten). Ist das Blatt oder eine Sicherungs-Datei verloren, erneuere diese Zugänge beim jeweiligen Anbieter.
 
 Notfallschlüssel
   labk1_04hmasw9nf6yy0938nkrkaydxw0j6hb7h6nwvvr14d2pf2dbsqqz3kfy

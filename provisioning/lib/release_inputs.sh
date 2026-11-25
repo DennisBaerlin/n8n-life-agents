@@ -1056,6 +1056,7 @@ reach_tunnel_connect() {
   if ! reach_cli_ts_install; then ui_step_bad 'Tailscale ließ sich nicht einrichten (Hinweis oben)'; return 0; fi
   ui_step_done
   reach_cli_tunnel_settle "${N8N_PORT:-5678}"
+  [ -n "${_reach_authkey:-}" ] && { reach_cli_ts_login_key || true; }
   while [ "$REACH_CLI_STATE" != ready ]; do
     if ! ui_interactive; then
       note "Tunnel noch nicht fertig: $(reach_cli_state_text "$REACH_CLI_STATE")."
@@ -1365,6 +1366,21 @@ _answer_key_denied() {
   return 1
 }
 
+# _answers_ts_authkey_guard — TS_AUTHKEY (Tailscale-Anmeldeschluessel) aus der Antwort-Datei wandert in die nicht
+#   exportierte Shell-Variable _reach_authkey (lib/reach.sh _reach_key_login), TS_AUTHKEY selbst wird geloescht: kein
+#   Kindprozess (curl, apt, npm, n8n, docker compose) erbt ihn. Die Loader loeschen TS_AUTHKEY vor dem Lesen, damit nur
+#   die Datei zaehlt, nie die Umgebung des Aufrufers. Bewusst nicht in _INSTALL_ENV_KEYS (einmal verbraucht, gespeichert
+#   waere er nur ein Risiko). Ohne Praefix tskey- ist es kein Schluessel -> Warnung ohne Wert, verworfen.
+_answers_ts_authkey_guard() {
+  [ -n "${TS_AUTHKEY:-}" ] || { unset TS_AUTHKEY; return 0; }
+  case "$TS_AUTHKEY" in
+    tskey-?*) _reach_authkey="$TS_AUTHKEY" ;;
+    *) warn "Antwort-Datei: TS_AUTHKEY ist kein Tailscale-Anmeldeschlüssel (erwartet tskey-…) — ignoriert." ;;
+  esac
+  unset TS_AUTHKEY
+  return 0
+}
+
 # Wizard-Form (erste Zeile genau `# lifeagents-answers v1`, Schreiber = Wizard im master): danach nur
 # `KEY=wert`-Zeilen wie in core.env (env_upsert) — Wert = alles nach dem ersten `=`, roh, ohne Quotes/Escapes. Strenger als
 # die .env-Form: jeder Schluessel hoechstens einmal, keine Leer-/Kommentarzeilen, kein Steuerzeichen (auch kein CR), Wert
@@ -1386,12 +1402,14 @@ _answers_load_wizard() {
     export "${key?}"
   done < "$file"
   [ "$line" -ge 1 ] || die "Antwort-Datei ist leer."
+  _answers_ts_authkey_guard
 }
 
 # install_answers_load <datei> — liest und exportiert; rc 0 = gelesen. Abbruch (die) bei Formfehlern.
 install_answers_load() {
   local file="$1" rest key val tok line=1 kline n first=''
   [ -r "$file" ] || die "Antwort-Datei nicht lesbar: ${file} (--unattended)."
+  unset TS_AUTHKEY _reach_authkey
   IFS= read -r first < "$file" || true
   if [ "$first" = "$ANSWERS_WIZARD_HEADER" ]; then _answers_load_wizard "$file"; return 0; fi
   # Ganze Datei als Text (auch ohne Zeilenumbruch am Ende). Ein CR am Zeilenende (Windows-Editor) ist ein Formfehler,
@@ -1429,6 +1447,7 @@ install_answers_load() {
     fi
     declare -gx "${key}=${val}" 2>/dev/null || die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} lässt sich nicht setzen."
   done
+  _answers_ts_authkey_guard
   return 0
 }
 

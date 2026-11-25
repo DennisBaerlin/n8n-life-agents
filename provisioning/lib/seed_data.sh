@@ -46,6 +46,33 @@ _sql_str() {
 # Install (SEED_PKG=<pkg> = nur dieses Paket) — ein Code-Pfad, kein Cross-Package-Side-Effect.
 _seed_skip_pkg() { [ -n "${SEED_PKG:-}" ] && [ "${SEED_PKG}" != "$1" ]; }
 
+# _seed_keys <manifest> <jq-ausdruck> -> SQL-Liste 'a','b' der Schluessel, die der Ausdruck liefert (eine Zeile je Schluessel).
+_seed_keys() {
+  local k out=''
+  while IFS= read -r k; do [ -n "$k" ] && out="${out}${out:+,}$(_sql_str "$k")"; done < <(jq -r "$2" "$1" 2>/dev/null)
+  printf '%s' "$out"
+}
+
+# _seed_reconcile <tabelle> <schluessel-spalte> <pkg> <sql-liste> — Registry-Zeilen des Pakets entfernen, die sein Manifest nicht
+#   mehr fuehrt (auch bei leerem Block). Grund: der Upsert allein liesse umbenannte oder entfernte Eintraege fuer immer stehen
+#   (Fall: core.context_validators 'career_planning'); Update und Restore (_bkp_converge) raeumen so mit auf.
+#   Bewusst ohne core.monitor_acquisition_methods (FK von monitor_triggers: ein DELETE kippte den ganzen Seed) und ohne
+#   core.protected_contexts (Loeschschutz endet nur ueber die Deinstallation, fn_pkg_purge_data).
+#   Test: tests/backup/cases.sh S.registry-altreste
+_seed_reconcile() {
+  if [ -n "$4" ]; then printf 'DELETE FROM %s WHERE package = %s AND %s <> ALL (ARRAY[%s]::text[]);\n' "$1" "$(_sql_str "$3")" "$2" "$4"
+  else printf 'DELETE FROM %s WHERE package = %s;\n' "$1" "$(_sql_str "$3")"; fi
+}
+
+# _seed_reconcile_unowned <tabelle> <schluessel-spalte> <sql-liste aller Manifeste> — Altzeilen ohne Paket (package = '' aus der
+#   Zeit vor der package-Spalte), die kein Manifest mehr nennt. Die Liste sammeln die Seeder ueber alle Manifeste, auch fuer
+#   uebersprungene Pakete; geloescht wird nur im Core- bzw. Voll-Lauf (ein Paket-Lauf raeumt keine fremden Zeilen).
+_seed_reconcile_unowned() {
+  [ -z "${SEED_PKG:-}" ] || [ "$SEED_PKG" = core ] || return 0
+  if [ -n "$3" ]; then printf "DELETE FROM %s WHERE package = '' AND %s <> ALL (ARRAY[%s]::text[]);\n" "$1" "$2" "$3"
+  else printf "DELETE FROM %s WHERE package = '';\n" "$1"; fi
+}
+
 # --- (1) agent.ai_models  ----------------------------------------------------
 # jq liefert metadaten-flache TSV-Zeilen (Werte ohne Tabs/Newlines by construction); bash baut
 # das UPSERT.
@@ -365,9 +392,10 @@ _seed_contexts() {
 # Boundary (own-schema-scoping wie bei den Rollen-Grants): validate_fn muss ins eigene Paket-Schema
 # zeigen — ein Paket darf keinen fremden/Core-Validator binden.
 _seed_context_validators() {
-  local mf pkg cname fn
+  local mf pkg cname fn rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.context_validators // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_validators // {}) | to_entries[]
            | select(.key != "_comment") | [.key, .value, $pkg] | @tsv' "$mf" |
@@ -386,7 +414,9 @@ _seed_context_validators() {
       printf 'DO $dv$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $dv$;\n' \
         "$(_sql_str "$fn(jsonb)")" "$(_sql_str "context_validator $cname -> $fn(jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")"
     done
+    _seed_reconcile core.context_validators context_name "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.context_validators context_name "$all"
 }
 
 # --- (4a) core.context_scopes — Scope-/Permission-Registry -----
@@ -398,9 +428,10 @@ _seed_context_validators() {
 # reine Daten-Enums, keine fn-Bezeichner — die Durchsetzung sind die Tabellen-CHECKs (scope/write_permission/Cross).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall. Definitions- = Aufrufreihenfolge (vor renderers).
 _seed_context_scopes() {
-  local mf pkg cname scope perm
+  local mf pkg cname scope perm rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.context_scopes // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_scopes // {}) | to_entries[]
            | select(.key != "_comment")
@@ -415,7 +446,9 @@ _seed_context_scopes() {
         "$(_sql_str "$cname")" "$(_sql_str "$scope")" "$(_sql_str "$perm")" "$(_sql_str "$pkg")"
       printf 'ON CONFLICT (context_name) DO UPDATE SET scope=EXCLUDED.scope, write_permission=EXCLUDED.write_permission, package=EXCLUDED.package, updated_at=now();\n'
     done
+    _seed_reconcile core.context_scopes context_name "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.context_scopes context_name "$all"
 }
 
 # --- (4a2) Paket-Fakten-Skelette — leere facts-Kontexte, die das Paket besitzt -----
@@ -460,9 +493,10 @@ _seed_context_skeletons() {
 # Boundary (own-schema-scoping wie die Rollen-Grants): render_fn muss ins eigene Paket-Schema zeigen.
 # Signatur ist uniform fn(text)->text (Context-Name als Argument) — anders als die Validatoren fn(jsonb).
 _seed_context_renderers() {
-  local mf pkg cname fn
+  local mf pkg cname fn rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.context_renderers // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     jq -r '.name as $pkg | (.context_renderers // {}) | to_entries[]
            | select(.key != "_comment") | [.key, .value, $pkg] | @tsv' "$mf" |
@@ -484,7 +518,9 @@ _seed_context_renderers() {
       printf 'DO $dr$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $dr$;\n' \
         "$(_sql_str "$fn(text)")" "$(_sql_str "context_renderer $cname -> $fn(text) nicht gefunden (Manifest-Typo/Apply-Order?)")"
     done
+    _seed_reconcile core.context_renderers context_name "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.context_renderers context_name "$all"
 }
 
 # --- (4c) core.advisors — generische Advisor-Registry -----
@@ -498,9 +534,10 @@ _seed_context_renderers() {
 # Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(text,text,jsonb)->jsonb (domain, person_id, opts).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-review_fn).
 _seed_advisors() {
-  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn xfn xsql gaps_sql ready_sql rollout_sql pv_sql
+  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn xfn xsql gaps_sql ready_sql rollout_sql pv_sql rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.advisors // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # learn_notes strikt boolean (Muster member_permeable der callback_handlers): nur ein echtes JSON-true
     # zaehlt, alles andere (fehlend/String/Zahl) -> false (fail-closed).
@@ -566,7 +603,9 @@ _seed_advisors() {
       printf 'DO $da$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $da$;\n' \
         "$(_sql_str "$fn(text,text,jsonb)")" "$(_sql_str "advisor $domain -> $fn(text,text,jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")"
     done
+    _seed_reconcile core.advisors domain "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.advisors domain "$all"
 }
 
 # --- (4d) core.cron_labels — Chat-Toggle-Registry der opt-in Crons -----
@@ -582,9 +621,10 @@ _seed_advisors() {
 # Person schaltet ihre Zustellung selbst ueber agent.reminder_prefs); "list" = Haushalts-Schalter (scope='household').
 # scope + default_enabled werden bei jedem Seed nachgezogen (ON CONFLICT DO UPDATE), damit ein Update den Wechsel traegt.
 _seed_cron_labels() {
-  local mf pkg key scope def
+  local mf pkg key scope def rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.cron_labels.list // [])[], ((.cron_labels.person // {}) | keys[] | select(. != "_comment")), (.cron_labels.mandatory // [])[]')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # "mandatory": ["<key>"] = Pflicht-Erinnerung (Haushalt, in /reminders nur Anzeige, nie schaltbar).
     # default_enabled per has() statt `// true`: jq-`//` ersetzt auch ein gesetztes false (sonst waere
@@ -601,7 +641,9 @@ _seed_cron_labels() {
       printf 'VALUES (%s, %s, %s, %s, %s, now())\n' "$(_sql_str "$key")" "$(_sql_str "$pkg")" "$(_sql_str "$scope")" "$def" "$mand"
       printf 'ON CONFLICT (cron_key) DO UPDATE SET package=EXCLUDED.package, scope=EXCLUDED.scope, default_enabled=EXCLUDED.default_enabled, mandatory=EXCLUDED.mandatory, updated_at=now();\n'
     done
+    _seed_reconcile core.cron_labels cron_key "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.cron_labels cron_key "$all"
 }
 
 # --- (4d2) core.ui_languages — die eine Liste der unterstuetzten Sprachen fester Nutzertexte -----
@@ -683,9 +725,10 @@ _seed_ui_texts() {
 # Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(jsonb)->jsonb.
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-handler_fn).
 _seed_callback_handlers() {
-  local mf pkg prefix fn perm
+  local mf pkg prefix fn perm rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
+    rk="$(_seed_keys "$mf" '(.callback_handlers // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # Nested-Schema { "<prefix>": { "handler_fn": "<pkg>.<fn>", "member_permeable": <bool> } } (Muster
     # _seed_context_scopes). member_permeable strikt boolean-getypt: nur exakt jq-true -> "true", jeder
@@ -711,7 +754,9 @@ _seed_callback_handlers() {
       printf 'DO $cb$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $cb$;\n' \
         "$(_sql_str "$fn(jsonb)")" "$(_sql_str "callback_handler $prefix -> $fn(jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")"
     done
+    _seed_reconcile core.callback_handlers prefix "$(jq -r '.name' "$mf")" "$rk"
   done
+  _seed_reconcile_unowned core.callback_handlers prefix "$all"
 }
 
 # --- (4e2) core.app_screens — Bildschirme der Mini-App „Übersicht“ (docs/package-contract.md §3.12) -----

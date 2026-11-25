@@ -103,14 +103,7 @@ _rr() (
   }
   backup_cmd_export() { ev export; printf 'enc' > "$1"; }
   backup_cmd_restore() { case " $* " in *' --plan '*) printf '{"ok":true,"release":"%s"}\n' "${PLAN_REL:-v9.1.0}" ;; *) ev restore ;; esac; }
-  _ret_write_memory() {
-    ev memory
-    if [ -n "${NO_MEMORY:-}" ]; then : > "$1/memory.counts"; return 0; fi
-    printf 'agent.guide_chat_memory\t2\t7\n' > "$1/memory.counts"; printf 'dump' > "$1/memory.dump"
-  }
-  memory_import() { ev memory_import; }
   move_snapshot() { printf 'rows finance.accounts 3\n'; }
-  _ret_write_config() { printf '[]' > "$1"; }
   retire_cli "$@"
 )
 _rt_env() {
@@ -143,7 +136,7 @@ _rt_reset; _rt_env
 eq RT.lauf-ok 0 "$_rc"
 _seq="$(_rt_log | sed -E 's/^systemctl\|(stop|disable)\|(.*)$/\1 \2/; s/^ev\|//' | grep -vE '^(systemctl|docker)' | tr '\n' ',')"
 case "$_seq" in
-  deleteWebhook,count-vor-stopp,count-vor-stopp,count-vor-stopp,stop\ lifeagents-update-check.timer,disable\ lifeagents-update-check.timer,*stop\ n8n,disable\ n8n,*disable\ lifeagents-llm-gateway,deleteWebhook,count-nach-stopp,export,memory,*) pass RT.reihenfolge ;;
+  deleteWebhook,count-vor-stopp,count-vor-stopp,count-vor-stopp,stop\ lifeagents-update-check.timer,disable\ lifeagents-update-check.timer,*stop\ n8n,disable\ n8n,*disable\ lifeagents-llm-gateway,deleteWebhook,count-nach-stopp,export,*) pass RT.reihenfolge ;;
   *) fail RT.reihenfolge "$_seq" ;; esac
 # Die eigene Sperre haelt der Lauf: keine Wartezeit auf sie (nur --check probt sie).
 if _rt_log | grep -q 'ev|lockprobe'; then fail RT.keine-eigene-sperr-probe "Probe lief"; else pass RT.keine-eigene-sperr-probe; fi
@@ -156,7 +149,7 @@ eq RT.merker-fertig 'done' "$(read_env_value "$RS/retired" STAGE)"
 eq RT.ordner-rechte 700 "$(stat -c %a "$W/ret_out")"
 eq RT.dateien-rechte 600 "$(stat -c %a "$W/ret_out"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
 _f0=$fails
-for _f in move.env move.manifest config.json memory.dump memory.counts vorher.txt SO-GEHT-ES-WEITER.txt; do
+for _f in move.env move.manifest vorher.txt SO-GEHT-ES-WEITER.txt; do
   [ -s "$W/ret_out/$_f" ] || fail "RT.ordner-$_f" "fehlt/leer"
 done; [ "$fails" = "$_f0" ] && pass RT.ordner-vollstaendig
 _bf="$(read_env_value "$W/ret_out/move.manifest" BACKUP_FILE)"
@@ -168,10 +161,10 @@ if ls -A "$W"/tmp.* >/dev/null 2>&1; then fail RT.arbeitsordner-weg "$(ls -d "$W
 # Antwort-Datei: Positivliste, Tunnel, nie Uebernahme/erzeugte Geheimnisse/Proxy; liest sich ohne Warnung zurueck.
 _ae="$W/ret_out/move.env"
 _keys="$(grep -oE '^[A-Z_]+=' "$_ae" | tr -d = | sort | tr '\n' ' ')"
-eq RT.antworten-schluessel 'ADZUNA_APP_ID ADZUNA_APP_KEY ANTHROPIC_API_KEY HOUSEHOLD_TIMEZONE OWNER_BIRTH_DATE OWNER_FIRST_NAME OWNER_LANGUAGE OWNER_LAST_NAME REACH_MODE TELEGRAM_BOT_TOKEN ' "$_keys"
-if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES|N8N_DB_PASSWORD|CAREER_RW_PASSWORD)=' "$_ae"; then fail RT.antworten-nie "$(grep -E 'TAKEOVER|DOMAIN|TRUSTED|PASSWORD' "$_ae")"; else pass RT.antworten-nie; fi
-_back="$( ( unset REACH_MODE OWNER_LAST_NAME ADZUNA_APP_ID; install_answers_load "$_ae" 2>"$W/ret.load"; printf '%s|%s|%s' "$REACH_MODE" "$OWNER_LAST_NAME" "$ADZUNA_APP_ID" ) )"
-eq RT.antworten-zurueck "tunnel|Muster'mann|app 1" "$_back"
+eq RT.antworten-schluessel 'ANTHROPIC_API_KEY HOUSEHOLD_TIMEZONE OWNER_BIRTH_DATE OWNER_FIRST_NAME OWNER_LANGUAGE OWNER_LAST_NAME REACH_MODE TELEGRAM_BOT_TOKEN ' "$_keys"
+if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES|N8N_DB_PASSWORD|CAREER_RW_PASSWORD|ADZUNA_APP_ID|ADZUNA_APP_KEY)=' "$_ae"; then fail RT.antworten-nie "$(grep -E 'TAKEOVER|DOMAIN|TRUSTED|PASSWORD' "$_ae")"; else pass RT.antworten-nie; fi
+_back="$( ( unset REACH_MODE OWNER_LAST_NAME; install_answers_load "$_ae" 2>"$W/ret.load"; printf '%s|%s' "$REACH_MODE" "$OWNER_LAST_NAME" ) )"
+eq RT.antworten-zurueck "tunnel|Muster'mann" "$_back"
 eq RT.antworten-ohne-warnung '' "$(cat "$W/ret.load")"
 _rt_reset; _rt_env
 ( _rr --out "$W/ret_out" --backup-dir /srv/sicherung ) >/dev/null 2>&1
@@ -249,16 +242,15 @@ _rt_reset; _rt_env; _rt_mark 'done'
 eq RT.undo-ohne-bot-frei 0 "$_rc"
 [ ! -e "$RS/retired" ] && pass RT.undo-ohne-bot-merker-weg || fail RT.undo-ohne-bot-merker-weg "$(cat "$W/ret.err")"
 
-# --undo --restore: andere Release -> nichts; gleiche -> erst einspielen (+ Gedaechtnis), dann an.
+# --undo --restore: andere Release -> nichts; gleiche -> erst einspielen (die Sicherung traegt das Gedaechtnis), dann an.
 _rt_reset; _rt_env; _rt_mark 'done'; mkdir -p "$W/rueck"
 printf 'FORMAT=1\nRELEASE=v9.1.0\nBACKUP_FILE=b.nla.enc\n' > "$W/rueck/move.manifest"; printf 'enc' > "$W/rueck/b.nla.enc"
-printf 'agent.guide_chat_memory\t2\t7\n' > "$W/rueck/memory.counts"; printf 'dump' > "$W/rueck/memory.dump"
 ( PLAN_REL=v9.0.0 WH_URL='' _rr --undo --restore "$W/rueck" ) >/dev/null 2>"$W/ret.err"
 if _rt_log | grep -qE 'ev\|restore|systemctl\|(start|restart)'; then fail RT.undo-restore-andere-release "$(_rt_log | tr '\n' ' ')"; else pass RT.undo-restore-andere-release; fi
 grep -q 'dieselbe Version' "$W/ret.err" && pass RT.undo-restore-release-satz || fail RT.undo-restore-release-satz "$(cat "$W/ret.err")"
 : > "$STUB_LOG"; ( WH_URL='' _rr --undo --restore "$W/rueck" ) >/dev/null 2>&1
-_seq="$(_rt_log | sed 's/^ev|//; s/^systemctl|//' | grep -E '^(restore|memory_import|start\|n8n|restart\|n8n)' | cut -d'|' -f1-2 | tr '\n' ',')"
-eq RT.undo-restore-reihenfolge 'restore,memory_import,restart|n8n,' "$_seq"
+_seq="$(_rt_log | sed 's/^ev|//; s/^systemctl|//' | grep -E '^(restore|start\|n8n|restart\|n8n)' | cut -d'|' -f1-2 | tr '\n' ',')"
+eq RT.undo-restore-reihenfolge 'restore,restart|n8n,' "$_seq"
 ( _rr --restore "$W/rueck" ) >/dev/null 2>&1; eq RT.restore-nur-mit-undo 1 "$?"
 rm -rf "$W/rueck"
 
@@ -282,12 +274,13 @@ for _c in "household add" "backup restore x.nla.enc"; do
   # shellcheck disable=SC2086  # bewusst in Woerter zerlegt
   case "$(_cli $_c; echo "rc=$?")" in *stillgelegt*rc=1) pass "RT-P.gesperrt-${_c// /-}" ;; *) fail "RT-P.gesperrt-${_c// /-}" "$(_cli $_c | tail -n2)" ;; esac
 done
-# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und der alte Gedaechtnis-Abzug fliegen raus; eine
+# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und ein alter Gedaechtnis-Abzug (frueherer Stand) fliegen
+# raus; eine
 # andere Sicherung im Ordner bleibt (--out kann der normale Sicherungs-Ordner sein); fremder Ordner -> Abbruch.
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"
 printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"; printf 'alt' > "$W/ret_out/memory.dump"
 printf 'alt' > "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc"; printf 'taeglich' > "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc"
-( NO_MEMORY=1 _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"
+( _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"
 [ ! -e "$W/ret_out/memory.dump" ] && pass RT-P.alter-abzug-weg || fail RT-P.alter-abzug-weg "liegt noch"
 [ ! -e "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc" ] && pass RT-P.alte-move-sicherung-weg || fail RT-P.alte-move-sicherung-weg "liegt noch"
 [ -e "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc" ] && pass RT-P.andere-sicherung-bleibt || fail RT-P.andere-sicherung-bleibt "geloescht"
@@ -299,12 +292,12 @@ eq RT-P.fremder-ordner-abbruch 1 "$_rc"
 # Vergleichswerte: eine scheiternde Abfrage bricht ab statt eine leere Zeile zu schreiben; System-Tabellen ohne md5; psql 17 gibt
 # vor dem Ergebnis je SET eine Zeile aus (so im echten Substrat gesehen).
 _ms() (
-  _ret_sql() { case "$1" in *md5*finance.accounts*) [ -z "${MS_FAIL:-}" ] || return 1; printf 'SET
+  _bkp_psql_scalar() { case "$1" in *md5*finance.accounts*) [ -z "${MS_FAIL:-}" ] || return 1; printf 'SET
 SET
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' ;; *config*md5*) printf '' ;; *md5*) printf 'SET
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' ;; *count*) printf '3' ;; *) printf '' ;; esac; }
   _bkp_bulk_tables() { printf 'agent.reminder_prefs\nfinance.accounts\n'; }; _bkp_filtered() { :; }; _bkp_system_tables() { printf 'agent.reminder_prefs\n'; }
-  _ret_memory_tables() { :; }
+  _bkp_memory_tables() { :; }; _bkp_access_write_bundle() { printf '{}' > "$1/access.json"; }
   move_snapshot
 )
 ( MS_FAIL=1 _ms ) >/dev/null 2>&1; _rc=$?

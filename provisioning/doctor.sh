@@ -260,6 +260,14 @@ _doctor_release_version() {
   _red "Keine Versionsnummer eingetragen (VERSION: ${shown}) — Update-Hinweise im Chat kommen so nicht an. ${fix}"
 }
 
+# _doctor_backup_size — die Kopie im Telegram-Chat traegt hoechstens 50 MB (_bkp_notify_telegram); ab 40 MB GELB, damit es vorher
+#   auffaellt (das Gespraechs-Gedaechtnis waechst ohne Grenze mit). Groesse der letzten Sicherung aus backup.state (LAST_SIZE).
+_doctor_backup_size() {
+  local sz; sz="$(read_env_value "$BACKUP_STATE_FILE" LAST_SIZE 2>/dev/null || true)"; case "$sz" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$sz" -ge $((40 * 1024 * 1024)) ] || return 0
+  _warn "Sicherung ist $((sz / 1024 / 1024)) MB groß — ab 50 MB kommt keine Kopie mehr in den Telegram-Chat (die Sicherung im Ordner bleibt)."
+}
+
 # _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
 #   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: ebenso ROT (Timer lifeagents-backup).
 #   Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
@@ -272,6 +280,7 @@ _doctor_backup() {
   age=$(( $(date +%s) - ok_at )); days=$(( age / 86400 ))
   if [ "$ok_at" -gt 0 ] && [ "$age" -le "$BACKUP_STALE_S" ]; then
     if [ "$days" -eq 0 ]; then _pass "Letzte Sicherung: heute${folder:+ (Ordner auf dem Rechner)}"; else _pass "Letzte Sicherung: vor ${days} Tag(en)"; fi
+    _doctor_backup_size
     return 0
   fi
   # Frische Installation (VERSION juenger als die Frist): noch nicht veraltet. Im Verbund ohne Ordner (nur ueber eine

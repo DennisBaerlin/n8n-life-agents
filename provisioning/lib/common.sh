@@ -1150,8 +1150,8 @@ backup_kit_text() {
   ver="$(cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
   [[ "$ver" =~ ^v[0-9] ]] || ver='v0.0.0'
   folder="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
-  printf '%s\n%s\n\n%s\n\n%s\n' "$(backup_text kit.title)" "$(backup_text kit.meta id "$kid" date "${since:-?}")" \
-    "$(backup_text kit.intro)" "$(backup_text kit.key_title)"
+  printf '%s\n%s\n\n%s\n%s\n\n%s\n' "$(backup_text kit.title)" "$(backup_text kit.meta id "$kid" date "${since:-?}")" \
+    "$(backup_text kit.intro)" "$(backup_text kit.contains)" "$(backup_text kit.key_title)"
   printf '%s' "${keys[0]}" | _backup_key_show | sed 's/^/  /'
   printf '%s\n' "$(backup_text kit.check_hint)"
   for ((i = 1; i < ${#keys[@]}; i++)); do

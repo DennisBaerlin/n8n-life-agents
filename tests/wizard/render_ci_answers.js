@@ -25,7 +25,7 @@ const INVENTED = {
 };
 const SECRETS = {
   TELEGRAM_BOT_TOKEN: '1000001:CIinventedTokenForMockTelegram0000',
-  ANTHROPIC_API_KEY: 'sk-ant-api03-ci-invented-key-00000000000000000000',
+  ANTHROPIC_API_KEY: 'sk-ant-test-fake-ci-key',
 };
 
 // withExtra(flow, txt, extraText) -> txt mit ersetzten bzw. angehängten Schlüsseln; Fehler nennen Zeile und Schlüssel, nie den Wert.

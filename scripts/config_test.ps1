@@ -4,7 +4,7 @@
 #   (1) Selbsttest: der Cron-Pruefer hier und core.fn_config_cron_valid (DB) pruefen DIESELBE Fallliste
 #       tests/util/util_cron_cases.sql (JSON zwischen den $cases$-Markern) -> beide koennen nicht auseinanderlaufen.
 #   (2) Je Eintrag: type ∈ string|integer|number|boolean|cron, minimum/maximum nur bei integer/number (Zahlen,
-#       minimum <= maximum), managed_by ∈ owner|system, und der Standardwert passt zu Typ + Grenzen (dieselben Regeln
+#       minimum <= maximum), managed_by ∈ owner|system|instance, und der Standardwert passt zu Typ + Grenzen (dieselben Regeln
 #       wie core.fn_config_value_valid). Kategorie-Pflicht: schedule -> cron, cron_enable -> boolean.
 #   (3) Zeitplan-Platzhalter: jeder `__CFG_SCHEDULE_<KEY>__` in packages/<pkg>/workflows/*.json hat seine Zeile
 #       .config.schedule.<key> im Manifest DESSELBEN Pakets, und jede schedule-Zeile wird von einem Workflow genutzt
@@ -145,7 +145,7 @@ foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory))
                 if ($null -ne $b -and -not ($b -is [int] -or $b -is [long] -or $b -is [double] -or $b -is [decimal])) { Fail "$where`: minimum/maximum muss eine JSON-Zahl sein ('$b')" }
             }
             if ($null -ne $min -and $null -ne $max -and [decimal]$min -gt [decimal]$max) { Fail "$where`: minimum > maximum" }
-            if ($names -contains 'managed_by' -and @('owner','system') -cnotcontains [string]$e.managed_by) { Fail "$where.managed_by '$($e.managed_by)' (erlaubt: owner|system)" }
+            if ($names -contains 'managed_by' -and @('owner','system','instance') -cnotcontains [string]$e.managed_by) { Fail "$where.managed_by '$($e.managed_by)' (erlaubt: owner|system|instance)" }
             $val = [string]$e.value
             if (-not (Test-ConfigValue $type $val $min $max)) { Fail "$where`: Standardwert '$val' passt nicht zu type '$type'$(if ($null -ne $min) { " min $min" })$(if ($null -ne $max) { " max $max" })" }
             else { Pass "$where = '$val' ($type)" }

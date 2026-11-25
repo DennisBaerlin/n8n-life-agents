@@ -11,6 +11,8 @@
 #      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
 #   D  DS-Lite automatisch (reach_dslite): UPnP der FritzBox zuerst, dann MyFRITZ!; kein Wert in der Ausgabe.
 #   N  Tailscale-Rechnername: Wortliste, Pruefwerte der Zieh-Regel (auch fuer die Start-App), einmal ziehen, Bestand bleibt.
+#   K  Anmeldeschluessel TS_AUTHKEY im Verbund: per stdin in den laufenden Container, nie compose.yml/Stack-.env, nur bei
+#      NeedsLogin (echter Weg: scripts/dev/tailscale_authkey_test.ps1).
 # Die Attrappen ersetzen nur die Docker-/Telegram-Wrapper (rt_edge_*, rt_stack_up, rt_host_port_free, tg_api_curl);
 # alles andere ist der echte Lib-Code des Checkouts.
 #
@@ -101,7 +103,7 @@ rt_edge_exec() {
   [ "$1" = tailscale ] || return 2; shift
   printf 'exec %s\n' "$*" >> "$LOG"
   case "$*" in
-    'tailscale status --json --peers=false') printf '%s' "$A_TS_JSON" ;;
+    'tailscale status --json --peers=false') if [ -s "$W/ts.json" ]; then cat "$W/ts.json"; else printf '%s' "$A_TS_JSON"; fi ;;
     'tailscale funnel status --json') if [ -s "$W/funnel.json" ]; then cat "$W/funnel.json"; else printf '%s' "$A_FUNNEL_JSON"; fi ;;
     *'tailscale funnel --bg --yes http://127.0.0.1:8088')
       # Zustand in einer Datei: der Lib-Code ruft die Attrappe in $(…)-Subshells (wie Tailscale: bleibt gespeichert).
@@ -227,6 +229,46 @@ cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge
 # Wrapper-Grenze (echter runtime.sh-Code, nicht die Attrappe): nur edge|tailscale|wan.
 ( unset -f rt_edge_exec; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_exec postgres true ) >/dev/null 2>&1
 eq P_wrapper_fixed_list 2 "$?"
+
+# --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) im Verbund -----------------------------------------------
+# Geprueft: Wert nur per stdin an `tailscale up --auth-key=file:/dev/stdin` im laufenden Container, nie in compose.yml/
+# LA_STACK_VARS (Grund: lib/reach.sh, Abschnitt Anmeldeschluessel), nur bei BackendState NeedsLogin.
+# hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen deckt scripts/dev/tailscale_authkey_test.ps1
+export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
+rt_edge_exec_in() {
+  [ "$1" = tailscale ] || return 2; shift
+  printf 'execin %s\n' "$*" >> "$LOG"
+  local k; k="$(cat)"; printf '%s' "$k" > "$W/key_seen"; env | grep -c '^TS_AUTHKEY=' > "$W/env_seen"
+  if [ "$k" = tskey-FAKEgood ]; then ts_json Running '' '["https","funnel"]' > "$W/ts.json"
+  else printf 'backend error: invalid key: %s\n' "$k" >&2; return 1; fi
+}
+kc() { cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; rm -f "$W/ts.json" "$W/funnel.json" "$W/key_seen"; : > "$LOG"
+       A_TS_JSON="$1"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=1; DOMAIN=""; _reach_authkey="$2"; }
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEgood
+reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
+eq K_domain_after_key "bot.tail-fantasy.ts.net|" "${DOMAIN:-}|${_reach_authkey:-}"
+eq K_domain_stored bot.tail-fantasy.ts.net "$(read_env_value "$REACH_CORE_ENV" DOMAIN 2>/dev/null)"
+grep -q '^execin tailscale up --auth-key=file:/dev/stdin --hostname=bot --accept-dns=false --timeout=90s$' "$LOG" \
+  && pass K_up_by_file || fail K_up_by_file "$(tr '\n' ';' < "$LOG")"
+grep -q FAKEgood "$LOG" && fail K_argv_no_key "Schluessel in argv" || pass K_argv_no_key
+eq K_key_via_stdin tskey-FAKEgood "$(cat "$W/key_seen" 2>/dev/null)"
+eq K_child_no_env 0 "$(cat "$W/env_seen" 2>/dev/null)"
+case "$out" in *FAKEgood*) fail K_output_no_key "Schluessel in der Ausgabe" ;; *) pass K_output_no_key ;; esac
+grep -q FAKEgood "$REACH_CORE_ENV" && fail K_core_env_no_key "Schluessel in core.env" || pass K_core_env_no_key
+# Schon angemeldet (Update, Zweitlauf): kein Schluessel-Aufruf.
+kc "$(ts_json Running '' '["https","funnel"]')" tskey-FAKEgood
+reach_prepare >/dev/null 2>&1
+grep -q '^execin' "$LOG" && fail K_running_untouched "$(tr '\n' ';' < "$LOG")" || pass K_running_untouched
+# Abgelehnt: Meldung ohne Wert, keine Adresse.
+kc "$(ts_json NeedsLogin '' '[]')" tskey-FAKEbad
+reach_prepare >"$W/out" 2>&1; out="$(cat "$W/out")"
+case "$out" in *abgelehnt*) pass K_rejected_msg ;; *) fail K_rejected_msg "$out" ;; esac
+case "$out" in *FAKEbad*) fail K_rejected_no_key "Schluessel in der Ausgabe" ;; *) pass K_rejected_no_key ;; esac
+eq K_rejected_no_domain '' "${DOMAIN:-}"
+# Der Wert hat keinen Weg in den Stack: weder in LA_STACK_VARS noch in compose.yml.
+case " $LA_STACK_VARS " in *TS_AUTHKEY*) fail K_not_stack_var "in LA_STACK_VARS" ;; *) pass K_not_stack_var ;; esac
+grep -q 'TS_AUTHKEY' "$ROOT/provisioning/compose/compose.yml" && fail K_not_in_compose "compose.yml nennt TS_AUTHKEY" || pass K_not_in_compose
+unset _reach_authkey; rm -f "$W/ts.json"
 
 # --- C: Rand-Konfiguration -----------------------------------------------------------------------------------------
 CY="$ROOT/provisioning/compose/compose.yml"

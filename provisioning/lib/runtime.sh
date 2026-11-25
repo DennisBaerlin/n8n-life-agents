@@ -644,6 +644,12 @@ rt_edge_exec() {
   shift
   docker exec "$c" "$@"
 }
+# rt_edge_exec_in <dienst> <befehl…> — wie rt_edge_exec, aber mit stdin (`-i`): fuer Geheimnisse, die nie ins argv duerfen.
+rt_edge_exec_in() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  shift
+  docker exec -i "$c" "$@"
+}
 # rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
 rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }
 # rt_probe_host <adresse> <port> — antwortet <adresse>:<port> einem Kurzlauf-Container im Netz edge_public (dort haengt wan)?

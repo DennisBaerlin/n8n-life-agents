@@ -447,14 +447,14 @@ repos:
         files: ^scripts/(lib/http_json|judge_eval|monitor_probe|dev/http_json_test)\.ps1$
 
       - id: standin-lint
-        name: standin_lint (every fake_* fixture names the test of its real counterpart; hand-injected values before the tested call carry a reason)
+        name: standin_lint (every fake_* fixture names the test of its real counterpart; hand-injected values carry a reason; no invented value in a real provider key shape)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/standin_lint.ps1
         pass_filenames: false
-        files: ^(tests/|\.github/workflows/|scripts/standin_lint\.ps1$)
+        files: ^(tests/|scripts/|provisioning/|packages/|docs/(?!site/public/)|config/|\.github/|\.env\.example$)
 
       - id: standin-lint-test
-        name: standin_lint_test (unmarked fixture, dangling marker and unexplained hand-injected value turn standin_lint red; no Docker)
+        name: standin_lint_test (unmarked fixture, dangling marker, unexplained hand-injected value and provider-shaped fake key turn standin_lint red; no Docker)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/standin_lint_test.ps1
         pass_filenames: false
@@ -809,6 +809,13 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/comment_lint_test.ps1
         pass_filenames: false
         files: ^scripts/(comment_lint|dev/comment_lint_test|lib/git_sandbox)\.ps1$
+
+      - id: session-stall-check-test
+        name: session_stall_check_test (a session blocked on an unanswered last tool call is reported; idle, fresh, deleted-worktree and copied-request lines are not; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/session_stall_check_test.ps1
+        pass_filenames: false
+        files: ^scripts/dev/session_stall_check(_test)?\.ps1$
 
       - id: layout-lint-test
         name: layout_lint_test (rule L8 - mojibake in a text file turns red, real umlauts/euro/Korean stay green; no Docker)

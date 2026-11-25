@@ -1,5 +1,4 @@
 ﻿#Requires -Version 5.1
-# gate: manual (laeuft nur gegen einen eigenen Docker-Verbund mit zweimaligem Reset, nicht im freien Gate; nach Aenderungen am Sicherungsformat von Hand)
 # backup_roundtrip_test.ps1 -- "alles wie vorher": Sicherung eines Docker-Verbunds mit erfundenen Daten in jedem Teil (Fachdaten,
 # Einstellungen, Gespraech, KI-Kosten, Hinweis-Merker, Sperrliste, Paket-Zugang), dann derselbe Verbund frisch (Schnappschuss
 # „frisch installiert“, bootstrap_test_stack.ps1 -Reset), Sicherung einspielen und den Fingerabdruck (lifeagents backup fingerprint)

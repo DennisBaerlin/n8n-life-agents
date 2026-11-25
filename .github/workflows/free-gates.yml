@@ -166,6 +166,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # "Alles wie vorher": ein Docker-Verbund mit erfundenen Daten in jedem Sicherungsteil wird gesichert, frisch aufgesetzt und
+  # wieder eingespielt; der Fingerabdruck davor und danach muss gleich sein (scripts/dev/backup_roundtrip_test.ps1). Eigener
+  # Job statt Matrix-Eintrag: der Verbund ist ein anderer Unterbau (N8NTEST_RUNTIME=compose) als das systemd-Substrat der
+  # Matrix und braucht dessen Basis-Image nicht. Gemessen lokal: Kaltstart des Verbunds rund 7 Minuten, Roundtrip rund 8.
+  backup-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      N8NTEST_RUNTIME: compose
+      N8NTEST_CONTAINER: lastack
+      N8NTEST_PORT: '5850'
+      N8NTEST_STACK_PORTS: '5860-5869'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Erfundene .env anlegen
+        shell: pwsh
+        run: ./scripts/dev/new_ci_env.ps1
+
+      - name: Verbund aufbauen (kalt)
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}   # die Skripte erwarten die Windows-Variable $env:TEMP
+        run: ./scripts/dev/bootstrap_test_stack.ps1
+
+      - name: Roundtrip der Sicherung
+        shell: pwsh
+        env:
+          TEMP: ${{ runner.temp }}   # die Skripte erwarten die Windows-Variable $env:TEMP
+        run: ./scripts/dev/backup_roundtrip_test.ps1
+
+      - name: Verbund-Logs sichern
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backup-roundtrip-logs
+          path: /tmp/lifeagents-test-stack/lastack
+          if-no-files-found: warn
+          retention-days: 7
+
   db:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

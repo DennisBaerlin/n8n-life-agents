@@ -137,6 +137,7 @@ function question(Q, id) {
 // stepOf(id) -> {current, sub}: Platz einer Seite in der Schritt-Leiste.
 function stepOf(id) {
   if (id === 'install' || id === 'connect') return { current: id, sub: null };
+  if (id === 'tunnel') return { current: 'install', sub: null };   // Tailscale-Anmeldung = erster Teil der Einrichtung
   if (id === 'handoff') return { current: 'connect', sub: null };   // letzte Seite des Wizards, danach übernimmt die App
   let sub = 'about';
   if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';

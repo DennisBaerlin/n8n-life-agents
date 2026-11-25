@@ -296,10 +296,13 @@ services:
   tailscale:
     # Nur beim Tunnel-Weg (Profil tunnel; der master startet ihn gezielt: `up --no-deps tailscale`, lib/reach.sh). Teilt den
     # Namensraum des Rands, nie den des Pods (Plan *Der Rand*): Funnel -> 127.0.0.1:8088 = die Pfad-Liste des Rands.
-    # Anmeldung ohne Schluessel (Anmelde-Link im Status), danach bleibt der Knoten im Volume ts_state. TS_AUTH_ONCE: bei
-    # einem Neustart nur anmelden, wenn noetig. Rechnername neutral (Zertifikats-Protokolle sind oeffentlich): LA_TS_HOSTNAME.
+    # Startet tailscaled direkt, nicht das Start-Programm des Images (containerboot): das gibt ohne Schluessel nach 60 s
+    # auf, der Container startet neu und der Anmelde-Link verfaellt (scripts/dev/tailscale_login_wait_test.ps1). Die
+    # Anmeldung stoesst der master an (lib/reach.sh reach_login_start, Rechnername LA_TS_HOSTNAME); danach bleibt der Knoten
+    # im Volume ts_state, und tailscaled verbindet sich nach jedem Neustart selbst.
     profiles: [tunnel]
     image: *img_tailscale
+    entrypoint: ["tailscaled", "--tun=userspace-networking", "--statedir=/var/lib/tailscale"]
     container_name: ${LA_PROJECT:-lifeagents}-tailscale
     restart: unless-stopped
     labels: *labels
@@ -311,12 +314,6 @@ services:
       edge:
         condition: service_started
         restart: true
-    environment:
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_USERSPACE: "true"
-      TS_AUTH_ONCE: "true"
-      TS_ACCEPT_DNS: "false"
-      TS_HOSTNAME: ${LA_TS_HOSTNAME:-bot}
     volumes:
       - ts_state:/var/lib/tailscale
 

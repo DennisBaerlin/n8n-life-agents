@@ -149,7 +149,7 @@ async function step(w, id, value, opt) {
   // Sprachen (Bilder mit Texten aus core.wizard.art.*), die Sprache der Einrichtung lässt sich nur bei den Fragen umstellen.
   for (const lang of ['de', 'en', 'ko']) {
     const sfx = lang === 'de' ? '' : `-${lang}`;
-    const t = await startWizard();
+    const t = await startWizard({ env: { WIZARD_TUNNEL_GRACE_MS: '0' } });   // Störungs-Seite sofort statt nach 2 Min
     try {
       await login(t);
       for (const [id, v] of [['h:OWNER_LANGUAGE', lang], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
@@ -176,6 +176,10 @@ async function step(w, id, value, opt) {
       fs.writeFileSync(path.join(t.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
       const f = await waitFor(async () => { const x = (await state(t)).json.page; return x.link && x.link.href.includes('/f/funnel') ? x : null; });
       out.push({ name: 'connect-tailscale-funnel' + sfx, page: f });
+      if (!sfx) {   // Tailscale antwortet nicht: Hinweis mit „Erneut prüfen“ und „Zurück“
+        fs.writeFileSync(path.join(t.fake, 'reach'), 'starting');
+        out.push({ name: 'tunnel-stoerung', page: await waitFor(async () => { const x = (await state(t)).json.page; return x.action === 'tunnel_retry' ? x : null; }) });
+      }
     } finally { await t.stop(); }
   }
   // Paperless im Heimnetz: Suche läuft, mehrere gefunden (Auswahl), keiner gefunden. Attrappen auf den echten Suchports.

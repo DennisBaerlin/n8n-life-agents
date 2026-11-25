@@ -8,7 +8,9 @@
 # 127.0.0.1 des Rechners, :8088 = die eine Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS, reach_edge_public_write,
 # contract_lint 34). Beide Wege nach aussen enden auf :8088:
 #   tunnel   (empfohlen) Dienst `tailscale` (Profil tunnel) im Netz-Namensraum des Rands, Zustand im Volume ts_state.
-#            Anmeldung ohne Schluessel: Tailscale stellt einen Anmelde-Link aus (Status-Feld AuthURL). Funnel nimmt HTTPS
+#            Der Container startet tailscaled direkt; die Anmeldung stoesst der master an (reach_login_start), Tailscale
+#            stellt dann einen Anmelde-Link aus (Status-Feld AuthURL). Der Wizard meldet so VOR der Installation an
+#            (reach_ctl.sh start), die Installation laeuft dann einmal, gleich mit der Adresse. Funnel nimmt HTTPS
 #            auf 443 an, beendet TLS und reicht an 127.0.0.1:8088 weiter (`tailscale funnel --bg`, bleibt im Zustand
 #            gespeichert). Die Internet-Adresse ist der Tailscale-Name <rechner>.<tailnet>.ts.net: reach_prepare
 #            uebernimmt ihn als DOMAIN, n8n setzt beim Aktivieren des Telegram-Ausloesers den Webhook darauf. Ein Tailscale
@@ -115,14 +117,48 @@ _reach_key_login() {
   return 2
 }
 
-# _reach_key_up <rechnername> <laeufer…> — der eine `up`-Aufruf beider Wege, Wert von stdin. Schalter exakt wie beim Start
-#   ohne Schluessel (Image: TS_HOSTNAME, TS_ACCEPT_DNS=false; CLI: reach_cli_ts_login_start), sonst lehnt `up` ab
-#   („requires mentioning all non-default flags“). --timeout: `up` wartet sonst unbegrenzt auf Running.
+# _reach_ts_up_flags <rechnername> -> REACH_TS_UP_FLAGS: die Schalter, die jeder `tailscale up` nennt (mit Schluessel hier,
+#   ohne Schluessel reach_login_start, CLI reach_cli_ts_login_start). Jeder spaetere `up` muss sie gleich nennen, sonst lehnt
+#   tailscale ab („requires mentioning all non-default flags“).
+_reach_ts_up_flags() { REACH_TS_UP_FLAGS=(--hostname="$1" --accept-dns=false); }
+
+# _reach_key_up <rechnername> <laeufer…> — der eine `up`-Aufruf mit Schluessel beider Wege, Wert von stdin. --timeout: `up`
+#   wartet sonst unbegrenzt auf Running.
 _reach_key_up() {
   local host="$1"; shift
-  "$@" tailscale up --auth-key=file:/dev/stdin --hostname="$host" --accept-dns=false --timeout=90s
+  _reach_ts_up_flags "$host"
+  "$@" tailscale up --auth-key=file:/dev/stdin "${REACH_TS_UP_FLAGS[@]}" --timeout=90s
 }
 _reach_ts_up_key() { _reach_key_up "$1" rt_edge_exec_in tailscale; }
+
+# _reach_ts_host -> Rechnername des Knotens: LA_TS_HOSTNAME aus dem Stack (Start-App/setup.sh, ts_name_ensure), sonst bot.
+_reach_ts_host() { if ts_name_valid "${LA_TS_HOSTNAME:-}"; then printf '%s' "$LA_TS_HOSTNAME"; else printf bot; fi; }
+
+# reach_login_start — Anmeldung ohne Schluessel anstossen: der Dienst tailscale startet tailscaled direkt (compose.yml; das
+#   Start-Programm des Images gab ohne Schluessel nach 60 s auf, der Container startete neu und der Link verfiel). Ein
+#   losgeloester `tailscale up --timeout=0` im Container stellt den Link aus (Status-Feld AuthURL) und wartet, bis jemand ihn
+#   benutzt. Nur wenn kein Link da ist: NeedsLogin (nie angemeldet; nach einem Neustart des Containers ist der wartende `up`
+#   weg) oder abgelaufene Anmeldung (dann mit --force-reauth, auch bei BackendState Running). Ein angehaltener Knoten
+#   (Stopped) bleibt angehalten. Wartet bis REACH_KEY_WAIT_SECS (30), solange tailscaled noch startet. rc 0 = angestossen
+#   oder nichts zu tun.
+reach_login_start() {
+  local i=0 force=''
+  while :; do
+    reach_ts_eval "$(_reach_ts_status)"
+    case "$REACH_TS_BACKEND" in ''|NoState|Starting) : ;; *) break ;; esac
+    [ "$i" -lt "${REACH_KEY_WAIT_SECS:-30}" ] || return 0
+    sleep 1; i=$((i + 1))
+  done
+  [ -z "$REACH_TS_URL" ] || return 0
+  case "$REACH_TS_STATE" in
+    starting) [ "$REACH_TS_BACKEND" = NeedsLogin ] || return 0 ;;
+    key_expired) force=--force-reauth ;;
+    *) return 0 ;;
+  esac
+  _reach_ts_up_flags "$(_reach_ts_host)"
+  rt_edge_exec_detached tailscale tailscale up "${REACH_TS_UP_FLAGS[@]}" --timeout=0 ${force:+"$force"} \
+    || { warn "Tunnel: Tailscale-Anmeldung ließ sich nicht anstoßen ($(rt_edge_logs_hint tailscale))."; return 1; }
+}
 
 # _reach_key_wait <pruef-fn> — nach der Anmeldung bis REACH_KEY_SETTLE_SECS (60) alle 2 s pruefen; direkt nach `up` fehlen
 #   DNS-Name und Faehigkeiten noch. rc 0 = <pruef-fn> meldete fertig.
@@ -446,6 +482,11 @@ reach_status_json() {
       if ! rt_edge_active tailscale; then reason='not_started'
       else
         reach_ts_eval "$(_reach_ts_status)"
+        # Kein Link, obwohl einer noetig ist (Neustart des Containers, Ablauf): anstossen, der naechste Abruf zeigt ihn (wie
+        # Funnel unten). Gilt fuer jeden Leser (Wizard, Umzug, Start-App), ohne Warten.
+        if [ -z "$REACH_TS_URL" ] && { [ "$REACH_TS_STATE" = key_expired ] || [ "$REACH_TS_BACKEND" = NeedsLogin ]; }; then
+          REACH_KEY_WAIT_SECS=0 reach_login_start >/dev/null 2>&1 || true
+        fi
         state="$REACH_TS_STATE"; url="$REACH_TS_URL"; dns="$REACH_TS_DNS"; kexp="$REACH_TS_KEY_EXPIRY"; kdays="$REACH_TS_KEY_DAYS"
         case "$state" in
           stopped) state=unavailable; reason='stopped' ;;
@@ -482,10 +523,11 @@ reach_status_json() {
 }
 
 # --- Installer-Haken (provision.sh, nur im Verbund) -----------------------------------------------------------------
-# reach_prepare — frueh im Lauf (nach load_install_env, vor derive_network_config): Weg pruefen und merken; beim Tunnel
-#   den Tailscale-Knoten starten (Anmelde-Link liegt bereit, bis der Wizard zum Schritt „Verbinden" kommt) und, sobald er
-#   angemeldet ist und Funnel darf, dessen Namen als DOMAIN uebernehmen. Ohne fertigen Tunnel bleibt DOMAIN, wie es ist
-#   (ein Update mit kurz abwesendem Tailscale loescht die Adresse nie).
+# reach_prepare — frueh im Lauf (nach load_install_env, vor derive_network_config) und vor der Installation aus dem Wizard
+#   (reach_ctl.sh start): Weg pruefen und merken; beim Tunnel den Tailscale-Knoten starten, anmelden (Schluessel aus der
+#   Antwort-Datei, sonst Anmelde-Link per reach_login_start) und, sobald er angemeldet ist und Funnel darf, dessen Namen
+#   als DOMAIN uebernehmen. Ohne fertigen Tunnel bleibt DOMAIN, wie es ist (ein Update mit kurz abwesendem Tailscale
+#   loescht die Adresse nie).
 reach_prepare() {
   local m
   if [ -n "${REACH_MODE:-}" ]; then
@@ -498,9 +540,13 @@ reach_prepare() {
   m="$(reach_mode)"
   [ "$m" = tunnel ] || return 0
   rt_stack_up --no-deps tailscale >/dev/null 2>&1 || { warn "Tunnel: Tailscale-Container ließ sich nicht starten ($(rt_edge_logs_hint tailscale))."; return 0; }
-  # Name = TS_HOSTNAME des Containers (compose.yml: ${LA_TS_HOSTNAME:-bot}).
-  if _reach_key_login _reach_ts_status _reach_ts_up_key "$(ts_name_valid "${LA_TS_HOSTNAME:-}" && printf '%s' "$LA_TS_HOSTNAME" || printf bot)"; then
+  if _reach_key_login _reach_ts_status _reach_ts_up_key "$(_reach_ts_host)"; then
     _reach_key_wait _reach_ts_key_ready || true
+  else
+    reach_login_start || true   # ohne Schluessel: Anmelde-Link ausstellen (Wizard bzw. Antwort-Datei-Weg von setup.sh)
+    # Angemeldet, aber Name oder Funnel noch nicht da (kurz nach der Anmeldung, nach einem Neustart): bis
+    # REACH_KEY_SETTLE_SECS warten, sonst liefe die eine Installation aus dem Wizard ohne Adresse.
+    [ "$REACH_TS_BACKEND" != Running ] || _reach_key_wait _reach_ts_key_ready || true
   fi
   reach_ts_eval "$(_reach_ts_status)"
   if [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ] && reach_funnel_ensure "$REACH_TS_DNS"; then

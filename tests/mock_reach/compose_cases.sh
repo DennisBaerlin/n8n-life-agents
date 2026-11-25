@@ -112,6 +112,7 @@ rt_edge_exec() {
     *) return 1 ;;
   esac
 }
+rt_edge_exec_detached() { [ "$1" = tailscale ] || return 2; shift; printf 'execd %s\n' "$*" >> "$LOG"; }
 tg_api_curl() { printf 'tg %s\n' "$2" >> "$LOG"; [ -n "$A_TG" ] && printf '%s' "$A_TG"; [ -n "$A_TG" ]; }
 tg_url() { jq -nc --arg u "$1" '{ok:true, result:{url:$u, pending_update_count:0}}'; }
 cfg() { rm -f "$REACH_CORE_ENV"; for kv in "$@"; do env_upsert "$REACH_CORE_ENV" "${kv%%=*}" "${kv#*=}"; done; }
@@ -173,6 +174,8 @@ A_TG="$(tg_url '')"; out="$(js)"
 eq S_fb_pending "pending_activation|none" "$(field "$out" state)|$(field "$out" webhook)"
 
 # --- P: Installer-Haken --------------------------------------------------------------------------------------------
+# hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen decken scripts/dev/tailscale_authkey_test.ps1 und tailscale_login_wait_test.ps1
+export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
 cfg TELEGRAM_BOT_TOKEN=123:fantasy
 ( REACH_MODE='tunnel;id' reach_prepare ) >/dev/null 2>&1 && fail P_bad_mode "ungueltiger Weg angenommen" || pass P_bad_mode
 eq P_bad_mode_not_saved "" "$(read_env_value "$REACH_CORE_ENV" REACH_MODE 2>/dev/null || true)"
@@ -233,8 +236,6 @@ eq P_wrapper_fixed_list 2 "$?"
 # --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) im Verbund -----------------------------------------------
 # Geprueft: Wert nur per stdin an `tailscale up --auth-key=file:/dev/stdin` im laufenden Container, nie in compose.yml/
 # LA_STACK_VARS (Grund: lib/reach.sh, Abschnitt Anmeldeschluessel), nur bei BackendState NeedsLogin.
-# hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen deckt scripts/dev/tailscale_authkey_test.ps1
-export REACH_KEY_WAIT_SECS=2 REACH_KEY_SETTLE_SECS=2
 rt_edge_exec_in() {
   [ "$1" = tailscale ] || return 2; shift
   printf 'execin %s\n' "$*" >> "$LOG"
@@ -269,6 +270,40 @@ eq K_rejected_no_domain '' "${DOMAIN:-}"
 case " $LA_STACK_VARS " in *TS_AUTHKEY*) fail K_not_stack_var "in LA_STACK_VARS" ;; *) pass K_not_stack_var ;; esac
 grep -q 'TS_AUTHKEY' "$ROOT/provisioning/compose/compose.yml" && fail K_not_in_compose "compose.yml nennt TS_AUTHKEY" || pass K_not_in_compose
 unset _reach_authkey; rm -f "$W/ts.json"
+
+# --- T: Anmeldung ohne Schluessel (reach_login_start) ------------------------------------------------------------------
+# Der Dienst tailscale startet tailscaled direkt (kein containerboot, der nach 60 s neu startete und den Link verwarf):
+# die Anmeldung stoesst der master an, losgeloest im Container, mit denselben Schaltern wie der Schluessel-Weg (Fall K).
+# Echter Weg: scripts/dev/tailscale_login_wait_test.ps1.
+tl() { cfg REACH_MODE=tunnel; rm -f "$W/ts.json"; : > "$LOG"; A_TS_UP=1; A_TS_JSON="$1"; }
+tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1
+eq T_login_started 'execd tailscale up --hostname=bot --accept-dns=false --timeout=0' "$(grep '^execd' "$LOG")"
+tl "$(ts_json NeedsLogin "$LOGIN" '[]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_link_there_no_second "$(tr '\n' ';' < "$LOG")" || pass T_link_there_no_second
+tl "$(ts_json Running '' '["https","funnel"]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_running_untouched "$(tr '\n' ';' < "$LOG")" || pass T_running_untouched
+tl "$(ts_json NeedsLogin "$LOGIN" '[]' '' true)"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_expired_link_there "$(tr '\n' ';' < "$LOG")" || pass T_expired_link_there
+tl "$(ts_json NeedsLogin '' '[]' '' true)"; reach_login_start >/dev/null 2>&1
+eq T_expired_force 'execd tailscale up --hostname=bot --accept-dns=false --timeout=0 --force-reauth' "$(grep '^execd' "$LOG")"
+# Abgelaufen meldet tailscaled teils noch Running: auch dann neu anmelden.
+tl "$(ts_json Running '' '["https","funnel"]' "$(iso 1700000000)")"; reach_login_start >/dev/null 2>&1
+grep -q -- '--force-reauth$' "$LOG" && pass T_running_expired_force || fail T_running_expired_force "$(tr '\n' ';' < "$LOG")"
+tl "$(ts_json Stopped '' '[]')"; reach_login_start >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_stopped_stays "$(tr '\n' ';' < "$LOG")" || pass T_stopped_stays
+# Status-Abruf (Wizard, Umzug, Start-App): Link fehlt (Neustart des Containers) = anstossen, ohne zu warten.
+tl "$(ts_json NeedsLogin '' '[]')"; reach_status_json >/dev/null 2>&1
+grep -q '^execd tailscale up ' "$LOG" && pass T_status_kicks_login || fail T_status_kicks_login "$(tr '\n' ';' < "$LOG")"
+tl "$(ts_json NeedsLogin "$LOGIN" '[]')"; reach_status_json >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_status_link_there_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_link_there_quiet
+LA_TS_HOSTNAME=calm-otter; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; unset LA_TS_HOSTNAME
+eq T_hostname_from_stack 'execd tailscale up --hostname=calm-otter --accept-dns=false --timeout=0' "$(grep '^execd' "$LOG")"
+# Installer-Haken: ein frisch gestarteter Knoten bekommt seinen Link schon in reach_prepare (Antwort-Datei-Weg von setup.sh).
+tl "$(ts_json NeedsLogin '' '[]')"; DOMAIN=''; reach_prepare >/dev/null 2>&1
+grep -q '^execd tailscale up ' "$LOG" && pass T_prepare_starts_login || fail T_prepare_starts_login "$(tr '\n' ';' < "$LOG")"
+CYT="$(sed -n '/^  tailscale:/,/^  [a-z_]*:$/p' "$ROOT/provisioning/compose/compose.yml")"
+case "$CYT" in *'entrypoint: ["tailscaled",'*) pass T_compose_tailscaled ;; *) fail T_compose_tailscaled "Dienst tailscale startet nicht tailscaled direkt" ;; esac
+case "$CYT" in *' TS_HOSTNAME:'*|*' TS_AUTH_ONCE:'*|*' TS_STATE_DIR:'*) fail T_compose_no_containerboot_env "containerboot-Variablen uebrig" ;; *) pass T_compose_no_containerboot_env ;; esac
 
 # --- C: Rand-Konfiguration -----------------------------------------------------------------------------------------
 CY="$ROOT/provisioning/compose/compose.yml"

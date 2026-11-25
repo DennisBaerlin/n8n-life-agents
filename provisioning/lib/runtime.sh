@@ -650,6 +650,13 @@ rt_edge_exec_in() {
   shift
   docker exec -i "$c" "$@"
 }
+# rt_edge_exec_detached <dienst> <befehl…> — losgeloest im Rand-Container starten (`-d`, kehrt sofort zurueck), fuer einen
+#   Befehl, der dort weiterlaufen muss (reach_login_start: `tailscale up` wartet auf die Anmeldung).
+rt_edge_exec_detached() {
+  local c; c="$(_rt_edge_container "$1")" || return 2
+  shift
+  docker exec -d "$c" "$@"
+}
 # rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
 rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }
 # rt_probe_host <adresse> <port> — antwortet <adresse>:<port> einem Kurzlauf-Container im Netz edge_public (dort haengt wan)?

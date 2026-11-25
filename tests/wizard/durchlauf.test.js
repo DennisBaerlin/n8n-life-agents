@@ -209,6 +209,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     // Verbinden: QR-Code, dann Telegram-/start (Attrappe), dann Übergabe.
     const cn = await waitFor(async () => { const p = await page(w); return p.qr ? p : null; });
     assert.match(cn.qr, /^<svg /);
+    assert.ok(!cn.qrDesk, 'Telegram-Code bleibt überall sichtbar');
     assert.equal(cn.link.href, 'https://t.me/beispiel_bot?start=0123456789abcdef');
     assert.ok(!fs.readFileSync(path.join(w.dir, 'state', 'progress.json'), 'utf8').includes('0123456789abcdef'), 'Pairing-Code nie auf der Platte');
     assert.equal(cn.canBack, false);
@@ -271,41 +272,36 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await answer(w, 'fb_dslite', 'yes'));   // DS-Lite führt zum Tunnel
     await backupPage(w);
     assert.equal((await page(w)).id, 'review');
-    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale nach der Installation)');
+    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale als nächster Schritt)');
     const rvt = await page(w);
-    // Die Anmeldung folgt nach der Installation (Zeile oben): der Knopf startet sie, kein zweiter Hinweis dazu.
-    assert.equal(rvt.next, 'Alles richtig, Installation starten');
-    assert.equal(rvt.note, undefined);
+    assert.equal(rvt.next, 'Alles richtig, weiter');
+    assert.equal(rvt.note.text, 'Als Nächstes meldest du dich bei Tailscale an. Danach richtet sich alles von allein ein.');
 
-    // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht erneut.
-    fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
+    // Tunnel VOR der Installation: reach_ctl.sh start, Anmeldung mit Knopf und QR-Code; provision.sh läuft erst danach.
+    fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');
     await expectOk(await answer(w, 'review', null));
-    const failed = await waitFor(async () => { const p = await page(w); return p.failed ? p : null; });
-    assert.deepEqual(failed.items.map((i) => i.state), ['ok', 'ok', 'ok', 'ok', 'bad', '']);
-    const rep = (await (require('./helpers').req)(w, 'GET', '/api/report', { headers: { Cookie: w.cookie } })).json.text;
-    assert.match(rep, /install_status: failed/); assert.match(rep, /install_stage: workflows/); assert.match(rep, /install_reason: fake_failure/);
-    assert.ok(!/Erika|Muster|beispiel/.test(rep));
-    fs.rmSync(path.join(w.fake, 'fail_stage'));
-    await expectOk(await post(w, '/api/action', { name: 'retry' }));
-    assert.equal((await page(w)).id, 'review');
-    fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');   // Tunnel wartet auf die Anmeldung
-    await expectOk(await answer(w, 'review', null));
-    await waitFor(async () => (await page(w)).id === 'connect');
-    assert.equal(fs.readFileSync(path.join(w.fake, 'runs'), 'utf8').trim(), '2');
-    const parsed = JSON.parse(fs.readFileSync(path.join(w.fake, 'parsed.json'), 'utf8'));
-    assert.equal(parsed.TELEGRAM_BOT_TOKEN, '222:neu-beispiel');
-    assert.equal(parsed.GOOGLE_API_KEY, '');
-    assert.equal(parsed.REACH_MODE, 'tunnel');
-    assert.equal(parsed.DOMAIN, '');
-    assert.equal(parsed.__packages, 'none', 'keine Module = --packages none');
-    assert.equal(parsed.OWNER_LANGUAGE, 'en');
-
-    // Tunnel: Anmelde-Link als Knopf (nur login.tailscale.com), fremde Adressen nie.
     const lg = await waitFor(async () => { const p = await page(w); return p.link && p.link.href ? p : null; });
+    assert.equal(lg.id, 'tunnel');
+    assert.deepEqual(lg.step, { current: 'install', sub: null }, 'in der Leiste unter „Installation“');
     assert.equal(lg.title, 'Melde dich bei Tailscale an');
     assert.equal(lg.link.href, 'https://login.tailscale.com/a/beispiel123');
+    assert.match(lg.qr, /^<svg /, 'QR-Code des Anmelde-Links fürs Handy');
+    assert.equal(lg.qrDesk, true, 'nur am Rechner-Bildschirm (app.css blendet ihn unter 600 px aus)');
+    assert.match(lg.help.map((x) => x.p).join(' '), /Am Handy: scanne den Code\. Am Rechner öffnet der Knopf einen neuen Tab/);
     assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
     assert.deepEqual(lg.ts, { host: 'brave-otter' }, 'nur der gewürfelte Tailscale-Name fürs Bild');
+    assert.equal(lg.canBack, true, '„Zurück“ = Weg ändern');
+    assert.ok(!fs.existsSync(path.join(w.fake, 'runs')), 'provision.sh läuft erst, wenn der Tunnel steht');
+    assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['start']);
+    await expectOk(await post(w, '/api/back', {}));
+    assert.equal((await page(w)).id, 'review', 'Zurück führt zur Übersicht');
+    await expectOk(await answer(w, 'review', null));
+    assert.equal((await page(w)).id, 'tunnel');
+    // Neustart des Wizards mitten im Tunnel-Schritt: er bleibt dort.
+    await w.stop();
+    Object.assign(w, await startWizard({ dir: w.dir, port: w.port }));
+    await login(w);
+    assert.equal((await waitFor(async () => { const p = await page(w); return p.link ? p : null; })).id, 'tunnel');
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
@@ -320,10 +316,28 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
     assert.equal(fn.ts, null, 'ein Wert, der kein gewürfelter Name sein kann, kommt nie ins Bild');
-    // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach_ctl.sh activate, danach Pairing.
+    // Tunnel steht (Telegram zeigt noch nicht darauf = pending_activation): jetzt die Installation, gleich mit der Adresse.
+    // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht, ohne neue Anmeldung.
+    fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
+    const failed = await waitFor(async () => { const p = await page(w); return p.failed ? p : null; });
+    assert.deepEqual(failed.items.map((i) => i.state), ['ok', 'ok', 'ok', 'ok', 'bad', '']);
+    const rep = (await (require('./helpers').req)(w, 'GET', '/api/report', { headers: { Cookie: w.cookie } })).json.text;
+    assert.match(rep, /install_status: failed/); assert.match(rep, /install_stage: workflows/); assert.match(rep, /install_reason: fake_failure/);
+    assert.ok(!/Erika|Muster|beispiel/.test(rep));
+    fs.rmSync(path.join(w.fake, 'fail_stage'));
+    await expectOk(await post(w, '/api/action', { name: 'retry' }));
+    assert.equal((await page(w)).id, 'review');
+    await expectOk(await answer(w, 'review', null));
     await waitFor(async () => !!(await page(w)).qr);
-    assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['activate'], 'genau einmal aktiviert');
+    assert.equal(fs.readFileSync(path.join(w.fake, 'runs'), 'utf8').trim(), '2');
+    const parsed = JSON.parse(fs.readFileSync(path.join(w.fake, 'parsed.json'), 'utf8'));
+    assert.equal(parsed.TELEGRAM_BOT_TOKEN, '222:neu-beispiel');
+    assert.equal(parsed.GOOGLE_API_KEY, '');
+    assert.equal(parsed.REACH_MODE, 'tunnel');
+    assert.equal(parsed.__packages, 'none', 'keine Module = --packages none');
+    assert.equal(parsed.OWNER_LANGUAGE, 'en');
+    assert.ok(!fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').includes('activate'), 'kein zweiter Installer-Lauf (activate)');
     // Selbsttest beim Warten: Telegram meldet einen Zustellfehler -> Erklärung mit nächstem Schritt (Tunnel: Funnel).
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'ready', webhook: 'ours', webhook_error: 'Connection timed out', key_days_left: 12 }));
     const err = await waitFor(async () => { const x = await page(w); return x.qr && x.note ? x : null; }, 30000);
@@ -489,6 +503,34 @@ async function toConnect(env, signal, hints = {}) {
   await waitFor(async () => (await page(w)).id === 'connect');
   return w;
 }
+
+// Tailscale antwortet nicht (Tunnel-Schritt vor der Installation, Owner: kein „Später anmelden“): nach der Frist ein klarer
+// Hinweis mit „Erneut prüfen“ und „Zurück“; die Installation startet nie ohne fertigen Tunnel.
+test('Tunnel: Tailscale antwortet nicht = Hinweis mit Erneut prüfen und Zurück, keine Installation', async () => {
+  const w = await startWizard({ hints: {}, env: { WIZARD_TUNNEL_GRACE_MS: '0' } });
+  try {
+    await login(w);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['backup_dir', 'other'],
+      ['backup_dir_custom', '/daten/sicherung']]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'reach'), 'starting');
+    await expectOk(await answer(w, 'review', null));
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'tunnel_retry' ? x : null; });
+    assert.equal(p.id, 'tunnel');
+    assert.equal(p.title, 'Tailscale antwortet gerade nicht');
+    assert.equal(p.next, 'Erneut prüfen');
+    assert.equal(p.note.kind, 'warn');
+    assert.match(p.note.text, /Zurück/);
+    assert.equal(p.canBack, true);
+    assert.equal(p.poll, false);
+    fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_login');
+    await expectOk(await post(w, '/api/action', { name: 'tunnel_retry' }));
+    await waitFor(async () => { const x = await page(w); return x.link && x.link.href ? x : null; });
+    assert.ok(!fs.existsSync(path.join(w.fake, 'runs')), 'keine Installation ohne fertigen Tunnel');
+    assert.deepEqual(fs.readFileSync(path.join(w.fake, 'reach_calls'), 'utf8').trim().split('\n'), ['start', 'start'], '„Erneut prüfen“ stößt erneut an');
+  } finally { await w.stop(); }
+});
 
 test('Verbinden: Adresse noch nicht da = sichtbar warten mit Restzeit, dann geht es von allein weiter', async () => {
   const w = await toConnect({}, 'reach_wait');

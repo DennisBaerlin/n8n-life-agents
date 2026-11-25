@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # tailscale_authkey_test.ps1 — echter Weg des Tailscale-Anmeldeschluessels (gratis, braucht ein Test-Tailnet):
 #   1. Schluessel je Lauf per OAuth-Client erzeugen (scripts/ci/install_test_answers.sh, echte Tailscale-API);
-#   2. offizielles Tailscale-Image (Digest aus provisioning/compose/compose.yml) wie im Verbund starten (Userspace,
-#      TS_AUTH_ONCE, ohne Schluessel) und mit dem echten Docker-Weg anmelden (lib/reach.sh _reach_key_login:
+#   2. offizielles Tailscale-Image (Digest aus provisioning/compose/compose.yml) wie im Verbund starten (tailscaled direkt,
+#      Userspace, ohne Schluessel) und mit dem echten Docker-Weg anmelden (lib/reach.sh _reach_key_login:
 #      `tailscale up --auth-key=file:/dev/stdin` per `docker exec -i`);
 #   3. pruefen: laeuft, Tag tag:install-test, kein Neustart des Containers, Schluessel weder in docker inspect noch in den
 #      Logs noch im Zustand; Funnel fuer das Tag erlaubt (HTTPS-Abruf von aussen ueber <name>.<tailnet>.ts.net, bis 10 min DNS);
@@ -63,8 +63,8 @@ eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "erwartet '$2', bekomm
 cleanup() { docker exec "$C" tailscale logout >/dev/null 2>&1; docker rm -fv "$C" >/dev/null 2>&1; rm -rf /tmp/la; }
 trap cleanup EXIT
 docker rm -fv "$C" >/dev/null 2>&1
-docker run -d --name "$C" -e TS_STATE_DIR=/var/lib/tailscale -e TS_USERSPACE=true -e TS_AUTH_ONCE=true \
-  -e TS_ACCEPT_DNS=false -e TS_HOSTNAME="$HOST" "$TSIMG" >/dev/null || { fail R_start "Tailscale-Container startet nicht"; exit 1; }
+docker run -d --name "$C" --entrypoint tailscaled "$TSIMG" --tun=userspace-networking --statedir=/var/lib/tailscale >/dev/null \
+  || { fail R_start "Tailscale-Container startet nicht"; exit 1; }
 # hand-injected: Bot-Token und Anthropic-Schluessel braucht nur die Antwort-Datei, nicht dieser Test (Tailscale-Teil allein).
 TEST_TELEGRAM_BOT_TOKEN=unused TEST_ANTHROPIC_API_KEY=unused bash /repo/scripts/ci/install_test_answers.sh /tmp/la/answers.env \
   || { fail R_mint "kein Schluessel per OAuth (Ausgabe oben)"; exit 1; }

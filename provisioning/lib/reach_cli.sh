@@ -6,7 +6,7 @@
 # Ein Fakt REACH_MODE in core.env (derselbe Schluessel wie im Verbund), Werte in der CLI:
 #   tunnel   Tailscale Funnel. tailscaled laeuft direkt auf dem Rechner (offizielle apt-Quelle); ohne /dev/net/tun
 #            (unprivilegierter LXC, Proxmox-Standard) im Userspace-Modus — Funnel/Serve brauchen kein TUN, der Verbund
-#            laeuft genauso (compose.yml TS_USERSPACE). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der einen
+#            laeuft genauso (compose.yml: tailscaled --tun=userspace-networking). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der einen
 #            Liste LA_PUBLIC_PATHS ein Serve-Eintrag auf 127.0.0.1:<n8n-port><pfad>, alles andere 404; n8n bleibt auf
 #            127.0.0.1 (TRUSTED_PROXIES=127.0.0.1), kein Caddy, keine Firewall-Oeffnung. Tailscale schneidet den Eintrags-
 #            Pfad vor dem Weiterreichen ab (tailscale/tailscale#6571) -> das Ziel traegt den Pfad selbst.

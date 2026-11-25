@@ -408,7 +408,7 @@ const UiNudge = {
       if (p.qr) {
         const box = h('div', { class: 'qr' });
         box.innerHTML = p.qr;   // eigener Code (qr.js), keine Nutzer- oder Fremddaten
-        kids.push(h('div', { class: 'pair' }, box, h('div', null, helpNodes(p.help))));
+        kids.push(h('div', { class: p.qrDesk ? 'pair qr-desk' : 'pair' }, box, h('div', null, helpNodes(p.help))));
       }
       // Knopf und Warte-Zeile in einer Reihe (umbrechend), damit ein Bild darunter Platz hat.
       const wait = p.wait ? h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.wait)) : null;

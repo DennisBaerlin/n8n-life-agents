@@ -145,7 +145,7 @@ _mv_plan() {
 }
 
 # _mv_reach_activate — Tunnel steht, Telegram zeigt noch nicht darauf: den Installer einmal nachfahren (Adresse uebernehmen, n8n setzt
-#   den Webhook). Derselbe Schritt wie im Wizard (compose/reach_ctl.sh activate).
+#   den Webhook): compose/reach_ctl.sh activate, dessen einziger Nutzer der Umzug ist (der Wizard meldet vor der Installation an).
 _mv_reach_activate() { bash "$(lifeagents_runtime_dir)/provisioning/compose/reach_ctl.sh" activate >&2; }
 
 # _mv_tunnel_text <zustand> <link> — was der Owner jetzt tun muss.

@@ -517,7 +517,8 @@ if ($Version) {
     $entryScript  = "$ContainerRoot/provisioning/provision.sh"
     $installFlags = "--profile dev --packages all --unattended $EnvFileInC"
 }
-if ($env:N8NTEST_REAL_TELEGRAM -eq '1') { [void](Invoke-Native docker @('exec', $Container, 'touch', '/root/.n8ntest_real_telegram')) }   # -Down gibt den Webhook dann freiWrite-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
+if ($env:N8NTEST_REAL_TELEGRAM -eq '1') { [void](Invoke-Native docker @('exec', $Container, 'touch', '/root/.n8ntest_real_telegram')) }   # -Down gibt den Webhook dann frei
+Write-Host "Fahre $entryScript $installFlags im Container (PG17 + n8n + Schema + Workflows; dauert einige Minuten) ..."
 $remote = @"
 trap 'shred -u $EnvFileInC 2>/dev/null || rm -f $EnvFileInC' EXIT
 set -e

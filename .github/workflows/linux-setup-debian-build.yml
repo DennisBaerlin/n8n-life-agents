@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# Ein neuer Push ersetzt den laufenden Lauf (je ~10-30 Min VM-Zeit).
+concurrency:
+  group: linux-setup-debian-build
+  cancel-in-progress: true
+
 jobs:
   debian:
     runs-on: ubuntu-24.04

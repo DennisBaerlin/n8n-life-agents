@@ -158,12 +158,13 @@ step_setup() {
   ssh -f -N -R 127.0.0.1:5001:127.0.0.1:5001 -o ExitOnForwardFailure=yes "${SSH_O[@]}" debian@127.0.0.1
   mark setup_start
   local rc=0
-  vm_setup > "$RUNNER_TEMP/setup1.out" 2> >(tee "$RUNNER_TEMP/setup1.err" >&2) || rc=$?
+  vm_setup > "$RUNNER_TEMP/setup1.out" 2> "$RUNNER_TEMP/setup1.err" || rc=$?
   mark setup_done
   # Der Einmal-Link gehoert in kein oeffentliches Log: Wert maskieren, bevor die Ausgabe erscheint.
   local tok
-  tok="$(grep -o 'start?t=[^[:space:]]*' "$RUNNER_TEMP/setup1.out" | head -1 | sed 's/^start?t=//')"
+  tok="$(cat "$RUNNER_TEMP/setup1.out" "$RUNNER_TEMP/setup1.err" | grep -o 'start?t=[^[:space:]]*' | head -1 | sed 's/^start?t=//')"
   [ -z "$tok" ] || echo "::add-mask::$tok"
+  cat "$RUNNER_TEMP/setup1.err" >&2
   cat "$RUNNER_TEMP/setup1.out"
   [ "$rc" = 0 ] || { echo "::error::setup.sh Exit $rc"; exit 1; }
   grep -q 'ssh -L 5881:127.0.0.1:5881 debian@' "$RUNNER_TEMP/setup1.out" || { echo "::error::Ausgabe ohne SSH-Befehl fuer den Fragebogen"; exit 1; }
@@ -301,7 +302,8 @@ step_verify() {
 
 # Zweitlauf von setup.sh: nichts aendert sich (gleiche Container, gleiche Dateien).
 step_second() {
-  vm_setup > "$RUNNER_TEMP/setup2.out" 2> >(tee "$RUNNER_TEMP/setup2.err" >&2)
+  vm_setup > "$RUNNER_TEMP/setup2.out" 2> "$RUNNER_TEMP/setup2.err" || { cat "$RUNNER_TEMP/setup2.err" >&2; exit 1; }
+  cat "$RUNNER_TEMP/setup2.err" >&2
   grep -q 'Nichts zu tun' "$RUNNER_TEMP/setup2.err" || { echo "::error::Zweitlauf meldet nicht 'Nichts zu tun'"; exit 1; }
   vm 'sudo docker ps -a --filter "label=io.lifeagents.install=lifeagents" --format "{{.Names}} {{.ID}}" | sort' > "$RUNNER_TEMP/ids.2"
   diff "$RUNNER_TEMP/ids.1" "$RUNNER_TEMP/ids.2"
@@ -342,6 +344,7 @@ step_summary() {
 }
 
 step_diag() {
+  mask_secrets
   echo "=== console.log (Ende)"; tail -40 "$W/console.log" 2>/dev/null || true
   echo "=== crane.log"; tail -20 "$RUNNER_TEMP/crane.log" 2>/dev/null || true
   vm 'sudo docker ps -a --format "{{.Names}} {{.Status}}"; sudo journalctl -u docker -n 30 --no-pager; df -h /' 2>/dev/null || true
@@ -352,7 +355,7 @@ step_diag() {
 
 step_stop() {
   [ ! -s "$W/qemu.pid" ] || sudo kill "$(cat "$W/qemu.pid")" || true
-  pkill -f 'ssh -f' || true
+  pkill -f 'ssh -f -N' || true
 }
 
 cmd="${1:-}"; shift || true

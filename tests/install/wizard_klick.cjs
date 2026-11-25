@@ -39,8 +39,7 @@ const CHOOSE = {
 // Test-Tailnet-Schluessel in den Antworten (tunnel) wartet er stattdessen, bis die Anmeldung durch ist.
 const FINISH_VIA = process.env.KLICK_FINISH_VIA || 'fritzbox';
 FILL['h:DOMAIN'] = 'ci-runner.example.org';
-// Module: alle. Die Paperless-Adresse wird uebersprungen (optional), der Fall a prueft, was danach kommt.
-const PACKAGES_SKIP = new Set();
+// Module: alle; die optionale Paperless-Adresse wird uebersprungen (Fall a prueft, was danach kommt).
 
 const log = (m) => process.stdout.write(`[klick] ${m}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -96,7 +95,7 @@ async function checkLayout(page) {
 //   c: Seite kommt VOR der Installation, die Leiste steht auf "install", bis hierhin lief keine Installation
 //   d: Knopf zur Tailscale-Anmeldung oeffnet ein neues Fenster, die Fragebogen-Adresse bleibt; QR-Code bei 1280 px sichtbar, bei 600 px nicht
 //   e: "Zurueck" fuehrt zur Uebersicht
-async function checkTunnelPage(ctx, page, s) {
+async function checkTunnelPage(page, s) {
   const p = s.page;
   check(!seenIds.includes('install'), 'Tailscale-Seite kommt vor der Installation');
   check(p.step && p.step.current === 'install', 'Schritt-Leiste steht auf der Installation');
@@ -133,7 +132,7 @@ async function waitUntil(page, fn, ms) {
   return null;
 }
 
-async function handle(page, s, ctx) {
+async function handle(page, s) {
   const p = s.page;
   const id = p.id;
   if (seenIds[seenIds.length - 1] !== id) seenIds.push(id);
@@ -164,11 +163,10 @@ async function handle(page, s, ctx) {
   if (p.kind === 'multi') {
     const opts = await page.locator('[data-m]').evaluateAll((els) => els.map((e) => e.dataset.m));
     for (const v of opts) {
-      if (PACKAGES_SKIP.has(v)) continue;
       const b = page.locator(`[data-m="${v}"]`);
       if ((await b.getAttribute('aria-pressed')) !== 'true') await b.click();
     }
-    log(`Module: ${opts.filter((v) => !PACKAGES_SKIP.has(v)).join(', ')}`);
+    log(`Module: ${opts.join(', ')}`);
     await snap(page, id);
     return press(page, id);
   }
@@ -216,7 +214,7 @@ async function handle(page, s, ctx) {
     // Anmeldung bei Tailscale VOR der Installation (Faelle c-e). Ohne Konto geht es hier nicht weiter: der Lauf wechselt ueber
     // "Zurueck" zur Uebersicht und waehlt dort die FritzBox-Adresse (KLICK_FINISH_VIA=fritzbox) oder wartet auf die
     // Anmeldung per Test-Tailnet-Schluessel (tunnel).
-    const r = tunnelDetour === 'todo' ? await checkTunnelPage(ctx, page, s) : 'wait';
+    const r = tunnelDetour === 'todo' ? await checkTunnelPage(page, s) : 'wait';
     tunnelDetour = 'done';
     if (r === 'switch') return;
     if (!(await waitChange(page, 'tunnel', 10 * 60 * 1000))) throw new Error('Tailscale-Anmeldung: keine neue Seite nach 10 Min');
@@ -278,7 +276,7 @@ async function handle(page, s, ctx) {
       const s = await state(page);
       if (s.offline || !s.page) { await sleep(1000); continue; }
       if (seen[seen.length - 1] !== s.page.id) { seen.push(s.page.id); log(`Seite ${seen.length}: ${s.page.id} (${s.page.kind})`); }
-      await handle(page, s, ctx);
+      await handle(page, s);
     }
     throw new Error('Zeitgrenze (60 Min) im Klickweg');
   } catch (e) {

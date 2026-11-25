@@ -750,6 +750,36 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_next_step]: erwartet role owner, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (DEFINER-Fenster)]';
 
+  -- ===== (3e-PINS) Router-Flags offener Entwurf: core_ro -> core.fn_advisor_pins (Orchestrator-Knoten Interview pin).
+  -- Haushalts-Entwurf 3 Tage alt -> paused_advisor; agent.advisor_plans ist fuer core_ro unsichtbar (RLS + Deny-Liste).
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
+  VALUES ('finance', NULL, '__t_role_pins', 'draft', 1, '{}', NULL) ON CONFLICT DO NOTHING;
+  ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch;
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance' AND status = 'draft';
+  ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    v_out := core.fn_advisor_pins(jsonb_build_object('person_id', 'owner', 'role', 'owner'))->>'paused_advisor';
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_pins]: %', SQLERRM;
+  END;
+  IF v_out IS DISTINCT FROM 'agent.finance_advisor' THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_pins]: erwartet agent.finance_advisor, got %', COALESCE(v_out, '<null>'); END IF;
+  BEGIN
+    SET LOCAL ROLE finance_ro;
+    PERFORM core.fn_advisor_pins('{}'::jsonb);
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: finance_ro konnte core.fn_advisor_pins aufrufen';
+  EXCEPTION
+    WHEN insufficient_privilege THEN RESET ROLE;
+    WHEN OTHERS THEN
+      RESET ROLE;
+      IF SQLERRM LIKE 'FAIL %' THEN RAISE; END IF;
+      RAISE EXCEPTION 'FAIL [finance_ro NEGATIV fn_advisor_pins]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_advisor_pins (DEFINER-Fenster), finance_ro abgewiesen]';
   -- ===== (3e-CHILD) Kinder-Sicht: core_ro -> core.fn_sender_sees_household (Hilfe-Agent Household status read). Der
   -- Datei-Fixture-Owner (telegram_user_id 777) sieht den Haushalt; ein abgewiesener Aufruf wuerde vor dem Body werfen.
   BEGIN

@@ -194,6 +194,10 @@ DO $$ BEGIN
     IF to_regprocedure('core.fn_get_next_step_example(text,jsonb)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION core.fn_get_next_step_example(text, jsonb) TO core_ro;
     END IF;
+    -- Router-Flags offener Entwurf (Orchestrator-Knoten Interview pin).
+    IF to_regprocedure('core.fn_advisor_pins(jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_advisor_pins(jsonb) TO core_ro;
+    END IF;
     -- Kinder-Sicht: Hilfe-Agent (Knotenwahl) und Monitor-Eingang fragen die eine Regel unter core_ro.
     IF to_regprocedure('core.fn_sender_sees_household(text)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION core.fn_sender_sees_household(text) TO core_ro;

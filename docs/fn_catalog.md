@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 590 fn-Dateien.
+Umfang: 591 fn-Dateien.
 
 ## finance.fn_account_confirmed_until (READ, STABLE) -- bis zu welchem Tag der Stand eines Kontos bestaetigt ist
 - `finance.fn_account_confirmed_until(p_account_id int) -> date`
@@ -108,6 +108,11 @@ Umfang: 590 fn-Dateien.
 - `core.fn_advisor_open_handoffs(p_domain text) -> jsonb`
 - jsonb-Keys: --
 - core.fn_advisor_open_handoffs(p_domain) — vereinbarte Plan-Aufgaben, die noch nicht eingetragen sind, fuer den Berater Lesefenster der engen Paket-Leserolle auf agent.handoff_tasks (finance_ro sieht agent.* nicht): finance.fn_advisor_snapshot traegt es als open_handoffs, damit der Berater vor einem Loesungsvorschlag zu einer Warnung sieht, was schon vereinbart ist. Eingabe p_domain (Plan-Domain). Rueckgabe jsonb-Array [{kind, text, topic, section_key, status, open_since}] in Anlage-Reihenfolge, hoechstens 50; status open = wartet auf [Durchgehen], working = per [Durchgehen] gerade beansprucht (auch ein abgelaufener Claim: eingetragen ist es erst bei done); open_since = Anlagetag (core.fn_today). Kein payload, keine Person, keine id: der Berater braucht nur den Inhalt; das Eintragen laeuft ueber tool_send_handoff_overview. Leer ([]) bei per_user-Plan-Kontext (der Snapshot kennt keinen Absender, fail-closed wie core.fn_advisor_read_plan in einer Frei-SQL-Sitzung) und wenn die Login-Rolle eine Paket-Rolle eines anderen Pakets ist als das der Domain (core.advisors.package; career_ro liest keine finance-Vormerkungen). Nur lesend. SECURITY DEFINER, EXECUTE an <pkg>_ro/_rw via core.fn_provision_package_roles. Tests: tests/db/core/test_fn_advisor_open_handoffs.sql, tests/db/cross/test_role_permissions.sql
+
+## core.fn_advisor_pins
+- `core.fn_advisor_pins(p jsonb) -> jsonb`
+- jsonb-Keys: person_id, role
+- core.fn_advisor_pins(p) — offener Berater-Entwurf einer Person als Router-Flags (READ) Die eine Adresse fuer "wer hat einen offenen Entwurf": der Orchestrator-Knoten 'Interview pin' liest beide Flags in den Laufzeit-Block des Router-Prompts (Regel 3 bzw. 3c in orchestrator_agent_instructions.md). Massgeblich ist der juengste Entwurf (status draft) der Person, dessen Paket aktiv ist (Join core.advisors + core.package_registry): interview_advisor = sein advisor_agent, wenn er juenger als 2 Stunden ist (Gespraech laeuft, kurze Antworten gehoeren dem Berater); paused_advisor = sein advisor_agent, wenn er 2 Stunden oder aelter und juenger als advisor.rollout_draft_stale_days (Default 30) ist (eine ausdrueckliche Bitte "weiter mit der Beratung" erreicht den Berater). Ein heisser Entwurf laesst paused_advisor leer. Personen-Regel wie der Interview-Pin: eigener Entwurf (person_id = p.person_id); Haushalts-Entwurf (person_id NULL) nur fuer role owner. Nie der Entwurf eines anderen Mitglieds. Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM). Rueckgabe jsonb genau { interview_advisor: text|null, paused_advisor: text|null }; wirft nie (Fehler -> beide null). STABLE, SECURITY DEFINER (agent.advisor_plans hat RLS und ist fuer core_ro unsichtbar), search_path gepinnt, Body schema-qualifiziert; EXECUTE an core_ro in util_create_core_ro.sql. Tests: tests/db/core/test_fn_advisor_pins.sql, tests/db/cross/test_role_permissions.sql
 
 ## core.fn_advisor_plan_status
 - `core.fn_advisor_plan_status(p_chat_id text) -> jsonb`

@@ -550,8 +550,10 @@ core-single-package seam this block removes; `contract_lint` seam-guard fails an
   `custom_auth_in` field); `httpHeaderAuth` → `{name:<field>, value:<val>, allowedDomains:""}` (exactly one
   env key; `field` = header name); unknown type → `die` (and `contract_lint` fails it at commit already).
 - **`requires_setting`** (optional, only on a `required:false` credential): a `<category>.<key>` of an askable
-  `.config` entry. When the owner skips that setting (empty answer), the setup wizard does not ask for this
-  credential (consumer: paperless token without a Paperless address). Checked by `contract_lint` 12a.
+  `.config` entry. When the owner skips that setting (empty answer), neither the setup wizard nor the terminal
+  installer asks for this credential in the first round of questions; both ask a package's settings before its
+  credentials. `lifeagents reconfigure <pkg>` still asks it (consumer: paperless token without a Paperless address).
+  Checked by `contract_lint` 12a.
 - **`field`** is the type-dependent binding slot: `httpCustomAuth` = query-string parameter name,
   `httpHeaderAuth` = header name. (The former `googleApi` service-account type and the `generate:true` env field
   — installer-minted secrets — left with the retired paperless pipeline, v0.3.0: no other consumer.)

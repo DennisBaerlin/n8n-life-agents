@@ -351,6 +351,30 @@ JSON
   eq P.paperless-ziel-aus-antwort $'paperless\tgeneral\tpaperless_url\thttp://127.0.0.1:8092' "$r"
   ( PAPERLESS_API_TOKEN=mock-paperless-token _pkg_secrets_wizard paperless "$W/la/paperless.env" 0 ) >/dev/null 2>&1
   eq P.paperless-zugang-aus-antwort mock-paperless-token "$(read_env_value "$W/la/paperless.env" PAPERLESS_API_TOKEN)"
+  # Manifest requires_setting im Terminal wie im Wizard: uebersprungene Paperless-Adresse = kein Token-Prompt; gesetzt oder
+  # noch nie gefragt = Prompt; reconfigure (reask) und die ausdrueckliche Wahl in der Uebersicht fragen trotzdem. Nur die
+  # Eingabe ist ersetzt.
+  asked() {   # asked <env-zeilen> <puffer> [reask] [credential] -> gefragte env-Keys, eine Zeile
+    rm -f "$W/la/paperless.env"; [ -z "$1" ] || printf '%s\n' "$1" > "$W/la/paperless.env"
+    ( PKG_SETTINGS_ANSWERS="$2"; ui_interactive() { return 0; }; ensure_gum() { :; }; ui_section() { :; }; pkg_text() { :; }
+      _pkg_secret_ask() { printf '%s ' "$(jq -r '.k' <<<"$1")"; _PKG_SECRET_ASKED=0; }
+      _pkg_secrets_wizard paperless "$W/la/paperless.env" "${3:-0}" "${4:-}" ) 2>/dev/null
+  }
+  eq P.requires-uebersprungen-kein-prompt '' "$(asked 'CONFIG_GENERAL_PAPERLESS_URL=' '')"
+  # Ausgelassen heisst nicht gesehen: keine Seen-Zeile fuer das Token, sonst fragte es nach dem Nachtragen der Adresse nie mehr.
+  if grep -q '^PAPERLESS_API_TOKEN=' "$W/la/paperless.env" 2>/dev/null; then fail P.requires-keine-seen-zeile "Seen-Zeile geschrieben"; else pass P.requires-keine-seen-zeile; fi
+  r="$( ( PKG_SETTINGS_ANSWERS=''; ui_interactive() { return 0; }; ensure_gum() { :; }; _pkg_secret_ask() { :; }
+          _pkg_secrets_wizard paperless "$W/la/paperless.env" 0 ) 2>&1 >/dev/null )"
+  case "$r" in *'lifeagents reconfigure paperless'*) pass P.requires-hinweis-nachtragen ;; *) fail P.requires-hinweis-nachtragen "kein Hinweis" ;; esac
+  eq P.requires-gepuffert-prompt 'PAPERLESS_API_TOKEN ' "$(asked 'CONFIG_GENERAL_PAPERLESS_URL=' $'paperless\tgeneral\tpaperless_url\thttp://192.0.2.10:8000\n')"
+  eq P.requires-nie-gefragt-prompt 'PAPERLESS_API_TOKEN ' "$(asked '' '')"
+  eq P.requires-reconfigure-fragt 'PAPERLESS_API_TOKEN ' "$(asked 'CONFIG_GENERAL_PAPERLESS_URL=' '' 1)"
+  eq P.requires-ausdruecklich-gewaehlt 'PAPERLESS_API_TOKEN ' "$(asked 'CONFIG_GENERAL_PAPERLESS_URL=' '' 1 paperless_token)"
+  # Reihenfolge: erst die Einstellungen (Adresse), dann die Zugaenge — sonst kaeme die Token-Frage vor dem Ueberspringen.
+  r="$( ( ui_interactive() { return 0; }; ensure_jq_quiet() { return 0; }; ensure_lifeagents_dir() { :; }
+          _pkg_settings_wizard() { printf 'settings '; }; _pkg_secrets_wizard() { printf 'secrets '; }
+          collect_package_inputs paperless ) 2>/dev/null )"
+  eq P.erst-einstellungen-dann-zugaenge 'settings secrets ' "$r"
 else
   fail P.jq "jq fehlt im Container (Pflicht fuer die Paket-Faelle)"
 fi

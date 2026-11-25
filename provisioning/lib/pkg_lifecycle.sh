@@ -300,14 +300,28 @@ _pkg_secrets_wizard() {
   # erste Key leer, fragt der Wizard den Rest nicht; ist der Zugang am Ende halb ausgefuellt und wurde in diesem Aufruf
   # etwas gefragt, folgt „Nochmal eingeben / Zugang auslassen" (reask: „Nichts ändern"). „Leer" = Endzustand
   # (_pkg_secret_value), nie „wurde gefragt" — der Wizard laeuft je Installation zweimal und nach Strg-C erneut.
-  local entry ekey ecred eidx en req01 skip_rest=0 asked_cred=0 suppressed=0 cname choice e k v
+  local entry ekey ecred eidx en req01 rs skip_cred=0 skip_rest=0 asked_cred=0 suppressed=0 cname choice e k v
   local -a grp=()
-  local -A snap=()
+  local -A snap=() rs_skip=()
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     ekey="$(jq -r '.k' <<<"$entry")"; ecred="$(jq -r '.cred' <<<"$entry")"
     eidx="$(jq -r '.i' <<<"$entry")"; en="$(jq -r '.n' <<<"$entry")"
     req01=0; [ "$(jq -r '.required' <<<"$entry")" = "true" ] && req01=1
+    # Manifest `requires_setting`: ohne diese Einstellung ist der Zugang nutzlos, also nicht fragen (wie flow.steps im Wizard).
+    #   Nur in der Erstfrage; reconfigure und die Wahl in der Uebersicht (reask) fragen ausdruecklich. Keine Seen-Zeile
+    #   (rs_skip, Persistenz unten): ist die Einstellung spaeter gesetzt, fragt der naechste Lauf den Zugang.
+    if [ "$eidx" -eq 0 ]; then
+      skip_cred=0; rs="$(jq -r '.requires_setting' <<<"$entry")"
+      if [ "$reask" -eq 0 ] && [ -n "$rs" ] && _pkg_setting_skipped "$pkg" "$rs"; then
+        skip_cred=1
+        if [ -z "${_PKG_RS_NOTED[$pkg.$ecred]:-}" ] && [ -z "$(_pkg_secret_value "$envf" "$ekey")" ]; then
+          _PKG_RS_NOTED[$pkg.$ecred]=1
+          note "$(_pkg_cred_label "$pkg" "$ecred"): ausgelassen, weil ${rs} fehlt — nachtragen: lifeagents config set ${rs/./ } <wert>, dann lifeagents reconfigure ${pkg}"
+        fi
+      fi
+    fi
+    if [ "$skip_cred" -eq 1 ]; then rs_skip[$ekey]=1; continue; fi
     if [ "$eidx" -eq 0 ]; then skip_rest=0; asked_cred=0; suppressed=0; grp=(); snap=(); fi
     grp+=("$entry"); snap[$ekey]="$(_pkg_secret_value "$envf" "$ekey")"   # Stand vor dieser Frage (Env, sonst Datei)
     if [ "$skip_rest" -eq 1 ] && [ -z "$(_pkg_secret_value "$envf" "$ekey")" ]; then
@@ -366,6 +380,7 @@ _pkg_secrets_wizard() {
   while IFS= read -r k; do
     [ -n "$k" ] || continue
     v="$(_pkg_secret_value "$envf" "$k")"
+    if [ -n "${rs_skip[$k]:-}" ] && [ -z "$v" ]; then continue; fi   # ausgelassen = nicht gesehen, s. requires_setting oben
     env_upsert "$envf" "$k" "$v"
   done <<<"$(jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf")"
   chmod 0640 "$envf" 2>/dev/null || true
@@ -455,7 +470,7 @@ _pkg_settings_wizard() {
     if [ -n "$only" ] && [ "$only" != "${cat}.${key}" ]; then continue; fi
     # Seen-Gate wie _pkg_secrets_wizard (debconf): eine bewusst uebersprungene Einstellung hinterlaesst eine leere
     # CONFIG_<CAT>_<KEY>=-Zeile in <pkg>.env -> kein Update fragt sie erneut (Nachtrag: lifeagents config set).
-    envf="$(lifeagents_env_file "$pkg")"; seenkey="CONFIG_$(printf "%s_%s" "$cat" "$key" | tr "[:lower:]" "[:upper:]")"
+    envf="$(lifeagents_env_file "$pkg")"; seenkey="$(_pkg_setting_seenkey "$cat" "$key")"
     cur=''
     if [ "$reask" = "1" ]; then
       cur="$(_pkg_setting_buffered "$pkg" "$cat" "$key")"
@@ -542,7 +557,7 @@ _pkg_settings_from_env() {
     [ -n "$entry" ] || continue
     cat="$(jq -r '.cat' <<<"$entry")"; key="$(jq -r '.key' <<<"$entry")"
     printf '%s\n%s\n' "$cat" "$key" | grep -qvE '^[a-z][a-z0-9_]*$' && continue   # SQL-Identifier-Schutz
-    seenkey="CONFIG_$(printf "%s_%s" "$cat" "$key" | tr "[:lower:]" "[:upper:]")"
+    seenkey="$(_pkg_setting_seenkey "$cat" "$key")"
     [ -n "${!seenkey+x}" ] || continue                                            # keine Antwort fuer diese Einstellung
     [ -n "$(_pkg_setting_current "$cat" "$key")" ] && continue
     env_has_key "$envf" "$seenkey" && continue
@@ -572,6 +587,24 @@ _pkg_setting_buffered() {
   [ -n "$PKG_SETTINGS_ANSWERS" ] || return 0
   printf '%s' "$PKG_SETTINGS_ANSWERS" | awk -F '\t' -v p="$1" -v c="$2" -v k="$3" '$1 == p && $2 == c && $3 == k { v = $4 } END { if (v != "") printf "%s", v }'
 }
+
+# _pkg_setting_skipped <pkg> <cat.key> — rc 0, wenn die Einstellung ausdruecklich uebersprungen ist: keine gepufferte
+#   Antwort, kein core.config-Wert und eine leere Seen-Zeile in <pkg>.env. Noch nie gefragt zaehlt nicht (wie der Wizard:
+#   flow.steps prueft die Antwort ''). Grundlage von Manifest-`requires_setting` in _pkg_secrets_wizard.
+_pkg_setting_skipped() {
+  local pkg="$1" cat="${2%%.*}" key="${2#*.}" envf seenkey
+  printf '%s\n%s\n' "$cat" "$key" | grep -qvE '^[a-z][a-z0-9_]*$' && return 1   # SQL-Identifier-Schutz; unklar = fragen
+  [ -z "$(_pkg_setting_buffered "$pkg" "$cat" "$key")" ] || return 1
+  [ -z "$(_pkg_setting_current "$cat" "$key")" ] || return 1
+  envf="$(lifeagents_env_file "$pkg")"; seenkey="$(_pkg_setting_seenkey "$cat" "$key")"
+  env_has_key "$envf" "$seenkey" && [ -z "$(read_env_value "$envf" "$seenkey" 2>/dev/null || true)" ]
+}
+
+# _pkg_setting_seenkey <cat> <key> -> CONFIG_<CAT>_<KEY>: Seen-Zeile in <pkg>.env und Name der Antwort ohne Terminal.
+_pkg_setting_seenkey() { printf 'CONFIG_%s_%s' "$1" "$2" | tr '[:lower:]' '[:upper:]'; }
+
+# Zugaenge, deren requires_setting-Hinweis in diesem Lauf schon kam (der Wizard laeuft je Installation zweimal).
+declare -gA _PKG_RS_NOTED=()
 
 # _pkg_setting_unbuffer <pkg> <cat> <key> — eine gepufferte Antwort entfernen (vor dem Ersetzen bzw. bei „Später").
 _pkg_setting_unbuffer() {
@@ -680,8 +713,9 @@ collect_package_inputs() {
   ensure_lifeagents_dir
   while IFS= read -r pkg; do
     [ -n "$pkg" ] || continue
-    _pkg_secrets_wizard "$pkg" "$(lifeagents_env_file "$pkg")" 0
+    # Erst die Einstellungen: ein Zugang mit requires_setting entfaellt, wenn seine Einstellung uebersprungen wurde.
     _pkg_settings_wizard "$pkg"
+    _pkg_secrets_wizard "$pkg" "$(lifeagents_env_file "$pkg")" 0
   done <<<"$pkgs"
   umask "$old_umask"
   return 0

@@ -438,13 +438,9 @@ function pageFor(id) {
         help: [{ p: T('core.wizard.page.backup_fail_help') }], note: { kind: 'bad', text: T('core.wizard.page.backup_fail_note') },
         next: T('core.wizard.page.backup_retry') });
     }
-    case 'review': {
-      // Die Übersicht ist die letzte Seite vor dem Start (keine eigene Bestätigung). Tunnel: als Nächstes die Anmeldung.
-      const tunnel = flow.reachMode(P.A) !== 'fritzbox';
-      return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
-        note: tunnel ? { kind: '', text: T('core.wizard.page.review_tunnel_note') } : undefined,
-        next: T(tunnel ? 'core.wizard.page.review_next' : 'core.wizard.page.review_start') });
-    }
+    // Die Übersicht ist die letzte Seite vor dem Start (keine eigene Bestätigung); ihr Knopf startet die Installation.
+    case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
+      next: T('core.wizard.page.review_start') });
     case 'install': return Object.assign(base, installView());
     case 'connect': return Object.assign(base, connectView());
     case 'handoff': {

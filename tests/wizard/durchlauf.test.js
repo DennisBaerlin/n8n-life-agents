@@ -190,7 +190,6 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal((await post(w, '/api/goto', { id: 'install' })).status, 422);
     // Keine eigene Bestätigungs-Seite: die Übersicht startet die Installation.
     assert.equal(rv.next, 'Alles richtig, Installation starten');
-    assert.equal(rv.note, undefined, 'FritzBox-Weg: kein Tailscale-Hinweis');
     assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'answers.env')), 'vor dem Start keine Antwort-Datei');
     await expectOk(await answer(w, 'review', null));
 
@@ -274,8 +273,9 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal((await page(w)).id, 'review');
     assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale nach der Installation)');
     const rvt = await page(w);
-    assert.equal(rvt.next, 'Alles richtig, weiter');
-    assert.equal(rvt.note.text, 'Als Nächstes meldest du dich bei Tailscale an. Danach richtet sich alles von allein ein.');
+    // Die Anmeldung folgt nach der Installation (Zeile oben): der Knopf startet sie, kein zweiter Hinweis dazu.
+    assert.equal(rvt.next, 'Alles richtig, Installation starten');
+    assert.equal(rvt.note, undefined);
 
     // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht erneut.
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
@@ -560,7 +560,8 @@ test('Ende ohne Start-App (LA_HANDOFF=none): Fertig-Seite zum Schließen, danach
     assert.deepEqual(p.step, { current: 'done', sub: null }, 'Leiste ganz erledigt, kein offener Dauerbetrieb');
     const help = p.help.map((x) => x.p).join(' ');
     assert.match(help, /Telegram/);
-    assert.match(help, /Du kannst es jetzt schließen/);
+    assert.match(help, /Dein Assistent läuft weiter, auch wenn du dieses Fenster schließt/);
+    assert.ok(!/Server/.test(help), 'kein Fachwort');
     assert.ok(!/wach bleiben/.test(help), 'kein Dauerbetrieb-Satz ohne App');
     assert.equal(p.next || null, null, 'kein Knopf');
     assert.ok(!p.done, 'keine Warte-Zeile „Einen Moment …“');

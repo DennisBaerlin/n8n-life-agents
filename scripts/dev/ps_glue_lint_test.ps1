@@ -29,5 +29,15 @@ Test-Case 'zusammengesetztes Wort ist kein Befehl' "# SessionStart-Hook und Wait
 Test-Case 'Raute im String ist kein Kommentar' "`$a = 'frei#freiWrite-Host x'`n" $false
 Test-Case 'Ausnahme mit Grund ist gruen' "`$a = 1   # ps-glue-lint: ok Beispieltext freiWrite-Host`n" $false
 
+# Aufruf wie pre-commit: mehrere Dateien als Argumente, die verklebte zuletzt. Jede Datei zaehlt, keine wird als -Root gelesen.
+$dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pgl_' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+try {
+    [System.IO.File]::WriteAllText((Join-Path $dir 'a.ps1'), "`$a = 1`n", $u8)
+    [System.IO.File]::WriteAllText((Join-Path $dir 'b.ps1'), "`$a = 1   # nur so freiWrite-Host `"x`"`n", $u8)
+    $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint (Join-Path $dir 'a.ps1') (Join-Path $dir 'b.ps1')) -join "`n"
+    if ($LASTEXITCODE -ne 0 -and $out -match 'b\.ps1') { Write-Host '  PASS zweite Datei der Argumente wird geprueft' -ForegroundColor Green }
+    else { Write-Host "  FAIL zweite Datei der Argumente wird geprueft (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $fails++ }
+} finally { Remove-Item -Recurse -Force $dir }
 if ($fails -eq 0) { Write-Host 'PASS ps_glue_lint_test' -ForegroundColor Green } else { Write-Host "FAIL ps_glue_lint_test ($fails)" -ForegroundColor Red }
 exit $fails

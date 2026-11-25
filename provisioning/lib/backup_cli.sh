@@ -1792,12 +1792,12 @@ backup_cmd_restore() {
 }
 
 # _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten>
-#   <pakete-uebersprungen> [<nur-teile:0|1>] — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
+#   <pakete-uebersprungen> <nur-teile:0|1> — der aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/
 #   einschalten, Aufbau ihrer Tabellen pruefen, Vorab-Sicherung der jetzigen Daten, eine TX, danach _bkp_converge. Jeder
 #   Abbruch bis einschliesslich der TX ueber _bkp_rdie (ein vorher eingerichtetes Paket bleibt); ein gescheiterter Abgleich
 #   danach warnt nur, die Daten sind dann schon eingespielt.
 _bkp_rs_apply() {
-  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" parts_only="${8:-0}" pkg
+  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" to_skip="${7:-}" parts_only="${8:?parts_only (8. Argument: 0 oder 1) fehlt}" pkg
   # --parts: nur die Teile nach den Daten (Gespraeche, Einstellungen, Zugaenge) nachholen: keine Paket-Einrichtung, keine
   # Vorab-Sicherung, kein Ersetzen. parts_only (8. Argument) ist die Option --parts von backup_cmd_restore. Ein
   # gescheiterter Teil steht in backup.state (LAST_RESTORE_PARTS); rc 0, damit ein Hintergrund-Lauf sein Ergebnis noch schreibt.

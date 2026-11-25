@@ -235,6 +235,8 @@ ok_if R.parts-text-wahr '[ "$rc" -eq 0 ] && ! said "ALLE aktuellen Nutzerdaten" 
 # _bkp_rs_apply liest die Option --parts aus seinen Argumenten, nicht aus einer Variablen des Aufrufers (set -u: sonst "unbound").
 mkdir -p "$W/leer"
 ok_if R.rs-apply-parts-ohne-aufrufer '( set -u; for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do . "$ROOT/provisioning/lib/$f"; done; unset parts_only; _bkp_rs_apply "$W/leer" "" "" 0 "" "" "" 1 ) > "$W/out.rsa" 2>&1' "$(head -c 200 "$W/out.rsa" 2>/dev/null | tr '\n' ' ')"
+# Fehlt die Option, scheitert der Aufruf laut, statt still den ersetzenden Weg zu nehmen.
+ok_if R.rs-apply-ohne-option-laut '! ( set -u; for f in release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do . "$ROOT/provisioning/lib/$f"; done; _bkp_rs_apply "$W/leer" "" "" 0 "" "" "" ) > "$W/out.rsb" 2>&1 && grep -q "parts_only" "$W/out.rsb"' "$(head -c 200 "$W/out.rsb" 2>/dev/null | tr '\n' ' ')"
 
 # Jede Wiederherstellung mit eigenen Daten schreibt vorher eine Sicherung (Server: /var/backups/lifeagents).
 ok_if_local R.vorab-sicherung '[ -n "$(new_backups)" ]' \

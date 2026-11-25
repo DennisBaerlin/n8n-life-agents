@@ -2,11 +2,13 @@
 # ps_glue_lint.ps1 -- zusammengeklebte Zeilen in PowerShell-Dateien (hartes Gate). Ging beim Merge ein Zeilenumbruch verloren,
 # steckt der Befehl der naechsten Zeile hinter dem Kommentar der vorigen: er laeuft nie, und weder der Parser noch PSScriptAnalyzer
 # merken es. Erkennung: ein Kommentar-Token, in dem ein Befehl der Form Verb-Substantiv (Write-Host, Invoke-Native ...) ohne
-# Leerzeichen an ein Wort anschliesst ("freiWrite-Host"). Die Token kommen vom PowerShell-Parser, ein `#` in einem String zaehlt nicht.
+# Leerzeichen an ein Wort anschliesst (Wort und Befehl ohne Leerzeichen zusammengeschrieben). Die Token kommen vom PowerShell-Parser, ein `#` in einem String zaehlt nicht.
 # Aufruf: .\scripts\ps_glue_lint.ps1 [Datei ...]          ohne Dateien alle getrackten *.ps1 (git ls-files)
 #         .\scripts\ps_glue_lint.ps1 -Root <Baum>         alle *.ps1 unter dem Baum (nur fuer scripts/dev/ps_glue_lint_test.ps1)
 # Ausnahme einer Zeile: 'ps-glue-lint: ok <Grund>' im selben Kommentar.
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
+# Keine Positionsbindung: pre-commit haengt die Dateinamen an, der erste duerfte sonst nicht in -Root landen.
+[CmdletBinding(PositionalBinding = $false)]
 param([string]$Root, [Parameter(ValueFromRemainingArguments)][string[]]$Files)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

@@ -2141,5 +2141,45 @@
     ],
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "S4 Nachfassen oc-resume-1: ruhender Entwurf, Bitte um Weitermachen -> Call_agent_finance_advisor_ (Regel 3c; der bezahlte Tier prueft das echte Routing).",
+    "match": "lass uns mit der Beratung weitermachen",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Okay lass uns mit der Beratung weitermachen" } }
+    ],
+    "final": "Gern, weiter mit deinem Finanzplan. Zuletzt haben wir die Notreserve festgehalten. Hast du eine private Haftpflichtversicherung?"
+  },
+  {
+    "_comment": "S4 Nachfassen oc-resume-2: nacktes weiter bei ruhendem Entwurf -> Call_agent_finance_advisor_. Kurzer match: jeder Task mit weiter ohne laengeren Treffer faellt hierher (mock_lint C1 prueft die Goldens).",
+    "match": "weiter",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "weiter" } }
+    ],
+    "final": "Gern, machen wir weiter."
+  },
+  {
+    "_comment": "S4 Nachfassen oc-resume-3: offene Frage des Buchhalters geht vor -> Call_agent_finance_.",
+    "match": "Weiter bitte",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Weiter bitte." } }
+    ],
+    "final": "Die naechste offene Buchung: 42,00 EUR am Lindenbank Giro. Wozu gehoert sie?"
+  },
+  {
+    "_comment": "S4 Nachfassen oc-resume-5: kurze Antwort nach der Wiederaufnahme bleibt beim Berater -> Call_agent_finance_advisor_.",
+    "match": "die haben wir fuer die ganze Familie",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ja, die haben wir fuer die ganze Familie." } }
+    ],
+    "final": "Gut, dann ist die Haftpflicht abgedeckt. Hast du eine Berufsunfaehigkeitsversicherung?"
+  },
+  {
+    "_comment": "S4 Nachfassen ac-handoff-1: Sparziel einem Konto zuordnen im Plan-Gespraech -> tool_save_plan_section mit Vormerkung kind savings_goal.",
+    "match": "ordne das Tagesgeld dem Ziel zu",
+    "calls": [
+      { "tool": "tool_save_plan_section", "args": { "section_key": "goals_triggers", "topic": "Sparziel Urlaub", "section_content": "Das Sparziel __E2E__ HO Urlaub wird kuenftig dem __E2E__ HO Tagesgeld zugeordnet, getrennt vom Alltagsgeld.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ HO Urlaub\",\"account\":\"__E2E__ HO Tagesgeld\"},\"text\":\"Sparziel __E2E__ HO Urlaub dem __E2E__ HO Tagesgeld zuordnen\"}]" } }
+    ],
+    "final": "Das Thema wurde nicht gespeichert."
   }
 ]

@@ -186,6 +186,7 @@ BEGIN
   ('core_ro', 'agent.fn_owner_person_id'),
   ('core_ro', 'agent.fn_person_lang'),
   ('core_ro', 'agent.fn_resolve_sender'),
+  ('core_ro', 'core.fn_advisor_pins'),
   ('core_ro', 'core.fn_advisor_plan_status'),
   ('core_ro', 'core.fn_daypart'),
   ('core_ro', 'core.fn_get_llm_cost_report'),

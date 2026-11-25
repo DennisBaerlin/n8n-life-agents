@@ -322,6 +322,13 @@ grep -q '^execd' "$LOG" && fail T_status_link_there_quiet "$(tr '\n' ';' < "$LOG
 # Nur lesen bei laufendem Knoten: ein Ablauf nach der eigenen Uhr erzwingt im Status keine Neu-Anmeldung (das tut relogin).
 tl "$(ts_json Running '' '["https","funnel"]' "$(iso 1700000000)")"; reach_status_json >/dev/null 2>&1
 grep -q '^execd' "$LOG" && fail T_status_running_expired_quiet "$(tr '\n' ';' < "$LOG")" || pass T_status_running_expired_quiet
+# Jeder andere Zustand liest nur: angehaltener Knoten, wartende Freigabe, noch nicht bereit, tailscaled antwortet nicht.
+for _b in Stopped NeedsMachineAuth Starting NoState; do
+  tl "$(ts_json "$_b" '' '[]')"; reach_status_json >/dev/null 2>&1
+  grep -q '^execd' "$LOG" && fail "T_status_quiet_$_b" "$(tr '\n' ';' < "$LOG")" || pass "T_status_quiet_$_b"
+done
+tl ''; reach_status_json >/dev/null 2>&1
+grep -q '^execd' "$LOG" && fail T_status_quiet_no_answer "$(tr '\n' ';' < "$LOG")" || pass T_status_quiet_no_answer
 # Ein wartender `tailscale up` laeuft schon (Link kommt gleich): kein zweiter, der die Anmeldung neu starten koennte.
 A_TS_UP_RUNNING=1; tl "$(ts_json NeedsLogin '' '[]')"; reach_login_start >/dev/null 2>&1; A_TS_UP_RUNNING=0
 grep -q '^execd' "$LOG" && fail T_no_second_up "$(tr '\n' ';' < "$LOG")" || pass T_no_second_up

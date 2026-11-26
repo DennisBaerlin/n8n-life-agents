@@ -29,6 +29,171 @@
                   },
                   {
                       "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "2f14caa9-00f6-52d1-afab-6e4918a2d957",
+                                                                                   "leftValue":  "={{ String($(\u0027Start\u0027).item.json.reason || \u0027\u0027) === \u0027skipped\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       220,
+                                       -260
+                                   ],
+                      "id":  "d5cdc453-922b-5798-a10d-1ab4e5524b05",
+                      "name":  "Skip only?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_cancel_handoff_task($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, reason: $(\u0027Start\u0027).item.json.reason, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       440,
+                                       -360
+                                   ],
+                      "id":  "0a68724f-edcd-528e-9f46-3e247a53ffe3",
+                      "name":  "Skip handoff task",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7cce1a96-1ea5-5ea6-b587-e122e25ac744",
+                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       -360
+                                   ],
+                      "id":  "70e62465-9e9b-59ce-a111-ea97e8792a48",
+                      "name":  "Skip ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "359c7d98-8e93-5222-b8b2-4c88735a9f3e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a5b290fc-28da-564e-be6f-14f65d28815b",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Skip handoff task\u0027).item.json.r.reason || \u0027The entry could not be skipped.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       -260
+                                   ],
+                      "id":  "f4fd4ee9-5f00-5231-80f5-9bcdd0bd2695",
+                      "name":  "Skip rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c850e8d9-ede6-523b-a5ee-457b0e742262",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b6bc45dd-9006-5f39-ab9d-53efc1db5d3e",
+                                                                                     "name":  "handoff_task_id",
+                                                                                     "value":  "={{ $(\u0027Skip handoff task\u0027).item.json.r.task_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "36fe2463-b2da-5d15-b780-6747d47e48b8",
+                                                                                     "name":  "status",
+                                                                                     "value":  "={{ $(\u0027Skip handoff task\u0027).item.json.r.status }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fd9444ca-fe71-53fd-a26e-d99c9a94ad25",
+                                                                                     "name":  "note",
+                                                                                     "value":  "Skipped: the entry stays open on the list of agreed entries, nothing was deleted. Go on with the next entry.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       -460
+                                   ],
+                      "id":  "5b0dfb53-d2eb-53d4-b128-482f234774df",
+                      "name":  "Return skipped"
+                  },
+                  {
+                      "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_cancel_handoff_task(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
@@ -38,7 +203,7 @@
                       "type":  "n8n-nodes-base.postgres",
                       "typeVersion":  2.6,
                       "position":  [
-                                       220,
+                                       440,
                                        0
                                    ],
                       "id":  "5bfab3f5-c637-565c-831a-d6f291a48105",
@@ -78,7 +243,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       440,
+                                       660,
                                        0
                                    ],
                       "id":  "f94ca642-b982-53e4-9bb6-3afaf8a2ef94",
@@ -127,7 +292,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       660,
+                                       880,
                                        200
                                    ],
                       "id":  "213dcd5a-d85a-5e85-9684-a5a7924e451e",
@@ -144,7 +309,7 @@
                       "type":  "n8n-nodes-base.postgres",
                       "typeVersion":  2.6,
                       "position":  [
-                                       1320,
+                                       1760,
                                        0
                                    ],
                       "id":  "1bb86d1d-c2a6-59b9-9de4-9ec91cb98bbb",
@@ -158,12 +323,46 @@
                   },
                   {
                       "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c34c7f89-15a9-5582-a659-bbacb9bddcaa",
+                                                                                   "leftValue":  "={{ String($(\u0027Start\u0027).item.json.reason || \u0027\u0027) === \u0027done_elsewhere\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "b96ab995-cb54-53bb-9e73-3deb28a45ddd",
+                      "name":  "Done elsewhere?"
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
                                                                                      "id":  "2d86188f-b4bc-5e95-8a92-e17f0a97dae8",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.cancel_handoff_task\u0027, lines: [ { label: \u0027finance.label.handoff_outcome\u0027, kind: \u0027key\u0027, value: ((String($(\u0027Start\u0027).item.json.reason || \u0027\u0027) === \u0027done_elsewhere\u0027 ? \u0027finance.value.handoff_done_elsewhere\u0027 : \u0027finance.value.handoff_skipped\u0027)) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.cancel_handoff_task_done_elsewhere\u0027, lines: [  ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -175,11 +374,36 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       660,
-                                       0
+                                       1100,
+                                       -100
                                    ],
                       "id":  "0e86cc2c-d880-5809-a4fb-df2c46fa26b0",
                       "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "dd1120bf-5d67-540f-b56e-f6d401d57027",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.cancel_handoff_task_dropped\u0027, lines: [  ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       100
+                                   ],
+                      "id":  "92cbbd8e-89e0-5a31-8203-766fcc45d7f1",
+                      "name":  "Build Approval Summary dropped"
                   },
                   {
                       "parameters":  {
@@ -193,7 +417,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "summary":  "={{ $json.summary }}",
                                                                               "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
                                                                               "approval_tier":  "owner_info"
                                                                           },
@@ -213,7 +437,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       880,
+                                       1320,
                                        0
                                    ],
                       "id":  "12fb14bb-1c58-596a-9bd4-c4061ae5cc70",
@@ -248,7 +472,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1100,
+                                       1540,
                                        0
                                    ],
                       "id":  "aa49c913-065f-52b7-b42b-5502f5835d3d",
@@ -285,7 +509,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1320,
+                                       1760,
                                        200
                                    ],
                       "id":  "349def61-41db-5fa2-8cab-f20fa7e07bb3",
@@ -319,7 +543,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1540,
+                                       1980,
                                        0
                                    ],
                       "id":  "d3b836ff-b993-5ee1-a210-79d291fd31be",
@@ -350,7 +574,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1760,
+                                       2200,
                                        200
                                    ],
                       "id":  "4cc17f7e-53e9-5608-a650-9852de74f1f1",
@@ -387,7 +611,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1760,
+                                       2200,
                                        0
                                    ],
                       "id":  "6c0472e0-6d04-5b06-b602-f7223c1037fb",
@@ -395,19 +619,19 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**HITL + finance.fn_cancel_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Durchgehen-Modus (Auftrag vom Orchestrator nach dem Knopf Durchgehen) schließt der Buchhalter einen vereinbarten Punkt ohne Buchung: reason skipped -\u003e cancelled, done_elsewhere -\u003e done. Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Punkt -\u003e Dry run rejected, keine Karte. Die Karte zeigt das Ergebnis und den Satz des Punkts (card_lines: Aus dem Plan-Gespräch …). Ein gebuchter Punkt braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.",
-                                         "height":  340,
-                                         "width":  520,
+                                         "content":  "## DB-Automatik\n**HITL + finance.fn_cancel_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -\u003e done (Karte „Schon eingetragen – abhaken?“), dropped -\u003e cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_release_handoff_tasks behält claimed_at). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache -\u003e Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.",
+                                         "height":  380,
+                                         "width":  560,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
                       "typeVersion":  1,
                       "position":  [
                                        120,
-                                       -340
+                                       -760
                                    ],
-                      "id":  "10be752b-b274-55f1-a377-355ab3ea0923",
-                      "name":  "Doc Plan-Punkt schliessen"
+                      "id":  "ffb8a719-1509-542b-b959-85f92e98813f",
+                      "name":  "Doc Plan-Eintrag abhaken"
                   }
               ],
     "connections":  {
@@ -416,12 +640,59 @@
                                                    [
                                                        {
                                                            "index":  0,
-                                                           "node":  "Dry run",
+                                                           "node":  "Skip only?",
                                                            "type":  "main"
                                                        }
                                                    ]
                                                ]
                                   },
+                        "Skip only?":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Skip handoff task",
+                                                                "type":  "main"
+                                                            }
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Dry run",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Skip handoff task":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Skip ok?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Skip ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Return skipped",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Skip rejected",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
                         "Dry run":  {
                                         "main":  [
                                                      [
@@ -438,7 +709,7 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Build Approval Summary",
+                                                                 "node":  "Done elsewhere?",
                                                                  "type":  "main"
                                                              }
                                                          ],
@@ -451,6 +722,24 @@
                                                          ]
                                                      ]
                                         },
+                        "Done elsewhere?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Build Approval Summary",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Build Approval Summary dropped",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
                         "Build Approval Summary":  {
                                                        "main":  [
                                                                     [
@@ -462,6 +751,17 @@
                                                                     ]
                                                                 ]
                                                    },
+                        "Build Approval Summary dropped":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Request Approval",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
                         "Request Approval":  {
                                                  "main":  [
                                                               [

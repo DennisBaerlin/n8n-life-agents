@@ -251,6 +251,7 @@ BEGIN
   ('finance_ro', 'finance.fn_recurring_suggestion_counts'),
   ('finance_ro', 'finance.fn_statements_due'),
   ('finance_rw', 'core.fn_config_get'),
+  ('finance_rw', 'core.fn_defer_handoff_task'),
   ('finance_rw', 'core.fn_dry_run'),
   ('finance_rw', 'core.fn_household_persons'),
   ('finance_rw', 'core.fn_package_active'),

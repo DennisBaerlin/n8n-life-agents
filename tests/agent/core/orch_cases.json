@@ -711,5 +711,27 @@
     "expected_mood": "",
     "timeout_s": 240,
     "notes": "Plan s4-berater-ux §7.3 oc-react-1 (Owner E-7): Live trug fast jede Ok-Antwort im Plan-Gespraech eine Reaktion, die Telegram als Zaehler zeigt. Reine Dank-Reaktion ohne Text prueft der bestehende REACT-LOVE-Fall. Mock: Szenario mit gleichem match."
+  },
+  {
+    "id": "oc-plan-1",
+    "name": "Veroeffentlichter Finanzplan, Frage nach 'dem Plan' ohne Bereich -> agent.finance_advisor, nicht der Karriere-Coach",
+    "task": "Wie geht es jetzt mit unserem Plan weiter?",
+    "chat_id": "test_oc_plan_1",
+    "setup_sql": "INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) SELECT 'finance', '__E2E__ OP Plan', 'active', 1, now(), 'x' WHERE NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active');",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE status = 'draft') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'career' AND status = 'active')",
+    "expected_route": "finance_advisor",
+    "timeout_s": 240,
+    "notes": "Eigenschaft: Frage nach 'dem Plan' ohne Bereich bei veroeffentlichtem Finanzplan, kein Entwurf (also kein Interview- und kein Ruhe-Pin). Der Router kennt keine Plan-Staende; die Karriere-Beschreibung nannte 'the career plan' und 'career advice/planning', die Finanzberater-Beschreibung nur 'creating or updating the financial plan', so ging die Frage an den Karriere-Coach. Seitdem: 'the plan' ohne Bereich steht beim Finanzberater, der Karriere-Coach verweist es dorthin. Gegenstueck im Berater: cc-other-plan (Karriere-Coach ohne eigenen Plan startet nicht neu). Mock: Szenario mit gleichem match."
+  },
+  {
+    "id": "oc-plan-2",
+    "name": "Gegenfall zu oc-plan-1: Karriereplan ausdruecklich genannt, Finanzplan veroeffentlicht -> agent.career_advisor",
+    "task": "Wie geht es mit meinem Karriereplan weiter?",
+    "chat_id": "test_oc_plan_2",
+    "setup_sql": "INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) SELECT 'finance', '__E2E__ OP Plan', 'active', 1, now(), 'x' WHERE NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active');",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE status = 'draft')",
+    "expected_route": "career_advisor",
+    "timeout_s": 240,
+    "notes": "Eigenschaft: der genannte Bereich schlaegt den Standard 'der Plan = Finanzplan' aus oc-plan-1. Mock: Szenario mit gleichem match."
   }
 ]

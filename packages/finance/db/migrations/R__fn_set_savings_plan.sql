@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_set_savings_plan (ATOMIC WRITE)
---   Aendert einen Sparplan (Betrag/Kadenz/Status/Notiz). Partielles Update.
+--   Aendert einen Sparplan (Betrag/Kadenz/Status/Notiz) oder setzt ein kuenftiges Ende. Partielles Update.
 --   Betrags- oder Kadenz-Aenderung = Validity-Split ueber den gemeinsamen Helfer fn_split_recurring_payment
 --   (wie fn_set_recurring_payment; Status/Ende/Anker geerbt -> ein pausierter Plan bleibt pausiert);
 --   plan.recurring_payment_id zeigt danach auf das neue RP (Kopf-Regel des Helfers). Damit bleibt die Rate-/
@@ -36,7 +36,7 @@
 --   valid_from (opt, Stichtag des Splits; default heute), notes (opt),
 --   beneficiary_person_id (opt, Slug; leer=unveraendert),
 --   asset_class (opt -- Anlageklasse korrigieren; leer=unveraendert; Format-Verstoss -> {ok:false}),
---   chat_id (opt, fuer den Squeeze-Hinweis).
+--   valid_to (opt, kuenftiges Ende, siehe Absatz "Kuenftiges Ende"), chat_id (opt, fuer den Squeeze-Hinweis).
 --   RUECKGABE: {ok:true, savings_plan_id, recurring_payment_id, split, effective (aufgeloeste Daten + valid_from)};
 --   bei split=true zusaetzlich previous_rp_id,
 --   schedule_unit/schedule_interval und schedule_days ("2, 9, 16, 23" oder null) der neuen Zeile (gespeichert, fuer
@@ -56,13 +56,14 @@
 --   Ausfuehrung (open_due_date), reine Tag-Verlegung bei schon gebuchter/uebersprungener alter Ausfuehrung des Uebergangsmonats
 --   oder im Anlagemonat (code day_shift_booked, first_free_date), depot_execution_days ohne Rhythmus, nicht aufloesbares Datum (code invalid_date),
 --   asset_class-Format, Ablehnungen von fn_resolve_plan_schedule/fn_split_recurring_payment/
---   fn_reopen_recurring_payment) -> {ok:false}.
+--   fn_reopen_recurring_payment, Ende-Codes im Absatz "Kuenftiges Ende") -> {ok:false}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 --   Kuenftiges Ende: valid_to (opt; letzter gueltiger Tag inklusiv wie der Nutzer ihn sagt, ein Monat YYYY-MM = bis zu dessen
 --   letztem Tag, ein Monat ohne Jahr MM = naechstes Vorkommen ab dem laufenden Monat; gespeichert +1 Tag) setzt das Ende am
---   Kopf der Kette (auch ein spaeteres = Verlaengern; fruehere Glieder enden ohnehin an seinem Start). Status bleibt aktiv,
---   damit die Bank-Ende-Erinnerung fn_bank_end_due ihn nach der letzten Ausfuehrung meldet. Nur allein oder mit Notiz/
+--   Kopf der Kette (auch ein spaeteres = Verlaengern; fruehere Glieder enden ohnehin an seinem Start). Der Status bleibt
+--   unveraendert (kein Pausieren: die Bank-Ende-Erinnerung fn_bank_end_due meldet nur aktive Koepfe nach der letzten
+--   Ausfuehrung; ein pausierter Plan bekommt das Ende, aber keine Erinnerung). Nur allein oder mit Notiz/
 --   Person/Anlageklasse: zusammen mit Betrag/Rhythmus/Tagen/Status -> {ok:false, code:'end_separately'} (Split und Ende in
 --   einem Write braeuchten eine zweite Pruefung nach dem Split). Ende <= heute -> code end_not_future (sofort beenden =
 --   fn_close_savings_plan). Kette schon beendet (fn_recurring_chain_ended) -> code plan_ended (erst reaktivieren, sonst
@@ -71,7 +72,8 @@
 --   Kopfs; das Datum steht auch in reason, die Ablehnung reicht nur reason an das Modell). Rueckgabe zusaetzlich
 --   last_execution (fn_recurring_last_due, fuer Karte und Antwort) + last_valid_day; card_lines = Bank-Hinweis bank_stop
 --   (_until-Variante mit der letzten Ausfuehrung, solange sie noch kommt und der Plan laeuft) und, wenn die Bank-Erinnerung
---   an ist, der Plan laeuft und die letzte Ausfuehrung nach heute liegt, finance.note.savings_plan_end_reminder.
+--   an ist, der Plan laeuft und die letzte Ausfuehrung nach heute liegt, finance.note.savings_plan_end_reminder; davor die
+--   Spar-Deckungs-Zeile und optional savings_funding nur als Bericht (fn_savings_funding_fold mit p_ask=false, nie eine Frage).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_savings_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_set_savings_plan_end.sql
--- Kuenftiges Sparplan-Ende ueber fn_set_savings_plan(valid_to): Ende an der Kette (Kopf traegt es, Status bleibt aktiv),
+-- Kuenftiges Sparplan-Ende ueber fn_set_savings_plan(valid_to): Ende am Kopf der Kette (Status unveraendert),
 --   letzte Ausfuehrung = letzter Rasterpunkt davor (fn_recurring_last_due), Karte (bank_stop_until + Erinnerungs-Zeile nur bei
 --   eingeschalteter Bank-Erinnerung), Konto-Vorschau ohne Raten danach, Ablehnungen (Ende nicht in der Zukunft, keine Ausfuehrung
 --   mehr davor, zusammen mit anderen Aenderungen, schon beendete Kette, ungueltiger Monat), Verlaengern, Monat mit und ohne
@@ -76,7 +76,7 @@ BEGIN
   IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL [3 Raten nach dem Ende]: %', v_n; END IF;
   RAISE NOTICE 'PASS [3] Konto-Vorschau';
 
-  -- [4] Ende heute oder frueher -> abgelehnt, kein Write
+  -- [4] Ende heute -> abgelehnt, kein Write
   r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan__','valid_to', v_today::text));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'end_not_future'
      OR (SELECT valid_to FROM finance.recurring_payments WHERE id = v_rp) IS DISTINCT FROM (a + interval '2 months' + interval '11 days')::date THEN

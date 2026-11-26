@@ -30,6 +30,7 @@ function Build-SetSavingsPlan {
     #   plan.recurring_payment_id zeigt auf neue RP)
     # - status gesetzt: IN-PLACE (plan.status + rp.status kaskadiert)
     # - nur notes: IN-PLACE notes-Update
+    # - valid_to gesetzt: Ende am Kopf der Kette, siehe Sticky 'Künftiges Ende'
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_plan' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Set plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding, r->>'last_execution' AS last_execution" `
@@ -111,7 +112,7 @@ function Build-SetSavingsPlan {
 
     $stickyEnd = Build-Sticky 'Künftiges Ende (valid_to)' @(1100, -300) `
         'Ende an der Raten-Kette, Erinnerung kommt vom Bank-Ende-Cron' `
-        'valid_to = letzter gültiger Tag (inklusiv). Die fn setzt das Ende an der Kette (Kopf trägt es, Status bleibt aktiv) und lehnt ab: zusammen mit Betrag/Rhythmus/Status (end_separately), Ende <= heute (end_not_future), Plan schon beendet (plan_ended, erst reaktivieren), keine offene Ausführung mehr davor (no_execution_before_end, frühestes Ende im reason). Monat ohne Jahr (1-12) oder YYYY-MM rechnet die fn auf das Monatsende. Kartenzeile Letzte Ausführung = last_execution aus dem Probelauf (fn_recurring_last_due, nie vom Modell). Viele Broker kennen kein Enddatum: Bank-Hinweis bank_stop_until sagt das, agent.finance.cron_remind_bank_end erinnert 3 Tage nach der letzten Ausführung (Zusatzzeile nur, wenn diese Erinnerung an ist).' 300 260
+        'valid_to = letzter gültiger Tag (inklusiv). Die fn setzt das Ende am Kopf der Kette (Status unverändert; erinnert wird nur ein aktiver Plan) und lehnt ab: zusammen mit Betrag/Rhythmus/Tagen/Status (end_separately; der Agent bietet dann zwei Karten nacheinander an), Ende <= heute (end_not_future), Plan schon beendet (plan_ended, erst reaktivieren), keine offene Ausführung des Kopfs vor dem Ende, auch Ende vor einer geplanten Änderung (no_execution_before_end, frühestes Ende im reason). Monat ohne Jahr (1-12) oder YYYY-MM rechnet die fn auf das Monatsende. Kartenzeile Letzte Ausführung = last_execution aus dem Probelauf (fn_recurring_last_due, nie vom Modell); dazu die Spar-Deckung nur als Bericht. Viele Broker kennen kein Enddatum: Bank-Hinweis bank_stop_until sagt das, agent.finance.cron_remind_bank_end erinnert 3 Tage nach der letzten Ausführung (Zusatzzeile nur, wenn diese Erinnerung an ist und die letzte Ausführung noch kommt).' 300 300
 
     $nodes = @($trig, $readCur, $found.If, $found.Err, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn, $stickyEnd)

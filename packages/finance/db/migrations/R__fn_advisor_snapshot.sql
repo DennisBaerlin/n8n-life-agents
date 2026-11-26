@@ -22,13 +22,14 @@
 --   everyday_provisional nur an Geld-Konten), networth, savings_plans, standing_orders, loans, insurances, pensions,
 --   pension_outlook, real_estate, goals (+ goal_status), depot_risk (fn_savings_goal_derisk_status je Ziel im Fenster:
 --   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance, warnings (je Konto:
---   kind account_coverage {account, currency, lowest_balance, lowest_on, has_history} aus fn_account_outlook bzw. kind
---   savings_funding {account, currency, state warn|alert, runs_out_on, lowest_balance, lowest_on} aus
---   account_funding_overview), open_handoffs (im Plan-Gespraech vereinbart, noch nicht eingetragen: {kind, text, topic,
---   section_key, status, open_since} aus core.fn_advisor_open_handoffs; eine Warnung kann genau daher kommen);
+--   kind account_coverage {account, currency, lowest_balance, lowest_on, has_history, due_soon} aus fn_account_outlook bzw.
+--   kind savings_funding {account, currency, state warn|alert, runs_out_on, lowest_balance, lowest_on, due_soon} aus
+--   account_funding_overview; due_soon = fruehestes Problem-Datum bald laut finance.fn_warning_due_soon),
+--   open_handoffs (im Plan-Gespraech vereinbart, noch nicht eingetragen: {kind, text, topic, section_key, status, open_since} aus core.fn_advisor_open_handoffs; eine Warnung kann genau daher kommen);
 --   Objekte: cashflow_summary, parent_cashflow_summary, loan_summary, emergency_reserve; Zahl open_bank_steps
 --   (offene Bank-Einrichtungs-Schritte finance.bank_todos, keine Vormerkungen)
---   Tests: tests/db/finance/test_fn_advisor_snapshot.sql, tests/db/cross/test_role_permissions.sql (2-adv),
+--   Tests: tests/db/finance/test_fn_advisor_snapshot.sql, tests/db/finance/test_fn_warning_due_soon.sql,
+--   tests/db/cross/test_role_permissions.sql (2-adv),
 --   tests/db/core/test_fn_advisor_open_handoffs.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_advisor_snapshot()
@@ -105,7 +106,8 @@ BEGIN
                                     'kind', 'account_coverage', 'account', a.name,
                                     'account_label', finance.fn_account_label(a.emoji, a.account_type, a.name), 'currency', a.currency,
                                     'lowest_balance', (j.o->>'min_projected')::numeric, 'lowest_on', (j.o->>'min_date')::date,
-                                    'has_history', (j.o->>'has_history')::boolean) AS e
+                                    'has_history', (j.o->>'has_history')::boolean,
+                                    'due_soon', finance.fn_warning_due_soon((j.o->>'min_date')::date)) AS e
                                FROM finance.accounts a
                               CROSS JOIN LATERAL finance.fn_account_outlook(a.id) AS j(o)
                               WHERE a.status = 'active' AND a.account_type = 'cash' AND (j.o->>'ok')::boolean
@@ -118,7 +120,8 @@ BEGIN
                                     'kind', 'savings_funding', 'account', f.account_name,
                                     'account_label', (SELECT finance.fn_account_label(x.emoji, x.account_type, x.name) FROM finance.accounts x WHERE x.id = f.account_id),
                                     'currency', f.currency, 'state', f.state,
-                                    'runs_out_on', f.runs_out_on, 'lowest_balance', f.min_projected, 'lowest_on', f.min_date)
+                                    'runs_out_on', f.runs_out_on, 'lowest_balance', f.min_projected, 'lowest_on', f.min_date,
+                                    'due_soon', finance.fn_warning_due_soon(LEAST(f.runs_out_on, f.min_date)))
                                FROM finance.account_funding_overview f
                               WHERE f.state IN ('warn', 'alert')) w));
 END;

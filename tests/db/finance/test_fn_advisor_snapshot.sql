@@ -288,6 +288,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5d] Spar-Deckung wie account_funding_overview: %', v_row; END IF;
   IF v->'warnings' @? '$[*] ? (@.account == "__snap_fund_ok__")' THEN
     RAISE EXCEPTION 'FAIL [5e] gedecktes Konto warnt nicht: %', v->'warnings'; END IF;
+  -- due_soon: frühestes Problem-Datum der Warnung innerhalb von advisor.handoff_urgent_days (eine Regel: fn_warning_due_soon)
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'warnings') e
+              WHERE (e->'due_soon') IS NULL OR jsonb_typeof(e->'due_soon') <> 'boolean'
+                 OR (e->>'due_soon')::boolean IS DISTINCT FROM finance.fn_warning_due_soon(LEAST((e->>'runs_out_on')::date, (e->>'lowest_on')::date))) THEN
+    RAISE EXCEPTION 'FAIL [5g] jede Warnung traegt due_soon nach fn_warning_due_soon: %', v->'warnings'; END IF;
+  INSERT INTO core.config (category, key, value, package, value_type, minimum, maximum)
+  VALUES ('advisor', 'handoff_urgent_days', '30', 'finance', 'integer', 1, 365)
+  ON CONFLICT (category, key) DO UPDATE SET value = '30';
+  IF NOT (finance.fn_advisor_snapshot()->'warnings' @? '$[*] ? (@.account == "__snap_low__" && @.due_soon == true)') THEN
+    RAISE EXCEPTION 'FAIL [5h] Miete in 3 Tagen ist bald: %', finance.fn_advisor_snapshot()->'warnings'; END IF;
+  UPDATE core.config SET value = '2' WHERE category = 'advisor' AND key = 'handoff_urgent_days';
+  IF NOT (finance.fn_advisor_snapshot()->'warnings' @? '$[*] ? (@.account == "__snap_low__" && @.due_soon == false)') THEN
+    RAISE EXCEPTION 'FAIL [5i] mit Grenze 2 Tage ist die Miete in 3 Tagen nicht bald: %', finance.fn_advisor_snapshot()->'warnings'; END IF;
   -- veralteter Auszug: die Vorschau ist dann nicht belastbar, gemeldet wird der Auszug (fn_advisor_review), nicht die Unterdeckung
   UPDATE finance.accounts SET last_reconciled_at = t - 100 WHERE id = v_hist;
   IF finance.fn_advisor_snapshot()->'warnings' @? '$[*] ? (@.account == "__snap_hist__")' THEN

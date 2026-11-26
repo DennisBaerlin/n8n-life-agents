@@ -10,6 +10,8 @@
 # ist LA_MASTER_IMAGE ohnehin gesetzt (compose.yml environment). Pruefbar bleibt die Herkunft ueber das Label
 # org.opencontainers.image.revision: zwischen diesem Commit und dem Tag darf sich im Release-Baum nur die Pin-Zeile aendern.
 
+. (Join-Path $PSScriptRoot 'hash.ps1')   # Get-FileSha256 (kein Get-FileHash, Grund dort)
+
 $ReleasePathspec = @('provisioning', 'packages', '.gitattributes')   # = git-archive-Pathspec in .github/workflows/release.yml (layout_lint L6)
 $MasterPinNeutral = '${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}'
 $MasterPlatforms = @('linux/amd64', 'linux/arm64')
@@ -93,13 +95,6 @@ function Get-RegistryToken($Client, $R) {
 function Get-BytesSha256([byte[]]$Bytes) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try { return 'sha256:' + (($sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') }) -join '') } finally { $sha.Dispose() }
-}
-
-# Get-FileSha256: hex ohne Praefix. Bewusst nicht Get-FileHash: Ruft prek in der CI (Windows-Runner, Shell pwsh) powershell.exe
-# auf, erbt 5.1 den PSModulePath von pwsh 7 und findet Get-FileHash nicht (CommandNotFoundException).
-function Get-FileSha256([string]$Path) {
-    $sha = [System.Security.Cryptography.SHA256]::Create(); $fs = [System.IO.File]::OpenRead($Path)
-    try { return (($sha.ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) -join '') } finally { $fs.Dispose(); $sha.Dispose() }
 }
 
 # Get-RegistryObject: Manifest oder Blob per Digest; prueft, dass der Inhalt wirklich diesen Digest hat (Inhalts-Adressierung).

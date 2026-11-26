@@ -24,6 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'lib\hash.ps1')   # Get-FileSha256 statt Get-FileHash (Grund dort)
 
 $PinnedHugoVersion = '0.168.0'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
@@ -67,7 +68,7 @@ function Get-TreeHashes([string]$root) {
     $map = @{}
     Get-ChildItem -Path $root -Recurse -File | ForEach-Object {
         $rel = $_.FullName.Substring($root.Length).TrimStart('\', '/') -replace '\\', '/'
-        $map[$rel] = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+        $map[$rel] = Get-FileSha256 $_.FullName
     }
     return $map
 }

@@ -10,6 +10,7 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\native_process.ps1')
+. (Join-Path $PSScriptRoot '..\lib\hash.ps1')   # Get-FileSha256 statt Get-FileHash (Grund dort)
 $fails = 0
 function Check([bool]$Ok, [string]$Name) {
     if ($Ok) { Write-Host "  PASS $Name" -ForegroundColor Green } else { Write-Host "  FAIL $Name" -ForegroundColor Red; $script:fails++ }
@@ -34,12 +35,12 @@ try {
     }
     $inFile = Join-Path $dir 'probe.bin'
     [System.IO.File]::WriteAllBytes($inFile, $big)
-    $inHash = (Get-FileHash $inFile -Algorithm SHA256).Hash
+    $inHash = Get-FileSha256 $inFile
 
     $txtFile = Join-Path $dir 'probe.text'
     $rd = New-Object System.IO.StreamReader($inFile)
     try { [System.IO.File]::WriteAllText($txtFile, $rd.ReadToEnd() + "`n", (New-Object System.Text.UTF8Encoding($false))) } finally { $rd.Dispose() }
-    Check ((Get-FileHash $txtFile -Algorithm SHA256).Hash -ne $inHash) 'Gegenprobe: ein Text-Weg veraendert die Probedaten (die Probe taugt)'
+    Check ((Get-FileSha256 $txtFile) -ne $inHash) 'Gegenprobe: ein Text-Weg veraendert die Probedaten (die Probe taugt)'
 
     # stdin aus einer Datei, stdout und stderr in Dateien.
     $echoFile = Join-Path $dir 'echo.bin'
@@ -49,7 +50,7 @@ try {
     $argv = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $child)
     $code = Invoke-NativeStdinFile -FilePath $pwsh -ArgumentList $argv -StdinFile $inFile -StdoutFile (Join-Path $dir 'o.txt') -StderrFile (Join-Path $dir 'e.txt')
     Check ($code -eq 0) "Programm endet mit 0 (ist $code)"
-    Check ((Test-Path $echoFile) -and (Get-FileHash $echoFile -Algorithm SHA256).Hash -eq $inHash) 'stdin aus einer Datei kommt byte-genau an (Pruefsumme von 8 MB gleich)'
+    Check ((Test-Path $echoFile) -and (Get-FileSha256 $echoFile) -eq $inHash) 'stdin aus einer Datei kommt byte-genau an (Pruefsumme von 8 MB gleich)'
 
     # Ohne Ausgabe-Dateien (Konsole geerbt) und mit Exit-Code des Kindes.
     $exit = Join-Path $dir 'exit.ps1'

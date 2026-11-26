@@ -188,6 +188,10 @@
           "items": [
             {"label": {"kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {}}, "sub": null, "value": {"kind": "money", "value": 840, "currency": "EUR"}, "gap": false, "pill": null, "progress": null, "target": null},
             {"label": {"kind": "tpl", "value": "finance.app.accounts.low", "params": {}}, "sub": null, "value": {"kind": "tpl", "value": "finance.app.accounts.low_unknown", "params": {}}, "gap": false, "progress": null, "target": null, "pill": {"state": "warn", "icon": "clock", "text": {"kind": "tpl", "value": "finance.app.accounts.pill_stale", "params": {}}}, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.i_stale", "params": {}}, "value": null, "kind": "info"}, { "label": { "kind": "tpl", "value": "finance.app.accounts.todo_stale", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.accounts.ask_stale", "params": { "account": "Sparkonto Beispielbank" } } },{"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement_last", "params": {}}, "value": {"kind": "date", "value": "2026-08-12"}}]}
+          ] },
+        { "title": {"kind": "tpl", "value": "finance.app.accounts.section", "params": {"account": "Dollar-Konto Beispielbank"}}, "value": null, "empty": {"kind": "tpl", "value": "finance.app.accounts.empty", "params": {}},
+          "items": [
+            {"label": {"kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {}}, "sub": null, "value": {"kind": "money", "value": 1200, "currency": "USD"}, "gap": false, "pill": null, "progress": null, "target": null, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {}}, "value": "Max Muster"}, {"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {}}, "value": {"kind": "date", "value": "2026-10-28"}}]}
           ] }
       ]
     },

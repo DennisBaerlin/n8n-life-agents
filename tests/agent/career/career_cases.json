@@ -11,13 +11,13 @@
   },
   {
     "id": "cc02",
-    "name": "Bestaetigte Ziel-Sektion -> tool_save_plan_section",
+    "name": "Bestaetigte Ziel-Sektion -\u003e tool_propose_plan_topics mit Ziel-Daten",
     "task": "Ich bestaetige die Ziel-Sektion wie von dir zusammengefasst: Zielrolle Data Analyst, Zielbranche IT, Umstieg in 2 Jahren, Zielort Leipzig, Suchradius 50 km, Vollzeit. Das sind bewusst alle Angaben - Skills ergaenzen wir spaeter, keine weitere Rueckfrage noetig. Speichere die Ziel-Sektion jetzt in den Karriereplan.",
     "chat_id": "test_cc02",
     "timeout_s": 240,
-    "expected_tool": "tool_save_plan_section",
+    "expected_tool": "tool_propose_plan_topics",
     "expected_tool_args": { "section_key": "targets" },
-    "expected_behavior": "The user explicitly confirms the FULL targets section (role Data Analyst, industry IT, timeline 2 years, location Leipzig, radius 50 km, full-time) and pre-empts further questions - the advisor must call tool_save_plan_section with section_key 'targets' and section_data carrying the raw figures (target_roles Data Analyst, target_industries IT, target_date as said e.g. +2 years, target_locations Leipzig). It must NOT compute a target calendar year itself and must NOT keep asking before saving. domain is fixed by the binding (career), never asked from the model. Under the test the gate declines; the advisor then reports the save as cancelled/aborted, not as done.",
+    "expected_behavior": "The user explicitly confirms the FULL targets section (role Data Analyst, industry IT, timeline 2 years, location Leipzig, radius 50 km, full-time) and pre-empts further questions - the advisor proposes the targets topic with tool_propose_plan_topics (section_key targets) whose topic data carries the raw figures (target_roles Data Analyst, target_industries IT, target_date as said e.g. +2 years, target_locations Leipzig). It must NOT compute a target calendar year itself and must NOT keep asking before proposing. domain is fixed by the binding (career), never asked from the model. The tool only queues the card (the tap saves it), so the reply after the call is empty or one short sentence: it does not read the text back, does not ask whether it fits and does not claim it is already saved.",
     "notes": "WS-1 career: der Soll-Plan (career_planning) entsteht via save_plan_section/publish_plan domain=career. Nur die targets-Sektion traegt section_data; situation/path sind prosa-only. Playback-first wie ac06/ac08: die Aufgabe ist die EXPLIZITE Bestaetigung einer bereits zusammengefassten Sektion inkl. Zielort (den der WS-2 Job-Scan braucht) + 'keine weitere Rueckfrage noetig' -> der Advisor speichert sofort. Eine nackte Statement-Form ohne Ort liess ihn KORREKT nach Ort/Beschaeftigungsart fragen (playback-first-Vertrag, career_advisor_instructions) - das war der frueher fehlschlagende cc02-Wortlaut, kein Bug."
   },
   {
@@ -27,7 +27,7 @@
     "chat_id": "test_cc03",
     "timeout_s": 240,
     "expected_tool": null,
-    "expected_behavior": "The advisor answers with concrete certification guidance (e.g. data or analytics certifications) and may research the web, but must NOT call any write tool (no tool_set_profile_facts/tool_save_plan_section/tool_publish_plan) for a pure information question.",
+    "expected_behavior": "The advisor answers with concrete certification guidance (e.g. data or analytics certifications) and may research the web, but must NOT call any write tool (no tool_set_profile_facts/tool_propose_plan_topics/tool_publish_plan) for a pure information question.",
     "notes": "Read-only by construction: eine reine Wissensfrage loest keinen Write aus."
   },
   {
@@ -100,18 +100,18 @@
       "table": "career_advisor_chat_memory",
       "messages": [
         { "type": "human", "content": "Lass uns meine Situation im Karriereplan festhalten." },
-        { "type": "ai", "content": "Situation: Senior Vertriebsleiter in der Logistik, wechselwillig innerhalb von 2 Jahren, das Gehalt muss weiter den Lebensunterhalt tragen. Passt das so? Korrekturen einfach antworten." },
-        { "type": "human", "content": "Ok" },
-        { "type": "ai", "content": [ { "type": "tool_use", "id": "toolu_seedcc10", "name": "tool_save_plan_section", "input": { "section_key": "situation", "section_content": "Senior Vertriebsleiter in der Logistik, wechselwillig innerhalb von 2 Jahren, das Gehalt muss weiter den Lebensunterhalt tragen." } } ] },
-        { "type": "tool", "name": "tool_save_plan_section", "tool_call_id": "toolu_seedcc10", "content": "[{\"ok\":false,\"cancelled\":true,\"message\":\"The user cancelled the save_plan_section action.\"}]" },
-        { "type": "ai", "content": "Der Abschnitt Situation ist nicht gespeichert, die Bestaetigung wurde abgebrochen." }
+        { "type": "ai", "content": "Du willst innerhalb von 2 Jahren wechseln, und das Gehalt muss weiter den Lebensunterhalt tragen. Soll das so in den Plan?\nCHOICES Ja (empfohlen) | Anders" },
+        { "type": "human", "content": "Ja" },
+        { "type": "ai", "content": [ { "type": "tool_use", "id": "toolu_seedcc10", "name": "tool_propose_plan_topics", "input": { "section_key": "situation", "topics": "[{\"topic\":\"Situation\",\"content\":\"Wechsel innerhalb von 2 Jahren; das Gehalt muss weiter den Lebensunterhalt tragen.\"}]" } } ] },
+        { "type": "tool", "name": "tool_propose_plan_topics", "tool_call_id": "toolu_seedcc10", "content": "[{\"ok\":true,\"queued\":1}]" },
+        { "type": "ai", "content": "Der Vorschlag steht als Karte unten." }
       ]
     },
     "chat_id": "test_cc10",
     "timeout_s": 240,
-    "expected_tool": "tool_save_plan_section",
+    "expected_tool": "tool_propose_plan_topics",
     "expected_tool_args": { "section_key": "situation" },
-    "expected_behavior": "The chat memory holds an earlier attempt of this save with a German section_content; the person now writes Korean. The advisor calls tool_save_plan_section with section_key situation and a section_content written in Korean, the language of the latest message, that carries the new timeline of one year. A German section_content, or one that takes over the wording of the earlier attempt, is a FAIL, even if the rest is correct. Under the test the gate declines; the advisor then reports the save as not confirmed, not as done.",
+    "expected_behavior": "The chat memory holds an earlier proposal of this section with a German text; the person now writes Korean. The advisor proposes the situation topic again with tool_propose_plan_topics (section_key situation) and a content written in Korean, the language of the latest message, that carries the new timeline of one year. A German content, or one that takes over the wording of the earlier proposal, is a FAIL, even if the rest is correct. The tool only queues the card (the tap saves it), so the reply after the call is empty or one short sentence: it does not read the text back, does not ask whether it fits and does not claim it is already saved.",
     "notes": "Gegenrichtung zu ac17 (Eigenschaft): massgeblich ist die Sprache der schreibenden Person, nicht immer Deutsch und nicht die der frueheren Fassung. Der Mock prueft nur die Mechanik, die Sprache nur der bezahlte Lauf (Judge)."
   }
 ]

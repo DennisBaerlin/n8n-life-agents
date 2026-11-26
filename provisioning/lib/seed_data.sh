@@ -554,7 +554,7 @@ _seed_context_renderers() {
 # Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(text,text,jsonb)->jsonb (domain, person_id, opts).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-review_fn).
 _seed_advisors() {
-  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn xfn xsql gaps_sql ready_sql rollout_sql pv_sql rk all=''
+  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn pvfn factsfn hintsfn stages xfn xsql gaps_sql ready_sql rollout_sql pv_sql facts_sql hints_sql stages_sql rk all=''
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     rk="$(_seed_keys "$mf" '(.advisors // {}) | keys[] | select(. != "_comment")')"; all="${all}${all:+${rk:+,}}$rk"
@@ -567,8 +567,9 @@ _seed_advisors() {
            | [$pkg, $domain, (.plan_context // ""), (.review_fn // ""), (.advisor_agent // ""),
               (if .learn_notes == true then "true" else "false" end),
               (if .own_review_cron == true then "true" else "false" end),
-              (if .plan_step == true then "true" else "false" end), (.gaps_fn // "-"), (.readiness_fn // "-"), (.rollout_fn // "-"), (.plan_validate_fn // "-")] | @tsv' "$mf" |
-    while IFS=$'\t' read -r pkg domain plan_ctx fn agent learn owncron planstep gapsfn readyfn rolloutfn pvfn; do
+              (if .plan_step == true then "true" else "false" end), (.gaps_fn // "-"), (.readiness_fn // "-"), (.rollout_fn // "-"), (.plan_validate_fn // "-"),
+              (.section_facts_fn // "-"), (.hints_fn // "-"), (if (.stages | type) == "array" then (.stages | tojson) else "-" end)] | @tsv' "$mf" |
+    while IFS=$'\t' read -r pkg domain plan_ctx fn agent learn owncron planstep gapsfn readyfn rolloutfn pvfn factsfn hintsfn stages; do
       [ -n "$domain" ] || continue
       [ -n "$plan_ctx" ] && [ -n "$fn" ] || { warn "advisor '$domain' ($pkg): plan_context/review_fn fehlt — uebersprungen."; continue; }
       if [ "$pkg" = core ]; then
@@ -581,12 +582,14 @@ _seed_advisors() {
       [ "$learn" = true ] || learn=false
       [ "$owncron" = true ] || owncron=false   # eigener Review-Cron -> geteilte Advisor-Crons lassen die Domaene aus
       [ "$planstep" = true ] || planstep=false # Onboarding-Plan-Schritt (Knopf plan:<domain>)
-      # gaps_fn/readiness_fn (optional, Signatur (text,text)): Boundary wie review_fn (eigenes Paket-Schema), leer -> NULL.
+      # gaps_fn/readiness_fn/section_facts_fn (optional, Signatur (text,text)), hints_fn (text), rollout_fn, plan_validate_fn (jsonb):
+      # Boundary wie review_fn (eigenes Paket-Schema), leer -> NULL.
       # Fehlt ein Feld, liefert jq "-" statt "": Tab ist IFS-Whitespace, read wuerde leere Felder zusammenziehen und
       # readiness_fn in gapsfn schieben.
       [ "$gapsfn" = "-" ] && gapsfn=""; [ "$readyfn" = "-" ] && readyfn=""; [ "$rolloutfn" = "-" ] && rolloutfn=""; [ "$pvfn" = "-" ] && pvfn=""
-      gaps_sql='NULL'; ready_sql='NULL'; rollout_sql='NULL'; pv_sql='NULL'
-      for xfn in "$gapsfn" "$readyfn" "$rolloutfn" "$pvfn"; do
+      [ "$factsfn" = "-" ] && factsfn=""; [ "$hintsfn" = "-" ] && hintsfn=""
+      gaps_sql='NULL'; ready_sql='NULL'; rollout_sql='NULL'; pv_sql='NULL'; facts_sql='NULL'; hints_sql='NULL'; stages_sql='NULL'
+      for xfn in "$gapsfn" "$readyfn" "$rolloutfn" "$pvfn" "$factsfn" "$hintsfn"; do
         [ -n "$xfn" ] || continue
         case "$xfn" in "$pkg".*) : ;; *) warn "advisor '$domain' -> '$xfn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue 2 ;; esac
       done
@@ -594,10 +597,14 @@ _seed_advisors() {
       [ -n "$readyfn" ] && ready_sql="$(_sql_str "$readyfn")"
       [ -n "$rolloutfn" ] && rollout_sql="$(_sql_str "$rolloutfn")"
       [ -n "$pvfn" ] && pv_sql="$(_sql_str "$pvfn")"
-      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, rollout_fn, plan_validate_fn, package, updated_at)\n'
-      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
-        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$rollout_sql" "$pv_sql" "$(_sql_str "$pkg")"
-      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, rollout_fn=EXCLUDED.rollout_fn, plan_validate_fn=EXCLUDED.plan_validate_fn, package=EXCLUDED.package, updated_at=now();\n'
+      [ -n "$factsfn" ] && facts_sql="$(_sql_str "$factsfn")"
+      [ -n "$hintsfn" ] && hints_sql="$(_sql_str "$hintsfn")"
+      # stages (Plan-Gespraech: Teile in Reihenfolge + Etappen) als JSON; die Form prueft der CHECK advisors_stages_check.
+      [ "$stages" != "-" ] && stages_sql="$(_sql_str "$stages")::jsonb"
+      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, rollout_fn, plan_validate_fn, section_facts_fn, hints_fn, stages, package, updated_at)\n'
+      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
+        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$rollout_sql" "$pv_sql" "$facts_sql" "$hints_sql" "$stages_sql" "$(_sql_str "$pkg")"
+      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, rollout_fn=EXCLUDED.rollout_fn, plan_validate_fn=EXCLUDED.plan_validate_fn, section_facts_fn=EXCLUDED.section_facts_fn, hints_fn=EXCLUDED.hints_fn, stages=EXCLUDED.stages, package=EXCLUDED.package, updated_at=now();\n'
       # Plan-Pruefung (fn(jsonb) -> text): fehlt die fn, WARNING; danach die Anzahl gespeicherter Plaene, die sie nicht bestehen
       # (nur Anzahl, nie Werte). Gekapselt: der Seed ist eine Transaktion, ein werfender Validator darf das Update nicht kippen.
       # Zeilen-Auswahl ohne LIKE-Wildcard ('_' ist eine): Basisname oder Basisname||'__'||person.

@@ -45,7 +45,7 @@
     "final": "REACT FUN\nHaha, danke! Mein Tag läuft prima."
   },
   {
-    "_comment": "Reaktionen (ri82): nach dem Spezialisten 'FRAME CHEER' -> 🎉 an die Nachricht, Spezialisten-Text woertlich, kein Signal im Chat.",
+    "_comment": "Reaktionen (ri82): nach dem Spezialisten das aeltere Signal 'FRAME CHEER' -> keine Reaktion neben der Antwort (Berater-UX §5.7), Spezialisten-Text woertlich, kein Signal im Chat.",
     "match": "Reaktions-Test Gehalt",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "Reaktions-Test Gehalt" } }
@@ -131,13 +131,22 @@
     "final": "Lass uns gemeinsam ansehen, wie lange deine Reserven reichen."
   },
   {
-    "_comment": "Bot mit Gesicht (oc56): gute Nachricht + Kontostand -> Call_agent_finance_ (FRAME CHEER prueft der bezahlte Tier).",
+    "_comment": "Bot mit Gesicht (oc56): gute Nachricht + Kontostand -> Call_agent_finance_ (Signal FRAME ohne Stimmung prueft der bezahlte Tier, Berater-UX §5.7).",
     "match": "Juhu, das Gehalt ist da",
     "calls": [
       { "tool": "Call_agent_finance_", "args": { "task": "Wie steht mein Lindenbank Girokonto?" } }
     ],
     "final": "Dein Lindenbank Girokonto steht bei 2.345,67 EUR.",
-    "final_router": "FRAME CHEER"
+    "final_router": "FRAME"
+  },
+  {
+    "_comment": "Berater-UX oc-react-1: kurzes Ok auf die Frage des Beraters -> Call_agent_finance_advisor_, Signal FRAME ohne Stimmung (keine Reaktion neben der Antwort, §5.7).",
+    "match": "Ok, passt.",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ok, passt." } }
+    ],
+    "final": "Dann weiter mit der Absicherung. Hast du eine Berufsunfaehigkeitsversicherung?",
+    "final_router": "FRAME"
   },
   {
     "_comment": "Router memory signal (ri66, Befund 2026-10-26): der Router schreibt nach dem Spezialisten eine EIGENE Fassung statt des Signals -> gesendet wird trotzdem der Spezialisten-Text woertlich, im Router-Gedaechtnis steht danach NOFRAME.",
@@ -877,10 +886,10 @@
   },
 
   {
-    "_comment": "ADVISOR (Anthropic/Opus, Phase 6b): der dialekt-aware Stub bedient /v1/messages -> tool_use. Lauf: mock_route_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test -CasesFile tests\\agent\\finance\\advisor_cases.json -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger. Voraussetzung: Onboarding aufgeloest (sonst blockt das feature.onboarding_gate VOR dem LLM). Pflicht-$fromAI: tool_save_plan_section{section_key,section_content}; tool_create_monitor_trigger{label,trigger_type,check_interval,action_note}. tool_publish_plan ist in -WriteTools nur zur Erkennung gelistet (kein advisor_cases-Case erwartet es) -> kein Szenario, kein Lint-Drift. Das tool_create_monitor_trigger-Szenario deckt zugleich den Monitor-Case mc01 ab (gleiches Tool, 'Lege den Trigger jetzt an' steht in beiden Tasks).",
+    "_comment": "ADVISOR (Anthropic/Opus, Phase 6b): der dialekt-aware Stub bedient /v1/messages -> tool_use. Lauf: mock_route_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test -CasesFile tests\\agent\\finance\\advisor_cases.json -WriteTools tool_propose_plan_topics,tool_publish_plan,tool_create_monitor_trigger. Voraussetzung: Onboarding aufgeloest (sonst blockt das feature.onboarding_gate VOR dem LLM). Pflicht-$fromAI: tool_propose_plan_topics{section_key,topics}; tool_create_monitor_trigger{label,trigger_type,check_interval,action_note}. tool_publish_plan ist in -WriteTools nur zur Erkennung gelistet (kein advisor_cases-Case erwartet es) -> kein Szenario, kein Lint-Drift. Das tool_create_monitor_trigger-Szenario deckt zugleich den Monitor-Case mc01 ab (gleiches Tool, 'Lege den Trigger jetzt an' steht in beiden Tasks).",
     "match": "Speichere die Sektion jetzt in den Plan-Entwurf",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "2 Erwachsene (Erika Vollzeit, Lena Teilzeit), 1 Kind (Lisa), Nettoeinkommen 5000 EUR/Monat, Sparquote 50 EUR." } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"household_basics","topics":"[{\"topic\":\"Haushalt\",\"content\":\"2 Erwachsene (Erika Vollzeit, Lena Teilzeit), 1 Kind (Lisa), Nettoeinkommen 5000 EUR/Monat, Sparquote 50 EUR.\"}]"} }
     ],
     "final": "Sektion household_basics gespeichert."
   },
@@ -888,7 +897,7 @@
     "_comment": "ADVISOR ac16: Sprache und Klartext prueft nur der bezahlte Lauf (Judge), der Mock deckt den Tool-Pfad.",
     "match": "Halte den Abschnitt crossborder jetzt im Plan-Entwurf fest",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Ausland", "section_key": "crossborder", "section_content": "Es gibt keine Rente und kein Konto im Ausland, der Abschnitt trifft nicht zu." } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"crossborder","topics":"[{\"topic\":\"Ausland\",\"content\":\"Es gibt keine Rente und kein Konto im Ausland, der Abschnitt trifft nicht zu.\"}]"} }
     ],
     "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."
   },
@@ -896,8 +905,8 @@
     "_comment": "ADVISOR ac17: der Mock zaehlt das tool_use aus chat_history als schon erledigten Aufruf (anthropicPriorTurns), darum steht es hier zuerst und der gepruefte Aufruf danach. Die Sprache prueft nur der bezahlte Lauf (Judge), den deutschen Text hier liefert der Mock selbst.",
     "fixed_date_reason": "Stichtag 31.12.2028 liegt bewusst fest (wie ac17)", "match": "Speichere den Abschnitt Haushaltsbasis neu",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Household basics: two adults, two children." } },
-      { "tool": "tool_save_plan_section", "args": { "topic": "Haushalt", "section_key": "household_basics", "section_content": "Haushaltsbasis: 2 Erwachsene, 2 Kinder, der Dauerauftrag auf das Testkonto endet am 31.12.2028." } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"household_basics","topics":"[{\"topic\":\"Household\",\"content\":\"The household is confirmed by the data. The standing transfer to the test account ends on 30.06.2028.\"}]"} },
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"household_basics","topics":"[{\"topic\":\"Haushalt\",\"content\":\"Haushaltsbasis: 3 Erwachsene, der Dauerauftrag auf das Testkonto endet am 31.12.2028.\"}]"} }
     ],
     "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."
   },
@@ -905,15 +914,15 @@
     "_comment": "ADVISOR ac19: Sprache prueft nur der bezahlte Lauf (Judge). match mit Emoji, damit das kurze Ok keine anderen Tasks trifft.",
     "match": "Ok 👍",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Berufsunfähigkeit", "section_key": "risk_protection", "section_content": "Die Hausratversicherung der Lindenversicherung ist vorhanden, eine Privathaftpflicht und eine Berufsunfaehigkeitsversicherung fehlen." } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"risk_protection","topics":"[{\"topic\":\"Berufsunfähigkeit\",\"content\":\"Die Hausratversicherung der Lindenversicherung ist vorhanden, eine Privathaftpflicht und eine Berufsunfaehigkeitsversicherung fehlen.\"}]"} }
     ],
     "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."
   },
   {
-    "_comment": "ADVISOR ac08 (Phase A): risk_profile-Sektion -> tool_save_plan_section. Eigener Match-Substring (NICHT 'Speichere die Sektion jetzt ...' = ac06) -> keine Kollision. Pflicht-$fromAI section_key+section_content; section_data optional, hier mit dem risk_profile-Block.",
+    "_comment": "ADVISOR ac08 (Phase A): risk_profile-Thema -> tool_propose_plan_topics. Eigener Match-Substring (NICHT 'Speichere die Sektion jetzt ...' = ac06) -> keine Kollision. Pflicht-$fromAI section_key+topics; der risk_profile-Block steht im data des Themas.",
     "match": "Speichere die Sektion risk_profile",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "topic": "Risikoprofil", "section_key": "risk_profile", "section_content": "Risikobereitschaft mittel, Risikotragfaehigkeit hoch.", "section_data": "{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\",\"as_of\":\"{{date:-1w}}\"}}" } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"risk_profile","topics":"[{\"topic\":\"Risikoprofil\",\"content\":\"Risikobereitschaft mittel, Risikotragfaehigkeit hoch.\",\"section_data\":{\"risk_profile\":{\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\"}}}]"} }
     ],
     "final": "Sektion risk_profile gespeichert."
   },
@@ -941,7 +950,7 @@
   },
 
   {
-    "_comment": "CAREER-ADVISOR (Anthropic/Opus, WS-1). Lauf: mock_route_test.ps1 -TargetWorkflow agent.career_advisor -WebhookPath career-test -CasesFile tests\\agent\\career\\career_cases.json (Default tool_* erkennt alle career-Tools; -WriteTools nur zur Verengung). Voraussetzung: Core-Onboarding aufgeloest (Core-first-Gate VOR dem LLM; KEIN feature.onboarding_gate fuer career). Pflicht-$fromAI: tool_set_profile_facts{facts}; tool_save_plan_section{section_key,section_content}; tool_extract_cv{file_id} (WS-1b, read-only CV-Vision). cc03/cc04 sind NULL-Cases -> kein Szenario. tool_publish_plan ist nur zur Erkennung (kein Case erwartet es) -> kein Szenario.",
+    "_comment": "CAREER-ADVISOR (Anthropic/Opus, WS-1). Lauf: mock_route_test.ps1 -TargetWorkflow agent.career_advisor -WebhookPath career-test -CasesFile tests\\agent\\career\\career_cases.json (Default tool_* erkennt alle career-Tools; -WriteTools nur zur Verengung). Voraussetzung: Core-Onboarding aufgeloest (Core-first-Gate VOR dem LLM; KEIN feature.onboarding_gate fuer career). Pflicht-$fromAI: tool_set_profile_facts{facts}; tool_propose_plan_topics{section_key,topics}; tool_extract_cv{file_id} (WS-1b, read-only CV-Vision). cc03/cc04 sind NULL-Cases -> kein Szenario. tool_publish_plan ist nur zur Erkennung (kein Case erwartet es) -> kein Szenario.",
     "match": "aktueller Titel ist Senior Vertriebsleiter",
     "calls": [
       { "tool": "tool_set_profile_facts", "args": { "facts": "{\"current_title\":\"Senior Vertriebsleiter\",\"industry\":\"Logistik\",\"career_start_date\":\"-12 years\"}" } }
@@ -951,7 +960,7 @@
   {
     "match": "Speichere die Ziel-Sektion jetzt in den Karriereplan",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "section_key": "targets", "section_content": "Zielrolle Data Analyst, Zielbranche IT, Umstieg in 2 Jahren, Zielort Leipzig, Suchradius 50 km, Vollzeit.", "section_data": "{\"target_roles\":[{\"title\":\"Data Analyst\"}],\"target_industries\":[\"IT\"],\"target_date\":\"+2 years\",\"target_locations\":[\"Leipzig\"],\"search_radius_km\":50}" } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"targets","topics":"[{\"topic\":\"targets\",\"content\":\"Zielrolle Data Analyst, Zielbranche IT, Umstieg in 2 Jahren, Zielort Leipzig, Suchradius 50 km, Vollzeit.\",\"section_data\":{\"target_roles\":[{\"title\":\"Data Analyst\"}],\"target_industries\":[\"IT\"],\"target_date\":\"+2 years\",\"target_locations\":[\"Leipzig\"],\"search_radius_km\":50}}]"} }
     ],
     "final": "Ziel-Sektion gespeichert."
   },
@@ -959,8 +968,8 @@
     "_comment": "CAREER cc10: Aufbau wie ac17, Gegenrichtung (frueher deutsch, Person schreibt Koreanisch). Die Sprache prueft nur der bezahlte Lauf (Judge).",
     "match": "상황 섹션을 다시 저장해 주세요",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "section_key": "situation", "section_content": "Senior Vertriebsleiter in der Logistik." } },
-      { "tool": "tool_save_plan_section", "args": { "section_key": "situation", "section_content": "물류 분야 영업 책임자이며 1년 안에 이직을 원합니다." } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"situation","topics":"[{\"topic\":\"Situation\",\"content\":\"Wechsel innerhalb von 2 Jahren; das Gehalt muss weiter den Lebensunterhalt tragen.\"}]"} },
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"situation","topics":"[{\"topic\":\"situation\",\"content\":\"물류 분야 영업 책임자이며 1년 안에 이직을 원합니다.\"}]"} }
     ],
     "final": "저장되지 않았습니다."
   },
@@ -1874,9 +1883,9 @@
     ],
     "final": "Die Position wurde nicht ersetzt, es wurde nichts gespeichert."
   },
-  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Notgroschen", "section_key": "goals_triggers", "section_content": "Notgroschen 6000 Euro bis Ende 2027 als Sparziel.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"{{date:+13m@-1}}\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]"}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac22 Uebergabe: vereinbartes Sparziel als handoff_tasks am Abschnitt (Laien-Sprache prueft nur der bezahlte Lauf).", "match": "Halte den Abschnitt goals_triggers mit dem vereinbarten Sparziel", "calls": [{ "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"goals_triggers","topics":"[{\"topic\":\"Notgroschen\",\"content\":\"Notgroschen 6000 Euro bis Ende 2027 als Sparziel.\",\"handoff_tasks\":[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ Notgroschen\",\"target_amount\":6000,\"target_date\":\"{{date:+13m@-1}}\"},\"text\":\"Sparziel Notgroschen 6000 Euro bis Ende 2027\"}]}]"} }], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "ADVISOR ac23 Uebergabe: Nutzer will gleich eintragen -> Uebersicht mit Knopf Durchgehen.", "match": "Lass uns das Vereinbarte gleich eintragen", "calls": [{"tool": "tool_send_handoff_overview", "args": {}}], "final": "Die Liste kommt gleich, tippe dort auf Durchgehen."},
-  {"_comment": "ADVISOR ac24 Uebergabe-Negativfall: abgelehnte Idee -> Abschnitt ohne handoff_tasks.", "match": "Speichere den Abschnitt retirement_pension ohne neuen Sparplan", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Vorsorge", "section_key": "retirement_pension", "section_content": "Gesetzliche Rente und bestehende Vorsorge bleiben die Basis, kein zusaetzlicher Sparplan."}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac24 Uebergabe-Negativfall: abgelehnte Idee -> Abschnitt ohne handoff_tasks.", "match": "Speichere den Abschnitt retirement_pension ohne neuen Sparplan", "calls": [{ "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"retirement_pension","topics":"[{\"topic\":\"Vorsorge\",\"content\":\"Gesetzliche Rente und bestehende Vorsorge bleiben die Basis, kein zusaetzlicher Sparplan.\"}]"} }], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "tc120 Uebergabe: Durchgehen-Auftrag -> erster Punkt mit handoff_task_id.", "match": "Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro", "calls": [{"tool": "tool_create_recurring_payment", "args": {"name": "__E2E__ HO Miete", "account_name": "__E2E__ HO Giro", "direction": "expense", "amount": 900, "schedule_unit": "month", "schedule_day_of_month": "3", "first_payment_date": "in 4 weeks", "handoff_task_id": "990001"}}], "final": "Die Miete ist nicht bestaetigt. Anders eintragen oder ueberspringen?"},
   {"_comment": "oc51 Uebergabe: Folgenachricht zum Eintragen -> Call_agent_finance_.", "match": "die Miete geht vom __E2E__ HO Giro ab", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein."}}], "final": "Der Buchhalter kuemmert sich darum."},
   {"_comment": "tc121 Immobilie anlegen: tool_create_real_estate mit Rohwerten (Rate/Ruecklage rechnet die DB).", "match": "Lege eine neue Immobilie an: 'Ferienhaus Probestadt'", "calls": [{"tool": "tool_create_real_estate", "args": {"name": "Ferienhaus Probestadt", "current_value": "280000", "living_area_m2": "90", "year_built": "1998"}}], "final": "Die Karte fuer das Ferienhaus Probestadt ist unterwegs."},
@@ -1884,11 +1893,19 @@
   {"_comment": "tc127 Konto-Zeichen nicht in der Liste.", "match": "Gib dem Lindenbank Giro ein Einhorn als Zeichen.", "calls": [{"tool": "tool_set_account", "args": {"account_name": "Lindenbank Giro", "emoji": "🦄"}}], "final": "Dieses Zeichen gibt es nicht."},
   {"_comment": "tc128 Konto-Zeichen ohne Nennung.", "match": "Ich möchte dem Lindenbank Giro ein anderes Zeichen geben.", "calls": [{"tool": "tool_send_account_emoji_picker", "args": {"account_name": "Lindenbank Giro"}}], "final": "Ich habe dir die Auswahl geschickt."},
   {"_comment": "tc124 Bank-Zettel auf Nachfrage.", "match": "Was muss ich bei der Bank noch einstellen?", "calls": [{"tool": "tool_send_bank_todos", "args": {}}], "final": "Ich habe dir die Liste je Bank geschickt."},
-  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Plan vervollstaendigt mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"{{date:+4m@15}}\",\"deadline\":true}]","change_summary":"Erstfassung","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
-  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"{{date:+7m@1}}\"}]","change_summary":"Termine","plan_md":"# Plan"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac31 (nur Tool-Pfad, Inhalt prueft der bezahlte Lauf)","match":"Plan vervollstaendigt mit Terminen","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Bausparvertrag\",\"remind_on\":\"{{date:+4m@15}}\",\"deadline\":true}]","change_summary":"Erstfassung"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
+  {"_comment":"ADVISOR ac33","match":"Aenderung: Termine ergaenzt","calls":[{"args":{"check_findings":"[]","check_passes":1,"reminders":"[{\"label\":\"Sparplan\",\"remind_on\":\"{{date:+7m@1}}\"}]","change_summary":"Termine"},"tool":"tool_publish_plan"}],"final":"Plan veroeffentlicht."},
   {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"__E2E__ Zinsbindung pruefen\",\"remind_on\":\"{{date:+4m@1}}\"},{\"label\":\"__E2E__ Rente pruefen\",\"remind_on\":\"{{date:+5m@1}}\"},{\"label\":\"__E2E__ Bauspar pruefen\",\"remind_on\":\"{{date:+6m@1}}\"},{\"label\":\"__E2E__ Versicherung pruefen\",\"remind_on\":\"{{date:+8m@1}}\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
   {"_comment": "ADVISOR ac41 offene Vormerkung erklaert die Konto-Warnung -> Liste zum Durchgehen, kein neues Thema (Begruendung prueft der bezahlte Lauf).", "match": "schauen wir uns das Haushaltskonto jetzt an", "calls": [{"tool": "tool_send_handoff_overview", "args": {}}], "final": "Der vereinbarte Dauerauftrag ist noch nicht eingetragen, darum reicht das Geld nicht. Die Liste kommt gleich, tippe dort auf Durchgehen."},
-  {"_comment": "ADVISOR ac42 Gegen-Fall: neue vereinbarte Loesung ohne offene Vormerkung -> tool_save_plan_section mit handoff_tasks.", "match": "halte das als Thema im Abschnitt goals_triggers fest", "calls": [{"tool": "tool_save_plan_section", "args": {"topic": "Haushaltskonto", "section_key": "goals_triggers", "section_content": "Jeden Monat zum Monatsanfang 1000 Euro per Dauerauftrag vom __E2E__ VM Gehalt auf das __E2E__ VM Haushalt.", "handoff_tasks": "[{\"kind\":\"recurring_transfer\",\"payload\":{\"from_account\":\"__E2E__ VM Gehalt\",\"to_account\":\"__E2E__ VM Haushalt\",\"amount\":1000,\"day_of_month\":1},\"text\":\"Dauerauftrag 1000 Euro monatlich zum Monatsanfang aufs Haushaltskonto\"}]"}}], "final": "Das Thema wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac42 Gegen-Fall: neue vereinbarte Loesung ohne offene Vormerkung -> tool_propose_plan_topics mit handoff_tasks.", "match": "halte das als Thema im Abschnitt goals_triggers fest", "calls": [{ "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"goals_triggers","topics":"[{\"topic\":\"Haushaltskonto\",\"content\":\"Jeden Monat zum Monatsanfang 1000 Euro per Dauerauftrag vom __E2E__ VM Gehalt auf das __E2E__ VM Haushalt.\",\"handoff_tasks\":[{\"kind\":\"recurring_transfer\",\"payload\":{\"from_account\":\"__E2E__ VM Gehalt\",\"to_account\":\"__E2E__ VM Haushalt\",\"amount\":1000,\"day_of_month\":1},\"text\":\"Dauerauftrag 1000 Euro monatlich zum Monatsanfang aufs Haushaltskonto\"}]}]"} }], "final": "Das Thema wurde nicht bestaetigt, es wurde nichts gespeichert."},
+  {"_comment": "ADVISOR ac26 Berater-UX: Veroeffentlichen-Wunsch -> Schlusspruefung als EIN tool_record_check_findings, kein Publish.", "match": "Alle Abschnitte sind bestaetigt. Veroeffentliche jetzt den Plan.", "calls": [{"tool": "tool_record_check_findings", "args": {"findings": "[{\"category\":\"missing\",\"ref_a\":{\"section_key\":\"risk_protection\",\"topic\":\"Haftpflicht\"},\"quote_a\":\"Privathaftpflicht fuer die ganze Familie ist vorhanden.\",\"question\":\"Berufsunfaehigkeit, Todesfall und Testament fehlen in der Absicherung. Sollen wir sie ergaenzen?\"}]"}}], "final": "Die Schlusspruefung ist abgelegt."},
+  {"_comment": "ADVISOR ac28 Berater-UX: halber Abschnitt -> Fund missing in tool_record_check_findings.", "match": "Mach bitte den Gesamtcheck, bevor wir veroeffentlichen", "calls": [{"tool": "tool_record_check_findings", "args": {"findings": "[{\"category\":\"missing\",\"ref_a\":{\"section_key\":\"risk_protection\",\"topic\":\"Haftpflicht\"},\"quote_a\":\"Privathaftpflicht fuer die ganze Familie ist vorhanden.\",\"question\":\"Die Absicherung deckt nur die Haftpflicht ab. Sollen wir Berufsunfaehigkeit, Todesfall und Testament ergaenzen?\"}]"}}], "final": "Die Schlusspruefung ist abgelegt."},
+  {"_comment": "ADVISOR ac-ux-2 Berater-UX: Bestandsplan, Teil 1 als Karte mit der alten Entscheidung ohne alte Zahlen.", "match": "Ja, los geht's mit dem Durchgehen.", "calls": [{"tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key": "household_basics", "topics": "[{\"topic\":\"Haushalt\",\"content\":\"Weil beide selbststaendig sind, geht die Absicherung der Arbeitskraft vor dem Vermoegensaufbau.\"}]"}}], "final": "Der Vorschlag steht als Karte unten."},
+  {"_comment": "ADVISOR ac-ux-3 Berater-UX: Knopf-Antwort -> Thema sofort als Karte.", "match": "3 Monate (empfohlen)", "calls": [{"tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key": "emergency_reserve", "topics": "[{\"topic\":\"Notreserve\",\"content\":\"Die Notreserve deckt 3 Monatsausgaben und liegt nur auf dem Tagesgeld.\"}]"}}], "final": "Der Vorschlag steht als Karte unten."},
+  {"_comment": "ADVISOR ac-ux-5 Berater-UX: unbekannte Angabe -> offener Punkt am Thema.", "match": "die Hoehe der Betriebsrente muss ich erst beim Arbeitgeber erfragen", "calls": [{"tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key": "retirement_pension", "topics": "[{\"topic\":\"Rente\",\"content\":\"Die gesetzliche Rente und die Betriebsrente bilden die Basis der Altersvorsorge.\",\"open_points\":[{\"text\":\"Hoehe der Betriebsrente beim Arbeitgeber erfragen\"}]}]"}}], "final": "Der Vorschlag steht als Karte unten."},
+  {"_comment": "ADVISOR ac-ux-6 Berater-UX: zwei Widersprueche -> EIN tool_record_check_findings.", "match": "Lass uns den Plan pruefen und dann veroeffentlichen", "calls": [{"tool": "tool_record_check_findings", "args": {"findings": "[{\"category\":\"contradiction\",\"ref_a\":{\"section_key\":\"risk_profile\",\"topic\":\"Risikoprofil\"},\"ref_b\":{\"section_key\":\"wealth_building\",\"topic\":\"Aufteilung\"},\"quote_a\":\"Die Risikobereitschaft ist niedrig: Verluste ueber 10 Prozent waeren nicht auszuhalten.\",\"quote_b\":\"Das Vermoegen liegt zu 90 Prozent in einem Aktien-ETF und zu 10 Prozent auf dem Tagesgeld.\",\"question\":\"Was gilt: das Risikoprofil oder die Aufteilung?\"},{\"category\":\"contradiction\",\"ref_a\":{\"section_key\":\"emergency_reserve\",\"topic\":\"Notreserve\"},\"ref_b\":{\"section_key\":\"goals_triggers\",\"topic\":\"Auto 2027\"},\"quote_a\":\"Die Notreserve auf dem Tagesgeld wird nie fuer geplante Ausgaben angetastet.\",\"quote_b\":\"Das neue Auto 2027 bezahlen wir komplett aus der Notreserve.\",\"question\":\"Woraus soll das Auto bezahlt werden?\"}]"}}], "final": "Die Schlusspruefung ist abgelegt."},
+  {"_comment": "ADVISOR ac-pub-1: grosser Plan -> genau ein tool_publish_plan ohne Plan-Text (die DB setzt den Plan zusammen).", "match": "Veroeffentliche jetzt den grossen Plan", "calls": [{"tool": "tool_publish_plan", "args": {"change_summary": "Erstfassung mit allen neun Teilen", "check_findings": "[]", "check_passes": 1, "reminders": "[]"}}], "final": "Der Plan ist nicht veroeffentlicht, die Bestaetigung wurde abgebrochen."},
+  {"_comment": "ADVISOR ac37 Berater-UX: erster Teil nach dem Start-Knopf -> Haushalt als Karte, ohne Ist-Zahlen im Text.", "match": "Los geht's", "calls": [{"tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key": "household_basics", "topics": "[{\"topic\":\"Haushalt\",\"content\":\"Der Haushalt ist laut Daten bestaetigt.\"}]"}}], "final": "Der Vorschlag steht als Karte unten."},
   {"_comment": "tc130 Ersteinrichtung offen: kurze Antwort gehoert zum Lauf.", "match": "Der Stand ist gerade 1234,56 Euro", "calls": [{"tool": "tool_import_setup", "args": {"question_key": "current_balance", "answer": "1234,56"}}], "final": "Danke, ich mache weiter."},
   {"_comment": "tc131 Ersteinrichtung abbrechen.", "match": "Lass die Einrichtung, ich mag gerade nicht mehr.", "calls": [{"tool": "tool_import_setup", "args": {"action": "cancel"}}], "final": "Ich habe die Einrichtung beendet; Bestaetigtes bleibt bestehen."}
   ,{"_comment": "tc140 Immobilie verkauft.", "match": "Wir haben die Musterimmobilie verkauft", "calls": [{"tool": "tool_sell_real_estate", "args": {"real_estate_name": "Musterimmobilie", "proceeds_account_name": "Lindenbank Giro", "sale_price": 320000}}], "final": "Verkauf gebucht."}
@@ -2182,10 +2199,10 @@
     "final": "Gut, dann ist die Haftpflicht abgedeckt. Hast du eine Berufsunfaehigkeitsversicherung?"
   },
   {
-    "_comment": "S4 Nachfassen ac-handoff-1: Sparziel einem Konto zuordnen im Plan-Gespraech -> tool_save_plan_section mit Vormerkung kind savings_goal.",
+    "_comment": "S4 Nachfassen ac-handoff-1: Sparziel einem Konto zuordnen im Plan-Gespraech -> tool_propose_plan_topics mit Vormerkung kind savings_goal.",
     "match": "ordne das Tagesgeld dem Ziel zu",
     "calls": [
-      { "tool": "tool_save_plan_section", "args": { "section_key": "goals_triggers", "topic": "Sparziel Urlaub", "section_content": "Das Sparziel __E2E__ HO Urlaub wird kuenftig dem __E2E__ HO Tagesgeld zugeordnet, getrennt vom Alltagsgeld.", "handoff_tasks": "[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ HO Urlaub\",\"account\":\"__E2E__ HO Tagesgeld\"},\"text\":\"Sparziel __E2E__ HO Urlaub dem __E2E__ HO Tagesgeld zuordnen\"}]" } }
+      { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"goals_triggers","topics":"[{\"topic\":\"Sparziel Urlaub\",\"content\":\"Das Sparziel __E2E__ HO Urlaub wird kuenftig dem __E2E__ HO Tagesgeld zugeordnet, getrennt vom Alltagsgeld.\",\"handoff_tasks\":[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ HO Urlaub\",\"account\":\"__E2E__ HO Tagesgeld\"},\"text\":\"Sparziel __E2E__ HO Urlaub dem __E2E__ HO Tagesgeld zuordnen\"}]}]"} }
     ],
     "final": "Das Thema wurde nicht gespeichert."
   }

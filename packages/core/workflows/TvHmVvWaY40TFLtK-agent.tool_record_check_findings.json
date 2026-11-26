@@ -1,0 +1,224 @@
+{
+    "id":  "TvHmVvWaY40TFLtK",
+    "name":  "agent.tool_record_check_findings",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "findings"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "0ba5754a-263c-555f-acdc-56a9e6934f88",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_advisor_record_check_findings($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), findings: $(\u0027Start\u0027).item.json.findings }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "fe9fb07f-7580-5f36-a83d-507aff09557f",
+                      "name":  "Record findings",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "bcb9d9c5-46bd-51b1-80c6-e95e6fef2c98",
+                                                                                   "leftValue":  "={{ ($json.r || {}).ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "bb1da83b-1154-5745-afac-517977d06718",
+                      "name":  "Recorded?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ed6a162d-a0e7-5f36-a156-48dbb6c7ee66",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ae292396-82e1-53e4-bde9-a2f7209f3226",
+                                                                                     "name":  "pass",
+                                                                                     "value":  "={{ $json.r.pass }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ef565ef7-a7d5-50a6-9d56-f1fb4e6e3723",
+                                                                                     "name":  "last_pass",
+                                                                                     "value":  "={{ $json.r.last_pass }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f6787004-3f98-583f-b246-db2e9e889226",
+                                                                                     "name":  "counts",
+                                                                                     "value":  "={{ $json.r.counts }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "af230ebc-c6df-5663-9896-ea4b8f6eaa8c",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "efe2fcee-1784-57e6-a74e-6e12ab414ecb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "31ce1bb8-d25b-53e9-b119-cf5332d9575d",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Not recorded (\u0027 + String(($json.r || {}).code || \u0027error\u0027) + \u0027)\u0027 + ((($json.r || {}).index !== undefined \u0026\u0026 ($json.r || {}).index !== null) ? \u0027, finding \u0027 + $json.r.index : \u0027\u0027) + \u0027: \u0027 + String(($json.r || {}).reason || \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       100
+                                   ],
+                      "id":  "78c48d2c-7f68-56a5-b2b2-d22172bf9576",
+                      "name":  "Findings rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Funde der Schlussprüfung ablegen (offene Frage, ohne Gate)**\n\nRecord findings ruft agent.fn_advisor_record_check_findings: prüft jeden Fund (Zitat wörtlich im genannten Thema, Vorschlag per Probelauf wie ein Thema), ergänzt die eigenen Punkte der DB (noch offene Punkte, fehlende Teile) und legt den Stapel an: erst die Übersicht (Abschluss in drei Schritten, Knöpfe Los/Pause), dann je Punkt eine Karte. Höchstens advisor.check_max_passes Durchgänge (Config), der letzte heißt letzter Durchgang. Ablehnung als Daten mit Code (quote_not_found, invalid_finding, proposal_rejected, check_passes_exhausted, no_draft), nichts angelegt. Kein HITL-Gate: der Plan ändert sich erst beim Tipp auf einen Vorschlag. Senden macht der Orchestrator am Laufende.",
+                                         "height":  340,
+                                         "width":  340,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -360
+                                   ],
+                      "id":  "e0b54698-3938-5b89-b9e2-5e56f81b2ab5",
+                      "name":  "Doc Schlussprüfung"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Record findings",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Record findings":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Recorded?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Recorded?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Findings rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

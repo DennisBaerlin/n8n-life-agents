@@ -21,10 +21,10 @@
 --   Rueckgabe jsonb, Listen (leer = []): persons, recurring, planned_recurring, accounts (+ has_history, everyday_per_day, everyday_per_month,
 --   everyday_provisional nur an Geld-Konten), networth, savings_plans, standing_orders, loans, insurances, pensions,
 --   pension_outlook, real_estate, goals (+ goal_status), depot_risk (fn_savings_goal_derisk_status je Ziel im Fenster:
---   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance, warnings (je Konto:
---   kind account_coverage {account, currency, lowest_balance, lowest_on, has_history, due_soon} aus fn_account_outlook bzw.
---   kind savings_funding {account, currency, state warn|alert, runs_out_on, lowest_balance, lowest_on, due_soon} aus
---   account_funding_overview; due_soon = fruehestes Problem-Datum bald laut finance.fn_warning_due_soon),
+--   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance, warnings (Eintraege von
+--   finance.fn_advisor_hints mit key + class, ohne Kartenfelder text_key/params; ohne monthly_check und ohne die mit Merker
+--   "spaeter" (core.fn_advisor_hint_state); bei offenem Finanz-Entwurf nur class urgent und zusaetzlich das Objekt hints_held
+--   {entry, after_plan, monthly_check} mit den Zaehlwerten des Rests),
 --   open_handoffs (im Plan-Gespraech vereinbart, noch nicht eingetragen: {kind, text, topic, section_key, status, open_since} aus core.fn_advisor_open_handoffs; eine Warnung kann genau daher kommen);
 --   Objekte: cashflow_summary, parent_cashflow_summary, loan_summary, emergency_reserve; Zahl open_bank_steps
 --   (offene Bank-Einrichtungs-Schritte finance.bank_todos, keine Vormerkungen)
@@ -37,7 +37,9 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_drop CONSTANT text[] := ARRAY['account_number', 'contract_number', 'policy_number', 'notes',
                                     'holding_id', 'current_rp_id', 'head_rp_id', 'recurring_payment_id', 'valid_to'];
-    v_stale CONSTANT numeric := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::numeric, 45);
+    v_hints jsonb := finance.fn_advisor_hints('finance');
+    v_state jsonb := core.fn_advisor_hint_state('finance');
+    v_draft boolean := COALESCE((v_state->>'draft_open')::boolean, false);
 BEGIN
     RETURN jsonb_build_object(
         'open_bank_steps', (SELECT count(*)::int FROM finance.bank_todos t WHERE t.status = 'open' AND finance.fn_bank_todo_visible(t.id)),
@@ -98,31 +100,16 @@ BEGIN
                              FROM finance.depot_holdings_overview v),
         'depot_performance', (SELECT COALESCE(jsonb_agg(to_jsonb(v) - v_drop ORDER BY v.is_total, v.account_id), '[]'::jsonb)
                                 FROM finance.depot_performance v),
-        -- Ohne Auszug zaehlt nur ein Minus: die festen Zahlungen allein reichen dann schon, der fehlende Alltag kaeme dazu;
-        -- ein blosses Unterschreiten des Puffers waere Halbwissen (Regel fn_coverage_accounts). Veralteter Auszug: die
-        -- Vorschau ist nicht belastbar, fn_advisor_review meldet ihn statt der Unterdeckung.
-        'warnings', (SELECT COALESCE(jsonb_agg(w.e ORDER BY w.ord, w.account_id), '[]'::jsonb)
-                       FROM (SELECT 1 AS ord, a.id AS account_id, jsonb_build_object(
-                                    'kind', 'account_coverage', 'account', a.name,
-                                    'account_label', finance.fn_account_label(a.emoji, a.account_type, a.name), 'currency', a.currency,
-                                    'lowest_balance', (j.o->>'min_projected')::numeric, 'lowest_on', (j.o->>'min_date')::date,
-                                    'has_history', (j.o->>'has_history')::boolean,
-                                    'due_soon', finance.fn_warning_due_soon((j.o->>'min_date')::date)) AS e
-                               FROM finance.accounts a
-                              CROSS JOIN LATERAL finance.fn_account_outlook(a.id) AS j(o)
-                              WHERE a.status = 'active' AND a.account_type = 'cash' AND (j.o->>'ok')::boolean
-                                AND CASE WHEN (j.o->>'has_history')::boolean
-                                         THEN (j.o->>'shortfall')::numeric > 0
-                                              AND COALESCE((j.o->>'statement_age_days')::numeric, 0) <= v_stale
-                                         ELSE (j.o->>'min_projected')::numeric < 0 END
-                             UNION ALL
-                             SELECT 2, f.account_id, jsonb_build_object(
-                                    'kind', 'savings_funding', 'account', f.account_name,
-                                    'account_label', (SELECT finance.fn_account_label(x.emoji, x.account_type, x.name) FROM finance.accounts x WHERE x.id = f.account_id),
-                                    'currency', f.currency, 'state', f.state,
-                                    'runs_out_on', f.runs_out_on, 'lowest_balance', f.min_projected, 'lowest_on', f.min_date,
-                                    'due_soon', finance.fn_warning_due_soon(LEAST(f.runs_out_on, f.min_date)))
-                               FROM finance.account_funding_overview f
-                              WHERE f.state IN ('warn', 'alert')) w));
+        -- Was das Modell nicht sieht, kann es nicht ansprechen: darum filtert die DB, nicht der Prompt.
+        'warnings', (SELECT COALESCE(jsonb_agg(h.e - 'text_key' - 'params' ORDER BY h.n), '[]'::jsonb)
+                       FROM jsonb_array_elements(v_hints) WITH ORDINALITY AS h(e, n)
+                      WHERE NOT (v_state->'deferred' ? (h.e->>'key')) AND h.e->>'class' <> 'monthly_check'
+                        AND (NOT v_draft OR h.e->>'class' = 'urgent')))
+        || CASE WHEN v_draft THEN jsonb_build_object('hints_held', (SELECT jsonb_build_object(
+                    'entry',         count(*) FILTER (WHERE h->>'class' = 'entry'),
+                    'after_plan',    count(*) FILTER (WHERE h->>'class' = 'after_plan'),
+                    'monthly_check', count(*) FILTER (WHERE h->>'class' = 'monthly_check'))
+                  FROM jsonb_array_elements(v_hints) h WHERE NOT (v_state->'deferred' ? (h->>'key'))))
+                ELSE '{}'::jsonb END;
 END;
 $$;

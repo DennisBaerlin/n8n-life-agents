@@ -14,7 +14,7 @@
 --     3. erster offener Abschnitt in p.order (danach nicht gelistete in Overview-Reihenfolge), nur aktive Pakete
 --        (core.fn_onboarding_overview); Nicht-Owner nur per_user-Abschnitte mit Rolle in for_roles (NULL = alle).
 --     4. nur Owner, kein Abschnitt offen: core.fn_advisor_plan_status (erst hier, sie ruft Paket-fns), Plaene in p.plan_order,
---        erster mit can_write und state <> complete: reif -> plan:<domain>; Mindestdaten fehlen -> erster fehlender
+--        erster mit can_write und state nicht complete/enter (offene Eintraege fuehrt die Uebergabe-Erinnerung): reif -> plan:<domain>; Mindestdaten fehlen -> erster fehlender
 --        Abschnitt (state first); unbekannter Abschnitt -> onboarding:_area:<pkg>.
 --     5. sonst kind none.
 --   Eingabe p: { chat_id (Pflicht), order:["core:household","<pkg>:<key>",…], plan_order:["<domain>",…], smalltalk?, with_example? }
@@ -131,7 +131,7 @@ BEGIN
             SELECT pl INTO v_plan
             FROM jsonb_array_elements(core.fn_advisor_plan_status(v_chat)) pl
             LEFT JOIN jsonb_array_elements_text(v_porder) WITH ORDINALITY AS o(d, oi) ON o.d = pl->>'domain'
-            WHERE (pl->>'can_write')::boolean AND pl->>'state' <> 'complete'
+            WHERE (pl->>'can_write')::boolean AND pl->>'state' NOT IN ('complete', 'enter')
             ORDER BY COALESCE(o.oi, 100000), pl->>'domain'
             LIMIT 1;
         END IF;

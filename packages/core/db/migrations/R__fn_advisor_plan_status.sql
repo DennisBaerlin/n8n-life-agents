@@ -7,10 +7,14 @@
 --   fns bezahlen noch an ihnen scheitern.
 --   Je core.advisors-Zeile mit plan_step=true, deren Paket aktiv ist (core.package_registry):
 --     state   draft    -> ein Entwurf liegt vor ("fortsetzen"; hat Vorrang vor einem aktiven Plan)
+--             enter    -> aktiver Plan, vereinbarte Eintraege noch offen (core.fn_advisor_progress phase enter; vor gaps)
 --             gaps     -> aktiver Plan, gaps_fn meldet > 0 offene Punkte ("vervollstaendigen (n offen)")
 --             complete -> aktiver Plan ohne offene Punkte (ohne gaps_fn: jeder aktive Plan) ("ueberpruefen")
 --             none     -> weder Entwurf noch aktiver Plan ("erstellen")
 --     open      = gaps_fn-Ergebnis (0 ausser bei gaps)
+--     handoffs_open = noch nicht eingetragene vereinbarte Eintraege (0 ausser bei enter): Menue "noch n Eintraege"
+--     part, parts_total = bei draft der naechste offene Teil (Nummer in der Reihenfolge) und die Zahl der Teile aus
+--                 core.fn_advisor_progress (eine Zaehlung): Menue "fortsetzen, Teil 4 von 9"; sonst NULL
 --     ready/missing = readiness_fn {ready, missing:[{key, section}]} (ohne readiness_fn: reif, [])
 --     per_user  = core.context_scopes.scope des plan_context = 'per_user' (sonst Haushalt)
 --     can_write = der Betrachter ist der Owner: die Plan-Schreib-Tools (agent.tool_save_plan_section /
@@ -24,7 +28,7 @@
 --   (text,text) geprueft, Name per format(%s) aus dem regproc (kein Caller-Text im EXECUTE). Fehlt eine fn
 --   (Manifest-Typo/Apply-Order) ODER wirft sie -> neutral (0 Luecken bzw. reif) statt Fehler: Menue und Knopf-Handler
 --   ("nie RAISE") duerfen an einem Paket-Fehler nicht brechen; die Paket-fn ist dann im eigenen db_test rot.
---   Rueckgabe jsonb-Array [{domain, package, state, open, ready, missing, per_user, can_write}] ORDER BY domain.
+--   Rueckgabe jsonb-Array [{domain, package, state, open, part, parts_total, handoffs_open, ready, missing, per_user, can_write}] ORDER BY domain.
 --   SECURITY DEFINER (owned by der DDL-Cred): liest agent.advisor_plans (RLS), core.* und ruft die Paket-fns; EXECUTE
 --   nur core_ro (Menue-Read, Grant in util_create_core_ro.sql) + die Host-Cred (Knopf-Handler). STABLE, search_path
 --   gepinnt, Body schema-qualifiziert. LANGUAGE plpgsql: ruft alphabetisch spaetere R__-fns -> late-bound.
@@ -50,6 +54,7 @@ DECLARE
     v_fn      regprocedure;
     v_state   text;
     v_out     jsonb := '[]'::jsonb;
+    v_prog    jsonb;
 BEGIN
     IF p_chat_id IS NULL OR p_chat_id !~ '^[0-9]{1,18}$' THEN
         RETURN v_out;
@@ -90,6 +95,13 @@ BEGIN
                         WHEN COALESCE(v_active, false) AND COALESCE(v_open, 0) > 0 THEN 'gaps'
                         WHEN COALESCE(v_active, false) THEN 'complete'
                         ELSE 'none' END;
+        v_prog := NULL;
+        IF v_state IN ('gaps', 'complete', 'draft') THEN
+            v_prog := core.fn_advisor_progress(jsonb_build_object('domain', r.domain, 'chat_id', p_chat_id));
+            IF v_state <> 'draft' AND v_prog->>'phase' = 'enter' THEN
+                v_state := 'enter';
+            END IF;
+        END IF;
 
         v_ready := NULL;
         IF r.readiness_fn IS NOT NULL THEN
@@ -108,6 +120,9 @@ BEGIN
             'package',   r.package,
             'state',     v_state,
             'open',      CASE WHEN v_state = 'gaps' THEN v_open ELSE 0 END,
+            'part',      CASE WHEN v_state = 'draft' AND v_prog->>'current_key' IS NOT NULL THEN (v_prog->>'parts_done')::int + 1 END,
+            'parts_total', CASE WHEN v_state = 'draft' THEN (v_prog->>'parts_total')::int END,
+            'handoffs_open', CASE WHEN v_state = 'enter' THEN (v_prog->'handoffs'->>'total')::int - (v_prog->'handoffs'->>'done')::int ELSE 0 END,
             'ready',     COALESCE((v_ready->>'ready')::boolean, true),
             'missing',   CASE WHEN jsonb_typeof(v_ready->'missing') = 'array' THEN v_ready->'missing' ELSE '[]'::jsonb END,
             'per_user',  v_scope = 'per_user',

@@ -109,6 +109,10 @@ BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM core.fn_advisor_read_plan('finance');
     PERFORM core.fn_advisor_open_handoffs('finance');  -- Vormerkungs-Fenster des Berater-Snapshots
+    PERFORM core.fn_advisor_open_points('finance');   -- Plan-Gespraech: offene Punkte + Themen-Index (Schlusspruefung)
+    PERFORM core.fn_advisor_topic_index('finance');
+    PERFORM core.fn_advisor_hint_state('finance');     -- Hinweis-Lage des Snapshots
+    PERFORM core.fn_advisor_handoff_mentions('finance', ARRAY['x']);
     PERFORM core.fn_monitor_trigger_summary('finance');
     SELECT count(*) INTO v_cnt FROM core.fn_list_monitor_triggers('finance');  -- Advisor<->Monitor: Dedup-Lesefenster
     v_bool := core.fn_package_active('finance');
@@ -733,6 +737,21 @@ BEGIN
   IF v_out IS NULL OR v_out NOT IN ('gaps', 'complete', 'draft') THEN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_plan_status]: erwartet Plan-Zustand, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_advisor_plan_status (gaps_fn/readiness_fn ueber das DEFINER-Fenster)]';
+
+  -- ===== (3e-PLAN-UX) Plan-Gespraech: core_ro -> Stand (Menue/Erinnerungen, DEFINER-Fenster)
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    v_out := core.fn_advisor_progress(jsonb_build_object('domain','finance','chat_id','777'))->>'phase';
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_progress]: %', SQLERRM;
+  END;
+  IF v_out IS NULL THEN RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_progress]: keine Phase'; END IF;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_advisor_progress]';
+  -- Plan-Texte (offene Punkte) bleiben fuer Frei-SQL unsichtbar
+  IF has_function_privilege('core_ro', 'core.fn_advisor_open_points(text, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'FAIL [core_ro darf core.fn_advisor_open_points nicht ausfuehren]'; END IF;
 
   -- ===== (3e-NEXT) Naechster Schritt: core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (Orchestrator,
   -- Guide, Menue). fn_get_next_step faengt intern jeden Fehler ab -> geprueft wird, dass der Absender aufgeloest wurde
@@ -1801,7 +1820,8 @@ DECLARE
   v_published text[] := ARRAY['fn_core_api_version', 'fn_advisor_read_plan', 'fn_onboarding_status', 'fn_package_active',
                               'fn_config_get', 'fn_monitor_trigger_summary', 'fn_list_monitor_triggers',
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
-                              'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read', 'fn_advisor_open_handoffs'];
+                              'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read', 'fn_advisor_open_handoffs',
+                              'fn_advisor_open_points', 'fn_advisor_topic_index', 'fn_advisor_hint_state', 'fn_advisor_handoff_mentions'];
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
                                  'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_package_installed_at', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];

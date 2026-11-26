@@ -51,7 +51,7 @@ function Build-AgentEstateAdvisor {
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
     $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_CTX 'agent.tool_load_context' `
-        ([ordered]@{ agent_name = $AGENT_NAME; include_manifest = 'true' })
+        ([ordered]@{ agent_name = $AGENT_NAME; include_manifest = 'true'; audience = 'advisor' })
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')

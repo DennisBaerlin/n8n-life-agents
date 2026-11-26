@@ -22,7 +22,7 @@
 #   .\scripts\n8n_test.ps1                  # alle Testfaelle
 #   .\scripts\n8n_test.ps1 -Id tc03         # nur einen Testfall
 #   .\scripts\n8n_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test `
-#       -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes,tool_record_plan_wish,tool_send_handoff_overview,tool_sync_plan,tool_create_account,tool_create_recurring_payment -CasesFile tests\agent\finance\advisor_cases.json
+#       -WriteTools tool_propose_plan_topics,tool_record_check_findings,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes,tool_record_plan_wish,tool_send_handoff_overview,tool_sync_plan,tool_create_account,tool_create_recurring_payment -CasesFile tests\agent\finance\advisor_cases.json
 #
 # Exit-Code = Anzahl fehlgeschlagener Tests. Kostet LLM-Credits (owner-gegatet).
 # Abbruch-Absicherung aller bezahlten Suiten (lib/paid_guard.ps1, Selbsttest dev/paid_guard_test.ps1): -MaxCostUsd (Default 10) haelt den Lauf
@@ -70,6 +70,7 @@ Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 . "$PSScriptRoot\lib\paid_guard.ps1"
 . "$PSScriptRoot\lib\next_step_marker.ps1"
+. "$PSScriptRoot\lib\choices_marker.ps1"
 $llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 function Clear-TestCaseSetup {
@@ -303,13 +304,16 @@ foreach ($tc in $cases) {
         $agentText = Split-NextStepMarker (Get-AgentOutput $runData $AgentNodeName)
         $stepLabel = ''
         if ($agentText.marker) { $stepLabel = Get-SystemNextStepLabel $runData; if (-not $stepLabel) { $stepLabel = 'yes' } }
+        # Ebenso die Antwort-Knoepfe der Berater (Markerzeile CHOICES): aus dem Text, als Knoepfe an den Bewerter.
+        $choiceSplit = Split-ChoicesMarker $agentText.text
+        $agentText.text = $choiceSplit.text
         $judgeBundle += [ordered]@{
             id = $tc.id; name = $tc.name; task = $tc.task
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
             other_write_tools = $otherTools
-            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); next_step_button = $stepLabel; actual_output = $agentText.text
+            read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); next_step_button = $stepLabel; answer_buttons = (@($choiceSplit.options) | ForEach-Object { "[$_]" }) -join ' '; actual_output = $agentText.text
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }

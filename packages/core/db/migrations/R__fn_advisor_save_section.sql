@@ -23,6 +23,15 @@
 --     section_data (optional, leerer String = nicht angegeben; jsonb-Objekt ODER JSON-String — String wird geparst; relative Zeitangaben in
 --       *_date/since loest core.fn_resolve_fact_dates auf, jedes Top-Level-Objekt bekommt as_of = heute von der fn),
 --     plan_name (optional, nur bei Draft-Neuanlage),
+--     why (optional, <= 400 Zeichen): Hintergrund mit Quelle, am Thema (ohne topic am Abschnitt) gespeichert; jeder Save setzt ihn neu.
+--     open_points (optional, Array ODER JSON-String, je Text oder {text}, 1..200 Zeichen): was das Thema bewusst offen laesst;
+--       die DB vergibt Ids (hoechste Id des Entwurfs + 1) und haengt sie an die offenen Punkte des Themas an (ein erneuter Save
+--       ohne open_points behaelt sie). resolves (optional, [id]): schliesst offene Punkte beliebiger Themen des Entwurfs
+--       (resolved_at, resolved_by '<abschnitt>/<thema>').
+--     replaces_topic (optional, nur mit topic): Bezeichnung des Themas dieses Abschnitts, das unter topic ersetzt wird (seine
+--       Stelle, seine offenen Punkte; offene/beanspruchte Aufgaben ziehen auf die neue Bezeichnung um).
+--     Schriftzeichen-Gesetz: ein Wort aus lateinischen und anderen Buchstaben (core.fn_mixed_script_word) in content, why,
+--       open_points oder einem Aufgaben-Text -> code mixed_script {word}.
 --     handoff_tasks (optional, Array ODER JSON-String, leerer String = keine): im Abschnitt vereinbarte Eintraege fuer den
 --       Buchhalter, je {kind: savings_goal|savings_plan|recurring_payment|recurring_transfer|other, payload (Objekt, rohe
 --       Nutzerwerte, optional), text (Alltags-Satz, 1..300 Zeichen)}. Angegeben (auch '[]') ersetzt es die OFFENEN Aufgaben:
@@ -30,15 +39,18 @@
 --       unveraendert; working/done/cancelled bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
 --       Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
 --   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, status:'draft',
---     draft_created, sections, section_count, topics, topic_replaced, handoff_task_count, card_lines} (Post-State: welche
+--     draft_created, sections, section_count, topics, topic_replaced, open_points [{id, text}] (ungeschlossene des gespeicherten
+--     Themas), handoff_task_count, card_lines} (Post-State: welche
 --     Sektionen der Draft JETZT hat; topics = Themen-Bezeichnungen des Abschnitts in Reihenfolge; topic_replaced und
 --     draft_created = DB-entschieden; card_lines = Notiz core.hitl.plan_legacy_replaced beim Abloesen eines Alt-Texts und je
 --     Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}).
 --     section_key gegen den Textkatalog: fuehrt das Paket der Domain Abschnitts-Keys (core.ui_texts <paket>.plan_section.<key>),
 --       ist nur einer davon erlaubt, sonst code unknown_section_key + valid_keys (Tippfehler legte sonst einen Phantom-Abschnitt
---       an). Fuehrt der Katalog keine (Test-DB ohne Seed, Paket ohne Plan), bleibt der Key frei.
+--       an). Fuehrt der Katalog keine (Test-DB ohne Seed, Paket ohne Plan), bleibt der Key frei. Keys mit Praefix annex_ (Anbauten,
+--       ^annex_[a-z0-9_]{1,40}$) sind immer erlaubt.
 --   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen (code topic_label_too_long), topic_required, topic_too_long,
---     block_in_two_topics, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
+--     block_in_two_topics, why_too_long, open_point_too_long, unknown_open_point {open}, unknown_topic {topics}, topic_exists,
+--     mixed_script {word}, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
 --     [, code]} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_advisor_save_section(p jsonb)
@@ -72,6 +84,14 @@ DECLARE
     v_topics  JSONB;
     v_idx     INT;                 -- 0-basierter Index des ersetzten Themas, NULL = neues Thema
     v_legacy  BOOLEAN := false;    -- dieser Save loest einen Alt-content ab -> Kartennotiz
+    v_why     TEXT := NULLIF(btrim(COALESCE(p->>'why', '')), '');
+    v_replace TEXT := NULLIF(btrim(COALESCE(p->>'replaces_topic', '')), '');
+    v_ops     JSONB := '[]'::jsonb;   -- neue offene Punkte als Texte
+    v_res     JSONB := '[]'::jsonb;   -- zu schliessende Ids
+    v_old     JSONB;                  -- bisheriges Ziel-Objekt (Thema bzw. Abschnitt): traegt seine offenen Punkte weiter
+    v_next    INT;
+    v_word    TEXT;
+    v_rep_idx INT;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -119,7 +139,8 @@ BEGIN
     SELECT jsonb_agg(sk ORDER BY sk) INTO v_valid FROM (
         SELECT DISTINCT substr(t.key, length(v_pkg) + 15) AS sk FROM core.ui_texts t
          WHERE t.package = v_pkg AND t.key ~ ('^' || v_pkg || '\.plan_section\.[a-z0-9_]+$')) k;
-    IF v_valid IS NOT NULL AND NOT (v_valid ? v_key) THEN
+    -- Anbauten (Abschnitts-Keys mit Praefix annex_) stehen nicht im festen Katalog.
+    IF v_valid IS NOT NULL AND NOT (v_valid ? v_key) AND v_key !~ '^annex_[a-z0-9_]{1,40}$' THEN
         RETURN jsonb_build_object('ok', false, 'code', 'unknown_section_key', 'valid_keys', v_valid,
             'reason', format('unknown section_key "%s": use exactly one of the plan section keys of this plan', v_key));
     END IF;
@@ -182,6 +203,41 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'handoff_tasks rejected: ' || v_bad);
         END IF;
     END IF;
+    -- Felder neben dem Text: why (aufklappbarer Hintergrund), open_points (bewusst Offenes, die DB vergibt Ids), resolves.
+    IF length(v_why) > 400 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'why_too_long', 'max', 400, 'length', length(v_why),
+            'reason', 'why must be at most 400 characters: keep only the background and its source');
+    END IF;
+    BEGIN
+        v_ops := core.fn_jsonb_list(p->'open_points');
+        v_res := core.fn_jsonb_list(p->'resolves');
+    EXCEPTION WHEN OTHERS THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'open_points and resolves must be JSON arrays');
+    END;
+    SELECT COALESCE(jsonb_agg(btrim(CASE WHEN jsonb_typeof(e) = 'object' THEN e->>'text' ELSE e #>> '{}' END) ORDER BY i), '[]'::jsonb)
+      INTO v_ops FROM jsonb_array_elements(v_ops) WITH ORDINALITY AS x(e, i);
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_ops) t WHERE t = '' OR length(t) > 200) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'open_point_too_long', 'max', 200,
+            'reason', 'each open point must be 1-200 characters');
+    END IF;
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res) e WHERE (e #>> '{}') !~ '^\s*[0-9]{1,9}\s*$') THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'unknown_open_point', 'reason', 'resolves must list open point ids (numbers)');
+    END IF;
+    SELECT w INTO v_word FROM (
+        SELECT core.fn_mixed_script_word(t) AS w, n FROM (
+            SELECT v_content AS t, 1 AS n UNION ALL SELECT v_why, 2
+            UNION ALL SELECT x, 3 FROM jsonb_array_elements_text(v_ops) x
+            UNION ALL SELECT t->>'text', 4 FROM jsonb_array_elements(v_tasks) t) s) m
+     WHERE w IS NOT NULL ORDER BY n LIMIT 1;
+    IF v_word IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'mixed_script', 'word', v_word,
+            'reason', format('the word "%s" mixes Latin letters with another script: write it in one script', v_word));
+    END IF;
+    IF v_replace IS NOT NULL AND v_topic IS NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'unknown_topic', 'topics', '[]'::jsonb,
+            'reason', 'replaces_topic needs a topic: the new label of the replaced topic');
+    END IF;
+
     v_hpid := core.fn_handoff_person(p->>'chat_id');
     IF jsonb_array_length(v_tasks) > 0 AND v_hpid IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'cannot resolve the person for the handoff tasks');
@@ -205,6 +261,14 @@ BEGIN
     WHERE domain = v_domain AND person_id IS NOT DISTINCT FROM v_pid AND status = 'draft'
     FOR UPDATE;
 
+    IF NOT FOUND AND jsonb_array_length(v_res) > 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'unknown_open_point', 'open', '[]'::jsonb,
+            'reason', 'resolves names open points that do not exist in this draft');
+    END IF;
+    IF NOT FOUND AND v_replace IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'unknown_topic', 'topics', '[]'::jsonb,
+            'reason', format('replaces_topic "%s" is not a topic of this section', v_replace));
+    END IF;
     IF NOT FOUND THEN
         SELECT COALESCE(MAX(version), 0) + 1 INTO v_version
         FROM agent.advisor_plans WHERE domain = v_domain AND person_id IS NOT DISTINCT FROM v_pid;
@@ -220,15 +284,52 @@ BEGIN
         v_created := true;
     END IF;
 
+    -- resolves schliesst offene Punkte jedes Themas des Entwurfs (ein spaeteres Thema klaert, was ein frueheres offen liess).
+    IF jsonb_array_length(v_res) > 0 THEN
+        IF EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_res) r
+                    WHERE NOT EXISTS (SELECT 1 FROM core.fn_plan_open_points(v_state) o
+                                       WHERE o.id = btrim(r)::int AND NOT o.resolved)) THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'unknown_open_point',
+                'open', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', o.id, 'text', o.text) ORDER BY o.id)
+                                    FROM core.fn_plan_open_points(v_state) o WHERE NOT o.resolved), '[]'::jsonb),
+                'reason', 'resolves names an open point that does not exist or is already closed: use an id from the open list');
+        END IF;
+        v_state := core.fn_plan_close_points(v_state, ARRAY(SELECT btrim(r)::int FROM jsonb_array_elements_text(v_res) r),
+                                             concat_ws('/', v_key, v_topic));
+    END IF;
+    -- Ids fortlaufend je Entwurf; geschlossene zaehlen mit, damit keine Id zweimal vorkommt.
+    SELECT COALESCE(max(o.id), 0) + 1 INTO v_next FROM core.fn_plan_open_points(v_state) o;
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', v_next + i::int - 1, 'text', t) ORDER BY i), '[]'::jsonb)
+      INTO v_ops FROM jsonb_array_elements_text(v_ops) WITH ORDINALITY AS x(t, i);
+
     v_sec := CASE WHEN jsonb_typeof(v_state->v_key) = 'object' THEN v_state->v_key ELSE '{}'::jsonb END;
     IF v_topic IS NULL THEN
         -- Abschnitt als Ganzes (Key ueberschreiben = bewusste Korrektur des Interviews); Themen und Alt-Text bleiben.
-        v_sec := (v_sec - 'content' - 'data' - 'saved_at')
-              || jsonb_strip_nulls(jsonb_build_object('content', v_content, 'data', v_data, 'saved_at', now()));
+        v_ops := core.fn_plan_merge_points(v_sec->'open_points', v_ops);
+        v_sec := (v_sec - 'content' - 'data' - 'saved_at' - 'why' - 'open_points')
+              || jsonb_strip_nulls(jsonb_build_object('content', v_content, 'why', v_why, 'data', v_data, 'saved_at', now(),
+                     'open_points', CASE WHEN v_ops <> '[]'::jsonb THEN v_ops END));
     ELSE
         v_topics := CASE WHEN jsonb_typeof(v_sec->'topics') = 'array' THEN v_sec->'topics' ELSE '[]'::jsonb END;
         SELECT (i - 1)::int INTO v_idx FROM jsonb_array_elements(v_topics) WITH ORDINALITY AS x(t, i)
          WHERE lower(btrim(t->>'topic')) = lower(v_topic) LIMIT 1;
+        -- replaces_topic: neue Bezeichnung an der Stelle des alten Themas statt eines zweiten Themas.
+        IF v_replace IS NOT NULL THEN
+            SELECT (i - 1)::int INTO v_rep_idx FROM jsonb_array_elements(v_topics) WITH ORDINALITY AS x(t, i)
+             WHERE lower(btrim(t->>'topic')) = lower(v_replace) LIMIT 1;
+            IF v_rep_idx IS NULL THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'unknown_topic',
+                    'topics', COALESCE((SELECT jsonb_agg(t->'topic' ORDER BY i) FROM jsonb_array_elements(v_topics) WITH ORDINALITY AS x(t, i)), '[]'::jsonb),
+                    'reason', format('replaces_topic "%s" is not a topic of this section: use one of the listed labels', v_replace));
+            END IF;
+            IF v_idx IS NOT NULL AND v_idx <> v_rep_idx THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'topic_exists',
+                    'reason', format('topic "%s" already exists in this section: replace that one or pick another label', v_topic));
+            END IF;
+            v_replace := v_topics->v_rep_idx->>'topic';
+            v_idx := v_rep_idx;
+        END IF;
+        v_ops := core.fn_plan_merge_points(v_topics->v_idx->'open_points', v_ops);
         -- Ein Top-Block gehoert genau einem Thema (der Merge zur Abschnitts-data verloere sonst still eine Haelfte).
         IF jsonb_typeof(v_data) = 'object' THEN
             SELECT string_agg(DISTINCT k, ', ') INTO v_bad
@@ -253,12 +354,12 @@ BEGIN
             v_sec := v_sec || jsonb_build_object('legacy_data',
                 (v_sec->'legacy_data') - ARRAY(SELECT jsonb_object_keys(v_data)));
         END IF;
+        v_old := jsonb_strip_nulls(jsonb_build_object('topic', v_topic, 'content', v_content, 'why', v_why, 'data', v_data,
+                     'saved_at', now(), 'open_points', CASE WHEN v_ops <> '[]'::jsonb THEN v_ops END));
         IF v_idx IS NULL THEN
-            v_topics := v_topics || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
-                'topic', v_topic, 'content', v_content, 'data', v_data, 'saved_at', now())));
+            v_topics := v_topics || jsonb_build_array(v_old);
         ELSE
-            v_topics := jsonb_set(v_topics, ARRAY[v_idx::text], jsonb_strip_nulls(jsonb_build_object(
-                'topic', v_topic, 'content', v_content, 'data', v_data, 'saved_at', now())));
+            v_topics := jsonb_set(v_topics, ARRAY[v_idx::text], v_old);
         END IF;
         -- Abschnitts-data abgeleitet (Publish, Plan-Luecken und Review lesen <key>.data): Alt-Bloecke, die ein Thema
         -- ueberschreibt, weichen dem Thema; data schreibt nur diese fn.
@@ -273,6 +374,13 @@ BEGIN
     v_state := jsonb_set(v_state, ARRAY[v_key], v_sec, true);
 
     UPDATE agent.advisor_plans SET interview_state = v_state WHERE id = v_plan_id;
+
+    -- Ersetztes Thema: vereinbarte, noch nicht erledigte Aufgaben ziehen mit (Endzustaende sind unveraenderlich).
+    IF v_replace IS NOT NULL AND lower(v_replace) <> lower(v_topic) THEN
+        UPDATE agent.handoff_tasks SET topic = v_topic
+         WHERE domain = v_domain AND section_key = v_key AND status IN ('open', 'working')
+           AND person_id IS NOT DISTINCT FROM v_hpid AND lower(topic) = lower(v_replace);
+    END IF;
 
     -- Vereinbarte Aufgaben: nur wenn angegeben die offenen ersetzen (beanspruchte und geschlossene bleiben). Mit Thema die
     -- des Themas plus die themenlosen des Abschnitts (vor den Themen vereinbart; das Thema traegt jetzt die volle Liste).
@@ -301,6 +409,8 @@ BEGIN
                               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_sec->'topics') = 'array' THEN v_sec->'topics' ELSE '[]'::jsonb END)
                                    WITH ORDINALITY AS x(t, i)), '[]'::jsonb),
         'topic_replaced', v_idx IS NOT NULL,
+        'open_points', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', o->'id', 'text', o->'text') ORDER BY (o->>'id')::int)
+                                   FROM jsonb_array_elements(v_ops) o WHERE NOT o ? 'resolved_at'), '[]'::jsonb),
         'handoff_task_count', jsonb_array_length(v_tasks),
         'card_lines', CASE WHEN v_legacy THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'core.hitl.plan_legacy_replaced'))
                            ELSE '[]'::jsonb END

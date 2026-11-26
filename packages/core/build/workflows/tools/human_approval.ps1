@@ -107,6 +107,17 @@ function Build-HumanApproval {
         $n
     }
 
+    # Notiz bei offener Karte: agent.fn_take_hitl_note liest (und leert) den Text, den der Nutzer schrieb, waehrend seine Karte offen war
+    # (der Orchestrator legt ihn per agent.fn_stash_hitl_note ab); nur wenn nicht bestaetigt. Eigener Knoten direkt vor dem Return, nie in
+    # derselben Abfrage wie Mark result (ein Fehler hier darf Sticker-Merker und Wiederhol-Sperre nicht mitreissen). Der Return liest
+    # note aus $json, Build-ToolCancelled reicht ihn dem Agenten. onError continue: ohne Notiz bleibt alles wie vorher.
+    function New-NoteTake([string]$ReturnName, [int[]]$Pos, [string]$ApprovedJs) {
+        $n = Build-Pg "Take note ($ReturnName)" $Pos `
+            "=SELECT CASE WHEN (`$1::jsonb)->>'approved' = 'true' THEN NULL ELSE agent.fn_take_hitl_note(`$1::jsonb)->>'note' END AS note;" `
+            ([ordered]@{ execution_id = '$execution.id'; approved = $ApprovedJs })
+        $n['onError'] = 'continueRegularOutput'
+        $n
+    }
     # --- Lange Karten (Telegram-Limit 4096): Compose messages liefert je Text pre = die vorderen Teile ("Teil n/N").
     # Je Send-Pfad vor dem Karten-Send (und nach Open pending -> die Sperre steht schon, waehrend die Teile laufen):
     # Has parts? -> Split parts (ein Item je Teil, Items tragen nur den Text, nie ein Ziel) -> Send parts (sendMessage je
@@ -159,6 +170,7 @@ function Build-HumanApproval {
     $retOwner  = Build-Set 'Return owner' @(900, -160) @(
         ,@('approved', (Get-ApprovedExpr 'Owner approval'), 'boolean')
         ,@('outcome', (Get-OutcomeExpr 'Owner approval'), 'string')
+        ,@('note', '={{ String($json.note || '''') }}', 'string')
     )
 
     # --- Member-Pfad (Zweig C, nur aus positiver Verifikation), nach approval_tier ------------------
@@ -184,6 +196,7 @@ function Build-HumanApproval {
     $retCo      = Build-Set 'Return co-approval' @(1800, 120) @(
         ,@('approved', (Get-ApprovedExpr 'Owner co-approval'), 'boolean')
         ,@('outcome', (Get-OutcomeExpr 'Owner co-approval' 'owner_'), 'string')
+        ,@('note', '={{ String($json.note || '''') }}', 'string')
     )
     # owner_info: Stufe 1 Member bestaetigt -> Einweg-Info an den Owner, approved:true
     $memberSendInfo = New-TelegramSendAndWaitNode 'Member info' @(1140, 380) $memberTxt.Msg -ChatIdExpr $memberChat -ApproverIdsExpr $memberApprover `
@@ -201,6 +214,7 @@ function Build-HumanApproval {
     $retDeclined = Build-Set 'Return declined' @(1580, 280) @(
         ,@('approved', 'false', 'boolean')
         ,@('outcome', (Get-OutcomeExprFor $stage1Send), 'string')
+        ,@('note', '={{ String($json.note || '''') }}', 'string')
     )
     # self: die Person bestaetigt ihre eigenen Daten, kein Owner-Send (eine Info truege private per_user-Daten zum
     # Owner). Nur fuer Workflows, die ausschliesslich agent.fn_set_own_context_facts rufen (approval_lint (e)).
@@ -210,6 +224,7 @@ function Build-HumanApproval {
     $retSelf        = Build-Set 'Return self' @(1360, 600) @(
         ,@('approved', (Get-ApprovedExpr 'Member self'), 'boolean')
         ,@('outcome', (Get-OutcomeExpr 'Member self'), 'string')
+        ,@('note', '={{ String($json.note || '''') }}', 'string')
     )
 
     # Karte-offen-Sperre je Send (Positionen relativ zum Send; Verdrahtung unten: Vorgaenger -> Open -> Send -> Close).
@@ -229,6 +244,10 @@ function Build-HumanApproval {
     $markInfo  = New-ResultMark 'Return info'        @(1800, 500) 'true'
     $markSelf  = New-ResultMark 'Return self'        @(1360, 740) (Get-ApprovedJs 'Member self')
     $markDeclined = New-ResultMark 'Return declined' @(1470, 280) 'false'
+    $takeOwner    = New-NoteTake 'Return owner'       @(900, -230) (Get-ApprovedJs 'Owner approval')
+    $takeCo       = New-NoteTake 'Return co-approval' @(1800, 50) (Get-ApprovedJs 'Owner co-approval')
+    $takeSelf     = New-NoteTake 'Return self'        @(1360, 810) (Get-ApprovedJs 'Member self')
+    $takeDeclined = New-NoteTake 'Return declined'    @(1470, 350) 'false'
 
     # Vor-Nachrichten langer Karten je Send (Ziel = dieselbe Variable wie beim Karten-Send).
     $preSends = [ordered]@{
@@ -250,7 +269,7 @@ function Build-HumanApproval {
 
     $stPending = Build-Sticky 'Doc Karte-offen-Sperre' @(-420, -380) -Header 'Ablauf' `
         'Karte-offen-Sperre (agent.hitl_pending, Fix C)' `
-        'Problem: solange eine Karte offen ist, parkt n8n die ganze Kette Orchestrator -> Agent -> Tool -> dieses Gate; das Chat-Gedächtnis entsteht erst am Lauf-Ende. Eine Text-/Sprachnachricht startete einen zweiten Lauf ohne die Kartenrunde ("vergessene" Werte, 2026-10-22). Lösung: vor JEDEM sendAndWait legt "Open pending (<Send>)" eine Zeile für den URSPRUNGS-Chat der Anfrage an (agent.fn_create_hitl_pending; Start.chat_id, nicht der Karten-Empfänger: im Vier-Augen-Pfad ist der Mitglieds-Chat gesperrt, nicht der Owner; own_card=false bei der Owner-Stufe -> das Mitglied bekommt "wartet auf Freigabe" statt "tippe dort"). "Close pending (<Send>)" löscht NICHT, sondern gibt nach Tipp/Timeout frei (fn_set_hitl_pending_released: Gnadenfrist 2 Min) - die Kette dahinter antwortet erst noch und schreibt ihr Gedächtnis; der Orchestrator löscht die Zeile nach seiner Antwort (Finish card lock). Der Orchestrator-Pre-Router (Card open check, fn_get_hitl_pending_state) antwortet bei offener Zeile mit festem Hinweis statt einen Agenten zu starten. Ablauf (expires_at = jetzt + WAIT_MIN + 6) ist die Wahrheit: gestoppte/gescheiterte Läufe räumt die TTL bzw. core.sub_error_notify (Freigabe mit Gnadenfrist 0 per execution.id). Beide Knoten onError=continue = fail-open (Effizienz-Sperre, schützt keinen Write). Test-Sentinel (nicht-numerische chat_id) -> keine Zeile. Bekannt: die Sperre greift schon, bevor die Karte sichtbar ist (Telegram-Send-Hänger), und Text in der Sekunde vor dem Insert läuft normal durch. Bewusst OHNE Sperre: sendAndWait-Karten der Finanz-Crons (remind_interest) - hinter ihnen ist keine Unterhaltung geparkt. ENDGÜLTIG BESTÄTIGT (Bot mit Gesicht): vor jedem Return mit Karte (owner/co-approval/info/self) setzt Mark result (<Return>) per agent.fn_set_hitl_pending_approved approved=true für alle Zeilen dieser Execution — nur wenn das Ergebnis approved ist; ein Mitglieds-Tipp mit späterer Owner-Ablehnung, Ablehnung oder Timeout lassen approved leer. Der Orchestrator wählt damit den Daumen-hoch-Sticker (agent.fn_claim_persona_sticker), onError continue. Nach dem Send liest jeder Nachfolger das Ergebnis per Name ($(''<Send>'').first()), weil $json dann die Close-Ausgabe ist. WIEDERHOL-SPERRE (Befund 2026-11-04: nach Abbrechen rief das Modell dasselbe Tool sofort noch einmal auf): ist das Ergebnis NICHT bestätigt (Abbrechen oder Ablauf, auch Stufe 1 des Mitglieds über Mark result (Return declined)), setzt derselbe Mark-Knoten per agent.fn_set_hitl_pending_declined decline_key für alle Zeilen dieser Execution (Schlüssel: repeat_key des Summary, sonst Hash des ganzen Summary, agent.fn_hitl_repeat_key). Repeat check (agent.fn_get_hitl_repeat_blocked) liest ihn ganz vorn: gleicher Schlüssel, gleicher Ursprungs-Chat, Zeile lebt -> Return repeat ohne Karte; Build-ToolCancelled sagt dem Modell dann, dass es jetzt antworten soll. Lebensdauer = die der Zeile: Finish card lock löscht sie nach der Antwort (neue Nachricht = neue Karte), sonst verfällt sie 2 Min nach Tipp/Ablauf. Eine andere Karte im selben Lauf bleibt möglich. onError continue: scheitert die Abfrage, geht die Karte normal raus. Test-Sentinel sperrt nie (keine Zeile).' 420 640
+        'Problem: solange eine Karte offen ist, parkt n8n die ganze Kette Orchestrator -> Agent -> Tool -> dieses Gate; das Chat-Gedächtnis entsteht erst am Lauf-Ende. Eine Text-/Sprachnachricht startete einen zweiten Lauf ohne die Kartenrunde ("vergessene" Werte, 2026-10-22). Lösung: vor JEDEM sendAndWait legt "Open pending (<Send>)" eine Zeile für den URSPRUNGS-Chat der Anfrage an (agent.fn_create_hitl_pending; Start.chat_id, nicht der Karten-Empfänger: im Vier-Augen-Pfad ist der Mitglieds-Chat gesperrt, nicht der Owner; own_card=false bei der Owner-Stufe -> das Mitglied bekommt "wartet auf Freigabe" statt "tippe dort"). "Close pending (<Send>)" löscht NICHT, sondern gibt nach Tipp/Timeout frei (fn_set_hitl_pending_released: Gnadenfrist 2 Min) - die Kette dahinter antwortet erst noch und schreibt ihr Gedächtnis; der Orchestrator löscht die Zeile nach seiner Antwort (Finish card lock). Der Orchestrator-Pre-Router (Card open check, fn_get_hitl_pending_state) antwortet bei offener Zeile mit festem Hinweis statt einen Agenten zu starten. Ablauf (expires_at = jetzt + WAIT_MIN + 6) ist die Wahrheit: gestoppte/gescheiterte Läufe räumt die TTL bzw. core.sub_error_notify (Freigabe mit Gnadenfrist 0 per execution.id). Beide Knoten onError=continue = fail-open (Effizienz-Sperre, schützt keinen Write). Test-Sentinel (nicht-numerische chat_id) -> keine Zeile. Bekannt: die Sperre greift schon, bevor die Karte sichtbar ist (Telegram-Send-Hänger), und Text in der Sekunde vor dem Insert läuft normal durch. Bewusst OHNE Sperre: sendAndWait-Karten der Finanz-Crons (remind_interest) - hinter ihnen ist keine Unterhaltung geparkt. ENDGÜLTIG BESTÄTIGT (Bot mit Gesicht): vor jedem Return mit Karte (owner/co-approval/info/self) setzt Mark result (<Return>) per agent.fn_set_hitl_pending_approved approved=true für alle Zeilen dieser Execution — nur wenn das Ergebnis approved ist; ein Mitglieds-Tipp mit späterer Owner-Ablehnung, Ablehnung oder Timeout lassen approved leer. Der Orchestrator wählt damit den Daumen-hoch-Sticker (agent.fn_claim_persona_sticker), onError continue. Nach dem Send liest jeder Nachfolger das Ergebnis per Name ($(''<Send>'').first()), weil $json dann die Close-Ausgabe ist. WIEDERHOL-SPERRE (Befund 2026-11-04: nach Abbrechen rief das Modell dasselbe Tool sofort noch einmal auf): ist das Ergebnis NICHT bestätigt (Abbrechen oder Ablauf, auch Stufe 1 des Mitglieds über Mark result (Return declined)), setzt derselbe Mark-Knoten per agent.fn_set_hitl_pending_declined decline_key für alle Zeilen dieser Execution (Schlüssel: repeat_key des Summary, sonst Hash des ganzen Summary, agent.fn_hitl_repeat_key). Repeat check (agent.fn_get_hitl_repeat_blocked) liest ihn ganz vorn: gleicher Schlüssel, gleicher Ursprungs-Chat, Zeile lebt -> Return repeat ohne Karte; Build-ToolCancelled sagt dem Modell dann, dass es jetzt antworten soll. Lebensdauer = die der Zeile: Finish card lock löscht sie nach der Antwort (neue Nachricht = neue Karte), sonst verfällt sie 2 Min nach Tipp/Ablauf. Eine andere Karte im selben Lauf bleibt möglich. onError continue: scheitert die Abfrage, geht die Karte normal raus. Test-Sentinel sperrt nie (keine Zeile). NOTIZ BEI OFFENER KARTE: schreibt der Nutzer Text, während seine Karte offen ist, legt der Orchestrator ihn an die Zeile (agent.fn_stash_hitl_note); nicht bestätigt liest Take note (<Return>) ihn per agent.fn_take_hitl_note (eigener Knoten nach Mark result, ein Fehler dort stört Sticker und Sperre nicht), die Returns geben ihn als note zurück und Build-ToolCancelled reicht ihn dem Agenten weiter (niemand schreibt seinen Wunsch zweimal).' 420 700
 
     $stTexts = Build-Sticky 'Doc Texte je Sprache' @(180, -1180) -Header 'Ablauf' `
         'Texte in der Sprache des Empfängers (Textkatalog)' `
@@ -266,7 +285,7 @@ function Build-HumanApproval {
                $memberSend, $memberOk, $ownerCo, $retCo,
                $memberSendInfo, $memberOkInfo, $ownerInfo, $retInfo, $retDeclined,
                $memberSendSelf, $retSelf,
-               $markOwner, $markCo, $markInfo, $markSelf, $markDeclined,
+               $markOwner, $markCo, $markInfo, $markSelf, $markDeclined, $takeOwner, $takeCo, $takeSelf, $takeDeclined,
                $stOverview, $stStage2, $stPending, $stParts) + @($guards | ForEach-Object { $_.Open; $_.Close }) +
              @($preSends.Values | ForEach-Object { $_.Nodes })
     $conns = [ordered]@{
@@ -289,7 +308,8 @@ function Build-HumanApproval {
         ) }
         'Owner approval'   = @{ main = @( ,@( E $pgOwner.CloseName ) ) }
         ($pgOwner.CloseName) = @{ main = @( ,@( E $markOwner.name ) ) }
-        ($markOwner.name)    = @{ main = @( ,@( E 'Return owner' ) ) }
+        ($markOwner.name)    = @{ main = @( ,@( E $takeOwner.name ) ) }
+        ($takeOwner.name)    = @{ main = @( ,@( E 'Return owner' ) ) }
         'Tier switch'      = @{ main = @(
             @( E 'Return blocked' ),          # [0] owner_only
             @( E $pgMem.OpenName ),           # [1] owner_approval
@@ -299,17 +319,20 @@ function Build-HumanApproval {
         ) }
         'Member self'       = @{ main = @( ,@( E $pgSelf.CloseName ) ) }
         ($pgSelf.CloseName)   = @{ main = @( ,@( E $markSelf.name ) ) }
-        ($markSelf.name)      = @{ main = @( ,@( E 'Return self' ) ) }
+        ($markSelf.name)      = @{ main = @( ,@( E $takeSelf.name ) ) }
+        ($takeSelf.name)      = @{ main = @( ,@( E 'Return self' ) ) }
         'Member approval'  = @{ main = @( ,@( E $pgMem.CloseName ) ) }
         ($pgMem.CloseName)   = @{ main = @( ,@( E 'Member approved?' ) ) }
         'Member approved?' = @{ main = @(
             @( E $pgCo.OpenName ),            # [0] Member ok -> Owner-Stufe 2
             @( E $markDeclined.name )         # [1] Member lehnt ab
         ) }
-        ($markDeclined.name)  = @{ main = @( ,@( E 'Return declined' ) ) }
+        ($markDeclined.name)  = @{ main = @( ,@( E $takeDeclined.name ) ) }
+        ($takeDeclined.name)  = @{ main = @( ,@( E 'Return declined' ) ) }
         'Owner co-approval' = @{ main = @( ,@( E $pgCo.CloseName ) ) }
         ($pgCo.CloseName)     = @{ main = @( ,@( E $markCo.name ) ) }
-        ($markCo.name)        = @{ main = @( ,@( E 'Return co-approval' ) ) }
+        ($markCo.name)        = @{ main = @( ,@( E $takeCo.name ) ) }
+        ($takeCo.name)        = @{ main = @( ,@( E 'Return co-approval' ) ) }
         'Member info'       = @{ main = @( ,@( E $pgInfo.CloseName ) ) }
         ($pgInfo.CloseName)   = @{ main = @( ,@( E 'Member approved (info)?' ) ) }
         'Member approved (info)?' = @{ main = @(

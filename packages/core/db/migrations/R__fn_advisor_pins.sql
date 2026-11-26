@@ -11,8 +11,12 @@
 --                         Beratung" erreicht den Berater). Ein heisser Entwurf laesst paused_advisor leer.
 --   Personen-Regel wie der Interview-Pin: eigener Entwurf (person_id = p.person_id); Haushalts-Entwurf (person_id NULL)
 --   nur fuer role owner. Nie der Entwurf eines anderen Mitglieds.
---   Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM).
---   Rueckgabe jsonb genau { interview_advisor: text|null, paused_advisor: text|null }; wirft nie (Fehler -> beide null).
+--     open_prompt_agent = der Agent der offenen Frage dieses Chats (agent.chat_prompts, Art egal), wenn sie juenger als 2 Stunden
+--                         ist (wie interview_advisor): Text bei offener Frage ist ihre Antwort oder ein Aenderungswunsch und geht an
+--                         ihren Agenten (Gewichtung der Flags: Router-Regel im Orchestrator-Prompt); eine liegengebliebene
+--                         Frage kapert das Routing nicht.
+--   Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM), optional chat_id (ohne -> open_prompt_agent null).
+--   Rueckgabe jsonb genau { interview_advisor, paused_advisor, open_prompt_agent } (text|null); wirft nie (Fehler -> alle null).
 --   STABLE, INVOKER, nur Host-Cred (wie der heutige Knoten): person_id und role kommen vom Aufrufer, ein core_ro-Grant
 --   liesse jede freie core_ro-Abfrage (guide/monitor postgres_select) fremde Entwuerfe erfragen. search_path gepinnt.
 --   Tests: tests/db/core/test_fn_advisor_pins.sql, tests/db/cross/test_role_permissions.sql (core_ro abgewiesen)
@@ -29,6 +33,7 @@ DECLARE
     v_stale int;
     v_agent text;
     v_at    timestamptz;
+    v_open  text;
 BEGIN
     v_stale := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'rollout_draft_stale_days'), '')::int, 30);
     SELECT a.advisor_agent, ap.updated_at INTO v_agent, v_at
@@ -39,12 +44,16 @@ BEGIN
        AND ((ap.person_id IS NULL AND v_owner) OR (v_pid IS NOT NULL AND ap.person_id = v_pid))
      ORDER BY ap.updated_at DESC
      LIMIT 1;
+    SELECT c.agent INTO v_open FROM agent.chat_prompts c
+     WHERE c.chat_id = NULLIF(p->>'chat_id', '') AND c.status = 'open'
+       AND COALESCE(c.sent_at, c.created_at) > now() - interval '2 hours';
     RETURN jsonb_build_object(
         'interview_advisor', CASE WHEN v_at > now() - interval '2 hours' THEN v_agent END,
         'paused_advisor',    CASE WHEN v_at <= now() - interval '2 hours' AND v_at > now() - make_interval(days => v_stale)
-                                  THEN v_agent END);
+                                  THEN v_agent END,
+        'open_prompt_agent', v_open);
 EXCEPTION WHEN OTHERS THEN
-    RETURN jsonb_build_object('interview_advisor', NULL, 'paused_advisor', NULL);
+    RETURN jsonb_build_object('interview_advisor', NULL, 'paused_advisor', NULL, 'open_prompt_agent', NULL);
 END;
 $$;
 

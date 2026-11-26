@@ -343,7 +343,8 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "agent_name":  "career_advisor",
-                                                                              "include_manifest":  "true"
+                                                                              "include_manifest":  "true",
+                                                                              "audience":  "advisor"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -369,6 +370,30 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_advisor_progress(jsonb_build_object(\u0027domain\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, \u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)) AS progress, core.fn_open_chat_prompt(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS open_prompt, core.fn_advisor_open_points(($1::jsonb)-\u003e\u003e\u0027domain\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS open_points;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.career_advisor\u0027).item.json.chat_id || \u0027\u0027), domain: String($(\u0027Start agent.career_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_career__\u0027 : \u0027career\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1040,
+                                       160
+                                   ],
+                      "id":  "71afd1a4-9a5b-51e8-9430-6e568dfa86d0",
+                      "name":  "Advisor conversation read",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -380,7 +405,7 @@
                                                                                  {
                                                                                      "id":  "1eeb4912-8543-5c0c-990f-5bf0d03c39f5",
                                                                                      "name":  "system_prompt",
-                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + (() =\u003e { const r = $(\u0027Career onboarding read\u0027).item.json || {}; if (!(r.gate_on === \u0027true\u0027 \u0026\u0026 r.complete === false)) return \u0027\u0027; const o = r.open; const arr = (typeof o === \u0027string\u0027 ? JSON.parse(o || \u0027[]\u0027) : (o || [])).filter(s =\u003e s.source === \u0027career\u0027); return \u0027\\n\\n## Career onboarding required\\nThe asking person has not finished their career onboarding yet. Open sections, in this order: \u0027 + (arr.map(s =\u003e s.key + \u0027 (\u0027 + s.label + \u0027)\u0027).join(\u0027, \u0027) || \u0027-\u0027) + \u0027.\u0027; })() }}",
+                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + ((h) =\u003e h ? \u0027\\n\\n## Conversation context\u0027 + h : \u0027\u0027)((() =\u003e { const r = $(\u0027Advisor conversation read\u0027).item.json || {}; const j = (v) =\u003e { if (typeof v !== \u0027string\u0027) { return v; } try { return JSON.parse(v); } catch (e) { return null; } }; const pr = j(r.progress) || {}; const op = j(r.open_prompt); const pts = j(r.open_points); const out = []; if (pr.ok === true) { const cur = pr.current || null; out.push(\u0027progress: \u0027 + (cur \u0026\u0026 cur.n ? \u0027part \u0027 + cur.n + \u0027 of \u0027 + (pr.parts_total || 0) + \u0027 (\u0027 + cur.section_key + \u0027)\u0027 : \u0027all \u0027 + (pr.parts_total || 0) + \u0027 parts present\u0027) + \u0027 | \u0027 + (pr.parts_done || 0) + \u0027 done | mode \u0027 + pr.mode + \u0027 | phase \u0027 + pr.phase); } if (op \u0026\u0026 op.id \u0026\u0026 String(op.agent || \u0027\u0027) === \u0027agent.career_advisor\u0027) { out.push(\u0027open_prompt: \u0027 + op.kind + \u0027 \u0027 + JSON.stringify(String(op.label || \u0027\u0027)) + \u0027 (\u0027 + op.id + \u0027)\u0027); } if (Array.isArray(pts) \u0026\u0026 pts.length) { out.push(\u0027open_points: \u0027 + pts.map(o =\u003e \u0027[\u0027 + o.id + \u0027] \u0027 + o.text).join(\u0027; \u0027)); } return out.length ? \u0027\\n\u0027 + out.join(\u0027\\n\u0027) : \u0027\u0027; })()) + (() =\u003e { const r = $(\u0027Career onboarding read\u0027).item.json || {}; if (!(r.gate_on === \u0027true\u0027 \u0026\u0026 r.complete === false)) return \u0027\u0027; const o = r.open; const arr = (typeof o === \u0027string\u0027 ? JSON.parse(o || \u0027[]\u0027) : (o || [])).filter(s =\u003e s.source === \u0027career\u0027); return \u0027\\n\\n## Career onboarding required\\nThe asking person has not finished their career onboarding yet. Open sections, in this order: \u0027 + (arr.map(s =\u003e s.key + \u0027 (\u0027 + s.label + \u0027)\u0027).join(\u0027, \u0027) || \u0027-\u0027) + \u0027.\u0027; })() }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
@@ -682,22 +707,22 @@
                   },
                   {
                       "parameters":  {
-                                         "name":  "tool_save_plan_section",
-                                         "description":  "Save ONE confirmed interview section into the draft career plan (creates the draft automatically on first save; the DB assigns the version). CALL ONLY AFTER the user verbally confirmed your full playback of the section in chat - the tool then shows the full text with a button confirmation. section_key must be one of: situation, targets, path. section_content is that same text word for word, never translated or shortened; plain sentences, no markdown. section_data is OPTIONAL and ONLY for the targets section (target_roles + target_industries + target_date PLUS the job-search criteria target_locations/search_radius_km/employment_types that drive the weekday job scan); situation and path send section_data empty (prose only). Store raw values only: target_date exactly as the user said it (2028, 2028-06, or relative such as +2 years - the database resolves it, never compute a year yourself); a salary with the unit the user named (salary_period month|year, salary_basis gross|net - omit what was not said, never convert). ok:false with a reason means the input was rejected (invalid JSON or a block collision) - fix and retry once, or ask the user.",
+                                         "name":  "tool_propose_plan_topics",
+                                         "description":  "Propose the topics of ONE plan part as cards the user taps (one or more short topics per part). Nothing is saved before the tap, and the tap saves exactly what the card shows. Use it instead of writing a topic text into the chat, and write nothing after the call: ok:true means the card is shown, not saved. One call per part: topics = the topics of this part (one card each), or one_card=true for one card with all of them (going through an existing plan). A new proposal replaces the waiting card of this agent. The database dry-runs every topic first: ok:false names the code (topic_too_long, why_too_long, mixed_script, unknown_topic, too_long, ...) and the topic number; nothing reached the user - fix exactly that (too long: split into more topics) and call again, never tell the user. Each topic: topic (short label, 1-60 characters, conversation language; the same label again replaces that topic), content (what applies and why: the decision, rule and reason in the user language, plain sentences, no markdown, no figures of today from the data, no sentence that something is open or decided later), why (optional background with its source, max 400 characters), open_points (optional, what this topic leaves open on purpose, [\"one short sentence\", ...]), resolves (optional ids of open points from the conversation context that this topic settles), replaces_topic (optional label of an existing topic this one replaces under a new label), section_data (optional JSON object, ONLY on the one topic of the targets section that carries its block: target_roles + target_industries + target_date PLUS the job-search criteria target_locations/search_radius_km/employment_types that drive the weekday job scan, e.g. {\"target_roles\":[{\"title\":\"Data Analyst\",\"salary_expectation_eur\":75000,\"salary_period\":\"year\",\"salary_basis\":\"gross\"}],\"target_industries\":[\"IT\"],\"target_date\":\"+2 years\",\"target_locations\":[\"Leipzig\"],\"search_radius_km\":50,\"employment_types\":[\"vollzeit\"]}; raw values only: target_date exactly as the user said it, a salary with the unit the user named, never a computed year or age).",
                                          "workflowId":  {
                                                             "__rl":  true,
-                                                            "value":  "NzNLOt1Bi19IhsXu",
+                                                            "value":  "zLq2kDaNroaJ7Ctg",
                                                             "mode":  "list",
-                                                            "cachedResultUrl":  "/workflow/NzNLOt1Bi19IhsXu",
-                                                            "cachedResultName":  "agent.tool_save_plan_section"
+                                                            "cachedResultUrl":  "/workflow/zLq2kDaNroaJ7Ctg",
+                                                            "cachedResultName":  "agent.tool_propose_plan_topics"
                                                         },
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "section_key":  "={{ $fromAI(\u0027section_key\u0027, \u0027Career plan section key: situation, targets, or path\u0027, \u0027string\u0027) }}",
-                                                                              "section_content":  "={{ $fromAI(\u0027section_content\u0027, \u0027The confirmed section text, word for word as you played it back\u0027, \u0027string\u0027) }}",
-                                                                              "section_data":  "={{ $fromAI(\u0027section_data\u0027, \u0027Optional JSON object string - ONLY for the targets section; omit (empty) for prose-only sections. Shape: {\"target_roles\":[{\"title\":\"Data Analyst\",\"salary_expectation_eur\":75000,\"salary_period\":\"year\",\"salary_basis\":\"gross\"}],\"target_industries\":[\"IT\"],\"target_date\":\"+2 years\",\"target_locations\":[\"Leipzig\"],\"search_radius_km\":50,\"employment_types\":[\"vollzeit\"]}. target_locations/search_radius_km/employment_types are the job-search criteria the weekday scan uses (target_locations[0] -\u003e where, search_radius_km -\u003e radius). Raw values only - target_date as said (the database resolves +2 years), never a computed year or age.\u0027, \u0027string\u0027, \u0027\u0027) }}",
-                                                                              "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Optional plan display name - only used when this save creates a new draft\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "section_key":  "={{ $fromAI(\u0027section_key\u0027, \u0027Catalog section key of this part from your instructions, e.g. situation, targets, path\u0027, \u0027string\u0027) }}",
+                                                                              "topics":  "={{ $fromAI(\u0027topics\u0027, \u0027JSON array string of 1-8 topic objects of this part, fields as in the tool description\u0027, \u0027string\u0027) }}",
+                                                                              "one_card":  "={{ $fromAI(\u0027one_card\u0027, \u0027true = all topics on one card (going through an existing plan); false = one card per topic\u0027, \u0027boolean\u0027) }}",
+                                                                              "more_in_part":  "={{ $fromAI(\u0027more_in_part\u0027, \u0027true = this part gets further topics in a later proposal (it is not complete with these cards); false = these cards complete the part\u0027, \u0027boolean\u0027) }}",
                                                                               "domain":  "={{ String($(\u0027Start agent.career_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_career__\u0027 : \u0027career\u0027 }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.career_advisor\u0027).item.json.chat_id }}"
                                                                           },
@@ -716,8 +741,8 @@
                                                                                    "removed":  false
                                                                                },
                                                                                {
-                                                                                   "id":  "section_content",
-                                                                                   "displayName":  "section_content",
+                                                                                   "id":  "topics",
+                                                                                   "displayName":  "topics",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -726,8 +751,28 @@
                                                                                    "removed":  false
                                                                                },
                                                                                {
-                                                                                   "id":  "section_data",
-                                                                                   "displayName":  "section_data",
+                                                                                   "id":  "one_card",
+                                                                                   "displayName":  "one_card",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "boolean",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "more_in_part",
+                                                                                   "displayName":  "more_in_part",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "boolean",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "domain",
+                                                                                   "displayName":  "domain",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -736,8 +781,54 @@
                                                                                    "removed":  false
                                                                                },
                                                                                {
-                                                                                   "id":  "plan_name",
-                                                                                   "displayName":  "plan_name",
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       480,
+                                       208
+                                   ],
+                      "id":  "4303b25b-ebfa-5744-81a5-f95db6a62bf2",
+                      "name":  "tool_propose_plan_topics"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_record_check_findings",
+                                         "description":  "Record the findings of ONE final-check pass over the whole draft: every real contradiction between two topics (or against the data) and every topic covered only halfway. The database adds open points and missing parts itself, brings an overview and then one card per point, and asks you for a second (last) pass only when a point changed topics. Write nothing about the findings in the chat, never count or number them. Each finding: category contradiction|missing, ref_a {\"section_key\":\"...\",\"topic\":\"...\"} and quote_a (word for word from that topic, max 300 characters); for a contradiction also ref_b and quote_b; then proposal (the changed topic: section_key, topic, content and the other topic fields) or question (max 300 characters). [] when nothing was found. ok:false invalid_finding or quote_not_found with index: fix that finding and call again; check_passes_exhausted: no further pass, offer to publish; no_draft: there is nothing to check.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "TvHmVvWaY40TFLtK",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/TvHmVvWaY40TFLtK",
+                                                            "cachedResultName":  "agent.tool_record_check_findings"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "findings":  "={{ $fromAI(\u0027findings\u0027, \u0027JSON array string of all findings of this pass, fields as in the tool description; [] when none\u0027, \u0027string\u0027) }}",
+                                                                              "domain":  "={{ String($(\u0027Start agent.career_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_career__\u0027 : \u0027career\u0027 }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.career_advisor\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "findings",
+                                                                                   "displayName":  "findings",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -773,16 +864,16 @@
                       "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
                       "typeVersion":  2.2,
                       "position":  [
-                                       480,
-                                       208
+                                       560,
+                                       408
                                    ],
-                      "id":  "51a7d1f0-f8db-5bcf-b950-bf424563b4fc",
-                      "name":  "tool_save_plan_section"
+                      "id":  "cd8ba2f3-da4f-519b-b453-280a7fd057ae",
+                      "name":  "tool_record_check_findings"
                   },
                   {
                       "parameters":  {
                                          "name":  "tool_publish_plan",
-                                         "description":  "Publish the draft career plan: the previous active version is superseded, the draft becomes active, and the context document career_planning (your single living career plan) is updated for all agents - one atomic transaction behind a button confirmation. CALL ONLY when all sections are confirmed and you have composed the FULL plan markdown. plan_md must contain all sections (situation, targets, path). change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - otherwise save sections first.",
+                                         "description":  "Publish the draft career plan: the previous active version is superseded, the draft becomes active, and the context document career_planning (your single living career plan) is updated for all agents - one atomic transaction behind a button confirmation. The database composes the plan document from the saved sections (never send a plan text). Call it exactly ONCE per publish, only when the final check has nothing open. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - sections are saved when the user taps their cards.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "oKi2U6NFXkCONRQQ",
@@ -793,7 +884,6 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "plan_md":  "={{ $fromAI(\u0027plan_md\u0027, \u0027The complete career plan document as markdown - all sections (situation, targets, path)\u0027, \u0027string\u0027) }}",
                                                                               "change_summary":  "={{ $fromAI(\u0027change_summary\u0027, \u0027Concrete summary of what changed vs. the previous version, for the confirmation message\u0027, \u0027string\u0027) }}",
                                                                               "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Optional new plan display name\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "context_description":  "={{ $fromAI(\u0027context_description\u0027, \u0027Optional description for the published context document; omit for the default\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -804,16 +894,6 @@
 
                                                                                     ],
                                                                 "schema":  [
-                                                                               {
-                                                                                   "id":  "plan_md",
-                                                                                   "displayName":  "plan_md",
-                                                                                   "required":  false,
-                                                                                   "defaultMatch":  false,
-                                                                                   "display":  true,
-                                                                                   "canBeUsedToMatch":  true,
-                                                                                   "type":  "string",
-                                                                                   "removed":  false
-                                                                               },
                                                                                {
                                                                                    "id":  "change_summary",
                                                                                    "displayName":  "change_summary",
@@ -1276,7 +1356,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.career_advisor — Career-Coach (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn career aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalt; sonst /onboarding-Redirect) -\u003e Load Config (core.sub_load_config) -\u003e [P2b-1] Career onboarding read (career-LOKALE Onboarding-Pflicht PRO PERSON, NACH Load Config; flag feature.career_onboarding_gate Default true; core.fn_onboarding_status(career, chat_id)) -\u003e Load Agent Context (agent.tool_load_context, agent_name=career_advisor) -\u003e Build Agent Input (Feature an UND Person-Onboarding offen -\u003e Abschnitt Career onboarding required mit den offenen Sektionen ans Ende des System-Prompts: der Advisor erfasst zuerst das Profil, beraet nicht) -\u003e Advisor Agent. KEIN Redirect: der Advisor ist selbst der Onboarding-Agent des Pakets, ein Redirect wies den Erfassungs-Auftrag aus dem /onboarding-Menue ab (Sackgasse); Analog agent.finance Onboarding ausstehend. Career-Onboarding-Sektionen erfasst der Self-Onboarding-Modus (ueber das /onboarding-Menue oder direkt im Gespraech). SCHREIBT DOMAENEN-/PROFIL-DATEN NUR UEBER HITL-GEGATETE TOOLS (Ausnahme: der un-gegatete Tri-State-Flag tool_set_onboarding_section, package=career FIX -\u003e nur ein Fortschritts-Flag, kein Domaenen-/PII-Write): Reads via postgres_select (career_ro: schema career OHNE die person-privaten Tabellen job_matches/onboarding_state — der Host sperrt sie, Security-Audit 2026-10) + read_plan (P2b-2: person-skopierter Plan-Resume = draft+active via core.fn_advisor_read_plan(career, chat_id), Haupt-Credential, chat_id BUILD-fix aus dem Start-Node, NIE $fromAI -\u003e B sieht A NICHT; aus einer Frei-SQL-Sitzung liefert das Fenster nichts) + read_job_matches (die EIGENEN Treffer via career.fn_read_job_matches(chat_id, 20), Credential career_rw, ohne Modell-Felder) + load_context (career_profile/career_planning/career_preferences/family). P0b/P0c: alle drei career-Kontexte sind PER_USER — load_context uebergibt die chat_id als 2. Arg, fn_fetch_context loest die person_id auf und liest sie suffigiert pro Person (base__personid); ein physischer Name base__personid vom Modell liefert nichts; Writes NUR tool_save_plan_section/tool_publish_plan (Plan, domain=career, owner_only) + tool_set_profile_facts (career_profile, Stufe self) + WS-2 tool_set_career_preferences (career_preferences, Stufe self — beide ueber agent.tool_set_own_context_facts: die fragende Person bestaetigt ihre eigenen Daten selbst; gelernt aus 👍/👎-Feedback) + tool_record_job_match (eine weitergeleitete Stelle vormerken, owner_info), je HITL-Gate; P1 tool_set_onboarding_section (package=career FIX, KEIN HITL — markiert eine der 3 Onboarding-Sektionen profile_basics/skills_overview/goals_targets completed/skipped im Self-Onboarding-Modus, NICHT die Plan-Sektionen situation/targets/path). WS-2 Job-Matching: der werktägliche Scan-Cron (agent.career.cron_score_jobs) schickt Treffer-Karten (👍/👎 -\u003e job:-Callback -\u003e career.fn_handle_job_feedback, kein Orchestrator-Edit); ein optionaler Freitext-Grund nach 👍/👎 kommt per career-Route hierher -\u003e der Advisor ordnet ihn der zuletzt bewerteten Stelle (read_job_matches, feedback_at DESC) zu und persistiert die Praeferenz via tool_set_career_preferences. CV-Vision tool_extract_cv (WS-1b) ist READ-ONLY (bezahlte Claude-API, kein DB-Write/kein Gate): liefert nur die rohen career_profile-Felder zurueck -\u003e der Advisor spielt sie zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts. Ein weitergeleiteter Lebenslauf kommt INTENT-BASIERT hierher (Orchestrator routet den [attachment ...]-Marker nach Inhalt/Kontext: CV/Lebenslauf -\u003e career, Finanzdokument -\u003e finance; Marker verbatim, file_id daraus). KEIN Monitor-Tool (WS-4). Beratung/Profil/Plan + Leistbarkeit/Runway des Jobwechsels (kann ich mir den Wechsel leisten?) = hier (career_advisor, seit WS-5); allgemeine Geld-/Kauf-Fragen -\u003e finance_advisor; Buchen -\u003e agent.finance.",
+                                         "content":  "## Ablauf\n**agent.career_advisor — Career-Coach (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn career aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalt; sonst /onboarding-Redirect) -\u003e Load Config (core.sub_load_config) -\u003e [P2b-1] Career onboarding read (career-LOKALE Onboarding-Pflicht PRO PERSON, NACH Load Config; flag feature.career_onboarding_gate Default true; core.fn_onboarding_status(career, chat_id)) -\u003e Load Agent Context (agent.tool_load_context, agent_name=career_advisor, audience=advisor: gemeinsame Gesprächsregeln aller Berater vor dem Paket-Teil) -\u003e Advisor conversation read (Stand des Plan-Gesprächs, offene Frage, offene Punkte als Conversation context) -\u003e Build Agent Input (Feature an UND Person-Onboarding offen -\u003e Abschnitt Career onboarding required mit den offenen Sektionen ans Ende des System-Prompts: der Advisor erfasst zuerst das Profil, beraet nicht) -\u003e Advisor Agent. KEIN Redirect: der Advisor ist selbst der Onboarding-Agent des Pakets, ein Redirect wies den Erfassungs-Auftrag aus dem /onboarding-Menue ab (Sackgasse); Analog agent.finance Onboarding ausstehend. Career-Onboarding-Sektionen erfasst der Self-Onboarding-Modus (ueber das /onboarding-Menue oder direkt im Gespraech). SCHREIBT DOMAENEN-/PROFIL-DATEN NUR UEBER HITL-GEGATETE TOOLS (Ausnahme: der un-gegatete Tri-State-Flag tool_set_onboarding_section, package=career FIX -\u003e nur ein Fortschritts-Flag, kein Domaenen-/PII-Write): Reads via postgres_select (career_ro: schema career OHNE die person-privaten Tabellen job_matches/onboarding_state — der Host sperrt sie, Security-Audit 2026-10) + read_plan (P2b-2: person-skopierter Plan-Resume = draft+active via core.fn_advisor_read_plan(career, chat_id), Haupt-Credential, chat_id BUILD-fix aus dem Start-Node, NIE $fromAI -\u003e B sieht A NICHT; aus einer Frei-SQL-Sitzung liefert das Fenster nichts) + read_job_matches (die EIGENEN Treffer via career.fn_read_job_matches(chat_id, 20), Credential career_rw, ohne Modell-Felder) + load_context (career_profile/career_planning/career_preferences/family). P0b/P0c: alle drei career-Kontexte sind PER_USER — load_context uebergibt die chat_id als 2. Arg, fn_fetch_context loest die person_id auf und liest sie suffigiert pro Person (base__personid); ein physischer Name base__personid vom Modell liefert nichts; Plan-Abschnitte und Schlussprüfung als offene Frage (tool_propose_plan_topics, tool_record_check_findings, ohne Gate, erst der Tipp speichert); Writes NUR tool_publish_plan (Plan, domain=career, owner_only) + tool_set_profile_facts (career_profile, Stufe self) + WS-2 tool_set_career_preferences (career_preferences, Stufe self — beide ueber agent.tool_set_own_context_facts: die fragende Person bestaetigt ihre eigenen Daten selbst; gelernt aus 👍/👎-Feedback) + tool_record_job_match (eine weitergeleitete Stelle vormerken, owner_info), je HITL-Gate; P1 tool_set_onboarding_section (package=career FIX, KEIN HITL — markiert eine der 3 Onboarding-Sektionen profile_basics/skills_overview/goals_targets completed/skipped im Self-Onboarding-Modus, NICHT die Plan-Sektionen situation/targets/path). WS-2 Job-Matching: der werktägliche Scan-Cron (agent.career.cron_score_jobs) schickt Treffer-Karten (👍/👎 -\u003e job:-Callback -\u003e career.fn_handle_job_feedback, kein Orchestrator-Edit); ein optionaler Freitext-Grund nach 👍/👎 kommt per career-Route hierher -\u003e der Advisor ordnet ihn der zuletzt bewerteten Stelle (read_job_matches, feedback_at DESC) zu und persistiert die Praeferenz via tool_set_career_preferences. CV-Vision tool_extract_cv (WS-1b) ist READ-ONLY (bezahlte Claude-API, kein DB-Write/kein Gate): liefert nur die rohen career_profile-Felder zurueck -\u003e der Advisor spielt sie zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts. Ein weitergeleiteter Lebenslauf kommt INTENT-BASIERT hierher (Orchestrator routet den [attachment ...]-Marker nach Inhalt/Kontext: CV/Lebenslauf -\u003e career, Finanzdokument -\u003e finance; Marker verbatim, file_id daraus). KEIN Monitor-Tool (WS-4). Beratung/Profil/Plan + Leistbarkeit/Runway des Jobwechsels (kann ich mir den Wechsel leisten?) = hier (career_advisor, seit WS-5); allgemeine Geld-/Kauf-Fragen -\u003e finance_advisor; Buchen -\u003e agent.finance.",
                                          "height":  320,
                                          "width":  640,
                                          "color":  4
@@ -1292,7 +1372,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**domain + context_name = fixe Binding-Inputs (+ e2e-Sentinel)**\n\ntool_save_plan_section/tool_publish_plan bekommen domain NICHT vom LLM ($fromAI), sondern als fixe Expression: chat_id beginnt mit test_e2e -\u003e Sentinel-Domain __e2e_career__ (E2E beruehrt die echte career-Plan-Kette nie; fn_clear_e2e_data raeumt sie), sonst career. tool_set_profile_facts und tool_set_career_preferences (beide = agent.tool_set_own_context_facts, Gate-Stufe self: die fragende Person bestaetigt selbst, kein Owner-Send) bekommen context_name FIX (career_profile bzw. career_preferences); den scope setzt die fn agent.fn_set_own_context_facts selbst auf per_user (household/family/Plan-Kontexte gesperrt; own_user_only in fn_set_context_facts).",
+                                         "content":  "## Ablauf\n**domain + context_name = fixe Binding-Inputs (+ e2e-Sentinel)**\n\nDie Plan-Werkzeuge (tool_propose_plan_topics, tool_record_check_findings, tool_publish_plan) bekommen domain NICHT vom LLM ($fromAI), sondern als fixe Expression: chat_id beginnt mit test_e2e -\u003e Sentinel-Domain __e2e_career__ (E2E beruehrt die echte career-Plan-Kette nie; fn_clear_e2e_data raeumt sie), sonst career. tool_set_profile_facts und tool_set_career_preferences (beide = agent.tool_set_own_context_facts, Gate-Stufe self: die fragende Person bestaetigt selbst, kein Owner-Send) bekommen context_name FIX (career_profile bzw. career_preferences); den scope setzt die fn agent.fn_set_own_context_facts selbst auf per_user (household/family/Plan-Kontexte gesperrt; own_user_only in fn_set_context_facts).",
                                          "height":  240,
                                          "width":  460,
                                          "color":  4
@@ -1860,12 +1940,23 @@
                                                                 [
                                                                     {
                                                                         "index":  0,
-                                                                        "node":  "Build Agent Input",
+                                                                        "node":  "Advisor conversation read",
                                                                         "type":  "main"
                                                                     }
                                                                 ]
                                                             ]
                                                },
+                        "Advisor conversation read":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Build Agent Input",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
                         "Build Agent Input":  {
                                                   "main":  [
                                                                [
@@ -1954,17 +2045,28 @@
                                                              ]
                                                          ]
                                          },
-                        "tool_save_plan_section":  {
-                                                       "ai_tool":  [
-                                                                       [
-                                                                           {
-                                                                               "index":  0,
-                                                                               "node":  "Advisor Agent",
-                                                                               "type":  "ai_tool"
-                                                                           }
+                        "tool_propose_plan_topics":  {
+                                                         "ai_tool":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Advisor Agent",
+                                                                                 "type":  "ai_tool"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                     },
+                        "tool_record_check_findings":  {
+                                                           "ai_tool":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Advisor Agent",
+                                                                                   "type":  "ai_tool"
+                                                                               }
+                                                                           ]
                                                                        ]
-                                                                   ]
-                                                   },
+                                                       },
                         "tool_publish_plan":  {
                                                   "ai_tool":  [
                                                                   [

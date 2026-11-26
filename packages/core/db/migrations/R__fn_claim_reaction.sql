@@ -8,22 +8,19 @@
 --   Auswahl (hoechstens eine, Prioritaet):
 --     seen   👀  event 'seen' (Lebenszeichen, ohne Obergrenze)
 --     done   👌  Karte dieses Laufs endgueltig bestaetigt (agent.hitl_pending.approved, opened_at >= run_started_at)
---                + reply_ok + Signal FRAME + kein Sticker in diesem Lauf (sonst bleibt 👀; ohne Obergrenze)
---     answer     Stimmung statt Text: kein Werkzeug, react_only (Router-Zeile genau 'REACT <MOOD>'), ohne Obergrenze
---     mood       Stimmung neben einer Antwort: nach einem Werkzeug nur bei Signal FRAME, ohne Werkzeug nur mit Text;
---                kein Sticker in diesem Lauf; Tages-Obergrenze nicht erreicht
+--                + reply_ok + Signal FRAME + kein Sticker in diesem Lauf + kein Folgetext (has_text false; sonst bleibt 👀)
+--     answer     Stimmung statt Text: kein Werkzeug, react_only, kein Text (Router-Zeile genau 'REACT <MOOD>')
+--   Keine Stimmung neben einer Antwort: eine Reaktion an einer Nachricht, die die lange Antwort schon aus dem Bild geschoben
+--   hat, zeigt Telegram am Handy als Reaktions-Zaehler.
 --   Stimmungen: LOVE ❤ · CHEER 🎉 · RELIEF 🙏 · FUN 😁 (unbekannt -> keine). Jede Stimmung verlangt reply_ok und nie
 --     Signal NOFRAME (ernster Moment); lief ein Werkzeug ohne gueltiges Signal, gilt das als NOFRAME. Eine Nachricht
 --     mit 👀 bekommt keine Stimmung (👀 bleibt stehen, nur 👌 ersetzt es).
---   Obergrenze (nur kind 'mood', je Person und lokalem Tag core.fn_today, gezaehlt unter Advisory-Lock je Person):
---     core.config persona.mood_reactions_per_day = N; Stil (agent.fn_chat_style) expressive -> N, neutral ->
---     max(1, N-1), terse -> min(1, N); N = 0 -> keine Stimmung neben Text.
 --   Schreibt die Zeile in agent.reaction_log (ON CONFLICT DO NOTHING: dieselbe Art an derselben Nachricht nie zweimal
 --     -> dann keine Reaktion) und loescht Zeilen der Person, die aelter als 30 Tage sind. Aus-Schalter
 --     persona.reactions_enabled.
 --   Eingabe p: {chat_id, message_id, event:'seen'|'reply', signal, mood, react_only, has_text, tool_called, reply_ok,
 --       run_started_at (timestamptz), sticker}
---   Rueckgabe: {ok:true, emoji:text|null, kind:'seen'|'done'|'answer'|'mood'|null}  (nie RAISE -> ein Fehler kostet nur
+--   Rueckgabe: {ok:true, emoji:text|null, kind:'seen'|'done'|'answer'|null}  (nie RAISE -> ein Fehler kostet nur
 --     die Reaktion)
 --   Tests: tests/db/core/test_fn_claim_reaction.sql
 -- ============================================================
@@ -43,10 +40,6 @@ DECLARE
     v_ok      boolean;
     v_emoji   text;
     v_kind    text;
-    v_per_day int;
-    v_style   text;
-    v_allowed int;
-    v_used    int;
     v_id      bigint;
 BEGIN
     IF COALESCE(core.fn_config_get('core', 'persona', 'reactions_enabled'), 'true') <> 'true' THEN
@@ -74,7 +67,8 @@ BEGIN
         v_kind := 'seen';  v_emoji := '👀';
     ELSIF p->>'event' IS DISTINCT FROM 'reply' THEN
         RETURN v_none;
-    ELSIF v_signal = 'FRAME' AND v_ok AND v_since IS NOT NULL AND COALESCE(p->>'sticker', '') = '' AND EXISTS (
+    ELSIF v_signal = 'FRAME' AND v_ok AND v_since IS NOT NULL AND COALESCE(p->>'sticker', '') = ''
+          AND NOT COALESCE(NULLIF(p->>'has_text', '')::boolean, false) AND EXISTS (
             SELECT 1 FROM agent.hitl_pending h
              WHERE h.chat_id = v_chat AND h.approved IS TRUE AND h.opened_at >= v_since) THEN
         v_kind := 'done';  v_emoji := '👌';
@@ -89,28 +83,8 @@ BEGIN
                     WHERE r.chat_id = v_chat AND r.message_id = v_msg AND r.kind = 'seen') THEN
             RETURN v_none;
         END IF;
-        IF NOT v_tool AND COALESCE((p->>'react_only')::boolean, false) THEN
+        IF NOT v_tool AND COALESCE((p->>'react_only')::boolean, false) AND NOT COALESCE(NULLIF(p->>'has_text', '')::boolean, false) THEN
             v_kind := 'answer';
-        ELSIF (v_tool OR COALESCE((p->>'has_text')::boolean, false)) AND COALESCE(p->>'sticker', '') = '' THEN
-            v_per_day := COALESCE(NULLIF(core.fn_config_get('core', 'persona', 'mood_reactions_per_day'), '')::int, 5);
-            v_style := agent.fn_chat_style(v_chat);
-            v_allowed := CASE v_style
-                           WHEN 'expressive' THEN v_per_day
-                           WHEN 'terse'      THEN least(1, v_per_day)
-                           ELSE CASE WHEN v_per_day <= 0 THEN 0 ELSE greatest(1, v_per_day - 1) END
-                         END;
-            IF v_allowed <= 0 THEN
-                RETURN v_none;
-            END IF;
-            PERFORM pg_advisory_xact_lock(hashtext('reaction:' || v_pid));
-            SELECT count(*) INTO v_used
-              FROM agent.reaction_log r
-             WHERE r.person_id = v_pid AND r.kind = 'mood'
-               AND core.fn_today(r.created_at) = core.fn_today();
-            IF v_used >= v_allowed THEN
-                RETURN v_none;
-            END IF;
-            v_kind := 'mood';
         ELSE
             RETURN v_none;
         END IF;

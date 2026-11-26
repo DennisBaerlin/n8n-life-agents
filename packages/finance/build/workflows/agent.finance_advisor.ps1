@@ -3,10 +3,10 @@
 # Schlanker Klon des agent.finance-Templates und Vorlage der weiteren Advisor (Clone-and-Trim, bewusst
 # keine Factory — build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim"); die Domaenen-Konstanten stehen
 # am Funktionskopf, Geteiltes liegt in lib/build_helpers.ps1 (New-AdvisorGateChain/-ToolNode/-PhrasingTail).
-# Der Advisor bucht nie: keine Buchungs-Tools gebunden; seine Writes sind Plan-Persistenz
-# (tool_save_plan_section/tool_publish_plan), Plan-Trigger und zwei Daten-Ausnahmen: tool_set_asset_classes (nur
-# Anlageklassen) und die fehlenden Plan-Pflichtdaten (tool_create_account fest cash,
-# tool_create_recurring_payment) - alle HITL-gegatet.
+# Der Advisor bucht nie: keine Buchungs-Tools gebunden. Plan-Themen und Funde der Schlusspruefung legt er als offene Frage an
+# (tool_propose_plan_topics, tool_record_check_findings: ohne Gate, gespeichert wird erst beim Tipp); HITL-gegatet sind
+# tool_publish_plan, Plan-Trigger und zwei Daten-Ausnahmen: tool_set_asset_classes (nur Anlageklassen) und die fehlenden
+# Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment).
 
 # New-AdvisorToolNode (Cross-Agent-Tool-Builder) lebt geteilt in
 # scripts/build/lib/build_helpers.ps1; -StartNode ist Pflicht.
@@ -100,13 +100,18 @@ function Build-AgentFinanceAdvisor {
     )
 
     $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_CTX 'agent.tool_load_context' `
-        ([ordered]@{ agent_name = $AGENT_NAME; include_manifest = 'true' })
+        ([ordered]@{ agent_name = $AGENT_NAME; include_manifest = 'true'; audience = 'advisor' })
+
+    # Stand des Plan-Gespraechs (Teile, Phase, offene Frage, offene Punkte) fuer den Kontext-Kopf, gemeinsamer Baustein der Plan-Berater.
+    $nConvRead = New-AdvisorConversationRead -Pos @(-1040, 160) -StartNode $START_NODE `
+        -DomainJs "String(`$('$START_NODE').item.json.chat_id || '').startsWith('test_e2e') ? '__e2e_finance__' : 'finance'"
+    $convHeadJs = Get-AdvisorConversationHeadJs 'agent.finance_advisor'
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')
         # Wechselnde Teile ans Ende (Prompt-Cache): Gespraechs-Kontext (Rolle + Plan-Stand aus der DB, nie geraten) und die
         # Plan-Reife. viewer kommt aus viewer_is_member (Test-chat_ids = owner), nicht aus can_write (dort waere die Rolle NULL).
-        ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Conversation context\nviewer: ' + (`$('Onboarding gate read').item.json.viewer_is_member === true ? 'member' : 'owner') + '\nplan: ' + String(`$('Onboarding gate read').item.json.plan_state || 'none') + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
+        ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Conversation context\nviewer: ' + (`$('Onboarding gate read').item.json.viewer_is_member === true ? 'member' : 'owner') + '\nplan: ' + String(`$('Onboarding gate read').item.json.plan_state || 'none') + " + $convHeadJs + " + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
                              "if (typeof rd === 'string') { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } " +
                              "if (!rd || rd.ready !== false || !Array.isArray(rd.missing) || !rd.missing.length) { return ''; } " +
                              "return '\n\n## Plan readiness\nMissing for a meaningful financial plan, in this order: ' + rd.missing.map(m => String(m.key)).join(', ') + '. This list is the state at the start of the conversation: an ok:true from the matching tool (accounts -> tool_create_account, income or expenses -> tool_create_recurring_payment) ticks an item off. When the user wants a financial plan, asks for advice in general or tapped the plan button, follow Missing plan data in your instructions first; do not start or continue the interview before the last item is recorded. Other advice stays possible - name the thin data basis.'; })() }}"), 'string')
@@ -198,28 +203,24 @@ function Build-AgentFinanceAdvisor {
     # Uebergabe Berater -> Buchhalter: der Parameter handoff_tasks (und das Uebersichts-Tool) nur, wenn das Manifest der Domain
     # einen handoff_agent nennt (Build-Datum aus Get-AdvisorPlanStepList; sonst gaebe es niemanden, der eintraegt).
     $hasHandoff = [bool](@($AdvisorPlanStepList | Where-Object { $_.Domain -eq 'finance' -and $_.HandoffAgent }).Count)
-    $saveInputs = @(
-            ,@('section_key', 'Catalog section key from your instructions, e.g. household_basics, wealth_building, goals_triggers', 'string')
-            ,@('topic', 'Short label of the ONE topic of this section you save now, e.g. Disability or Loan apartment (1-60 characters, conversation language). Required. The same label again replaces that topic', 'string')
-            ,@('section_content', 'The confirmed text of this topic, word for word as you played it back - about one phone screen at most', 'string')
-            ,@('section_data', 'Optional JSON object string - ONLY on the one topic a block belongs to, in the three block-carrying sections; omit for prose-only topics. e.g. risk_profile: {"risk_profile": {"risk_tolerance":"medium","risk_capacity":"high"} }; wealth_building: {"target_allocation": {"rebalance_drift_pp":5,"blocks":[{"key":"sp500","name":"S&P 500 ETF","target_pct":85,"corridor":[80,90]} ]} }. Block key is mandatory, lowercase_snake, unique. Store raw figures only - no derived years/ages/nominal values, no risk_need, no as_of (the system stamps it).', 'string', '')
-            ,@('plan_name', 'Optional plan display name - only used when this save creates a new draft', 'string', '')
-    )
-    if ($hasHandoff) {
-        $saveInputs += ,@('handoff_tasks', 'Optional JSON array string of entries the user AGREED to in this section that need a booking or master data (a savings goal, savings plan, standing order, recurring payment), e.g. [{"kind":"savings_goal","payload":{"name":"Emergency fund","target_amount":6000,"target_date":"2027-12-31"},"text":"Savings goal emergency fund, 6000 EUR by end of 2027"} ]. kind = savings_goal | savings_plan | recurring_payment | recurring_transfer | other. payload = the raw figures the user named (no derived values). text = one plain sentence for the user, max 300 characters, in the conversation language. Omit when nothing was agreed - an idea the user did not accept is no entry. When you send handoff_tasks, send the full list of this topic (it replaces the open entries of this topic, [] clears them); omit it to keep them unchanged.', 'string', '')
-    }
-    $nToolSaveSection = New-AdvisorToolNode 'tool_save_plan_section' (Resolve-CoreServiceAlias 'core:save_plan_section' $CoreServiceMap) `
-        'Save ONE confirmed topic of an interview section into the draft plan (creates the draft automatically on first save; the DB assigns the version). CALL ONLY AFTER the user verbally confirmed your playback of the topic in chat - the tool then shows the topic and its full text with a button confirmation. section_key must be one of the catalog keys from your instructions; topic names the topic inside it. section_content is that same text word for word, never translated or shortened; plain sentences, no markdown. The DB rejects a save without topic (topic_required) or a text longer than its limit (topic_too_long, with max and length) before any card - then split the topic into smaller topics and play the first one back. section_data is OPTIONAL and only for the three block-carrying sections (goals_triggers->goal; risk_profile->risk_profile; wealth_building->target_allocation+glidepath), sent with the one topic the block belongs to - every OTHER topic omits it (prose only; the emergency reserve is a reserve goal the bookkeeper keeps, not a block). Each facts block must come from exactly ONE topic: a block already on another topic is rejected (block_in_two_topics), publish rejects a block in two sections. Returns topics (the topic labels the section has now) and topic_replaced. ok:false with a reason means the input was rejected - fix and retry once, or ask the user.' `
-        $saveInputs ([ordered]@{ domain = $DOMAIN_EXPR }) @(480, 208) -StartNode $START_NODE
-
-    $nToolPublish = New-AdvisorToolNode 'tool_publish_plan' (Resolve-CoreServiceAlias 'core:publish_plan' $CoreServiceMap) `
-        'Publish the draft plan: the previous active plan version is superseded, the draft becomes active, and the context document financial_planning (your single living finance plan) is updated for all agents - one atomic transaction behind a button confirmation that shows versions, section count and your change_summary. CALL ONLY when all sections are confirmed, the final check is done and you have composed the FULL plan markdown. check_findings lists EVERY finding of the final check with its outcome after you cleared it with the user (resolved = changed or answered, deferred = left open on purpose, accepted = the user keeps it as it is); [] when the final check found nothing; check_passes = the number of review passes. The DB rejects a publish without them (final_check_missing) or with a finding without outcome (final_check_open, index) before any card; the card shows the counts and each finding not resolved. plan_md must contain all catalog sections plus a trigger list with dates. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - otherwise save sections first. The section "## Gelernt" (owner-confirmed learned notes) is system-managed: never reproduce it in plan_md - the stored section is kept automatically.' `
+    # Themen-Karte und Schlusspruefung: gemeinsamer Baustein der Plan-Berater (offene Frage, gespeichert erst beim Tipp).
+    $plan = New-AdvisorPlanToolNodes -ServiceMap $CoreServiceMap -DomainExpr $DOMAIN_EXPR -StartNode $START_NODE -Handoff:$hasHandoff `
+        -SectionKeyHint 'household_basics, emergency_reserve, goals_triggers' `
+        -SectionDataHint 'optional JSON object, ONLY on the one topic that carries the block of a block-carrying section, e.g. risk_profile: {"risk_profile": {"risk_tolerance":"medium","risk_capacity":"high"} }; raw figures only, no derived values, no risk_need, no as_of'
+    $nToolProposeTopics = $plan.Propose; $nToolRecordFindings = $plan.Record
+    # Hinweis stilllegen ("später", "bitte nicht mehr danach fragen"): Merker in der DB statt im Modell-Gedaechtnis, ohne Gate.
+    $nToolDeferHint = New-AdvisorToolNode 'tool_defer_hint' (Resolve-CoreServiceAlias 'core:defer_hint' $CoreServiceMap) `
+        'Silence ONE account hint until it resolves itself in the data (at most until the next monthly check): call it when the user says to stop asking about it ("bitte nicht mehr danach fragen", "später"). key = the key of that entry in the snapshot warnings list, never invented. Changes no data and shows no card; after ok:true say in one short sentence that it waits and continue with the plan. ok:false unknown_hint lists the valid keys - pick the right one or say nothing about it.' `
         @(
-            ,@('plan_md', 'The complete plan document as markdown - all sections, deviations section, trigger list', 'string')
+            ,@('key', 'The key of the warnings entry from the snapshot, e.g. account_coverage:12', 'string')
+        ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(720, 408) -StartNode $START_NODE
+    $nToolPublish = New-AdvisorToolNode 'tool_publish_plan' (Resolve-CoreServiceAlias 'core:publish_plan' $CoreServiceMap) `
+        'Publish the draft plan: the database composes the plan document from the saved topics in catalog order plus the reminder list (never send a plan text), the previous active version is superseded, the draft becomes active, and the context document financial_planning (your single living finance plan) is updated for all agents - one atomic transaction behind a button confirmation that shows versions, section count and your change_summary. Call it exactly ONCE per publish, only when the final check has nothing open (progress phase publish). When the final check ran with check cards, the database takes the findings and passes from them: send check_findings [] and check_passes 1. Without check cards check_findings lists every finding with its outcome (resolved = changed or answered, deferred = left open on purpose, accepted = the user keeps it as it is); check_passes = the number of review passes. The DB rejects a publish without them (final_check_missing) or with an open finding (final_check_open) before any card. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - topics are saved when the user taps their cards.' `
+        @(
             ,@('change_summary', 'Concrete summary of what changed vs. the previous version, for the confirmation message', 'string')
-            ,@('check_findings', 'JSON array string of all final-check findings, each {"text":"one plain sentence, max 300 characters","outcome":"resolved|deferred|accepted"}; [] when there were none', 'string')
+            ,@('check_findings', 'JSON array string of all final-check findings, each {"text":"one plain sentence, max 300 characters","outcome":"resolved|deferred|accepted"}; [] when there were none or the check ran with check cards', 'string')
             ,@('check_passes', 'Number of final-check passes over the draft, at least 1', 'number')
-            ,@('reminders', 'JSON array string of dated reminders from the plan text, each {"label":"short name up to 80 chars","remind_on":"YYYY-MM-DD","action_note":"what to do, may be left out","deadline":true when something must be DONE by that day, omit otherwise,"force":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases', 'string')
+            ,@('reminders', 'JSON array string of dated reminders from the plan topics, each {"label":"short name up to 80 chars","remind_on":"YYYY-MM-DD","action_note":"what to do, may be left out","deadline":true when something must be DONE by that day, omit otherwise,"force":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases', 'string')
             ,@('declined', 'Optional JSON array string of reminders the user turned down, each {"label":"...","remind_on":"YYYY-MM-DD"}; [] or omitted when none', 'string', '')
             ,@('retire', 'Optional JSON array string of existing reminders this plan version drops, each {"label":"..."}', 'string', '')
             ,@('watch_candidates', 'Optional JSON array string of up to 10 short texts (max 120 chars): outside values or news this plan depends on and worth watching later; never create such a watcher in this step', 'string', '')
@@ -344,11 +345,11 @@ function Build-AgentFinanceAdvisor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.finance_advisor — Finanzberater (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) + Conversation context (viewer owner/member, plan none/draft/published) + Plan readiness -> Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor, audience=advisor: gemeinsame Gesprächsregeln aller Berater vor dem Paket-Teil) + Conversation context (viewer owner/member, plan none/draft/published; Advisor conversation read: Stand des Plan-Gesprächs, offene Frage, offene Punkte) + Plan readiness -> Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Plan-Themen und Funde der Schlussprüfung als offene Frage (tool_propose_plan_topics, tool_record_check_findings, ohne Gate: erst der Tipp speichert); Writes NUR tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks am Thema in tool_propose_plan_topics mit (auf der Themen-Karte sichtbar, beim Tipp vorgemerkt); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
 
     $stickyDomain = Build-Sticky 'Doc: Domain-Switch' @(400, -200) `
         'domain = fixer Binding-Input (+ e2e-Sentinel)' `
-        'tool_save_plan_section/tool_publish_plan bekommen domain NICHT vom LLM ($fromAI), sondern als fixe Expression: chat_id beginnt mit test_e2e -> Sentinel-Domain __e2e_finance__ (E2E-Tests berühren die echte finance-Plan-Kette nie; fn_clear_e2e_data räumt sie), sonst finance. Career-Advisor bindet später dieselben Tools mit domain=career.' 240 420
+        'Die Plan-Werkzeuge (tool_propose_plan_topics, tool_record_check_findings, tool_publish_plan, tool_sync_plan) bekommen domain NICHT vom LLM ($fromAI), sondern als fixe Expression: chat_id beginnt mit test_e2e -> Sentinel-Domain __e2e_finance__ (E2E-Tests berühren die echte finance-Plan-Kette nie; fn_clear_e2e_data räumt sie), sonst finance. Career-Advisor bindet später dieselben Tools mit domain=career.' 240 420
 
     $stickyModel = Build-Sticky 'Doc: Modellwahl' @(-900, 600) `
         'Modellwahl (Config-gesteuert)' `
@@ -356,7 +357,7 @@ function Build-AgentFinanceAdvisor {
 
     $stickyMemory = Build-Sticky 'Doc: Chat-Memory' @(-1380, 416) `
         'Chat-Memory (Fenster 15)' `
-        'Eigene Tabelle agent.finance_advisor_chat_memory (sessionKey=chat_id, auto vom Node). Fenster 15 statt 5: Interviews sind lange Dialoge. Zusätzlich verlangt der Prompt einen Running-Scratchpad-Recap je Antwort — Memory-Eviction kann trotzdem passieren.' 200 380
+        'Eigene Tabelle agent.finance_advisor_chat_memory (sessionKey=chat_id, auto vom Node). Fenster 15 statt 5: Interviews sind lange Dialoge. Was gilt, steht im Entwurf (Themen) und im Kontext-Kopf aus der DB, nicht im Gedächtnis: der Prompt verlangt keinen Recap.' 200 380
 
     $stickyPkg = Build-Sticky 'Doc: Package-Gate' @(-2000, 320) `
         'Routing-Status-Gate' `
@@ -367,9 +368,9 @@ function Build-AgentFinanceAdvisor {
         'Core onboarding read liest core.fn_onboarding_status(core) unter finance_ro (DEFINER-Fenster) plus den Hinweistext in der Sprache des Absenders; Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false, output} (relaybar, kein LLM-Cost; ein Mitglied bekommt den Warte-Hinweis), sonst weiter zu Load Config. ZWEI Onboarding-Gates: (1) dieses Core-first-Gate = IMMER-AN Boden (nur Core-Haushalt, vor Load Config) -> kein Paket vor Core-Onboarding; (2) das bestehende Onboarding gate NACH Load Config = strengere Opt-in-Stufe (feature.onboarding_gate, core+finance; finance-Sektionen mit gates_advisor:false in onboarding/sections.json, z. B. der Monats-Check, sperren nicht). Reihenfolge: Core-first blockt zuerst wenn der Haushalt fehlt; danach ggf. das Flag-Gate. onError=continue + === false => Lesefehler fällt fail-open durch. Generisch (jeder Paket-Agent erbt das Muster).' 540 320
 
     $nodes = @($nTrigger) + $gate.Nodes + @(
-        $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,
+        $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nConvRead, $nBuildInput, $nAgent,
         $nMemory,
-        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
+        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolProposeTopics, $nToolRecordFindings, $nToolDeferHint, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses, $nToolCreateAccount, $nToolCreateRecurringPayment,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
@@ -390,7 +391,8 @@ function Build-AgentFinanceAdvisor {
         @( E 'Onboarding required' ),   # true: Feature an + unvollstaendig -> Redirect (kein LLM)
         @( E 'Load Agent Context' )     # false: weiter zum Advisor
     ) }
-    $conns['Load Agent Context']   = @{ main = @( ,@( E 'Build Agent Input' ) ) }
+    $conns['Load Agent Context']   = @{ main = @( ,@( E 'Advisor conversation read' ) ) }
+    $conns['Advisor conversation read'] = @{ main = @( ,@( E 'Build Agent Input' ) ) }
     $conns['Build Agent Input']    = @{ main = @( ,@( E 'Advisor Agent' ) ) }
 
     $conns['Postgres Chat Memory'] = @{ ai_memory = @( ,@( E 'Advisor Agent' 'ai_memory' ) ) }
@@ -400,7 +402,9 @@ function Build-AgentFinanceAdvisor {
     $conns['load_context']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['web_search']         = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['expert_panel']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
-    $conns['tool_save_plan_section']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_propose_plan_topics']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_record_check_findings'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_defer_hint']            = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

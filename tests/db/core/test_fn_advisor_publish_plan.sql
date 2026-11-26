@@ -2,7 +2,7 @@
 -- Testet fn_advisor_publish_plan: Draft -> active (+ Vorgaenger superseded) und Upsert des
 -- Domaenen-Plan-Doc (finance->'financial_planning'; Test-Domain->'<domain>_planning';
 -- lazy, agent_name=NULL, managed_by='agent' [Spalte], package=Domain)
--- in einer Transaktion. Korrigierbar (kein Draft, leeres plan_md) -> {ok:false, reason}.
+-- in einer Transaktion. Korrigierbar (kein Draft) -> {ok:false, reason}. plan_md setzt die DB zusammen (ein mitgeschicktes zaehlt nicht).
 -- Invariante (DB-Gesetz): genau ein aktiver Plan pro Domain (Partial-UNIQUE).
 -- Negativ-Test: finance_ro darf advisor_plans lesen, aber nicht schreiben.
 BEGIN;
@@ -49,18 +49,6 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_advisor_publish_plan [gepairter Nicht-Owner -> owner_only, kein Publish]';
 
-  -- TEST 1: Publish ohne plan_md -> {ok:false}, Draft bleibt draft
-  SELECT agent.fn_advisor_publish_plan(jsonb_build_object(
-    'domain', '__test_pubdom__', 'plan_md', ''
-  )) INTO v_result;
-  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [empty plan_md]: erwartet ok=false, got %', v_result;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE id = v_plan_v1 AND status = 'draft') THEN
-    RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [empty plan_md]: Draft-Status veraendert';
-  END IF;
-  RAISE NOTICE 'PASS fn_advisor_publish_plan [leeres plan_md -> ok:false]';
-
   -- TEST 2: Publish v1 -> active, plan_md persistiert, Context-Doc angelegt
   SELECT agent.fn_advisor_publish_plan(jsonb_build_object(
     'domain', '__test_pubdom__',
@@ -77,7 +65,8 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM agent.advisor_plans
-    WHERE id = v_plan_v1 AND status = 'active' AND plan_md LIKE '# Plan v1%'
+    WHERE id = v_plan_v1 AND status = 'active' AND plan_md LIKE '# __test_pubplan__%' AND plan_md LIKE '%Goal A.%'
+      AND plan_md NOT LIKE '%Content of plan version one.%'
   ) THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v1]: Plan-Zeile nicht active/plan_md fehlt';
   END IF;
@@ -105,7 +94,7 @@ BEGIN
   IF v_ctx.package IS DISTINCT FROM '__test_pubdom__' THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [context]: package-Spalte != Domain, got %', v_ctx.package;
   END IF;
-  IF v_ctx.content NOT LIKE '# Plan v1%' THEN
+  IF v_ctx.content NOT LIKE '# __test_pubplan__%' THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [context]: content != plan_md';
   END IF;
   IF COALESCE(v_ctx.description, '') = '' THEN
@@ -149,7 +138,7 @@ BEGIN
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM agent.core_contexts
-    WHERE name = '__test_pubdom___planning' AND content = '# Plan v2'
+    WHERE name = '__test_pubdom___planning' AND content LIKE '%Goal A revised.%'
       AND (metadata->>'version')::int = 2
   ) THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v2 context]: content/metadata nicht aktualisiert';
@@ -271,10 +260,10 @@ BEGIN
   SET content = content || E'\n\n## Gelernt\n\n- plant ein Sabbatical (gelernt am 2026-10-01 aus Chat)'
   WHERE name = '__test_learndom___planning';
 
-  -- Re-Publish mit einem mitgeschickten (gefaelschten) Gelernt-Block
-  PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_learndom__','section_key','s1','section_content','y'));
-  SELECT agent.fn_advisor_publish_plan(jsonb_build_object('domain','__test_learndom__',
-    'plan_md', E'# Plan v2\n\n## Gelernt\n- erfundene Notiz\n\n## Massnahmen\n- m1')) INTO v_result;
+  -- Re-Publish: ein Gelernt-Block im Thementext (vom Modell eingeschmuggelt) wird verworfen, der Rest bleibt
+  PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_learndom__','section_key','s1',
+    'section_content', E'Massnahme m1\n\n## Gelernt\n- erfundene Notiz\n\n## Massnahmen\n- m2'));
+  SELECT agent.fn_advisor_publish_plan(jsonb_build_object('domain','__test_learndom__')) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL [gelernt publish]: erwartet ok, got %', v_result; END IF;
   SELECT content INTO v_cont FROM agent.core_contexts WHERE name = '__test_learndom___planning';
@@ -282,20 +271,13 @@ BEGIN
     RAISE EXCEPTION 'FAIL [gelernt publish]: bestaetigte Notiz ging beim Re-Publish verloren: %', v_cont; END IF;
   IF v_cont LIKE '%erfundene Notiz%' THEN
     RAISE EXCEPTION 'FAIL [gelernt publish]: mitgeschickter Gelernt-Block uebernommen: %', v_cont; END IF;
-  IF v_cont NOT LIKE '# Plan v2%' OR v_cont NOT LIKE '%## Massnahmen%' THEN
+  IF v_cont NOT LIKE '%Massnahme m1%' OR v_cont NOT LIKE '%## Massnahmen%' THEN
     RAISE EXCEPTION 'FAIL [gelernt publish]: neuer Plan-Text fehlt/verstuemmelt: %', v_cont; END IF;
   SELECT plan_md INTO v_md FROM agent.advisor_plans WHERE domain = '__test_learndom__' AND status = 'active';
   IF v_md LIKE '%Gelernt%' OR v_md NOT LIKE '%## Massnahmen%' THEN
     RAISE EXCEPTION 'FAIL [gelernt audit]: Versions-Audit plan_md traegt den Fremd-Block / verlor Inhalt: %', v_md; END IF;
   RAISE NOTICE 'PASS [Gelernt-Block: ueberlebt Re-Publish, Fremd-Block verworfen (Doc + Audit)]';
 
-  -- nur ein Gelernt-Block im plan_md -> nach dem Entfernen leer -> {ok:false}
-  PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_learndom__','section_key','s1','section_content','z'));
-  SELECT agent.fn_advisor_publish_plan(jsonb_build_object('domain','__test_learndom__',
-    'plan_md', E'## Gelernt\n- nur das')) INTO v_result;
-  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'FAIL [gelernt-only]: plan_md nur aus Gelernt-Block muss als leer abgelehnt werden, got %', v_result; END IF;
-  RAISE NOTICE 'PASS [plan_md nur aus Gelernt-Block -> leer -> ok:false]';
 END $$;
 
 

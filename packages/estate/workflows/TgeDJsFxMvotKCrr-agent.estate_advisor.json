@@ -319,7 +319,8 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "agent_name":  "estate_advisor",
-                                                                              "include_manifest":  "true"
+                                                                              "include_manifest":  "true",
+                                                                              "audience":  "advisor"
                                                                           },
                                                                 "matchingColumns":  [
 

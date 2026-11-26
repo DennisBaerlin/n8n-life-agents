@@ -47,6 +47,16 @@ ALTER TABLE agent.hitl_pending ADD COLUMN IF NOT EXISTS approved boolean;
 -- Warum eine Spalte statt einer Tabelle: Zeile, Loeschen, Test-Sentinel, Backup-Ausschluss und Test-Aufraeumen bleiben gleich.
 ALTER TABLE agent.hitl_pending ADD COLUMN IF NOT EXISTS decline_key text;
 
+-- Text, den der Nutzer bei offener Karte schreibt (er erreicht die wartende Karte nicht): agent.fn_stash_hitl_note merkt ihn
+-- an den noch nicht freigegebenen eigenen Zeilen des Chats, agent.fn_take_hitl_note gibt ihn nach dem Abbrechen an den Agenten
+-- weiter (der Nutzer muss seinen Wunsch nicht zweimal schreiben). Fluechtig wie die Zeile.
+ALTER TABLE agent.hitl_pending ADD COLUMN IF NOT EXISTS note text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'hitl_pending_note_length') THEN
+        ALTER TABLE agent.hitl_pending ADD CONSTRAINT hitl_pending_note_length CHECK (note IS NULL OR length(note) BETWEEN 1 AND 1000);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS hitl_pending_execution_idx ON agent.hitl_pending (execution_id);
 
 -- Kein Grant an core_ro: der Pre-Router liest ueber das DEFINER-Fenster agent.fn_get_hitl_pending_state

@@ -180,6 +180,21 @@ BEGIN
     IF to_regprocedure('core.fn_advisor_read_plan(text, text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_read_plan(text, text) TO %I, %I', v_rw, v_ro);
     END IF;
+    -- Plan-Gespraech: offene Punkte und Themen-Index des eigenen Plans (Lesedurchgang der Schlusspruefung im Berater).
+    IF to_regprocedure('core.fn_advisor_open_points(text, text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_open_points(text, text) TO %I, %I', v_rw, v_ro);
+    END IF;
+    IF to_regprocedure('core.fn_advisor_topic_index(text, text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_topic_index(text, text) TO %I, %I', v_rw, v_ro);
+    END IF;
+    -- Hinweise des Berater-Snapshots (INVOKER unter <pkg>_ro): Entwurf offen + Merker "spaeter", und ob eine offene Vormerkung
+    -- ein Konto nennt (ohne den payload preiszugeben).
+    IF to_regprocedure('core.fn_advisor_hint_state(text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_hint_state(text) TO %I, %I', v_rw, v_ro);
+    END IF;
+    IF to_regprocedure('core.fn_advisor_handoff_mentions(text, text[])') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_handoff_mentions(text, text[]) TO %I, %I', v_rw, v_ro);
+    END IF;
     -- Uebergabe Berater -> Buchhalter: der Paket-Agent liest die Aufgaben seines Auftrags (beide Rollen); die Write-fns
     -- des Pakets pruefen und schliessen sie in derselben Transaktion ab (nur _rw, finance.fn_with_handoff).
     IF to_regprocedure('core.fn_handoff_tasks_read(integer[])') IS NOT NULL THEN

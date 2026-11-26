@@ -1,0 +1,212 @@
+{
+    "id":  "r7YO2QF1zmgA09Fk",
+    "name":  "agent.tool_defer_hint",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "key"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "806a7448-4b8f-5f3d-82f5-327e8a3ecef3",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_advisor_defer_hint($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), key: String($(\u0027Start\u0027).item.json.key || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "c3333ae7-7039-5b48-a413-a9b26cd77b7f",
+                      "name":  "Defer hint",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f12f4ac8-9ef3-5902-881b-a812aee78896",
+                                                                                   "leftValue":  "={{ ($json.r || {}).ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "1fdd0cd8-d549-5330-935b-e8e79db5e2a3",
+                      "name":  "Deferred?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "a111db6a-89f5-50ef-ab46-9f489f83f68c",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a036ea2c-73f6-509f-9e86-2e823a1cab9f",
+                                                                                     "name":  "key",
+                                                                                     "value":  "={{ $json.r.key }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "dbcb8d72-276a-596c-bcf2-df44e66c1667",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5d7b2436-a1dc-59d4-a679-bc98afd801c7",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "476f3bc3-f27b-53bb-8d9a-f45f26b23524",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Not deferred (\u0027 + String(($json.r || {}).code || \u0027error\u0027) + \u0027)\u0027 + ((($json.r || {}).keys || []).length ? \u0027, known keys: \u0027 + $json.r.keys.join(\u0027, \u0027) : \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       100
+                                   ],
+                      "id":  "7ad74870-517e-538f-9e15-bdc9ff709e6d",
+                      "name":  "Hint not deferred"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Kontohinweis stilllegen (ohne Gate)**\n\nDefer hint ruft agent.fn_advisor_defer_hint: prüft Schreibrecht am Plan und dass es den Hinweis gibt, und setzt den Merker später (core.notification_state, Quelle advisor_hint, 30 Tage oder bis sich der Hinweis in den Daten erledigt). Danach liefert der Snapshot den Hinweis nicht mehr, der Berater spricht ihn nicht wieder an. Derselbe Merker entsteht beim Knopf [Später] auf einer Hinweis-Karte. Ablehnung als Daten (unknown_hint mit den bekannten Keys, no_permission, invalid_input). Kein Gate: es ändert keine Daten des Nutzers.",
+                                         "height":  320,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -340
+                                   ],
+                      "id":  "a60a2add-7909-5b8a-973b-297cb4f6a9aa",
+                      "name":  "Doc Hinweis später"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Defer hint",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Defer hint":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Deferred?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Deferred?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Hint not deferred",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -94,6 +94,33 @@ DO $$ BEGIN
             CHECK (plan_validate_fn IS NULL OR plan_validate_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
     END IF;
 END $$;
+-- Plan-Gespraech: stages = geordnete Teile und Etappen [{key, sections:[abschnitt | {key, annex?, slot?},…]}] (eine Adresse fuer
+-- Reihenfolge, "Teil k von m" und Etappen; NULL = eine Etappe aus allen Katalog-Abschnitten, core.fn_advisor_progress).
+-- section_facts_fn = Paket-fn(text section_key, text chat_id) -> jsonb [{label, value, kind}] ("Stand heute" je Teil, frisch
+-- bei jeder Anzeige); hints_fn = Paket-fn(text domain) -> jsonb [{key, class, …}] (Hinweise mit Klasse, Quelle der Art hint
+-- der offenen Frage). Beide nur ueber Registry + to_regprocedure-Guard aufgerufen, CHECK wie review_fn.
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS stages jsonb;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS section_facts_fn text;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS hints_fn text;
+-- Form der Etappen: je Etappe {key, sections[]}, ein Abschnitt als Key oder als Objekt {key, annex?, slot?} (Anbauten des Plans).
+-- Jedes Mal neu gesetzt (DROP + ADD), damit eine geaenderte Form auch auf Bestands-DBs gilt.
+ALTER TABLE core.advisors DROP CONSTRAINT IF EXISTS advisors_stages_check;
+ALTER TABLE core.advisors ADD CONSTRAINT advisors_stages_check CHECK (stages IS NULL OR (jsonb_typeof(stages) = 'array'
+    AND jsonb_array_length(stages) >= 1
+    AND NOT jsonb_path_exists(stages,
+        '$[*] ? (@.type() != "object" || !(exists(@.key) && exists(@.sections)) || @.key.type() != "string" || @.sections.type() != "array")')
+    AND NOT jsonb_path_exists(stages,
+        '$[*].sections[*] ? (@.type() != "string" && (@.type() != "object" || !exists(@.key) || @.key.type() != "string"))')));
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_section_facts_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_section_facts_fn_check
+            CHECK (section_facts_fn IS NULL OR section_facts_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_hints_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_hints_fn_check
+            CHECK (hints_fn IS NULL OR hints_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
+    END IF;
+END $$;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_advisor_agent_check') THEN
         ALTER TABLE core.advisors ADD CONSTRAINT advisors_advisor_agent_check

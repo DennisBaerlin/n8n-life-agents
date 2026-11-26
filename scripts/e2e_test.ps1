@@ -90,6 +90,7 @@ Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 . "$PSScriptRoot\lib\paid_guard.ps1"
 . "$PSScriptRoot\lib\next_step_marker.ps1"
+. "$PSScriptRoot\lib\choices_marker.ps1"
 $llmPrices = Get-LlmPriceTable -RepoRoot $RepoRoot
 
 # Cleanup nur ueber die geguardete Function (in der Container-DB). Wirft bei Guard-Verletzung.
@@ -247,6 +248,8 @@ try {
             $rd = $ex.data.resultData.runData
             $calls = @(Get-ToolCall $rd $AgentNodeName)
             $wCalls = @($calls | Where-Object { Test-IsWriteTool $_.tool })
+            # Wie im Relay: Markerzeilen NEXT_STEP und CHOICES aus dem Text, die Antwort-Knoepfe gehen als eigenes Feld an den Bewerter.
+            $e2eChoices = Split-ChoicesMarker (Split-NextStepMarker (Get-AgentOutput $rd $AgentNodeName)).text
             $judgeBundle += [ordered]@{
                 id = $tc.id; name = $tc.name; task = $tc.task
                 expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
@@ -256,7 +259,8 @@ try {
                 actual_tool_output = (Get-ReadToolOutput $rd -Write -PerCall 12000 -Total 24000)
                 read_tools = (@($calls | Where-Object { -not (Test-IsWriteTool $_.tool) } | ForEach-Object { $_.tool } | Select-Object -Unique) -join ', ')
                 read_tool_outputs = (Get-ReadToolOutput $rd)
-                actual_output = (Split-NextStepMarker (Get-AgentOutput $rd $AgentNodeName)).text
+                actual_output = $e2eChoices.text
+                answer_buttons = (@($e2eChoices.options) | ForEach-Object { "[$_]" }) -join ' '
             }
             Write-Host "    [JUDGE] Antwort nach der Karte zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
         }

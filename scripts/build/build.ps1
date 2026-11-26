@@ -113,6 +113,8 @@ $OnboardingDispatchList = @($OnboardingPackageOrder | Where-Object { $_.Agent } 
 })
 # Onboarding-Plan-Schritt: Berater-Domaenen mit advisors.<domain>.plan_step (Menue-Plan-Zeile + Orchestrator-Arm plan:<domain>).
 $AdvisorPlanStepList = @(Get-AdvisorPlanStepList $RepoRoot)
+# Alle Berater (auch ohne Plan-Schritt): Antwort-Knoepfe der offenen Frage und Ziel eines Tipps mit then 'continue'.
+$AdvisorList = @(Get-AdvisorList $RepoRoot)
 
 # --- Command-Dispatch-Liste aus den Manifest-`commands`-Bloecken aller Pakete. Nur Eintraege mit einem
 # `dispatch`-Feld {agent, task}: das sind Code-Pfad-Commands, die einen Agenten starten. Die

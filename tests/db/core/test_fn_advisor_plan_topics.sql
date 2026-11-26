@@ -186,6 +186,9 @@ BEGIN
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes','1',
          'check_findings', jsonb_build_array(jsonb_build_object('text','','outcome','resolved'))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 leerer Text]: %', r; END IF;
+  -- (plan_md setzt die DB zusammen -> die E2E-Domain braucht einen Entwurf, damit die Schlusspruefungs-Regel greift)
+  PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__e2e___tp_fin____','section_key','risk_protection',
+         'topic','Haftpflicht','section_content','Haftpflicht vorhanden.'));
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__e2e___tp_fin____','plan_md','# Plan'));
   IF r->>'code' IS DISTINCT FROM 'final_check_missing' THEN
     RAISE EXCEPTION 'FAIL [7 E2E-Domain]: %', r; END IF;

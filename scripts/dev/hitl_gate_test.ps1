@@ -967,7 +967,7 @@ function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [stri
 # finance verlangt den Gesamtcheck (advisor.final_check_required) -> ein bewusst offener Probe-Fund, damit die Karte ihn zeigt.
 function Send-PlanPublish([string]$Domain, [string]$Change, [string]$ChatId = $OwnerUnpaired,
                           [string]$Findings = '[{"text":"Probe-Fund offen","outcome":"deferred"},{"text":"Probe-Fund geklaert","outcome":"resolved"}]') {
-    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_md = 'Probe-Plan'; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; reminders = '[]'; chat_id = $ChatId }
+    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; reminders = '[]'; chat_id = $ChatId }
 }
 # Endete der letzte Lauf des Tools im Probelauf-Abbruch (keine Karte)? Liefert die Probleme (leer = ja).
 function Get-DryRunRejectProblem($Exec, [string]$Code) {

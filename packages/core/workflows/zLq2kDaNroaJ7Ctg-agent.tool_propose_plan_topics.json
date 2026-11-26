@@ -1,0 +1,227 @@
+{
+    "id":  "zLq2kDaNroaJ7Ctg",
+    "name":  "agent.tool_propose_plan_topics",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "section_key"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "topics"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "one_card"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "more_in_part"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "0346594c-f6d0-57d4-8af6-a8a03ef4c1f1",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_advisor_propose_topics($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), section_key: String($(\u0027Start\u0027).item.json.section_key || \u0027\u0027), topics: $(\u0027Start\u0027).item.json.topics, one_card: String($(\u0027Start\u0027).item.json.one_card === true || String($(\u0027Start\u0027).item.json.one_card).toLowerCase() === \u0027true\u0027), more_in_part: String($(\u0027Start\u0027).item.json.more_in_part === true || String($(\u0027Start\u0027).item.json.more_in_part).toLowerCase() === \u0027true\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "7955896a-c8b1-5754-90de-dda36ff2bbbe",
+                      "name":  "Propose topics",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "aa075b80-8d76-535a-b25d-86e841ca22d5",
+                                                                                   "leftValue":  "={{ ($json.r || {}).ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "f6e47127-f102-50dc-939d-888fe671333f",
+                      "name":  "Proposed?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "f8776e9b-e4a1-5211-9417-e9d1a1155bdc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "692929b2-489c-56c8-89e2-63c45dcb8939",
+                                                                                     "name":  "cards",
+                                                                                     "value":  "={{ $json.r.cards }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e000aae1-9642-552d-852d-4d64dbbbf2a9",
+                                                                                     "name":  "prompt_ids",
+                                                                                     "value":  "={{ $json.r.prompt_ids }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "a8377c1e-39d4-5a2a-91ce-882003dbaf9e",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7a99dc11-99b7-5e95-b524-e2c53b8f70fa",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "12bad041-6bf3-577e-b271-45b6d36eae82",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Not proposed (\u0027 + String(($json.r || {}).code || \u0027error\u0027) + \u0027)\u0027 + (($json.r || {}).topic_index ? \u0027, topic \u0027 + $json.r.topic_index : \u0027\u0027) + \u0027: \u0027 + String(($json.r || {}).reason || \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       100
+                                   ],
+                      "id":  "0d67e1bd-3f98-54b3-aa6b-cc2ef93edee4",
+                      "name":  "Topics rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Themen als Karte vorschlagen (offene Frage, ohne Gate)**\n\nPropose topics ruft agent.fn_advisor_propose_topics: jedes Thema läuft als Probelauf durch agent.fn_advisor_save_section (Key, Länge, why, offene Punkte, Schriftzeichen, Aufgaben, Schreibrecht) und wird zurückgerollt; die erste Ablehnung kommt mit Code und Themen-Nummer zurück (Topics rejected), nichts wird angelegt. Sonst legt die fn je Thema eine Karte an (one_card: eine Karte für alle) und ersetzt offene oder wartende Themen-Karten desselben Beraters. Gespeichert wird erst beim Tipp [Übernehmen] (core.fn_answer_chat_prompt -\u003e agent.fn_prompt_answer_topic), genau die Themen dieser Karte. Kein HITL-Gate, weil der Plan hier unverändert bleibt. Gesendet wird die Karte vom Orchestrator am Ende des Laufs (core.sub_send_chat_prompt); der Berater schreibt danach nichts mehr.",
+                                         "height":  340,
+                                         "width":  360,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -360
+                                   ],
+                      "id":  "7c397a10-5dfa-5f13-ba7a-419845f95b6f",
+                      "name":  "Doc Themen vorschlagen"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Propose topics",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Propose topics":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Proposed?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Proposed?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Topics rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

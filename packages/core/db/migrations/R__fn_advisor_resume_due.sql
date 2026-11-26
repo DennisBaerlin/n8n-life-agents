@@ -21,7 +21,7 @@
 --         'advisor_resume', nur Entwuerfe juenger als advisor.rollout_draft_stale_days (30), Stillstand und Re-Arm ab draft.updated_at, Abstand 7 Tage, Re-Arm-Mindestabstand
 --         advisor.resume_rearm_days (14), Quellen-Grenze onboarding_nudge.
 --       - kind nicht section -> Uebergabe-Erinnerung (einmal): erste Domain in p.plan_order mit can_write, aktivem Plan
---         ohne Entwurf (core.fn_advisor_plan_status state gaps|complete) und offenen Punkten (core.fn_handoff_overview,
+--         ohne Entwurf (core.fn_advisor_plan_status state gaps|complete|enter) und offenen Punkten (core.fn_handoff_overview,
 --         via 'resume'), deren Rollout-Liste fuer dieselbe hoechste Aufgabe festgeschrieben ist (plan_rollout
 --         '<domain>:<household|pid>:handoff:<max>', core.fn_plan_rollout_latch done, nur lesend) und vor
 --         >= advisor.resume_handoff_days (14) kam. Merker '<pid>:<domain>:handoff:<max>:1' ueber core.fn_nudge_stage
@@ -161,7 +161,7 @@ BEGIN
             FOR v_pl IN
                 SELECT pl FROM jsonb_array_elements(core.fn_advisor_plan_status(v_chat::text)) pl
                   LEFT JOIN jsonb_array_elements_text(v_porder) WITH ORDINALITY AS o(d, oi) ON o.d = pl->>'domain'
-                 WHERE (pl->>'can_write')::boolean AND pl->>'state' IN ('gaps', 'complete')
+                 WHERE (pl->>'can_write')::boolean AND pl->>'state' IN ('gaps', 'complete', 'enter')
                  ORDER BY COALESCE(o.oi, 100000), pl->>'domain'
             LOOP
                 v_ho := core.fn_handoff_overview(jsonb_build_object('domain', v_pl->>'domain', 'chat_id', v_chat::text, 'via', 'resume'));

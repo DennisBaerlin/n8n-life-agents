@@ -33,7 +33,7 @@ BEGIN
   VALUES ('finance', NULL, 'Plan', 'draft', 1, '{}', now() - interval '30 minutes');
   v := core.fn_advisor_pins(jsonb_build_object('person_id', 'erika', 'role', 'owner'));
   IF v->>'interview_advisor' IS DISTINCT FROM 'agent.finance_advisor' OR v->>'paused_advisor' IS NOT NULL
-     OR (SELECT count(*) FROM jsonb_object_keys(v)) <> 2 OR NOT (v ? 'paused_advisor') THEN
+     OR (SELECT count(*) FROM jsonb_object_keys(v)) <> 3 OR NOT (v ? 'paused_advisor') OR NOT (v ? 'open_prompt_agent') THEN
     RAISE EXCEPTION 'FAIL [1 heiss]: %', v; END IF;
 
   -- ---------- (2) 3 Tage alt -> nur paused_advisor ----------

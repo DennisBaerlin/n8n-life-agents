@@ -6,20 +6,23 @@
 --   package=Domain als Uninstall-Purge-Key). Der Seeder seed_data.sh fasst managed_by='agent'-Zeilen nie an,
 --   sonst wuerde ein Re-Seed den agent-publizierten Plan still ueberschreiben.
 --   Aufgerufen vom HITL-gegateten Tool agent.tool_publish_plan (domain = fixer
---   Binding-Input). Das LLM liefert plan_md als fertiges Markdown — die fn rechnet
---   nichts, sie persistiert und verkettet nur (Status + Versionen = DB-Zustand).
+--   Binding-Input). plan_md setzt die DB aus den Themen des Entwurfs zusammen (agent.fn_advisor_compose_plan_md);
+--   Status + Versionen = DB-Zustand.
 --   Person-Scope (Paritaet fn_advisor_save_section): Plan-Schluessel = (domain, person_id) + der
 --   Context-Name aus core.advisors.plan_context. household (finance/financial_planning) -> person_id NULL, Doc am
 --   Basis-Namen; per_user (career/career_planning, core.context_scopes) -> person_id = Sender (own_user_only)
 --   aus der chat_id (nie LLM), Doc suffigiert '<base>__<pid>'; unaufgeloester Sender bei per_user -> {ok:false}.
 --   Permission via fn_check_write_permission.
---   Eingabe jsonb: domain (Pflicht), chat_id (Identitaet), plan_md (Pflicht, Markdown),
+--   Eingabe jsonb: domain (Pflicht), chat_id (Identitaet), plan_md (wird ignoriert: die DB setzt den Text zusammen),
 --     plan_name (optional, Umbenennung beim Publish),
 --     context_description (optional; sonst generischer EN-Default mit Scope-Pointer),
 --     change_summary (optional; Aenderungs-Zusammenfassung der Version, gespeichert mit der Owner-Sprache — Plan teilen),
 --     check_findings (Array ODER JSON-String, leerer String = nicht angegeben; '[]' = ausdruecklich keine Funde) je
 --       {text 1..300, outcome resolved|deferred|accepted} + check_passes (int >= 1, Pflicht mit check_findings): der
---       Gesamtcheck vor dem Veroeffentlichen, gespeichert an der Version. Pflicht, wenn core.config
+--       Gesamtcheck vor dem Veroeffentlichen, gespeichert an der Version. Gibt es Prüfpunkte der Schlusspruefung am Entwurf
+--       (agent.chat_prompts, Art finding, agent.fn_advisor_record_check_findings), kommen beide allein aus diesen Zeilen (je Text
+--       der juengste Ausgang, hoechster Durchgang); offene Zeile oder ein ausstehender weiterer Durchgang (ein Punkt hat Themen
+--       geaendert, advisor.check_max_passes nicht erreicht) -> final_check_open. Pflicht, wenn core.config
 --       <paket>.advisor.final_check_required = 'true' (Paket der Domain aus core.advisors, E2E-Domain -> echte Domain).
 --     reminders, declined, retire, watch_candidates (Plan-Durchlauf core.fn_plan_sync vor Schritt 1, alles eine Transaktion; Pflicht reminders
 --       bei <paket>.advisor.plan_sync_required = 'true', code plan_sync_missing; dessen ok:false geht unveraendert zurueck, kein Write).
@@ -35,7 +38,7 @@
 --     context_name, section_count, card_lines, sync?, effective?} (Post-State der Publish-Kette; sync = Listen aus core.fn_plan_sync; card_lines = mit Gesamtcheck die Zeile
 --     core.label.final_check {n, passes, resolved, open} bzw. core.tpl.final_check_clean {passes} und je nicht geklaertem
 --     Fund (deferred, accepted) eine raw-Zeile mit seinem Text).
---   Korrigierbar (fehlendes domain, leeres plan_md, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
+--   Korrigierbar (fehlendes domain, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
 --   Form oder Paket-Validator des Basis-Namens, code final_check_missing | final_check_open {index} | final_check_invalid)
 --   -> {ok:false, reason [, code]} OHNE Write.
 -- ============================================================
@@ -43,7 +46,7 @@ CREATE OR REPLACE FUNCTION agent.fn_advisor_publish_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_domain   TEXT := NULLIF(trim(COALESCE(p->>'domain', '')), '');   -- Pflicht, kein Default
-    v_plan_md  TEXT := COALESCE(p->>'plan_md', '');
+    v_plan_md  TEXT;
     v_ctx_name TEXT;                    -- BASIS-Context-Name der Domain (Registry/Fallback); im Result zurueck
     v_physical TEXT;                    -- physischer Speicher: per_user -> '<base>__<pid>', sonst Basis
     v_ctx_desc TEXT;
@@ -75,6 +78,8 @@ DECLARE
     v_lines    JSONB := '[]'::jsonb;
     v_sync_given BOOLEAN;               -- Plan-Durchlauf (reminders/declined/retire/watch_candidates) angegeben?
     v_sync     JSONB;
+    v_rows_plan INT;                    -- Entwurf, dessen Prüfpunkte (agent.chat_prompts) den Gesamtcheck stellen
+    v_rows_pass INT;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -104,6 +109,20 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', v_err);
     END IF;
 
+    -- plan_md setzt die DB aus den gespeicherten Themen zusammen; ein mitgeschicktes plan_md zaehlt nicht (ein ganzer Plan passt
+    -- nicht in eine Modell-Antwort: sie wurde abgeschnitten und neu angesetzt, bis zur Iterations-Grenze).
+    SELECT ap.id INTO v_rows_plan FROM agent.advisor_plans ap
+     WHERE ap.domain = v_domain AND ap.person_id IS NOT DISTINCT FROM v_pid AND ap.status = 'draft';
+    IF v_rows_plan IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'no draft plan exists for domain ' || v_domain || ' — save at least one section first');
+    END IF;
+    BEGIN
+        v_plan_md := COALESCE(agent.fn_advisor_compose_plan_md(v_rows_plan, core.fn_jsonb_list(p->'reminders')), '');
+    EXCEPTION WHEN invalid_text_representation OR raise_exception THEN
+        v_plan_md := COALESCE(agent.fn_advisor_compose_plan_md(v_rows_plan), '');   -- kaputte reminders lehnt core.fn_plan_sync ab
+    END;
+
     -- Verwalteter "## Gelernt"-Block: jeden im neuen plan_md mitgeschickten verwerfen (das Modell sieht den Block
     -- via load_context und koennte ihn wiedergeben) — vor dem Leer-Check und vor dem Audit-Write (Schritt 2).
     LOOP
@@ -114,6 +133,28 @@ BEGIN
 
     IF trim(v_plan_md) = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'plan_md must be non-empty');
+    END IF;
+
+    -- Prüfpunkt-Zeilen ersetzen ein mitgeschicktes check_findings/check_passes des Modells.
+    IF EXISTS (SELECT 1 FROM agent.chat_prompts c
+                                            WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status <> 'superseded') THEN
+        SELECT max((c.payload->>'pass')::int) INTO v_rows_pass FROM agent.chat_prompts c
+         WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status <> 'superseded';
+        IF EXISTS (SELECT 1 FROM agent.chat_prompts c WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status IN ('queued', 'open'))
+           OR (v_rows_pass < COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2)
+               AND EXISTS (SELECT 1 FROM agent.chat_prompts c WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status = 'answered'
+                              AND (c.payload->>'pass')::int = v_rows_pass AND COALESCE((c.payload->>'changed')::boolean, false))) THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'final_check_open',
+                'reason', 'the final check is not finished: open check points or a pending second pass (the check cards lead through it)');
+        END IF;
+        p := p || jsonb_build_object('check_passes', v_rows_pass, 'check_findings', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object('text', d.txt, 'outcome', d.outcome) ORDER BY d.first_id)
+              FROM (SELECT DISTINCT ON (c.payload->>'text') c.payload->>'text' AS txt, c.payload->>'outcome' AS outcome,
+                           min(c.id) OVER (PARTITION BY c.payload->>'text') AS first_id
+                      FROM agent.chat_prompts c
+                     WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status = 'answered'
+                       AND c.payload->>'role' IS DISTINCT FROM 'overview'
+                     ORDER BY c.payload->>'text', (c.payload->>'pass')::int DESC, c.id DESC) d), '[]'::jsonb));
     END IF;
 
     -- Gesamtcheck (check_findings/check_passes): Array oder JSON-String, leerer String = nicht angegeben. Pflicht, wenn das

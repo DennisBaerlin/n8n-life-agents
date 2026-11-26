@@ -482,14 +482,14 @@
   },
   {
     "id": "oc56",
-    "name": "Bot persoenlicher: gute Nachricht + Kontostand -> FRAME CHEER",
+    "name": "Bot persoenlicher: gute Nachricht + Kontostand -> FRAME ohne Stimmung (die Antwort folgt, keine Reaktion daneben)",
     "task": "Juhu, das Gehalt ist da! Wie steht mein Lindenbank Girokonto?",
     "chat_id": "test_orc56",
     "expected_route": "finance",
     "expected_signal": "FRAME",
-    "expected_mood": "CHEER",
+    "expected_mood": "",
     "timeout_s": 180,
-    "notes": "Grammatik N1: Stimmung nur, wenn die Nachricht sie klar traegt; Lindenbank Girokonto ist ein Fixture-Konto, kein Sparziel-Fixture noetig."
+    "notes": "Grammatik N1 + Berater-UX (Plan s4-berater-ux §5.7, Owner E-7): eine Reaktion nur, wenn keine Antwort folgt; nach einem Spezialisten also nie eine Stimmung, auch bei klar guter Nachricht. Lindenbank Girokonto ist ein Fixture-Konto, kein Sparziel-Fixture noetig."
   },
   {
     "id": "oc57",
@@ -695,5 +695,21 @@
     "expected_route": "finance_advisor",
     "timeout_s": 300,
     "notes": "Zweite Runde von ac-resume-1 (Konzept beratung-erinnern §8): nach der Wiederaufnahme speichert der Berater erst mit dem bestaetigten Thema, der Pin bleibt also kalt (interview_advisor none, paused_advisor gesetzt). Die kurze Antwort auf seine Frage muss per Regel 2b beim Berater bleiben; Regel 3c darf das nicht stoeren. Mock: Szenario mit gleichem match."
+  },
+  {
+    "id": "oc-react-1",
+    "name": "Berater-UX: kurzes Ok auf die Frage des Beraters -> beim Berater, keine Stimmung und keine Reaktion neben der Antwort",
+    "task": "Ok, passt.",
+    "chat_id": "test_oc_react_1",
+    "router_history": {
+      "human": "lass uns mit dem Finanzplan weitermachen",
+      "agent": "agent.finance_advisor",
+      "output": "Weiter mit der Notreserve. Fuer einen Haushalt mit zwei Einkommen empfehle ich 3 Monatsausgaben auf dem Tagesgeld. Passt dir das?"
+    },
+    "expected_route": "finance_advisor",
+    "expected_signal": "FRAME",
+    "expected_mood": "",
+    "timeout_s": 240,
+    "notes": "Plan s4-berater-ux §7.3 oc-react-1 (Owner E-7): Live trug fast jede Ok-Antwort im Plan-Gespraech eine Reaktion, die Telegram als Zaehler zeigt. Reine Dank-Reaktion ohne Text prueft der bestehende REACT-LOVE-Fall. Mock: Szenario mit gleichem match."
   }
 ]

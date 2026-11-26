@@ -47,7 +47,7 @@ param(
     [string]$CasesFile = 'tests\agent\core\orch_cases.json',
     # Welche Tool-Node-Namen als Write-Tool zaehlen (expected_tool-Matching). Leer = Default 'tool_*'
     # (alle Write-Tools sind tool_*-praefixiert, der Default deckt auch Advisor/Guide/Monitor);
-    # -WriteTools (z.B. tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger) dient nur zum Verengen.
+    # -WriteTools (z.B. tool_propose_plan_topics,tool_publish_plan,tool_create_monitor_trigger) dient nur zum Verengen.
     [string[]]$WriteTools = @(),
     [switch]$Discover,
     # Chat-Gedaechtnis nicht vor dem Fall leeren -> zwei Aufrufe nacheinander pruefen das Wiedereinlesen einer
@@ -281,7 +281,7 @@ foreach ($tc in $cases) {
                 Write-Host "    FEHLER: erwartet $want, got [$($hit -join '+')]" -ForegroundColor Red
             }
         } elseif ($tc.PSObject.Properties['expected_tool']) {
-            # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_save_plan_section,...) oder Default tool_*.
+            # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_propose_plan_topics,...) oder Default tool_*.
             # Lokale Variable nicht $writeTools nennen — PowerShell-Variablen sind case-insensitiv,
             # das wuerde den Param $WriteTools ueberschreiben (leeres $tools im 1. Case -> Param weg).
             $hitWrite = if ($WriteTools.Count -gt 0) { @($tools | Where-Object { $WriteTools -contains $_ }) }

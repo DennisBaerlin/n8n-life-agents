@@ -98,7 +98,7 @@ removed on uninstall/purge. YAML frontmatter, then the body — the three-field 
 | Frontmatter | Meaning |
 |---|---|
 | `description` | Required, non-empty (manifest index for lazy contexts). |
-| `agent_name` | Empty ⟹ `NULL` (visible to all); else the owning agent. |
+| `agent_name` | Empty ⟹ `NULL` (visible to all); else the owning agent, or an audience that agents load by name (`advisor` = every advisor, passed as `audience` to `agent.tool_load_context`; placed right after `global_instructions`). |
 | `load_strategy` | `static` \| `lazy`. |
 
 Filename (sans `.md`) = the DB `name`, must match `^[a-z0-9_]+$`. **Deletion protection is NOT a
@@ -158,7 +158,7 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   The button `plan:<domain>` is a `callback_handlers` prefix (`core.fn_handle_plan_cb`, member_permeable) → the
   orchestrator's build-time arm per domain starts the `advisor_agent` with a fixed English task + the tapper's reply
   language.
-- **Plan cards (2026-11-04):** a package that binds `core:save_plan_section` carries `<pkg>.plan.name` and
+- **Plan cards (2026-11-04):** a package that binds `core:propose_plan_topics` carries `<pkg>.plan.name` and
   `<pkg>.plan_section.<section_key>` in every language (the cards show them; `contract_lint` 28b checks them against the
   key list in the advisor prompt).
 - **Plan sharing (2026-10-28):** after publishing a **household** plan, `tool_publish_plan` offers the owner
@@ -170,7 +170,7 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   (`change_summary_lang`), never translated. Buttons `plan:explain:<domain>` / `plan:wish:<domain>` (partner only) start
   the advisor in explain mode (read-only) or wish mode (`tool_record_plan_wish`, `owner_info`: the owner gets the wish
   verbatim; `agent.advisor_plan_wishes`), `rem:off:plan_news` unsubscribes.
-- **Agreed plan entries (handoff):** entries the user agreed to in a section (`handoff_tasks` at `tool_save_plan_section`,
+- **Agreed plan entries (handoff):** entries the user agreed to in a section (`handoff_tasks` at a topic of `tool_propose_plan_topics`,
   `agent.handoff_tasks`) come after the publish, or on request via `tool_send_handoff_overview`, as a list with the button
   `handoff:<domain>:<max_task_id>` (`core.fn_handle_handoff_cb`, member_permeable: private chat, tapper = person of the
   entries, `can_write`; claims open entries up to `max_task_id`). The orchestrator's build-time arm per domain with
@@ -1208,7 +1208,7 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
 | **Paket** | homogenes `manifest.json` (provides/consumes/config/validators/renderers/advisors/protected_contexts/read_surface/catalog/backup/credentials) + eigenes Schema + `<pkg>_rw/_ro` + Lifecycle | `packages/finance/manifest.json` + `finance.tables_init.sql` | `contract_lint`, `test_<pkg>_isolation` |
 | **Paket-Secret / Fremd-API-Credential** | manifest-`credentials`-Block (§3.8: placeholder/name/type/required + env{field,validator,secret,prompt}) → Stage-4-Wizard (seen-persistiert `<pkg>.env`) + `_inject_manifest_credentials` (data-Assembly per Typ ZENTRAL in bash) + Teardown-Symmetrie; NIE Host-Code-Literale | `packages/career/manifest.json` `credentials` (Adzuna/JSearch) | `contract_lint` (Parität/Naht-Guard/type-Enum), doctor |
 | **Fakten-Kontext** (deterministisch) | `metadata.facts` jsonb in `agent.core_contexts` (`managed_by='agent'`), validate-on-write + render-at-fetch, registriert in `core.context_validators`+`core.context_renderers`+`core.context_scopes` (scope/write_permission, P0a); geschrieben ueber den EINEN Schreibweg `agent.fn_set_context_facts` (Phase A); ein household-Kontext deklariert sein leeres Skelett per Manifest-`context_skeletons` + seine HITL-Labels im Textkatalog (`<pkg>.facts.<context>.*`, §3.3) | `finance_profile` / `career_profile` (`fn_validate_*`/`fn_render_*`) | `db_test` je fn; `contract_lint` |
-| **Plan-/Prosa-Kontext** | `agent.advisor_plans` (`(domain, person_id)`-keyed seit P0c, draft/active, versioniert) + `core_contexts`-Prosa; Sektionen via `tool_save_plan_section`/`tool_publish_plan`; Fakten-Header via Renderer. scope/Person aus der `core.context_scopes`-Registry (household → `person_id` NULL; per_user → Sender via `fn_resolve_sender`, Prosa-Doc suffigiert). Domain→Context-Map aus `core.advisors.plan_context`. | `financial_planning` (household) / `career_planning` (per_user) | `db_test fn_advisor_save_section`/`_publish_plan`/`advisor_plans_person_keying` |
+| **Plan-/Prosa-Kontext** | `agent.advisor_plans` (`(domain, person_id)`-keyed seit P0c, draft/active, versioniert) + `core_contexts`-Prosa; Sektionen via `tool_propose_plan_topics` (Themen-Karte, gespeichert beim Tipp)/`tool_publish_plan`; Fakten-Header via Renderer. scope/Person aus der `core.context_scopes`-Registry (household → `person_id` NULL; per_user → Sender via `fn_resolve_sender`, Prosa-Doc suffigiert). Domain→Context-Map aus `core.advisors.plan_context`. | `financial_planning` (household) / `career_planning` (per_user) | `db_test fn_advisor_save_section`/`_publish_plan`/`advisor_plans_person_keying` |
 | **Instruktions-Kontext** | seedbare `.md` (Frontmatter `description`/`agent_name`/`load_strategy`), `managed_by='seed'`, in `protected_contexts` | `finance_advisor_instructions` (`packages/<pkg>/contexts/*.md`) | `doc_lint`, Seed |
 | **Write-fn** | `fn_<tool>(p jsonb)` atomar → `{ok:true, …post_state}` \| `{ok:false, reason}` (korrigierbar, kein RAISE) \| RAISE (unrecoverable → errorWorkflow); abgeleitete Werte **DB-seitig** | `finance.fn_book_transaction` | `db_test test_fn_<name>` (Happy + {ok:false}) |
 | **Write-Tool** | Sub-Workflow Trigger→Resolve→Check→HITL-Gate (`agent.tool_human_approval`, Tier aus dem `approval_matrix`-Block des Paket-Manifests, §3.10)→Write-fn→Return; `Build-Trigger`+`$fromAI` an ZWEI Stellen; `_manifest` (Category/Examples) ODER `@{ Internal = $true }` (genau eins); genau EINE Top-Level-`Build-*` je `tools/`-Def (Builder-Discovery `scripts/build/lib/builder_discovery.ps1`, keine Registry) | `packages/finance/build/workflows/tools/book_transaction.ps1` | `approval_lint`, `mock_route`, `-VerifyCatalog` |

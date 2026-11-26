@@ -404,6 +404,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(lib/(next_step_marker|judge_prompt)|dev/next_step_marker_test|build/lib/build_helpers|n8n_test)\.ps1$
 
+      - id: choices-marker-test
+        name: choices_marker_test (the direct test strips the advisor CHOICES line like the relay and hands its options to the judge as answer buttons)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/choices_marker_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(choices_marker|judge_prompt)|dev/choices_marker_test|build/lib/build_helpers|n8n_test|e2e_test)\.ps1$
+
       - id: case-teardown-test
         name: case_teardown_test (a case's teardown_sql runs after every case with setup_sql, also after a red case or a failed setup, and at the end of the run)
         language: system

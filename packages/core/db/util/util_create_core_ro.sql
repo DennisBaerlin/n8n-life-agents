@@ -183,6 +183,11 @@ DO $$ BEGIN
     IF to_regprocedure('core.fn_advisor_plan_status(text)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION core.fn_advisor_plan_status(text) TO core_ro;
     END IF;
+    -- Stand des Plan-Gespraechs ("fortsetzen, Teil 4 von 9", "noch 2 Eintraege") fuer Menue und Erinnerungstexte (DEFINER-Fenster,
+    -- Personen-Regel und Frei-SQL-Schutz in der fn; nur Zaehlwerte, keine Plan-Texte).
+    IF to_regprocedure('core.fn_advisor_progress(jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_advisor_progress(jsonb) TO core_ro;
+    END IF;
 END $$;
 
 -- Naechster Schritt: Orchestrator, Guide und Menue lesen den einen naechsten Schritt bzw. die

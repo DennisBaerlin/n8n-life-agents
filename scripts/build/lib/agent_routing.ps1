@@ -157,6 +157,26 @@ function Get-AdvisorPlanStepList([string]$RepoRoot) {
     return @($out | Sort-Object Ord, Domain | Select-Object Domain, Package, Agent, HandoffAgent, ReadyKeys)
 }
 
+# Alle Berater (Manifest-Block advisors, jeder Eintrag mit advisor_agent, ob mit Plan-Schritt oder nicht). Sie alle tragen die
+# gemeinsamen Gespraechsregeln (Antwort-Knoepfe CHOICES, offene Frage). Konsument: agent.orchestrator (welche Agenten Knoepfe
+# setzen duerfen und wohin ein Tipp mit then 'continue' geht). Rueckgabe: @( [pscustomobject]@{ Domain; Package; Agent } ) nach Domain.
+function Get-AdvisorList([string]$RepoRoot) {
+    $out = @()
+    foreach ($m in (Get-PackageManifest $RepoRoot)) {
+        $pkg = ($m.Path -split '/')[1]
+        $adv = $m.Json.advisors
+        if ($null -eq $adv) { continue }
+        foreach ($p in $adv.PSObject.Properties) {
+            if ($p.Name -eq '_comment') { continue }
+            $agent = [string]$p.Value.advisor_agent
+            if (-not $agent) { continue }
+            if ($agent -cnotmatch '^agent\.[a-z][a-z0-9_]*$') { throw "Get-AdvisorList: advisors '$($p.Name)' ($pkg) mit ungueltigem advisor_agent '$agent'" }
+            $out += [pscustomobject]@{ Domain = $p.Name; Package = $pkg; Agent = $agent }
+        }
+    }
+    return @($out | Sort-Object Domain)
+}
+
 # Eingabe-Reihenfolge fuer core.fn_get_next_step / core.fn_check_next_step_tap (naechster Schritt): dieselbe Quelle wie
 # das Onboarding-Menue ($SECTIONS in core.sub_send_onboarding_menu = Haushalt zuerst, dann Get-OnboardingPackageOrder, je
 # Paket nach ord) und dieselbe Plan-Reihenfolge wie der Weiter-Knopf ($AdvisorPlanStepList). So nennen Gruss-Knopf und

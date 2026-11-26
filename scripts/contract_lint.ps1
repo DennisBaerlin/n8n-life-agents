@@ -1924,11 +1924,11 @@ if ((Test-Path $gapFn) -and (Test-Path $advCtx)) {
         $errors.Add("BERATER-KATALOG: finance.fn_plan_gaps [$($fnCat -join ', ')] != finance_advisor_instructions.md 'Interview catalog' [$($mdCat -join ', ')] -- Keys, Reihenfolge und emittierte Bloecke muessen gleich sein.")
     }
 }
-# (28b) PLAN-TEXTE (Plan-Karte): jedes Paket mit Plan-Interview (bindet core:save_plan_section) traegt den Plan-
+# (28b) PLAN-TEXTE (Plan-Karte): jedes Paket mit Plan-Interview (bindet core:propose_plan_topics) traegt den Plan-
 #     und jeden Abschnittsnamen in jeder Sprache; die Karte zeigt sie (Get-PlanNameValue/Get-PlanSectionValue), der Rueckfall
 #     waere der rohe Schluessel. Quelle der Abschnitte = die Liste unter "Use exactly these ... `section_key`s" im Berater-Prompt.
 foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
-    if (-not [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom).Contains('"core:save_plan_section"')) { continue }
+    if (-not [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom).Contains('"core:propose_plan_topics"')) { continue }
     $pName = $mf.Directory.Name
     $promptFile = Join-Path $mf.Directory.FullName "contexts\${pName}_advisor_instructions.md"
     $secKeys = @()
@@ -1937,7 +1937,7 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
         if ($tail.Count -eq 2) { $secKeys = @([regex]::Matches(($tail[1] -split '(?m)^### ', 2)[0], '(?m)^\s*(?:\d+\.|-) `([a-z_]+)`') | ForEach-Object { $_.Groups[1].Value }) }
     }
     if ($secKeys.Count -eq 0) {
-        $errors.Add("PLAN-TEXTE: $pName bindet core:save_plan_section, aber im Prompt contexts/${pName}_advisor_instructions.md steht keine Liste unter 'Use exactly these ... section_key s' -- Check 28b ist defekt oder das Format hat sich geaendert.")
+        $errors.Add("PLAN-TEXTE: $pName bindet core:propose_plan_topics, aber im Prompt contexts/${pName}_advisor_instructions.md steht keine Liste unter 'Use exactly these ... section_key s' -- Check 28b ist defekt oder das Format hat sich geaendert.")
         continue
     }
     foreach ($locFile in (Get-ChildItem (Join-Path $mf.Directory.FullName 'locales\*.json'))) {

@@ -1241,31 +1241,33 @@
   },
   {
     "id": "ri81",
-    "name": "Reaktion mit Text: REACT FUN + Antwort -> 😁 an der Nachricht und der Text ohne die REACT-Zeile",
+    "name": "Reaktion mit Text: REACT FUN + Antwort -> keine Reaktion, nur der Text ohne die REACT-Zeile",
     "kind": "node_ran",
     "update": "message",
     "chat_id": 880055071,
     "from_uid": 880055071,
     "text": "Reaktions-Test Witz: Haha, der war gut! Und wie war dein Tag so?",
     "pre_sql": "DELETE FROM agent.reaction_log;",
-    "expected_node": "Send reaction",
-    "expect_texts": ["😁", "Mein Tag läuft prima."],
-    "forbid_texts": ["REACT"],
-    "notes": "kind mood: zaehlt zur Tages-Obergrenze (Protokoll vorher geleert, jeder Stil erlaubt mindestens eine)."
+    "expected_node": "Send a text message split",
+    "expected_not_node": "Send reaction",
+    "expect_texts": ["Mein Tag läuft prima."],
+    "forbid_texts": ["REACT", "😁"],
+    "notes": "Berater-UX §5.7 (Owner E-7): die Art mood neben einem Antworttext entfaellt (agent.fn_claim_reaction sagt nein); der Telegram-Zaehler entsteht, wenn die Reaktion neben einer Antwort landet. Mock liefert weiter 'REACT FUN' + Text, damit der Relay die Zeile trotzdem entfernt."
   },
   {
     "id": "ri82",
-    "name": "Stimmung nach dem Spezialisten: FRAME CHEER -> 🎉 an der Nachricht + Spezialisten-Text woertlich",
+    "name": "Stimmung nach dem Spezialisten: FRAME CHEER -> keine Reaktion, Spezialisten-Text woertlich",
     "kind": "node_ran",
     "update": "message",
     "chat_id": 880055071,
     "from_uid": 880055071,
     "text": "Reaktions-Test Gehalt: Juhu, wie steht mein Sparkonto?",
     "pre_sql": "DELETE FROM agent.reaction_log; DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
-    "expected_node": "Send reaction",
-    "expect_texts": ["🎉", "Dein Sparkonto steht bei 640,00 EUR."],
-    "forbid_texts": ["CHEER", "FRAME"],
-    "notes": "Mock final_router 'FRAME CHEER': Signal FRAME + Stimmung CHEER, kein Sticker-Anlass -> agent.fn_claim_reaction kind mood."
+    "expected_node": "Send a text message split",
+    "expected_not_node": "Send reaction",
+    "expect_texts": ["Dein Sparkonto steht bei 640,00 EUR."],
+    "forbid_texts": ["CHEER", "FRAME", "🎉"],
+    "notes": "Mock final_router 'FRAME CHEER' (aelteres Signal): Berater-UX §5.7 (Owner E-7) - neben einer Antwort keine Reaktion, agent.fn_claim_reaction sagt zur Art mood nein."
   },
   {
     "id": "ri83",

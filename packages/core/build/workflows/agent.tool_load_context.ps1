@@ -3,8 +3,8 @@
 #
 # --- agent.tool_load_context (gemeinsamer System-Prompt-Bauer) --------------
 # Deterministischer Sub (kein Agent/LLM): jeder Agent-Workflow ruft ihn VOR dem AI-Node. Inputs:
-# agent_name, include_manifest. EINE Postgres-Query: static-concat der static-Docs aus
-# agent.core_contexts (global_instructions, dann agent-spezifisch, dann übrige agentlose) + optional das Lazy-Manifest
+# agent_name, include_manifest, audience (optional). EINE Postgres-Query: static-concat der static-Docs aus
+# agent.core_contexts (global_instructions, dann Zielgruppe, dann agent-spezifisch, dann übrige agentlose) + optional das Lazy-Manifest
 # (Name+Description der lazy-Contexts). Rueckgabe: system_prompt. Von den Agenten per Name aus dem
 # State referenziert ($LoadContextId, kein ID-Literal). Die Assembly-SQL lebt hier im Workflow,
 # nicht in der DB (Verweis in packages/core/db/agent.core_init.sql).
@@ -18,7 +18,8 @@ function Build-AgentToolLoadContext {
             workflowInputs = [ordered]@{
                 values = @(
                     [ordered]@{ name = 'agent_name' },
-                    [ordered]@{ name = 'include_manifest' }
+                    [ordered]@{ name = 'include_manifest' },
+                    [ordered]@{ name = 'audience' }
                 )
             }
         }
@@ -29,27 +30,30 @@ function Build-AgentToolLoadContext {
         name        = 'Start'
     }
 
-    # Assembly-SQL: $1 = jsonb { agent_name, include_manifest } (Build-Pg-Standard). Sichtbarkeit =
+    # Assembly-SQL: $1 = jsonb { agent_name, include_manifest, audience } (Build-Pg-Standard). Sichtbarkeit =
     # (load_strategy x agent_name): static+NULL/agent -> System-Prompt; lazy -> Manifest (nur wenn
-    # include_manifest != 'false'; physische per_user-Zeilen nie).
+    # include_manifest != 'false'; physische per_user-Zeilen nie). audience (optional) = eine Zielgruppe statt eines Agenten
+    # (Frontmatter agent_name: advisor -> alle Berater): ihre static-Docs stehen zwischen global_instructions und den
+    # Docs des Agenten, damit der gemeinsame Block im Cache-Präfix vor dem Paket-Teil liegt; andere Agenten sehen sie nie.
     $sql = @'
 WITH static_docs AS (
   SELECT string_agg(content, E'\n\n---\n\n'
                     ORDER BY CASE
                                 WHEN name = 'global_instructions' THEN 1
-                                WHEN agent_name IS NOT NULL THEN 2
-                                ELSE 3 END,
+                                WHEN agent_name = NULLIF(($1::jsonb)->>'audience', '') THEN 2
+                                WHEN agent_name IS NOT NULL THEN 3
+                                ELSE 4 END,
                              name) AS static_part
     FROM agent.core_contexts
    WHERE load_strategy = 'static'
-     AND (agent_name = (($1::jsonb)->>'agent_name') OR agent_name IS NULL)
+     AND (agent_name = (($1::jsonb)->>'agent_name') OR agent_name = NULLIF(($1::jsonb)->>'audience', '') OR agent_name IS NULL)
 ),
 manifest AS (
   SELECT E'\n\n# Available lazy contexts (load via `load_context` tool by name)\n\n'
        || string_agg('- **' || name || '**: ' || description, E'\n' ORDER BY name) AS manifest_part
     FROM agent.core_contexts
    WHERE load_strategy = 'lazy'
-     AND (agent_name = (($1::jsonb)->>'agent_name') OR agent_name IS NULL)
+     AND (agent_name = (($1::jsonb)->>'agent_name') OR agent_name = NULLIF(($1::jsonb)->>'audience', '') OR agent_name IS NULL)
      AND NOT agent.fn_is_per_user_row(name)
 )
 SELECT COALESCE((SELECT static_part FROM static_docs), '')
@@ -58,6 +62,7 @@ SELECT COALESCE((SELECT static_part FROM static_docs), '')
     $load = Build-Pg 'Load Static + Manifest' @(224, 0) $sql ([ordered]@{
         agent_name       = "`$('Start').item.json.agent_name"
         include_manifest = "`$('Start').item.json.include_manifest"
+        audience         = "String(`$('Start').item.json.audience || '')"
     })
 
     $return = Build-Set 'Return' @(448, 0) @(
@@ -74,7 +79,7 @@ SELECT COALESCE((SELECT static_part FROM static_docs), '')
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-40, -180) -Header 'Ablauf' `
         'agent.tool_load_context' `
         ("Gemeinsamer Sub-Workflow, KEIN LLM: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest. Aufruf durch jeden Agent-Workflow VOR dem AI-Node.`n" +
-         "EINE Postgres-Query: Static-Docs aus agent.core_contexts, sortiert global_instructions, dann die Docs dieses Agenten, dann die übrigen agentlosen Docs (je nach Name); danach optional das Lazy-Manifest (Name + Description der lazy-Contexts; ohne die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen, agent.fn_is_per_user_row — gelesen wird per Basisname + eigener chat_id). Rückgabe: system_prompt.`n" +
+         "EINE Postgres-Query: Static-Docs aus agent.core_contexts, sortiert global_instructions, dann die Docs der Zielgruppe (optionaler Eingang audience, z. B. advisor = gemeinsame Gesprächsregeln aller Berater), dann die Docs dieses Agenten, dann die übrigen agentlosen Docs (je nach Name); danach optional das Lazy-Manifest (Name + Description der lazy-Contexts; ohne die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen, agent.fn_is_per_user_row — gelesen wird per Basisname + eigener chat_id). Rückgabe: system_prompt.`n" +
          "Sichtbarkeit = load_strategy x agent_name (Frontmatter-Schema: docs/package-contract.md §3.1).") `
         -Height 240 -Width 420
 

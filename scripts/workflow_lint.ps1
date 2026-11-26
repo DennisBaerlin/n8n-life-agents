@@ -204,6 +204,81 @@ if ($gatePath -and (Test-Path $gatePath)) {
     }
 }
 
+# --- core.sub_send_chat_prompt (Karten der offenen Frage) ---
+# Logik-Test des ausgelieferten Renderers ('Build prompt' = Get-CardRenderJs) gegen erfundene Karten in der Form von
+# core.fn_render_prompt (Themen-Karte, Pruefpunkt, Antwort-Knoepfe, Rechnung): HTML-Form, Escaping jedes Werts, Knopf-Form,
+# Laengengrenze 4096, getippte Karte mit Formatierung aus den Telegram-Entities, Rueckfrage, veraltete Knoepfe. Kein Telegram, keine DB.
+Write-Host ""
+Write-Host "core.sub_send_chat_prompt (Karten-Renderer):"
+$promptPath = Resolve-WfPath 'core.sub_send_chat_prompt'
+Check 'Workflow-Datei vorhanden' { [bool]$promptPath -and (Test-Path $promptPath) }
+if ($promptPath -and (Test-Path $promptPath) -and $LintNode) {
+    $pw = [System.IO.File]::ReadAllText($promptPath, $Utf8NoBom) | ConvertFrom-Json
+    $pjs = "$(($pw.nodes | Where-Object { $_.name -eq 'Build prompt' } | Select-Object -First 1).parameters.jsCode)"
+    $fixture = @'
+const v1 = { lines: [
+  { kind: 'head', text: 'Teil 3 von 9 · Notgroschen' },
+  { kind: 'quote', text: 'Stand heute, aus deinen Daten' }, { kind: 'quote', text: 'Tagesgeld: 6.200 €' },
+  { kind: 'label', text: 'Das halten wir fest:' },
+  { kind: 'text', text: 'Der Notgroschen soll 3 Monatsausgaben decken. <script>&' },
+  { kind: 'expand', title: 'Warum?', text: 'Weil unerwartete Ausgaben kommen k\u00f6nnen.' },
+  { kind: 'hint', text: 'Etwas anders? Schreib es mir einfach.' },
+  { kind: 'bogus', text: 'Unbekannte Art' }, { kind: 'text', text: '' } ] };
+const v3 = { lines: [ { kind: 'row', text: 'Einnahmen: 3.400 €' }, { kind: 'row', text: 'minus Alltag: 1.400 €' },
+  { kind: 'total', text: 'Bleibt: 150 €' }, { kind: 'warning', text: 'Knapp' }, { kind: 'warning', text: '\u26a0\ufe0f Schon markiert' },
+  { kind: 'list', items: [ { state: 'done', text: 'Sparziel' }, { state: 'current', text: 'Sparplan' }, { state: 'open', text: 'Dauerauftrag' } ] } ] };
+const row = (n, id) => Array.from({ length: n }, (_, i) => ({ text: 'B' + i, data: 'q:' + id + ':k' + i }));
+const run = (start, j) => (new Function('$json', '$', __CODE__))(j, () => ({ first: () => ({ json: start }) })).json;
+const out = {};
+const a = run({ chat_id: '42' }, { r: JSON.stringify({ ok: true, send: true, prompt_id: 17, card: v1, buttons: [ row(2, 17) ] }) });
+Object.assign(out, { v1: a.html, v1shape: a.shape, v1b: a.buttons, v1send: a.send });
+out.v2shape = run({ chat_id: '42' }, { r: JSON.stringify({ send: true, prompt_id: 18, card: v1, buttons: row(3, 18).map((b) => [b]) }) }).shape;
+out.oddshape = run({ chat_id: '42' }, { r: JSON.stringify({ send: true, prompt_id: 19, card: v1, buttons: [ row(2, 19), row(2, 19) ] }) }).shape;
+out.v3 = run({ chat_id: '42' }, { r: JSON.stringify({ send: true, prompt_id: 20, card: v3, buttons: [] }) }).html;
+const long = run({ chat_id: '42' }, { r: JSON.stringify({ send: true, prompt_id: 21, card: { lines: [ { kind: 'head', text: 'Kopf' }, { kind: 'text', text: 'Wort '.repeat(1200) } ] }, buttons: [] }) });
+Object.assign(out, { longLen: long.html.length, longHead: long.html.indexOf('<b>Kopf</b>') === 0, longShape: long.shape });
+const ch = run({ chat_id: '42', choice_json: JSON.stringify({ prompt_id: 22, text: 'Welches Ziel? <b>', buttons: [ row(3, 22) ] }), send_next: 'false' }, { r: JSON.stringify({ send: false }) });
+Object.assign(out, { choice: ch.html, choiceShape: ch.shape, choiceId: ch.id });
+const tx = 'Teil 3 · Topf 💰\nStand heute\nTagesgeld';
+const e = run({ chat_id: '42', edit_message_id: '99', note_text: 'Was soll anders sein?',
+  edit_json: JSON.stringify({ text: tx, entities: [ { type: 'bold', offset: 0, length: 16 }, { type: 'blockquote', offset: 17, length: 21 }, { type: 'italic', offset: 17, length: 11 } ], append: '✓ Übernommen' }) },
+  { r: JSON.stringify({ send: false, stale: [ { message_id: 5, card: { lines: [ { kind: 'head', text: 'Alt' } ] } } ] }) });
+Object.assign(out, { edit: e.edit_html, note: e.note_html, esend: e.send, stale: e.stale });
+out.broken = run({ chat_id: '42' }, { r: 'kaputt' }).send;
+process.stdout.write(JSON.stringify(out));
+'@
+    $tmpF = New-LintTmpFile '.js'
+    [System.IO.File]::WriteAllText($tmpF.Full, $fixture.Replace('__CODE__', ($pjs | ConvertTo-Json -Compress)), $Utf8NoBom)
+    $raw = ''
+    try { $raw = Invoke-LintNode @($tmpF.Rel) } finally { Remove-Item $tmpF.Full -ErrorAction SilentlyContinue }
+    $o = $null; try { $o = $raw | ConvertFrom-Json } catch { Write-Host "    node-Ausgabe: $raw" -ForegroundColor DarkGray }
+    if ($Verbose -and $o) { Write-Host "    V1:`n$($o.v1)`n    V3:`n$($o.v3)`n    Edit:`n$($o.edit)" -ForegroundColor DarkGray }
+    Check 'Renderer: Kopf fett, Zitat-Zeilen in einem Block ohne Leerzeile davor/danach' {
+        $o -and $o.v1.StartsWith("<b>Teil 3 von 9 · Notgroschen</b>`n<blockquote>Stand heute, aus deinen Daten`nTagesgeld: 6.200 €</blockquote>`n<b>Das halten wir fest:</b>")
+    }
+    Check 'Renderer: Modell-Text escapt (& < >)'           { $o -and $o.v1.Contains('&lt;script&gt;&amp;') -and -not $o.v1.Contains('<script>') }
+    Check 'Renderer: Warum aufklappbar'                     { $o -and $o.v1.Contains("<blockquote expandable><b>Warum?</b>`nWeil unerwartete") }
+    Check 'Renderer: Hinweis kursiv, unbekannte Art als Absatz, leere Zeile entfaellt' { $o -and $o.v1.Contains('<i>Etwas anders?') -and $o.v1.EndsWith("`n`nUnbekannte Art") }
+    Check 'Renderer: Knopf-Form 2 in einer Reihe, Daten unveraendert' { $o -and $o.v1shape -eq '2' -and $o.v1b[1].data -eq 'q:17:k1' -and $o.v1send -eq $true }
+    Check 'Renderer: je ein Knopf pro Reihe; unbekannte Form -> je einer pro Reihe, hoechstens drei' { $o -and $o.v2shape -eq '1+1+1' -and $o.oddshape -eq '1+1+1' }
+    Check 'Renderer: Rechnung (Zeilen ohne Leerzeile, Summe fett, Warnung, Liste mit Marken)' {
+        $o -and $o.v3.StartsWith("Einnahmen: 3.400 €`nminus Alltag: 1.400 €`n`n<b>Bleibt: 150 €</b>") -and $o.v3.Contains('⚠️ Knapp') -and $o.v3.Contains("
+
+⚠️ Schon markiert") -and $o.v3.EndsWith("✅ Sparziel`n▶️ Sparplan`n◻️ Dauerauftrag")
+    }
+    Check 'Renderer: lange Karte <= 4096, Kopf bleibt, ohne Knoepfe' { $o -and $o.longLen -le 4096 -and $o.longLen -gt 3000 -and $o.longHead -and $o.longShape -eq '' }
+    Check 'Renderer: Antwort-Knoepfe haengen an der Berater-Antwort (escapt)' { $o -and $o.choice -eq 'Welches Ziel? &lt;b&gt;' -and $o.choiceShape -eq '3' -and $o.choiceId -eq 22 }
+    Check 'Renderer: getippte Karte behaelt Formatierung (Entities, auch nach Emoji) + Zusatzzeile' {
+        $o -and $o.edit -eq "<b>Teil 3 · Topf 💰</b>`n<blockquote><i>Stand heute</i>`nTagesgeld</blockquote>`n`n✓ Übernommen"
+    }
+    Check 'Renderer: Rueckfrage escapt, veraltete Karte ohne Knoepfe, nichts Neues gesendet' {
+        $o -and $o.note -eq 'Was soll anders sein?' -and $o.esend -eq $false -and @($o.stale).Count -eq 1 -and $o.stale[0].html -eq '<b>Alt</b>'
+    }
+    Check 'Renderer: kaputte DB-Antwort -> nichts senden, kein Absturz' { $o -and $o.broken -eq $false }
+} elseif ($promptPath -and -not $LintNode) {
+    Check 'Renderer: node lokal oder Docker verfuegbar' { $false }
+}
+
 # --- Querschnitts-Gesetze (alle getrackten Workflows) ---
 Write-Host ""
 Write-Host "Querschnitt (alle Workflows): chat_id-Typsicherheit + Code-Node-Return-Shape:"
@@ -279,6 +354,10 @@ $tgEscapeAllowLike = @(
     'agent.orchestrator.main_route :: Relay command *'
     'agent.orchestrator.main_route :: Relay plan *'   # Plan-Schritt-Arme (Onboarding), dieselbe Relay-Kette
     'agent.orchestrator.main_route :: Relay handoff *'   # Uebergabe-Arme (Knopf Durchgehen), dieselbe Relay-Kette
+    'agent.orchestrator.main_route :: Relay prompt *'    # Knopf-Arme der offenen Frage (Berater-Lauf nach Tipp), dieselbe Relay-Kette
+    # Karten der offenen Frage: 'Build prompt' (Get-CardRenderJs) escapt jeden Wert (& < >) und setzt nur eigene Tags,
+    # parse_mode=HTML; Logik-Test oben (core.sub_send_chat_prompt).
+    'core.sub_send_chat_prompt :: *'
 )
 # Formatter-Allowlist (bewusst unformatierte Betraege/Daten in einer Nachricht/Summary, je mit Grund; Form +
 # Key-Konvention 'wf :: node' wie $tgEscapeAllow). Leer = jede Geld-/Datums-Anzeige muss Fmt-MoneyJs/Fmt-DateJs nutzen.

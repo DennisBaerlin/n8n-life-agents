@@ -1,0 +1,1121 @@
+{
+    "id":  "valhVZaTzkBASO2J",
+    "name":  "core.sub_send_chat_prompt",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "replied"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "run_started_at"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "send_next"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "edit_message_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "edit_json"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "note_text"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "choice_json"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "d867d0b5-aace-56b8-83d5-93675da416cb",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (CASE WHEN ($1::jsonb)-\u003e\u003e\u0027send_next\u0027 = \u0027true\u0027 THEN core.fn_next_chat_prompt(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027replied\u0027, ($1::jsonb)-\u003e\u003e\u0027replied\u0027 = \u0027true\u0027, \u0027run_started_at\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027run_started_at\u0027, \u0027\u0027))) ELSE jsonb_build_object(\u0027send\u0027, false) END)::text AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), replied: String($(\u0027Start\u0027).first().json.replied || \u0027\u0027), run_started_at: String($(\u0027Start\u0027).first().json.run_started_at || \u0027\u0027), send_next: String($(\u0027Start\u0027).first().json.send_next || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "2b37301d-a992-58f8-afa4-0c36fb4c7cc9",
+                      "name":  "Read prompt",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "function cardRender() {\n  const LIMIT = 4096;\n  const esc = (s) =\u003e String(s).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\n  const str = (v) =\u003e (v === null || v === undefined) ? \u0027\u0027 : String(v).trim();\n  const E = (cp) =\u003e String.fromCodePoint(cp);\n  const VS = E(0xFE0F);\n  const MARK = { done: E(0x2705), current: E(0x25B6) + VS, open: E(0x25FB) + VS };\n  const WARN = E(0x26A0) + VS;\n  const BLOCK = { quote: true, expand: true };\n  function seg(l) {\n    const k = String((l \u0026\u0026 l.kind) || \u0027text\u0027);\n    const t = str(l \u0026\u0026 l.text);\n    switch (k) {\n      case \u0027head\u0027: case \u0027label\u0027: case \u0027total\u0027: return t ? \u0027\u003cb\u003e\u0027 + esc(t) + \u0027\u003c/b\u003e\u0027 : \u0027\u0027;\n      case \u0027quote\u0027: return t ? esc(t) : \u0027\u0027;\n      case \u0027expand\u0027: { const ti = str(l.title); return t ? \u0027\u003cblockquote expandable\u003e\u0027 + (ti ? \u0027\u003cb\u003e\u0027 + esc(ti) + \u0027\u003c/b\u003e\\n\u0027 : \u0027\u0027) + esc(t) + \u0027\u003c/blockquote\u003e\u0027 : \u0027\u0027; }\n      case \u0027warning\u0027: return t ? ((t.charAt(0) === WARN.charAt(0)) ? esc(t) : WARN + \u0027 \u0027 + esc(t)) : \u0027\u0027;\n      case \u0027hint\u0027: return t ? \u0027\u003ci\u003e\u0027 + esc(t) + \u0027\u003c/i\u003e\u0027 : \u0027\u0027;\n      case \u0027list\u0027: return (Array.isArray(l.items) ? l.items : []).map((x) =\u003e { const s = str(x \u0026\u0026 x.text); return s ? (MARK[x.state] || MARK.open) + \u0027 \u0027 + esc(s) : \u0027\u0027; }).filter(Boolean).join(\u0027\\n\u0027);\n      default: return t ? esc(t) : \u0027\u0027;\n    }\n  }\n  // Zitat-Bloecke zeigt Telegram als eigenen Block mit Abstand: davor und danach ein Zeilenumbruch, sonst zwei (Absatz).\n  function join(lines) {\n    const parts = [];\n    for (const l of lines) {\n      const s = seg(l);\n      if (!s) continue;\n      const k = String(l.kind || \u0027text\u0027);\n      const prev = parts.length ? parts[parts.length - 1] : null;\n      if (prev \u0026\u0026 k === \u0027quote\u0027 \u0026\u0026 prev.k === \u0027quote\u0027) { prev.s += \u0027\\n\u0027 + s; continue; }\n      if (prev \u0026\u0026 k === \u0027row\u0027 \u0026\u0026 prev.k === \u0027row\u0027) { prev.s += \u0027\\n\u0027 + s; continue; }\n      parts.push({ k, s });\n    }\n    let out = \u0027\u0027;\n    parts.forEach((p, i) =\u003e {\n      const s = p.k === \u0027quote\u0027 ? \u0027\u003cblockquote\u003e\u0027 + p.s + \u0027\u003c/blockquote\u003e\u0027 : p.s;\n      if (i === 0) { out = s; return; }\n      const near = BLOCK[p.k] || BLOCK[parts[i - 1].k];\n      out += (near ? \u0027\\n\u0027 : \u0027\\n\\n\u0027) + s;\n    });\n    return out;\n  }\n  function html(card) {\n    let lines = ((card \u0026\u0026 Array.isArray(card.lines)) ? card.lines : []).filter((l) =\u003e l \u0026\u0026 typeof l === \u0027object\u0027).map((l) =\u003e Object.assign({}, l));\n    let out = join(lines);\n    for (let i = 0; i \u003c 20 \u0026\u0026 out.length \u003e LIMIT; i++) {\n      let best = -1; let len = 0;\n      lines.forEach((l, j) =\u003e { if ((l.kind === \u0027text\u0027 || l.kind === \u0027expand\u0027) \u0026\u0026 typeof l.text === \u0027string\u0027 \u0026\u0026 l.text.length \u003e len) { best = j; len = l.text.length; } });\n      if (best \u003c 0 || len \u003c 40) break;\n      const cut = Math.max(20, len - (out.length - LIMIT) - 20);\n      lines[best].text = lines[best].text.slice(0, cut).replace(/\\s+\\S*$/, \u0027\u0027) + \u0027 …\u0027;\n      out = join(lines);\n    }\n    while (out.length \u003e LIMIT \u0026\u0026 lines.length \u003e 1) { lines = lines.slice(0, -1); out = join(lines); }\n    return out.length \u003e LIMIT ? out.slice(0, LIMIT) : out;\n  }\n  const TAG = { bold: \u0027b\u0027, italic: \u0027i\u0027, underline: \u0027u\u0027, strikethrough: \u0027s\u0027, code: \u0027code\u0027, spoiler: \u0027tg-spoiler\u0027 };\n  function fromEntities(text, entities) {\n    const s = String(text || \u0027\u0027);\n    const ents = (Array.isArray(entities) ? entities : []).filter((e) =\u003e e \u0026\u0026 Number.isInteger(e.offset) \u0026\u0026 Number.isInteger(e.length) \u0026\u0026 e.length \u003e 0);\n    const open = {}; const close = {};\n    ents.forEach((e, i) =\u003e {\n      let o = \u0027\u0027; let c = \u0027\u0027;\n      if (TAG[e.type]) { o = \u0027\u003c\u0027 + TAG[e.type] + \u0027\u003e\u0027; c = \u0027\u003c/\u0027 + TAG[e.type] + \u0027\u003e\u0027; }\n      else if (e.type === \u0027blockquote\u0027) { o = \u0027\u003cblockquote\u003e\u0027; c = \u0027\u003c/blockquote\u003e\u0027; }\n      else if (e.type === \u0027expandable_blockquote\u0027) { o = \u0027\u003cblockquote expandable\u003e\u0027; c = \u0027\u003c/blockquote\u003e\u0027; }\n      else return;\n      (open[e.offset] = open[e.offset] || []).push({ i, len: e.length, o });\n      (close[e.offset + e.length] = close[e.offset + e.length] || []).push({ i, len: e.length, c });\n    });\n    let out = \u0027\u0027;\n    for (let p = 0; p \u003c= s.length; p++) {\n      if (close[p]) out += close[p].sort((a, b) =\u003e a.len - b.len).map((x) =\u003e x.c).join(\u0027\u0027);\n      if (open[p]) out += open[p].sort((a, b) =\u003e b.len - a.len).map((x) =\u003e x.o).join(\u0027\u0027);\n      if (p \u003c s.length) out += esc(s[p]);\n    }\n    return out;\n  }\n  return { html, fromEntities, esc };\n}\nconst S = $(\u0027Start\u0027).first().json;\nconst parse = (s, d) =\u003e { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };\nconst r = parse($json.r, {}) || {};\nconst C = cardRender();\n// Antwort-Knoepfe (core.fn_create_choice_prompt) haengen an der Antwort des Beraters selbst; sonst die faellige Karte.\nconst ch = parse(S.choice_json, null);\nlet send = null;\nif (ch \u0026\u0026 ch.prompt_id \u0026\u0026 String(ch.text || \u0027\u0027).trim()) send = { id: ch.prompt_id, html: C.esc(String(ch.text).trim()), rows: ch.buttons };\nelse if (r.send === true \u0026\u0026 r.prompt_id \u0026\u0026 r.card) send = { id: r.prompt_id, html: C.html(r.card), rows: r.buttons };\n// Die n8n-Tastatur hat feste Plaetze: erlaubt sind 1-3 Knoepfe in einer Reihe oder 1-3 Reihen mit je einem Knopf;\n// jede andere Form wird zu einem Knopf je Reihe (hoechstens drei).\nlet rows = (send \u0026\u0026 Array.isArray(send.rows)) ? send.rows.filter((x) =\u003e Array.isArray(x) \u0026\u0026 x.length) : [];\nlet shape = rows.map((x) =\u003e x.length).join(\u0027+\u0027);\nif (rows.length \u0026\u0026 ![\u00271\u0027, \u00272\u0027, \u00273\u0027, \u00271+1\u0027, \u00271+1+1\u0027].includes(shape)) { rows = rows.flat().slice(0, 3).map((b) =\u003e [b]); shape = rows.map((x) =\u003e x.length).join(\u0027+\u0027); }\nconst buttons = rows.flat().map((b) =\u003e ({ text: String((b \u0026\u0026 b.text) || \u0027?\u0027), data: String((b \u0026\u0026 b.data) || \u0027\u0027).slice(0, 64) }));\nconst editId = String(S.edit_message_id || \u0027\u0027);\nconst ed = parse(S.edit_json, null);\nconst editHtml = (ed \u0026\u0026 editId) ? (C.fromEntities(ed.text, ed.entities) + (String(ed.append || \u0027\u0027).trim() ? \u0027\\n\\n\u0027 + C.esc(String(ed.append).trim()) : \u0027\u0027)) : \u0027\u0027;\nconst note = String(S.note_text || \u0027\u0027).trim();\nconst stale = (Array.isArray(r.stale) ? r.stale : []).filter((x) =\u003e x \u0026\u0026 x.message_id \u0026\u0026 x.card)\n  .map((x) =\u003e ({ message_id: String(x.message_id), html: C.html(x.card) }));\nreturn { json: {\n  chat_id: String(S.chat_id || \u0027\u0027), edit_message_id: editId, edit_html: editHtml, note_html: note ? C.esc(note) : \u0027\u0027,\n  send: !!send, id: send ? send.id : null, html: send ? send.html : \u0027\u0027, shape: send ? shape : \u0027\u0027, buttons, stale\n} };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "4da7d4b8-cb0c-5d17-a577-ccaba0ab65c7",
+                      "name":  "Build prompt",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "faf0d5cd-5ee0-5f6f-9ec6-2fcb93d8a15f",
+                                                                                   "leftValue":  "={{ !!$(\u0027Build prompt\u0027).first().json.edit_html }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "84d998fe-9e93-5908-b363-eb2776b5a26c",
+                      "name":  "Edit tapped?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "editMessageText",
+                                         "messageType":  "message",
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "messageId":  "={{ $(\u0027Build prompt\u0027).first().json.edit_message_id }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.edit_html }}",
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       -120
+                                   ],
+                      "id":  "483b0f2d-078b-5fa8-af2d-351eff2a8bec",
+                      "name":  "Edit tapped card",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f8d7e65d-8d55-58f4-95e3-fc85cfbbdae8",
+                                                                                   "leftValue":  "={{ !!$(\u0027Build prompt\u0027).first().json.note_html }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "bcecab77-d93d-5d6b-9eff-1271ab51e705",
+                      "name":  "Note?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.note_html }}",
+                                         "replyMarkup":  "forceReply",
+                                         "forceReply":  {
+                                                            "force_reply":  true,
+                                                            "selective":  true
+                                                        }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       -120
+                                   ],
+                      "id":  "d1393c50-fd20-5caa-98da-2db9adc88854",
+                      "name":  "Send note",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5de98f65-171b-5b17-b524-fb6147d0ff9f",
+                                                                                   "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.send === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "b390e342-d42c-519f-ab9d-d09753b6e7b6",
+                      "name":  "Send?"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "85feaf6a-81ad-5a6a-9427-b8abbd866866",
+                                                                                                                    "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.shape === \u00271\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s1",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "65d79f9d-99d6-512b-8a86-fe30de302533",
+                                                                                                                    "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.shape === \u00272\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s2",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "cdb9c275-6aff-51f7-8c64-ef23a02730d1",
+                                                                                                                    "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.shape === \u00273\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s3",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "42ed1dbb-353b-551e-bd09-8cd6fd64a45d",
+                                                                                                                    "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.shape === \u00271+1\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s1_1",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "a85740cc-f4c3-5457-8341-dac400c67e8f",
+                                                                                                                    "leftValue":  "={{ $(\u0027Build prompt\u0027).first().json.shape === \u00271+1+1\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s1_1_1",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -120
+                                   ],
+                      "id":  "11f1fc35-7ee5-5520-b262-2ea4749a991d",
+                      "name":  "Buttons"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -520
+                                   ],
+                      "id":  "c70c01ed-59e0-5d94-a9f0-e48e1c4a851d",
+                      "name":  "Send card 1",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -380
+                                   ],
+                      "id":  "9562960f-5f3c-5c88-b6ac-b263fa92f097",
+                      "name":  "Send card 2",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[2].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[2].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -240
+                                   ],
+                      "id":  "31bc4f50-a900-5bb4-a9c1-c23d1a1a4e9f",
+                      "name":  "Send card 3",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       -100
+                                   ],
+                      "id":  "0191ff98-d0f3-5b39-a921-ad2f2e1b2953",
+                      "name":  "Send card 1+1",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[2].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $(\u0027Build prompt\u0027).first().json.buttons[2].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       40
+                                   ],
+                      "id":  "caa00637-10b2-5923-92d8-39d7317cf281",
+                      "name":  "Send card 1+1+1",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "text":  "={{ $(\u0027Build prompt\u0027).first().json.html }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       180
+                                   ],
+                      "id":  "5edfa585-59b6-560c-8c10-fa8062796145",
+                      "name":  "Send card plain",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_chat_prompt_sent($1::jsonb) AS r, NULLIF(($1::jsonb)-\u003e\u003e\u0027message_id\u0027, \u0027\u0027) AS message_id;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ prompt_id: String($(\u0027Build prompt\u0027).first().json.id), message_id: String((($json.result) || {}).message_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       -120
+                                   ],
+                      "id":  "8471557c-048e-5435-90f1-b31d4adfebce",
+                      "name":  "Record message",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "eaded73e-2f52-578e-bc54-ccc35db30839",
+                                                                                   "leftValue":  "={{ ($(\u0027Build prompt\u0027).first().json.stale || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "30837da9-4e9f-5d90-8e85-e9a5de5c3dfa",
+                      "name":  "Stale?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return ($(\u0027Build prompt\u0027).first().json.stale || []).map((x) =\u003e ({ json: x }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1540,
+                                       -120
+                                   ],
+                      "id":  "4eec7d62-0e5b-563c-aaf2-6cf3f52bc708",
+                      "name":  "Split stale"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "editMessageText",
+                                         "messageType":  "message",
+                                         "chatId":  "={{ String($(\u0027Build prompt\u0027).first().json.chat_id) }}",
+                                         "messageId":  "={{ $json.message_id }}",
+                                         "text":  "={{ $json.html }}",
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       -120
+                                   ],
+                      "id":  "190d2b9d-0e69-5105-b333-b0122825fba7",
+                      "name":  "Clear stale buttons",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "cef07395-a707-53ce-a792-71a62c80509f",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "={{ $(\u0027Record message\u0027).isExecuted \u0026\u0026 !!(($(\u0027Record message\u0027).first().json || {}).message_id) }}",
+                                                                                     "type":  "boolean"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       0
+                                   ],
+                      "id":  "3ae15e4d-e9f0-548b-a0dc-81f6c2ff5755",
+                      "name":  "Result",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Offene Frage: Karte senden und getippte Karte ändern**\n\nDie eine Stelle, die Karten der offenen Frage (agent.chat_prompts) sendet; der Orchestrator ruft sie am Ende jedes Laufs und im Knopf-Arm q:. Read prompt: core.fn_next_chat_prompt (nur bei send_next; eine wartende Zeile wird offen und gesendet, eine offene nach einer Antwort dieses Laufs erneut, damit die offene Frage unten steht). Die Karte (core.fn_render_prompt) kommt fertig übersetzt als Zeilen. Build prompt: der gemeinsame Renderer (Get-CardRenderJs) macht daraus Telegram-HTML und escapt jeden Wert. Hat der Berater Antwort-Knöpfe geschrieben (choice_json aus core.fn_create_choice_prompt), geht seine Antwort selbst mit den Knöpfen raus. Reihenfolge: getippte Karte ändern (Text samt Formatierung aus der Telegram-Nachricht, Zusatz wie „✓ Übernommen“, Knöpfe weg) -\u003e Rückfrage „Was soll anders sein?“ mit Eingabefeld (ForceReply) -\u003e neue Karte; die Knopf-Form (1 bis 3 in einer Reihe oder je einer pro Reihe) wählt den passenden Send-Knoten, weil die n8n-Tastatur feste Plätze hat -\u003e Record message (core.fn_chat_prompt_sent merkt die Nachricht) -\u003e Clear stale buttons: alte Nachrichten mit veralteten Knöpfen ohne Knöpfe neu zeichnen. Jeder Knoten onError continue: ein Fehler hier kostet nur die Karte, nie die Antwort davor. Result.sent sagt dem Orchestrator, ob etwas rausging (sonst sendet er bei leerer Berater-Antwort den festen Hinweis).",
+                                         "height":  420,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -500
+                                   ],
+                      "id":  "ed74ee7a-8549-5450-b5b5-c63b265e484b",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read prompt",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read prompt":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build prompt",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build prompt":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Edit tapped?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Edit tapped?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Edit tapped card",
+                                                                  "type":  "main"
+                                                              }
+                                                          ],
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Note?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Edit tapped card":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Note?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Note?":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Send note",
+                                                           "type":  "main"
+                                                       }
+                                                   ],
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Send?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Send note":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Send?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Send?":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Buttons",
+                                                           "type":  "main"
+                                                       }
+                                                   ],
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Stale?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Buttons":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card 1",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card 2",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card 3",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card 1+1",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card 1+1+1",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send card plain",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Record message":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Stale?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Stale?":  {
+                                       "main":  [
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Split stale",
+                                                            "type":  "main"
+                                                        }
+                                                    ],
+                                                    [
+                                                        {
+                                                            "index":  0,
+                                                            "node":  "Result",
+                                                            "type":  "main"
+                                                        }
+                                                    ]
+                                                ]
+                                   },
+                        "Split stale":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Clear stale buttons",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Clear stale buttons":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Result",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Send card 1":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Record message",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Send card 2":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Record message",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Send card 3":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Record message",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Send card 1+1":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Record message",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Send card 1+1+1":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Record message",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Send card plain":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Record message",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

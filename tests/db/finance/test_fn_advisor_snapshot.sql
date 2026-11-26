@@ -47,7 +47,8 @@ BEGIN
   SELECT array_agg(x) INTO v_bad FROM unnest(v_included || v_excluded) x
    WHERE NOT EXISTS (SELECT 1 FROM information_schema.views w WHERE w.table_schema = 'finance' AND w.table_name = x);
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'FAIL [0c] Liste nennt eine View, die es nicht mehr gibt: %', v_bad; END IF;
-  v_src := pg_get_functiondef('finance.fn_advisor_snapshot()'::regprocedure);
+  -- die Warnungen liest der Snapshot aus finance.fn_advisor_hints (eine Adresse der Hinweise)
+  v_src := pg_get_functiondef('finance.fn_advisor_snapshot()'::regprocedure) || pg_get_functiondef('finance.fn_advisor_hints(text)'::regprocedure);
   SELECT array_agg(x) INTO v_bad FROM unnest(v_included) x WHERE v_src !~ ('finance\.' || x || '\y');
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'FAIL [0d] "enthalten", aber nicht in der fn: %', v_bad; END IF;
   -- neue Nummern-/IBAN-Spalte in einer enthaltenen View -> erst entscheiden (Entfernliste der fn), dann gruen

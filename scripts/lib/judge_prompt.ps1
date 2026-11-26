@@ -46,6 +46,10 @@ So arbeitet das Testsystem (das ist KEIN Fehler des Agenten):
   sagen, auch wenn die Rubric es nicht nennt. Stehen in ACTUAL_TOOL_INPUT mehrere Aufrufe, ist der erste der aelteste.
 - NEXT_STEP_BUTTON (kann fehlen) ist der Knopf, den das System unter die Antwort setzt, mit dem vom System gelieferten
   naechsten Schritt: nicht Teil des Antworttexts, kein stehengebliebener Platzhalter. Fehlt das Feld, gab es keinen Knopf.
+- ANSWER_BUTTONS (kann fehlen) sind die Antwort-Knoepfe unter der Frage, vom Agenten als Markerzeile geschrieben und vom
+  System als Knoepfe gezeigt: Teil der Frage, keine zweite Frage, kein Text zum Abtippen. Fehlt das Feld, gab es keine.
+- Ein Berater-Werkzeug, das eine Themen-Karte vorschlaegt (tool_propose_plan_topics), zeigt dem Nutzer den Text als Karte
+  mit Knoepfen; gespeichert wird erst beim Tipp. Eine leere Antwort direkt danach ist gewollt (die Karte spricht).
 - CONFIRMATION_CARD (kann fehlen) ist die Bestaetigungs-Karte, die das System vor dem Schreiben zeigt. Das Werkzeug baut
   sie aus seinem Probelauf in der Datenbank, nicht der Agent: Ihre Knoepfe und Hinweise (Abbrechen, Bestaetigen, "Sag es
   mir einfach") sind keine Rueckfrage des Agenten, und ein Wert, den die Datenbank aufgeloest hat (z. B. "ich" als voller
@@ -89,6 +93,7 @@ $(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply t
 $(if ($Entry.card_text) { "CONFIRMATION_CARD (card the system showed before the write, built by the tool from its database dry run, not written by the agent):`n$($Entry.card_text)`n" })
 $(if ($Entry.db_checks) { "DB_CHECKS (database state the test read after the round, one check per line):`n$($Entry.db_checks)`n" })
 $(if ($Entry.next_step_button) { "NEXT_STEP_BUTTON (button the system adds under the reply; the suggested next step):`n$($Entry.next_step_button)`n" })
+$(if ($Entry.answer_buttons) { "ANSWER_BUTTONS (buttons the system shows under the question, written by the agent as its marker line):`n$($Entry.answer_buttons)`n" })
 ACTUAL_OUTPUT:
 $($Entry.actual_output)
 "@

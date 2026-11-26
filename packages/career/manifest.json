@@ -25,7 +25,7 @@
     "services": [
       "core:human_approval", "core:load_config", "core:load_context",
       "core:web_search", "core:expert_panel",
-      "core:save_plan_section", "core:publish_plan", "core:set_context_facts", "core:set_own_context_facts",
+      "core:propose_plan_topics", "core:record_check_findings", "core:publish_plan", "core:set_context_facts", "core:set_own_context_facts",
       "core:fetch_telegram_file", "core:onboarding_progress",
       "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
     ],

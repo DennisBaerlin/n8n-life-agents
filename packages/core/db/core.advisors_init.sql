@@ -121,6 +121,32 @@ DO $$ BEGIN
             CHECK (hints_fn IS NULL OR hints_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$');
     END IF;
 END $$;
+-- Vereinbarte Eintraege (agent.handoff_tasks): handoff_check_fn = Paket-fn(jsonb) -> jsonb, die Vorpruefung beim Vereinbaren
+-- (agent.fn_advisor_save_section) und beim Nachholen (core.fn_handoff_register): loest Kennungen auf und liefert den fertigen
+-- Aufruf des Schreib-Werkzeugs, "geht noch nicht" mit blocked_code oder eine korrigierbare Ablehnung. handoff_diff_fn =
+-- Paket-fn(int task_id) -> jsonb [{field, wanted, current}], der abgeleitete Unterschied zwischen wanted und dem heutigen
+-- Stand der eingetragenen Sache (leer = wie vereinbart). Vertrag: docs/package-contract.md; Aufruf nur ueber Registry +
+-- to_regprocedure, Fehler neutral. Ohne Feld entfaellt die Pruefung bzw. das Register kennt keine Abweichung.
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS handoff_check_fn text;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS handoff_diff_fn text;
+-- entry_effects_fn = Paket-fn(text domain) -> jsonb {accounts:int}: wie viele Konten eine Warnung tragen, die nur von noch nicht
+-- eingetragenen Vereinbarungen kommt (Folge-Zeile der Liste nach dem Veroeffentlichen, core.fn_handoff_overview). Ohne fn
+-- oder bei Fehler entfaellt die Zeile.
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS entry_effects_fn text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_handoff_check_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_handoff_check_fn_check
+            CHECK (handoff_check_fn IS NULL OR handoff_check_fn ~ '^[a-z][a-z0-9_]*\.fn_[a-z0-9_]+$');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_entry_effects_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_entry_effects_fn_check
+            CHECK (entry_effects_fn IS NULL OR entry_effects_fn ~ '^[a-z][a-z0-9_]*\.fn_[a-z0-9_]+$');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_handoff_diff_fn_check') THEN
+        ALTER TABLE core.advisors ADD CONSTRAINT advisors_handoff_diff_fn_check
+            CHECK (handoff_diff_fn IS NULL OR handoff_diff_fn ~ '^[a-z][a-z0-9_]*\.fn_[a-z0-9_]+$');
+    END IF;
+END $$;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisors_advisor_agent_check') THEN
         ALTER TABLE core.advisors ADD CONSTRAINT advisors_advisor_agent_check

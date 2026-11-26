@@ -7,7 +7,8 @@
 --   p_state_only boolean (optional, default false), p_report_ok int[] (optional, default '{}').
 --   (1) eine Kartenzeile „Danach ..." (ungelatcht: Vorschau im Probelauf, Post-State-Vertrag) -- funding_ok,
 --       funding_ok_drain (gedeckt, baut aber ab), funding_until (warn), funding_gap (alert), funding_timing (rein = raus,
---       der Eingang kommt aber nach der Abbuchung), bei p_state_only (kuenftige Ratenaenderung: monthly_in/out gelten
+--       der Eingang kommt aber nach der Abbuchung; nur wenn ein frueherer Tag die Luecke behebt, fn_account_funding.timing_fixable),
+--       funding_inflow_ends (rein = raus, aber ein Zubringer endet: Ursache statt Rat zum Vorziehen), bei p_state_only (kuenftige Ratenaenderung: monthly_in/out gelten
 --       heute noch mit der alten Rate) nur Zustand + Datum: funding_ok_plain / funding_until_date / funding_gap_date;
 --   (2) einen englischen Note-Teil fuer den Buchhalter. p_ask = true (Sparplan-Writes): nur bei warn/alert und nur wenn
 --       core.fn_should_notify('finance', 'savings_funding:<konto>:<runs_out_on>') kippt -> Frage-Auftrag
@@ -64,6 +65,8 @@ DECLARE
     v_res     numeric;
     v_free_min numeric;
     v_free_dt  date;
+    v_fix      boolean;   -- ein frueherer Tag der Eingaenge behebt die Luecke (fn_account_funding.timing_fixable)
+    v_ends     date;      -- letzter Termin eines endenden Zubringers (fn_account_funding.inflow_ends)
     v_lines   jsonb := '[]'::jsonb;
     v_accts   jsonb := '[]'::jsonb;
     v_notes   text[] := '{}';
@@ -102,6 +105,8 @@ BEGIN
         v_res   := COALESCE((v_f->>'reserved')::numeric, 0);
         v_free_min := COALESCE((v_f->>'min_free')::numeric, (v_f->>'min_projected')::numeric);
         v_free_dt  := COALESCE((v_f->>'min_free_date')::date, (v_f->>'min_date')::date);
+        v_fix      := COALESCE((v_f->>'timing_fixable')::boolean, false);
+        v_ends     := (v_f->>'inflow_ends')::date;
         -- Betraege fuer die Note (Modell-Text): zwei Nachkommastellen + Waehrungscode des Kontos
         t_in    := to_char(v_in, 'FM999999999990.00') || ' ' || v_cur;
         t_out   := to_char(v_out, 'FM999999999990.00') || ' ' || v_cur;
@@ -140,10 +145,12 @@ BEGIN
                 WHEN p_state_only THEN jsonb_build_object('kind', 'note',
                          'value', CASE v_state WHEN 'alert' THEN 'finance.note.funding_gap_date' ELSE 'finance.note.funding_until_date' END,
                          'params', jsonb_build_object('account', v_name, 'date', core.fn_ui_date(v_date)))
-                WHEN v_gap = 0 THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.funding_timing',
+                WHEN v_gap = 0 AND v_fix THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.funding_timing',
                          'params', jsonb_build_object('account', v_name, 'date', core.fn_ui_date(v_date),
                                                       'min', core.fn_ui_money(v_free_min, v_cur),
                                                       'min_date', core.fn_ui_date(v_free_dt)))
+                WHEN v_gap = 0 AND v_ends IS NOT NULL THEN jsonb_build_object('kind', 'note', 'value', 'finance.note.funding_inflow_ends',
+                         'params', jsonb_build_object('account', v_name, 'end', core.fn_ui_date(v_ends), 'date', core.fn_ui_date(v_date)))
                 ELSE jsonb_build_object('kind', 'note',
                          'value', CASE v_state WHEN 'alert' THEN 'finance.note.funding_gap' ELSE 'finance.note.funding_until' END,
                          'params', jsonb_build_object('account', v_name, 'date', core.fn_ui_date(v_date),
@@ -159,13 +166,24 @@ BEGIN
                     WHEN p_state_only THEN format('Money check for the account "%s": with the new rate the balance lasts only until %s.%s',
                              v_name, to_char(v_date, 'DD.MM.YYYY'),
                              CASE WHEN p_ask THEN ' ASK the user where the missing money comes from (core rule 9, savings_funding).' ELSE '' END)
-                    WHEN v_gap = 0 THEN format('Money check for the account "%s": as much comes in as goes out (%s a month), '
+                    WHEN v_gap = 0 AND v_fix THEN format('Money check for the account "%s": as much comes in as goes out (%s a month), '
                              || 'but the incoming money arrives after the debits, so the balance drops to %s%s on %s and runs short '
                              || 'from %s. Tell the user and suggest moving the incoming standing transfer to a day before the '
                              || 'first debit of the month; no money is missing.',
                              v_name, t_in,
                              t_min, t_res,
                              to_char(v_free_dt, 'DD.MM.YYYY'), to_char(v_date, 'DD.MM.YYYY'))
+                    -- rein = raus im Mittel, aber kein frueherer Tag behebt es (fn_account_funding.timing_fixable): Ursache
+                    -- nennen, nie zum Vorziehen raten
+                    WHEN v_gap = 0 THEN format('Money check for the account "%s": on average as much comes in as goes out (%s a month), '
+                             || 'but %sthe balance runs short from %s (lowest %s%s on %s). Moving a payment day does not fix '
+                             || 'this; tell the user the cause and never propose another payment day.%s',
+                             v_name, t_in,
+                             CASE WHEN v_ends IS NOT NULL THEN format('an incoming transfer ends on %s, so ', to_char(v_ends, 'DD.MM.YYYY'))
+                                  ELSE '' END,
+                             to_char(v_date, 'DD.MM.YYYY'), t_min, t_res, to_char(v_free_dt, 'DD.MM.YYYY'),
+                             CASE WHEN p_ask THEN ' ASK the user where the missing money comes from (core rule 9, savings_funding).'
+                                  ELSE '' END)
                     ELSE format('Money check for the account "%s"%s: all regular debits from this account total %s a month%s, '
                              || '%s a month comes in, so %s a month is missing; the balance of %s%s lasts until %s.%s',
                              v_name, CASE WHEN p_ask THEN '' ELSE ' after this change' END,

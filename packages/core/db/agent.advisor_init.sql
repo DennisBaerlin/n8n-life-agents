@@ -155,8 +155,11 @@ CREATE TABLE IF NOT EXISTS agent.dispatch_followup (
 -- und gebucht werden muss (Sparziel, Sparplan, Dauerauftrag ...), legt agent.fn_advisor_save_section mit dem Abschnitt
 -- an (hinter der Abschnitts-Karte); der Knopf [Durchgehen] (core.fn_handle_handoff_cb) beansprucht die Aufgaben,
 -- der Buchhalter fuehrt sie einzeln hinter seinen normalen Karten aus.
--- Lebenszyklus: open -> working (Claim, claimed_at; nach der TTL advisor.handoff_claim_ttl_minutes neu beanspruchbar,
--- Fehler -> zurueck auf open) -> done | cancelled. Endzustaende sind unveraenderlich (Trigger). open verfaellt nie.
+-- Lebenszyklus (Uebergaenge erzwingt agent.fn_handoff_tasks_final_guard): open -> working (Claim, claimed_at; nach der TTL
+-- advisor.handoff_claim_ttl_minutes neu beanspruchbar; Fehler oder "ueberspringen" -> zurueck auf open) -> done | cancelled.
+-- deferred = vereinbart, so noch nicht eintragbar (blocked_code): eigener Nicht-Endzustand statt open mit Grund, weil jeder
+-- Leser open/working zaehlt und ein blockierter Punkt nie als eintragbar gelten darf. deferred -> working (Korrektur-Schritt)
+-- oder cancelled. Endzustaende sind unveraenderlich; eine Korrektur ist eine neue Aufgabe mit follows_task_id. open verfaellt nie.
 -- package = Lifecycle-/Purge-Owner (fn_pkg_purge_data), domain = fachliche Plan-Domain; das Ziel-Agent loest der Build
 -- aus dem Manifest (advisors.<domain>.handoff_agent), keine Agenten-Spalte. person_id = die Person, die zugestimmt hat
 -- (aus der chat_id, nie LLM); Personen-FK in core:V035 (dieses Init laeuft vor persons_init, Muster V034).
@@ -174,7 +177,7 @@ CREATE TABLE IF NOT EXISTS agent.handoff_tasks (
     kind        text NOT NULL CHECK (kind IN ('savings_goal', 'savings_plan', 'recurring_payment', 'recurring_transfer', 'other')),
     payload     jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(payload) = 'object'),
     text        text NOT NULL CHECK (btrim(text) <> '' AND length(text) <= 300),
-    status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'working', 'done', 'cancelled')),
+    status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'working', 'deferred', 'done', 'cancelled')),
     claimed_at  timestamptz,                -- Provenienz des Claims (Ausnahme (c)): wann [Durchgehen] die Aufgabe beanspruchte
     created_at  timestamptz NOT NULL DEFAULT now(),
     closed_at   timestamptz,                -- Provenienz des Endzustands (Ausnahme (c))
@@ -191,13 +194,89 @@ DO $$ BEGIN
     END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS handoff_tasks_open_idx ON agent.handoff_tasks (domain, person_id, status);
+-- Den Status-CHECK auf Bestands-DBs (ohne 'deferred') tauscht core:V039; das Inline-CHECK oben gilt nur fuer frische DBs.
+-- why          = ein Satz, warum der Eintrag vereinbart wurde (Kartenzeile); vom Berater beim Vereinbaren.
+-- wanted       = das beim Vereinbaren gepruefte Soll: ein fertiger Aufruf {tool, input} oder eine Liste davon (Vorpruefung
+--                core.advisors.handoff_check_fn); nach dem Anlegen unveraenderlich (Trigger). Provenienz (Ausnahme (c)):
+--                der Unterschied Soll gegen Ist wird nie gespeichert, sondern je Lesen abgeleitet (handoff_diff_fn).
+-- entered_refs = welche Sachen der Abschluss angelegt oder geaendert hat [{type, id}], von der DB beim Abschluss
+--                geschrieben (core.fn_complete_handoff_task), bei weiteren Teilen derselben Runde nur angehaengt.
+--                Provenienz (Ausnahme (c)), nicht ableitbar.
+-- blocked_code = warum deferred (fester Schluessel aus der Liste des Pakets, Text <pkg>.handoff.blocked.<code>).
+-- open_point_id = offener Punkt des Themas, der beim Eintragen bewusst offen bleibt (Rest; Id aus interview_state).
+-- follows_task_id = die abgeschlossene Aufgabe, die diese korrigiert oder nachholt.
+-- close_reason = wie der Endzustand entstand: entered (Werkzeug), done_elsewhere (schon im System), dropped (bewusst
+--                gestrichen). NULL nur bei Altbestand vor dieser Spalte; das Ersatzweg-Register nimmt ihn deshalb als 'legacy'.
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS why text;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS wanted jsonb;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS entered_refs jsonb;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS blocked_code text;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS open_point_id int;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS follows_task_id int REFERENCES agent.handoff_tasks(id) ON DELETE SET NULL;
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS close_reason text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_why_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_why_check
+            CHECK (why IS NULL OR (btrim(why) <> '' AND length(why) <= 160));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_wanted_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_wanted_check
+            CHECK (wanted IS NULL OR jsonb_typeof(wanted) IN ('object', 'array'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_entered_refs_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_entered_refs_check
+            CHECK (entered_refs IS NULL OR (jsonb_typeof(entered_refs) = 'array' AND status = 'done'
+                   AND NOT jsonb_path_exists(entered_refs, '$[*] ? (@.type() != "object" || !(exists(@.type) && exists(@.id)))')));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_blocked_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_blocked_check
+            CHECK ((status = 'deferred') = (blocked_code IS NOT NULL)
+                   AND (blocked_code IS NULL OR blocked_code ~ '^[a-z][a-z0-9_]{1,40}$'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_open_point_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_open_point_check
+            CHECK (open_point_id IS NULL OR open_point_id > 0);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_close_reason_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_close_reason_check
+            CHECK (close_reason IS NULL
+                   OR (close_reason IN ('entered', 'done_elsewhere') AND status = 'done')
+                   OR (close_reason = 'dropped' AND status = 'cancelled'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_follows_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_follows_check
+            CHECK (follows_task_id IS NULL OR follows_task_id <> id);
+    END IF;
+END $$;
+-- Je abgeschlossener Aufgabe hoechstens eine Korrektur (zwei Tipps auf das Nachhol-Angebot legten sonst zwei an).
+CREATE UNIQUE INDEX IF NOT EXISTS handoff_tasks_follows_uq ON agent.handoff_tasks (follows_task_id) WHERE follows_task_id IS NOT NULL;
 
--- Endzustand-Gesetz: done/cancelled aendert niemand mehr (auch kein Re-Open). DELETE bleibt erlaubt (Purge, E2E-Cleanup).
+-- Uebergangs-Gesetz (A2A: abgeschlossene Aufgaben starten nicht neu). Erlaubt: open -> working|deferred|done|cancelled,
+-- working -> open|deferred|done|cancelled, deferred -> working|cancelled. wanted aendert sich nie, ausser einmal von NULL auf den
+-- Aufruf der Vorpruefung beim Nachholen (deferred -> working; beim Vereinbaren gab es noch keinen). Ein Endzustand aendert
+-- sich nicht mehr, ausser zwei Provenienz-Folgen: entered_refs eines done wird angehaengt (weiterer Teil derselben Runde)
+-- und follows_task_id faellt auf NULL (ON DELETE SET NULL der Vorgaenger-Aufgabe). DELETE bleibt erlaubt (Purge, E2E).
 CREATE OR REPLACE FUNCTION agent.fn_handoff_tasks_final_guard()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+    IF NEW.wanted IS DISTINCT FROM OLD.wanted
+       AND NOT (OLD.wanted IS NULL AND OLD.status = 'deferred' AND NEW.status = 'working') THEN
+        RAISE EXCEPTION 'agent.handoff_tasks: wanted of task % is fixed once agreed', OLD.id;
+    END IF;
     IF OLD.status IN ('done', 'cancelled') THEN
+        IF (to_jsonb(NEW) - 'entered_refs' - 'follows_task_id') = (to_jsonb(OLD) - 'entered_refs' - 'follows_task_id')
+           AND (NEW.follows_task_id IS NOT DISTINCT FROM OLD.follows_task_id OR NEW.follows_task_id IS NULL)
+           AND (NEW.entered_refs IS NOT DISTINCT FROM OLD.entered_refs
+                OR (OLD.status = 'done' AND NEW.entered_refs @> COALESCE(OLD.entered_refs, '[]'::jsonb))) THEN
+            RETURN NEW;
+        END IF;
         RAISE EXCEPTION 'agent.handoff_tasks: task % is % and can no longer change', OLD.id, OLD.status;
+    END IF;
+    IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
+           (OLD.status = 'open' AND NEW.status IN ('working', 'deferred', 'done', 'cancelled'))
+        OR (OLD.status = 'working' AND NEW.status IN ('open', 'deferred', 'done', 'cancelled'))
+        OR (OLD.status = 'deferred' AND NEW.status IN ('working', 'cancelled'))) THEN
+        RAISE EXCEPTION 'agent.handoff_tasks: task % cannot go from % to %', OLD.id, OLD.status, NEW.status;
     END IF;
     RETURN NEW;
 END;

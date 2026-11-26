@@ -4,12 +4,17 @@
 --   Leitet aus dem Bestand ab, was als Naechstes dran ist (level-triggered, kein Status). Reihenfolge: 0 [Plan durchsehen],
 --   1 Uebergabe-Liste (Merker core.fn_handoff_latch_key: einmal je hoechster Aufgabe und veroeffentlichter Version),
 --   waehrend des Durchgehens (Claim juenger als advisor.handoff_claim_ttl_minutes) still warten, 3 Paket-Schritt
---   (core.advisors.rollout_fn, z. B. Bank-Zettel) schon vor dem Warten auf liegen gebliebene Eintraege, 2 Warten auf
---   Eintragen, 4 Wert-Waechter, 5 Schluss.
+--   (core.advisors.rollout_fn, z. B. Bank-Zettel) schon vor dem Warten auf liegen gebliebene Eintraege, 2 still warten,
+--   solange ein Eintrag open/working ist (ohne Frist; deferred und cancelled halten nicht auf), fix Korrektur-Schritt,
+--   4 Wert-Waechter, 5 Schluss. advisor.rollout_wait_days gilt nur fuer Schritt 0 und das wait eines Paket-Schritts.
+--   fix: Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now (nach einem Update geht, was vorher
+--   nicht ging); eine Nachricht core.rollout.fix_offer {n} bzw. fix_offer_one, Knopf core.handoff.btn_go mit
+--   handoff:<domain>:<max_task_id>:fix (core.fn_handle_handoff_cb), je Aufgabe ein Merker '<prefix>fix:<task_id>' in latches
+--   (ein Angebot je Aufgabe; nie bei offenem Entwurf).
 --   Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen, 1 wartet (step 1, wait).
 --   Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share.
 --   Beansprucht ueber core.fn_should_notify('plan_rollout', key, '30 minutes'); festschreiben macht der Sender (core.fn_notify_commit).
---   Rueckgabe {step, wait?, loser?, messages:[{msg:[tpl] | lines:[[tpl…]|null], buttons:[{text_key,params?,data}], memory_agent?,
+--   Rueckgabe {step (0..5 oder 'fix'), wait?, loser?, messages:[{msg:[tpl] | lines:[[tpl…]|null], buttons:[{text_key,params?,data}], memory_agent?,
 --   latch:{source,key}, latches?}]} (lines = mehrzeilige Nachricht eines Paket-Schritts, core.sub_plan_rollout_next);
 --   unbekannte Domain, fremde Person oder kein aktiver Plan -> {step:null, messages:[]}.
 --   Nachrichten ohne Knopf werden verworfen. INVOKER unter der Host-Cred. Tests: tests/db/core/test_fn_plan_rollout_next.sql
@@ -38,7 +43,6 @@ DECLARE
     v_at      timestamptz;
     v_cnt     int;
     v_max     int;
-    v_young   timestamptz;
     v_items   jsonb;
     v_res     jsonb;
     v_buttons jsonb;
@@ -49,6 +53,7 @@ DECLARE
     v_shown   int;
     v_slot    int;
     v_live    boolean;
+    v_fix     jsonb;
     v_ttl     int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
 BEGIN
     SELECT * INTO v_adv FROM core.advisors a WHERE a.domain = p_domain;
@@ -97,9 +102,9 @@ BEGIN
     -- Schritt 1: Uebergabe-Liste, einmal je hoechster Aufgabe und veroeffentlichter Version. Warten zaehlt auch laufende
     -- Claims (sonst liefe die Abfolge waehrend des Durchgehens weiter); Liste, Knopf und Schluessel (latch_key) kommen aus
     -- core.fn_handoff_overview wie beim Berater-Tool, damit dessen Merker denselben Schluessel trifft.
-    SELECT count(*), max(t.created_at),
+    SELECT count(*),
            COALESCE(bool_or(t.status = 'working' AND t.claimed_at > now() - make_interval(mins => v_ttl)), false)
-      INTO v_cnt, v_young, v_live
+      INTO v_cnt, v_live
       FROM agent.handoff_tasks t
      WHERE t.domain = p_domain AND t.person_id = p_person AND t.status IN ('open', 'working');
     IF v_cnt > 0 THEN
@@ -116,7 +121,7 @@ BEGIN
                 RETURN jsonb_build_object('step', 1, 'loser', true, 'messages', '[]'::jsonb);
             END IF;
             RETURN jsonb_build_object('step', 1, 'messages', jsonb_build_array(jsonb_build_object(
-                'msg', jsonb_build_array(v_res->'msg'),
+                'msg', jsonb_build_array(v_res->'msg') || CASE WHEN jsonb_typeof(v_res->'effect') = 'object' THEN jsonb_build_array(v_res->'effect') ELSE '[]'::jsonb END,
                 'buttons', jsonb_build_array(jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || p_domain || ':' || v_max)),
                 'latch', jsonb_build_object('source', 'plan_rollout', 'key', v_key))));
         END IF;
@@ -143,8 +148,9 @@ BEGIN
         END IF;
     END IF;
 
-    -- Schritt 2: warten, bis eingetragen ist, hoechstens rollout_wait_days
-    IF v_cnt > 0 AND v_young > now() - make_interval(days => v_wait) THEN
+    -- Schritt 2: still warten, solange etwas open/working ist, ohne Frist (nie "eingerichtet", bevor es stimmt);
+    -- deferred und cancelled halten nicht auf
+    IF v_cnt > 0 THEN
         RETURN jsonb_build_object('step', 2, 'wait', true, 'messages', '[]'::jsonb);
     END IF;
 
@@ -160,6 +166,31 @@ BEGIN
     END IF;
 
     IF v_draft THEN RETURN jsonb_build_object('step', NULL, 'messages', '[]'::jsonb); END IF;
+
+    -- Korrektur-Schritt: je nachholbarer Aufgabe ein eigener Merker; laufende Beanspruchung (pending) eines anderen Laufs
+    -- wird uebersprungen, nur frisch beanspruchte Aufgaben kommen in die Nachricht.
+    v_fix := '[]'::jsonb;
+    v_max := NULL;
+    FOR v_cnt IN
+        SELECT (e->>'task_id')::int FROM jsonb_array_elements(core.fn_handoff_register(p_domain, core.fn_person_chat_id(p_person)::text)) e
+         WHERE (e->>'possible_now')::boolean ORDER BY (e->>'task_id')::int
+    LOOP
+        v_key := v_prefix || 'fix:' || v_cnt;
+        CONTINUE WHEN core.fn_plan_rollout_latch(v_key) <> 'free';
+        CONTINUE WHEN NOT core.fn_should_notify('plan_rollout', v_key, interval '30 minutes');
+        v_fix := v_fix || jsonb_build_object('source', 'plan_rollout', 'key', v_key);
+        v_max := v_cnt;
+    END LOOP;
+    IF jsonb_array_length(v_fix) > 0 THEN
+        -- n = was der Knopf beansprucht: alle nachholbaren bis v_max, auch frueher angebotene (core.fn_handle_handoff_cb)
+        SELECT count(*) INTO v_cnt FROM jsonb_array_elements(core.fn_handoff_register(p_domain, core.fn_person_chat_id(p_person)::text)) e
+         WHERE (e->>'possible_now')::boolean AND (e->>'task_id')::int <= v_max;
+        RETURN jsonb_build_object('step', 'fix', 'messages', jsonb_build_array(jsonb_build_object(
+            'msg', jsonb_build_array(CASE WHEN v_cnt = 1 THEN core.fn_ui_tpl('core.rollout.fix_offer_one')
+                                          ELSE core.fn_ui_tpl('core.rollout.fix_offer', jsonb_build_object('n', v_cnt)) END),
+            'buttons', jsonb_build_array(jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || p_domain || ':' || v_max || ':fix')),
+            'latch', v_fix->0, 'latches', v_fix)));
+    END IF;
 
     -- Schritt 4: Wert-Waechter von draussen
     IF v_sync AND jsonb_array_length(v_plan.watch_candidates) > 0 THEN

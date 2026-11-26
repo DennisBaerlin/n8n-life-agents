@@ -1,9 +1,8 @@
 -- tests/db/core/test_fn_advisor_resume_due.sql
 -- core.fn_advisor_resume_due(p): Erinnerung an eine angefangene Beratung (Stufe 1 nach 4, Stufe 2 nach 14 Tagen, dann
--- Ruhe) und einmal an offene Uebergabe-Punkte nach dem Veroeffentlichen. Je Zeile der Zustands-Matrix ein Fall:
+-- Ruhe); nie an offene Uebergabe-Punkte nach dem Veroeffentlichen. Je Zeile der Zustands-Matrix ein Fall:
 --   Z0/Z2/Z3 nichts; Z4 Stufe 1; Z5 Ueberarbeitung; Z6 Stufe 2; Z7 Ruhe; Z8 Re-Arm (mit Mindestabstand); Z9 nichts;
---   Z10 nichts; Z11 einmal je hoechster Aufgabe, nicht vor 14 Tagen, nicht ohne Rollout-Merker, nicht bei offenem
---   Abschnitt; Thema-Etikett (Thema / Abschnitts-Name / keins); offene Punkte im Entwurf; offener fremder Abschnitt +
+--   Z10 nichts; Z11 nichts (auch Wochen nach der Liste); Thema-Etikett (Thema / Abschnitts-Name / keins); offene Punkte im Entwurf; offener fremder Abschnitt +
 --   Entwurf -> Erinnerung (R6 mit "Angefangenes geht vor"); R7 Gruss-Vorschlag heute; R8 Denk-Schalter / offene Karte;
 --   rem:off und Notschalter vor jedem Merker; ready=false; Paket inaktiv; Mitglied mit eigenem Entwurf nie;
 --   Quellen-Grenze (onboarding_nudge heute); ausserhalb des Erinnerungs-Fensters nichts; neuer Entwurf = neue Merker.
@@ -263,54 +262,19 @@ BEGIN
   r := core.fn_advisor_resume_due(p_in);
   IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [21 Z10]: %', r; END IF;
 
-  -- ---------- (22) Z11 offene Uebergabe-Punkte nach dem Veroeffentlichen ----------
+  -- ---------- (22) Z11 offene Uebergabe-Punkte nach dem Veroeffentlichen -> nie eine Erinnerung an die Liste ----------
+  -- Die Liste kommt einmal nach dem Veroeffentlichen; sichtbar bleibt sie still im Menue (handoffs_open), nicht als Nachricht.
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES
     ('finance', 'finance', 'erika', 'goals', 'savings_goal', 'Ziel A'), ('finance', 'finance', 'erika', 'goals', 'savings_plan', 'Plan B');
   SELECT max(id) INTO v_max FROM agent.handoff_tasks;
-  -- ohne Rollout-Merker -> nichts
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 ohne Rollout-Liste]: %', r; END IF;
-  -- Merker im alten Format (ohne Version, vor dem Veroeffentlichen gesetzt) zaehlt nicht als Rollout-Liste
-  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:handoff:' || v_max, 'fired', now() - interval '15 days');
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 alter Merker]: %', r; END IF;
-  DELETE FROM core.notification_state WHERE source = 'plan_rollout';
-  -- Rollout-Liste vor 5 Tagen -> noch nicht
-  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:1:handoff:' || v_max, 'fired', now() - interval '5 days');
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 vor 14 Tagen]: %', r; END IF;
-  -- vor 15 Tagen, aber offener Abschnitt -> nichts (R6: kind section)
-  UPDATE core.notification_state SET last_fired_at = now() - interval '15 days' WHERE source = 'plan_rollout';
-  UPDATE finance.onboarding_state SET status = 'unknown';
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 offener Abschnitt]: %', r; END IF;
-  UPDATE finance.onboarding_state SET status = 'completed';
-  -- jetzt -> einmal
-  r := core.fn_advisor_resume_due(p_in);
-  it := r->'items'->0;
-  IF jsonb_array_length(r->'items') <> 1 OR it->>'kind' <> 'handoff' OR (it->>'max_task_id')::int <> v_max OR (it->>'open_tasks')::int <> 2
-     OR it->'msg'->0->>'value' <> 'core.handoff.overview' OR it->'msg'->0->'params'->'why'->>'value' <> 'core.handoff.why_resume'
-     OR it->'buttons'->0->>'text_key' <> 'core.handoff.btn_go' OR it->'buttons'->0->>'data' <> ('handoff:finance:' || v_max)
-     OR jsonb_array_length(it->'buttons') <> 1 THEN
-    RAISE EXCEPTION 'FAIL [22 Z11]: %', it; END IF;
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:1:handoff:' || v_max, 'fired', now() - interval '40 days');
   DELETE FROM core.proactive_budget;
   r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 nur einmal]: %', r; END IF;
-  -- neue Aufgabe (hoehere max_task_id): erst nach der naechsten Rollout-Liste moeglich
-  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance', 'finance', 'erika', 'goals', 'other', 'C');
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 neue Aufgabe ohne neue Liste]: %', r; END IF;
-  -- Entwurf derselben Domain -> Z11 schweigt (Entwurfs-Fall statt Uebergabe)
-  SELECT max(id) INTO v_max FROM agent.handoff_tasks;
-  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:1:handoff:' || v_max, 'fired', now() - interval '15 days');
-  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, updated_at)
-  VALUES ('finance', NULL, 'Plan', 'draft', 2, '{}', now() - interval '1 day');
-  DELETE FROM core.proactive_budget;
-  r := core.fn_advisor_resume_due(p_in);
-  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 Entwurf -> keine Uebergabe-Erinnerung]: %', r; END IF;
+  IF jsonb_array_length(r->'items') <> 0 OR EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'advisor_resume' AND key LIKE '%:handoff:%') THEN
+    RAISE EXCEPTION 'FAIL [22 Erinnerung an die Liste]: %', r; END IF;
 
   ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;
-  RAISE NOTICE 'PASS test_fn_advisor_resume_due (Z0-Z11, Thema-Etikett, offene Punkte, R6/R7/R8, rem:off, Notschalter, Quellen-Grenze, Fenster, Paket inaktiv, Mitglied/Kind, neuer Entwurf)';
+  RAISE NOTICE 'PASS test_fn_advisor_resume_due (Z0-Z11, Thema-Etikett, offene Punkte, R6/R7/R8, rem:off, Notschalter, Quellen-Grenze, Fenster, Paket inaktiv, Mitglied/Kind, neuer Entwurf, keine Listen-Erinnerung)';
 END $$;
 
 ROLLBACK;

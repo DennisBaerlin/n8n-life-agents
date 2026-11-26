@@ -54,14 +54,17 @@ REVOKE ALL ON FUNCTION core.fn_handoff_list_shown_at(text) FROM public;
 
 -- ============================================================
 -- core.fn_handoff_overview(p) — offene vereinbarte Plan-Aufgaben einer Person fuer die Uebersicht [Durchgehen]
---   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' =
---   Erinnerung der gefuehrten Abfolge, 'resume' = letzte Erinnerung von core.fn_advisor_resume_due, sonst der Berater) }.
---   Rueckgabe {count, max_task_id (NULL ohne offene), latch_key (core.fn_handoff_latch_key; NULL ohne offene),
+--   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' = Schritt 1
+--   der gefuehrten Abfolge nach dem Veroeffentlichen, sonst der Berater) }.
+--   Rueckgabe {count, max_task_id (NULL ohne offene), latch_key (core.fn_handoff_latch_key; NULL ohne offene), effect,
 --   items: [text, ...] in Anlage-Reihenfolge, msg: Text-Struktur
---   core.handoff.overview (core.fn_ui_tpl) mit list (nummeriert), since (Tag des aeltesten offenen Punkts per
---   core.fn_today: heute -> core.handoff.since_today, sonst core.fn_ui_date; "offen seit", kein Gespraechsdatum: Punkte
---   aus mehreren Gespraechen und neu gespeicherte Abschnitte haetten sonst ein falsches) und why (warum die Liste jetzt
---   kommt, je via)}. Eine Adresse fuer beide Sender: agent.tool_send_handoff_overview und Schritt 1 von
+--   core.handoff.overview (core.fn_ui_tpl) mit list (nummeriert) und why (warum die Liste jetzt kommt: rollout ->
+--   core.handoff.why_rollout {n} bzw. why_rollout_one, sonst core.handoff.why_advisor)}. Kein "offen seit" und kein
+--   "geht auch spaeter": die Liste ist der Pflichtschritt nach dem Veroeffentlichen, keine Erinnerung.
+--   effect = Folge-Zeile (Text-Struktur core.handoff.effect {n} bzw. effect_one) nur mit offenen Punkten und wenn die Paket-fn
+--   core.advisors.entry_effects_fn(domain) accounts > 0 meldet (Konten mit Warnung, die nur an fehlenden Eintraegen haengt);
+--   sonst NULL. Fehlt oder wirft die fn, entfaellt die Zeile. Schritt 1 der Abfolge haengt sie als zweite Nachrichtenzeile an.
+--   Eine Adresse fuer beide Sender: agent.tool_send_handoff_overview und Schritt 1 von
 --   core.fn_plan_rollout_next. Der Knopf traegt
 --   handoff:<domain>:<max_task_id> -> core.fn_handle_handoff_cb beansprucht nur bis dahin (eine spaeter vereinbarte
 --   Aufgabe kommt in die naechste Uebersicht). Es zaehlen open und working mit abgelaufenem Claim (advisor.handoff_claim_
@@ -76,24 +79,37 @@ AS $$
 DECLARE
     v_pid   text := core.fn_handoff_person(p->>'chat_id');
     v_out   jsonb;
-    v_since date;
+    v_efn   regprocedure;
+    v_eff   jsonb;
+    v_acc   int;
     v_ttl   int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
 BEGIN
     SELECT jsonb_build_object('count', count(*), 'max_task_id', max(t.id),
-                              'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb)),
-           core.fn_today(min(t.created_at))
-      INTO v_out, v_since
+                              'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb))
+      INTO v_out
       FROM agent.handoff_tasks t
      WHERE t.domain = COALESCE(p->>'domain', '') AND t.person_id = v_pid
        AND (t.status = 'open' OR (t.status = 'working' AND t.claimed_at < now() - make_interval(mins => v_ttl)));
+    IF (v_out->>'count')::int > 0 THEN
+        v_efn := to_regprocedure((SELECT a.entry_effects_fn FROM core.advisors a WHERE a.domain = p->>'domain') || '(text)');
+        IF v_efn IS NOT NULL THEN
+            BEGIN
+                EXECUTE format('SELECT %s($1)', v_efn::regproc) INTO v_eff USING p->>'domain';
+                v_acc := CASE WHEN jsonb_typeof(v_eff->'accounts') = 'number' THEN (v_eff->>'accounts')::numeric::int END;
+            EXCEPTION WHEN OTHERS THEN
+                v_acc := NULL;
+            END;
+        END IF;
+    END IF;
     RETURN v_out || jsonb_build_object(
+      'effect', CASE WHEN v_acc = 1 THEN core.fn_ui_tpl('core.handoff.effect_one')
+                     WHEN v_acc > 1 THEN core.fn_ui_tpl('core.handoff.effect', jsonb_build_object('n', v_acc)) END,
       'latch_key', core.fn_handoff_latch_key(p->>'domain', p->>'chat_id', (v_out->>'max_task_id')::int),
       'msg', core.fn_ui_tpl('core.handoff.overview', jsonb_build_object(
         'list', (SELECT string_agg(i || '. ' || (x #>> '{}'), E'\n' ORDER BY i) FROM jsonb_array_elements(v_out->'items') WITH ORDINALITY AS e(x, i)),
-        'since', CASE WHEN v_since IS NULL OR v_since >= core.fn_today() THEN core.fn_ui_tpl('core.handoff.since_today') ELSE core.fn_ui_date(v_since) END,
-        'why', CASE p->>'via' WHEN 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout')
-                                   WHEN 'resume' THEN core.fn_ui_tpl('core.handoff.why_resume')
-                                   ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
+        'why', CASE WHEN p->>'via' = 'rollout' AND (v_out->>'count')::int = 1 THEN core.fn_ui_tpl('core.handoff.why_rollout_one')
+                    WHEN p->>'via' = 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout', jsonb_build_object('n', (v_out->>'count')::int))
+                    ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
 END;
 $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_overview(jsonb) FROM public;

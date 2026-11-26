@@ -110,7 +110,31 @@ BEGIN
      OR (a->>'monthly_gap')::numeric <> 0 OR (a->>'min_projected')::numeric <> -400
      OR v->'savings_funding'->>'note' NOT LIKE '%after the debits%' OR v->'savings_funding'->>'note' LIKE '%ASK the user where%' THEN
     RAISE EXCEPTION 'FAIL [f] Zeitpunkt-Variante, got %', v; END IF;
+  -- der Rat "Eingang vorziehen" nur, weil die fn geprueft hat, dass ein frueherer Tag das Minus behebt
+  IF v->'savings_funding'->>'note' NOT LIKE '%suggest moving the incoming%' THEN
+    RAISE EXCEPTION 'FAIL [f] geprueft behebbar -> Rat, got %', v; END IF;
   RAISE NOTICE 'PASS [f] Zeitpunkt: Eingang nach der Abbuchung, kein Fehlbetrag';
+
+  -- [f2] rein = raus im Mittel, aber der Zubringer endet: ein frueherer Tag behebt nichts -> Ursache statt Rat
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_sf_ends__', 'cash', 'EUR', 'active') RETURNING id INTO v_rp;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_rp, 100, t - 40, 'other');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to) VALUES
+    ('sf Zubr endet', v_giro, v_rp, -500, 'month', t + 1, t + 1, t + 40);
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('sf Plan endet', v_rp, -500, 'month', t + 2, t + 2);
+  INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+  SELECT r.name, v_depot, 'SFE', 'Welt ETF', r.id FROM finance.recurring_payments r WHERE r.name = 'sf Plan endet';
+  a := finance.fn_account_funding(v_rp);
+  IF (a->>'timing_fixable')::boolean IS DISTINCT FROM false OR a->>'inflow_ends' IS NULL THEN
+    RAISE EXCEPTION 'FAIL [f2] funding: %', a; END IF;
+  IF (finance.fn_account_funding(v_late)->>'timing_fixable')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [f2] spaet behebbar: %', finance.fn_account_funding(v_late); END IF;
+  v := finance.fn_savings_funding_fold(ARRAY[v_rp], true);
+  IF v->'card_lines'->0->>'value' <> 'finance.note.funding_inflow_ends'
+     OR (v->'card_lines'->0->'params'->'end'->>'value')::date <> (a->>'inflow_ends')::date
+     OR v->'savings_funding'->>'note' LIKE '%suggest moving%' OR v->'savings_funding'->>'note' NOT LIKE '%ends on%' THEN
+    RAISE EXCEPTION 'FAIL [f2] Ursache statt Rat, got %', v; END IF;
+  RAISE NOTICE 'PASS [f2] endender Zubringer: Ursache, kein Rat';
 
   -- [g] Ausgabenkonto mit Auszug (netto -10 je Tag): Fehlbetrag = 300 + 10 * 30.4375 = 604.38, Note nennt Alltagsausgaben
   INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,

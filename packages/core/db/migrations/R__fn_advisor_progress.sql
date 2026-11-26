@@ -12,7 +12,8 @@
 --     enter (veroeffentlicht, vereinbarte Eintraege offen) | done.
 --   mode: existing = es gibt einen aktiven Plan oder der Entwurf traegt einen Alt-Text (legacy_content), sonst fresh.
 --   check {pass, total, done}: Prüfpunkte (Art finding ohne Uebersicht) des letzten Durchgangs am Entwurf.
---   handoffs {total, done}: vereinbarte Aufgaben der Domaene seit Anlage der aktuellen Plan-Zeile (cancelled zaehlt nicht).
+--   handoffs {total, done, deferred}: vereinbarte Aufgaben der Domaene seit Anlage der aktuellen Plan-Zeile; total ohne cancelled
+--     und ohne deferred (zurueckgestellt wartet auf ein Update, keine Aufgabe des Nutzers), deferred = deren Zahl.
 --   stages [{key, parts_total, parts_done, done}], stage_current (Etappe des naechsten offenen Teils, sonst die letzte),
 --   stage_boundary (der naechste offene Teil ist der erste einer Etappe und die vorige ist fertig; bei einer Etappe nie),
 --   current = der naechste offene Teil {n, stage, section_key, annex?, slot?} (erstes offenes in Folge, kein gespeicherter Fokus),
@@ -53,6 +54,7 @@ DECLARE
     v_mode    text;
     v_h_total int;
     v_h_done  int;
+    v_h_def   int;
     v_bound   boolean := false;
     v_prev    text;
 BEGIN
@@ -111,8 +113,9 @@ BEGIN
     END IF;
     v_max := COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2);
 
-    SELECT count(*) FILTER (WHERE t.status <> 'cancelled'), count(*) FILTER (WHERE t.status = 'done')
-      INTO v_h_total, v_h_done
+    SELECT count(*) FILTER (WHERE t.status NOT IN ('cancelled', 'deferred')), count(*) FILTER (WHERE t.status = 'done'),
+           count(*) FILTER (WHERE t.status = 'deferred')
+      INTO v_h_total, v_h_done, v_h_def
       FROM agent.handoff_tasks t
      WHERE t.domain = v_domain AND (v_target IS NULL OR t.person_id = v_target) AND t.created_at >= v_since;
 
@@ -133,7 +136,7 @@ BEGIN
         'current_key', v_cur->>'section_key',
         'open_points', (SELECT count(*) FROM core.fn_plan_open_points(v_state) o WHERE NOT o.resolved),
         'check', jsonb_build_object('pass', COALESCE(v_pass, 0), 'total', COALESCE(v_total, 0), 'done', COALESCE(v_ok, 0)),
-        'handoffs', jsonb_build_object('total', COALESCE(v_h_total, 0), 'done', COALESCE(v_h_done, 0)),
+        'handoffs', jsonb_build_object('total', COALESCE(v_h_total, 0), 'done', COALESCE(v_h_done, 0), 'deferred', COALESCE(v_h_def, 0)),
         'stages', v_stages,
         'stage_current', COALESCE(v_cur->>'stage', (SELECT e->>'stage' FROM jsonb_array_elements(v_parts) e ORDER BY (e->>'n')::int DESC LIMIT 1)),
         'stage_boundary', v_bound,

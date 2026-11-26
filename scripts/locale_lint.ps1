@@ -21,6 +21,7 @@
 #       eine ueberfluessige Ausnahme ist ein Fehler.
 #   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
 #   (11) Karten-Laien-Test: Texte der Bestaetigungskarten kurz, ohne interne Begriffe, Datum statt Zeitspanne (Ratchet je Key).
+#   (12) Hand-Zeichen 👉/🔔 in jedem Katalog-Text nur als Zeilenanfang mit Leerzeichen.
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
 #   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.{name,frame,greet}.* — sind ausgenommen).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
@@ -381,6 +382,31 @@ Check 'Karten-Laien-Test: kurze Kartentexte ohne interne Begriffe (Ratchet je Ke
     }
     foreach ($k in $cardExcept.Keys) {
         if (-not @($hit.Keys | Where-Object { $_.EndsWith("|$k") }).Count) { "Ausnahme '$k' in scripts/locale_lint.ps1 ist ueberfluessig (kein Verstoss mehr oder Key entfernt) -- Zeile streichen" }
+    }
+}
+
+# (12) Hand-Zeichen der Karten und Erinnerungen (docs/reference/packages.md *HITL-Karten*): 👉 = das machst du,
+#      🔔 = daran erinnere ich dich. Die Bedeutung prueft kein Lint; die Stellung schon: in jedem Katalog-Text nur als
+#      Zeilenanfang mit Leerzeichen ("👉 Bei …"), damit die Handlung des Nutzers immer eine eigene Zeile ist.
+function Get-HandMarkFindings([string]$Text) {
+    foreach ($mk in @('👉', '🔔')) {
+        foreach ($line in ($Text -split "`n")) {
+            $n = ([regex]::Matches($line, [regex]::Escape($mk))).Count
+            if ($n -gt 1 -or ($n -eq 1 -and -not $line.StartsWith("$mk ", [StringComparison]::Ordinal))) { "'$mk' nur als Zeilenanfang '$mk '" }
+        }
+    }
+}
+Check 'Hand-Zeichen: 👉 und 🔔 nur als Zeilenanfang' {
+    if (@(Get-HandMarkFindings "Text 👉 mitten").Count -ne 1 -or @(Get-HandMarkFindings "Zeile`n👉 Bei der Bank beenden.").Count) {
+        'Selbsttest: Positiv-/Negativfall der Hand-Zeichen-Regel stimmt nicht'
+    }
+    foreach ($pkg in $cat.Keys) {
+        foreach ($l in $cat[$pkg].Keys) {
+            $dict = $cat[$pkg][$l]
+            foreach ($k in $dict.Keys) {
+                foreach ($f in @(Get-HandMarkFindings ([string]$dict[$k]))) { "Datei packages/$pkg/locales/$l.json: '$k': $f" }
+            }
+        }
     }
 }
 

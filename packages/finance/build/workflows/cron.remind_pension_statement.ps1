@@ -3,7 +3,7 @@
 # Deterministisch, kein LLM, kein Write: Renteninformation-Erinnerung (Muster cron_reconcile_accounts).
 # Schedule -> finance.fn_pension_statements_due() (aktive gesetzliche/betriebliche Renten, deren juengste
 # Renteninformation aelter als 13 Monate ist oder die noch keine haben) -> IF count>0 -> eine Telegram-Nachricht mit
-# Anleitung + Knopf [Erinnerung abschalten]. Zeitplan = Platzhalter __CFG_SCHEDULE_REMIND_PENSION_STATEMENT__.
+# Anleitung + Knopf [Abschalt-Knopf core.reminders.btn_off]. Zeitplan = Platzhalter __CFG_SCHEDULE_REMIND_PENSION_STATEMENT__.
 #
 # Design wie der Monats-Check: kein sendAndWait (die Antwort ist eine Datei; Dateien loesen kein offenes Gate auf). Der
 # Nutzer schickt das PDF an den Bot -> agent.finance -> tool_extract_finance_document -> eine Karte.
@@ -59,7 +59,7 @@ return [{ json: { message: U.t('finance.dialog.pension_statement_intro') + '\n\n
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -300) `
         'Renteninformation-Erinnerung (monatlich geprüft, kein LLM, kein Write)' `
-        'Schedule (Cron aus core.config schedule.remind_pension_statement, Standard 15 10 5 * *). finance.fn_pension_statements_due() liefert die aktiven gesetzlichen/betrieblichen Renten, deren jüngste Renteninformation älter als 13 Monate ist oder die noch keine haben (dieselbe stale/never-Regel wie das Berater-Fenster fn_pension_outlook). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Anleitung aus dem Katalog) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:remind_pension_statement; wieder an in /reminders); sonst No-Op. Monatliche Prüfung: die DRV schickt die Renteninformation zu individuellen Terminen, eine fällige Rente erscheint so spätestens einen Monat nach Ablauf. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 560
+        'Schedule (Cron aus core.config schedule.remind_pension_statement, Standard 15 10 5 * *). finance.fn_pension_statements_due() liefert die aktiven gesetzlichen/betrieblichen Renten, deren jüngste Renteninformation älter als 13 Monate ist oder die noch keine haben (dieselbe stale/never-Regel wie das Berater-Fenster fn_pension_outlook). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Anleitung aus dem Katalog) -> EINE Nachricht mit Knopf [Abschalt-Knopf core.reminders.btn_off] (cron_off:remind_pension_statement; wieder an in /reminders); sonst No-Op. Monatliche Prüfung: die DRV schickt die Renteninformation zu individuellen Terminen, eine fällige Rente erscheint so spätestens einen Monat nach Ablauf. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 560
 
     $stickyDesign = Build-Sticky 'Workflow danach' @(0, 160) `
         'Ein PDF -> eine Karte -> ein atomarer Write' `

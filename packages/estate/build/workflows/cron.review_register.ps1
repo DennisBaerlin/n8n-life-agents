@@ -18,7 +18,7 @@
 # model.advisor_review bei jedem Lauf aus core.config).
 #
 # Always-on + Haushalts-Erinnerung: cron_enable.review_register=true, Eintrag in cron_labels.list
-# -> der Owner schaltet sie per [Erinnerung abschalten] an der Karte (cron_off:review_register) oder in /reminders;
+# -> der Owner schaltet sie per [Abschalt-Knopf core.reminders.btn_off] an der Karte (cron_off:review_register) oder in /reminders;
 # Konsole: lifeagents config set cron_enable review_register false. (cron_remind_case_tasks bleibt Pflicht = nie schaltbar.)
 # Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default = WRITE) — die Eval-fn schreibt Latch-State
 # (Muster cron.advisor_common.ps1; die SQL ist deterministisch, kein LLM-SELECT).
@@ -75,7 +75,7 @@ return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.
     $tail = New-AdvisorPhrasingTail -ConfigPackage 'core' -ConfigKey 'advisor_review' -Effort low `
         -PromptLead 'Rewrite the following yearly estate-preparedness reminder as a short, warm, reassuring Telegram message, written in the language {language}. Keep German legal terms (e.g. Vorsorgevollmacht, Patientenverfuegung) in German. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number and every concrete item EXACTLY as given. Maximum 16 lines. Text:\n\n'
 
-    # Nudge an den Owner mit [Erinnerung abschalten] (Haushalts-Erinnerung in cron_labels.list,
+    # Nudge an den Owner mit [Abschalt-Knopf core.reminders.btn_off] (Haushalts-Erinnerung in cron_labels.list,
     # Abmelden an der Nachricht selbst; cron_off:review_register -> core.fn_set_cron_enable, wieder an in /reminders).
     # Text escapt der Helper.
     $send = New-TelegramInlineKeyboardSendNode 'Send review' @(620, 0) "={{ `$json.message }}" `
@@ -83,7 +83,7 @@ return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.
 
     $stickyOverview = Build-Sticky 'Überblick' @(-1140, -360) `
         'agent.estate.cron_review_register — monatlicher Jahres-Review (always-on, Latch-selbst-still)' `
-        'Schedule (schedule.review_register, Default monatlich 1./10:05) -> Cron enabled? (fn_package_active(estate) AND cron_enable.review_register; Default true always-on; der Owner schaltet per [Erinnerung abschalten] = cron_off:review_register an der Karte oder in /reminders, Roter Faden Paket B) -> Load model config (model.advisor_review bei JEDEM Lauf; VOR dem Latch-Write) -> Evaluate review (core.fn_advisor_review_evaluate(estate, NULL, {}) -> Engine dispatcht estate.fn_advisor_review + LATCHT je Alert gegen core.notification_state source=advisor:estate; send=true NUR bei NEUEM Breach; core.fn_advisor_alerts_cap begrenzt die Punkte, Gekürztes kommt beim nächsten Lauf) -> Build message (bei send=true die alert.msg-Struktur, gerendert in Owner-Sprache über den geteilten Renderer; sonst Quiet run) -> Anything to report? -> Phrase (model.advisor_review, warm; onError -> deterministischer Text) -> Choose text -> Send (Nudge mit [Erinnerung abschalten] = cron_off:review_register, Roter Faden Paket B). BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat kein Publish -> die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -> eigener dünner Cron. Cred estate: Haupt-RW (Latch-Write, Präzedenz cron.advisor_common.ps1).' 360 780
+        'Schedule (schedule.review_register, Default monatlich 1./10:05) -> Cron enabled? (fn_package_active(estate) AND cron_enable.review_register; Default true always-on; der Owner schaltet per [Abschalt-Knopf core.reminders.btn_off] = cron_off:review_register an der Karte oder in /reminders, Roter Faden Paket B) -> Load model config (model.advisor_review bei JEDEM Lauf; VOR dem Latch-Write) -> Evaluate review (core.fn_advisor_review_evaluate(estate, NULL, {}) -> Engine dispatcht estate.fn_advisor_review + LATCHT je Alert gegen core.notification_state source=advisor:estate; send=true NUR bei NEUEM Breach; core.fn_advisor_alerts_cap begrenzt die Punkte, Gekürztes kommt beim nächsten Lauf) -> Build message (bei send=true die alert.msg-Struktur, gerendert in Owner-Sprache über den geteilten Renderer; sonst Quiet run) -> Anything to report? -> Phrase (model.advisor_review, warm; onError -> deterministischer Text) -> Choose text -> Send (Nudge mit [Abschalt-Knopf core.reminders.btn_off] = cron_off:review_register, Roter Faden Paket B). BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat kein Publish -> die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -> eigener dünner Cron. Cred estate: Haupt-RW (Latch-Write, Präzedenz cron.advisor_common.ps1).' 360 780
 
     $stickyEngine = Build-Sticky 'Doc Engine' @(-480, -360) `
         'estate.fn_advisor_review (Registry-Dispatch + Latch, off-canvas)' `

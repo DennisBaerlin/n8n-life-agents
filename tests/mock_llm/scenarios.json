@@ -704,6 +704,13 @@
     "final": "Sparplan pausiert."
   },
   {
+    "match": "Mein VWCE Bestandsplan soll nach",
+    "calls": [
+      { "tool": "tool_set_savings_plan", "args": { "savings_plan_name": "VWCE Bestandsplan", "valid_to": "in 4 months" } }
+    ],
+    "final": "Sparplan-Ende notiert."
+  },
+  {
     "match": "Schliesse meinen VWCE Bestandsplan",
     "calls": [
       { "tool": "tool_close_savings_plan", "args": { "savings_plan_name": "VWCE Bestandsplan" } }

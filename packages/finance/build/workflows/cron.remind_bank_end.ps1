@@ -63,7 +63,8 @@ return $input.all().map(({ json: row }) => {
       amount: { kind: 'money', value: r.amount, currency: r.currency }, date: { kind: 'date', value: r.last_due } });
   });
   return { json: { is_owner: isOwner, chat_id: msg.chat_id,
-    message: U.t('finance.dialog.bank_end_intro') + '\n\n' + lines.join('\n') + '\n\n' + U.t('finance.dialog.bank_end_howto'),
+    // je Auftrag zwei Zeilen (Auftrag + 👉), darum Leerzeile zwischen den Auftraegen
+    message: U.t('finance.dialog.bank_end_intro') + '\n\n' + lines.join('\n\n') + '\n\n' + U.t('finance.dialog.bank_end_howto'),
     btn_off: U.t('core.reminders.btn_off') } };
 });
 '@

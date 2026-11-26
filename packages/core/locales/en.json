@@ -942,7 +942,7 @@
   "core.cmd.costs": "AI costs of the last 7 and 30 days",
   "core.toast.reminder_mandatory": "This reminder always stays on (deadlines)",
   "core.cron.off_reminders_hint": "You can switch it back on any time with /reminders.",
-  "core.reminders.btn_off": "Turn off this reminder",
+  "core.reminders.btn_off": "🔕 Turn off these reminders",
   "core.reminders.card_footer": "Manage reminders: /reminders",
   "core.reminders.title": "Your reminders",
   "core.reminders.intro_owner": "This is what the bot sends on its own. Tap an entry to switch it on or off.",

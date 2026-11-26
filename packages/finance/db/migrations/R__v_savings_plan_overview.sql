@@ -4,6 +4,9 @@
 --   Monatsbetrag (recurring_payments.monthly_equivalent), naechste Ausfuehrung. Aus recurring_payments gelesen
 --   wird der Betrag je Ausfuehrung leicht als Monatsbetrag missdeutet (feste Ausfuehrungstage).
 --   Der Agent liest Sparplaene hier, nie aus den Rohtabellen.
+--   Ende der Kette vom Kopf (eine geplante Aenderung ist kein Ende), wie standing_order_overview: last_valid_day = letzter
+--   gueltiger Tag (inklusiv, fn_recurring_last_valid_day), last_execution = letzter echter Rasterpunkt davor
+--   (fn_recurring_last_due); beide NULL bei offenem Ende.
 --   Bedingungen aus dem HEUTE gueltigen Glied der Raten-Kette (fn_recurring_current; vor dem Start = das zuerst startende Glied,
 --   starts_on = sein erster Termin). Eine geplante Aenderung (Kopf <> heute gueltiges Glied, Validity-Split mit kuenftigem Stichtag)
 --   steht in change_from / new_amount_per_execution / new_rhythm.
@@ -70,7 +73,9 @@ SELECT sp.id,
        c.id                                     AS current_rp_id,
        h.id                                     AS head_rp_id,
        c.schedule_days_of_month                 AS days_of_month,
-       finance.fn_account_label(s.emoji, s.account_type, s.name) AS settlement_account_label
+       finance.fn_account_label(s.emoji, s.account_type, s.name) AS settlement_account_label,
+       finance.fn_recurring_last_due(h.id)       AS last_execution,
+       finance.fn_recurring_last_valid_day(h.id) AS last_valid_day
 FROM finance.savings_plans AS sp
 INNER JOIN chain AS ch                    ON ch.plan_id = sp.id
 INNER JOIN finance.recurring_payments AS h ON h.id = ch.head_id

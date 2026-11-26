@@ -3,6 +3,9 @@
 #   Docker-Verbunds mit der CLI dieses Abbilds (oder, Gegenlauf, mit einem aelteren Baum ueber LIFEAGENTS_CLI).
 #   seed      erfundene Daten in jeden Teil der Sicherung: geaenderte Einstellungen, ein Gespraech (Tabelle als n8n-Rolle, wie der
 #             Chat-Memory-Knoten sie anlegt), KI-Kosten, ein "schon gezeigt"-Merker, die Sperrliste, ein Paperless-Zugang.
+#             Dazu Wechselkurse (Feed + EZB) ueber finance.fn_upsert_fx_rates, damit der Kurs-Abruf nicht faellig ist.
+#   fx        "<Kurse>/<Waehrungen>" der geseedeten Kurse mit genauem Wert (Soll 3/2); backup_fingerprint zaehlt dort nur Zeilen.
+#   fxdue     "<Feed faellig>/<EZB-Nachlauf faellig>" (Soll false/false): nur dann holt der Cron keine Netz-Kurse in den Vergleich.
 #   export    Sicherung + Notfallblatt nach /tmp/rt (Blatt = Schluessel der Quelle; das frische Ziel hat einen eigenen).
 #   restore   die Sicherung aus /tmp/rt mit dem Blatt einspielen (wie die Start-App ohne Terminal).
 #   fp <datei> Fingerabdruck (lifeagents backup fingerprint) in die Datei; immer mit der CLI dieses Abbilds.
@@ -36,6 +39,14 @@ case "${1:-}" in
          INSERT INTO core.notification_state (source, key, state) VALUES ('plan_news', 'rt-erfunden', 'fired') ON CONFLICT DO NOTHING;
          INSERT INTO agent.access_blocks (telegram_user_id, reason) VALUES (912345, 'erfunden') ON CONFLICT DO NOTHING" >/dev/null \
       && pass seed.teile || fail seed.teile "SQL"
+    # Wechselkurse ueber die echte fn (Tages-Modus: Feed-Zeilen von heute; Zeilen-Modus: ein EZB-Tag). Zwei Gruende: Die Tabellen sollen
+    # die Sicherung nachweislich ueberleben (ohne Zeilen verglichen 0 mit 0), und ohne Kurse ist der Abruf des Wechselkurs-Crons
+    # faellig: sein n8n-Start-Eingang holt dann 30 s nach dem Start Feed + 5 Jahre EZB aus dem Netz (165 + 38000 Zeilen), im Ziel zu einem
+    # anderen Zeitpunkt als in der Quelle; der Restore raeumt sie je nach Reihenfolge wieder weg oder nicht.
+    sql "SELECT finance.fn_upsert_fx_rates('{\"rates\": {\"USD\": 1.23456, \"CLP\": 987.65}}'::jsonb);
+         SELECT finance.fn_upsert_fx_rates(jsonb_build_object('source', 'ecb', 'rows', jsonb_build_array(
+           jsonb_build_object('date', (now() AT TIME ZONE 'UTC')::date - 3, 'base', 'EUR', 'quote', 'USD', 'rate', 1.11111))))" >/dev/null \
+      && pass seed.kurse || fail seed.kurse "SQL"
     # Ein Zugang, den eine frische Installation nicht hat (die Testinstallation gibt keine Karriere-Schluessel ein): er muss aus der
     # Sicherung kommen. Ein Schluessel, den das Ziel schon hat, bliebe dort (gewollt) und zaehlte hier als Abweichung.
     if [ -r "$(lifeagents_env_file career)" ]; then
@@ -60,6 +71,16 @@ case "${1:-}" in
     sql "SELECT (SELECT count(*) FROM core.llm_usage WHERE id = '1762000000000-abcdef-000001')
               + (SELECT count(*) FROM core.notification_state WHERE source = 'plan_news' AND key = 'rt-erfunden')"
     ;;
-  *) printf 'Usage: roundtrip_cases.sh seed|export|restore|fp <datei>|subset\n' >&2; exit 2 ;;
+  fx)
+    # Die geseedeten Kurse mit genauem Wert (Soll 3: USD und CLP vom Feed, USD von der EZB) und ihre Waehrungen (Soll 2: USD, CLP).
+    sql "SELECT (SELECT count(*) FROM finance.fx_rates WHERE (quote_currency, rate, source) IN (('USD', 1.23456, 'open.er-api.com'), ('CLP', 987.65, 'open.er-api.com'), ('USD', 1.11111, 'ecb')))
+              || '/' || (SELECT count(*) FROM finance.currencies WHERE code IN ('USD', 'CLP'))"
+    ;;
+  fxdue)
+    # Faelligkeit des Kurs-Abrufs, so wie der Cron sie fragt (Feed: fn_feed_refresh_due, EZB-Nachlauf: fn_fx_history_due). Soll
+    # "false/false": ist einer faellig, schreibt der n8n-Start-Eingang des Crons Netz-Kurse in diese Datenbank, wann er will.
+    sql "SELECT finance.fn_feed_refresh_due('fx') || '/' || (finance.fn_fx_history_due()->>'due')"
+    ;;
+  *) printf 'Usage: roundtrip_cases.sh seed|export|restore|fp <datei>|subset|fx|fxdue\n' >&2; exit 2 ;;
 esac
 exit "$fails"

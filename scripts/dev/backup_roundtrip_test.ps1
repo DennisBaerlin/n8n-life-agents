@@ -32,6 +32,16 @@ function Step([string[]]$CaseArgs, [hashtable]$Env = @{}) {
     }
     return $r
 }
+# Die geseedeten Wechselkurse samt Waehrungen stehen mit genauem Wert in der Datenbank (Fall fx: Soll 3/2), und der Kurs-Abruf des
+# Crons ist nicht faellig (Fall fxdue: false/false). Der Fingerabdruck zaehlt bei den Kursen nur Zeilen, weil das Ziel eigene schreiben
+# darf; faellig hiesse: der n8n-Start-Eingang des Crons holt 30 s nach dem Start echte Kurse, und je nachdem, ob vor oder nach dem
+# Einspielen, unterscheiden sich Quelle und Ziel.
+function Assert-Kurse([string]$Name, $Fx, $Due) {
+    $v = @($Fx.Output) | Where-Object { "$_" -match '^\d+/\d+$' } | Select-Object -Last 1
+    if ("$v" -ne '3/2') { Fail "${Name}: Wechselkurse/Waehrungen der Sicherung: '$v' statt 3/2" }
+    $d = @($Due.Output) | Where-Object { "$_" -match '^(true|false)/(true|false)$' } | Select-Object -Last 1
+    if ("$d" -ne 'false/false') { Fail "${Name}: Kurs-Abruf faellig (Feed/EZB): '$d' statt false/false -- der Cron holte echte Kurse in den Vergleich" }
+}
 function Fresh {
     # Der laufende PowerShell-Host, nicht powershell.exe: das gibt es unter Linux nicht (dort pwsh).
     $r = Invoke-Native (Get-Process -Id $PID).Path @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'bootstrap_test_stack.ps1'), '-Reset')
@@ -57,6 +67,7 @@ try {
     Suspend-TestStackTick -Master $Master
     [void](Step @('seed'))
     [void](Step @('fp', '/tmp/rt/a.fp'))
+    Assert-Kurse 'a' (Step @('fx')) (Step @('fxdue'))
     [void](Step @('export'))
     Resume-TestStackTick -Master $Master
     foreach ($f in 'rt.nla.enc', 'rt.key', 'a.fp') {
@@ -71,9 +82,11 @@ try {
     [void](Step @('restore'))
     [void](Step @('fp', '/tmp/rt/b.fp'))
     $c = Step @('subset')
+    $fx = Step @('fx'); $due = Step @('fxdue')
     Resume-TestStackTick -Master $Master
     [void](Invoke-Native docker @('cp', "${Master}:/tmp/rt/b.fp", (Join-Path $Local 'b.fp')))
     Compare-Fp 'b' $true
+    Assert-Kurse 'b' $fx $due
     if ((@($c.Output) | Where-Object { "$_" -match '^\d+$' } | Select-Object -Last 1) -ne '2') { Fail "b: KI-Kosten oder Merker der Quelle fehlen nach dem Einspielen" }
 
     if ($AgainstRef) {

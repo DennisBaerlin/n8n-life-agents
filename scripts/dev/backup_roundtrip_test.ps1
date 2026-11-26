@@ -33,7 +33,8 @@ function Step([string[]]$CaseArgs, [hashtable]$Env = @{}) {
     return $r
 }
 function Fresh {
-    $r = Invoke-Native powershell.exe @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'bootstrap_test_stack.ps1'), '-Reset')
+    # Der laufende PowerShell-Host, nicht powershell.exe: das gibt es unter Linux nicht (dort pwsh).
+    $r = Invoke-Native (Get-Process -Id $PID).Path @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'bootstrap_test_stack.ps1'), '-Reset')
     if ($r.Code -ne 0) { throw "bootstrap_test_stack.ps1 -Reset scheiterte: $(@($r.Output)[-5..-1] -join ' | ')" }
     $r = Invoke-Native docker @('exec', $Master, 'sh', '-c', 'rm -rf /opt/rt /tmp/rt && mkdir -p /opt/rt /tmp/rt && chmod 0700 /tmp/rt')
     $r = Invoke-Native docker @('cp', (Join-Path $RepoRoot 'tests\backup\roundtrip_cases.sh'), "${Master}:/opt/rt/roundtrip_cases.sh")

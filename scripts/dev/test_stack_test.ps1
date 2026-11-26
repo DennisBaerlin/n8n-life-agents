@@ -140,6 +140,20 @@ $bad = @([System.Management.Automation.PSParser]::Tokenize($text, [ref]$null) |
     ForEach-Object { $_.StartLine } | Sort-Object -Unique)
 Assert-That ($bad.Count -eq 0) "kein doppeltes Anfuehrungszeichen in Docker-Argumenten von test_stack.ps1 (Zeilen: $($bad -join ', '))"
 
+# --- Skripte, die der Linux-Job backup-roundtrip (free-gates.yml) fuehrt, nennen keinen Windows-Programmnamen -----------------------
+# Der Job faehrt backup_roundtrip_test.ps1 unter PowerShell 7 auf Linux: dort gibt es kein powershell.exe ("The term 'powershell.exe' is
+# not recognized"). Kindaufrufe laufen ueber den laufenden Host ((Get-Process -Id $PID).Path). Geprueft werden Befehle, Argumente und
+# Zeichenketten (Tokenizer, keine Kommentare) in dem Test, dem Bootstrap und allen Bibliotheken unter scripts\lib, die sie laden.
+$linuxScripts = @(Get-ChildItem (Join-Path $repo 'scripts\lib') -Filter '*.ps1') + @(Get-Item (Join-Path $repo 'scripts\dev\backup_roundtrip_test.ps1'), (Join-Path $repo 'scripts\dev\bootstrap_test_stack.ps1'))
+Assert-That ($linuxScripts.Count -ge 10) "Linux-Skripte gefunden ($($linuxScripts.Count))"
+$winExe = @()
+foreach ($f in $linuxScripts) {
+    $code = [System.IO.File]::ReadAllText($f.FullName, (New-Object System.Text.UTF8Encoding($false)))
+    foreach ($tk in [System.Management.Automation.PSParser]::Tokenize($code, [ref]$null)) {
+        if ($tk.Type -in 'Command', 'CommandArgument', 'String' -and $tk.Content -match '(^|[\/\s])(powershell|cmd)\.exe\b') { $winExe += "$($f.Name):$($tk.StartLine)" }
+    }
+}
+Assert-That ($winExe.Count -eq 0) "Linux-Skripte rufen kein powershell.exe/cmd.exe auf (unter Linux nur pwsh; Host nehmen wie (Get-Process -Id `$PID).Path): $($winExe -join ', ')"
 # --- Suiten ohne Verbund (N8NTEST_RUNTIME, Wegwerf-Container aus dem master-Abbild) ---------------------------------------------
 # Ohne Docker: Weg-Auswahl, Namen, Argumente von docker run, Abbruch ohne Projektnamen und bei Suiten, die den Verbund brauchen.
 $savedRt = $env:N8NTEST_RUNTIME; $savedCt = $env:N8NTEST_CONTAINER

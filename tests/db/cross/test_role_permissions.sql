@@ -1803,7 +1803,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read', 'fn_advisor_open_handoffs'];
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_package_installed_at', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN
@@ -2085,6 +2085,35 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RESET ROLE;
   RAISE EXCEPTION 'FAIL [finance_rw -> fn_feed_refresh_due]: %', SQLERRM;
+END $$;
+
+-- Wechselkurs-Vorhaltung: der FX-Cron schreibt alle Feed-Waehrungen (inkl. finance.currencies) unter finance_rw; die
+-- Ausfall-Meldung (cron_remind_missing_prices) liest ohne jede Feed-Zeile den Installations-Anker ueber das Core-Fenster
+-- core.fn_package_installed_at und claimt ueber fn_feed_down_claim; Kurs-Lesen fn_fx_rate/fn_fx_eur_row unter finance_ro
+-- (Berater-postgres_select) und finance_rw.
+DO $$
+DECLARE v_r jsonb; v_rate numeric;
+BEGIN
+  DELETE FROM finance.fx_rates;
+  INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
+  ON CONFLICT (package) DO UPDATE SET status = 'active';
+  SET LOCAL ROLE finance_rw;
+  v_r := finance.fn_fx_feed_gap();   -- never-Pfad: core.fn_package_installed_at
+  IF (v_r->>'never')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'never-Pfad nicht erreicht: %', v_r; END IF;
+  PERFORM finance.fn_feed_down_claim('fx');
+  v_r := finance.fn_upsert_fx_rates('{"rates": {"USD": 1.08, "QQX": 2.5}, "as_of": "2026-06-07"}'::jsonb);
+  IF (v_r->>'upserted')::int IS DISTINCT FROM 2 THEN RESET ROLE; RAISE EXCEPTION 'upsert: %', v_r; END IF;
+  SELECT rate INTO v_rate FROM finance.fn_fx_rate('USD', 'QQX', '2026-06-07');
+  RESET ROLE;
+  SET LOCAL ROLE finance_ro;
+  SELECT rate INTO v_rate FROM finance.fn_fx_rate('EUR', 'USD', '2026-06-07');
+  IF v_rate IS DISTINCT FROM 1.08 THEN RESET ROLE; RAISE EXCEPTION 'finance_ro fn_fx_rate: %', v_rate; END IF;
+  PERFORM * FROM finance.fn_fx_eur_row('USD', '2026-06-07');
+  RESET ROLE;
+  RAISE NOTICE 'PASS finance_rw -> fn_fx_feed_gap/fn_feed_down_claim/fn_upsert_fx_rates/core.fn_package_installed_at, finance_ro -> fn_fx_rate/fn_fx_eur_row';
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RAISE EXCEPTION 'FAIL [Wechselkurs-Rollenpfad]: %', SQLERRM;
 END $$;
 
 

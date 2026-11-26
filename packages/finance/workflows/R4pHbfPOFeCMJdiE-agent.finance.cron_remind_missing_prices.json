@@ -95,7 +95,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT x.r AS doc, core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.dialog.price_gap_missing\u0027,\u0027finance.dialog.price_gap_stale\u0027,\u0027finance.dialog.price_gap_found\u0027,\u0027finance.dialog.price_gap_none\u0027,\u0027finance.dialog.price_gap_maybe\u0027,\u0027finance.dialog.price_gap_btn_apply\u0027,\u0027finance.dialog.price_gap_btn_later\u0027,\u0027finance.dialog.price_gap_applied\u0027,\u0027finance.dialog.price_gap_applied_noprice\u0027,\u0027finance.dialog.price_gap_already\u0027,\u0027finance.dialog.price_gap_failed\u0027,\u0027finance.dialog.price_gap_later\u0027,\u0027finance.dialog.price_feed_down\u0027,\u0027core.reminders.card_footer\u0027,\u0027core.hitl.unauthorized\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]))) AS ui\nFROM (SELECT finance.fn_price_gaps() AS r) x;",
+                                         "query":  "=SELECT x.r AS doc, x.fx AS fx, core.fn_ui_texts_for(jsonb_build_object(\u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.dialog.price_gap_missing\u0027,\u0027finance.dialog.price_gap_stale\u0027,\u0027finance.dialog.price_gap_found\u0027,\u0027finance.dialog.price_gap_none\u0027,\u0027finance.dialog.price_gap_maybe\u0027,\u0027finance.dialog.price_gap_btn_apply\u0027,\u0027finance.dialog.price_gap_btn_later\u0027,\u0027finance.dialog.price_gap_applied\u0027,\u0027finance.dialog.price_gap_applied_noprice\u0027,\u0027finance.dialog.price_gap_already\u0027,\u0027finance.dialog.price_gap_failed\u0027,\u0027finance.dialog.price_gap_later\u0027,\u0027finance.dialog.price_feed_down\u0027,\u0027finance.dialog.fx_feed_down\u0027,\u0027finance.dialog.fx_feed_down_never\u0027,\u0027core.reminders.card_footer\u0027,\u0027core.hitl.unauthorized\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]))) AS ui\nFROM (SELECT finance.fn_price_gaps() AS r, finance.fn_fx_feed_gap() AS fx) x;",
                                          "options":  {
 
                                                      }
@@ -165,7 +165,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT finance.fn_price_gap_claim(\u0027feed_down\u0027) AS due;",
+                                         "query":  "SELECT finance.fn_feed_down_claim(\u0027prices\u0027) AS due;",
                                          "options":  {
 
                                                      }
@@ -806,44 +806,6 @@
                   },
                   {
                       "parameters":  {
-                                         "workflowId":  {
-                                                            "__rl":  true,
-                                                            "value":  "OhOudXoO9SuOxnIP",
-                                                            "mode":  "list",
-                                                            "cachedResultUrl":  "/workflow/OhOudXoO9SuOxnIP",
-                                                            "cachedResultName":  "agent.finance.cron_refresh_fx_rates"
-                                                        },
-                                         "workflowInputs":  {
-                                                                "mappingMode":  "defineBelow",
-                                                                "value":  {
-                                                                              "chat_id":  "={{ \u0027\u0027 }}"
-                                                                          },
-                                                                "matchingColumns":  [
-
-                                                                                    ],
-                                                                "schema":  [
-
-                                                                           ],
-                                                                "attemptToConvertTypes":  false,
-                                                                "convertFieldsToString":  true
-                                                            },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.executeWorkflow",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       2820,
-                                       -460
-                                   ],
-                      "id":  "361cf300-25c0-50d8-9b8b-638398684f15",
-                      "name":  "Refresh FX rates",
-                      "alwaysOutputData":  true,
-                      "onError":  "continueRegularOutput"
-                  },
-                  {
-                      "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (SELECT to_jsonb(s) FROM finance.fn_holding_price_status(ARRAY[(($1::jsonb)-\u003e\u003e\u0027holding_id\u0027)::int]) s) AS st;",
                                          "options":  {
@@ -933,7 +895,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Kurs-Lücken-Erinnerung (Owner 2026-10-27: nie unentdeckt)**\n\nSchedule (core.config schedule.remind_missing_prices, Standard 25 10 * * * = im Erinnerungsfenster). Find gaps = finance.fn_price_gaps(): gehaltene Positionen ohne gültigen Kurs (missing = nie einer, stale = älter als advisor.price_stale_days; EINE Regel fn_price_status wie Depot-Übersicht und Berater), Referenzkurs für die Plausi-Prüfung, FX-Sätze; Seiteneffekt: behobene Lücken re-armen (core.fn_notify_resolve, source finance_prices). Plan items: Feed-Ausfall (keine Position ok, \u003e= 2 stale) -\u003e EINE Meldung (Latch feed_down, 7 Tage), sonst ein Item je Lücke. Ohne Lücke: Ende. Meldet unabhängig vom Finanzplan (der Berater-Drift-Check ist opt-in und war der Grund, dass eine Lücke unbemerkt blieb).",
+                                         "content":  "## DB-Automatik\n**Kurs-Erinnerungen: Wertpapiere + Wechselkurse (nie unentdeckt)**\n\nSchedule (core.config schedule.remind_missing_prices, Standard 25 10 * * * = im Erinnerungsfenster). Find gaps = finance.fn_price_gaps(): gehaltene Positionen ohne gültigen Kurs (missing = nie einer, stale = älter als advisor.price_stale_days; EINE Regel fn_price_status wie Depot-Übersicht und Berater), Referenzkurs für die Plausi-Prüfung, FX-Sätze; Seiteneffekt: behobene Lücken re-armen (core.fn_notify_resolve, source finance:prices). Daneben finance.fn_fx_feed_gap() (Wechselkurs-Dienst, Sticky Wechselkurs-Ausfall). Plan items: Feed-Ausfall (keine Position ok, \u003e= 2 stale) -\u003e EINE Meldung (fn_feed_down_claim(prices), 7 Tage), sonst ein Item je Lücke. Ohne Lücke: Ende. Meldet unabhängig vom Finanzplan (der Berater-Drift-Check ist opt-in und war der Grund, dass eine Lücke unbemerkt blieb).",
                                          "height":  340,
                                          "width":  620,
                                          "color":  4
@@ -949,7 +911,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_price_gap_claim direkt vor dem Versand**\n\nClaim gap = core.fn_should_notify(finance_prices, holding_id, 7 Tage): erste Meldung sofort, dann höchstens alle 7 Tage, solange die Lücke besteht. Gesetzt wird er je Position erst in ihrer Schleifen-Runde: eine nicht angetippte Karte verschluckt so keine spätere (die Karte wartet höchstens 8 h, dann weiter wie \"Nicht jetzt\"). Bewusst kein fn_notify_reconcile (advisor-only, kein Paket-Grant).",
+                                         "content":  "## DB-Automatik\n**fn_price_gap_claim direkt vor dem Versand**\n\nClaim gap = core.fn_should_notify(finance:prices, holding_id, 7 Tage): erste Meldung sofort, dann höchstens alle 7 Tage, solange die Lücke besteht. Gesetzt wird er je Position erst in ihrer Schleifen-Runde: eine nicht angetippte Karte verschluckt so keine spätere (die Karte wartet höchstens 8 h, dann weiter wie \"Nicht jetzt\"). Bewusst kein fn_notify_reconcile (advisor-only, kein Paket-Grant).",
                                          "height":  300,
                                          "width":  400,
                                          "color":  4
@@ -981,7 +943,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_apply_price_symbol + Sofort-Kurs**\n\nDer Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -\u003e \"nichts überschrieben\"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices -\u003e Check FX rates (fn_fx_rate_status, kennt auch die vom Abruf gelernte Währung; bei Lücke Refresh FX rates, alle alwaysOutputData) -\u003e Read new price (fn_holding_price_status, aggregiert -\u003e immer ein Item) -\u003e Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -\u003e nur Hinweis \"in 7 Tagen wieder\".",
+                                         "content":  "## DB-Automatik\n**fn_apply_price_symbol + Sofort-Kurs**\n\nDer Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -\u003e \"nichts überschrieben\"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices (alwaysOutputData; den Wechselkurs jeder Feed-Währung hält cron_refresh_fx_rates schon vor) -\u003e Read new price (fn_holding_price_status, aggregiert -\u003e immer ein Item) -\u003e Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -\u003e nur Hinweis \"in 7 Tagen wieder\".",
                                          "height":  340,
                                          "width":  440,
                                          "color":  4
@@ -1013,7 +975,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Paket aktiv UND cron_enable.remind_missing_prices**\n\ncore.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_missing_prices\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false.",
+                                         "content":  "## DB-Automatik\n**Paket aktiv UND cron_enable.remind_missing_prices**\n\ncore.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_missing_prices\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false. Aus heißt auch: keine Wechselkurs-Ausfall-Meldung.",
                                          "height":  300,
                                          "width":  300,
                                          "color":  4
@@ -1029,28 +991,19 @@
                   },
                   {
                       "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "SELECT count(*) FILTER (WHERE status \u003c\u003e \u0027ok\u0027)::int AS gaps FROM finance.fn_fx_rate_status()",
-                                         "options":  {
-
-                                                     }
+                                         "content":  "## DB-Automatik\n**Wechselkurse kommen nicht mehr: eine Meldung, keine Entwarnung**\n\nZweiter Ausgang von Find gaps, unabhängig von Wertpapier-Lücken (läuft auch ohne Depot). fn_fx_feed_gap misst am jüngsten Quell-Datum (as_of) der open.er-api.com-Zeilen: ab finance.fx_feed_alert_days Kalendertagen (Standard 2) ohne neuen Stand gilt der Dienst als ausgefallen, ohne jede Zeile ab der Paket-Installation (never: eigener Text ohne Datum); bei abgeschaltetem Abruf (cron_enable refresh_fx_rates) nie. Claim FX feed down = finance.fn_feed_down_claim(fx): eigener Slot fx_feed_down und Latch finance:fx, erste Meldung sofort, dann höchstens alle 7 Tage. Kehrt der Dienst zurück, re-armt fn_fx_feed_gap den Latch still (keine Entwarnung, wie bei Wertpapieren). Nur an den Owner.",
+                                         "height":  340,
+                                         "width":  380,
+                                         "color":  4
                                      },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
                       "position":  [
-                                       2520,
-                                       -560
+                                       -340,
+                                       -820
                                    ],
-                      "id":  "d93b08bf-e081-5402-b99c-bb87085b2585",
-                      "name":  "Check FX rates",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
-                                                           "name":  "Postgres finance_rw (read-write)"
-                                                       }
-                                      },
-                      "onError":  "continueRegularOutput",
-                      "alwaysOutputData":  true
+                      "id":  "6b636929-2ac3-5ba7-b77c-b4c920db7299",
+                      "name":  "Wechselkurs-Ausfall"
                   },
                   {
                       "parameters":  {
@@ -1062,12 +1015,12 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "c78e1922-0b85-5f17-9a12-a51d78cf4910",
-                                                                                   "leftValue":  "={{ $json.gaps }}",
-                                                                                   "rightValue":  0,
+                                                                                   "id":  "75ca2b7b-05ce-5470-b866-4c40c01ccd55",
+                                                                                   "leftValue":  "={{ !!($json.fx \u0026\u0026 $json.fx.feed_down) }}",
+                                                                                   "rightValue":  true,
                                                                                    "operator":  {
-                                                                                                    "type":  "number",
-                                                                                                    "operation":  "gt"
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
                                                                                                 }
                                                                                }
                                                                            ],
@@ -1080,11 +1033,107 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       2620,
-                                       -380
+                                       -340,
+                                       -560
                                    ],
-                      "id":  "26cc96ca-e99d-5a4a-b5f1-b96e070de0f6",
-                      "name":  "FX refresh needed?"
+                      "id":  "a7403deb-75d2-56a0-9530-71c42edece71",
+                      "name":  "FX feed down?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT finance.fn_feed_down_claim(\u0027fx\u0027) AS due;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -140,
+                                       -560
+                                   ],
+                      "id":  "14ef2fce-b277-5e51-a141-3a467a2a622f",
+                      "name":  "Claim FX feed down",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b8b30cbe-32bb-5564-b140-612fa2f5a092",
+                                                                                   "leftValue":  "={{ $json.due }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       60,
+                                       -560
+                                   ],
+                      "id":  "191aaba0-5d34-5ae8-ac17-21a98277183f",
+                      "name":  "FX due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  // sign = true (core.fn_ui_money p_sign): \u0027+\u0027 vor positive Betraege (Gewinn seit Kauf); negative tragen ihr Minus ohnehin.\n  // digits = 0 (core.fn_ui_money p_whole): ganze Einheiten fuer Schaetzwerte; der Wert selbst bleibt genau (gerundet nur hier).\n  function money(v, c, sign, digits) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const plus = (sign === true \u0026\u0026 n \u003e 0) ? \u0027+\u0027 : \u0027\u0027;\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    const whole = (digits === 0);\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return plus + num(v, whole ? 0 : 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return plus + (whole ? Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027,minimumFractionDigits:0,maximumFractionDigits:0}) : Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027})); } catch (e) { return plus + String(v) + \u0027 \u0027 + cur; }\n  }\n  // B.date_short = {from, to} (nur die Mini-App, core.fn_app_screen): ein ISO-Datum im Fenster [from, to) ohne Jahr\n  // (String-Vergleich, die App rechnet kein Datum); Chat/HITL/Cron setzen es nie -\u003e dort immer mit Jahr.\n  const DS = (B.date_short \u0026\u0026 typeof B.date_short.from === \u0027string\u0027 \u0026\u0026 typeof B.date_short.to === \u0027string\u0027) ? B.date_short : null;\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    const m = DS ? /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(v)) : null;\n    if (m \u0026\u0026 String(v) \u003e= DS.from \u0026\u0026 String(v) \u003c DS.to) {\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, { timeZone: \u0027UTC\u0027, month: \u00272-digit\u0027, day: \u00272-digit\u0027 }); }\n      catch (e) { /* weiter mit Jahr */ }\n    }\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // {kind:\u0027month\u0027, value:\u0027YYYY-MM\u0027} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.\n  // Aus dem vollen Datum des Locales ohne den Tag gebaut: Intl liefert fuer {month, year} allein in de „04/2027“\n  // (Abnahme 2026-10-31); so folgt der Trenner dem gewohnten Datum (de „04.2027“, en-GB „04/2027“, ko „2027. 04.“).\n  // style \u0027long\u0027 (core.fn_ui_month(d, true)): Monatsname, das Jahr nur ausserhalb des Kurz-Fensters wie bei date()\n  // („Gehen ab im November“ / „… im November 2027“).\n  function month(v, style) {\n    if (isEmpty(v)) return empty;\n    const m = /^(\\d{4})-(\\d{2})$/.exec(String(v));\n    if (!m) return String(v);\n    if (style === \u0027long\u0027) {\n      const short = DS \u0026\u0026 String(v) \u003e= DS.from.slice(0, 7) \u0026\u0026 String(v) \u003c DS.to.slice(0, 7);\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, short ? { timeZone: \u0027UTC\u0027, month: \u0027long\u0027 } : { timeZone: \u0027UTC\u0027, month: \u0027long\u0027, year: \u0027numeric\u0027 }); }\n      catch (e) { return String(v); }\n    }\n    try {\n      const parts = new Intl.DateTimeFormat(loc, { timeZone: \u0027UTC\u0027, day: \u00272-digit\u0027, month: \u00272-digit\u0027, year: \u0027numeric\u0027 })\n        .formatToParts(new Date(Date.UTC(+m[1], +m[2] - 1, 1)));\n      const d = parts.findIndex((p) =\u003e p.type === \u0027day\u0027);\n      if (d \u003c 0) return String(v);\n      if (d === 0) parts.splice(0, 2); else parts.splice(d - 1, 2);\n      return parts.map((p) =\u003e p.value).join(\u0027\u0027);\n    } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency, x.sign, x.digits);\n      case \u0027date\u0027: return date(v);\n      case \u0027month\u0027: return month(v, x.style);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const m = $(\u0027Find gaps\u0027).first().json;\nconst U = uiRender(m.ui || {});\nconst fx = m.fx || {};\nconst head = fx.never\n  ? U.t(\u0027finance.dialog.fx_feed_down_never\u0027)\n  : U.fill(U.t(\u0027finance.dialog.fx_feed_down\u0027), { date: { kind: \u0027date\u0027, value: fx.stale_since } });\nreturn [{ json: { text: head + \u0027\\n\\n\u0027 + U.t(\u0027core.reminders.card_footer\u0027) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       260,
+                                       -560
+                                   ],
+                      "id":  "59587648-1328-52c5-8c17-79770134095f",
+                      "name":  "Compose FX feed down"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       460,
+                                       -560
+                                   ],
+                      "id":  "3f7f4de6-0c8f-5684-9768-b7df81d8ec31",
+                      "name":  "Notify FX feed down",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
                   },
                   {
                       "parameters":  {
@@ -1218,10 +1267,65 @@
                                                                "index":  0,
                                                                "node":  "Plan items",
                                                                "type":  "main"
+                                                           },
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "FX feed down?",
+                                                               "type":  "main"
                                                            }
                                                        ]
                                                    ]
                                       },
+                        "FX feed down?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Claim FX feed down",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
+                        "Claim FX feed down":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "FX due?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "FX due?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Compose FX feed down",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+
+                                                     ]
+                                                 ]
+                                    },
+                        "Compose FX feed down":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Notify FX feed down",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
                         "Plan items":  {
                                            "main":  [
                                                         [
@@ -1506,52 +1610,12 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Check FX rates",
+                                                                           "node":  "Read new price",
                                                                            "type":  "main"
                                                                        }
                                                                    ]
                                                                ]
                                                   },
-                        "Check FX rates":  {
-                                               "main":  [
-                                                            [
-                                                                {
-                                                                    "index":  0,
-                                                                    "node":  "FX refresh needed?",
-                                                                    "type":  "main"
-                                                                }
-                                                            ]
-                                                        ]
-                                           },
-                        "FX refresh needed?":  {
-                                                   "main":  [
-                                                                [
-                                                                    {
-                                                                        "index":  0,
-                                                                        "node":  "Refresh FX rates",
-                                                                        "type":  "main"
-                                                                    }
-                                                                ],
-                                                                [
-                                                                    {
-                                                                        "index":  0,
-                                                                        "node":  "Read new price",
-                                                                        "type":  "main"
-                                                                    }
-                                                                ]
-                                                            ]
-                                               },
-                        "Refresh FX rates":  {
-                                                 "main":  [
-                                                              [
-                                                                  {
-                                                                      "index":  0,
-                                                                      "node":  "Read new price",
-                                                                      "type":  "main"
-                                                                  }
-                                                              ]
-                                                          ]
-                                             },
                         "Read new price":  {
                                                "main":  [
                                                             [

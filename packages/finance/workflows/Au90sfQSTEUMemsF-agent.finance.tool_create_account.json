@@ -775,76 +775,6 @@
                   },
                   {
                       "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "31e47605-060d-5071-8041-f2936ef309fa",
-                                                                                   "leftValue":  "={{ !!($(\u0027Start\u0027).item.json.currency) \u0026\u0026 $(\u0027Start\u0027).item.json.currency !== \u0027EUR\u0027 }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       2440,
-                                       0
-                                   ],
-                      "id":  "2e5df62a-33a1-5ba7-a778-50a16e335e1b",
-                      "name":  "Non-EUR currency?"
-                  },
-                  {
-                      "parameters":  {
-                                         "workflowId":  {
-                                                            "__rl":  true,
-                                                            "value":  "OhOudXoO9SuOxnIP",
-                                                            "mode":  "list",
-                                                            "cachedResultUrl":  "/workflow/OhOudXoO9SuOxnIP",
-                                                            "cachedResultName":  "agent.finance.cron_refresh_fx_rates"
-                                                        },
-                                         "workflowInputs":  {
-                                                                "mappingMode":  "defineBelow",
-                                                                "value":  {
-                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
-                                                                          },
-                                                                "matchingColumns":  [
-
-                                                                                    ],
-                                                                "schema":  [
-
-                                                                           ],
-                                                                "attemptToConvertTypes":  false,
-                                                                "convertFieldsToString":  true
-                                                            },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.executeWorkflow",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       2660,
-                                       -120
-                                   ],
-                      "id":  "a40a74a4-3cc4-51e1-9065-981c3f080164",
-                      "name":  "Refresh FX rates"
-                  },
-                  {
-                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -926,9 +856,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_ensure_currency + Sub-Call cron_refresh_fx_rates**\n\nfn_create_account registriert Fremdwährungen via fn_ensure_currency (ON CONFLICT DO NOTHING). Danach: Sub-Call des FX-Cron-Workflows (Dual-Trigger, Logik dort: Check/Fetch/Upsert) -\u003e eliminiert NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf. EUR-Konten: kein Call (IF false-Zweig).",
+                                         "content":  "## DB-Automatik\n**fn_ensure_currency, kein Kurs-Abruf**\n\nfn_create_account registriert Fremdwährungen via fn_ensure_currency (ON CONFLICT DO NOTHING). Kein Kurs-Abruf nach dem Write: cron_refresh_fx_rates hält den Kurs jeder Feed-Währung täglich vor, auch ohne Konto in ihr.",
                                          "height":  220,
-                                         "width":  440,
+                                         "width":  300,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -937,8 +867,8 @@
                                        2660,
                                        -340
                                    ],
-                      "id":  "e81d23b7-79f1-5c63-8650-a998dbef8853",
-                      "name":  "Sofort-FX-Fetch + Währungs-Registrierung"
+                      "id":  "3e9d42f7-984e-59d4-8509-475381052e23",
+                      "name":  "Währungs-Registrierung"
                   },
                   {
                       "parameters":  {
@@ -1209,7 +1139,7 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Non-EUR currency?",
+                                                               "node":  "Return",
                                                                "type":  "main"
                                                            }
                                                        ],
@@ -1221,36 +1151,7 @@
                                                            }
                                                        ]
                                                    ]
-                                      },
-                        "Non-EUR currency?":  {
-                                                  "main":  [
-                                                               [
-                                                                   {
-                                                                       "index":  0,
-                                                                       "node":  "Refresh FX rates",
-                                                                       "type":  "main"
-                                                                   }
-                                                               ],
-                                                               [
-                                                                   {
-                                                                       "index":  0,
-                                                                       "node":  "Return",
-                                                                       "type":  "main"
-                                                                   }
-                                                               ]
-                                                           ]
-                                              },
-                        "Refresh FX rates":  {
-                                                 "main":  [
-                                                              [
-                                                                  {
-                                                                      "index":  0,
-                                                                      "node":  "Return",
-                                                                      "type":  "main"
-                                                                  }
-                                                              ]
-                                                          ]
-                                             }
+                                      }
                     },
     "settings":  {
                      "executionOrder":  "v1",

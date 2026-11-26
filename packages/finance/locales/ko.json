@@ -885,6 +885,8 @@
   "finance.dialog.price_gap_failed": "{name}의 시세 출처를 저장하지 못했어요. 채팅에서 현재 상태를 물어봐 주세요.",
   "finance.dialog.price_gap_later": "알겠어요. 7일 후에 {name}에 대해 다시 알려 드릴게요.",
   "finance.dialog.price_feed_down": "📉 시세 서비스가 {date} 이후로 증권 시세를 보내지 않아요 – 그때까지 계좌 평가액이 오래된 값이에요. 매일 확인하고, 그대로면 7일 후에 다시 알려 드릴게요.",
+  "finance.dialog.fx_feed_down": "💱 환율 서비스가 {date} 이후로 새 환율을 보내지 않아요 – 그때까지 외화 금액은 {date} 환율로 계산해요. 매일 확인하고, 그대로면 7일 후에 다시 알려 드릴게요.",
+  "finance.dialog.fx_feed_down_never": "💱 아직 환율을 하나도 가져오지 못했어요 – 그때까지 외화 금액을 유로로 환산할 수 없어요. 매일 확인하고, 그대로면 7일 후에 다시 알려 드릴게요.",
   "finance.gate.onboarding_required": "제대로 조언해 드리려면 먼저 재무 현황이 필요해요. /onboarding 을 보내 주세요 (또는 그냥 ‘설정해 줘’라고 써 주세요).",
   "finance.gate.onboarding_open": "아직 남은 항목: {sections}.",
   "finance.gate.onboarding_member": "재무 설정은 가구주가 해요 – 설정이 끝나면 상담해 드릴 수 있어요.",

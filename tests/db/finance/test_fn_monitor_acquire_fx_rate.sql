@@ -32,6 +32,43 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL acquire unknown pair: %', r; END IF;
   RAISE NOTICE 'PASS fn_monitor_acquire_fx_rate [fresh / stale / Config / unbekannt]';
 
+  -- Paare ohne EUR-Basis ueber finance.fn_fx_rate (invers / gekreuzt)
+  PERFORM finance.fn_ensure_currency('USD');
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'USD';
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source)
+  VALUES ('EUR', 'USD', 1.25, '2026-06-05', '__test__');
+  -- [15] CLP/EUR und USD/CLP liefern ok:true
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "CLP", "quote": "EUR"}, "as_of": "2026-06-10", "stale_days": 30}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR (r->>'value')::numeric IS DISTINCT FROM 1 / 1450.5 THEN
+    RAISE EXCEPTION 'FAIL [15] inverse pair CLP/EUR: %', r; END IF;
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "USD", "quote": "CLP"}, "as_of": "2026-06-10", "stale_days": 30}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR (r->>'value')::numeric IS DISTINCT FROM 1450.5 / 1.25
+     OR r->>'unit' IS DISTINCT FROM 'CLP per USD' THEN
+    RAISE EXCEPTION 'FAIL [15] cross pair USD/CLP: %', r; END IF;
+  -- [16] Alters-Pruefung am aelteren der beiden Kurs-Daten (USD 2026-06-05, CLP 2026-06-09)
+  IF r->>'as_of' IS DISTINCT FROM '2026-06-05' THEN
+    RAISE EXCEPTION 'FAIL [16] as_of must be the older date: %', r; END IF;
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "USD", "quote": "CLP"}, "as_of": "2026-06-10", "stale_days": 3}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT ILIKE '%stale%' THEN
+    RAISE EXCEPTION 'FAIL [16] stale on the older side: %', r; END IF;
+  -- [16b] Stichtag vor dem ersten Kurs: ein spaeterer Kurs ist keine Beobachtung fuer diesen Tag -> "no fx rate"
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "EUR", "quote": "USD"}, "as_of": "2026-01-01", "stale_days": 30}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT ILIKE 'no fx rate%' THEN
+    RAISE EXCEPTION 'FAIL [16b] rate after as_of must not count: %', r; END IF;
+  -- [16c] Kreuzpaar, nur eine Seite faellt auf einen spaeteren Kurs zurueck (JPY erst ab 2026-07-01) -> "no fx rate"
+  PERFORM finance.fn_ensure_currency('JPY');
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'JPY';
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'JPY', 1500, '2026-07-01', '__test__');
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "USD", "quote": "JPY"}, "as_of": "2026-06-10", "stale_days": 30}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT ILIKE 'no fx rate%' THEN
+    RAISE EXCEPTION 'FAIL [16c] one side only after as_of: %', r; END IF;
+  -- [17] Waehrung ohne jede Zeile -> "no fx rate" bleibt
+  PERFORM finance.fn_ensure_currency('XTS');
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "USD", "quote": "XTS"}, "as_of": "2026-06-10"}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT ILIKE 'no fx rate%' THEN
+    RAISE EXCEPTION 'FAIL [17] no rate at all: %', r; END IF;
+  RAISE NOTICE 'PASS fn_monitor_acquire_fx_rate [15 ohne EUR-Basis, 16 aelteres Datum, 17 kein Kurs]';
+
   -- end-to-end ueber die Core-Registry
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';

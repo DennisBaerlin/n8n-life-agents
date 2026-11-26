@@ -2,9 +2,9 @@
 -- fn_monitor_acquire_fx_rate (READ-ONLY — acquire_fn der Monitor-Methode 'fx_rate')
 --   Registriert ueber den manifest-Block monitor_acquisition_methods (docs/package-contract.md §3.9);
 --   der Core dispatcht via agent.fn_monitor_acquire (Heartbeat-Cron + Tool-Probe).
---   As-of-Lookup auf finance.fx_rates (Idiom fn_to_eur); juengster Kurs aelter als monitor.fx_stale_days
---   (finance-Config, Default 5) -> {ok:false, reason: 'fx rate ... is stale ...'} (lauter Fehlerpfad — ein still
---   gestorbener FX-Cron wird so zum Telegram-Alert). Kein Kurs fuer das Paar -> {ok:false, reason: 'no fx rate ...'}.
+--   Kurs ueber finance.fn_fx_rate (jedes Paar: direkt, invers oder ueber EUR gekreuzt; as_of = aelteres der beiden
+--   Kurs-Daten). Kurs aelter als monitor.fx_stale_days (finance-Config, Default 5) -> {ok:false, reason: 'fx rate ...
+--   is stale ...'} (lauter Fehlerpfad je Waechter). Eine Seite ohne Kurs-Zeile am oder vor dem Stichtag -> {ok:false, reason: 'no fx rate ...'}.
 --   p: {spec: {base, quote}, as_of?: 'YYYY-MM-DD' (Default heute), stale_days?: int (Test-Injektion)}
 --   Rueckgabe: Observation {ok:true, value, unit, as_of, source_url} | {ok:false, reason}
 --   Tests: tests/db/finance/test_fn_monitor_acquire_fx_rate.sql
@@ -20,12 +20,13 @@ DECLARE
     v_rate      numeric;
     v_rate_date date;
 BEGIN
-    SELECT r.rate, r.as_of INTO v_rate, v_rate_date
-      FROM finance.fx_rates r
-     WHERE r.base_currency = v_base AND r.quote_currency = v_quote AND r.as_of <= v_as_of
-     ORDER BY r.as_of DESC
-     LIMIT 1;
-    IF NOT FOUND THEN
+    SELECT f.rate, f.as_of INTO v_rate, v_rate_date FROM finance.fn_fx_rate(v_base, v_quote, v_as_of) f;
+    -- ein Kurs erst nach dem Stichtag (Rueckfall in fn_fx_eur_row) ist keine Beobachtung fuer diesen Tag, je Seite geprueft:
+    -- fn_fx_rate meldet nur das aeltere der beiden Daten
+    IF v_rate IS NULL OR EXISTS (
+        SELECT 1 FROM unnest(ARRAY[v_base, v_quote]) s(code)
+        CROSS JOIN LATERAL finance.fn_fx_eur_row(s.code::char(3), v_as_of) e
+        WHERE e.as_of > v_as_of) THEN
         RETURN jsonb_build_object('ok', false,
             'reason', format('no fx rate for %s/%s in the finance fx table', v_base, v_quote));
     END IF;

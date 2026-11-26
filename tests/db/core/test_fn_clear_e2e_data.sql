@@ -52,6 +52,11 @@ BEGIN
   VALUES (v_a_id, 100, CURRENT_DATE, 'other', '__E2E__ tx');
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES (v_k_id, 200, CURRENT_DATE, 'other', 'keep tx');
+  -- Kurs-Fixture eines Berater-Falls (Marker in source) + ein echter Kurs, der bleiben muss
+  PERFORM finance.fn_ensure_currency('USD');
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES
+    ('EUR', 'USD', 1.1, CURRENT_DATE - 900, '__E2E__'), ('EUR', 'USD', 1.2, CURRENT_DATE - 901, 'keep')
+  ON CONFLICT DO NOTHING;
 
   -- Cleanup ausfuehren
   SELECT agent.fn_clear_e2e_data() INTO v_res;
@@ -104,6 +109,11 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM finance.account_balances WHERE account_id = v_k_id AND balance = 200) THEN
     RAISE EXCEPTION 'FAIL: Balance des Nicht-Sentinel-Kontos veraendert/geloescht';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM finance.fx_rates WHERE source = '__E2E__')
+     OR NOT EXISTS (SELECT 1 FROM finance.fx_rates WHERE source = 'keep' AND as_of = CURRENT_DATE - 901) THEN
+    RAISE EXCEPTION 'FAIL: Kurs-Fixture (source __E2E__) nicht geloescht oder echter Kurs mitgeloescht';
   END IF;
 
   -- Assert: Rueckgabe-Counts plausibel (mind. 1 Konto + 1 Transaktion entfernt)

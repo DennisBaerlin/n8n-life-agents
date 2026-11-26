@@ -5,7 +5,6 @@
 function Build-CreateAccount {
     # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $FxCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CreateAccount'   # Sofort-FX-Fetch (Dual-Trigger), paket-intern
     $trig = Build-Trigger @('name','account_type','bank','account_number','settlement_account_name','owner_person','currency','opening_balance','opening_balance_date','interest_rate','interest_credit_unit','interest_credit_interval','interest_credit_day_of_month','interest_day_count_convention','interest_posting_day_of_month','interest_auto_post','interest_valid_from','fixed_deposit_maturity_date','fixed_deposit_auto_renew','emoji')
 
     # Vorab-Spiegel der korrigierbaren fn_create_account-Ablehnungen (die fn ist das Gesetz; hier nur, damit der
@@ -127,16 +126,6 @@ function Build-CreateAccount {
     $ifWriteOk = Build-If 'Write ok?' @(2440, 200) "={{ `$('Create account (atomic)').item.json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Create rejected' @(2660, 400) "={{ `$('Create account (atomic)').item.json.reason }}"
 
-    # Sofort-Fetch: nur bei echter Fremdwaehrung (nicht leer, nicht EUR). Ruft den FX-Cron-Workflow
-    # als Sub auf (Dual-Trigger: executeWorkflowTrigger neben dem Schedule) — eine Logik-Adresse fuer
-    # Check/Fetch/Upsert. Vermeidet das NULL-Fenster in Roll-up-Views bis zum naechsten Schedule-Lauf.
-    $ifForeignCurr = Build-If 'Non-EUR currency?' @(2440, 0) `
-        "={{ !!(`$('Start').item.json.currency) && `$('Start').item.json.currency !== 'EUR' }}" `
-        'true' 'equals' 'boolean'
-
-    $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(2660, -120) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
-        ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
-
     $ret = Build-Return @(2880, 0) @(
         ,@('ok','true','boolean')
         ,@('account_id', "={{ `$('Create account (atomic)').item.json.account_id }}", 'number')
@@ -153,9 +142,9 @@ function Build-CreateAccount {
         'Korrigierbare Ablehnungen (fn_create_account ist das Gesetz)' `
         'Type not allowed? spiegelt vor der Karte die fn-Ablehnungen loan (-> tool_create_loan) und Saldo auf einem Depot. Write ok? reicht jede weitere korrigierbare Ablehnung der fn (Währung ungültig, Depot-Währung ≠ Verrechnungskonto) als Tool-Fehler durch. Die Karte zeigt Saldo/Zins nur bei Cash-artigen Konten und das Verrechnungskonto nur bei Depots.' 260 300
 
-    $stickyAutoCurr = Build-Sticky 'Sofort-FX-Fetch + Währungs-Registrierung' @(2660, -340) `
-        'fn_ensure_currency + Sub-Call cron_refresh_fx_rates' `
-        'fn_create_account registriert Fremdwährungen via fn_ensure_currency (ON CONFLICT DO NOTHING). Danach: Sub-Call des FX-Cron-Workflows (Dual-Trigger, Logik dort: Check/Fetch/Upsert) -> eliminiert NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf. EUR-Konten: kein Call (IF false-Zweig).' 220 440
+    $stickyAutoCurr = Build-Sticky 'Währungs-Registrierung' @(2660, -340) `
+        'fn_ensure_currency, kein Kurs-Abruf' `
+        'fn_create_account registriert Fremdwährungen via fn_ensure_currency (ON CONFLICT DO NOTHING). Kein Kurs-Abruf nach dem Write: cron_refresh_fx_rates hält den Kurs jeder Feed-Währung täglich vor, auch ohne Konto in ihr.' 220 300
 
     $stickyHitl = Build-Sticky 'Doc HITL-Gate' @(1740, -220) `
         'Human-in-the-Loop Approval-Gate' `
@@ -170,7 +159,7 @@ function Build-CreateAccount {
         'Dry run = fn_create_account mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (Name schon vergeben – ohne Groß-/Kleinschreibung, typübergreifend, mit candidates; IBAN schon vergeben; Festgeld ohne Zins/Fälligkeit; Zins ohne Rhythmus bzw. Tag unpassend zum Rhythmus (fn_interest_schedule_reason); ungültige Währung, Depot-Währung ungleich Verrechnungskonto, Typ loan, Eröffnungssaldo oder Stichtag auf einem Depot, Stichtag kein YYYY-MM-DD, in der Zukunft oder ohne Saldo) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
     $nodes = @($trig, $ifTypeBlocked, $errType, $resSettle, $ifSettleProvided, $ifSettleOk, $errSettle, $ifDepotType, $errDepotNoSettle,
-               $resPerson, $ifPersonBad, $errPerson, $resInt) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ifForeignCurr, $callFxRefresh, $ret,
+               $resPerson, $ifPersonBad, $errPerson, $resInt) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret,
                $stickyBalance, $stickyHitl, $stickyAutoCurr, $stickyResInt, $stickyGuards,
                $stickyDry)
 
@@ -212,14 +201,9 @@ function Build-CreateAccount {
         ) }
         'Create account (atomic)'      = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                    = @{ main = @(
-            @( E 'Non-EUR currency?' ),     # true: angelegt
+            @( E 'Return' ),                # true: angelegt
             @( E 'Create rejected' )        # false: korrigierbare Ablehnung der fn
         ) }
-        'Non-EUR currency?'            = @{ main = @(
-            @( E 'Refresh FX rates' ),    # true: Fremdwaehrung -> Sub-Call des FX-Crons (Sofort-Fetch)
-            @( E 'Return' )                # false: EUR -> kein Call
-        ) }
-        'Refresh FX rates'             = @{ main = @( ,@( E 'Return' ) ) }
     }
 
     return Build-Workflow 'agent.finance.tool_create_account' $nodes $conns `

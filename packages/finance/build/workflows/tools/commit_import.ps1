@@ -9,7 +9,6 @@
 function Build-CommitImport {
     # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $FxCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CommitImport'   # Sofort-FX-Fetch (Dual-Trigger), paket-intern
     # Yahoo-Sub + Kurs-Cron -Soft (2-Pass-Bootstrap, Muster set_holding).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-CommitImport' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-CommitImport' -Soft
@@ -108,13 +107,6 @@ function Build-CommitImport {
     $errWrite = Build-ToolError 'Import rolled back' @(1760, 200) `
         "={{ `$('Import bundle (atomic)').item.json.reason + ' — ' + `$('Import bundle (atomic)').item.json.error_summary }}"
 
-    # Nach dem Kurs-Abruf: erst er kennt die echte Kurswaehrung. Fehlt fuer eine aktive Waehrung der Wechselkurs, den
-    # FX-Cron als Sub rufen (sonst bleiben die *_eur-Werte bis zum naechsten Schedule-Lauf NULL).
-    $fxGap = New-FinanceFxGapCheck -CheckPos @(2420, -120) -IfPos @(2640, -120)
-    $fxGap[0]['executeOnce'] = $true   # der Kurs-Abruf kann mehrere Items liefern -> ein FX-Abruf
-    $callFx = Build-CallWorkflow 'Refresh FX rates' @(2860, -240) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
-        ([ordered]@{ chat_id = "={{ `$('Start').first().json.chat_id }}" })
-
     # Nach dem Write Kurse der neuen Positionen sofort holen (Sub, Muster set_holding) und melden,
     # welche Position noch keinen Kurs bzw. keine Anlageklasse hat -> der Agent klaert es mit dem Owner (Kurs-Symbol per
     # tool_verify_price_symbol + tool_set_holding; Anlageklasse nur bei Finanzplan per tool_set_asset_classes, eine Karte).
@@ -122,13 +114,14 @@ function Build-CommitImport {
         "={{ (`$('Import bundle (atomic)').first().json.positions || []).length > 0 }}" 'true' 'equals' 'boolean'
     $callPrices = Build-CallWorkflow 'Refresh market prices' @(1980, -240) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').first().json.chat_id }}" })
-    # Der Import ist schon gebucht: ein Fehler im Kurs-/FX-Abruf darf ihn nie als Fehler melden (weiter zum Check).
-    foreach ($n in @($callPrices, $callFx)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
+    # Der Import ist schon gebucht: ein Fehler im Kurs-Abruf darf ihn nie als Fehler melden (weiter zum Check). Den
+    # Wechselkurs jeder Feed-Waehrung haelt cron_refresh_fx_rates schon vor (kein FX-Abruf hier).
+    $callPrices['onError'] = 'continueRegularOutput'; $callPrices['alwaysOutputData'] = $true
     $checkPos = Build-Pg 'Check positions' @(3080, -120) `
         "=WITH ids AS (SELECT (x->>'holding_id')::int AS id FROM jsonb_array_elements(COALESCE((`$1::jsonb)->'positions', '[]'::jsonb)) x), ps AS (SELECT * FROM finance.fn_holding_price_status(COALESCE((SELECT array_agg(id) FROM ids), '{}'::int[]))) SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', ps.holding_id, 'name', ps.name, 'isin', ps.isin, 'symbol', ps.symbol, 'feed_symbol', ps.feed_symbol, 'status', ps.status)) FROM ps WHERE ps.status <> 'ok'), '[]'::jsonb) AS positions_without_price, COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', h.id, 'name', h.name)) FROM finance.depot_holdings h JOIN ids ON ids.id = h.id WHERE h.asset_class IS NULL), '[]'::jsonb) AS positions_without_asset_class;" `
         ([ordered]@{ positions = '$(''Import bundle (atomic)'').first().json.positions || []' })
 
-    $checkPos['executeOnce'] = $true   # beide Zweige (mit/ohne FX) muenden hier -> ein Check
+    $checkPos['executeOnce'] = $true   # Kurs-Abruf kann mehrere Items liefern, beide Zweige muenden hier -> ein Check
     $ret = Build-Return @(3300, 0) @(
         ,@('ok','true','boolean')
         ,@('approved_via_card','true','boolean')
@@ -139,7 +132,7 @@ function Build-CommitImport {
     )
     $stickyPos = Build-Sticky 'Kurs-Symbol und Anlageklasse' @(220, -760) `
         'Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden' `
-        'Monats-Check WP-G (Befund 2026-10-22: Position mit ISIN ohne Kurs und ohne Anlageklasse). VOR der Karte: Load positions -> je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -> ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. eine USD-Notierung; provider_currency kommt mit, die Karte sagt "wird in € umgerechnet", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -> leer. NACH dem Write: Refresh market prices (Sub) -> Check FX rates (finance.fn_fx_rate_status, kennt die vom Kursabruf gelernte Währung; läuft auch ohne Positionen, wegen Fremdwährungs-Konten) -> FX refresh needed? (fehlender oder veralteter Wechselkurs -> FX-Sofort-Fetch) -> Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -> tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.' 360 640
+        'Monats-Check WP-G (Befund 2026-10-22: Position mit ISIN ohne Kurs und ohne Anlageklasse). VOR der Karte: Load positions -> je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -> ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. eine USD-Notierung; provider_currency kommt mit, die Karte sagt "wird in € umgerechnet", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -> leer. NACH dem Write: Refresh market prices (Sub, nur mit Positionen; Wechselkurse hält cron_refresh_fx_rates für jede Feed-Währung schon vor) -> Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -> tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.' 360 640
 
     $stickyFn = Build-Sticky 'fn_import_bundle: der atomare Commit' @(1320, -300) `
         'Loop über BESTEHENDE fn_* in EINER Transaktion' `
@@ -155,9 +148,9 @@ function Build-CommitImport {
 
     $nodes = @($trig, $loadPos, $eachPos, $resolvePos, $ifVerified, $storeSym,
                $load, $ifReady, $errNotReady, $dryRun, $ifDryOk, $errDry, $stickyDry, $summary, $reqApproval,
-               $ifApproved, $retCancelled, $bundle, $ifWritten, $errWrite, $callFx,
+               $ifApproved, $retCancelled, $bundle, $ifWritten, $errWrite,
                $ifPos, $callPrices, $checkPos, $ret,
-               $stickyFn, $stickyGate, $stickyPos) + $fxGap
+               $stickyFn, $stickyGate, $stickyPos)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Load positions' ) ) }
@@ -195,15 +188,9 @@ function Build-CommitImport {
         ) }
         'Positions imported?'    = @{ main = @(
             @( E 'Refresh market prices' ),
-            @( E 'Check FX rates' )
-        ) }
-        'Refresh market prices'  = @{ main = @( ,@( E 'Check FX rates' ) ) }
-        'Check FX rates'         = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
-        'FX refresh needed?'     = @{ main = @(
-            @( E 'Refresh FX rates' ),    # true: Wechselkurs fehlt -> FX-Sofort-Fetch
             @( E 'Check positions' )
         ) }
-        'Refresh FX rates'       = @{ main = @( ,@( E 'Check positions' ) ) }
+        'Refresh market prices'  = @{ main = @( ,@( E 'Check positions' ) ) }
         'Check positions'        = @{ main = @( ,@( E 'Return' ) ) }
     }
 

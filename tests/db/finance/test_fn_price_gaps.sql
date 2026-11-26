@@ -98,7 +98,7 @@ BEGIN
   r := finance.fn_price_gaps();
   IF NOT (r->>'feed_down')::boolean OR (r->>'stale_since')::date <> current_date - v_days - 3 THEN
     RAISE EXCEPTION 'FAIL [5 feed_down]: erwartet true + stale_since, got %/%', r->>'feed_down', r->>'stale_since'; END IF;
-  v_b1 := finance.fn_price_gap_claim('feed_down');
+  v_b1 := finance.fn_feed_down_claim('prices');
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('PGA', 51, 'EUR', current_date);
   r := finance.fn_price_gaps();
   SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance:prices' AND key = 'feed_down';
@@ -134,12 +134,21 @@ BEGIN
   -- kein Platz -> nichts gemerkt
   DELETE FROM core.proactive_budget; DELETE FROM core.notification_state WHERE source = 'finance:prices';
   PERFORM core.fn_proactive_claim(o, 'a', 'normal'); PERFORM core.fn_proactive_claim(o, 'b', 'normal');
-  IF finance.fn_price_gap_claim('1004') IS NOT FALSE OR finance.fn_price_gap_claim('feed_down') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [PB3 voll]'; END IF;
+  IF finance.fn_price_gap_claim('1004') IS NOT FALSE OR finance.fn_feed_down_claim('prices') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [PB3 voll]'; END IF;
   IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:prices' AND state='fired') THEN RAISE EXCEPTION 'FAIL [PB3 Merker]'; END IF;
   -- feed_down eigener Slot
   DELETE FROM core.proactive_budget;
-  IF finance.fn_price_gap_claim('feed_down') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [PB4]'; END IF;
+  IF finance.fn_feed_down_claim('prices') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [PB4]'; END IF;
   IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE slot = 'price_feed_down') THEN RAISE EXCEPTION 'FAIL [PB4 Slot]'; END IF;
+  -- [21b] PB4 hat den prices-Latch gesetzt: zweiter Claim still
+  IF finance.fn_feed_down_claim('prices') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [21b prices schon gemeldet]'; END IF;
+  -- [21c] fx hat eigenen Slot und Latch, unabhaengig von prices
+  IF finance.fn_feed_down_claim('fx') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [21c fx unabhaengig]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE slot = 'fx_feed_down')
+     OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:fx' AND key = 'feed_down' AND state = 'fired') THEN
+    RAISE EXCEPTION 'FAIL [21c fx Slot/Latch]'; END IF;
+  DELETE FROM core.notification_state WHERE source = 'finance:prices';
+  IF finance.fn_feed_down_claim('prices') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [21b prices nach Re-Arm]'; END IF;
   RAISE NOTICE 'PASS test_fn_price_gaps Budget';
 END $$;
 

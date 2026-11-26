@@ -180,7 +180,8 @@ ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'position_takeov
 ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'reward';
 
 -- ============================================================
--- CURRENCIES (ISO-4217 dimension — nur tatsaechlich genutzte Waehrungen geseedet)
+-- CURRENCIES (ISO-4217 dimension — EUR geseedet; fn_ensure_currency legt genutzte Codes an, fn_upsert_fx_rates
+-- jede Waehrung des Kurs-Feeds; minor_unit aus fn_currency_minor_unit)
 -- minor_unit = Anzahl Nachkommastellen (EUR=2, CLP=0), massgeblich fuer Anzeige-/Rundungsregeln.
 -- FK-Ziel aller currency-Spalten -> ein Tippfehler ('EURO','peso') wird zum lauten FK-Fehler statt zur
 -- stillen Phantom-Waehrung, die kein Roll-up konvertieren kann.
@@ -217,6 +218,9 @@ CREATE TABLE IF NOT EXISTS finance.fx_rates (
 
 CREATE INDEX IF NOT EXISTS idx_fx_rates_lookup
     ON finance.fx_rates (quote_currency, base_currency, as_of DESC);
+-- Juengster Stand je Quelle (fn_feed_refresh_due stuendlich, fn_fx_feed_gap taeglich) ohne Scan aller Waehrungen.
+CREATE INDEX IF NOT EXISTS idx_fx_rates_source_as_of
+    ON finance.fx_rates (source, as_of DESC);
 
 -- ============================================================
 -- MARKET PRICES (Markt-Preis-Feed der Core-Advisor-Engine, datiert wie fx_rates)
@@ -2864,10 +2868,45 @@ WHERE EXISTS (SELECT 1 FROM finance.transactions t WHERE t.holding_id = h.id)
   AND h.average_purchase_price IS DISTINCT FROM finance.fn_holding_avg_cost(h.id);
 
 -- ============================================================
+-- FUNCTION: fn_fx_eur_row — die eine Kurs-Suche (EUR-quotierte Zeile einer Waehrung zum Stichtag)
+-- Juengster Kurs mit as_of <= Stichtag, sonst der AELTESTE danach (zeitlich naechster; vor dem ersten Kurs der
+-- frueheste statt des neuesten, Muster Odoo). Keine Altersgrenze: das Alter meldet fn_fx_feed_gap/der Berater, wer
+-- eine Grenze braucht (Waechter), prueft as_of selbst. Zwei LIMIT-1-Teilabfragen statt ORDER BY (as_of <= x) DESC,
+-- damit beide als Index-Zugriff ueber idx_fx_rates_lookup laufen (die Tabelle waechst um alle Feed-Waehrungen je Tag).
+-- Rueckgabe: (rate = Einheiten der Waehrung je 1 EUR, as_of der gefundenen Zeile); EUR -> (1, NULL), ohne jede
+-- Zeile -> keine Zeile. Nutzer: fn_to_eur_unrounded (Betrag), fn_fx_rate (Paar samt Datum), fn_fx_rate_map (Plausi-Karte).
+-- Inline-Baseline VOR fn_to_eur_unrounded (deren sql-Body ruft sie).
+-- ============================================================
+CREATE OR REPLACE FUNCTION finance.fn_fx_eur_row(
+    p_currency char(3),
+    p_as_of    date DEFAULT current_date
+) RETURNS TABLE (rate numeric, as_of date) LANGUAGE sql STABLE AS $$
+    SELECT 1::numeric, NULL::date WHERE p_currency = 'EUR'
+    UNION ALL
+    SELECT x.rate, x.as_of
+    FROM (
+        (SELECT r.rate, r.as_of, 0 AS prio
+         FROM finance.fx_rates r
+         WHERE r.quote_currency = p_currency AND r.base_currency = 'EUR' AND r.as_of <= p_as_of
+         ORDER BY r.as_of DESC
+         LIMIT 1)
+        UNION ALL
+        (SELECT r.rate, r.as_of, 1 AS prio
+         FROM finance.fx_rates r
+         WHERE r.quote_currency = p_currency AND r.base_currency = 'EUR' AND r.as_of > p_as_of
+         ORDER BY r.as_of ASC
+         LIMIT 1)
+        ORDER BY prio
+        LIMIT 1
+    ) x
+    WHERE p_currency <> 'EUR';
+$$;
+
+-- ============================================================
 -- FUNCTION: fn_to_eur_unrounded — wie fn_to_eur, aber ohne Cent-Rundung
 -- Fuer Einheitswerte: Stueckpreis in Fremdwaehrung -> EUR (fn_statement_prepare), Puffer-Umrechnung
 -- (fn_account_outlook), EUR-Zwischenwert einer Waehrungs-Ueberweisung (fn_book_recurring_transfer, rundet
--- danach EINMAL). Dieselbe Kurs-Suche wie fn_to_eur (EINE Adresse: fn_to_eur rundet nur dieses Ergebnis).
+-- danach EINMAL). Kurs aus fn_fx_eur_row (EINE Kurs-Suche; fn_to_eur rundet nur dieses Ergebnis).
 -- EUR -> unveraendert; fehlt jeder Kurs -> NULL. Inline-Baseline VOR fn_to_eur (deren sql-Body ruft sie).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_to_eur_unrounded(
@@ -2878,22 +2917,15 @@ CREATE OR REPLACE FUNCTION finance.fn_to_eur_unrounded(
     SELECT CASE
         WHEN p_amount IS NULL   THEN NULL
         WHEN p_currency = 'EUR' THEN p_amount
-        ELSE p_amount / NULLIF((
-                 SELECT r.rate
-                 FROM finance.fx_rates r
-                 WHERE r.base_currency = 'EUR'
-                   AND r.quote_currency = p_currency
-                 ORDER BY (r.as_of <= p_as_of) DESC, r.as_of DESC
-                 LIMIT 1
-             ), 0)
+        ELSE p_amount / NULLIF((SELECT r.rate FROM finance.fn_fx_eur_row(p_currency, p_as_of) r), 0)
     END;
 $$;
 
 -- ============================================================
 -- FUNCTION: fn_to_eur — Multi-Waehrungs-Konversion in die Reporting-Basis EUR
 -- Konvertiert einen Betrag aus seiner Native-Waehrung nach EUR ueber finance.fx_rates.
--- EUR -> unveraendert; sonst betrag / (EZB-Kurs base=EUR/quote=ccy), auf Cent gerundet. As-of-Lookup: juengster
--- Kurs mit as_of <= Stichtag, sonst Fallback auf den juengsten verfuegbaren. Fehlt jeder Kurs -> NULL.
+-- EUR -> unveraendert; sonst betrag / (EZB-Kurs base=EUR/quote=ccy), auf Cent gerundet. Kurs-Suche: fn_fx_eur_row
+-- (juengster <= Stichtag, sonst der zeitlich naechste danach). Fehlt jeder Kurs -> NULL.
 -- STABLE (liest Tabelle) -> in Views nutzbar, nicht in GENERATED-Spalten. Hier inline-Baseline
 -- (keine R__-Repeatable), weil die Roll-up-Views (packages/finance/db/migrations/R__finance_views.sql) sie
 -- referenzieren -> der Baseline-Helfer muss vor der R__-Phase existieren.
@@ -3017,7 +3049,7 @@ $$;
 --   Objekt, faellt mit DROP SCHEMA). Eine NEUE Tabelle wird also automatisch zurueckgesetzt; eine neue
 --   Stammdaten-/Cache-Tabelle muss hier markiert werden (tests/db/core/test_fn_reset_user_data.sql failt sonst).
 -- ============================================================
-COMMENT ON TABLE finance.currencies    IS 'lifecycle:reference - ISO-Waehrungs-Dimension (EUR-Seed + fn_ensure_currency), keine Nutzereingabe';
+COMMENT ON TABLE finance.currencies    IS 'lifecycle:reference - ISO-Waehrungs-Dimension (EUR-Seed + fn_ensure_currency + Kurs-Feed via fn_upsert_fx_rates), keine Nutzereingabe';
 COMMENT ON TABLE finance.fx_rates      IS 'lifecycle:reference - FX-Kurs-Cache des Cron cron_refresh_fx_rates, keine Nutzereingabe';
 COMMENT ON TABLE finance.market_prices IS 'lifecycle:reference - Marktpreis-Cache (Cron), keine Nutzereingabe';
 

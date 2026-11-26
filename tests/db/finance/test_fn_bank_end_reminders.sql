@@ -253,7 +253,7 @@ BEGIN
   RESET ROLE;
 
   -- [10] Reset raeumt beide Latch-Quellen
-  PERFORM finance.fn_price_gap_claim('feed_down');
+  PERFORM finance.fn_feed_down_claim('prices');
   IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:prices' AND key = 'feed_down') THEN
     RAISE EXCEPTION 'FAIL [10 Quelle finance:prices]'; END IF;
   INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active')

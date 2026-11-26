@@ -4,8 +4,11 @@
 --   Wochenende und Feiertag kosten daher nur einen Abruf.
 --   Eingabe: p_feed 'fx' | 'prices' (anderer Wert -> RAISE).
 --   Rueckgabe: true, wenn der juengste Stand (max updated_at) vor dem Beginn des heutigen Kalendertags liegt.
---     fx: Nenner = EUR-Kurse der aktiven Fremdwaehrungen (fn_active_currencies); gar kein Kurs -> true;
---         keine Fremdwaehrung -> false.
+--     fx: nur Zeilen des Tages-Feeds (source = fn_fx_feed_source(), beliebige Waehrung; ein EZB-Nachlauf ersetzt keinen
+--         Tages-Abruf); gar keine -> true. Zusaetzlich faellig, solange der juengste Quell-Stand (as_of = UTC-Datum der
+--         Veroeffentlichung) vor dem UTC-Datum von vor einer Stunde liegt: die Quelle veroeffentlicht gegen 00:02-00:26 UTC,
+--         ein Abruf davor (Haushalt oestlich von UTC) holt noch den Vortag und wird nachgeholt. Unabhaengig von Konten und
+--         Positionen: die Kurs-Vorhaltung haengt nicht am Bedarf. Ob die Quelle ausgefallen ist, sagt fn_fx_feed_gap.
 --     prices: Nenner = market_prices der gehaltenen Symbole (shares > 0); ein einzelnes nie bepreistes Symbol zaehlt
 --         nicht (sonst fragte ein unaufloesbares Symbol stuendlich Yahoo an; das meldet cron_remind_missing_prices);
 --         hat keine gehaltene Position je einen Kurs -> true (der Tagesplan muss dann abrufen, auch wenn der
@@ -18,12 +21,16 @@ RETURNS boolean LANGUAGE plpgsql STABLE AS $$
 DECLARE
   v_n    int;
   v_last timestamptz;
+  v_asof date;
 BEGIN
   IF p_feed = 'fx' THEN
-    SELECT count(ac.code), max(fxr.updated_at) INTO v_n, v_last
-    FROM finance.fn_active_currencies() ac
-    LEFT JOIN finance.fx_rates fxr ON fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code;
-    RETURN v_n > 0 AND (v_last IS NULL OR core.fn_today(v_last) < core.fn_today());
+    -- beide Lesungen ueber idx_fx_rates_source_as_of; updated_at des juengsten Stands = letzter erfolgreicher Abruf
+    SELECT max(fxr.as_of) INTO v_asof FROM finance.fx_rates fxr WHERE fxr.source = finance.fn_fx_feed_source();
+    IF v_asof IS NULL THEN RETURN true; END IF;
+    SELECT max(fxr.updated_at) INTO v_last FROM finance.fx_rates fxr
+    WHERE fxr.source = finance.fn_fx_feed_source() AND fxr.as_of = v_asof;
+    RETURN core.fn_today(v_last) < core.fn_today()
+        OR v_asof < ((now() - interval '1 hour') AT TIME ZONE 'UTC')::date;
   ELSIF p_feed = 'prices' THEN
     SELECT (SELECT count(*) FROM finance.depot_holdings WHERE shares > 0),
            (SELECT max(mp.updated_at) FROM finance.market_prices mp

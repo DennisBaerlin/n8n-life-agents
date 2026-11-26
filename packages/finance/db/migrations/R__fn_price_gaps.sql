@@ -9,7 +9,8 @@
 --   Re-Arm (Seiteneffekt, darum VOLATILE): jede Position ohne Luecke (auch verkaufte) bekommt
 --   core.fn_notify_resolve('finance:prices', <id>), ohne Feed-Ausfall auch der Key 'feed_down' -> eine spaeter neu
 --   entstehende Luecke meldet sofort. Bewusst nicht core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant,
---   R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim.
+--   R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim, der Feed-Ausfall via
+--   fn_feed_down_claim('prices').
 --   Rueckgabe: jsonb { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1},
 --     gaps:[{holding_id, name, isin, symbol, feed_symbol, account_name, account_label, currency, status, price, price_currency,
 --            price_as_of, avg_price}] }

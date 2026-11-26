@@ -292,6 +292,10 @@ BEGIN
     IF to_regprocedure('core.fn_proactive_claim(text,text,text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_proactive_claim(text,text,text) TO %I', v_rw);
     END IF;
+    -- Installations-Anker (Paket-Cron unter _rw: "seit der Installation noch nie ..."), Muster fn_package_active.
+    IF to_regprocedure('core.fn_package_installed_at(text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_package_installed_at(text) TO %I', v_rw);
+    END IF;
     IF to_regprocedure('core.fn_handoff_done_stamps(text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_done_stamps(text) TO %I', v_rw);
     END IF;

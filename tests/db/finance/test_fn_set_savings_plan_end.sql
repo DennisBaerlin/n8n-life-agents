@@ -2,8 +2,9 @@
 -- Kuenftiges Sparplan-Ende ueber fn_set_savings_plan(valid_to): Ende an der Kette (Kopf traegt es, Status bleibt aktiv),
 --   letzte Ausfuehrung = letzter Rasterpunkt davor (fn_recurring_last_due), Karte (bank_stop_until + Erinnerungs-Zeile nur bei
 --   eingeschalteter Bank-Erinnerung), Konto-Vorschau ohne Raten danach, Ablehnungen (Ende nicht in der Zukunft, keine Ausfuehrung
---   mehr davor, zusammen mit anderen Aenderungen), Verlaengern, Probelauf ohne Write, geplante Aenderung, Bank-Ende-Erinnerung
---   (fn_bank_end_due) faellig ab L+3, Plan-Aufgabe (handoff) wird erledigt. Werte erfunden.
+--   mehr davor, zusammen mit anderen Aenderungen, schon beendete Kette, ungueltiger Monat), Verlaengern, Monat mit und ohne
+--   Jahr, Probelauf ohne Write, geplante Aenderung, letzte Ausfuehrung heute, Bank-Ende-Erinnerung (fn_bank_end_due) faellig
+--   ab L+3, Plan-Aufgabe (handoff) wird erledigt. Werte erfunden.
 BEGIN;
 
 DO $$
@@ -173,6 +174,55 @@ BEGIN
      OR (r->>'last_valid_day')::date IS DISTINCT FROM (date_trunc('month', a + interval '7 months') - interval '1 day')::date THEN
     RAISE EXCEPTION 'FAIL [13 Monat]: %', r; END IF;
   RAISE NOTICE 'PASS [13] Monat';
+
+  -- [14] Monat ohne Jahr: die DB nimmt das naechste Vorkommen dieses Monats (7 Monate voraus = dieses oder naechstes Jahr)
+  r := core.fn_dry_run('finance.fn_set_savings_plan(jsonb)'::regprocedure, jsonb_build_object('savings_plan_name','__spe_plan__',
+         'valid_to', to_char(a + interval '6 months', 'MM')));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'last_execution')::date IS DISTINCT FROM (a + interval '6 months')::date THEN
+    RAISE EXCEPTION 'FAIL [14 Monat ohne Jahr]: %', r; END IF;
+  RAISE NOTICE 'PASS [14] Monat ohne Jahr';
+
+  -- [15] ungueltiger Monat -> korrigierbare Ablehnung statt Ausnahme
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan__','valid_to','2030-13'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'invalid_date' THEN
+    RAISE EXCEPTION 'FAIL [15 Monat 13]: %', r; END IF;
+  RAISE NOTICE 'PASS [15] ungueltiger Monat';
+
+  -- [16] Ablehnungstext nennt das frueheste Ende als Datum (das Modell sieht nur reason)
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan__','valid_to', (a - 1)::text));
+  IF position(a::text IN r->>'reason') = 0 THEN RAISE EXCEPTION 'FAIL [16 Datum im Text]: %', r; END IF;
+  RAISE NOTICE 'PASS [16] Datum im Ablehnungstext';
+
+  -- [17] schon beendete Kette wird nicht still verlaengert (die Luecke wuerde faellig) -> plan_ended
+  r := finance.fn_create_savings_plan(jsonb_build_object('name','__spe_plan_c__','depot_name','__spe_depot__',
+         'isin','IE00B3RBWM25','symbol','VWCE','security_name','Test ETF','amount',30,
+         'schedule_interval',1,'schedule_unit','month','first_payment_date', a::text));
+  UPDATE finance.recurring_payments SET valid_to = v_today WHERE id = (r->>'recurring_payment_id')::int;
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan_c__',
+         'valid_to', (a + interval '2 months')::date::text));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'plan_ended' THEN
+    RAISE EXCEPTION 'FAIL [17 beendet]: %', r; END IF;
+  RAISE NOTICE 'PASS [17] beendete Kette';
+
+  -- [18] letzte Ausfuehrung heute: Karte sagt "jetzt beenden" (ohne _until) und verspricht keine Erinnerung (die Karte
+  --      hat sie schon gesagt, fn_bank_stop_note_told merkt das); ist die heutige schon erledigt -> keine Ausfuehrung mehr
+  r := finance.fn_create_savings_plan(jsonb_build_object('name','__spe_plan_d__','depot_name','__spe_depot__',
+         'isin','IE00B3RBWM25','symbol','VWCE','security_name','Test ETF','amount',40,
+         'schedule_interval',1,'schedule_unit','month','first_payment_date', v_today::text));
+  v_rp_b := (r->>'recurring_payment_id')::int;
+  IF finance.fn_recurring_next_due(v_rp_b, v_today) IS DISTINCT FROM v_today THEN
+    RAISE EXCEPTION 'SETUP FAIL [18 Termin heute]: %', finance.fn_recurring_next_due(v_rp_b, v_today); END IF;
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan_d__','valid_to', (v_today + 5)::text));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'last_execution')::date IS DISTINCT FROM v_today
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') e
+                 WHERE e->>'value' IN ('finance.note.savings_plan_end_reminder', 'finance.note.bank_stop_savings_plan_until'))
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') e WHERE e->>'value' = 'finance.note.bank_stop_savings_plan') THEN
+    RAISE EXCEPTION 'FAIL [18 heute]: %', r; END IF;
+  INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date) VALUES (v_rp_b, v_today);
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan_d__','valid_to', (v_today + 6)::text));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'no_execution_before_end' THEN
+    RAISE EXCEPTION 'FAIL [18 heute erledigt]: %', r; END IF;
+  RAISE NOTICE 'PASS [18] letzte Ausfuehrung heute';
 END $$;
 
 ROLLBACK;

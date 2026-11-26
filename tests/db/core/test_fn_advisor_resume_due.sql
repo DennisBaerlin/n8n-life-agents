@@ -270,8 +270,13 @@ BEGIN
   -- ohne Rollout-Merker -> nichts
   r := core.fn_advisor_resume_due(p_in);
   IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 ohne Rollout-Liste]: %', r; END IF;
+  -- Merker im alten Format (ohne Version, vor dem Veroeffentlichen gesetzt) zaehlt nicht als Rollout-Liste
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:handoff:' || v_max, 'fired', now() - interval '15 days');
+  r := core.fn_advisor_resume_due(p_in);
+  IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 alter Merker]: %', r; END IF;
+  DELETE FROM core.notification_state WHERE source = 'plan_rollout';
   -- Rollout-Liste vor 5 Tagen -> noch nicht
-  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:handoff:' || v_max, 'fired', now() - interval '5 days');
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:1:handoff:' || v_max, 'fired', now() - interval '5 days');
   r := core.fn_advisor_resume_due(p_in);
   IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 vor 14 Tagen]: %', r; END IF;
   -- vor 15 Tagen, aber offener Abschnitt -> nichts (R6: kind section)
@@ -297,7 +302,7 @@ BEGIN
   IF jsonb_array_length(r->'items') <> 0 THEN RAISE EXCEPTION 'FAIL [22 neue Aufgabe ohne neue Liste]: %', r; END IF;
   -- Entwurf derselben Domain -> Z11 schweigt (Entwurfs-Fall statt Uebergabe)
   SELECT max(id) INTO v_max FROM agent.handoff_tasks;
-  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:handoff:' || v_max, 'fired', now() - interval '15 days');
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('plan_rollout', 'finance:household:1:handoff:' || v_max, 'fired', now() - interval '15 days');
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, updated_at)
   VALUES ('finance', NULL, 'Plan', 'draft', 2, '{}', now() - interval '1 day');
   DELETE FROM core.proactive_budget;

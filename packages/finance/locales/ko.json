@@ -803,6 +803,7 @@
   "finance.help.savings_goals.title": "저축 목표",
   "finance.help.savings_goals.description": "목표 금액/날짜와 자동으로 계산되는 저축액이 있는 저축 목표; 부동산의 지속적인 유지보수 적립금.",
   "finance.help.savings_goals.ex1": "새 저축 목표 '비상금'을 만들어 주세요: 목표 금액 10,000유로, 2027년 말까지, Lindenbank Giro에서 Tagesgeld Plus로, 출금일 1일, 첫 기록은 2026년 7월 1일.",
+  "finance.bank_note.on_list": "은행에서는 직접 설정해야 해요. 마지막에 은행 할 일 목록에 함께 담아 드릴게요.",
   "finance.bank_todo.intro": "{bank}{holder}에서 설정할 내용:",
   "finance.bank_todo.intro_generic": "은행{holder}에서 설정할 내용:",
   "finance.bank_todo.nudge": "{bank}{holder}에서 설정을 마치셨나요?",

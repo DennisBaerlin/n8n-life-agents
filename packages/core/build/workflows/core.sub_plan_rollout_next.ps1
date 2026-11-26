@@ -24,23 +24,25 @@ const footer = String(`$('Start').first().json.footer_key || '');
 const nested = (x) => (x && typeof x === 'object') ? Object.values(x.params || {}).flatMap(p => (p && typeof p === 'object' && p.kind === 'tpl') ? [p.value, ...nested(p)] : []) : [];
 return list.filter(m => Array.isArray(m.buttons) && m.buttons.length > 0).map(m => ({ json: Object.assign({}, m, {
   chat_id: String(m.chat_id), footer_key: footer,
-  keys: [...new Set([...(m.msg || []).flatMap(x => [x && x.value, ...nested(x)]), ...m.buttons.map(b => b.text_key), ...(footer ? [footer] : [])])]
+  keys: [...new Set([...(m.msg || []).flatMap(x => [x && x.value, ...nested(x)]), ...m.buttons.map(b => b.text_key), ...(footer ? [footer] : [])])],
+  // lines (mehrzeilige Paket-Nachricht, z. B. Bank-Zettel): Keys samt Enum-Werten sammelt fn_ui_texts_for aus doc
+  doc: Array.isArray(m.lines) ? m.lines : null
 }) }));
 "@
     $split = [ordered]@{ parameters = [ordered]@{ jsCode = $splitJs }; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(-440, 0); id = (New-Id); name = 'Split messages'; onError = 'continueRegularOutput' }
 
     $keysExpr = Get-UiKeysSql $script:UiRenderKeys
     $load = Build-Pg 'Load texts' @(-220, 0) `
-        ("=SELECT core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', ((`$1::jsonb)->'ui_keys') || to_jsonb($keysExpr)))::text AS ui;") `
-        ([ordered]@{ chat_id = '$json.chat_id'; ui_keys = '$json.keys' }) -ContinueOnError
+        ("=SELECT core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', ((`$1::jsonb)->'ui_keys') || to_jsonb($keysExpr), 'doc', (`$1::jsonb)->'doc'))::text AS ui;") `
+        ([ordered]@{ chat_id = '$json.chat_id'; ui_keys = '$json.keys'; doc = '$json.doc' }) -ContinueOnError
 
     $buildJs = (Get-UiRenderLibJs) + @'
 
 const m = $('Split messages').item.json;
 const U = uiRender(JSON.parse($json.ui || '{}'));
-let text = U.msg(m.msg || []);
+let text = Array.isArray(m.lines) ? U.lines(m.lines) : U.msg(m.msg || []);
 if (m.footer_key) text += '\n\n' + U.t(m.footer_key);
-const buttons = (m.buttons || []).map(b => ({ text: U.t(b.text_key), data: String(b.data) }));
+const buttons = (m.buttons || []).map(b => ({ text: U.fill(U.t(b.text_key), b.params || {}), data: String(b.data) }));
 return { json: { chat_id: m.chat_id, text, buttons, latches: (m.latches && m.latches.length) ? m.latches : (m.latch ? [m.latch] : []),
   memory_agent: String(m.memory_agent || ''), msg: m.msg || [] } };
 '@
@@ -65,7 +67,7 @@ return { json: { chat_id: m.chat_id, text, buttons, latches: (m.latches && m.lat
         ([ordered]@{ chat_id = "`$('Build message').item.json.chat_id"; agent = "`$('Build message').item.json.memory_agent"; msg = "`$('Build message').item.json.msg" }) -ContinueOnError
 
     $sticky = Build-Sticky 'Überblick' @(-1140, -420) 'Geführte Abfolge: genau ein nächster Schritt' `
-        'Gerufen am Ende jedes Orchestrator-Laufs (Run plan rollout) und täglich vom Nachzügler (agent.advisor.cron_plan_rollout). Skip true: nichts. Claim = core.fn_plan_rollout_claim: Schalter, offene Karte, Entwurf der letzten 2 Stunden, dann core.fn_plan_rollout_next je Domain; ein zweiter gleichzeitiger Lauf bekommt nichts. Texte in der Sprache des Empfängers (Split messages lädt auch verschachtelte Text-Verweise aus params, z. B. offen seit heute der Übergabe-Liste), Fußzeile nur im Nachzügler. n8n legt die Knopfzahl je Node fest, darum zwei Sende-Knoten (Paket-Schritte schicken höchstens zwei). Nach dem Senden schreibt Commit latch den Merker fest; scheitert das Senden, setzt Reset latch zurück; stirbt der Lauf dazwischen, läuft die Frist von 30 Minuten aus und der Schritt kommt wieder. Note turn trägt eine einladende Nachricht als Katalog-Schlüssel ins Gedächtnis von Agent und Router, nie als freier Text. Alle Knoten mit onError continue: Ein Fehler hier darf nie die Antwort an den Nutzer stören.' 340 460
+        'Gerufen am Ende jedes Orchestrator-Laufs (Run plan rollout) und täglich vom Nachzügler (agent.advisor.cron_plan_rollout). Skip true: nichts. Claim = core.fn_plan_rollout_claim: Schalter, offene Karte, Entwurf der letzten 2 Stunden, dann core.fn_plan_rollout_next je Domain; ein zweiter gleichzeitiger Lauf bekommt nichts. Texte in der Sprache des Empfängers (Split messages lädt auch verschachtelte Text-Verweise aus params, z. B. offen seit heute der Übergabe-Liste); eine Paket-Nachricht mit lines (Bank-Zettel nach dem Durchgehen) wird zeilenweise gesetzt, ihre Keys samt Enum-Werten kommen über doc, Knopf-Texte dürfen Platzhalter tragen (params). Fußzeile nur im Nachzügler. n8n legt die Knopfzahl je Node fest, darum zwei Sende-Knoten (Paket-Schritte schicken höchstens zwei). Nach dem Senden schreibt Commit latch den Merker fest; scheitert das Senden, setzt Reset latch zurück; stirbt der Lauf dazwischen, läuft die Frist von 30 Minuten aus und der Schritt kommt wieder. Note turn trägt eine einladende Nachricht als Katalog-Schlüssel ins Gedächtnis von Agent und Router, nie als freier Text. Alle Knoten mit onError continue: Ein Fehler hier darf nie die Antwort an den Nutzer stören.' 340 460
 
     $nodes = @($start, $skip, $end, $claim, $split, $load, $build, $two, $sendOne, $sendTwo, $sent, $commit, $reset, $note, $sticky)
     $conns = [ordered]@{

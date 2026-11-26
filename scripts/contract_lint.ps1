@@ -1452,6 +1452,56 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     }
 }
 
+# Vormerkungen schliessen: advisors.<domain>.handoff_tools nennt je Art aus
+# dem kind-CHECK von agent.handoff_tasks die Werkzeuge, die eine Vormerkung erfuellen koennen. Jedes muss handoff_task_id
+# im Start-Knoten (Build-Trigger), in der Schreib-Nutzlast (-Params von New-FnWriteGate) und in der Bindung des
+# handoff_agent tragen, und seine Write-fn muss <pkg>.fn_with_handoff mit der eigenen Signatur rufen (sonst bleibt die
+# Vormerkung still offen). Gegenrichtung: ein Werkzeug des Pakets mit handoff_task_id im Start-Knoten steht in der Liste.
+function Test-HandoffTools([string]$Pkg, [string]$PkgDir, [string]$Domain, $Adv) {
+    $out = New-Object System.Collections.Generic.List[string]
+    $where = "advisors '$Domain'.handoff_tools in packages/$pkg/manifest.json"
+    $init = Join-Path $RepoRoot 'packages\core\db\agent.advisor_init.sql'
+    $kinds = @()
+    $km = [regex]::Match([System.IO.File]::ReadAllText($init), "kind\s+text\s+NOT NULL CHECK \(kind IN \(([^)]*)\)\)")
+    if ($km.Success) { $kinds = @([regex]::Matches($km.Groups[1].Value, "'([a-z_]+)'") | ForEach-Object { $_.Groups[1].Value }) }
+    if (-not $kinds.Count) { $out.Add("HANDOFF-TOOLS: kind-CHECK von agent.handoff_tasks in packages/core/db/agent.advisor_init.sql nicht lesbar -- Pruefung kann nicht laufen."); return $out }
+    $ht = if ($Adv.PSObject.Properties.Name -contains 'handoff_tools') { $Adv.handoff_tools } else { $null }
+    if ($null -eq $ht) { $out.Add("HANDOFF-TOOLS: $where fehlt -- ohne Liste prueft niemand, ob ein Schreib-Werkzeug die Vormerkung abschliesst."); return $out }
+    $listed = @()
+    foreach ($k in $kinds) {
+        if ($ht.PSObject.Properties.Name -notcontains $k -or @($ht.$k).Count -eq 0) { $out.Add("HANDOFF-TOOLS: $where nennt fuer die Art '$k' kein Werkzeug."); continue }
+        $listed += @($ht.$k)
+    }
+    foreach ($k in @($ht.PSObject.Properties.Name)) { if ($kinds -notcontains $k) { $out.Add("HANDOFF-TOOLS: $where nennt die Art '$k', die agent.handoff_tasks nicht kennt.") } }
+    $toolsDir = Join-Path $PkgDir 'build\workflows\tools'
+    $agentFile = Join-Path $PkgDir ('build\workflows\' + [string]$Adv.handoff_agent + '.ps1')
+    $agentSrc = if (Test-Path $agentFile) { [System.IO.File]::ReadAllText($agentFile) } else { '' }
+    foreach ($tool in @($listed | Sort-Object -Unique)) {
+        $f = Join-Path $toolsDir "$tool.ps1"
+        if (-not (Test-Path $f)) { $out.Add("HANDOFF-TOOLS: $where nennt '$tool', aber packages/$pkg/build/workflows/tools/$tool.ps1 fehlt."); continue }
+        $src = [System.IO.File]::ReadAllText($f)
+        $trig = [regex]::Match($src, 'Build-Trigger\s+@\(([^)]*)\)', 'Singleline')
+        if (-not $trig.Success -or $trig.Groups[1].Value -notmatch "'handoff_task_id'") { $out.Add("HANDOFF-TOOLS: tools/$tool.ps1 hat handoff_task_id nicht im Build-Trigger -- der Wert kaeme als undefined an.") }
+        if ($src -notmatch "handoff_task_id\s*=\s*'\`$\(''Start''\)\.item\.json\.handoff_task_id'") { $out.Add("HANDOFF-TOOLS: tools/$tool.ps1 reicht handoff_task_id nicht in die Schreib-Nutzlast (-Params) -- die fn sieht ihn nie.") }
+        if ($src -notmatch "chat_id\s*=\s*'\`$\(''Start''\)\.item\.json\.chat_id'") { $out.Add("HANDOFF-TOOLS: tools/$tool.ps1 reicht chat_id nicht in die Schreib-Nutzlast -- fn_with_handoff prueft die Person daraus.") }
+        $fnm = [regex]::Match($src, "New-FnWriteGate\s+-Fn\s+'([a-z_]+)\.(fn_[a-z0-9_]+)'")
+        if (-not $fnm.Success) { $out.Add("HANDOFF-TOOLS: tools/$tool.ps1 hat keinen New-FnWriteGate -Fn '<schema>.fn_<name>' -- Write-fn nicht bestimmbar."); continue }
+        $sig = "$($fnm.Groups[1].Value).$($fnm.Groups[2].Value)(jsonb)"
+        $rf = Join-Path $PkgDir ("db\migrations\R__" + $fnm.Groups[2].Value + '.sql')
+        $rsrc = if (Test-Path $rf) { [System.IO.File]::ReadAllText($rf) } else { '' }
+        if ($rsrc -notmatch ([regex]::Escape("$Pkg.fn_with_handoff('$sig'::regprocedure"))) { $out.Add("HANDOFF-TOOLS: $sig (tools/$tool.ps1) ruft $Pkg.fn_with_handoff('$sig'::regprocedure, p) nicht -- ein gesetzter handoff_task_id wuerde still verschluckt, die Vormerkung bliebe offen.") }
+        $bind = [regex]::Match($agentSrc, "New-ToolWorkflowNode\s+'tool_$([regex]::Escape($tool))'[\s\S]*?\)\s+@\(\s*-?\d+\s*,\s*-?\d+\s*\)")
+        if (-not $bind.Success -or $bind.Value -notmatch "@\('handoff_task_id'") { $out.Add("HANDOFF-TOOLS: Bindung tool_$tool in $([string]$Adv.handoff_agent).ps1 ohne handoff_task_id -- der Buchhalter kann die Vormerkung nicht mitgeben.") }
+    }
+    foreach ($tf in @(Get-ChildItem $toolsDir -Filter '*.ps1' -ErrorAction SilentlyContinue)) {
+        $tn = $tf.BaseName
+        if ($tn -like '*handoff*' -or $listed -contains $tn) { continue }
+        $trig = [regex]::Match([System.IO.File]::ReadAllText($tf.FullName), 'Build-Trigger\s+@\(([^)]*)\)', 'Singleline')
+        if ($trig.Success -and $trig.Groups[1].Value -match "'handoff_task_id'") { $out.Add("HANDOFF-TOOLS: tools/$tn.ps1 nimmt handoff_task_id, steht aber nicht in $where -- Art zuordnen.") }
+    }
+    return $out
+}
+
 # ---------------------------------------------------------------
 # (16) FAKTEN-SCHICHT (docs/package-contract.md §2/§3.3):
 #     (a) Gegenrichtung zu 15b: jeder household-skopierte context_validators-Key braucht ein context_skeletons-
@@ -1463,6 +1513,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #         sind suffigiert, core.fn_note_context_allowed vergleicht exakt -> ein Opt-in waere tot);
 #         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true;
 #         handoff_agent nur mit plan_step und nur ein Agent aus provides.agents des eigenen Pakets.
+#         handoff_tools (Pflicht mit handoff_agent): je Vormerkungs-Art die Werkzeuge, die sie abschliessen (Test-HandoffTools).
 #     (d) keine Workflow-id in zwei Dateien (Rename ohne git mv -> import:workflow nimmt eine der beiden still).
 #     (e) retired_workflows: eine stillgelegte id liegt nicht mehr im Baum und kein getrackter Workflow verweist
 #         auf sie (sonst loeschte retire_workflows einen lebenden Pfad).
@@ -1534,6 +1585,9 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                 if ($p.Value.plan_step -ne $true) {
                     $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent ohne plan_step=true -- der Uebergabe-Arm haengt am Plan-Weg und wuerde nie gebaut.")
                 }
+                foreach ($e in @(Test-HandoffTools $pkg $pdir.FullName $p.Name $p.Value)) { $errors.Add($e) }
+            } elseif ($p.Value.PSObject.Properties.Name -contains 'handoff_tools') {
+                $errors.Add("HANDOFF-TOOLS: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_tools ohne handoff_agent -- niemand traegt die Vormerkungen ein.")
             }
             # plan_validate_fn braucht kein plan_step (liest nur die Pruefstelle); ein Tippfehler liesse den Seeder die ganze Zeile ueberspringen.
             if ($p.Value.PSObject.Properties.Name -contains 'plan_validate_fn') {

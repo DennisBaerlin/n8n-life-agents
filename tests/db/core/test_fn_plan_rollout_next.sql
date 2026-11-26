@@ -103,6 +103,8 @@ BEGIN
   FOR v_key IN SELECT x->>'key' FROM jsonb_array_elements(v->'messages'->0->'latches') x LOOP PERFORM core.fn_notify_commit('plan_rollout', v_key); END LOOP;
   v := core.fn_plan_rollout_next(d, 'erika');
   IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL s5 einmal %', v; END IF;
+  -- Die Liste kaeme je neuer Version einmal neu (Block unten); die Faelle hier pruefen die Schritte danach.
+  UPDATE agent.handoff_tasks SET status = 'cancelled', closed_at = now() WHERE domain = d AND status IN ('open', 'working');
 
   -- Neue Version fragt erneut; zweimal ohne Reaktion: Einschalten entfaellt
   DELETE FROM agent.advisor_plans WHERE domain = d AND status = 'draft';
@@ -155,5 +157,55 @@ BEGIN
   IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL per_user fremder Entwurf %', v; END IF;
   v := core.fn_plan_rollout_next('__rollp__', 'lena');
   IF (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL per_user eigener Entwurf %', v; END IF;
+END $$;
+
+-- Liste nach dem Veroeffentlichen: genau einmal je veroeffentlichter Version, auch wenn dieselbe Liste vorher mitten im
+-- Gespraech gezeigt wurde (Merker des Berater-Wegs unter der alten Version).
+INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step) VALUES ('__rollv__', 'core', '__rollv___planning', 'core.fn_x', TRUE);
+DO $$
+DECLARE
+  d CONSTANT TEXT := '__rollv__';
+  v JSONB;
+  v_plan INT;
+  v_max INT;
+  v_key TEXT;
+BEGIN
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at) VALUES (d, 'p', 'active', 1, now()) RETURNING id INTO v_plan;
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version) VALUES (d, 'p', 'draft', 2);
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES
+    (d, 'core', 'erika', 's', 'other', 'Aufgabe A'), (d, 'core', 'erika', 's', 'other', 'Aufgabe B');
+  SELECT max(id) INTO v_max FROM agent.handoff_tasks WHERE domain = d;
+
+  -- mitten im Gespraech: der Berater schickt die Liste (Warnung) und merkt sie
+  v := core.fn_handoff_overview_mark(jsonb_build_object('domain', d, 'chat_id', '111', 'max_task_id', v_max));
+  IF (v->>'marked')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL P0 Merker %', v; END IF;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL P0 Entwurf sendet %', v; END IF;
+
+  -- (1) veroeffentlicht (v2): Schritt 1 sendet die Liste
+  UPDATE agent.advisor_plans SET status = 'superseded' WHERE id = v_plan;
+  UPDATE agent.advisor_plans SET status = 'active', synced_at = now() WHERE domain = d AND status = 'draft' RETURNING id INTO v_plan;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages') <> 1
+     OR v->'messages'->0->'buttons'->0->>'data' IS DISTINCT FROM 'handoff:' || d || ':' || v_max THEN RAISE EXCEPTION 'FAIL P0 Live-Fall %', v; END IF;
+  v_key := v->'messages'->0->'latch'->>'key';
+  IF v_key IS DISTINCT FROM d || ':household:2:handoff:' || v_max THEN RAISE EXCEPTION 'FAIL P0 Schluessel %', v_key; END IF;
+  PERFORM core.fn_notify_commit('plan_rollout', v_key);
+
+  -- (2) zweiter Aufruf nach dem Festschreiben: keine zweite Liste
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF jsonb_array_length(v->'messages') <> 0 OR (v->>'step')::int IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL P0 einmal %', v; END IF;
+
+  -- (3) neu veroeffentlicht (v3) mit denselben offenen Eintraegen: einmal neu
+  UPDATE agent.advisor_plans SET version = 3 WHERE id = v_plan;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL P0 v3 %', v; END IF;
+  PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latch'->>'key');
+
+  -- (4) Liste nach dem Veroeffentlichen ueber den Berater-Weg gemerkt (v4): Schritt 1 sendet nicht doppelt
+  UPDATE agent.advisor_plans SET version = 4 WHERE id = v_plan;
+  PERFORM core.fn_handoff_overview_mark(jsonb_build_object('domain', d, 'chat_id', '111', 'max_task_id', v_max));
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL P0 Berater-Weg nach Publish %', v; END IF;
 END $$;
 ROLLBACK;

@@ -2220,5 +2220,23 @@
       { "tool": "tool_propose_plan_topics", "args": {"one_card": false, "more_in_part": false, "section_key":"goals_triggers","topics":"[{\"topic\":\"Sparziel Urlaub\",\"content\":\"Das Sparziel __E2E__ HO Urlaub wird kuenftig dem __E2E__ HO Tagesgeld zugeordnet, getrennt vom Alltagsgeld.\",\"handoff_tasks\":[{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"__E2E__ HO Urlaub\",\"account\":\"__E2E__ HO Tagesgeld\"},\"text\":\"Sparziel __E2E__ HO Urlaub dem __E2E__ HO Tagesgeld zuordnen\"}]}]"} }
     ],
     "final": "Das Thema wurde nicht gespeichert."
+  },
+  {
+    "_comment": "Durchspiel s9 Runde 1 (conversation_test): freie Frage nach dem Veroeffentlichen; die Liste schickt die Abfolge am Laufende, nicht das Modell.",
+    "match": "wie geht es mit dem Plan weiter fd1",
+    "driver": "tests/agent/cross/conversation_cases.json",
+    "calls": [],
+    "final": "Als Naechstes gehen wir die vereinbarten Eintraege durch."
+  },
+  {
+    "_comment": "Durchspiel s9 Runde 2 (conversation_test, Buchhalter im handoff mode): Vormerkung 990031 ueber tool_set_recurring_payment, Vormerkung 990032 ueber zwei jaehrliche Uebertraege mit derselben handoff_task_id; alle drei Karten angenommen.",
+    "match": "__E2E__ FD Zwei Uebertraege im Jahr in den Topf",
+    "driver": "tests/agent/cross/conversation_cases.json",
+    "calls": [
+      { "tool": "tool_set_recurring_payment", "args": { "payment_name": "__E2E__ FD Uebertrag", "schedule_day_of_month": "1", "handoff_task_id": "990031" } },
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "__E2E__ FD Rate A", "from_account_name": "__E2E__ FD Giro", "to_account_name": "__E2E__ FD Topf", "amount": 900, "schedule_unit": "year", "first_payment_date": "{{date:+60d}}", "handoff_task_id": "990032" } },
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "__E2E__ FD Rate B", "from_account_name": "__E2E__ FD Giro", "to_account_name": "__E2E__ FD Topf", "amount": 800, "schedule_unit": "year", "first_payment_date": "{{date:+120d}}", "handoff_task_id": "990032" } }
+    ],
+    "final": "Beide Eintraege sind eingetragen."
   }
 ]

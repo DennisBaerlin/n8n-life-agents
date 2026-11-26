@@ -29,6 +29,8 @@
 --   gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person, Beitrag <= 0, Rhythmus/Stichtag ohne Beitrag,
 --   Konto ausser beim ersten Beitrag, Beitrag an einer nicht aktiven Vorsorge, erster Beitrag ohne effective_from/Konto
 --   oder auf ein nicht buchbares Konto, Stichtag vor einer geplanten Aenderung, Split-Guards) -> {ok:false}.
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -54,6 +56,10 @@ DECLARE
     v_chg      JSONB;
     v_post     JSONB   := '{}'::jsonb;
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_set_pension(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangaben ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['value_updated_at', 'retirement_start_date', 'effective_from']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

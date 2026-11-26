@@ -5,17 +5,22 @@
 --     setup+change bleibt setup; setup+stop bleibt setup, lief die eigene Kette schon -> stop; change+stop -> stop;
 --     stop+setup/change -> change, lief die eigene Kette nie -> setup; change ohne offenen Punkt und nie gelaufen -> setup.
 --   Aendert sich die Art eines schon gesendeten Punkts, entsteht eine neue Zeile: Die Merker haengen an der id.
---   Probelauf rollt alles zurueck. Tests: tests/db/finance/test_fn_bank_todos.sql
+--   Im Eintragen einer Vormerkung (transaktionslokaler Wert finance.handoff_task_id, gesetzt nur von finance.fn_with_handoff)
+--   traegt der Punkt deren id (handoff_task_id), und ist er danach sichtbar (fn_bank_todo_visible), kommt statt des Absatzes
+--   die Kurz-Zeile finance.bank_note.on_list: die Bank-Liste kommt am Ende des Durchgehens (finance.fn_plan_rollout).
+--   Probelauf rollt alles zurueck. Tests: tests/db/finance/test_fn_bank_todos.sql, tests/db/finance/test_fn_with_handoff.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_note_recorded(p_rp_id int, p_event text, p_params jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
 DECLARE
     v_note jsonb := finance.fn_bank_setup_note(p_rp_id, p_event, p_params);
     v_new  text := CASE p_event WHEN 'bank_setup' THEN 'setup' WHEN 'bank_change' THEN 'change' WHEN 'bank_stop' THEN 'stop' END;
+    v_hid  int := NULLIF(current_setting('finance.handoff_task_id', true), '')::int;
     v_head int;
     v_ran  boolean;
     v_row  finance.bank_todos%ROWTYPE;
     v_res  text;
+    v_id   int;
 BEGIN
     IF v_new IS NULL THEN RAISE EXCEPTION 'fn_bank_note_recorded: unknown event %', p_event; END IF;
     IF v_note = '[]'::jsonb THEN RETURN v_note; END IF;
@@ -24,8 +29,8 @@ BEGIN
     SELECT * INTO v_row FROM finance.bank_todos WHERE head_id = v_head AND status = 'open' FOR UPDATE;
     IF NOT FOUND THEN
         v_res := CASE WHEN v_new = 'change' AND NOT v_ran THEN 'setup' ELSE v_new END;
-        INSERT INTO finance.bank_todos (head_id, event) VALUES (v_head, v_res);
-        RETURN v_note;
+        INSERT INTO finance.bank_todos (head_id, event, handoff_task_id) VALUES (v_head, v_res, v_hid) RETURNING id INTO v_id;
+        RETURN finance.fn_bank_note_on_list(v_id, v_hid, v_note);
     END IF;
     v_res := CASE
         WHEN v_row.event = 'setup' AND v_new = 'stop' AND v_ran THEN 'stop'
@@ -37,11 +42,31 @@ BEGIN
         ELSE 'change' END;
     IF v_res <> v_row.event AND v_row.first_sent_at IS NOT NULL THEN
         UPDATE finance.bank_todos SET status = 'done', closed_at = now() WHERE id = v_row.id;
-        INSERT INTO finance.bank_todos (head_id, event, source) VALUES (v_head, v_res, v_row.source);
+        INSERT INTO finance.bank_todos (head_id, event, source, handoff_task_id)
+        VALUES (v_head, v_res, v_row.source, COALESCE(v_hid, v_row.handoff_task_id)) RETURNING id INTO v_id;
     ELSE
-        UPDATE finance.bank_todos SET event = v_res, event_at = now() WHERE id = v_row.id;
+        UPDATE finance.bank_todos SET event = v_res, event_at = now(), handoff_task_id = COALESCE(v_hid, handoff_task_id)
+         WHERE id = v_row.id;
+        v_id := v_row.id;
     END IF;
-    RETURN v_note;
+    RETURN finance.fn_bank_note_on_list(v_id, v_hid, v_note);
+END $$;
+
+-- ============================================================
+-- fn_bank_note_on_list (READ HELPER) -- Karten-Notiz eines Bank-Punkts im Eintragen einer Vormerkung
+--   Mit Vormerkung (p_hid), sichtbarem Punkt (fn_bank_todo_visible) und eingeschalteter Liste (Schalter remind_bank_todo wie
+--   in fn_bank_todo_claim, plan_rollout wie in core.fn_plan_rollout_claim) die Kurz-Zeile finance.bank_note.on_list, sonst
+--   p_note unveraendert (z. B. Beenden zum Termin: das erinnert fn_bank_end_due, der Punkt steht nicht auf der Liste).
+--   Eingabe: p_id (bank_todos.id), p_hid (Vormerkung oder NULL), p_note. Rueckgabe: jsonb-Array der Kartenzeilen.
+-- ============================================================
+CREATE OR REPLACE FUNCTION finance.fn_bank_note_on_list(p_id int, p_hid int, p_note jsonb)
+RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    IF p_hid IS NULL OR NOT finance.fn_bank_todo_visible(p_id)
+       OR NOT core.fn_reminder_allowed('remind_bank_todo', NULL) OR NOT core.fn_reminder_allowed('plan_rollout', NULL) THEN
+        RETURN p_note;
+    END IF;
+    RETURN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.bank_note.on_list'));
 END $$;
 
 -- ============================================================
@@ -192,10 +217,25 @@ BEGIN
 END $$;
 
 -- ============================================================
+-- fn_bank_todo_in_handoff (READ) -- stammt dieser Bank-Punkt aus einem abgeschlossenen Eintragen?
+--   Ja: Vormerkung erledigt (handoff_task_id, core.fn_handoff_done_ids), nachgeholt (source backfill) oder Altbestand ohne
+--   Verweis mit dem Zeitstempel einer erledigten Vormerkung (Write und Abschluss in einer Transaktion, core.fn_handoff_done_stamps).
+--   Eingabe: p_id. Rueckgabe boolean. plpgsql: die core-fns liegen in einem anderen Paket.
+-- ============================================================
+CREATE OR REPLACE FUNCTION finance.fn_bank_todo_in_handoff(p_id int)
+RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    RETURN EXISTS (SELECT 1 FROM finance.bank_todos t WHERE t.id = p_id AND (
+        t.source = 'backfill'
+        OR t.handoff_task_id IN (SELECT core.fn_handoff_done_ids('finance'))
+        OR (t.handoff_task_id IS NULL AND t.created_at IN (SELECT core.fn_handoff_done_stamps('finance')))));
+END $$;
+
+-- ============================================================
 -- fn_bank_todo_claim (WRITE, Latch) -- die heute faelligen Bank-Nachrichten je Empfaenger, jede genau einmal
 --   p_mode 'cron': Runde 0 ab 20 Stunden, Nachfass-Runden nach first_sent_at (finance.bank_todo_nudge_days, Default Tag 7 und 21) (beide faellig ->
---   nur die spaetere, stop nie nachgefasst, frueher als 7 Tage vor dem ersten Termin nie). p_mode 'handoff': nur Runde 0
---   und nur Punkte aus der Uebergabe (created_at = closed_at einer done-Aufgabe) oder nachgeholte.
+--   nur die spaetere, stop nie nachgefasst, frueher als 7 Tage vor dem ersten Termin nie). p_mode 'handoff': nur Runde 0,
+--   nur der Owner und nur Punkte aus der Uebergabe (fn_bank_todo_in_handoff) oder nachgeholte.
 --   Empfaenger wie fn_bank_end_claim: Owner alle (cron_enable.remind_bank_todo), Inhaber partner mit Kopplung die eigenen
 --   (remind_bank_todo_person), Kinder nie. Merker 'finance:bank_todo', Key <id>:r<runde>:owner|<person_id>, je Empfaenger:
 --   Wer heute nicht darf, verliert nichts; im Modus cron Budget je Empfaenger (Slot 'bank_todo' normal, ohne Platz kein Merker). handoff beansprucht 30 Minuten und liefert latches (Commit/Reset macht core.sub_plan_rollout_next via finance.fn_plan_rollout ueber core.fn_notify_commit/core.fn_notify_resolve).
@@ -232,7 +272,7 @@ BEGIN
         CONTINUE WHEN NOT finance.fn_bank_todo_visible(t.id);
         v_days := p_on - t.first_sent_at::date;
         IF p_mode = 'handoff' THEN
-            CONTINUE WHEN NOT (t.source = 'backfill' OR t.created_at IN (SELECT core.fn_handoff_done_stamps('finance')));
+            CONTINUE WHEN NOT finance.fn_bank_todo_in_handoff(t.id);
             CONTINUE WHEN v_days IS NOT NULL AND v_days >= v_nudge[1]::int;
             v_round := 0;
         ELSIF t.first_sent_at IS NULL THEN
@@ -260,7 +300,8 @@ BEGIN
             v_olatch := v_olatch || jsonb_build_object('source', c_src, 'key', v_key);
             v_sent := true;
         END IF;
-        IF v_item->>'holder_role' = 'partner' THEN
+        -- handoff: nur der Owner (die Abfolge sendet in seinen Chat); das Mitglied bekommt Runde 0 ueber den Cron
+        IF v_item->>'holder_role' = 'partner' AND p_mode = 'cron' THEN
             v_chat := core.fn_person_chat_id(v_pid);
             v_key  := t.id || ':r' || v_round || ':' || v_pid;
             IF p_mode = 'cron' AND v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)

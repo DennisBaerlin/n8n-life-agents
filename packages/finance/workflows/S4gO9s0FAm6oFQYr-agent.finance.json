@@ -3587,6 +3587,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "name":  "={{ $fromAI(\u0027name\u0027, \u0027Display name (e.g. Eichenversicherung Ruerup, DRV gesetzlich)\u0027, \u0027string\u0027) }}",
                                                                               "pension_type":  "={{ $fromAI(\u0027pension_type\u0027, \u0027One of: statutory, occupational, riester, ruerup, private\u0027, \u0027string\u0027) }}",
                                                                               "provider":  "={{ $fromAI(\u0027provider\u0027, \u0027Provider/insurer (Anbieter/Versorgungsträger)\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -3609,6 +3610,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "name",
                                                                                    "displayName":  "name",
@@ -4313,6 +4324,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "pension_name":  "={{ $fromAI(\u0027pension_name\u0027, \u0027Exact name of the provision to update\u0027, \u0027string\u0027) }}",
                                                                               "new_name":  "={{ $fromAI(\u0027new_name\u0027, \u0027New display name (only if renaming)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "current_value":  "={{ $fromAI(\u0027current_value\u0027, \u0027New accumulated value in EUR (Rückkaufswert/Deckungskapital)\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -4335,6 +4347,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "pension_name",
                                                                                    "displayName":  "pension_name",
@@ -4984,6 +5006,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "payment_name":  "={{ $fromAI(\u0027payment_name\u0027, \u0027Exact name of the recurring payment to update\u0027, \u0027string\u0027) }}",
                                                                               "amount":  "={{ $fromAI(\u0027amount\u0027, \u0027New amount per occurrence in the account currency (positive magnitude); applies from valid_from on. Leave empty for pause/resume/end/rename.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "valid_from":  "={{ $fromAI(\u0027valid_from\u0027, \u0027Effective date of the amount change (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself) (default today). Must be after the current entry start.\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -5000,6 +5023,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "payment_name",
                                                                                    "displayName":  "payment_name",

@@ -272,6 +272,19 @@
     "notes": "Onboarding-Plan-Schritt: Owner-Tap faellt ueber die extra-Ausgabe in Dispatch callback -> core.fn_handle_plan_cb (Daten-Reife aus core.fn_advisor_plan_status, Fixture ohne Einnahme) -> {ok:false, toast core.toast.plan_not_ready} -> Onboarding route? false -> Plan route? false -> Answer dispatched cb. Der Erfolgs-Pfad (route plan -> Run plan finance -> Berater) braucht einen LLM-Lauf und ist im Owner-Fenster-Tier abgedeckt; die Handler-Regeln deckt test_fn_handle_plan_cb.sql."
   },
   {
+    "id": "ri07-resume",
+    "name": "Owner tippt [Weiter] der Beratungs-Erinnerung (plan:resume:finance), Entwurf 5 Tage still -> core.fn_handle_plan_cb route plan -> Run plan finance startet den Berater",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "plan:resume:finance",
+    "pre_sql": "SELECT agent.fn_clear_e2e_data(); SELECT finance.fn_create_account(jsonb_build_object('name','__E2E__ RS Konto','account_type','cash','currency','EUR','opening_balance',1000)); SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ RS Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ RS Konto'),'direction','income','amount',3000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text)); SELECT agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld.')); ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '5 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;",
+    "post_sql": "SELECT agent.fn_clear_e2e_data();",
+    "expected_node": "Run plan finance",
+    "notes": "S4 Nachfassen: der Knopf [Weiter] der Erinnerung (agent.advisor.cron_resume_nudge) laeuft ueber den Start-Weg des Plan-Knopfs; das Verb resume kennt der Orchestrator nicht und nimmt den Plan-Knopf-Auftrag (fester Text). Ohne plan_id im callback (optional laut core.fn_handle_plan_cb). Mock-LLM: der Berater antwortet mit Standard-Text; die Antwort selbst prueft der bezahlte Fall ac-resume-1a."
+  },
+  {
     "id": "ri07f",
     "expect_texts": ["Dieser Plan ist nicht mehr aktuell"],
     "name": "Owner tippt eine veraltete Erwachsene-informieren-Karte (plan:share:finance:999) -> core.fn_handle_plan_cb lehnt ab, kein Versand",

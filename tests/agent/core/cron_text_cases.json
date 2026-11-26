@@ -129,9 +129,11 @@
     "reset_sql": [
       "DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';",
       "DELETE FROM agent.reminder_prefs WHERE cron_key = 'onboarding_nudge';",
-      "UPDATE finance.onboarding_state SET status = 'completed', status_changed_at = now() WHERE section_key = 'accounts';"
+      "UPDATE finance.onboarding_state SET status = 'completed', status_changed_at = now() WHERE section_key = 'accounts';",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
     ],
     "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
       "UPDATE agent.guide_onboarding_state SET status_changed_at = now() - interval '20 days';",
       "UPDATE finance.onboarding_state SET status_changed_at = now() - interval '20 days';",
       "UPDATE estate.onboarding_state SET status_changed_at = now() - interval '20 days';",
@@ -140,6 +142,30 @@
     ],
     "expect_keys": ["core.nudge.stage1"],
     "expect_buttons": ["core.nudge.btn_continue", "core.nudge.btn_stop"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk-resume-1",
+    "name": "Erinnerung an eine angefangene Beratung an den Owner (ko): Ueberarbeitungs-Entwurf 5 Tage still (die Fixtures haben einen veroeffentlichten Finanzplan) -> Stufe 1 Ueberarbeitung mit Thema + Knoepfe Weiter / Nicht mehr erinnern",
+    "workflow": "agent.advisor.cron_resume_nudge",
+    "schedule_key": "advisor_resume",
+    "cron_enable": "advisor_resume",
+    "recipient": "owner",
+    "reset_sql": [
+      "SELECT agent.fn_clear_e2e_data();",
+      "DELETE FROM core.notification_state WHERE source IN ('advisor_resume', 'onboarding_nudge', 'next_step_day'); DELETE FROM agent.reminder_prefs WHERE cron_key = 'advisor_resume'; DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;",
+      "UPDATE core.config SET value = '10' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '20' WHERE category = 'general' AND key = 'reminders_until';"
+    ],
+    "seed_sql": [
+      "UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from'; UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
+      "SELECT finance.fn_create_account(jsonb_build_object('name','__E2E__ CT Konto','account_type','cash','currency','EUR','opening_balance',1000));",
+      "SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ CT Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ CT Konto'),'direction','income','amount',3000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text));",
+      "SELECT agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','test_fixture','plan_name','__E2E__ Entwurf','section_key','emergency_reserve','topic','Notreserve','section_content','Drei Monatsausgaben auf dem Tagesgeld.'));",
+      "ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch; UPDATE agent.advisor_plans SET updated_at = now() - interval '5 days' WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%'; ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;"
+    ],
+    "expect_keys": ["core.advisor_resume.stage1_revision", "core.advisor_resume.topic_part"],
+    "expect_buttons": ["core.nudge.btn_continue", "core.nudge.btn_stop"],
+    "expect_sql": [{ "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'advisor_resume' AND key LIKE '%:1';", "expect": "1" }]
   },
   {
     "kind": "cron_text",

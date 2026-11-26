@@ -88,6 +88,9 @@ BEGIN
             jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','unsupported'),'text','Uebertrag bis Jahresende'),
             jsonb_build_object('kind','savings_goal','payload',jsonb_build_object('t','unsupported_call'),'text','Sparziel Rad unregelmaessig'))));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoffs_deferred')::int <> 2 THEN RAISE EXCEPTION 'FAIL [2 save]: %', r; END IF;
+  -- welche Eintraege zurueckgestellt sind, mit Code (der Berater sagt es in einem Satz)
+  IF r->'deferred' IS DISTINCT FROM '[{"text":"Uebertrag bis Jahresende","blocked_code":"end_date_future"},{"text":"Sparziel Rad unregelmaessig","blocked_code":"end_date_future"}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [2 deferred Liste]: %', r->'deferred'; END IF;
   -- geht noch nicht, aber der Aufruf liess sich bauen: das Soll wird trotzdem gespeichert
   IF (SELECT status || '/' || (wanted->>'tool') FROM agent.handoff_tasks WHERE text = 'Sparziel Rad unregelmaessig') IS DISTINCT FROM 'deferred/create_savings_goal'
      OR (SELECT wanted FROM agent.handoff_tasks WHERE text = 'Uebertrag bis Jahresende') IS NOT NULL THEN
@@ -109,11 +112,14 @@ BEGIN
             jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','ambiguous'),'text','Uebertrag vom Sparkonto'))));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_ref_ambiguous' OR (r->>'task_index')::int <> 2
      OR jsonb_array_length(r->'candidates') <> 2 THEN RAISE EXCEPTION 'FAIL [3 mehrdeutig]: %', r; END IF;
+  -- Kandidaten und Optionen erreichen den Berater nur ueber reason (das Werkzeug reicht code + reason durch)
+  IF strpos(r->>'reason', 'Candidates: A | B') = 0 THEN RAISE EXCEPTION 'FAIL [3 Kandidaten im reason]: %', r; END IF;
   r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Konten',
          'section_content','x', 'handoff_tasks', jsonb_build_array(
             jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','choice'),'text','Raten bis zum Ziel'))));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_choice_needed' OR jsonb_array_length(r->'options') <> 2 THEN
     RAISE EXCEPTION 'FAIL [3 Wahl]: %', r; END IF;
+  IF strpos(r->>'reason', 'option=four (recommended): finance.x; option=five: finance.y') = 0 THEN RAISE EXCEPTION 'FAIL [3 Optionen im reason]: %', r; END IF;
   r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Konten',
          'section_content','x', 'handoff_tasks', jsonb_build_array(
             jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','badcode'),'text','Ungueltig'))));

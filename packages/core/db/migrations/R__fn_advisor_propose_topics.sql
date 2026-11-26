@@ -16,7 +16,8 @@
 --     core.prompt.topic_hint; Knoepfe accept/note. Eine Karte ueber 3500 Zeichen Inhalt -> code too_long (Telegram 4096).
 --   Ersetzt: die offene Frage desselben Agenten (Art topic oder choice) samt wartendem Rest ihres Stapels, dazu alle
 --     wartenden Themen-Karten des Agenten im Chat (superseded).
---   Rueckgabe {ok:true, plan_id (bestehender Entwurf oder null), prompt_ids, cards} | {ok:false, code, reason, topic_index?,
+--   Rueckgabe {ok:true, plan_id (bestehender Entwurf oder null), prompt_ids, cards, deferred_entries [{text, reason}] (zurueckgestellte
+--     Eintraege des Probelaufs, reason = Katalog <paket>.handoff.blocked.<code> in der Sprache der Person)} | {ok:false, code, reason, topic_index?,
 --     …Felder der Ablehnung}; codes: invalid_input, invalid_topics, unknown_domain, unknown_chat, too_long + alle von
 --     fn_advisor_save_section. Echte Fehler (RAISE) gehen durch.
 --   Familie: agent.fn_prompt_answer_topic(p) = answer_fn der Art topic (Tipp accept): speichert alle Themen der Zeile in
@@ -180,7 +181,12 @@ BEGIN
         RETURNING id INTO v_id;
         v_ids := v_ids || to_jsonb(v_id);
     END LOOP;
-    RETURN jsonb_build_object('ok', true, 'plan_id', v_plan, 'prompt_ids', v_ids, 'cards', jsonb_array_length(v_ids));
+    -- "geht noch nicht": Eintraege, die der Probelauf zurueckstellte, mit dem Satz des Pakets (der Berater sagt es in einem Satz)
+    RETURN jsonb_build_object('ok', true, 'plan_id', v_plan, 'prompt_ids', v_ids, 'cards', jsonb_array_length(v_ids),
+        'deferred_entries', COALESCE((SELECT jsonb_agg(jsonb_build_object('text', d->>'text',
+                                         'reason', core.fn_ui_text(v_pkg || '.handoff.blocked.' || (d->>'blocked_code'), v_lang)) ORDER BY s.n, d.n)
+                                       FROM jsonb_array_elements(v_saved) WITH ORDINALITY AS s(r, n),
+                                            jsonb_array_elements(COALESCE(s.r->'deferred', '[]'::jsonb)) WITH ORDINALITY AS d(d, n)), '[]'::jsonb));
 END;
 $$;
 REVOKE ALL ON FUNCTION agent.fn_advisor_propose_topics(jsonb) FROM public;

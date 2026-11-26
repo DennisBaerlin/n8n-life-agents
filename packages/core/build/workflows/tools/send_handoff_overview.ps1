@@ -3,7 +3,7 @@
 
 # --- agent.tool_send_handoff_overview (CROSS-AGENT, Seitenkanal-Versand ohne Write) ---------------------------------
 # Uebersicht der im Plan-Gespraech vereinbarten, noch offenen Eintraege (agent.handoff_tasks) mit dem Knopf
-# [Durchgehen] = handoff:<domain>:<max_task_id>. Aufrufer ist nur der
+# [Jetzt eintragen] = handoff:<domain>:<max_task_id>. Aufrufer ist nur der
 # Berater als Tool, wenn der Nutzer vor dem Publish eintragen will oder das Gespraech ohne Publish endet; nach dem Publish
 # schickt Schritt 1 von core.fn_plan_rollout_next dieselbe Liste. domain ist beim
 # Aufrufer fixer Binding-Input (nie $fromAI). Kein Write, kein Gate: der Knopf startet nur das Durchgehen, jede Buchung
@@ -56,7 +56,7 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
 
     $sticky = Build-Sticky 'Doc Handoff-Uebersicht' @(120, -360) `
         'Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)' `
-        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Durchgehen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O (wie das Wächter-Angebot in agent.tool_publish_plan): reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue. Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt.' 340 600
+        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O (wie das Wächter-Angebot in agent.tool_publish_plan): reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue. Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt.' 340 600
 
     $nodes = @($trig, $read, $ifOpen, $render, $send, $mark, $retSent, $retNone, $sticky)
     $conns = [ordered]@{

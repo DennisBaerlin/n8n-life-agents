@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS agent.dispatch_followup (
 -- Uebergabe Berater -> Buchhalter (Task-Lebenszyklus nach A2A; Uebergabe ueber einen
 -- deterministischen Orchestrator-Callback-Arm statt Agent->Agent). Was der Nutzer in einem Plan-Abschnitt vereinbart hat
 -- und gebucht werden muss (Sparziel, Sparplan, Dauerauftrag ...), legt agent.fn_advisor_save_section mit dem Abschnitt
--- an (hinter der Abschnitts-Karte); der Knopf [Durchgehen] (core.fn_handle_handoff_cb) beansprucht die Aufgaben,
+-- an (hinter der Abschnitts-Karte); der Knopf [Jetzt eintragen] (core.fn_handle_handoff_cb) beansprucht die Aufgaben,
 -- der Buchhalter fuehrt sie einzeln hinter seinen normalen Karten aus.
 -- Lebenszyklus (Uebergaenge erzwingt agent.fn_handoff_tasks_final_guard): open -> working (Claim, claimed_at; nach der TTL
 -- advisor.handoff_claim_ttl_minutes neu beanspruchbar; Fehler oder "ueberspringen" -> zurueck auf open) -> done | cancelled.
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS agent.handoff_tasks (
     payload     jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(payload) = 'object'),
     text        text NOT NULL CHECK (btrim(text) <> '' AND length(text) <= 300),
     status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'working', 'deferred', 'done', 'cancelled')),
-    claimed_at  timestamptz,                -- Provenienz des Claims (Ausnahme (c)): wann [Durchgehen] die Aufgabe beanspruchte
+    claimed_at  timestamptz,                -- Provenienz des Claims (Ausnahme (c)): wann [Jetzt eintragen] die Aufgabe beanspruchte
     created_at  timestamptz NOT NULL DEFAULT now(),
     closed_at   timestamptz,                -- Provenienz des Endzustands (Ausnahme (c))
     CONSTRAINT handoff_tasks_claim_check  CHECK (status <> 'working' OR claimed_at IS NOT NULL),

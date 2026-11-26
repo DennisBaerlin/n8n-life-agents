@@ -3,7 +3,7 @@
 --   Lesefenster der engen Paket-Leserolle auf agent.handoff_tasks (finance_ro sieht agent.* nicht): finance.fn_advisor_snapshot
 --   traegt es als open_handoffs, damit der Berater vor einem Loesungsvorschlag zu einer Warnung sieht, was schon vereinbart
 --   ist. Eingabe p_domain (Plan-Domain). Rueckgabe jsonb-Array [{kind, text, topic, section_key, status, open_since}] in
---   Anlage-Reihenfolge, hoechstens 50; status open = wartet auf [Durchgehen], working = per [Durchgehen] gerade beansprucht
+--   Anlage-Reihenfolge, hoechstens 50; status open = wartet auf [Jetzt eintragen], working = per [Jetzt eintragen] gerade beansprucht
 --   (auch ein abgelaufener Claim: eingetragen ist es erst bei done); open_since = Anlagetag (core.fn_today). Kein payload,
 --   keine Person, keine id: der Berater braucht nur den Inhalt; das Eintragen laeuft ueber tool_send_handoff_overview.
 --   Leer ([]) bei per_user-Plan-Kontext (der Snapshot kennt keinen Absender, fail-closed wie core.fn_advisor_read_plan in

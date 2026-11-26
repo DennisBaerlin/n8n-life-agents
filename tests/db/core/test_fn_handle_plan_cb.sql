@@ -202,4 +202,53 @@ BEGIN
   IF r->>'reason' IS DISTINCT FROM 'not_private_chat' THEN RAISE EXCEPTION 'FAIL [resume Gruppe]: %', r; END IF;
 END $$;
 
+-- ---------- plan:check:<domain> = [Jetzt pruefen] des Pruef-Schritts (core.fn_plan_rollout_next, step check) ----------
+-- data.entries = erledigter Altbestand ohne Provenienz (Register row_kind legacy, status done), den der Pruef-Schritt
+-- angeboten hat (Merker check festgeschrieben) und der noch nicht an den Berater ging (Merker checked); nur feste Felder,
+-- hoechstens 20; die uebergebenen bekommen den Merker checked (einmal je Eintrag). Keiner -> nothing_new; nur can_write.
+DO $$
+DECLARE r JSONB; v_id INT; v_k TEXT;
+BEGIN
+  DELETE FROM core.notification_state WHERE source IN ('plan_verb', 'plan_verb_day');
+  DELETE FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft';
+  UPDATE agent.advisor_plans SET interview_state = '{"s":{"content":"x"}}' WHERE domain = 'finance' AND status = 'active';
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'nothing_new' THEN RAISE EXCEPTION 'FAIL [check leer] %', r; END IF;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, payload, text, status, closed_at)
+  VALUES ('finance', 'finance', 'erika', 's', 'recurring_payment', '{"amount":50}', 'Rate 50 ab Januar', 'done', now()) RETURNING id INTO v_id;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  SELECT 'finance', 'finance', 'erika', 's', 'other', 'alt ' || g, 'done', now() FROM generate_series(1, 25) g;
+  -- noch nicht angeboten: nichts
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'nothing_new' THEN RAISE EXCEPTION 'FAIL [check nicht angeboten] %', r; END IF;
+  DELETE FROM core.notification_state WHERE source = 'plan_verb';
+  -- angeboten: die erste und 21 weitere (wie der Pruef-Schritt sie festschreibt)
+  FOR v_k IN SELECT 'finance:household:check:' || id FROM agent.handoff_tasks WHERE domain = 'finance' AND text <> 'alt 25' ORDER BY id LOOP
+    PERFORM core.fn_should_notify('plan_rollout', v_k, interval '30 minutes'); PERFORM core.fn_notify_commit('plan_rollout', v_k);
+  END LOOP;
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"222","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'owner_only' THEN RAISE EXCEPTION 'FAIL [check Mitglied] %', r; END IF;
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'plan' OR r->>'verb' <> 'check' OR r->>'domain' <> 'finance'
+     OR jsonb_array_length(r->'data'->'entries') <> 20
+     OR (r->'data'->'entries'->0->>'task_id')::int <> v_id OR r->'data'->'entries'->0->>'text' <> 'Rate 50 ab Januar'
+     OR r->'data'->'entries'->0->>'kind' <> 'recurring_payment' OR r->'data'->'entries'->0->>'section_key' <> 's'
+     OR r->'data'->'entries'->0 ? 'wanted' OR r->'data'->'entries'->0 ? 'possible_now' THEN
+    RAISE EXCEPTION 'FAIL [check] %', r; END IF;
+  IF core.fn_plan_rollout_latch('finance:household:checked:' || v_id) <> 'done' THEN RAISE EXCEPTION 'FAIL [check Merker]'; END IF;
+  -- zweiter Tipp: nur die fuenf angebotenen, die noch nicht beim Berater waren (nicht alt 25, nicht die schon uebergebenen)
+  DELETE FROM core.notification_state WHERE source = 'plan_verb';
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR jsonb_array_length(r->'data'->'entries') <> 5 THEN RAISE EXCEPTION 'FAIL [check Rest] %', r; END IF;
+  -- Sperre greift vor dem Merker: ein abgelehnter Tipp verbraucht nichts
+  DELETE FROM core.notification_state WHERE source = 'plan_verb_day';
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES ('finance', 'finance', 'erika', 's', 'other', 'alt spaet', 'done', now()) RETURNING id INTO v_id;
+  PERFORM core.fn_should_notify('plan_rollout', 'finance:household:check:' || v_id, interval '30 minutes');
+  PERFORM core.fn_notify_commit('plan_rollout', 'finance:household:check:' || v_id);
+  r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
+  IF r->>'reason' IS DISTINCT FROM 'busy' OR core.fn_plan_rollout_latch('finance:household:checked:' || v_id) <> 'free' THEN
+    RAISE EXCEPTION 'FAIL [check busy verbraucht] %', r; END IF;
+END $$;
+
 ROLLBACK;

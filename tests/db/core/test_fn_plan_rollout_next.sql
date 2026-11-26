@@ -308,4 +308,83 @@ BEGIN
   v := core.fn_plan_rollout_next(d, 'erika');
   IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages'->0->'msg') <> 1 THEN RAISE EXCEPTION 'FAIL eff wirft %', v; END IF;
 END $$;
+
+-- Pruef-Schritt (step check): Altbestand, der vor der Provenienz erledigt wurde (Register row_kind legacy, status done),
+-- geht einmal je Aufgabe ueber [Eintraege pruefen] an den Berater; der Merker haengt nicht an der Version (eine neue
+-- Version bietet dieselbe Aufgabe nicht wieder an). Nie bei offenem Eintrag oder offenem Entwurf, nie fuer gestrichene
+-- Aufgaben oder solche mit Folge-Aufgabe; der Korrektur-Schritt (fix) geht vor.
+INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step, advisor_agent)
+VALUES ('__rollk__', 'core', '__rollk___planning', 'core.fn_x', TRUE, 'agent.x_advisor');
+DO $$
+DECLARE
+  d CONSTANT TEXT := '__rollk__';
+  v JSONB;
+  v_old INT;
+  v_open INT;
+  v_plan INT;
+BEGIN
+  UPDATE core.config SET value = 'false' WHERE category = 'advisor' AND key = 'plan_sync_required';
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, interview_state)
+  VALUES (d, 'p', 'active', 1, now(), '{"s":{"content":"x"}}') RETURNING id INTO v_plan;
+  -- gestrichen ohne Provenienz: kein Pruef-Angebot (ohne Vorpruefung auch kein fix)
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES (d, 'core', 'erika', 's', 'other', 'alt gestrichen', 'cancelled', now());
+  -- Abschnitt nicht mehr im Plan: kein Angebot
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES (d, 'core', 'erika', 'weg', 'other', 'alt woanders', 'done', now());
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check ohne Kandidat %', v; END IF;
+
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES (d, 'core', 'erika', 's', 'other', 'alt erledigt', 'done', now()) RETURNING id INTO v_old;
+  -- offener Eintrag: still warten
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES (d, 'core', 'erika', 's', 'other', 'offen') RETURNING id INTO v_open;
+  PERFORM core.fn_notify_commit('plan_rollout', (core.fn_plan_rollout_next(d, 'erika'))->'messages'->0->'latch'->>'key');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' <> '2' THEN RAISE EXCEPTION 'FAIL check bei offenem Eintrag %', v; END IF;
+  UPDATE agent.handoff_tasks SET status = 'cancelled', closed_at = now(), close_reason = 'dropped' WHERE id = v_open;
+  -- offener Entwurf: kein Angebot
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version) VALUES (d, 'p', 'draft', 2);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check bei Entwurf %', v; END IF;
+  DELETE FROM agent.advisor_plans WHERE domain = d AND status = 'draft';
+
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.check_offer_one'
+     OR v->'messages'->0->'buttons'->0->>'text_key' <> 'core.rollout.btn_check'
+     OR v->'messages'->0->'buttons'->0->>'data' <> 'plan:check:' || d
+     OR v->'messages'->0->>'memory_agent' <> 'agent.x_advisor'
+     OR v->'messages'->0->'latches'->0->>'key' <> d || ':household:check:' || v_old
+     OR jsonb_array_length(v->'messages'->0->'latches') <> 1 THEN RAISE EXCEPTION 'FAIL check Angebot %', v; END IF;
+  PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latches'->0->>'key');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check zweimal %', v; END IF;
+  -- neue Version: dieselbe Aufgabe nicht wieder
+  UPDATE agent.advisor_plans SET version = 2 WHERE id = v_plan;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check neue Version %', v; END IF;
+
+  -- zwei weitere: eine Nachricht, n = 2, je Aufgabe ein Merker; eine mit Folge-Aufgabe zaehlt nicht
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES (d, 'core', 'erika', 's', 'other', 'alt 2', 'done', now()), (d, 'core', 'erika', 's', 'other', 'alt 3', 'done', now()),
+         (d, 'core', 'erika', 's', 'other', 'alt 4', 'done', now());
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, follows_task_id)
+  SELECT d, 'core', 'erika', 's', 'other', 'Korrektur', max(id) FROM agent.handoff_tasks WHERE domain = d AND text = 'alt 4' RETURNING id INTO v_open;
+  UPDATE agent.handoff_tasks SET status = 'cancelled', closed_at = now(), close_reason = 'dropped' WHERE id = v_open;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.check_offer'
+     OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 2 OR jsonb_array_length(v->'messages'->0->'latches') <> 2
+     OR v->'messages'->0->'buttons'->0->>'data' <> 'plan:check:' || d THEN
+    RAISE EXCEPTION 'FAIL check zwei %', v; END IF;
+  FOR v IN SELECT x FROM jsonb_array_elements(v->'messages'->0->'latches') x LOOP PERFORM core.fn_notify_commit('plan_rollout', v->>'key'); END LOOP;
+  -- hoechstens 20 je Angebot (so viele nimmt der Knopf mit); der Rest bleibt frei fuer das naechste Angebot
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  SELECT d, 'core', 'erika', 's', 'other', 'viel ' || g, 'done', now() FROM generate_series(1, 22) g;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 20 OR jsonb_array_length(v->'messages'->0->'latches') <> 20 THEN
+    RAISE EXCEPTION 'FAIL check 20 %', v; END IF;
+  FOR v IN SELECT x FROM jsonb_array_elements(v->'messages'->0->'latches') x LOOP PERFORM core.fn_notify_commit('plan_rollout', v->>'key'); END LOOP;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 2 THEN RAISE EXCEPTION 'FAIL check Rest %', v; END IF;
+END $$;
 ROLLBACK;

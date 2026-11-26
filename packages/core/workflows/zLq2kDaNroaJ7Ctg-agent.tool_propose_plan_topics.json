@@ -114,6 +114,12 @@
                                                                                      "name":  "prompt_ids",
                                                                                      "value":  "={{ $json.r.prompt_ids }}",
                                                                                      "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7dc09565-2490-5cb7-804b-fafe6aa7a202",
+                                                                                     "name":  "deferred_entries",
+                                                                                     "value":  "={{ $json.r.deferred_entries || [] }}",
+                                                                                     "type":  "array"
                                                                                  }
                                                                              ]
                                                          },

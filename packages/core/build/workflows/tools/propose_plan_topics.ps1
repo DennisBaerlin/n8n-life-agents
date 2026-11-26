@@ -26,6 +26,7 @@ function Build-ProposePlanTopics {
         ,@('ok', 'true', 'boolean')
         ,@('cards', '={{ $json.r.cards }}', 'number')
         ,@('prompt_ids', '={{ $json.r.prompt_ids }}', 'array')
+        ,@('deferred_entries', '={{ $json.r.deferred_entries || [] }}', 'array')
     )
     # Ablehnung als Daten (Code + Grund + Thema), der Berater korrigiert und ruft erneut; nichts wurde angelegt.
     $err = Build-ToolError 'Topics rejected' @(660, 100) `

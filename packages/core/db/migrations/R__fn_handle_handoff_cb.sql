@@ -1,6 +1,6 @@
 -- ============================================================
 -- core.fn_handle_handoff_cb(p) — Registry-Handler des Callback-Prefix 'handoff' (member_permeable)
---   Der Knopf [Durchgehen] der Uebersicht vereinbarter Plan-Aufgaben (handoff:<domain>:<max_task_id>, gesendet von
+--   Der Knopf [Jetzt eintragen] der Uebersicht vereinbarter Plan-Aufgaben (handoff:<domain>:<max_task_id>, gesendet von
 --   agent.tool_send_handoff_overview). p: { data, chat_id (from.id), chat_type }.
 --   Regeln:
 --     * nur Privatchat (der Buchhalter-Lauf antwortet in diesem Chat);

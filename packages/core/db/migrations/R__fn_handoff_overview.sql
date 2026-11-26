@@ -53,7 +53,7 @@ $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_list_shown_at(text) FROM public;
 
 -- ============================================================
--- core.fn_handoff_overview(p) — offene vereinbarte Plan-Aufgaben einer Person fuer die Uebersicht [Durchgehen]
+-- core.fn_handoff_overview(p) — offene vereinbarte Plan-Aufgaben einer Person fuer die Uebersicht [Jetzt eintragen]
 --   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' = Schritt 1
 --   der gefuehrten Abfolge nach dem Veroeffentlichen, sonst der Berater) }.
 --   Rueckgabe {count, max_task_id (NULL ohne offene), latch_key (core.fn_handoff_latch_key; NULL ohne offene), effect,

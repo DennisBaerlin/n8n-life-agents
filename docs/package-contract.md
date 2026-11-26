@@ -811,7 +811,8 @@ page computes nothing — states, progress and sums come from the DB.
       "trend"?: { "direction": "up|down|flat", "text": <tpl> } | null,
       "progress": { "pct": 0-100, "state": "ok|warn|alert|neutral" } | null,
       "target": { "screen": "<screen>", "params": {} } | null,
-      "details"?: [ { "label": "<raw>" | <typed>, "value": "<raw>" | <typed> | null } ] | null } ] } ] }
+      "details"?: [ { "label": "<raw>" | <typed>, "value": "<raw>" | <typed> | null } ] | null } ] } ],
+  "footer"?: { "text": <tpl>, "link": { "text": <tpl>, "url": "https://…" } } | null }
 ```
 
   `state` always comes with an `icon` (`check|alert|calendar|clock|pause|info|up|down`; colour is never the only
@@ -820,7 +821,7 @@ page computes nothing — states, progress and sums come from the DB.
   shown next to the section title; `item.details` = key/value lines the row expands to on tap (progressive
   disclosure, no navigation, so no IDs leave the DB; a `target` wins over `details`); `section.note` = one grey
   sentence about the whole section (not a list row); `item.trend` = a change shown under the value as arrow + text in
-  text colour (gain/return is information, not a verdict, so no pill colour). Money may carry `sign: true`
+  text colour (gain/return is information, not a verdict, so no pill colour); `footer` = one small grey line after all sections for a source credit a licence requires on the page (text + one link; the renderer opens only `https:` URLs via `Telegram.WebApp.openLink`; no free HTML). A handler sets it only when the screen needs it (finance: the screen uses an exchange rate, `finance.fn_app_fx_footer`); probe answers never carry it. Money may carry `sign: true`
   (`core.fn_ui_money(v, cur, true)`): the renderer puts `+` before a positive amount (gain since purchase, inflows).
 - **Structure rules** (UX-Gesamtkonzept 2026-10-31, `.claude/plans/mini-app-ux-gesamtkonzept-ergebnis.md`):
   - One question per section, written as a sentence in the handler header (`-- Abschnitt <title key>: Frage: …?`); a

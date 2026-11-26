@@ -244,6 +244,8 @@
   "finance.app.overview.hero": "가계 자산",
   "finance.app.overview.hero_own": "내 자산",
   "finance.app.overview.hero_note": "자산 {assets} · 부채 {debts}",
+  "finance.app.fx_source": "환율:",
+  "finance.app.fx_source_link": "Rates By Exchange Rate API",
   "finance.app.overview.hero_note_bookval": "자산 {assets} · 부채 {debts} · 현재 시세가 없는 증권은 매입가 기준",
   "finance.app.overview.hero_note_bookval_only": "현재 시세가 없는 증권은 매입가로 계산했어요",
   "finance.app.overview.section_liquid": "바로 쓸 수 있는 자산",

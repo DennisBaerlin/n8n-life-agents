@@ -54,6 +54,7 @@ DECLARE
     v_sections jsonb;
     v_empty    jsonb := core.fn_ui_tpl('finance.app.overview.empty');
     v_bookval  boolean;   -- eine sichtbare Depot-Position ohne Kurs zaehlt zum Kaufwert (Transparenz 2026-10-30)
+    v_curs     text[];    -- Waehrungen der eingerechneten Objekte (Quellen-Hinweis, finance.fn_app_fx_footer)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -243,6 +244,18 @@ BEGIN
             'empty', v_empty, 'items', v_kids);
     END IF;
 
+    -- Waehrungen aller hier eingerechneten Objekte (Haupt- und Kinder-Abschnitt, gleiche Sicht-Regel, nur mit Wert wie das
+    -- Aufklappen): Konten in Kontowaehrung, Depot-Positionen in ihrer Kurs-Waehrung (so rechnet networth_items um)
+    SELECT array_agg(DISTINCT c.cur) INTO v_curs FROM (
+        SELECT a.currency::text AS cur
+          FROM finance.networth_items i JOIN finance.accounts a ON a.id = i.item_id
+         WHERE i.item_kind = 'account' AND i.bucket <> 'depot' AND i.value_native <> 0
+           AND (v_hh OR i.owner_person_id = v_pid)
+        UNION
+        SELECT COALESCE(o.price_currency, o.currency)::text
+          FROM finance.depot_holdings_overview o JOIN finance.accounts a ON a.id = o.account_id
+         WHERE o.shares > 0 AND a.status = 'active' AND (v_hh OR a.owner_person_id = v_pid)) c;
+
     RETURN jsonb_build_object(
         'ok', true,
         'gap_note', core.fn_ui_tpl('finance.app.gap'),
@@ -260,6 +273,7 @@ BEGIN
                              'debts', core.fn_ui_money(-v_debts, 'EUR')))
                          WHEN v_bookval THEN core.fn_ui_tpl('finance.app.overview.hero_note_bookval_only') END),
         'banners', '[]'::jsonb,
+        'footer', finance.fn_app_fx_footer(v_curs),
         'sections', v_sections);
 END;
 $$;

@@ -30,6 +30,8 @@
         "core.app.gap": "unvollständig – ein Kurs fehlt",
         "core.app.sum": "zusammen {sum}",
         "core.app.all_good": "Alles in Ordnung",
+        "finance.app.fx_source": "Wechselkurse:",
+        "finance.app.fx_source_link": "Rates By Exchange Rate API",
         "finance.app.overview.title": "Vermögen",
         "finance.app.overview.hero": "Vermögen Haushalt",
         "finance.app.overview.hero_note": "Besitz {assets} · Schulden {debts}",
@@ -150,7 +152,8 @@
             }
           ]
         }
-      ]
+      ],
+      "footer": { "text": { "kind": "tpl", "value": "finance.app.fx_source", "params": {} }, "link": { "text": { "kind": "tpl", "value": "finance.app.fx_source_link", "params": {} }, "url": "https://www.exchangerate-api.com" } }
     }
   },
   "page_refusal": {

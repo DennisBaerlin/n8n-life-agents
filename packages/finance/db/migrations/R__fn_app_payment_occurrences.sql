@@ -7,7 +7,8 @@
 --   doppelt), nur bei sichtbarer Quelle (das eigene Konto ist immer sichtbar); sonst neutral „vom Haushalt" (Zero-Trust
 --   wie fn_app_screen_accounts: p_hh = Haushalts-Sicht, sonst sichtbar = owner_person_id IS NOT DISTINCT FROM p_person).
 --   key = Lineage-Kopf + Seite (Gruppierung wiederholter Vorkommen).
---   RUECKGABE: {rows: [{key, date, amount, cur, label}], fx_gap} (Reihenfolge Datum, Name)
+--   RUECKGABE: {rows: [{key, date, amount, cur, label}], fx_gap, currencies (Waehrungen der Quell-Konten: weicht eine von cur
+--   ab, ist der Betrag umgerechnet -> Quellen-Hinweis, finance.fn_app_fx_footer)} (Reihenfolge Datum, Name)
 --   Tests: tests/db/finance/test_fn_app_payment_occurrences.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_app_payment_occurrences(p_account_id int, p_from date, p_until date,
@@ -23,7 +24,8 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
                                   THEN to_jsonb(COALESCE(sp.name, r.name))
                                   ELSE core.fn_ui_tpl('finance.app.accounts.from_household') END)
                     ORDER BY pf.due_date, COALESCE(sp.name, r.name)), '[]'::jsonb),
-        'fx_gap', COALESCE(bool_or(pf.fx_gap), false))
+        'fx_gap', COALESCE(bool_or(pf.fx_gap), false),
+        'currencies', COALESCE(jsonb_agg(DISTINCT sa.currency), '[]'::jsonb))
       FROM finance.fn_account_planned_flows(p_account_id, p_from, p_until) pf
       JOIN finance.accounts acc ON acc.id = p_account_id
       JOIN finance.recurring_payments r ON r.id = pf.recurring_payment_id

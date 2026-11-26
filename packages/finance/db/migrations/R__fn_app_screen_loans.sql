@@ -56,6 +56,7 @@ DECLARE
     v_rate     numeric;
     v_interest numeric;
     v_sections jsonb;
+    v_curs     text[];    -- Waehrungen der gezeigten Kredite (Quellen-Hinweis, finance.fn_app_fx_footer)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -236,8 +237,9 @@ BEGIN
                                   FILTER (WHERE NOT it.kid AND it.status = 'active'), false)
                 THEN sum(finance.fn_to_eur(it.monthly_annuity, it.currency)) FILTER (WHERE NOT it.kid AND it.status = 'active') END,
            sum(finance.fn_to_eur(LEAST(it.monthly_interest_current, it.monthly_annuity), it.currency))
-               FILTER (WHERE NOT it.kid AND it.status = 'active')
-      INTO v_items, v_kids, v_total, v_gap, v_kid_sum, v_rate, v_interest
+               FILTER (WHERE NOT it.kid AND it.status = 'active'),
+           array_agg(DISTINCT it.currency::text)
+      INTO v_items, v_kids, v_total, v_gap, v_kid_sum, v_rate, v_interest, v_curs
       FROM it;
 
     v_sections := jsonb_build_array(jsonb_build_object(
@@ -265,6 +267,7 @@ BEGIN
                              'rate', core.fn_ui_money(v_rate, 'EUR'),
                              'interest', core.fn_ui_money(v_interest, 'EUR'))) END),
         'banners', '[]'::jsonb,
+        'footer', finance.fn_app_fx_footer(v_curs),
         'sections', v_sections);
 END;
 $$;

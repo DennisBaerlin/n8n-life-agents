@@ -1996,7 +1996,7 @@
       { "tool": "Call_agent_finance_advisor_", "args": { "task": "Mein Geld liegt auf dem Girokonto __E2E__ Ahornbank Giro, 1.200 Euro" } },
       { "tool": "tool_create_account", "args": { "name": "__E2E__ Ahornbank Giro", "account_type": "cash", "opening_balance": "1200" } }
     ],
-    "final": "Das Konto ist angelegt. Wie viel kommt monatlich rein?",
+    "final": "Das Konto ist angelegt – wie viel kommt monatlich rein?",
     "final_router": "NOFRAME"
   },
   {

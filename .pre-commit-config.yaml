@@ -439,6 +439,13 @@ repos:
         pass_filenames: false
         files: ^scripts/(lib/judge_prompt|judge_eval|conversation_test|n8n_test|dev/judge_prompt_test|dev/test_n8n_state)\.ps1$
 
+      - id: lay-metrics-test
+        name: lay_metrics_test (each lay rule - one question, short text, choices as buttons, nothing twice, nothing to memorise - turns the measurement red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/lay_metrics_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(lay_metrics|next_step_marker|choices_marker)|dev/lay_metrics_test)\.ps1$
+
       - id: judge-card-text-test
         name: judge_card_text_test (the walkthrough bundle keeps the confirmation card apart from the agent reply; no API call)
         language: system

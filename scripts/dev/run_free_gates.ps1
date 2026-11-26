@@ -80,12 +80,13 @@ $Gates = [ordered]@{
     real_ingress  = @{ Script = 'scripts\dev\real_ingress_test.ps1' }
     plan_rollout  = @{ Script = 'scripts\dev\plan_rollout_test.ps1' }   # Gefuehrte Abfolge am Laufende gegen die Mocks
     monitor_probe = @{ Script = 'scripts\dev\monitor_probe_test.ps1' }   # Waechter-Heartbeat Ende-zu-Ende gegen die Mocks
+    conversation  = @{ Script = 'scripts\conversation_test.ps1' }   # Ablauf-Faelle ueber den echten Eingang samt Laien-Messung (Mock-Modell)
 }
 # Gruppen fuer -Parallel, nach gemessener Dauer balanciert (gemessen: A 10,4 / B 7,4 min -> hitl_gate + mr_estate
 # nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
-$GroupB = @('release_fetch', 'reachability', 'runtime', 'backup', 'n8n_patch', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint', 'monitor_probe', 'plan_rollout', 'retire', 'move')
+$GroupB = @('release_fetch', 'reachability', 'runtime', 'backup', 'n8n_patch', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint', 'monitor_probe', 'plan_rollout', 'conversation', 'retire', 'move')
 $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($_) })
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }

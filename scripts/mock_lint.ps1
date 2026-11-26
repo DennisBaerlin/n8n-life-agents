@@ -25,6 +25,9 @@
 #      sonst laeuft der Fall als nicht erkannter Absender. Nicht numerische chat_ids bleiben der Owner.
 #   C7 (Vorbedingung): jeder Fall mit setup_sql traegt ein precondition_sql, das DB-Zustand liest (SELECT/EXISTS); Ausnahmen nur ueber das
 #      sinkende Ratchet tests/util/precondition_allowlist.json (Logik + Selbsttest: scripts/lib/precondition_check.ps1).
+#   C8 (Laien-Regeln): final/final_router jedes Szenarios halten L1-L3, L9, L12 aus scripts/lib/lay_metrics.ps1; Ausnahme nur mit
+#      "lay": "off" und Begruendung in notes.
+#   C9 (Durchspiel-Ausnahmen): eine Runde in conversation_cases.json mit "lay": "off" traegt eine Begruendung in notes.
 #
 # tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
@@ -260,6 +263,44 @@ foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
     foreach ($c in $f.Cases) { $preEntries += [pscustomobject]@{ File = $f.Rel; Case = $c } }
 }
 foreach ($e in @(Get-PreconditionAllowlistStale -Entries $preEntries -Allow $preAllow)) { Write-Host "  [FAIL] C7 $e" -ForegroundColor Red; $failed++ }
+
+# --- C8: Antwort-Texte der Szenarien halten die Laien-Regeln (scripts/lib/lay_metrics.ps1; Selbsttest dev/lay_metrics_test.ps1) ---
+# final_router 'FRAME' ist ein Signal an den Relay, kein Text. Ausnahme nur je Szenario mit "lay": "off" und begruendendem "notes".
+. (Join-Path $RepoRoot 'scripts\lib\lay_metrics.ps1')
+$layNeg = @(Measure-BotText -Text 'Passt das? Oder anders?')
+if ($layNeg.Count -ne 1) { Write-Host "  [FAIL] C8 Selbsttest: zwei Fragen ergeben $($layNeg.Count) Funde statt einem." -ForegroundColor Red; $failed++ }
+foreach ($s in $scenarios) {
+    $label = if ($s.PSObject.Properties['match']) { [string]$s.match } else { '(ohne match)' }
+    $off = $s.PSObject.Properties['lay'] -and "$($s.lay)" -eq 'off'
+    if ($s.PSObject.Properties['lay'] -and -not $off) { Write-Host "  [FAIL] C8 Szenario '$label': 'lay' kennt nur den Wert off." -ForegroundColor Red; $failed++ }
+    if ($off) {
+        if (-not ($s.PSObject.Properties['notes'] -and "$($s.notes)".Trim())) { Write-Host "  [FAIL] C8 Szenario '$label': lay off braucht eine Begruendung in notes." -ForegroundColor Red; $failed++ }
+        continue
+    }
+    foreach ($field in @('final', 'final_router')) {
+        if (-not $s.PSObject.Properties[$field]) { continue }
+        $text = "$($s.$field)"
+        if ($field -eq 'final_router' -and $text -ceq 'FRAME') { continue }
+        foreach ($f in @(Measure-BotText -Text $text)) {
+            Write-Host "  [FAIL] C8 Szenario '$label' ($field): Laien-Regel $($f.rule): $($f.detail) ('$($f.excerpt)')" -ForegroundColor Red
+            $failed++
+        }
+    }
+}
+
+# --- C9: eine Durchspiel-Runde ohne Laien-Messung ("lay": "off") nennt in notes den Grund ---
+foreach ($c in @(Read-Json 'tests\agent\cross\conversation_cases.json')) {
+    if (-not $c.PSObject.Properties['turns']) { continue }
+    $n = 0
+    foreach ($t in @($c.turns)) {
+        $n++
+        if (-not $t.PSObject.Properties['lay']) { continue }
+        if ("$($t.lay)" -ne 'off' -or -not ($t.PSObject.Properties['notes'] -and "$($t.notes)".Trim())) {
+            Write-Host "  [FAIL] C9 $($c.id) Runde ${n}: erlaubt ist nur ""lay"": ""off"" zusammen mit einer Begruendung in notes." -ForegroundColor Red
+            $failed++
+        }
+    }
+}
 
 Write-Host ("-" * 64)
 $color =if ($failed -eq 0) { 'Green' } else { 'Red' }

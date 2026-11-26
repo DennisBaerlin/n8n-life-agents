@@ -169,6 +169,21 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [invalide gefetchte Waehrung -> Fallback h.currency, kein FK-RAISE]';
 
+  -- TEST 10: ein Edelmetall-Code als gefetchte Waehrung (XAU, finance.currencies.kind metal) ist keine Kurs-Waehrung ->
+  -- Fallback h.currency, der Lauf bricht nicht per FK-Sperre ab (die anderen Symbole bleiben geschrieben).
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
+  VALUES (v_depot, 'XX0000000GLD', 'GLDC', 'Metal Fetched Ccy', 1, 'EUR');
+  SELECT finance.fn_upsert_market_prices(jsonb_build_object(
+    'as_of', v_as_of::text, 'prices', jsonb_build_object('GLDC', 30.00, 'BADC', 11.00),
+    'currencies', jsonb_build_object('GLDC', 'XAU')
+  )) INTO v_result;
+  SELECT currency INTO v_ccy FROM finance.market_prices WHERE symbol = 'GLDC' AND as_of = v_as_of;
+  IF v_ccy IS DISTINCT FROM 'EUR'
+     OR (SELECT price FROM finance.market_prices WHERE symbol = 'BADC' AND as_of = v_as_of) IS DISTINCT FROM 11.00 THEN
+    RAISE EXCEPTION 'FAIL [10]: Metall-Code als Kurs-Waehrung muss auf h.currency=EUR zurueckfallen, got % (result=%)', v_ccy, v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_market_prices [Metall-Code als gefetchte Waehrung -> Fallback, kein FK-Abbruch]';
+
 END $$;
 
 -- Die Preis-Pruefungen greifen auch fuer gehaltene Symbole: Text und 0 werden nie geschrieben (oben fielen BAD/ZER schon

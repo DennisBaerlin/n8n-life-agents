@@ -349,6 +349,76 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
+                                         "query":  "SELECT m.metal, m.from_date::text AS from_date, m.to_date::text AS to_date FROM finance.fn_fx_metal_due() m",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1640,
+                                       0
+                                   ],
+                      "id":  "6c8b2b13-5c50-5fc3-9c41-b192763bf16b",
+                      "name":  "Metals due?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "=https://api.frankfurter.dev/v2/rates?base={{ $json.metal }}\u0026quotes=EUR\u0026from={{ $json.from_date }}\u0026to={{ $json.to_date }}",
+                                         "options":  {
+                                                         "timeout":  60000,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "text"
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       1860,
+                                       0
+                                   ],
+                      "id":  "b5fd6411-b462-513d-9a02-04512a158cc5",
+                      "name":  "Fetch metal prices",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027upserted\u0027)::int AS upserted FROM finance.fn_upsert_fx_rates($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (() =\u003e { try { const a = JSON.parse($json.data || \u0027[]\u0027); return Array.isArray(a) ? a : []; } catch (e) { return []; } })() }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2080,
+                                       0
+                                   ],
+                      "id":  "dc71d10b-137e-51a8-81e7-1e1921c7b8f1",
+                      "name":  "Import metal prices",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
                                          "query":  "SELECT finance.fn_import_sweep(7) AS deleted",
                                          "options":  {
 
@@ -388,7 +458,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (kein LLM, alle Währungen)**\n\nDREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) n8n-Start und (c) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, alle rund 160 Währungen in einer Antwort, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je gelieferter Währung, unabhängig davon, ob ein Konto oder eine Position sie nutzt (Wächter, Berater und Kürzel-Prüfung brauchen Kurse vorher). Darum kein Sofort-Abruf nach einem Write: der Kurs liegt schon da. Danach fehlende EZB-Tage (Sticky EZB-Kurse: einmal 5 Jahre Nachlauf, danach Ersatzquelle bei Feed-Ausfall). Gelesen wird über finance.fn_to_eur / finance.fn_fx_rate. Abruf aus (cron_enable) heißt: gar keine neuen Kurse.",
+                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (kein LLM, alle Währungen)**\n\nDREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) n8n-Start und (c) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, alle rund 160 Währungen in einer Antwort, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je gelieferter Währung, unabhängig davon, ob ein Konto oder eine Position sie nutzt (Wächter, Berater und Kürzel-Prüfung brauchen Kurse vorher). Darum kein Sofort-Abruf nach einem Write: der Kurs liegt schon da. Danach fehlende EZB-Tage (Sticky EZB-Kurse: einmal 5 Jahre Nachlauf, danach Ersatzquelle bei Feed-Ausfall) und die Edelmetall-Preise (Sticky Edelmetalle). Gelesen wird über finance.fn_to_eur / finance.fn_fx_rate. Abruf aus (cron_enable) heißt: gar keine neuen Kurse.",
                                          "height":  280,
                                          "width":  640,
                                          "color":  4
@@ -404,7 +474,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**finance.fn_upsert_fx_rates(p jsonb)**\n\nAtomarer Upsert in der fn (deterministisch getestet: test_fn_upsert_fx_rates.sql). fn-Schritte: jeder Key ^[A-Z]{3}$ außer EUR mit numerischem Wert \u003e 0 wird eine Zeile (kaputte Einzelwerte zählen still in skipped); neue Codes legt die fn in finance.currencies an (ISO-Nachkommastellen). as_of = Datum aus time_last_update_unix der Antwort (Quell-Stand). ON CONFLICT (base,quote,as_of) -\u003e idempotenter Tages-Upsert. rate-Richtung: 1 EUR = \u003crate\u003e \u003cCCY\u003e; Umrechnung: betrag/rate (fn_to_eur).",
+                                         "content":  "## DB-Automatik\n**finance.fn_upsert_fx_rates(p jsonb)**\n\nAtomarer Upsert in der fn (deterministisch getestet: test_fn_upsert_fx_rates.sql). fn-Schritte: jeder Key ^[A-Z]{3}$ außer EUR und außer Edelmetallen (die kommen nur über Sticky Edelmetalle) mit numerischem Wert \u003e 0 wird eine Zeile (kaputte Einzelwerte zählen still in skipped); neue Codes legt die fn in finance.currencies an (ISO-Nachkommastellen). as_of = Datum aus time_last_update_unix der Antwort (Quell-Stand). ON CONFLICT (base,quote,as_of) -\u003e idempotenter Tages-Upsert. rate-Richtung: 1 EUR = \u003crate\u003e \u003cCCY\u003e; Umrechnung: betrag/rate (fn_to_eur).",
                                          "height":  280,
                                          "width":  480,
                                          "color":  4
@@ -420,7 +490,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Fehlende EZB-Tage holen: einmal 5 Jahre, danach als Ersatzquelle**\n\nNach jedem Tages-Upsert (auch einem gescheiterten) fragt History due? finance.fn_fx_history_due() und bekommt from/to: (1) Nachlauf, solange keine Zeile mit source ecb existiert: heute minus 5 Jahre bis heute; (2) Ersatzquelle, wenn der Tages-Feed für das UTC-Datum von heute nichts geliefert hat und auch sonst kein Kurs von heute liegt: ab dem Tag nach dem jüngsten Kurs bis heute. Weil ein ausgefallener Feed fällig bleibt, läuft (2) mit dem stündlichen Nachholen mit; die EZB veröffentlicht werktags gegen 16 Uhr MEZ, davor und am Wochenende kommt eine leere Antwort. Die Ausfall-Meldung (cron_remind_missing_prices) kommt erst, wenn auch die EZB ausbleibt. Fetch ECB history = Frankfurter v2 /v2/rates mit providers=ecb (eine einheitliche Reihe, kostenlos, ohne Schlüssel; nur Arbeitstage, rund 30 Währungen; Wochenenden schließt die Kurs-Suche fn_fx_eur_row). Antwort als Text, Import ECB history parst sie im Ausdruck und schreibt per fn_upsert_fx_rates im Zeilen-Modus (source ecb, ON CONFLICT DO NOTHING: ein vorhandener Tageskurs gewinnt). Kommt der Tages-Feed später doch, überschreibt sein Kurs die EZB-Zeile desselben Tages. Fehler oder leere Antwort -\u003e nichts geschrieben, der nächste Lauf versucht es erneut; kein Alert.",
+                                         "content":  "## DB-Automatik\n**Fehlende EZB-Tage holen: einmal 5 Jahre, danach als Ersatzquelle**\n\nNach jedem Tages-Upsert (auch einem gescheiterten) fragt History due? finance.fn_fx_history_due() und bekommt from/to: (1) Nachlauf, solange keine Zeile mit source ecb existiert: heute minus 5 Jahre bis heute; (2) Ersatzquelle, wenn der Tages-Feed für das UTC-Datum von heute nichts geliefert hat und auch sonst kein Kurs von heute liegt: ab dem Tag nach dem jüngsten Kurs bis heute. Weil ein ausgefallener Feed fällig bleibt, läuft (2) mit dem stündlichen Nachholen mit; die EZB veröffentlicht werktags gegen 16 Uhr MEZ, davor und am Wochenende kommt eine leere Antwort. Die Ausfall-Meldung (cron_remind_missing_prices) kommt erst, wenn auch die EZB ausbleibt. Fetch ECB history = Frankfurter v2 /v2/rates mit providers=ecb (eine einheitliche Reihe, kostenlos, ohne Schlüssel; nur Arbeitstage, rund 30 Währungen; Wochenenden schließt die Kurs-Suche fn_fx_eur_row). Antwort als Text, Import ECB history parst sie im Ausdruck und schreibt per fn_upsert_fx_rates im Zeilen-Modus (source ecb; ein vorhandener Kurs einer anderen Quelle gewinnt, eine EZB-Zeile desselben Tages wird überschrieben). Kommt der Tages-Feed später doch, überschreibt sein Kurs die EZB-Zeile desselben Tages. Fehler oder leere Antwort -\u003e nichts geschrieben, der nächste Lauf versucht es erneut; kein Alert.",
                                          "height":  300,
                                          "width":  380,
                                          "color":  4
@@ -433,6 +503,22 @@
                                    ],
                       "id":  "39d5cb3a-ea60-53ee-8af8-a315e27a701b",
                       "name":  "EZB-Kurse (Nachlauf + Ersatz)"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Gold und Silber (XAU/XAG) je Feinunze**\n\nLäuft in jedem Abruf nach dem EZB-Schritt (auch wenn der nichts zu tun hatte). Metals due? = finance.fn_fx_metal_due(): ein Item je Metall aus finance.currencies (kind metal, vom Init geseedet), from = jüngster gespeicherter Tag des Metalls (wird beim nächsten Abruf erneut geholt, weil sich der Mischkurs eines Tages danach noch ändern kann), ohne Zeile 5 Jahre zurück; to = UTC-Datum. Fetch metal prices = Frankfurter v2 /v2/rates?base=\u003cMetall\u003e\u0026quotes=EUR (Mischkurs vieler Zentralbanken mit Ausreißer-Filter, auch am Wochenende, kostenlos, ohne Schlüssel), Antwort als Text. Import metal prices schreibt per fn_upsert_fx_rates im Zeilen-Modus: die DB speichert EUR -\u003e Metall mit dem Kehrwert (fx_rates bleibt EUR-quotiert), Quelle frankfurter, gleiche Quelle zieht nach, eine andere gewinnt. Damit gibt es den Metallpreis über fn_fx_rate in jeder Währung, die Einheit (Unze, Gramm, Kilo) rechnet die Wächter-Methode fx_rate. Metall-Zeilen zählen weder für die Fälligkeit des Tages-Feeds noch für Ausfall-Meldung oder EZB-Ersatz; fällt die Quelle aus, meldet der einzelne Wächter nach monitor.fx_stale_days den veralteten Kurs. Fehler -\u003e nichts geschrieben, kein Alert.",
+                                         "height":  300,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1860,
+                                       160
+                                   ],
+                      "id":  "aee406dd-b846-5925-bcb4-132b00578ccb",
+                      "name":  "Edelmetalle"
                   },
                   {
                       "parameters":  {
@@ -653,7 +739,11 @@
                                                                   }
                                                               ],
                                                               [
-
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Metals due?",
+                                                                      "type":  "main"
+                                                                  }
                                                               ]
                                                           ]
                                              },
@@ -668,6 +758,39 @@
                                                                ]
                                                            ]
                                               },
+                        "Import ECB history":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Metals due?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Metals due?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Fetch metal prices",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Fetch metal prices":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Import metal prices",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
                         "Test run":  {
                                          "main":  [
                                                       [

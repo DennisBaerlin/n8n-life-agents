@@ -80,6 +80,28 @@ if ($null -ne $hist) {
     }
 }
 
+# --- Frankfurter v2 Edelmetalle (Mischkurs, Zweig "Fetch metal prices" in cron_refresh_fx_rates) ---
+# Import metal prices erwartet {date, base XAU|XAG, quote EUR, rate = EUR je Feinunze}; die DB invertiert. Eine Antwort in
+# Gegenrichtung (EUR je Unze < 1) wuerde still einen Kehrwert-Preis speichern.
+foreach ($metal in 'XAU', 'XAG') {
+    Write-Host "api.frankfurter.dev /v2/rates (base=$metal, quotes=EUR) :"
+    $mrows = $null
+    try {
+        $to = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd'); $from = (Get-Date).ToUniversalTime().AddDays(-5).ToString('yyyy-MM-dd')
+        $resp = Invoke-RestMethod -Uri "https://api.frankfurter.dev/v2/rates?base=$metal&quotes=EUR&from=$from&to=$to" -Method Get -TimeoutSec 20
+        $mrows = @($resp | ForEach-Object { $_ })
+    } catch {
+        Write-Host "  [FAIL] HTTP-Request fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red; $failed++
+    }
+    if ($null -ne $mrows) {
+        Check 'Liste mit Zeilen (auch am Wochenende)' { $mrows.Count -ge 3 }
+        Check "Zeile {date, base $metal, quote EUR, rate > 1 (EUR je Feinunze)}" {
+            $r = $mrows[-1]
+            ($r.date -match '^\d{4}-\d{2}-\d{2}$') -and $r.base -eq $metal -and $r.quote -eq 'EUR' -and ([double]$r.rate -gt 1)
+        }
+    }
+}
+
 Write-Host ("-" * 60)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$failed Contract-Check(s) fehlgeschlagen." -ForegroundColor $color

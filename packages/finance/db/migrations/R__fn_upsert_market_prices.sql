@@ -52,10 +52,13 @@ BEGIN
   upserted AS (
     INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of, source)
     -- currency-Praezedenz: gefetchte Yahoo-Waehrung gewinnt (der Preis IST in dieser Waehrung), mit ^[A-Z]{3}$-
-    -- Regex-Backstop (invalider/leerer Fetch -> NULL -> Fallback h.currency = COALESCE(quote_currency,currency)).
+    -- Regex-Backstop (invalider/leerer Fetch -> NULL -> Fallback h.currency = COALESCE(quote_currency,currency)). Ein
+    -- Edelmetall-Code ist keine Kurs-Waehrung (FK-Sperre, finance.currencies.kind) und faellt ebenso zurueck, statt den
+    -- ganzen Lauf per FK-Fehler abzubrechen.
     SELECT h.symbol, h.isin, ((p->'prices')->>h.symbol)::numeric,
            COALESCE(
-             CASE WHEN ((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$' THEN (p->'currencies')->>h.symbol END,
+             CASE WHEN ((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$'
+                       AND NOT finance.fn_is_metal((p->'currencies')->>h.symbol) THEN (p->'currencies')->>h.symbol END,
              h.currency, 'EUR'),
            v_as_of, v_source
     FROM held h

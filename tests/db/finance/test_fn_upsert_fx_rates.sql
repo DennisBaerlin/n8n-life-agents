@@ -106,4 +106,90 @@ BEGIN
   RAISE NOTICE 'PASS fn_upsert_fx_rates [h1 Zeilen-Modus, h2 Tageskurs bleibt, h3 neue Waehrung, h4 Feed gewinnt]';
 END $$;
 
+-- [m1-m5] Edelmetalle (XAU/XAG, currencies.kind = 'metal'): die Quelle liefert "1 Feinunze = r EUR"; gespeichert wird
+-- EUR -> Metall mit rate = 1/r (die DB invertiert), Quelle fn_fx_metal_source(); gleiche Quelle zieht den Tageswert nach.
+DO $$
+DECLARE
+  v_result JSONB;
+  v_rate   NUMERIC;
+  v_utc    DATE := (now() AT TIME ZONE 'UTC')::date;
+BEGIN
+  DELETE FROM finance.fx_rates WHERE quote_currency IN ('XAU', 'XAG', 'USD');
+  IF (SELECT jsonb_object_agg(code, kind) FROM finance.currencies WHERE code IN ('XAU', 'XAG'))
+     IS DISTINCT FROM '{"XAU": "metal", "XAG": "metal"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL upsert [m0]: XAU/XAG muessen als metal geseedet sein';
+  END IF;
+
+  -- [m1] Metall-Zeile wird invertiert gespeichert, fn_fx_rate liefert den Preis je Feinunze zurueck
+  SELECT finance.fn_upsert_fx_rates(jsonb_build_object('rows', jsonb_build_array(
+    jsonb_build_object('date', '2026-05-05', 'base', 'XAU', 'quote', 'EUR', 'rate', 3236.31),
+    jsonb_build_object('date', '2026-05-05', 'base', 'XAG', 'quote', 'EUR', 'rate', 37.393),
+    jsonb_build_object('date', '2026-05-05', 'base', 'XAU', 'quote', 'USD', 'rate', 3544.94),
+    jsonb_build_object('date', '2026-05-05', 'base', 'XAU', 'quote', 'EUR', 'rate', 0)
+  ))) INTO v_result;
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 2 OR (v_result->>'skipped')::int IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'FAIL upsert [m1 Zaehler]: erwartet upserted 2, skipped 2 (Metall gegen USD, Kurs 0), got %', v_result;
+  END IF;
+  SELECT rate INTO v_rate FROM finance.fx_rates
+  WHERE base_currency = 'EUR' AND quote_currency = 'XAU' AND as_of = DATE '2026-05-05' AND source = finance.fn_fx_metal_source();
+  IF v_rate IS DISTINCT FROM round(1 / 3236.31, 10) THEN
+    RAISE EXCEPTION 'FAIL upsert [m1 Inversion]: erwartet %, got %', round(1 / 3236.31, 10), v_rate;
+  END IF;
+  IF abs((SELECT f.rate FROM finance.fn_fx_rate('XAU', 'EUR', DATE '2026-05-05') f) - 3236.31) > 0.01
+     OR abs((SELECT f.rate FROM finance.fn_fx_rate('XAG', 'EUR', DATE '2026-05-05') f) - 37.393) > 0.0001 THEN
+    RAISE EXCEPTION 'FAIL upsert [m1 Rueckrechnung]: XAU %, XAG %',
+      (SELECT f.rate FROM finance.fn_fx_rate('XAU', 'EUR', DATE '2026-05-05') f),
+      (SELECT f.rate FROM finance.fn_fx_rate('XAG', 'EUR', DATE '2026-05-05') f);
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_fx_rates [m1 Metall invertiert, Rueckrechnung +-0,01]';
+
+  -- [m2] gleicher Tag, gleiche Quelle, neuer Wert -> ueberschrieben (der Mischkurs zieht im Lauf des Tages nach)
+  SELECT finance.fn_upsert_fx_rates('{"rows":[{"date":"2026-05-05","base":"XAU","quote":"EUR","rate":3240}]}'::jsonb) INTO v_result;
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 1
+     OR (SELECT rate FROM finance.fx_rates WHERE quote_currency = 'XAU' AND as_of = DATE '2026-05-05') IS DISTINCT FROM round(1 / 3240.0, 10) THEN
+    RAISE EXCEPTION 'FAIL upsert [m2 Nachziehen]: %', v_result;
+  END IF;
+  -- doppelte Zeile in einer Antwort bricht den Lauf nicht ab
+  SELECT finance.fn_upsert_fx_rates('{"rows":[{"date":"2026-05-06","base":"XAU","quote":"EUR","rate":3241},
+                                              {"date":"2026-05-06","base":"XAU","quote":"EUR","rate":3241}]}'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL upsert [m2 Dublette]: %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_fx_rates [m2 gleiche Quelle zieht nach, Dublette ok]';
+
+  -- [m3] nur Metalle kommen invertiert: Fremdwaehrung gegen EUR weiter abgelehnt; im Tages-Modus kein Metall
+  PERFORM finance.fn_ensure_currency('USD');
+  SELECT finance.fn_upsert_fx_rates('{"rows":[{"date":"2026-05-05","base":"USD","quote":"EUR","rate":0.9}]}'::jsonb) INTO v_result;
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 0 OR EXISTS (SELECT 1 FROM finance.fx_rates WHERE quote_currency = 'USD') THEN
+    RAISE EXCEPTION 'FAIL upsert [m3 USD/EUR invertiert]: %', v_result;
+  END IF;
+  SELECT finance.fn_upsert_fx_rates('{"as_of":"2026-05-07","rates":{"XAU":0.0003,"USD":1.1}}'::jsonb) INTO v_result;
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 1
+     OR EXISTS (SELECT 1 FROM finance.fx_rates WHERE quote_currency = 'XAU' AND as_of = DATE '2026-05-07') THEN
+    RAISE EXCEPTION 'FAIL upsert [m3 Metall im Tages-Feed]: %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_fx_rates [m3 nur Metalle invertiert, Tages-Feed ohne Metall]';
+
+  -- [m4] Metall-Zeilen zaehlen weder fuer den Tages-Feed noch fuer die EZB-Ersatzquelle
+  DELETE FROM finance.fx_rates;
+  PERFORM finance.fn_upsert_fx_rates(jsonb_build_object('rows', jsonb_build_array(
+    jsonb_build_object('date', v_utc::text, 'base', 'XAU', 'quote', 'EUR', 'rate', 3236.31))));
+  IF (finance.fn_feed_refresh_due('fx')) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL upsert [m4]: Metall-Zeile von heute macht den Tages-Feed nicht aktuell';
+  END IF;
+  IF (finance.fn_fx_feed_gap()->>'never')::boolean IS DISTINCT FROM true OR finance.fn_fx_feed_gap()->>'stale_since' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL upsert [m4]: fn_fx_feed_gap zaehlt Metall-Zeilen: %', finance.fn_fx_feed_gap();
+  END IF;
+  -- auch eine Metall-Zeile fremder Quelle (Test-Fixture) zaehlt nicht als Waehrungs-Kurs von heute
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source)
+  VALUES ('EUR', 'USD', 1.1, v_utc - 3, finance.fn_fx_feed_source()),
+         ('EUR', 'USD', 1.1, v_utc - 4, finance.fn_fx_history_source()),
+         ('EUR', 'XAG', 0.0267, v_utc, '__test__');
+  IF (finance.fn_fx_history_due()->>'due')::boolean IS DISTINCT FROM true
+     OR (finance.fn_fx_history_due()->>'from')::date IS DISTINCT FROM v_utc - 2 THEN
+    RAISE EXCEPTION 'FAIL upsert [m4]: Metall-Zeile von heute verdeckt die EZB-Ersatzquelle: %', finance.fn_fx_history_due();
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_fx_rates [m4 Metall zaehlt nicht fuer Feed, Ausfall-Meldung, EZB-Ersatz]';
+END $$;
+
 ROLLBACK;

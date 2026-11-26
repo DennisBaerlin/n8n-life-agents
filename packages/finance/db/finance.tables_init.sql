@@ -185,17 +185,47 @@ ALTER TYPE finance.transaction_category ADD VALUE IF NOT EXISTS 'reward';
 -- minor_unit = Anzahl Nachkommastellen (EUR=2, CLP=0), massgeblich fuer Anzeige-/Rundungsregeln.
 -- FK-Ziel aller currency-Spalten -> ein Tippfehler ('EURO','peso') wird zum lauten FK-Fehler statt zur
 -- stillen Phantom-Waehrung, die kein Roll-up konvertieren kann.
+-- kind: 'fiat' = Geld, 'metal' = Edelmetall-Code nach ISO 4217 (XAU Gold, XAG Silber; 1 Einheit = 1 Feinunze), nur
+-- Kurs-Code fuer fx_rates (Taxonomie wie Frankfurter type currency|metal). Gesetz "Metall ist keine Geld-Waehrung":
+-- jede andere Waehrungs-FK zeigt zusammengesetzt (Waehrung, currency_kind) auf (code, kind), currency_kind ist eine
+-- konstante GENERATED-Spalte 'fiat' (unten; test_currency_metal_guard.sql prueft jede solche FK). Ein Konto in XAU
+-- wuerde in jeder Euro-Summe als Geldbetrag gerechnet. Die Metalle seedet dieses Init bei den Waehrungs-FKs (unten;
+-- gelernte Feed-Codes sind fiat).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS finance.currencies (
     code       char(3)  PRIMARY KEY,
     minor_unit smallint NOT NULL DEFAULT 2 CHECK (minor_unit BETWEEN 0 AND 4),
     symbol     varchar(8),
-    name       varchar(50)
+    name       varchar(50),
+    kind       text     NOT NULL DEFAULT 'fiat' CHECK (kind IN ('fiat', 'metal'))
 );
+ALTER TABLE finance.currencies ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'fiat' CHECK (kind IN ('fiat', 'metal'));
+CREATE UNIQUE INDEX IF NOT EXISTS finance_currencies_code_kind_uq ON finance.currencies (code, kind);
 
 INSERT INTO finance.currencies (code, minor_unit, symbol, name) VALUES
     ('EUR', 2, '€', 'Euro')
 ON CONFLICT (code) DO NOTHING;
+
+-- fn_is_metal (READ, STABLE) -- ist der Code ein Edelmetall (finance.currencies.kind = 'metal')? Unbekannt -> false.
+--   Die Abfrage fuer einen einzelnen Code (Kurs-Upsert, Kurs-Waehrung der Markt-Kurse, fn_ensure_currency, Waechter-Methode
+--   fx_rate); Mengen-Abfragen filtern currencies.kind direkt.
+--   Inline-Baseline: die sql-Bodies der R__-fns pruefen sie beim CREATE.
+CREATE OR REPLACE FUNCTION finance.fn_is_metal(p_code text)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+    SELECT EXISTS (SELECT 1 FROM finance.currencies c WHERE c.code = upper(trim(p_code)) AND c.kind = 'metal');
+$$;
+
+-- fn_metal_unit_factor (READ, IMMUTABLE) -- Faktor vom Preis je Feinunze auf den Preis je Einheit: ozt 1, g 1/31.1034768,
+--   kg 1000/31.1034768 (1 Feinunze = 31,1034768 g per Definition). Unbekannte Einheit -> NULL. Die eine Adresse fuer
+--   Metall-Einheiten (Pruefung und Rechnung der Waechter-Methode fx_rate).
+CREATE OR REPLACE FUNCTION finance.fn_metal_unit_factor(p_unit text)
+RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE lower(trim(p_unit))
+        WHEN 'ozt' THEN 1::numeric
+        WHEN 'g'   THEN 1 / 31.1034768
+        WHEN 'kg'  THEN 1000 / 31.1034768
+    END;
+$$;
 
 -- ============================================================
 -- FX RATES (base -> quote, datiert). EUR ist die Reporting-Basis.
@@ -234,7 +264,7 @@ CREATE TABLE IF NOT EXISTS finance.market_prices (
     symbol     varchar(20)    NOT NULL,                 -- ticker (VWCE) oder crypto symbol (BTC) = Join-Key
     isin       varchar(12),                             -- NULL bei Krypto; nur sekundaerer Hint
     price      numeric(20,8)  NOT NULL CHECK (price > 0),-- Kurs je Anteil in <currency>; 8 NK fuer Krypto-Bruchteile
-    currency   char(3)        NOT NULL DEFAULT 'EUR' REFERENCES finance.currencies(code),
+    currency   char(3)        NOT NULL DEFAULT 'EUR',   -- FK (currency, currency_kind) -> currencies unten (Metall-Sperre)
     as_of      date           NOT NULL,
     source     varchar(50)    NOT NULL DEFAULT 'yahoo',
     updated_at timestamptz    NOT NULL DEFAULT now(),
@@ -1798,11 +1828,7 @@ END $$;
 -- nur bei Umgehung). NULL bei beiden = "nicht abweichend" (Cron nutzt symbol bzw. Holding-Waehrung).
 ALTER TABLE finance.depot_holdings ADD COLUMN IF NOT EXISTS provider_symbol varchar(30);
 ALTER TABLE finance.depot_holdings ADD COLUMN IF NOT EXISTS quote_currency  char(3);
-DO $$ BEGIN
-    ALTER TABLE finance.depot_holdings DROP CONSTRAINT IF EXISTS finance_depot_holdings_quote_currency_fk;
-    ALTER TABLE finance.depot_holdings ADD CONSTRAINT finance_depot_holdings_quote_currency_fk
-        FOREIGN KEY (quote_currency) REFERENCES finance.currencies(code);
-END $$;
+-- FK finance_depot_holdings_quote_currency_fk steht bei den uebrigen Waehrungs-FKs (Multi-Waehrung, unten).
 
 -- Partial UNIQUE indexes: one holding per (depot, isin) for stocks/ETFs;
 -- one holding per (depot, symbol) for crypto (isin IS NULL).
@@ -1907,7 +1933,7 @@ CREATE TABLE IF NOT EXISTS finance.savings_goal_reserve_entries (
     savings_goal_id int           NOT NULL REFERENCES finance.savings_goals(id) ON DELETE CASCADE,
     account_id      int           NOT NULL REFERENCES finance.accounts(id),       -- Konto des Ziel-Geldes (Depot: Marktwert-Deckung, saldo-basiert: Saldo-Deckung)
     delta_native    numeric(14,2) NOT NULL CHECK (delta_native <> 0),             -- vorzeichenbehaftete Bewegung in der `currency`-Waehrung
-    currency        char(3)       NOT NULL DEFAULT 'EUR' REFERENCES finance.currencies(code),  -- Waehrung von delta_native (Depot: Depot-Waehrung bei sparplan_buy, EUR bei manual; saldo-basiert: Kontowaehrung)
+    currency        char(3)       NOT NULL DEFAULT 'EUR',  -- FK (currency, currency_kind) -> currencies unten (Metall-Sperre). Waehrung von delta_native (Depot: Depot-Waehrung bei sparplan_buy, EUR bei manual; saldo-basiert: Kontowaehrung)
     value_date      date          NOT NULL DEFAULT current_date,                  -- FX-Umrechnungsdatum (= Kauf-transaction_date bzw. CURRENT_DATE)
     source_tx_id    int,          -- Kauf-Tx; NULL bei manual. FK -> finance.transactions UNTEN (die Tabelle entsteht erst spaeter in dieser Datei -> Constraint nachgezogen).
     kind            text          NOT NULL CHECK (kind IN ('sparplan_buy', 'manual', 'derisk', 'void')),
@@ -2371,13 +2397,51 @@ END $$;
 
 -- Multi-Waehrung: currency-Spalten an die Waehrungs-Dimension binden (FK = Tippfehler-Schutz).
 -- finance.currencies enthaelt EUR (init-geseedet); alle weiteren Waehrungen registriert fn_ensure_currency on-demand. Idempotent.
+-- Edelmetall-Seed (Kopf von finance.currencies), hier statt dort, weil die Pruefung unten alle vier Tabellen braucht.
+-- Anzeigename nur im Textkatalog (finance.value.metal_*); minor_unit 2 ist reine Anzeige. Ein Code, den eine Bestands-DB
+-- schon als Geld nutzt (fn_ensure_currency lehnte Metalle bisher nicht ab), bleibt fiat: sonst braeche die FK-Pruefung
+-- unten das ganze Update ab. Die WARNING steht im Update-Protokoll; dieses Metall bekommt dann keinen Preis.
+DO $$
+DECLARE v_code text;
+BEGIN
+    FOREACH v_code IN ARRAY ARRAY['XAU', 'XAG'] LOOP
+        IF EXISTS (SELECT 1 FROM finance.accounts WHERE currency = v_code)
+           OR EXISTS (SELECT 1 FROM finance.depot_holdings WHERE v_code IN (currency, quote_currency))
+           OR EXISTS (SELECT 1 FROM finance.market_prices WHERE currency = v_code)
+           OR EXISTS (SELECT 1 FROM finance.savings_goal_reserve_entries WHERE currency = v_code) THEN
+            RAISE WARNING 'finance.currencies: % is used as money by existing rows, stays fiat (no precious-metal price)', v_code;
+            CONTINUE;
+        END IF;
+        INSERT INTO finance.currencies (code, minor_unit, kind) VALUES (v_code, 2, 'metal')
+        ON CONFLICT (code) DO UPDATE SET kind = 'metal' WHERE finance.currencies.kind <> 'metal';
+    END LOOP;
+END $$;
+
+-- Zusammengesetzt mit der konstanten currency_kind = 'fiat' (Metall-Sperre, Kopf von finance.currencies). Die einfachen FKs
+-- aelterer Staende (auch die automatisch benannten *_fkey der Tabellen-Definition) fallen hier weg.
+ALTER TABLE finance.accounts                     ADD COLUMN IF NOT EXISTS currency_kind text GENERATED ALWAYS AS ('fiat') STORED;
+ALTER TABLE finance.depot_holdings               ADD COLUMN IF NOT EXISTS currency_kind text GENERATED ALWAYS AS ('fiat') STORED;
+ALTER TABLE finance.market_prices                ADD COLUMN IF NOT EXISTS currency_kind text GENERATED ALWAYS AS ('fiat') STORED;
+ALTER TABLE finance.savings_goal_reserve_entries ADD COLUMN IF NOT EXISTS currency_kind text GENERATED ALWAYS AS ('fiat') STORED;
 DO $$ BEGIN
     ALTER TABLE finance.accounts        DROP CONSTRAINT IF EXISTS finance_accounts_currency_fk;
     ALTER TABLE finance.accounts        ADD  CONSTRAINT finance_accounts_currency_fk
-        FOREIGN KEY (currency) REFERENCES finance.currencies(code);
+        FOREIGN KEY (currency, currency_kind) REFERENCES finance.currencies(code, kind);
     ALTER TABLE finance.depot_holdings  DROP CONSTRAINT IF EXISTS finance_depot_holdings_currency_fk;
     ALTER TABLE finance.depot_holdings  ADD  CONSTRAINT finance_depot_holdings_currency_fk
-        FOREIGN KEY (currency) REFERENCES finance.currencies(code);
+        FOREIGN KEY (currency, currency_kind) REFERENCES finance.currencies(code, kind);
+    -- quote_currency NULL = nicht abweichend: MATCH SIMPLE prueft dann nicht
+    ALTER TABLE finance.depot_holdings  DROP CONSTRAINT IF EXISTS finance_depot_holdings_quote_currency_fk;
+    ALTER TABLE finance.depot_holdings  ADD  CONSTRAINT finance_depot_holdings_quote_currency_fk
+        FOREIGN KEY (quote_currency, currency_kind) REFERENCES finance.currencies(code, kind);
+    ALTER TABLE finance.market_prices   DROP CONSTRAINT IF EXISTS market_prices_currency_fkey;
+    ALTER TABLE finance.market_prices   DROP CONSTRAINT IF EXISTS finance_market_prices_currency_fk;
+    ALTER TABLE finance.market_prices   ADD  CONSTRAINT finance_market_prices_currency_fk
+        FOREIGN KEY (currency, currency_kind) REFERENCES finance.currencies(code, kind);
+    ALTER TABLE finance.savings_goal_reserve_entries DROP CONSTRAINT IF EXISTS savings_goal_reserve_entries_currency_fkey;
+    ALTER TABLE finance.savings_goal_reserve_entries DROP CONSTRAINT IF EXISTS finance_reserve_entries_currency_fk;
+    ALTER TABLE finance.savings_goal_reserve_entries ADD  CONSTRAINT finance_reserve_entries_currency_fk
+        FOREIGN KEY (currency, currency_kind) REFERENCES finance.currencies(code, kind);
 END $$;
 
 -- Multi-Waehrung: realisierter Umrechnungskurs auf Cross-Currency-Beinen (z. B. EUR->CLP-Transfer).

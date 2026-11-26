@@ -521,6 +521,20 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/native_process_test.ps1
         pass_filenames: false
         files: ^scripts/(lib/native_process|dev/native_process_test)\.ps1$
+      - id: hook-autoload-lint
+        name: hook_autoload_lint (hook scripts use no command that Windows PowerShell 5.1 autoloads from a module - Get-FileHash, Expand-Archive ... - it is missing under pwsh 7 in CI)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hook_autoload_lint.ps1
+        pass_filenames: false
+        files: ^(scripts/.*\.ps1|\.pre-commit-config\.yaml)$
+
+      - id: hook-autoload-lint-test
+        name: hook_autoload_lint_test (an autoloaded command in a hook script or a script it loads turns hook_autoload_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_autoload_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(hook_autoload_lint|dev/hook_autoload_lint_test)\.ps1$
+
       - id: release-notes-check-test
         name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
         language: system

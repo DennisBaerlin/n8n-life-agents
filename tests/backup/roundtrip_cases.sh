@@ -5,7 +5,8 @@
 #             Chat-Memory-Knoten sie anlegt), KI-Kosten, ein "schon gezeigt"-Merker, die Sperrliste, ein Paperless-Zugang.
 #             Dazu Wechselkurse (Feed + EZB) ueber finance.fn_upsert_fx_rates: ohne Zeilen verglichen die Kurs-Tabellen 0 mit 0.
 #   fx        "<Kurse>/<Waehrungen>" der geseedeten Kurse mit genauem Wert (Soll 3/2); backup_fingerprint zaehlt dort nur Zeilen.
-#   fxcfg     "<cron_enable.refresh_fx_rates>|<Kurse>/<Waehrungen>" (Soll false|3/3): Abruf per Install-Schalter aus, kein Netz-Kurs da.
+#   fxcfg     "<cron_enable.refresh_fx_rates>|<Kurse>/<Geld-Waehrungen>" (Soll false|3/3): Abruf per Install-Schalter aus, kein Netz-Kurs da.
+#             Gezaehlt wird nur kind = 'fiat': die Edelmetall-Codes XAU/XAG legt das Schema selbst an, nicht der Kurs-Abruf.
 #   export    Sicherung + Notfallblatt nach /tmp/rt (Blatt = Schluessel der Quelle; das frische Ziel hat einen eigenen).
 #   restore   die Sicherung aus /tmp/rt mit dem Blatt einspielen (wie die Start-App ohne Terminal).
 #   fp <datei> Fingerabdruck (lifeagents backup fingerprint) in die Datei; immer mit der CLI dieses Abbilds.
@@ -78,7 +79,7 @@ case "${1:-}" in
   fxcfg)
     # Der Abruf ist per Install-Schalter aus (Config-Zeile) und es liegen nur die geseedeten Kurse da: nichts kam aus dem Netz.
     sql "SELECT (SELECT value FROM core.config WHERE category = 'cron_enable' AND key = 'refresh_fx_rates')
-              || '|' || (SELECT count(*) FROM finance.fx_rates) || '/' || (SELECT count(*) FROM finance.currencies)"
+              || '|' || (SELECT count(*) FROM finance.fx_rates) || '/' || (SELECT count(*) FROM finance.currencies WHERE kind = 'fiat')"
     ;;
   *) printf 'Usage: roundtrip_cases.sh seed|export|restore|fp <datei>|subset|fx|fxcfg\n' >&2; exit 2 ;;
 esac

@@ -427,6 +427,12 @@ try {
     function Get-GwStatus([int]$Port) {
         try { return (((Invoke-InC @('curl', '-s', "http://127.0.0.1:$Port/__llm_status")).Output -join '') | ConvertFrom-Json) } catch { return $null }
     }
+    # PowerShell 7 (CI) macht aus ISO-Zeitstempeln in ConvertFrom-Json ein [datetime], "$x" ergibt dann ein Kultur-Datum
+    # ("12/01/2026 00:00:00"); PS 5.1 laesst den Text stehen. Vergleich darum immer in der ISO-Form des Gateways.
+    function ConvertTo-IsoUtc($v) {
+        if ($v -is [datetime]) { return $v.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [System.Globalization.CultureInfo]::InvariantCulture) }
+        return "$v"
+    }
     $pCases = @(
         @{ n = 'spend_limit';           st = '400'; code = 'spend_limit';    resume = '2026-12-01T00:00:00Z'; perm = $true }
         @{ n = 'spend_limit_workspace'; st = '400'; code = 'spend_limit';    resume = '2026-12-01T00:00:00Z'; perm = $true }
@@ -451,9 +457,9 @@ try {
         if ($res.Status -ne $pc.st) { $why += "Status $($res.Status)" }
         if (-not $j -or $j.type -ne 'error' -or -not $j.error.type) { $why += 'Umschlag fehlt' }
         if ($j.error.details.lifeagents_code -ne $pc.code) { $why += "code=$($j.error.details.lifeagents_code)" }
-        if ("$($j.error.details.resume_at)" -ne "$($pc.resume)") { $why += "resume_at=$($j.error.details.resume_at)" }
+        if ((ConvertTo-IsoUtc $j.error.details.resume_at) -ne "$($pc.resume)") { $why += "resume_at=$(ConvertTo-IsoUtc $j.error.details.resume_at)" }
         if (-not $u -or $u.err -ne $pc.code -or "$($u.status)" -ne $pc.st) { $why += "usage err=$($u.err) status=$($u.status)" }
-        if (-not $s -or $s.last_error.code -ne $pc.code -or "$($s.last_error.resume_at)" -ne "$($pc.resume)") { $why += "status-endpunkt=$($s | ConvertTo-Json -Compress -Depth 4)" }
+        if (-not $s -or $s.last_error.code -ne $pc.code -or (ConvertTo-IsoUtc $s.last_error.resume_at) -ne "$($pc.resume)") { $why += "status-endpunkt=$($s | ConvertTo-Json -Compress -Depth 4)" }
         if ($why.Count -eq 0) { Pass "$($pc.n) -> $($pc.code)" } else { Fail "$($pc.n): $($why -join '; ')" }
     }
     # Header (curl -D): x-lifeagents-llm-error immer, x-should-retry:false nur bei dauerhaften Codes; fremdes x-should-retry bleibt.

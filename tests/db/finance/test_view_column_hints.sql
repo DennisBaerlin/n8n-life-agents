@@ -22,7 +22,7 @@ BEGIN
         'upcoming_recurring_payments|id, name, account_id, amount, rhythm, starts_on, last_valid_day, counted_in_cashflow',
         'monthly_cashflow_overview|id, name, account_id, account_name, monthly_equivalent_eur, cashflow_class, starts_on, last_valid_day',
         'pension_overview|id, name, provider, owner, current_value, monthly_contribution, status',
-        'savings_plan_overview|id, name, depot_name, settlement_account_name, savings_goal_name, amount_per_execution, monthly_amount, next_execution',
+        'savings_plan_overview|id, name, depot_name, settlement_account_name, savings_goal_name, amount_per_execution, monthly_amount, next_execution, last_execution, last_valid_day',
         'standing_order_overview|name, kind, from_account, to_account, amount_per_execution, rhythm, monthly_amount, starts_on, last_execution, last_valid_day, executed_by',
         'account_funding_overview|account_id, account_name, state, min_projected, runs_out_on',
         'account_reserve_status|account_id, account_name, balance, reserved, shortfall, breach',

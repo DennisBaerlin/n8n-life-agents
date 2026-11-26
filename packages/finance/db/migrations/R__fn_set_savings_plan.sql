@@ -59,6 +59,17 @@
 --   fn_reopen_recurring_payment) -> {ok:false}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
+--   Kuenftiges Ende: valid_to (opt, letzter gueltiger Tag inklusiv, wie der Nutzer es sagt, oder ein Monat YYYY-MM = bis zu
+--   dessen letztem Tag; gespeichert +1 Tag) setzt das Ende
+--   an der Kette wie fn_set_insurance (der Kopf traegt es, auch ein spaeteres = Verlaengern; Status bleibt aktiv, damit die
+--   Bank-Ende-Erinnerung fn_bank_end_due ihn nach der letzten Ausfuehrung meldet). Nur allein oder mit Notiz/Person/
+--   Anlageklasse: zusammen mit Betrag/Rhythmus/Tagen/Status -> {ok:false, code:'end_separately'} (Split und Ende in einem
+--   Write braeuchten eine zweite Pruefung nach dem Split). Ende <= heute -> code end_not_future (sofort beenden =
+--   fn_close_savings_plan). Kein Rasterpunkt des Kopfs zwischen heute und dem Ende (auch: Ende vor einer geplanten
+--   Aenderung) -> code no_execution_before_end + earliest_end (erste kommende Ausfuehrung des Kopfs = fruehestes moegliches
+--   Ende). Rueckgabe zusaetzlich last_execution (fn_recurring_last_due, fuer Karte und Antwort) + last_valid_day;
+--   card_lines = Bank-Hinweis bank_stop (bei aktivem Plan die _until-Variante mit der letzten Ausfuehrung) und, wenn die
+--   Bank-Erinnerung an ist und der Plan laeuft, finance.note.savings_plan_end_reminder.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_savings_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -92,16 +103,24 @@ DECLARE
     v_shift     RECORD;
     v_pure      BOOLEAN           := false;   -- reine Tag-Verlegung (siehe Block nach fn_resolve_plan_schedule)
     v_last      DATE;
+    v_to        DATE;                         -- kuenftiges Ende, inklusiv wie eingegeben
+    v_head      finance.recurring_payments%ROWTYPE;
+    v_end_last  DATE;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
         RETURN finance.fn_with_handoff('finance.fn_set_savings_plan(jsonb)'::regprocedure, p);
     END IF;
+    -- Ende als Monat (YYYY-MM, "nach Maerz") -> letzter Tag dieses Monats; das Modell rechnet keine Monatsenden
+    IF COALESCE(p->>'valid_to', '') ~ '^\d{4}-\d{2}$' THEN
+        p := jsonb_set(p, '{valid_to}', to_jsonb(((p->>'valid_to' || '-01')::date + interval '1 month' - interval '1 day')::date::text));
+    END IF;
     -- relative Datumsangabe ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
-    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
+    v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from', 'valid_to']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, core.fn_today());
+    v_to   := NULLIF(p->>'valid_to', '')::date;
     -- Plan aufloesen (inkl. paused, damit Pause/Resume auf paused Plans funktioniert)
     SELECT r.id, r.hit_count INTO v_resolve
     FROM finance.fn_resolve_savings_plan(v_name, FALSE) r;
@@ -123,6 +142,36 @@ BEGIN
     IF v_asset_cls IS NOT NULL AND v_asset_cls !~ '^[a-z0-9_]+$' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'asset_class tag must be lowercase letters/digits/underscore (e.g. sp500), got: ' || v_asset_cls);
+    END IF;
+
+    -- Kuenftiges Ende: alle Ablehnungen vor jedem Write (der Write folgt nach den orthogonalen UPDATEs)
+    IF v_to IS NOT NULL THEN
+        IF v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL OR v_cal_in IS NOT NULL
+           OR v_status IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'end_separately',
+                'reason', 'Set the end of the savings plan in a separate step: first change amount, rhythm or status, '
+                       || 'then call the tool again with only valid_to.');
+        END IF;
+        IF v_to <= core.fn_today() THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'end_not_future',
+                'reason', 'The end (' || v_to || ') must be after today. To stop the plan now, close it with '
+                       || 'tool_close_savings_plan.');
+        END IF;
+        SELECT * INTO v_head FROM finance.recurring_payments WHERE id = finance.fn_recurring_lineage_head(v_rp.id);
+        -- letzter Rasterpunkt des Kopfs bis zum Ende = was fn_recurring_last_due nach dem Write liefert
+        SELECT max(o.d) INTO v_end_last
+          FROM finance.fn_schedule_occurrences(v_head.first_payment_date, v_head.schedule_interval, v_head.schedule_unit,
+                   v_head.schedule_day_of_month, v_head.schedule_days_of_month, v_head.valid_from, v_to) AS o(d);
+        IF v_end_last IS NULL OR v_end_last < core.fn_today() THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'no_execution_before_end',
+                'earliest_end', (SELECT min(o.d) FROM finance.fn_schedule_occurrences(v_head.first_payment_date,
+                                     v_head.schedule_interval, v_head.schedule_unit, v_head.schedule_day_of_month,
+                                     v_head.schedule_days_of_month, GREATEST(v_head.valid_from, core.fn_today()),
+                                     GREATEST(v_head.valid_from, core.fn_today()) + 400) AS o(d)),
+                'reason', 'No execution of the savings plan falls between today and ' || v_to || ' (or the end lies before '
+                       || 'a planned change of the plan). The earliest possible end is earliest_end; to stop the plan now, '
+                       || 'close it with tool_close_savings_plan.');
+        END IF;
     END IF;
 
     -- Nutzer-Rhythmus der Kopf-Zeile (die Bedingungen ab jedem gueltigen Stichtag, der Split setzt immer nach ihrem
@@ -290,6 +339,34 @@ BEGIN
         UPDATE finance.savings_plans
         SET asset_class = v_asset_cls
         WHERE id = v_plan.id;
+    END IF;
+
+    -- Kuenftiges Ende (geprueft oben): Kopf traegt es, ein noch laufendes frueheres Glied wird nur gekuerzt (fn_set_insurance)
+    IF v_to IS NOT NULL THEN
+        UPDATE finance.recurring_payments
+           SET valid_to = GREATEST(valid_from, v_to + 1)
+         WHERE id IN (SELECT finance.fn_recurring_lineage(v_head.id))
+           AND (id = v_head.id OR valid_to IS NULL OR valid_to > v_to + 1);
+        UPDATE finance.savings_plans
+           SET notes = COALESCE(NULLIF(p->>'notes', ''), notes)
+         WHERE id = v_plan.id;
+        RETURN finance.fn_merge_fold(jsonb_build_object(
+            'ok',                   true,
+            'effective',            COALESCE(v_dates->'resolved', '{}'::jsonb),
+            'savings_plan_id',      v_plan.id,
+            'recurring_payment_id', v_head.id,
+            'split',                false,
+            'last_execution',       finance.fn_recurring_last_due(v_head.id),
+            'last_valid_day',       finance.fn_recurring_last_valid_day(v_head.id)),
+            -- Spar-Deckung nur als Bericht (die Rate endet, gefragt wird nie), Bank-Hinweis, dann das Erinnerungs-Versprechen:
+            -- nur wenn die Bank-Erinnerung an ist und der Plan laeuft (fn_bank_end_due meldet nur aktive Koepfe)
+            finance.fn_merge_fold(finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], false),
+                jsonb_build_object('card_lines', finance.fn_bank_stop_note_told(v_head.id)
+                    || CASE WHEN v_plan.status = 'active' AND finance.fn_bank_setup_kind(v_head.id, true) IS NOT NULL
+                                 AND core.fn_reminder_allowed('remind_bank_end', NULL)
+                            THEN jsonb_build_array(jsonb_build_object('kind', 'note',
+                                     'value', 'finance.note.savings_plan_end_reminder', 'params', '{}'::jsonb))
+                            ELSE '[]'::jsonb END)));
     END IF;
 
     IF v_split THEN

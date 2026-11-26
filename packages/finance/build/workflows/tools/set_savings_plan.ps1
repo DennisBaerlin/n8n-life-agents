@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_set_savings_plan (Sparplan aendern: Betrag-Split, Pause, Resume, Notiz) ---
+# --- tool_set_savings_plan (Sparplan aendern: Betrag-Split, Pause, Resume, Notiz, kuenftiges Ende) ---
 function Build-SetSavingsPlan {
     # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('savings_plan_name','new_amount','schedule_unit','schedule_interval','status','valid_from','notes','beneficiary_person','asset_class','depot_execution_days','handoff_task_id')
+    $trig = Build-Trigger @('savings_plan_name','new_amount','schedule_unit','schedule_interval','status','valid_from','notes','beneficiary_person','asset_class','depot_execution_days','valid_to','handoff_task_id')
 
     # Aktuelle Werte fuer informativen HITL-Summary
     $readCur = Build-Pg 'Read Current' @(220, 0) `
@@ -32,7 +32,7 @@ function Build-SetSavingsPlan {
     # - nur notes: IN-PLACE notes-Update
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_plan' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Set plan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding, r->>'last_execution' AS last_execution" `
         -Params ([ordered]@{
             handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
@@ -46,6 +46,7 @@ function Build-SetSavingsPlan {
             beneficiary_person_id = '$(''Resolve Person'').item.json.person_id'
             asset_class       = '$(''Start'').item.json.asset_class'
             depot_execution_days = '$(''Start'').item.json.depot_execution_days'
+            valid_to          = '$(''Start'').item.json.valid_to'   # kuenftiges Ende (inklusiv); die fn prueft und rechnet die letzte Ausfuehrung
         })
 
     # Nur gelieferte Felder (-If je Zeile). Sparrate in der Konto-Waehrung (Read Current);
@@ -72,6 +73,7 @@ function Build-SetSavingsPlan {
             from = (New-HitlValue -Kind enum -Value "$R.plan_status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
         (New-HitlLine 'finance.label.asset_class'        "'finance.tpl.asset_class_from_next'" -Kind tpl -Params @{ value = "$S.asset_class" } -If "$S.asset_class")
+        (New-HitlLine 'finance.label.last_execution'     "$Y.last_execution" -Kind date -If "$S.valid_to")
         (New-HitlLine 'finance.label.new_note'           "$S.notes" -If "$S.notes")
         (New-HitlNote -Key 'finance.note.set_plan_split' -If "($S.new_amount || $S.schedule_unit || $S.schedule_interval)")
     )
@@ -96,18 +98,23 @@ function Build-SetSavingsPlan {
         ,@('split', "={{ `$('Set plan (atomic)').item.json.split }}", 'boolean')
         ,@('savings_squeeze', "={{ `$('Set plan (atomic)').item.json.savings_squeeze }}", 'string')
         ,@('savings_funding', "={{ `$('Set plan (atomic)').item.json.savings_funding }}", 'string')
+        ,@('last_execution', "={{ `$('Set plan (atomic)').item.json.last_execution || '' }}", 'string')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_savings_plan mit denselben Werten, immer zurückgerollt. ok:false (Betrag <= 0, Stichtag <= valid_from, Anlageklasse im falschen Format, Rhythmus passt nicht zum Depot-Kalender bzw. Kalender unbekannt; ein unbekannter Name endet schon vorher am Found?-Gate) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_set_savings_plan mit denselben Werten, immer zurückgerollt. ok:false (Betrag <= 0, Stichtag <= valid_from, Anlageklasse im falschen Format, Rhythmus passt nicht zum Depot-Kalender bzw. Kalender unbekannt, Ende-Ablehnungen siehe Künftiges Ende; ein unbekannter Name endet schon vorher am Found?-Gate) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
 
     $stickyFn = Build-Sticky 'fn_set_savings_plan: Split vs. In-Place + Anlageklasse' @(1760, -240) `
         'Betrag/Kadenz = Validity-Split; Status/Notiz/Anlageklasse = In-Place' `
         'new_amount ODER schedule_unit/schedule_interval (WS-B Stufe 2: Kadenz editierbar) -> Validity-Split: altes RP beendet (valid_to=Stichtag), neues RP ab Stichtag (nicht-genannte Betrags-/Kadenz-Felder aus der alten Zeile übernommen -> reine Kadenz-Änderung erhält den Betrag), plan.recurring_payment_id aktualisiert. Kadenzwechsel über den Depot-Kalender (fn_resolve_plan_schedule, wie beim Anlegen): Bank mit festen Monatstagen -> Tage statt 7-Tage-Abstand, Stichtag muss ein Kalendertag sein (sonst ok:false + nächster Tag); depot_execution_days korrigiert den Kalender am Depot; ein reiner Betrags-Split erbt die Tage. status paused/active -> IN-PLACE auf plan + kaskadierend auf RP. Nur notes -> IN-PLACE notes. Phase L WS-6: asset_class ($fromAI, Format-Verstoss -> {ok:false}) = IN-PLACE-Korrektur, orthogonal (kein Split); vererbt sich ab der nächsten Ausführung. fn lehnt new_amount<=0 und Stichtag<=valid_from ab ({ok:false}). Ändert der Write die laufende Rate (Split/Reaktivierung ab heute, Status-Wechsel), liest fn_savings_squeeze_fold monthly_cashflow_summary: Kontoveränderung nach dem Sparen < 0 -> Note in savings_squeeze (gelatcht 24 h, sonst leer; Split mit künftigem Stichtag oder reine Notiz-/Anlageklasse-Edits -> keine Note). An denselben Stellen liest fn_savings_funding_fold die Spar-Deckung des Abbuchungskontos (fn_account_funding, auch für künftige Stichtage): Kartenzeile "Danach ..." schon im Probelauf (künftiger Stichtag: nur Zustand + Datum) + bei einer Lücke die gelatchte Frage-Note savings_funding (Reaktivieren fragt, Pausieren berichtet nur). Bookkeeper relayed.' 250 720
 
+    $stickyEnd = Build-Sticky 'Künftiges Ende (valid_to)' @(1100, -300) `
+        'Ende an der Raten-Kette, Erinnerung kommt vom Bank-Ende-Cron' `
+        'valid_to = letzter gültiger Tag (inklusiv). Die fn setzt das Ende an der Kette (Kopf trägt es, Status bleibt aktiv) und lehnt ab: zusammen mit Betrag/Rhythmus/Status (end_separately), Ende <= heute (end_not_future), keine Ausführung mehr davor (no_execution_before_end + earliest_end). Kartenzeile Letzte Ausführung = last_execution aus dem Probelauf (fn_recurring_last_due, nie vom Modell). Viele Broker kennen kein Enddatum: Bank-Hinweis bank_stop_until sagt das, agent.finance.cron_remind_bank_end erinnert 3 Tage nach der letzten Ausführung (Zusatzzeile nur, wenn diese Erinnerung an ist).' 300 260
+
     $nodes = @($trig, $readCur, $found.If, $found.Err, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
-               $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn)
+               $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn, $stickyEnd)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Read Current' ) ) }

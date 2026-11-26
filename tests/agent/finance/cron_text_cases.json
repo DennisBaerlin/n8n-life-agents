@@ -119,6 +119,30 @@
   },
   {
     "kind": "cron_text",
+    "id": "ctf_bank_end_plan",
+    "name": "Bank-Erinnerung an den Owner (ko): Sparplan mit Ende lief zum letzten Mal -> Zeile mit Broker und Depot",
+    "workflow": "agent.finance.cron_remind_bank_end",
+    "schedule_key": "remind_bank_end",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'finance:bank_end';",
+      "DELETE FROM finance.savings_plans WHERE name = '__ctfbe Sparplan';",
+      "DELETE FROM finance.recurring_payments WHERE name = '__ctfbe Sparplan';",
+      "DELETE FROM finance.account_balances WHERE account_id IN (SELECT id FROM finance.accounts WHERE name IN ('__ctfbe Depot', '__ctfbe Verrechnung'));",
+      "DELETE FROM finance.accounts WHERE name = '__ctfbe Depot';",
+      "DELETE FROM finance.accounts WHERE name = '__ctfbe Verrechnung';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ctfbe Verrechnung', 'cash', 'EUR', 'active');",
+      "INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, bank) SELECT '__ctfbe Depot', 'stocks_depot', 'EUR', 'active', v.id, 'Testbroker' FROM finance.accounts v WHERE v.name = '__ctfbe Verrechnung';",
+      "INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to) SELECT '__ctfbe Sparplan', v.id, -50, 'month', current_date - 3, current_date - 3, current_date - 2 FROM finance.accounts v WHERE v.name = '__ctfbe Verrechnung';",
+      "INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id) SELECT '__ctfbe Sparplan', d.id, 'TST', 'Test ETF', r.id FROM finance.accounts d, finance.recurring_payments r WHERE d.name = '__ctfbe Depot' AND r.name = '__ctfbe Sparplan';"
+    ],
+    "expect_keys": ["finance.dialog.bank_end_intro", "finance.dialog.bank_end_line_savings_plan", "finance.dialog.bank_end_howto"],
+    "expect_buttons": ["core.reminders.btn_off"]
+  },
+  {
+    "kind": "cron_text",
     "id": "ctf_bank_todo",
     "name": "Bank-Zettel an den Owner (ko): Kopf, Zeile, Knoepfe, ohne Modell",
     "workflow": "agent.finance.cron_remind_bank_todo",

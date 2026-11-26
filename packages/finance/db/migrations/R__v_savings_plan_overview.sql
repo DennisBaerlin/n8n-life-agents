@@ -70,7 +70,10 @@ SELECT sp.id,
        c.id                                     AS current_rp_id,
        h.id                                     AS head_rp_id,
        c.schedule_days_of_month                 AS days_of_month,
-       finance.fn_account_label(s.emoji, s.account_type, s.name) AS settlement_account_label
+       finance.fn_account_label(s.emoji, s.account_type, s.name) AS settlement_account_label,
+       -- Ende der Kette vom Kopf (eine geplante Aenderung ist kein Ende), Namen wie standing_order_overview
+       finance.fn_recurring_last_due(h.id)       AS last_execution,
+       finance.fn_recurring_last_valid_day(h.id) AS last_valid_day
 FROM finance.savings_plans AS sp
 INNER JOIN chain AS ch                    ON ch.plan_id = sp.id
 INNER JOIN finance.recurring_payments AS h ON h.id = ch.head_id

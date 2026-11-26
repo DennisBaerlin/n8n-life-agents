@@ -83,6 +83,17 @@ install_llm_gateway() {
     serial_tools=1
   fi
 
+  # Upstream-Verbindungen (Begruendung an UP_IDLE_MS in server.js): 0 = jede Anfrage frisch (Standard), 1-60000 =
+  # Wiederverwendung mit diesem Leerlauf-Limit in ms; gleiche Quellen wie der Keep-Alive.
+  local up_idle="${LLM_GATEWAY_UPSTREAM_IDLE_MS:-}"
+  [ -n "$up_idle" ] || up_idle="$(read_env_value "$INSTALL_ENV_FILE" LLM_GATEWAY_UPSTREAM_IDLE_MS 2>/dev/null || true)"
+  [ -n "$up_idle" ] || up_idle=0
+  if ! [[ "$up_idle" =~ ^[0-9]{1,5}$ ]] || [ "$((10#$up_idle))" -gt 60000 ]; then
+    warn "LLM_GATEWAY_UPSTREAM_IDLE_MS='$up_idle' ungueltig (0-60000) — nehme 0."
+    up_idle=0
+  fi
+  up_idle=$((10#$up_idle))   # ohne fuehrende Nullen gespeichert
+
   local changed=1
   if write_if_changed "$LLM_GATEWAY_DIR/server.js" 0644 < "$src"; then changed=0; fi
   # Persona-Sticker fuer den Telegram-Relay (Kopf von server.js): wie der Code selbst kopiert (REPO_ROOT ist beim
@@ -103,7 +114,7 @@ install_llm_gateway() {
     # laedt sie bei jedem Start (compose.yml). StateDirectory-Ersatz: Volume gw_state, dem Container-Nutzer (uid 1000).
     install -d -m 0700 -o 1000 -g 1000 "${STATE_DIRECTORY:-/var/lib/${LLM_GATEWAY_UNIT_NAME}}"
     if printf '%s\n' "LLM_GATEWAY_PORT=${LLM_GATEWAY_PORT}" "LLM_GATEWAY_KEEPALIVE_HOURS=${ka_hours}" \
-         "LLM_GATEWAY_SERIAL_TOOLS=${serial_tools}" "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
+         "LLM_GATEWAY_SERIAL_TOOLS=${serial_tools}" "LLM_GATEWAY_UPSTREAM_IDLE_MS=${up_idle}" "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
          ${upstream:+"LLM_GATEWAY_UPSTREAM=${upstream}"} \
        | write_if_changed "$LLM_GATEWAY_DIR/gateway.env" 0644; then
       changed=0
@@ -112,6 +123,7 @@ install_llm_gateway() {
         GATEWAY_PORT="$LLM_GATEWAY_PORT" \
         KEEPALIVE_HOURS="$ka_hours" \
         SERIAL_TOOLS="$serial_tools" \
+        UPSTREAM_IDLE_MS="$up_idle" \
         NODE_BIN="$node_bin" \
         GATEWAY_JS="$LLM_GATEWAY_DIR/server.js" \
         STICKER_DIR="$sticker_dir" \

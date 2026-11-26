@@ -403,7 +403,7 @@ gwenv() { read_env_value "$LW/gw/gateway.env" "$1" 2>/dev/null || true; }
 gwrun compose http://127.0.0.1:8088;   eq L.weiche-schreibt-ziel http://127.0.0.1:8088 "$(gwenv LLM_GATEWAY_UPSTREAM)"
 gwrun compose http://127.0.0.1:08088;  eq L.fuehrende-null-normalisiert http://127.0.0.1:8088 "$(gwenv LLM_GATEWAY_UPSTREAM)"
 gwrun compose -
-if [ -f "$LW/gw/gateway.env" ] && ! grep -q '^LLM_GATEWAY_UPSTREAM' "$LW/gw/gateway.env"; then pass L.ohne-weiche-keine-zeile; else fail L.ohne-weiche-keine-zeile "Zeile vorhanden oder gateway.env fehlt"; fi
+if [ -f "$LW/gw/gateway.env" ] && ! grep -q '^LLM_GATEWAY_UPSTREAM=' "$LW/gw/gateway.env"; then pass L.ohne-weiche-keine-zeile; else fail L.ohne-weiche-keine-zeile "Zeile vorhanden oder gateway.env fehlt"; fi
 for bad in https://api.anthropic.com http://example.org http://127.0.0.1.evil.test:80 http://localhost:8088 http://127.0.0.1:0 \
            http://127.0.0.1:99999 http://127.0.0.1:8088/x http://u@127.0.0.1:8088 http://127.0.0.1 http://127.0.0.1:8088/ 'http://[::1]:8088' 'http://127.0.0.1:8088 x'; do
   if gwrun compose "$bad"; then fail "L.fremdes-ziel-bricht-ab [$bad]" "kein Abbruch"

@@ -12,7 +12,7 @@
 # Tick-Schleife des master (Suspend-TestTimers, in finally zurueck), der Fall-Runner startet seine eigene Telegram-Attrappe auf
 # Port 8101 und gibt den Fake-Releases die compose.yml des laufenden master-Abbilds mit; der master-Wechsel ist nicht Gegenstand.
 # Usage:  .\scripts\dev\update_chat_test.ps1 [-Port 8086] [-Verbose]   (belegt Port und Port+1, im Verbund zusaetzlich 8101; frei neben 8088 mock_llm,
-#         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8095-8099 + 8102/8103 llm_gateway_test)
+#         8089 mock_telegram, 8090 llm_gateway, 8092 mock_paperless, 8093/8094 release_fetch, 8094-8099 + 8102-8104 llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8086, [switch]$Verbose)
 $ErrorActionPreference = 'Stop'

@@ -715,7 +715,7 @@
   {
     "id": "oc-plan-1",
     "name": "Veroeffentlichter Finanzplan, Frage nach 'dem Plan' ohne Bereich -> agent.finance_advisor, nicht der Karriere-Coach",
-    "task": "Wie geht es jetzt mit unserem Plan weiter?",
+    "task": "Wie geht es eigentlich mit dem Plan weiter?",
     "chat_id": "test_oc_plan_1",
     "setup_sql": "INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) SELECT 'finance', '__E2E__ OP Plan', 'active', 1, now(), 'x' WHERE NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active');",
     "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE status = 'draft') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'career' AND status = 'active')",

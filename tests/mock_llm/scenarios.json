@@ -150,9 +150,9 @@
   },
   {
     "_comment": "oc-plan-1: Frage nach 'dem Plan' ohne Bereich bei veroeffentlichtem Finanzplan -> Call_agent_finance_advisor_ (die Wahl selbst prueft der bezahlte Tier).",
-    "match": "mit unserem Plan weiter",
+    "match": "eigentlich mit dem Plan weiter",
     "calls": [
-      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Wie geht es jetzt mit unserem Plan weiter?" } }
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Wie geht es eigentlich mit dem Plan weiter?" } }
     ],
     "final": "Als Naechstes tragen wir die vereinbarten Eintraege ein, die Liste kommt gleich.",
     "final_router": "FRAME"

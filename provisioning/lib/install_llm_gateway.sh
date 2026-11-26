@@ -83,14 +83,14 @@ install_llm_gateway() {
     serial_tools=1
   fi
 
-  # Leerlauf-Limit freier Upstream-Verbindungen in ms (Begruendung an UP_IDLE_MS in server.js): 0-60000, Standard 4000,
-  # 0 = jede Anfrage auf frischer Verbindung; gleiche Quellen wie der Keep-Alive.
+  # Upstream-Verbindungen (Begruendung an UP_IDLE_MS in server.js): 0 = jede Anfrage frisch (Standard), 1-60000 =
+  # Wiederverwendung mit diesem Leerlauf-Limit in ms; gleiche Quellen wie der Keep-Alive.
   local up_idle="${LLM_GATEWAY_UPSTREAM_IDLE_MS:-}"
   [ -n "$up_idle" ] || up_idle="$(read_env_value "$INSTALL_ENV_FILE" LLM_GATEWAY_UPSTREAM_IDLE_MS 2>/dev/null || true)"
-  [ -n "$up_idle" ] || up_idle=4000
-  if ! [[ "$up_idle" =~ ^[0-9]{1,5}$ ]] || [ "$up_idle" -gt 60000 ]; then
-    warn "LLM_GATEWAY_UPSTREAM_IDLE_MS='$up_idle' ungueltig (0-60000) — nehme 4000."
-    up_idle=4000
+  [ -n "$up_idle" ] || up_idle=0
+  if ! [[ "$up_idle" =~ ^[0-9]{1,5}$ ]] || [ "$((10#$up_idle))" -gt 60000 ]; then
+    warn "LLM_GATEWAY_UPSTREAM_IDLE_MS='$up_idle' ungueltig (0-60000) — nehme 0."
+    up_idle=0
   fi
   up_idle=$((10#$up_idle))   # ohne fuehrende Nullen gespeichert
 

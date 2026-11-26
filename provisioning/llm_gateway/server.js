@@ -24,8 +24,8 @@
 //   parallele tool_use-Bloecke kamen im n8n-Agenten mit leeren Argumenten an (Begruendung an der Funktion).
 //   Schalter LLM_GATEWAY_SERIAL_TOOLS (Standard an, 0 = aus).
 // AUSFALLSICHER: Body nicht lesbar → Original-Bytes weiter. Anthropic-400 mit "cache_control"/"tool_choice" →
-//   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true. Freie Upstream-Verbindungen
-//   leben hoechstens LLM_GATEWAY_UPSTREAM_IDLE_MS (Begruendung an UP_IDLE_MS).
+//   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true. Jede Anfrage auf frischer
+//   Upstream-Verbindung, Schalter LLM_GATEWAY_UPSTREAM_IDLE_MS (Begruendung an UP_IDLE_MS).
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
 //   Anthropic-Feldnamen (input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read),
 //   nicht OTel-GenAI (dort noch "Development"). Zusaetzlich haengt sie (mit id + Workflow) an
@@ -92,15 +92,17 @@ const WF_NAME = /^[a-z0-9._-]{1,80}$/;
 const DROP_RES = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 
 const client = UPSTREAM.protocol === 'http:' ? http : https;
-// Leerlauf-Limit freier Upstream-Verbindungen: ohne Limit blieb eine Verbindung beliebig lange im Pool; war sie unterwegs
-// still verworfen (NAT, Gegenueber, kein FIN/RST), hing die naechste Anfrage darauf minutenlang (live 470 s bis
-// ECONNRESET). Mit Limit wird nur innerhalb einer Denk-Schleife wiederverwendet (Folge-Anfrage meist in Sekunden).
-// 4000 = undici keepAliveTimeout / agentkeepalive freeSocketTimeout (Node-globalAgent 5000): unter dem 5-s-Leerlauf
-// ueblicher Server. Agent-`timeout` zerstoert nur FREIE Sockets (lib/internal/http/agent.js onTimeout); auf aktiven loest
-// er nur ein 'timeout'-Ereignis aus -> lange Antworten (Opus ohne Stream: erstes Byte erst nach der ganzen Antwort) laufen
-// weiter, solange kein 'timeout'-Listener / req.setTimeout dazukommt. 0 = jede Anfrage auf frischer Verbindung (Notschalter).
+// Upstream-Verbindungen: Standard (0) = jede Anfrage auf frischer Verbindung, wie tgAgent. WARUM: ein wiederverwendeter
+// Socket kann direkt nach einer erfolgreichen Antwort still tot sein (kein FIN/RST); die naechste Anfrage darauf wartet
+// dann, bis der Kernel aufgibt (Minuten, danach erst stale_socket_retry). Der Pool nimmt den zuletzt frei gewordenen
+// Socket (scheduling 'lifo') -> ein Leerlauf-Limit greift genau dort nicht. Ein Zeitlimit bis zum ersten Byte erkennt es
+// auch nicht: ohne Stream kommt das erste Byte erst mit der ganzen Antwort (Opus bis ~35 s), ein Abbruch kostete doppelt.
+// Preis: TCP+TLS-Aufbau je Aufruf (~2 RTT, klein gegen die Antwortzeit).
+// > 0 = Wiederverwendung mit diesem Leerlauf-Limit in ms (4000 = undici keepAliveTimeout / agentkeepalive freeSocketTimeout).
+// Der Agent-`timeout` zerstoert nur FREIE Sockets (lib/internal/http/agent.js onTimeout); auf aktiven loest er nur ein
+// 'timeout'-Ereignis aus -> lange Antworten laufen weiter, solange kein 'timeout'-Listener / req.setTimeout dazukommt.
 // Wert kommt validiert aus install_llm_gateway.sh (Unit bzw. gateway.env); hier nur Ganzzahl-Form, sonst Standard.
-const UP_IDLE_MS = (() => { const s = process.env.LLM_GATEWAY_UPSTREAM_IDLE_MS || '4000'; const v = Number(s); return /^\d{1,5}$/.test(s) && v <= 60000 ? v : 4000; })();
+const UP_IDLE_MS = (() => { const s = process.env.LLM_GATEWAY_UPSTREAM_IDLE_MS || '0'; const v = Number(s); return /^\d{1,5}$/.test(s) && v <= 60000 ? v : 0; })();
 const agent = UP_IDLE_MS > 0 ? new client.Agent({ keepAlive: true, timeout: UP_IDLE_MS }) : new client.Agent({ keepAlive: false });
 
 // ---- Telegram-Relay: Konstanten (Abschnitt unten) --------------------------------------------------------------
@@ -415,7 +417,7 @@ function responseHeaders(upHeaders) {
 }
 
 // meta: { measure, model, stream, cached, fallback, started }
-// staleRetry: einmalige Wiederholung, wenn eine wiederverwendete Keep-Alive-Verbindung schon vor der Antwort
+// staleRetry (nur mit Wiederverwendung, UP_IDLE_MS > 0): einmalige Wiederholung, wenn eine wiederverwendete Verbindung schon vor der Antwort
 // zurueckgesetzt wurde (Node-Doku request.reusedSocket) — upstream wurde dann nichts verarbeitet.
 function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
   // Ziel = UPSTREAM.origin + Pfad (req.url ist durch den Pfad-Waechter im Handler garantiert '/…', nie '//…').

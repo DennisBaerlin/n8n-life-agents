@@ -22,8 +22,8 @@
 # mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
 # Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
-# (o) still tote Keep-Alive-Verbindung (Attrappe schweigt auf der Verbindung): nach dem Leerlauf-Limit frische Verbindung statt
-# Haenger; lange Antwort auf wiederverwendeter Verbindung nicht abgebrochen; LLM_GATEWAY_UPSTREAM_IDLE_MS=0 (Unit 8104) = nie wiederverwenden.
+# (o) still tote Keep-Alive-Verbindung (Attrappe schweigt auf der Verbindung): Standard frische Verbindung je Anfrage, auch direkt danach
+# kein Haenger; Wiederverwendung (Unit 8104, LLM_GATEWAY_UPSTREAM_IDLE_MS=4000): Limit greift, lange Antwort bleibt, Abbruch ohne Wiederholung.
 #
 # N8NTEST_RUNTIME=compose (Docker-Verbund, bootstrap_test_stack.ps1): statt der systemd-Einheiten starten eigene Container im
 # Netz-Namensraum des anchor (127.0.0.1 wie der echte Gateway): die Gateways aus dem Abbild und mit dem Code (/gw/server.js) des echten
@@ -61,7 +61,7 @@ $MockDir   = if ($IsCompose) { '/tmp' } else { '/opt/gwtest' }
 $TgDir     = if ($IsCompose) { '/tmp' } else { '/opt/gwtest_tg' }
 $MockLog  = '/tmp/gwtest_mock.jsonl'
 $UsageDir = '/tmp/gwtest_usage'
-$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg'; par = 'n8ntest-gwt-par'; fresh = 'n8ntest-gwt-fresh' }
+$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg'; par = 'n8ntest-gwt-par'; reuse = 'n8ntest-gwt-reuse' }
 $Canary   = 'CANARY_7f3a9c_PROMPT'
 $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
 
@@ -205,8 +205,8 @@ Start-TestUnit $Units.gw @('LLM_GATEWAY_PORT=8095', 'LLM_GATEWAY_UPSTREAM=http:/
 Start-TestUnit $Units.dead @('LLM_GATEWAY_PORT=8097', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:1', 'LLM_GATEWAY_KEEPALIVE_HOURS=0') $GwJs 8097
 # (j2) Schalter LLM_GATEWAY_SERIAL_TOOLS=0 (Probelauf parallele Werkzeug-Aufrufe), sonst identisch.
 Start-TestUnit $Units.par @('LLM_GATEWAY_PORT=8094', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'LLM_GATEWAY_SERIAL_TOOLS=0', "LLM_GATEWAY_USAGE_DIR=$UsageDir") $GwJs 8094
-# (o) Schalter LLM_GATEWAY_UPSTREAM_IDLE_MS=0 (Upstream-Verbindung nie wiederverwenden), sonst identisch.
-Start-TestUnit $Units.fresh @('LLM_GATEWAY_PORT=8104', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'LLM_GATEWAY_UPSTREAM_IDLE_MS=0') $GwJs 8104
+# (o) Schalter LLM_GATEWAY_UPSTREAM_IDLE_MS=4000 (Upstream-Verbindungen wiederverwenden, Leerlauf-Limit 4 s), sonst identisch.
+Start-TestUnit $Units.reuse @('LLM_GATEWAY_PORT=8104', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'LLM_GATEWAY_UPSTREAM_IDLE_MS=4000') $GwJs 8104
 # (k) Keep-Alive mit verkuerztem Takt (1,5 s statt 55 Min), sonst identisch.
 Start-TestUnit $Units.ka @('LLM_GATEWAY_PORT=8099', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=1', 'LLM_GATEWAY_KEEPALIVE_EVERY_MS=1500') $GwJs 8099
 
@@ -362,31 +362,40 @@ try {
     else { Fail ($lWhy -join ' | ') }
 
     # (o) still tote Keep-Alive-Verbindung: die Attrappe beantwortet auf einer Verbindung nur die erste Anfrage mit Marker,
-    #     danach kommt dort nie ein Byte (kein FIN, kein RST). Nach mehr als dem Leerlauf-Limit (Standard 4 s) darf der
-    #     Gateway sie nicht mehr nehmen: frische Verbindung, Antwort in Sekunden statt Haenger. Eine legitim lange Antwort
-    #     auf einer wiederverwendeten Verbindung (laenger als das Limit) wird nicht abgebrochen. Schalter 0 = nie wiederverwenden.
-    Write-Host '  (o) still tote Keep-Alive-Verbindung -> frische Verbindung; lange Antwort bleibt; Schalter 0'
+    #     danach kommt dort nie ein Byte (kein FIN, kein RST). Standard: jede Anfrage auf frischer Verbindung -> auch direkt
+    #     nach einer Antwort kein Haenger. Wiederverwendung (Unit 8104, LLM_GATEWAY_UPSTREAM_IDLE_MS=4000): nach dem Limit
+    #     frische Verbindung, eine lange Antwort auf wiederverwendeter Verbindung wird nicht abgebrochen, ein Abbruch des
+    #     Aufrufers loest keine zweite Anfrage aus.
+    Write-Host '  (o) still tote Keep-Alive-Verbindung -> frische Verbindung; Wiederverwendung mit Limit; Abbruch ohne Wiederholung'
     $bh = ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; system = 'SYS'; messages = @(@{ role = 'user'; content = '__mock_blackhole_reuse__' }) })
-    Clear-MockLog
-    $r1 = Send-Gw 8095 '/v1/messages' $bh
-    Start-Sleep -Milliseconds 5500
-    $r2 = Send-Gw 8095 '/v1/messages' $bh -MaxTime 20
-    $e = @(Get-MockEntries)
-    $answered = @($e | Where-Object { $_.decision -ne 'blackhole' })
-    if ($r1.Status -eq '200' -and $r2.Status -eq '200' -and $r2.Seconds -lt 3 -and $answered.Count -eq 2 -and $answered[0].conn -ne $answered[1].conn -and
-        @($e | Where-Object { $_.decision -eq 'blackhole' }).Count -eq 0) {
-        Pass "nach Leerlauf frische Verbindung, Antwort in $($r2.Seconds) s (kein Haenger)"
-    }
-    else { Fail "Status=$($r1.Status)/$($r2.Status) Dauer=$($r2.Seconds)s stub=$($e | Select-Object conn, decision | ConvertTo-Json -Compress)" }
-
     $quick = ConvertTo-Body ([ordered]@{ model = 'claude-opus-5-5'; max_tokens = 10; system = 'SYS'; messages = @(@{ role = 'user'; content = 'kurz' }) })
+    function Test-FreshAfterBlackhole([int]$Port, [int]$PauseMs, [string]$Label) {
+        Clear-MockLog
+        $r1 = Send-Gw $Port '/v1/messages' $bh
+        if ($PauseMs -gt 0) { Start-Sleep -Milliseconds $PauseMs }
+        $r2 = Send-Gw $Port '/v1/messages' $bh -MaxTime 20
+        $e = @(Get-MockEntries)
+        $answered = @($e | Where-Object { $_.decision -ne 'blackhole' })
+        if ($r1.Status -eq '200' -and $r2.Status -eq '200' -and $r2.Seconds -lt 3 -and $answered.Count -eq 2 -and $answered[0].conn -ne $answered[1].conn -and
+            @($e | Where-Object { $_.decision -eq 'blackhole' }).Count -eq 0) {
+            Pass "${Label}: frische Verbindung, Antwort in $($r2.Seconds) s (kein Haenger)"
+        }
+        else { Fail "${Label}: Status=$($r1.Status)/$($r2.Status) Dauer=$($r2.Seconds)s stub=$($e | Select-Object conn, decision | ConvertTo-Json -Compress)" }
+    }
+    Test-FreshAfterBlackhole 8095 0 'Standard, Folge-Anfrage sofort'
+    $h0 = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8095/__health')).Output -join '') | ConvertFrom-Json
+    $h1 = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8104/__health')).Output -join '') | ConvertFrom-Json
+    if ($h0.upstream_idle_ms -eq 0 -and $h1.upstream_idle_ms -eq 4000) { Pass '/__health meldet upstream_idle_ms (Standard 0, Schalter 4000)' }
+    else { Fail "health upstream_idle_ms: $($h0.upstream_idle_ms) / $($h1.upstream_idle_ms)" }
+    Test-FreshAfterBlackhole 8104 5500 'Wiederverwendung, nach Leerlauf-Limit'
+
     $slow = ConvertTo-Body ([ordered]@{ model = 'claude-opus-5-5'; max_tokens = 10; system = 'SYS'; messages = @(@{ role = 'user'; content = '__mock_delay_ms_6500__' }) })
     Clear-MockLog
-    $errBefore = @(Get-UnitJournal $Units.gw | Where-Object { $_ -match '"ev":"error"' }).Count
-    $null = Send-Gw 8095 '/v1/messages' $quick
-    $r3 = Send-Gw 8095 '/v1/messages' $slow -MaxTime 30
+    $errBefore = @(Get-UnitJournal $Units.reuse | Where-Object { $_ -match '"ev":"error"' }).Count
+    $null = Send-Gw 8104 '/v1/messages' $quick
+    $r3 = Send-Gw 8104 '/v1/messages' $slow -MaxTime 30
     $e = @(Get-MockEntries)
-    $errs = @(Get-UnitJournal $Units.gw | Where-Object { $_ -match '"ev":"error"' } | Select-Object -Skip $errBefore)
+    $errs = @(Get-UnitJournal $Units.reuse | Where-Object { $_ -match '"ev":"error"' } | Select-Object -Skip $errBefore)
     if ($r3.Status -eq '200' -and $r3.Seconds -ge 6 -and $e.Count -eq 2 -and $e[0].conn -eq $e[1].conn -and $errs.Count -eq 0) {
         Pass "lange Antwort ($($r3.Seconds) s) auf wiederverwendeter Verbindung nicht abgebrochen, kein Fehler-Ereignis"
     }
@@ -396,23 +405,16 @@ try {
     # (bezahlte) Anfrage ausloesen, die niemand liest.
     $slow4 = ConvertTo-Body ([ordered]@{ model = 'claude-opus-5-5'; max_tokens = 10; system = 'SYS'; messages = @(@{ role = 'user'; content = '__mock_delay_ms_4000__' }) })
     Clear-MockLog
-    $errBefore = @(Get-UnitJournal $Units.gw | Where-Object { $_ -match '"ev":"error"' }).Count
-    $null = Send-Gw 8095 '/v1/messages' $quick
-    $r4 = Send-Gw 8095 '/v1/messages' $slow4 -MaxTime 1
+    $errBefore = @(Get-UnitJournal $Units.reuse | Where-Object { $_ -match '"ev":"error"' }).Count
+    $null = Send-Gw 8104 '/v1/messages' $quick
+    $r4 = Send-Gw 8104 '/v1/messages' $slow4 -MaxTime 1
     Start-Sleep -Seconds 4
     $e = @(Get-MockEntries)
-    $errs = @(Get-UnitJournal $Units.gw | Where-Object { $_ -match '"ev":"error"' } | Select-Object -Skip $errBefore)
+    $errs = @(Get-UnitJournal $Units.reuse | Where-Object { $_ -match '"ev":"error"' } | Select-Object -Skip $errBefore)
     if ($r4.Status -eq '000' -and $e.Count -eq 2 -and $e[0].conn -eq $e[1].conn -and @($errs -match 'stale_socket_retry').Count -eq 0 -and @($errs -match '"code":"client_closed"').Count -eq 1) {
         Pass 'Abbruch des Aufrufers: keine zweite Anfrage upstream, nur client_closed'
     }
     else { Fail "Abbruch: Status=$($r4.Status) stub=$($e.Count) conns=$(@($e | ForEach-Object { $_.conn }) -join ',') fehler=$($errs -join ' | ')" }
-
-    Clear-MockLog
-    $null = Send-Gw 8104 '/v1/messages' $quick
-    $null = Send-Gw 8104 '/v1/messages' $quick
-    $e = @(Get-MockEntries)
-    if ($e.Count -eq 2 -and $e[0].conn -ne $e[1].conn) { Pass 'LLM_GATEWAY_UPSTREAM_IDLE_MS=0: jede Anfrage auf frischer Verbindung' }
-    else { Fail "Schalter 0: conns=$(@($e | ForEach-Object { $_.conn }) -join ',')" }
 
     # (f) Privacy: Kanarien + Schluessel nie im Journal (inkl. kaputtem JSON)
     Write-Host '  (f) Privacy: Prompt-Inhalt und Schluessel nie im Journal'

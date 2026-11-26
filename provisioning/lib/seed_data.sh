@@ -131,6 +131,26 @@ _seed_package_config() {
   done
 }
 
+# _seed_cron_disable — Install-Schalter CRON_DISABLE="<cron_enable-key> ..." (Leerzeichen oder Komma getrennt): setzt die genannten
+#   cron_enable-Zeilen im selben Seed-Lauf auf false, also vor dem Aktivieren der Workflows. Nur Test-Installationen setzen ihn
+#   (scripts/lib/test_install_env.ps1): ein Cron mit n8n-Start-Eingang liest sein Gate schon beim Start, ein `config set` nach der
+#   Installation kaeme zu spaet. Nur Prozess-Env (Antwort-Datei); ohne den Schalter kein Effekt, und ein spaeterer Seed laesst den Wert
+#   stehen (core.fn_config_seed ueberschreibt owner-geaenderte Werte nie). Ein Schluessel ohne Zeile (Paket noch nicht installiert) aendert
+#   nichts; dass ein Schluessel im Manifest steht, prueft scripts/dev/test_stack_test.ps1.
+_seed_cron_disable() {
+  local raw="${CRON_DISABLE:-}" key keys=()
+  [ -n "$raw" ] || return 0
+  IFS=', ' read -ra keys <<< "$raw"
+  for key in "${keys[@]}"; do
+    [ -n "$key" ] || continue
+    if [[ $key =~ ^[a-z][a-z0-9_]*$ ]]; then
+      printf "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key = %s AND managed_by = 'owner';\n" "$(_sql_str "$key")"
+    else
+      warn "CRON_DISABLE: '$key' ist ungueltig (erwartet ein cron_enable-Key aus Kleinbuchstaben, Ziffern, _) -- uebersprungen." >&2
+    fi
+  done
+}
+
 # _seed_fm_value <key> <frontmatter>  -> Wert der ersten Zeile "<key>:" (ohne fuehrende Leerzeichen), sonst leer. Liest die
 # ganze Eingabe (kein `head`/`exit`): ein frueh aussteigender Leser liesse den Schreiber unter pipefail mit 141 sterben.
 _seed_fm_value() {
@@ -1012,6 +1032,7 @@ seed_data() {
     printf 'BEGIN;\n'
     _seed_ai_models       # zuerst (config-Trigger referenziert model_key)
     _seed_package_config  # core.config aus den .config-Bloecken aller Manifeste
+    _seed_cron_disable    # Install-Schalter CRON_DISABLE (nur Test-Installationen), direkt nach den Defaults
     _seed_ui_languages    # core.ui_languages aus dem Core-Manifest "languages" (Textkatalog; vor den Texten, FK)
     _seed_ui_personas     # core.ui_personas aus dem Core-Manifest "personas" (Wertevorrat family.persons[].persona)
     _seed_ui_texts        # core.ui_texts aus packages/<pkg>/locales/<lang>.json (Textkatalog, je Paket ersetzt)

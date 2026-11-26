@@ -32,6 +32,16 @@ function Step([string[]]$CaseArgs, [hashtable]$Env = @{}) {
     }
     return $r
 }
+# Die geseedeten Wechselkurse samt Waehrungen stehen mit genauem Wert in der Datenbank (Fall fx: Soll 3/2), der Kurs-Abruf des Crons ist
+# per Install-Schalter aus und es liegen nur diese Kurse da (Fall fxcfg: false|3/3). Der Fingerabdruck zaehlt bei den Kursen nur Zeilen,
+# weil ein echtes Ziel eigene schreiben darf. Waere der Abruf an, holt der n8n-Start-Eingang des Crons 30 s nach dem Start echte Kurse, und
+# je nachdem, ob vor oder nach dem Einspielen, unterscheiden sich Quelle und Ziel. Kein Datum im Soll: der Test haengt nicht an der Uhrzeit.
+function Assert-Kurse([string]$Name, $Fx, $Cfg) {
+    $c = @($Cfg.Output) | Where-Object { "$_" -match '^(true|false)\|\d+/\d+$' } | Select-Object -Last 1
+    if ("$c" -ne 'false|3/3') { Fail "${Name}: Kurs-Abruf nicht per Install-Schalter aus oder Netz-Kurse in der Datenbank: '$c' statt false|3/3 (CRON_DISABLE, scripts/lib/test_install_env.ps1)" }
+    $v = @($Fx.Output) | Where-Object { "$_" -match '^\d+/\d+$' } | Select-Object -Last 1
+    if ("$v" -ne '3/2') { Fail "${Name}: Wechselkurse/Waehrungen der Sicherung: '$v' statt 3/2" }
+}
 function Fresh {
     # Der laufende PowerShell-Host, nicht powershell.exe: das gibt es unter Linux nicht (dort pwsh).
     $r = Invoke-Native (Get-Process -Id $PID).Path @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'bootstrap_test_stack.ps1'), '-Reset')
@@ -57,6 +67,7 @@ try {
     Suspend-TestStackTick -Master $Master
     [void](Step @('seed'))
     [void](Step @('fp', '/tmp/rt/a.fp'))
+    Assert-Kurse 'a' (Step @('fx')) (Step @('fxcfg'))
     [void](Step @('export'))
     Resume-TestStackTick -Master $Master
     foreach ($f in 'rt.nla.enc', 'rt.key', 'a.fp') {
@@ -71,9 +82,11 @@ try {
     [void](Step @('restore'))
     [void](Step @('fp', '/tmp/rt/b.fp'))
     $c = Step @('subset')
+    $fx = Step @('fx'); $cfg = Step @('fxcfg')
     Resume-TestStackTick -Master $Master
     [void](Invoke-Native docker @('cp', "${Master}:/tmp/rt/b.fp", (Join-Path $Local 'b.fp')))
     Compare-Fp 'b' $true
+    Assert-Kurse 'b' $fx $cfg
     if ((@($c.Output) | Where-Object { "$_" -match '^\d+$' } | Select-Object -Last 1) -ne '2') { Fail "b: KI-Kosten oder Merker der Quelle fehlen nach dem Einspielen" }
 
     if ($AgainstRef) {

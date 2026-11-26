@@ -67,6 +67,17 @@ function Get-TestInstallEnvMap([string]$RepoRoot) {
 #                                       prueft die Mechanik gegen den Mock).
 #   TELEGRAM_WEBHOOK_TAKEOVER=1         der Test-Bot ist vom vorigen oder einem parallelen Substrat noch verbunden; ohne den
 #                                       Schalter bricht die Erstinstallation vor jeder Aenderung ab (telegram_webhook_preflight).
+#   CRON_DISABLE=refresh_fx_rates       Liste von cron_enable-Schluesseln, die der Seed auf false setzt. Der Wechselkurs-Cron holt 30 s nach dem
+#                                       n8n-Start (und stuendlich, solange keine Kurse da sind) Feed und 5 Jahre EZB aus dem echten Netz: ~160
+#                                       Waehrungen und ~38000 Kurse in jedem Substrat, Faelle mit eigenen Kursen (ON CONFLICT DO NOTHING) liefen
+#                                       gegen Zufallswerte. Der Seed setzt den Wert, bevor das Paket seine Workflows bekommt (ein `config set`
+#                                       danach kaeme zu spaet); ein Fall, der den Abruf braucht, schaltet ihn selbst ein und danach wieder aus
+#                                       (cron_text_cases ctf09). Der Marktpreis-Cron bleibt an: tool_book_stock_buy ruft ihn beim Kauf als
+#                                       Sofort-Abruf, die e2e-Faelle nutzen das. Der Substrat-Unterschied zur Auslieferung (Abruf aus) ist
+#                                       gewollt; fn_fx_feed_gap und die Berater-Hinweise pruefen die DB-Tests mit eigener Config.
+#                                       Waechter: scripts/dev/test_stack_test.ps1 (Schluessel steht im Manifest), tests/mock_runtime/
+#                                       seed_cron_disable_cases.sh (SQL-Text), backup_roundtrip_test.ps1 (Fall fxcfg); Mechanik:
+#                                       _seed_cron_disable in seed_data.sh.
 function Get-TestDevSwitches {
     param([switch]$HitlChatApproval, [switch]$FullDeploy, [string]$SerialTools = '')
     if ($SerialTools -and $SerialTools -notin @('0', '1')) { throw "LLM_GATEWAY_SERIAL_TOOLS nur 0 oder 1, nicht '$SerialTools'." }
@@ -79,6 +90,7 @@ function Get-TestDevSwitches {
     if ($SerialTools) { $s['LLM_GATEWAY_SERIAL_TOOLS'] = $SerialTools }
     $s['BOT_PROFILE_PHOTO'] = '0'
     $s['TELEGRAM_WEBHOOK_TAKEOVER'] = '1'
+    $s['CRON_DISABLE'] = 'refresh_fx_rates'
     return $s
 }
 

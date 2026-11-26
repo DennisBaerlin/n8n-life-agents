@@ -7,6 +7,7 @@
 #     (stdin nur, wenn psql liest), Compose-Aufrufe nur mit festem Projekt; Volumes nur mit eigenem Label;
 #   - Telegram-Pruefung vor der Aktivierung (frei / eigener / fremder Webhook / Long-Polling / nicht pruefbar);
 #   - Daten-Seed (tests/mock_runtime/seed_pipe_cases.sh): keine Pipe mit fruehem Leser, die unter pipefail mit 141 abbricht.
+#   - Daten-Seed (tests/mock_runtime/seed_cron_disable_cases.sh): der Install-Schalter CRON_DISABLE der Test-Installationen.
 # docker, systemctl und runuser sind dort Attrappen (PATH): nichts wird wirklich gestartet. Braucht kein n8n und kein Netz.
 # Usage:  .\scripts\dev\runtime_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -45,7 +46,7 @@ foreach ($pair in (@(@('provisioning', 'provisioning'), @('packages\core\locales
 }
 
 # cases.sh = die Betriebsart-Naht; seed_pipe_cases.sh = der Daten-Seed bricht an keiner Pipe mit fruehem Leser ab (141).
-foreach ($caseFile in @('cases.sh', 'seed_pipe_cases.sh')) {
+foreach ($caseFile in @('cases.sh', 'seed_pipe_cases.sh', 'seed_cron_disable_cases.sh')) {
     $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_runtime/$caseFile", $root)
     $lines = @($r.Output)
     foreach ($l in $lines) {

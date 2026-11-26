@@ -153,7 +153,7 @@
       "UPDATE core.config SET value = 'true' WHERE package = 'finance' AND category = 'cron_enable' AND key = 'refresh_fx_rates';",
       "DELETE FROM finance.fx_rates WHERE source = 'open.er-api.com' AND as_of > current_date - 3;",
       "SELECT finance.fn_ensure_currency('USD');",
-      "INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'USD', 1.1, current_date - 3, 'open.er-api.com') ON CONFLICT (base_currency, quote_currency, as_of) DO NOTHING;"
+      "INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'USD', 1.1, current_date - 3, 'open.er-api.com') ON CONFLICT (base_currency, quote_currency, as_of) DO UPDATE SET source = EXCLUDED.source, updated_at = now();"
     ],
     "expect_keys": ["finance.dialog.fx_feed_down"],
     "expect_sql": [

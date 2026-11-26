@@ -184,8 +184,10 @@ function Invoke-TestN8nPsql {
 # Gate-Lauf erreicht nie 'Close pending' -> seine Zeile sperrte den Owner-Chat bis zur TTL (16 Min) und jeder
 # Folgefall liefe in 'Reply card open'. Aufrufer: Initialize-AgentTestState, hitl_gate_test, real_ingress_test;
 # das SQL nutzt zusaetzlich Reset-TestCaseState (mock_route_test).
+# Ebenso die offenen Fragen (agent.chat_prompts, fluechtig): alle Router-Faelle laufen im selben Owner-Chat, eine offene
+# Frage eines Vorfalls setzte sonst open_prompt_agent (Router-Regel 2c) und lenkte den naechsten Fall zum Berater.
 # Tabelle fehlt (altes Substrat) -> to_regclass-Guard, kein Fehler.
-$script:ClearHitlPendingSql = "DO `$`$ BEGIN IF to_regclass('agent.hitl_pending') IS NOT NULL THEN DELETE FROM agent.hitl_pending; END IF; END `$`$;"
+$script:ClearHitlPendingSql = "DO `$`$ BEGIN IF to_regclass('agent.hitl_pending') IS NOT NULL THEN DELETE FROM agent.hitl_pending; END IF; IF to_regclass('agent.chat_prompts') IS NOT NULL THEN DELETE FROM agent.chat_prompts; END IF; END `$`$;"
 function Clear-HitlPending {
     param([Parameter(Mandatory)][string]$Container)
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', $script:ClearHitlPendingSql)

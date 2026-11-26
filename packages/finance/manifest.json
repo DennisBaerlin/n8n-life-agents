@@ -193,7 +193,7 @@
     "fx_rate": {
       "acquire_fn": "finance.fn_monitor_acquire_fx_rate",
       "validate_fn": "finance.fn_monitor_validate_fx_rate",
-      "params_description": "reads the daily FX table of the finance package - ALWAYS prefer for currency pairs. acquisition_params = {\"base\": \"<ISO code>\", \"quote\": \"<ISO code>\"}, e.g. {\"base\":\"EUR\",\"quote\":\"CLP\"}; the value is quote units per 1 base unit."
+      "params_description": "reads the daily FX table of the finance package - ALWAYS use it for currency pairs and for gold or silver prices, never web_search. acquisition_params = {\"base\": \"<ISO code>\", \"quote\": \"<ISO code>\"}, e.g. {\"base\":\"EUR\",\"quote\":\"CLP\"}; the value is quote units per 1 base unit. Also precious metals: base XAU (gold) or XAG (silver), quote = the currency of the user threshold, optional unit ozt (troy ounce, default) | g | kg, e.g. {\"base\":\"XAU\",\"quote\":\"EUR\",\"unit\":\"ozt\"}; the value is then the metal price per unit (central-bank blend). Never convert a threshold into another currency or unit yourself - choose quote and unit to match the user threshold."
     }
   },
   "read_surface": {

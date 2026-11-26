@@ -5,7 +5,8 @@
 # beim Start von n8n und (c) stuendlicher Schedule; alle laufen durch New-CatchUpEntry (fn_feed_refresh_due: ein Abruf je
 # Kalendertag). Pfad: HTTP GET open.er-api.com/v6/latest/EUR -> finance.fn_upsert_fx_rates (jede gelieferte Waehrung,
 # as_of = Quell-Datum) -> fehlende EZB-Tage holen (finance.fn_fx_history_due: einmal 5 Jahre Nachlauf, danach Ersatzquelle,
-# wenn der Tages-Feed fuer heute nichts geliefert hat). Nutzt aus dem Orchestrator-Scope: $RepoRoot, $Utf8NoBom, $CRED_POSTGRES + build_helpers
+# wenn der Tages-Feed fuer heute nichts geliefert hat) -> Edelmetall-Preise je Metall (finance.fn_fx_metal_due, Frankfurter-
+# Mischkurs, einmal 5 Jahre, danach ab dem juengsten Tag). Nutzt aus dem Orchestrator-Scope: $RepoRoot, $Utf8NoBom, $CRED_POSTGRES + build_helpers
 # (Build-Pg/Build-Http/Build-Sticky/E/Build-Workflow/New-Id).
 function Build-CronRefreshFxRates {
     # Schreibt finance.fx_rates -> laeuft unter der engen Paket-Schreibrolle finance_rw;
@@ -66,6 +67,25 @@ function Build-CronRefreshFxRates {
         })
     $importHist['onError'] = 'continueRegularOutput'
 
+    # Edelmetalle (XAU/XAG) ueber Frankfurter v2 (Mischkurs vieler Zentralbanken, je Feinunze): ein Item je Metall aus
+    # finance.fn_fx_metal_due (einmal 5 Jahre, danach ab dem juengsten Tag). Daten als Text: n8n zerlegte ein Postgres-date
+    # in ein JS-Datum mit Zeitzone, eine JSON-Liste in ein Item je Tag. base=Metall, weil base=EUR nur 5 Stellen liefert;
+    # die DB invertiert (fn_upsert_fx_rates). Fehler -> nichts geschrieben, kein Alert; den Ausfall meldet der Waechter.
+    $metalsDue = Build-Pg 'Metals due?' @(1640, 0) `
+        'SELECT m.metal, m.from_date::text AS from_date, m.to_date::text AS to_date FROM finance.fn_fx_metal_due() m'
+    $metalsDue['onError'] = 'continueRegularOutput'
+    $fetchMetal = Build-Http 'Fetch metal prices' @(1860, 0) `
+        '=https://api.frankfurter.dev/v2/rates?base={{ $json.metal }}&quotes=EUR&from={{ $json.from_date }}&to={{ $json.to_date }}'
+    $fetchMetal['parameters']['options'] = [ordered]@{ timeout = 60000; response = [ordered]@{ response = [ordered]@{ responseFormat = 'text' } } }
+    $fetchMetal['onError'] = 'continueRegularOutput'
+    $fetchMetal.Remove('retryOnFail'); $fetchMetal.Remove('maxTries'); $fetchMetal.Remove('waitBetweenTries')
+    $importMetal = Build-Pg 'Import metal prices' @(2080, 0) `
+        "=SELECT (r->>'ok')::boolean AS ok, (r->>'upserted')::int AS upserted FROM finance.fn_upsert_fx_rates(`$1::jsonb) AS r;" `
+        ([ordered]@{
+            rows = "(() => { try { const a = JSON.parse(`$json.data || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } })()"
+        })
+    $importMetal['onError'] = 'continueRegularOutput'
+
     # Huckepack: der taegliche Lauf raeumt auch verfallene Import- und Vorschlags-Stapel auf (finance.fn_import_sweep, 7 Tage);
     # nicht fatal, damit ein Aufraeum-Fehler nie den Kurs-Abruf aufhaelt.
     $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep(7) AS deleted'
@@ -74,15 +94,19 @@ function Build-CronRefreshFxRates {
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (kein LLM, alle Währungen)' `
-        'DREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) n8n-Start und (c) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, alle rund 160 Währungen in einer Antwort, 7 Tage/Woche) -> Upsert in finance.fx_rates: eine Zeile je gelieferter Währung, unabhängig davon, ob ein Konto oder eine Position sie nutzt (Wächter, Berater und Kürzel-Prüfung brauchen Kurse vorher). Darum kein Sofort-Abruf nach einem Write: der Kurs liegt schon da. Danach fehlende EZB-Tage (Sticky EZB-Kurse: einmal 5 Jahre Nachlauf, danach Ersatzquelle bei Feed-Ausfall). Gelesen wird über finance.fn_to_eur / finance.fn_fx_rate. Abruf aus (cron_enable) heißt: gar keine neuen Kurse.' 280 640
+        'DREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) n8n-Start und (c) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, alle rund 160 Währungen in einer Antwort, 7 Tage/Woche) -> Upsert in finance.fx_rates: eine Zeile je gelieferter Währung, unabhängig davon, ob ein Konto oder eine Position sie nutzt (Wächter, Berater und Kürzel-Prüfung brauchen Kurse vorher). Darum kein Sofort-Abruf nach einem Write: der Kurs liegt schon da. Danach fehlende EZB-Tage (Sticky EZB-Kurse: einmal 5 Jahre Nachlauf, danach Ersatzquelle bei Feed-Ausfall) und die Edelmetall-Preise (Sticky Edelmetalle). Gelesen wird über finance.fn_to_eur / finance.fn_fx_rate. Abruf aus (cron_enable) heißt: gar keine neuen Kurse.' 280 640
 
     $stickyUpsert = Build-Sticky 'Upsert-Logik (via fn)' @(540, 200) `
         'finance.fn_upsert_fx_rates(p jsonb)' `
-        'Atomarer Upsert in der fn (deterministisch getestet: test_fn_upsert_fx_rates.sql). fn-Schritte: jeder Key ^[A-Z]{3}$ außer EUR mit numerischem Wert > 0 wird eine Zeile (kaputte Einzelwerte zählen still in skipped); neue Codes legt die fn in finance.currencies an (ISO-Nachkommastellen). as_of = Datum aus time_last_update_unix der Antwort (Quell-Stand). ON CONFLICT (base,quote,as_of) -> idempotenter Tages-Upsert. rate-Richtung: 1 EUR = <rate> <CCY>; Umrechnung: betrag/rate (fn_to_eur).' 280 480
+        'Atomarer Upsert in der fn (deterministisch getestet: test_fn_upsert_fx_rates.sql). fn-Schritte: jeder Key ^[A-Z]{3}$ außer EUR und außer Edelmetallen (die kommen nur über Sticky Edelmetalle) mit numerischem Wert > 0 wird eine Zeile (kaputte Einzelwerte zählen still in skipped); neue Codes legt die fn in finance.currencies an (ISO-Nachkommastellen). as_of = Datum aus time_last_update_unix der Antwort (Quell-Stand). ON CONFLICT (base,quote,as_of) -> idempotenter Tages-Upsert. rate-Richtung: 1 EUR = <rate> <CCY>; Umrechnung: betrag/rate (fn_to_eur).' 280 480
 
     $stickyHist = Build-Sticky 'EZB-Kurse (Nachlauf + Ersatz)' @(1200, 160) `
         'Fehlende EZB-Tage holen: einmal 5 Jahre, danach als Ersatzquelle' `
-        'Nach jedem Tages-Upsert (auch einem gescheiterten) fragt History due? finance.fn_fx_history_due() und bekommt from/to: (1) Nachlauf, solange keine Zeile mit source ecb existiert: heute minus 5 Jahre bis heute; (2) Ersatzquelle, wenn der Tages-Feed für das UTC-Datum von heute nichts geliefert hat und auch sonst kein Kurs von heute liegt: ab dem Tag nach dem jüngsten Kurs bis heute. Weil ein ausgefallener Feed fällig bleibt, läuft (2) mit dem stündlichen Nachholen mit; die EZB veröffentlicht werktags gegen 16 Uhr MEZ, davor und am Wochenende kommt eine leere Antwort. Die Ausfall-Meldung (cron_remind_missing_prices) kommt erst, wenn auch die EZB ausbleibt. Fetch ECB history = Frankfurter v2 /v2/rates mit providers=ecb (eine einheitliche Reihe, kostenlos, ohne Schlüssel; nur Arbeitstage, rund 30 Währungen; Wochenenden schließt die Kurs-Suche fn_fx_eur_row). Antwort als Text, Import ECB history parst sie im Ausdruck und schreibt per fn_upsert_fx_rates im Zeilen-Modus (source ecb, ON CONFLICT DO NOTHING: ein vorhandener Tageskurs gewinnt). Kommt der Tages-Feed später doch, überschreibt sein Kurs die EZB-Zeile desselben Tages. Fehler oder leere Antwort -> nichts geschrieben, der nächste Lauf versucht es erneut; kein Alert.' 300 380
+        'Nach jedem Tages-Upsert (auch einem gescheiterten) fragt History due? finance.fn_fx_history_due() und bekommt from/to: (1) Nachlauf, solange keine Zeile mit source ecb existiert: heute minus 5 Jahre bis heute; (2) Ersatzquelle, wenn der Tages-Feed für das UTC-Datum von heute nichts geliefert hat und auch sonst kein Kurs von heute liegt: ab dem Tag nach dem jüngsten Kurs bis heute. Weil ein ausgefallener Feed fällig bleibt, läuft (2) mit dem stündlichen Nachholen mit; die EZB veröffentlicht werktags gegen 16 Uhr MEZ, davor und am Wochenende kommt eine leere Antwort. Die Ausfall-Meldung (cron_remind_missing_prices) kommt erst, wenn auch die EZB ausbleibt. Fetch ECB history = Frankfurter v2 /v2/rates mit providers=ecb (eine einheitliche Reihe, kostenlos, ohne Schlüssel; nur Arbeitstage, rund 30 Währungen; Wochenenden schließt die Kurs-Suche fn_fx_eur_row). Antwort als Text, Import ECB history parst sie im Ausdruck und schreibt per fn_upsert_fx_rates im Zeilen-Modus (source ecb; ein vorhandener Kurs einer anderen Quelle gewinnt, eine EZB-Zeile desselben Tages wird überschrieben). Kommt der Tages-Feed später doch, überschreibt sein Kurs die EZB-Zeile desselben Tages. Fehler oder leere Antwort -> nichts geschrieben, der nächste Lauf versucht es erneut; kein Alert.' 300 380
+
+    $stickyMetal = Build-Sticky 'Edelmetalle' @(1860, 160) `
+        'Gold und Silber (XAU/XAG) je Feinunze' `
+        'Läuft in jedem Abruf nach dem EZB-Schritt (auch wenn der nichts zu tun hatte). Metals due? = finance.fn_fx_metal_due(): ein Item je Metall aus finance.currencies (kind metal, vom Init geseedet), from = jüngster gespeicherter Tag des Metalls (wird beim nächsten Abruf erneut geholt, weil sich der Mischkurs eines Tages danach noch ändern kann), ohne Zeile 5 Jahre zurück; to = UTC-Datum. Fetch metal prices = Frankfurter v2 /v2/rates?base=<Metall>&quotes=EUR (Mischkurs vieler Zentralbanken mit Ausreißer-Filter, auch am Wochenende, kostenlos, ohne Schlüssel), Antwort als Text. Import metal prices schreibt per fn_upsert_fx_rates im Zeilen-Modus: die DB speichert EUR -> Metall mit dem Kehrwert (fx_rates bleibt EUR-quotiert), Quelle frankfurter, gleiche Quelle zieht nach, eine andere gewinnt. Damit gibt es den Metallpreis über fn_fx_rate in jeder Währung, die Einheit (Unze, Gramm, Kilo) rechnet die Wächter-Methode fx_rate. Metall-Zeilen zählen weder für die Fälligkeit des Tages-Feeds noch für Ausfall-Meldung oder EZB-Ersatz; fällt die Quelle aus, meldet der einzelne Wächter nach monitor.fx_stale_days den veralteten Kurs. Fehler -> nichts geschrieben, kein Alert.' 300 400
 
     $stickyGate = Build-Sticky 'Cron-Gate' @(-600, -240) `
         'Paket aktiv + cron_enable und fällig' `
@@ -93,8 +117,8 @@ function Build-CronRefreshFxRates {
         'Die Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Drei Eingänge fragen deshalb dieselbe Prüfung: der Tagesplan, der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet, und ein erst später aktiviertes Paket). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(''fx'') meldet, dass heute noch kein Tages-Feed geholt wurde (jüngster Abruf vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone; ohne jede Zeile ebenfalls) oder der geholte Stand (as_of, UTC-Datum der Veröffentlichung) älter ist als das UTC-Datum von vor einer Stunde (Haushalt östlich von UTC holte vor der Veröffentlichung noch den Vortag; ein veralteter Feed wird so stündlich neu versucht). Sonst Ende ohne Abruf: normal ein Abruf je Kalendertag, wer zuerst kommt. Der Stunden-Check startet erst ab 03:15 (Manifest-Default), weil open.er-api.com seine Tageskurse um ca. 00:02 bis 00:26 UTC veröffentlicht. Fällt der Feed aus, bleibt der Lauf stumm (Fetch EUR rates: onError weiter) und wiederholt stündlich; bis dahin springt die EZB als Ersatzquelle ein (Sticky EZB-Kurse); den Ausfall meldet cron_remind_missing_prices erst, wenn auch die EZB finance.fx_feed_alert_days Werktage nichts liefert.' 340 340
 
     $nodes = @($trig, $disabled, $gateSweep, $ifSweep) + @($catchUp.Nodes) +
-             @($fetch, $upsert, $histDue, $ifHist, $fetchHist, $importHist, $sweep, $stickySweep,
-               $stickyOverview, $stickyUpsert, $stickyHist, $stickyGate, $stickyInit)
+             @($fetch, $upsert, $histDue, $ifHist, $fetchHist, $importHist, $metalsDue, $fetchMetal, $importMetal,
+               $sweep, $stickySweep, $stickyOverview, $stickyUpsert, $stickyHist, $stickyMetal, $stickyGate, $stickyInit)
     $conns = [ordered]@{}
     foreach ($k in $catchUp.Connections.Keys) { $conns[$k] = $catchUp.Connections[$k] }
     $conns['Schedule (cron from config)'] = @{ main = @( ,@( (E 'Catch-up needed?'), (E 'Cron enabled?') ) ) }   # Tagesplan: Abruf-Gate + Aufraeum-Gate
@@ -109,9 +133,12 @@ function Build-CronRefreshFxRates {
         'History due?'                = @{ main = @( ,@( E 'History missing?' ) ) }
         'History missing?'            = @{ main = @(
             @( E 'Fetch ECB history' ),      # true: Nachlauf aussteht oder Tages-Feed fehlt heute
-            @()
+            @( E 'Metals due?' )             # false: weiter mit den Edelmetallen
         ) }
         'Fetch ECB history'           = @{ main = @( ,@( E 'Import ECB history' ) ) }
+        'Import ECB history'          = @{ main = @( ,@( E 'Metals due?' ) ) }
+        'Metals due?'                 = @{ main = @( ,@( E 'Fetch metal prices' ) ) }
+        'Fetch metal prices'          = @{ main = @( ,@( E 'Import metal prices' ) ) }
     }
     foreach ($k in $conns2.Keys) { $conns[$k] = $conns2[$k] }
     return (Build-Workflow 'agent.finance.cron_refresh_fx_rates' $nodes $conns)

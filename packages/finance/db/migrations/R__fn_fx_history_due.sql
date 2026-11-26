@@ -6,7 +6,8 @@
 --     Nachlauf: keine Zeile der EZB-Quelle (fn_fx_history_source) -> die letzten 5 Jahre; ein gescheiterter Abruf wird
 --       beim naechsten Lauf wiederholt.
 --     Ersatzquelle: der Tages-Feed hat fuer UTC-heute nichts geliefert (juengstes Feed-as_of < UTC-heute oder keines) und
---       auch sonst liegt kein Kurs von heute -> ab dem Tag nach dem juengsten Kurs (gleich welcher Quelle) bis heute.
+--       auch sonst liegt kein Waehrungs-Kurs von heute -> ab dem Tag nach dem juengsten Kurs (gleich welcher Quelle, ohne
+--       Edelmetalle) bis heute.
 --       Laeuft mit dem stuendlichen Nachholen, solange der Feed faellig bleibt (fn_feed_refresh_due); die EZB
 --       veroeffentlicht werktags gegen 16 Uhr MEZ, frueher oder am Wochenende kommt eine leere Antwort.
 --   Waehrungen ausserhalb der EZB-Liste (rund 30) bleiben ohne Vergangenheit und ohne Ersatz.
@@ -27,7 +28,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM finance.fx_rates WHERE source = finance.fn_fx_history_source()) THEN
         RETURN jsonb_build_object('due', true, 'from', (core.fn_today() - interval '5 years')::date, 'to', v_utc);
     END IF;
-    SELECT max(as_of) FILTER (WHERE source = finance.fn_fx_feed_source()), max(as_of)
+    -- Edelmetall-Zeilen (currencies.kind metal, gleich welcher Quelle) sagen nichts ueber die Waehrungs-Kurse von heute
+    SELECT max(as_of) FILTER (WHERE source = finance.fn_fx_feed_source()),
+           max(as_of) FILTER (WHERE quote_currency NOT IN (SELECT c.code FROM finance.currencies c WHERE c.kind = 'metal'))
     INTO v_feed, v_all FROM finance.fx_rates;
     RETURN jsonb_build_object(
         'due',  (v_feed IS NULL OR v_feed < v_utc) AND v_all < v_utc,

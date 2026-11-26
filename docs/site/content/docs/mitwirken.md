@@ -32,7 +32,7 @@ Das Projekt ist **quelloffen unter der MIT-Lizenz** (Datei `LICENSE` im Reposito
 - **Kein offizielles n8n-Projekt.** n8n ist eine Marke der n8n GmbH; dieses Projekt steht in keiner Verbindung zu ihr.
 - **n8n selbst liegt nicht im Repository.** Es steht unter der „Sustainable Use License“ von n8n (keine klassische Open-Source-Lizenz); der Installer installiert n8n aus dem offiziellen Paket auf deinem Rechner und verteilt es nicht selbst.
 - **Keine Finanz-, Steuer- oder Rechtsberatung.** Die Agenten liefern Informationen und Vorschläge; Entscheidungen und ihre Folgen bleiben bei dir. Die Software kommt ohne Gewähr.
-- **Wechselkurse:** [Rates By Exchange Rate API](https://www.exchangerate-api.com). Das Finanz-Paket holt die Tageskurse einmal am Tag vom kostenlosen Dienst dieses Anbieters (Quellen-Hinweis ist dort Pflicht); die Kurse bleiben in deiner eigenen Datenbank und dienen nur zur Umrechnung in Euro. Ältere Kurse (einmalig die letzten fünf Jahre) und Ersatz, wenn der Tagesdienst ausfällt: EZB-Referenzkurse über [Frankfurter](https://frankfurter.dev).
+- **Wechselkurse:** [Rates By Exchange Rate API](https://www.exchangerate-api.com). Das Finanz-Paket holt die Tageskurse einmal am Tag vom kostenlosen Dienst dieses Anbieters (Quellen-Hinweis ist dort Pflicht); die Kurse bleiben in deiner eigenen Datenbank und dienen nur zur Umrechnung in Euro. Ältere Kurse (einmalig die letzten fünf Jahre) und Ersatz, wenn der Tagesdienst ausfällt: EZB-Referenzkurse über [Frankfurter](https://frankfurter.dev). Gold- und Silberpreise je Feinunze (für Wächter und den Berater): Mittelwert mehrerer Zentralbanken, ebenfalls über Frankfurter; die Bedingungen der einzelnen Banken stehen auf der [Lizenz-Seite](https://frankfurter.dev/license/).
 
 ## Weiterlesen
 

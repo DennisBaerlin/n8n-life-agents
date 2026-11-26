@@ -8,7 +8,8 @@
 -- fn_ensure_currency (WRITE HELPER)
 --   Registriert einen ISO-4217-Code in finance.currencies, falls er fehlt (idempotent, ON CONFLICT DO NOTHING).
 --   Eingabe: p_code (Pflicht, ^[A-Z]{3}$); minor_unit aus fn_currency_minor_unit.
---   Rueckgabe: {ok:true, code, minor_unit} | {ok:false, reason} (ungueltiger Code, kein RAISE).
+--   Rueckgabe: {ok:true, code, minor_unit} | {ok:false, reason} (ungueltiger Code oder Edelmetall, kein RAISE): Metall-Codes
+--   (fn_is_metal) sind nur Kurs-Codes; die FK-Sperre der Waehrungs-Spalten loeste sonst einen Owner-Alarm aus.
 -- Tests: tests/db/finance/test_fn_ensure_currency.sql
 CREATE OR REPLACE FUNCTION finance.fn_currency_minor_unit(p_code text)
 RETURNS smallint LANGUAGE sql IMMUTABLE AS $$
@@ -29,6 +30,11 @@ BEGIN
   IF p_code !~ '^[A-Z]{3}$' THEN
     RETURN jsonb_build_object('ok', false,
       'reason', format('invalid currency code %L: must match ^[A-Z]{3}$', p_code));
+  END IF;
+
+  IF finance.fn_is_metal(p_code) THEN
+    RETURN jsonb_build_object('ok', false,
+      'reason', format('%s is a precious metal (a price code for exchange rates and watchers), not a currency for accounts, holdings or prices', p_code));
   END IF;
 
   v_minor_unit := finance.fn_currency_minor_unit(p_code);

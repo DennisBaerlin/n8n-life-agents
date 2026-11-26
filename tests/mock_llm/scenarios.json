@@ -934,6 +934,21 @@
     "final": "Trigger 'EUR-CLP ueber 1600' angelegt."
   },
   {
+    "_comment": "MONITOR mc05 + ADVISOR ac-gold1 (S4 Kursquelle K1): Goldpreis in Euro ueber fx_rate XAU/EUR, Schwelle unveraendert. Ein Szenario je Task (eigene match-Texte); ob das Modell nicht in Dollar umrechnet, prueft nur der bezahlte Lauf.",
+    "match": "Richte den Goldpreis-Waechter ein",
+    "calls": [
+      { "tool": "tool_create_monitor_trigger", "args": { "label": "Gold unter 2800 EUR", "trigger_type": "threshold", "acquisition_method": "fx_rate", "acquisition_params": "{\"base\":\"XAU\",\"quote\":\"EUR\",\"unit\":\"ozt\"}", "comparator": "lte", "threshold_value": "2800", "check_interval": "1 day", "action_note": "Goldpreis ansehen" } }
+    ],
+    "final": "Der Goldpreis-Waechter wurde nicht angelegt."
+  },
+  {
+    "match": "Gib mir bitte Bescheid, wenn der Goldpreis unter 2800",
+    "calls": [
+      { "tool": "tool_create_monitor_trigger", "args": { "label": "Gold unter 2800 EUR", "trigger_type": "threshold", "acquisition_method": "fx_rate", "acquisition_params": "{\"base\":\"XAU\",\"quote\":\"EUR\"}", "comparator": "lte", "threshold_value": "2800", "check_interval": "1 day", "action_note": "Goldpreis ansehen" } }
+    ],
+    "final": "Der Goldpreis-Waechter wurde nicht angelegt."
+  },
+  {
     "_comment": "ADVISOR ac10 (Paket 3 C) + FINANCE tc64: Anlageklassen mit EINER Karte (tool_set_asset_classes, Pflicht-$fromAI assignments als JSON-String). Eigene Match-Substrings je Agent.",
     "match": "Ordne die Anlageklassen jetzt zu",
     "calls": [

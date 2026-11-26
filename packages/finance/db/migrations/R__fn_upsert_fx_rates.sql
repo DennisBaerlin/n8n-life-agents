@@ -8,9 +8,14 @@
 --                    "as_of":  "2026-06-07",                (optional, default CURRENT_DATE; der Cron gibt das Quell-Datum)
 --                    "source": "open.er-api.com" }          (optional, default finance.fn_fx_feed_source())
 --   ON CONFLICT -> UPDATE: der Tages-Feed gewinnt auch gegen eine EZB-Zeile desselben Tages.
--- Zeilen-Modus (EZB-Nachlauf): p = { "rows": [{ "date": "2026-05-05", "base": "EUR", "quote": "USD", "rate": 1.1 }, ...],
+-- Zeilen-Modus (EZB-Nachlauf, Edelmetalle): p = { "rows": [{ "date": "2026-05-05", "base": "EUR", "quote": "USD", "rate": 1.1 }, ...],
 --                    "source": "ecb" }                      (optional, default fn_fx_history_source(); die Feed-Kennung -> ok:false)
---   ON CONFLICT -> DO NOTHING: ein vorhandener Kurs desselben Tages gewinnt.
+--   Edelmetall-Zeilen (fn_is_metal) kommen als { "base": "XAU", "quote": "EUR", "rate": <EUR je Feinunze> } und werden
+--   als EUR -> Metall mit rate = 1/r gespeichert (fx_rates bleibt EUR-quotiert; die Quelle liefert nur so genug Stellen),
+--   immer mit der Quelle fn_fx_metal_source(). Andere Basen als EUR bzw. Metall gegen EUR fallen still weg.
+--   ON CONFLICT: ein vorhandener Kurs einer anderen Quelle gewinnt; dieselbe Quelle zieht nach (der Metall-Mischkurs eines
+--   Tages kann sich nach dem ersten Abruf noch aendern). Doppelte Zeilen einer Antwort zaehlen einmal (der hoechste gespeicherte
+--   rate-Wert, bei Metallen also der niedrigste Preis je Feinunze; fest, damit das Ergebnis nicht vom Plan abhaengt).
 --
 -- Gespeichert wird jede gelieferte Waehrung, unabhaengig davon, ob ein Konto oder eine Position sie nutzt: die Quelle
 -- liefert alle in einer Antwort, und Verfuegbarkeit darf nicht an Bedarf haengen (Waechter, Berater, Kuerzel-Pruefung
@@ -21,21 +26,27 @@
 -- Idempotent je (base, quote, as_of).
 -- RUECKGABE: {ok:true, upserted, skipped, as_of} (skipped = verworfene oder schon vorhandene Eintraege; as_of = Tag
 --   bzw. juengstes Datum der Zeilen) | {ok:false, reason, upserted:0} (kein rates-Objekt bzw. Zeilen-Modus mit Feed-Kennung).
--- fn_fx_feed_source / fn_fx_history_source (READ, IMMUTABLE) -- Kennungen in fx_rates.source: der taegliche Kurs-Feed
--- und der einmalige EZB-Nachlauf. Eine Adresse je Quelle fuer den Schreiber (Defaults unten) und die Leser
--- (fn_feed_refresh_due, fn_fx_feed_gap zaehlen nur den Feed; fn_fx_history_due nur den Nachlauf); ein Wechsel der Quelle
--- aendert nur diese Zeile. Rueckgabe: text.
+-- fn_fx_feed_source / fn_fx_history_source / fn_fx_metal_source (READ, IMMUTABLE) -- Kennungen in fx_rates.source: der
+-- taegliche Kurs-Feed, der EZB-Nachlauf und die Edelmetall-Preise (Frankfurter-Mischkurs vieler Zentralbanken). Eine
+-- Adresse je Quelle fuer den Schreiber (Defaults unten) und die Leser (fn_feed_refresh_due, fn_fx_feed_gap zaehlen nur
+-- den Feed; fn_fx_history_due nur den Nachlauf und nie Metall-Zeilen); ein Wechsel der Quelle aendert nur diese Zeile.
+-- Rueckgabe: text.
 CREATE OR REPLACE FUNCTION finance.fn_fx_feed_source()
 RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'open.er-api.com'::text $$;
 
 CREATE OR REPLACE FUNCTION finance.fn_fx_history_source()
 RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'ecb'::text $$;
 
--- fn_fx_upsert_input (READ, STABLE) -- gueltige Eintraege eines fn_upsert_fx_rates-Payloads als Zeilen (code, rate, as_of).
---   Tages-Modus aus rates (+ as_of, Default heute), Zeilen-Modus aus rows. Verworfen (still): Code nicht ^[A-Z]{3}$ oder
---   EUR, Basis nicht EUR, Kurs nicht numerisch / <= 0 / nicht in numeric(20,10) darstellbar, Datum ungueltig (auch
---   30. Februar). CASE statt AND-Kette: PostgreSQL garantiert keine Auswertungs-Reihenfolge der WHERE-Bedingungen, ein
---   Cast von "n/a" vor der Format-Pruefung braeche den ganzen Lauf ab. Nur fuer fn_upsert_fx_rates.
+CREATE OR REPLACE FUNCTION finance.fn_fx_metal_source()
+RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'frankfurter'::text $$;
+
+-- fn_fx_upsert_input (READ, STABLE) -- gueltige Eintraege eines fn_upsert_fx_rates-Payloads als Zeilen (code, rate, as_of)
+--   mit rate = Einheiten des Codes je 1 EUR. Tages-Modus aus rates (+ as_of, Default heute), Zeilen-Modus aus rows.
+--   Edelmetalle nur im Zeilen-Modus als Metall -> EUR, rate = 1/r. Verworfen (still): Code nicht ^[A-Z]{3}$ oder EUR,
+--   Basis nicht EUR (ausser Metall gegen EUR), Metall im Tages-Modus oder als quote, Kurs nicht numerisch / <= 0 / nicht
+--   in numeric(20,10) darstellbar, Datum ungueltig (auch 30. Februar). CASE statt AND-Kette: PostgreSQL garantiert keine
+--   Auswertungs-Reihenfolge der WHERE-Bedingungen, ein Cast von "n/a" vor der Format-Pruefung braeche den ganzen Lauf ab.
+--   Nur fuer fn_upsert_fx_rates.
 CREATE OR REPLACE FUNCTION finance.fn_fx_upsert_input(p jsonb)
 RETURNS TABLE (code text, rate numeric, as_of date) LANGUAGE sql STABLE AS $$
     WITH raw AS (
@@ -45,12 +56,20 @@ RETURNS TABLE (code text, rate numeric, as_of date) LANGUAGE sql STABLE AS $$
         UNION ALL
         SELECT x->>'quote', x->>'rate', x->>'date', x->>'base'
         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p->'rows') = 'array' THEN p->'rows' ELSE '[]'::jsonb END) x
+    ), oriented AS (
+        -- Metall gegen EUR (nur Zeilen-Modus) wird zur EUR-Zeile des Metalls mit Kehrwert
+        SELECT CASE WHEN metal THEN b ELSE c END AS c, r, d, metal
+        FROM (SELECT c, r, d, b,
+                     b ~ '^[A-Z]{3}$' AND c = 'EUR' AND jsonb_typeof(p->'rows') = 'array' AND finance.fn_is_metal(b) AS metal
+              FROM raw) m
+        WHERE metal OR (b = 'EUR' AND c ~ '^[A-Z]{3}$' AND c <> 'EUR' AND NOT finance.fn_is_metal(c))
     ), typed AS (
         SELECT c,
-               CASE WHEN r ~ '^[0-9]+(\.[0-9]+)?$' THEN r::numeric END AS r,
+               CASE WHEN r ~ '^[0-9]+(\.[0-9]+)?$' THEN
+                    CASE WHEN NOT metal THEN r::numeric WHEN r::numeric > 0 THEN round(1 / r::numeric, 10) END
+               END AS r,
                CASE WHEN pg_input_is_valid(d, 'date') THEN d::date END AS d
-        FROM raw
-        WHERE c ~ '^[A-Z]{3}$' AND c <> 'EUR' AND b = 'EUR'
+        FROM oriented
     )
     SELECT c, r, d FROM typed WHERE round(r, 10) > 0 AND r < 1e10 AND d IS NOT NULL;
 $$;
@@ -78,11 +97,17 @@ BEGIN
   ON CONFLICT (code) DO NOTHING;
 
   IF v_rows THEN
-    -- Nachlauf: ein vorhandener Kurs desselben Tages (meist der Tages-Feed) gewinnt
+    -- Nachlauf/Metalle: ein vorhandener Kurs einer anderen Quelle (meist der Tages-Feed) gewinnt, dieselbe Quelle zieht
+    -- nach. DISTINCT ON: DO UPDATE darf eine Zeile in einem Befehl nur einmal treffen (sonst ERROR bei Dubletten).
     WITH ins AS (
       INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source)
-      SELECT 'EUR', i.code, i.rate, i.as_of, v_source FROM finance.fn_fx_upsert_input(p) i
-      ON CONFLICT (base_currency, quote_currency, as_of) DO NOTHING
+      SELECT DISTINCT ON (i.code, i.as_of) 'EUR', i.code, i.rate, i.as_of,
+             CASE WHEN finance.fn_is_metal(i.code) THEN finance.fn_fx_metal_source() ELSE v_source END
+      FROM finance.fn_fx_upsert_input(p) i
+      ORDER BY i.code, i.as_of, i.rate DESC
+      ON CONFLICT (base_currency, quote_currency, as_of)
+      DO UPDATE SET rate = EXCLUDED.rate, updated_at = NOW()
+      WHERE finance.fx_rates.source = EXCLUDED.source
       RETURNING as_of
     )
     SELECT count(*), max(as_of) INTO v_count, v_as_of FROM ins;

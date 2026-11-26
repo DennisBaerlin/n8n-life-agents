@@ -242,6 +242,7 @@ BEGIN
   ('finance_rw', 'finance.fn_find_holding'),
   ('finance_rw', 'finance.fn_fx_feed_gap'),
   ('finance_rw', 'finance.fn_fx_history_due'),
+  ('finance_rw', 'finance.fn_fx_metal_due'),
   ('finance_rw', 'finance.fn_fx_rate_map'),
   ('finance_rw', 'finance.fn_get_account_close_blockers'),
   ('finance_rw', 'finance.fn_get_balance_as_of'),

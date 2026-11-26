@@ -2124,13 +2124,20 @@ BEGIN
   v_r := finance.fn_upsert_fx_rates('{"rates": {"USD": 1.08, "QQX": 2.5}, "as_of": "2026-06-07"}'::jsonb);
   IF (v_r->>'upserted')::int IS DISTINCT FROM 2 THEN RESET ROLE; RAISE EXCEPTION 'upsert: %', v_r; END IF;
   SELECT rate INTO v_rate FROM finance.fn_fx_rate('USD', 'QQX', '2026-06-07');
+  -- Edelmetall-Zweig des FX-Crons: Zeitraum je Metall + Zeilen-Modus mit Inversion
+  PERFORM count(*) FROM finance.fn_fx_metal_due();
+  v_r := finance.fn_upsert_fx_rates('{"rows": [{"date": "2026-06-07", "base": "XAU", "quote": "EUR", "rate": 3200}]}'::jsonb);
+  IF (v_r->>'upserted')::int IS DISTINCT FROM 1 THEN RESET ROLE; RAISE EXCEPTION 'metal upsert: %', v_r; END IF;
   RESET ROLE;
   SET LOCAL ROLE finance_ro;
   SELECT rate INTO v_rate FROM finance.fn_fx_rate('EUR', 'USD', '2026-06-07');
   IF v_rate IS DISTINCT FROM 1.08 THEN RESET ROLE; RAISE EXCEPTION 'finance_ro fn_fx_rate: %', v_rate; END IF;
   PERFORM * FROM finance.fn_fx_eur_row('USD', '2026-06-07');
+  -- Berater liest den Goldpreis je Feinunze
+  SELECT rate INTO v_rate FROM finance.fn_fx_rate('XAU', 'EUR', '2026-06-07');
+  IF abs(v_rate - 3200) > 0.01 THEN RESET ROLE; RAISE EXCEPTION 'finance_ro fn_fx_rate XAU: %', v_rate; END IF;
   RESET ROLE;
-  RAISE NOTICE 'PASS finance_rw -> fn_fx_feed_gap/fn_feed_down_claim/fn_upsert_fx_rates/core.fn_package_installed_at, finance_ro -> fn_fx_rate/fn_fx_eur_row';
+  RAISE NOTICE 'PASS finance_rw -> fn_fx_feed_gap/fn_feed_down_claim/fn_upsert_fx_rates/fn_fx_metal_due/core.fn_package_installed_at, finance_ro -> fn_fx_rate (auch XAU)/fn_fx_eur_row';
 EXCEPTION WHEN OTHERS THEN
   RESET ROLE;
   RAISE EXCEPTION 'FAIL [Wechselkurs-Rollenpfad]: %', SQLERRM;

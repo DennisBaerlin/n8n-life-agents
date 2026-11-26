@@ -35,5 +35,18 @@
     "expected_tool": null,
     "expected_behavior": "A value/advice question, not trigger mechanics: the monitor agent must NOT give investment advice and must NOT call any write tool. It must point the user to the finance advisor for the recommendation (new message / orchestrator routes it).",
     "notes": "Ownership-Regel: Wert-Fragen -> Fach-Advisor; der Watchdog besitzt nur die Mechanik."
+  },
+  {
+    "id": "mc05",
+    "name": "Goldpreis-Waechter in Euro -> fx_rate XAU/EUR, Schwelle unveraendert",
+    "task": "Ich bestaetige: Richte den Goldpreis-Waechter ein. Bescheid geben, sobald Gold unter 2800 Euro je Feinunze faellt, taeglich pruefen, Bereich finance, Aktion: 'Goldpreis ansehen'.",
+    "setup_sql": "INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'XAU', round(1 / 3100.0, 10), CURRENT_DATE, '__E2E__') ON CONFLICT (base_currency, quote_currency, as_of) DO NOTHING;",
+    "precondition_sql": "(SELECT rate FROM finance.fn_fx_rate('XAU', 'EUR')) > 0 AND (SELECT as_of FROM finance.fn_fx_rate('XAU', 'EUR')) = CURRENT_DATE",
+    "chat_id": "test_mc05",
+    "timeout_s": 240,
+    "expected_tool": "tool_create_monitor_trigger",
+    "expected_tool_args": { "trigger_type": "threshold", "acquisition_method": "fx_rate", "comparator": "lte", "threshold_value": "2800" },
+    "expected_behavior": "The user confirms a gold price watcher in euros per troy ounce. The monitor agent must call tool_create_monitor_trigger with acquisition_method fx_rate and acquisition_params base XAU, quote EUR (unit ozt or left out), comparator lte and threshold 2800 exactly as the user said it - it must not convert the threshold into US dollars or another unit, must not use web_search as the source, and must not research a dealer price. Under the test bypass the gate declines; the agent must then report the creation as cancelled, not as done.",
+    "notes": "S4 Kursquelle K1 (Eigenschaft: ein Modell rechnete eine Euro-Schwelle selbst in Dollar um und wich auf die Websuche aus). Gold ist seit K1 ein Code im Wechselkurs-Weg (XAU, Frankfurter-Mischkurs). Fixture-Kurs erfunden (source __E2E__, fn_clear_e2e_data raeumt ihn), damit die Probe vor der Karte auf einem Substrat ohne Kurs-Abruf gelingt. Mock: Szenario mit eigenem match."
   }
 ]

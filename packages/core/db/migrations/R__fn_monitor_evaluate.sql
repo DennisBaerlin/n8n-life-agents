@@ -173,7 +173,7 @@ BEGIN
         ELSIF v_t.trigger_type = 'drawdown' THEN
             v_ref := GREATEST(COALESCE(v_t.reference_value, v_value), v_value);
             IF v_ref > 0 THEN
-                v_dd := round((v_ref - v_value) / v_ref * 100, 2);
+                v_dd := agent.fn_monitor_drawdown_pct(v_ref, v_value);   -- dieselbe Regel wie die Meldegrenze der Karte
                 v_fire := v_dd >= v_t.drawdown_pct;
             END IF;
         ELSIF v_t.trigger_type = 'recurring_info' THEN

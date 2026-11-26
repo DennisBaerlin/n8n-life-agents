@@ -7,14 +7,16 @@
 --   unique_violation-Catch (UNIQUE(domain, lower(label)) ist das Gesetz).
 --   probe_observation (optional): die vor dem Gate per fn_monitor_probe validierte
 --   Test-Beschaffung — wird nach Approve als erste Observation geloggt und seedet
---   last_value (+ reference_value-Ratchet bei drawdown). So startet kein Trigger
---   mit ungetesteter Beschaffung.
+--   last_value. So startet kein Trigger mit ungetesteter Beschaffung.
+--   Drawdown-Hoechststand (reference_value) ist abgeleitet: nur agent.fn_monitor_drawdown_reference (Reihe history_sql
+--   bei sql, sonst der Probe-Wert); kein Eingabe-Feld. Karte (card_lines), Rueckgabe und Zeile tragen denselben Wert.
 --   Beschaffungs-Methode: Core-Builtins web_search | sql | none direkt; jede andere Methode muss
 --     eine verfuegbare Paket-Methode aus core.monitor_acquisition_methods sein (agent.fn_monitor_method_status) —
 --     ihre acquisition_params prueft + normalisiert die validate_fn des Pakets (fn_monitor_validate_params).
 --   Eingabe jsonb: domain (default 'general'), label, trigger_type, acquisition_method
 --     (default none), acquisition_prompt | acquisition_sql | acquisition_params (Paket-Methode, Objekt),
---     comparator, threshold_value, drawdown_pct, reference_value (expliziter Seed),
+--     history_sql (Pflicht genau bei drawdown + sql: SELECT mit Zeilen (Datum, Wert) derselben Groesse; sonst {ok:false}),
+--     comparator, threshold_value, drawdown_pct,
 --     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),
 --     warn_days_before, expected_unit, min_plausible, max_plausible,
 --     max_jump_pct, check_interval (Text, z. B. '1 day'), action_note, probe_observation.
@@ -23,7 +25,9 @@
 --     (agent.fn_parse_decimal_or_null); unlesbar -> {ok:false}.
 --     package (Lifecycle-Owner, Binding-fix, nie $fromAI; Default 'core'), chat_id (fuer die Kinder-Sicht-Pruefung).
 --   Rueckgabe (Post-State): {ok:true, trigger_id, status:'armed', next_check_at,
---     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain)};
+--     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain),
+--     card_lines (Karten-Zeilen der DB-Werte, sonst []); nur drawdown zusaetzlich reference_value, reference_as_of,
+--     reference_since, reference_basis (history|current|none)};
 --     {ok:false, reason} fuer jede korrigierbare Ablehnung (Kinder-Sicht: reason beginnt mit "household_only").
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_create_monitor_trigger(p jsonb)
@@ -47,7 +51,11 @@ DECLARE
     v_cmp      TEXT := NULLIF(trim(COALESCE(p->>'comparator', '')), '');
     v_thr      NUMERIC := agent.fn_parse_decimal_or_null(p->>'threshold_value');
     v_dd       NUMERIC := agent.fn_parse_decimal_or_null(p->>'drawdown_pct');
-    v_ref      NUMERIC := agent.fn_parse_decimal_or_null(p->>'reference_value');
+    v_hist     TEXT := NULLIF(trim(COALESCE(p->>'history_sql', '')), '');
+    v_dref     JSONB;
+    v_ref      NUMERIC;
+    v_runit    TEXT;
+    v_lines    JSONB := '[]'::jsonb;
     v_due      DATE;
     v_dchk     JSONB;
     v_warn     INT := COALESCE(NULLIF(p->>'warn_days_before', '')::int, 0);
@@ -85,7 +93,7 @@ BEGIN
     END IF;
 
     -- Zahl-Felder als freier Text: unlesbar ("1.234,5", Einheit) -> {ok:false} statt Cast-RAISE
-    FOREACH v_key IN ARRAY ARRAY['threshold_value', 'drawdown_pct', 'reference_value', 'min_plausible',
+    FOREACH v_key IN ARRAY ARRAY['threshold_value', 'drawdown_pct', 'min_plausible',
                                  'max_plausible', 'max_jump_pct'] LOOP
         IF NULLIF(btrim(COALESCE(p->>v_key, '')), '') IS NOT NULL AND agent.fn_parse_decimal_or_null(p->>v_key) IS NULL THEN
             RETURN jsonb_build_object('ok', false,
@@ -193,6 +201,53 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'warn_days_before must be >= 0');
     END IF;
 
+    -- Probe-Wert (vor dem Gate validiert) einmal lesen: Seed von last_value und Untergrenze des Hoechststands
+    IF v_probe IS NOT NULL AND jsonb_typeof(v_probe) = 'object'
+       AND COALESCE((v_probe->>'ok')::boolean, false) THEN
+        BEGIN
+            v_probe_val := (v_probe->>'value')::numeric;
+        EXCEPTION WHEN OTHERS THEN
+            v_probe_val := NULL;
+        END;
+    END IF;
+
+    -- Drawdown-Hoechststand: sql braucht die Reihe (sonst gaelte still der heutige Wert als Hoechststand)
+    IF v_hist IS NOT NULL AND NOT (v_type = 'drawdown' AND v_method = 'sql') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'history_sql is only for drawdown triggers with acquisition_method sql - leave it empty here');
+    END IF;
+    IF v_type = 'drawdown' THEN
+        IF v_method = 'sql' THEN
+            IF v_hist IS NULL THEN
+                RETURN jsonb_build_object('ok', false,
+                    'reason', 'drawdown with sql needs history_sql: ONE SELECT returning rows (date, value) of the same series '
+                           || 'as acquisition_sql, so the database finds the peak. If the value has no stored history, '
+                           || 'send history_sql = SELECT CURRENT_DATE, (<acquisition_sql>) and the peak starts today.');
+            END IF;
+        END IF;
+        -- history_query gilt nur fuer den Start-Hoechststand und wird nicht gespeichert: danach haelt der Ratchet
+        -- (fn_monitor_evaluate) ihn, reset_peak beginnt bewusst ab heute.
+        v_dref := agent.fn_monitor_drawdown_reference(jsonb_build_object('method', v_method,
+                      'spec', v_spec || CASE WHEN v_hist IS NOT NULL THEN jsonb_build_object('history_query', v_hist) ELSE '{}'::jsonb END,
+                      'current_value', v_probe_val, 'current_as_of', v_probe->>'as_of'));
+        IF NOT COALESCE((v_dref->>'ok')::boolean, false) THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_dref->>'reason');
+        END IF;
+        v_ref := (v_dref->>'value')::numeric;
+        IF v_ref IS NOT NULL THEN
+            v_runit := COALESCE(NULLIF(trim(COALESCE(v_probe->>'unit', '')), ''), v_unit);
+            v_lines := jsonb_build_array(
+                jsonb_build_object('label', 'core.label.peak', 'kind', 'tpl',
+                    'value', CASE WHEN v_dref->>'basis' = 'history' THEN 'core.tpl.monitor_peak_history'
+                                  ELSE 'core.tpl.monitor_peak_current' END,
+                    'params', agent.fn_monitor_amount_params(v_ref, v_runit)
+                           || jsonb_build_object('date', jsonb_build_object('kind', 'date', 'value', v_dref->>'as_of'),
+                                                 'since', jsonb_build_object('kind', 'date', 'value', v_dref->>'since'))),
+                jsonb_build_object('label', 'core.label.alarm_at', 'kind', 'tpl', 'value', 'core.tpl.monitor_alarm_at',
+                    'params', agent.fn_monitor_amount_params(agent.fn_monitor_drawdown_alert_level(v_ref, v_dd), v_runit)));
+        END IF;
+    END IF;
+
     -- INSERT (unique_violation = Dubletten-Gesetz; check_violation = Backstop)
     BEGIN
         INSERT INTO agent.monitor_triggers
@@ -203,7 +258,7 @@ BEGIN
              check_interval, action_note, next_check_at)
         VALUES
             (v_domain, v_pkg, v_label, v_type, v_method, v_spec,
-             v_cmp, v_thr, v_dd, CASE WHEN v_type = 'drawdown' THEN v_ref END,
+             v_cmp, v_thr, v_dd, v_ref,
              v_due, v_warn, v_unit,
              v_min, v_max, v_jump,
              v_interval, NULLIF(trim(COALESCE(p->>'action_note', '')), ''),
@@ -218,27 +273,16 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'constraint violation: ' || SQLERRM);
     END;
 
-    -- Probe-Seed: validierte Test-Beschaffung als erste Observation + last_value/Ratchet
-    IF v_probe IS NOT NULL AND jsonb_typeof(v_probe) = 'object'
-       AND COALESCE((v_probe->>'ok')::boolean, false) THEN
-        BEGIN
-            v_probe_val := (v_probe->>'value')::numeric;
-        EXCEPTION WHEN OTHERS THEN
-            v_probe_val := NULL;
-        END;
-        IF v_probe_val IS NOT NULL THEN
-            INSERT INTO agent.monitor_observations
-                (trigger_id, ok, value, unit, as_of, source_url, reason)
-            VALUES (v_id, true, v_probe_val, v_probe->>'unit', v_probe->>'as_of',
-                    COALESCE(v_probe->>'source_url', 'probe'), 'probe before HITL approval');
-            UPDATE agent.monitor_triggers
-               SET last_value       = v_probe_val,
-                   last_value_as_of = v_probe->>'as_of',
-                   reference_value  = CASE WHEN trigger_type = 'drawdown'
-                                           THEN COALESCE(v_ref, v_probe_val)
-                                           ELSE reference_value END
-             WHERE id = v_id;
-        END IF;
+    -- Probe-Seed: validierte Test-Beschaffung als erste Observation + last_value
+    IF v_probe_val IS NOT NULL THEN
+        INSERT INTO agent.monitor_observations
+            (trigger_id, ok, value, unit, as_of, source_url, reason)
+        VALUES (v_id, true, v_probe_val, v_probe->>'unit', v_probe->>'as_of',
+                COALESCE(v_probe->>'source_url', 'probe'), 'probe before HITL approval');
+        UPDATE agent.monitor_triggers
+           SET last_value       = v_probe_val,
+               last_value_as_of = v_probe->>'as_of'
+         WHERE id = v_id;
     END IF;
 
     SELECT COUNT(*) INTO v_armed FROM agent.monitor_triggers t
@@ -251,6 +295,13 @@ BEGIN
         'next_check_at', v_next::text,
         'check_interval', v_norm_int,
         'due_date', v_due,
-        'armed_count', v_armed);
+        'armed_count', v_armed,
+        'card_lines', v_lines)
+        || CASE WHEN v_type = 'drawdown' THEN jsonb_build_object(
+               'reference_value', v_ref,
+               'reference_as_of', v_dref->>'as_of',
+               'reference_since', v_dref->>'since',
+               'reference_basis', v_dref->>'basis')
+           ELSE '{}'::jsonb END;
 END;
 $$;

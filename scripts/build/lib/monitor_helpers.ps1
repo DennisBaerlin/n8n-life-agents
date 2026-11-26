@@ -21,6 +21,14 @@ function New-MonitorAcquireHttpNode {
         -ContentJs "'Today is ' + `$now.toISODate() + '. ' + String($PromptExpr || '')" -Effort medium -WebSearchMaxUses 3 -TimeoutMs 120000
 }
 
+# Feld-Beschreibung history_sql des create-Tools, eine Adresse fuer alle Binder (Monitor-Agent, Fach-Berater).
+# -Example: ein Beispiel aus den Tabellen des bindenden Pakets (die Engine kennt kein Paket).
+function Get-MonitorHistorySqlHint {
+    param([string]$Example)
+    $ex = if ($Example) { ", e.g. $Example" } else { ', e.g. all stored prices of the same symbol' }
+    "drawdown with sql only (required there): ONE SELECT returning the dated history of the SAME value as rows (date, value)$ex; the database takes the peak from it. Without stored history: SELECT CURRENT_DATE, (<acquisition_sql>) and the peak starts today"
+}
+
 # Der zugehoerige Config-Knoten (identisch in Cron + Create/Set-Tool, damit die Probe vor dem Gate exakt das
 # Modell nutzt, das spaeter der Cron nimmt).
 function New-MonitorModelConfigNode {

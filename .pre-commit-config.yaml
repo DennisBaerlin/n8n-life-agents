@@ -460,6 +460,20 @@ repos:
         pass_filenames: false
         files: ^(tests/|scripts/|provisioning/|packages/|docs/(?!site/public/)|config/|\.github/|\.env\.example$)
 
+      - id: derived-input-lint
+        name: derived_input_lint (no write tool takes a derived quantity as a model input - peak, alert level, balance, EUR conversion, age - or tells the model to compute one; reasoned allowlist, shrink-only)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/derived_input_lint.ps1
+        pass_filenames: false
+        files: ^(packages/[^/]+/workflows/.*\.json|scripts/(derived_input_lint\.ps1|build/derived_input_allowlist\.json|build/lib/approval_matrix\.ps1))$
+
+      - id: derived-input-lint-test
+        name: derived_input_lint_test (derived field, compute instruction and stale or unexplained allowlist entry turn derived_input_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/derived_input_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(derived_input_lint|dev/derived_input_lint_test)\.ps1$
+
       - id: standin-lint-test
         name: standin_lint_test (unmarked fixture, dangling marker, unexplained hand-injected value and provider-shaped fake key turn standin_lint red; no Docker)
         language: system

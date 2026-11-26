@@ -48,5 +48,19 @@
     "expected_tool_args": { "trigger_type": "threshold", "acquisition_method": "fx_rate", "comparator": "lte", "threshold_value": "2800" },
     "expected_behavior": "The user confirms a gold price watcher in euros per troy ounce. The monitor agent must call tool_create_monitor_trigger with acquisition_method fx_rate and acquisition_params base XAU, quote EUR (unit ozt or left out), comparator lte and threshold 2800 exactly as the user said it - it must not convert the threshold into US dollars or another unit, must not use web_search as the source, and must not research a dealer price. Under the test bypass the gate declines; the agent must then report the creation as cancelled, not as done.",
     "notes": "S4 Kursquelle K1 (Eigenschaft: ein Modell rechnete eine Euro-Schwelle selbst in Dollar um und wich auf die Websuche aus). Gold ist seit K1 ein Code im Wechselkurs-Weg (XAU, Frankfurter-Mischkurs). Fixture-Kurs erfunden (source __E2E__, fn_clear_e2e_data raeumt ihn), damit die Probe vor der Karte auf einem Substrat ohne Kurs-Abruf gelingt. Mock: Szenario mit eigenem match."
+  },
+  {
+    "id": "mc06",
+    "name": "Crash-Waechter auf gespeicherte Kurse -> Hoechststand aus der Kurs-Reihe (DB), nie eine eigene Zahl",
+    "task": "Ich bestaetige den besprochenen Crash-Waechter: Label 'Beispiel-ETF 20 Prozent unter Hoechststand', Typ Drawdown mit 20 Prozent, Quelle SQL auf die gespeicherten Kurse des Symbols ZZDDT1 in finance.market_prices (aktueller Wert = neuester Kurs, Hoechststand aus allen gespeicherten Kursen), Pruefung taeglich (1 day), Einheit EUR, Bereich finance, Aktion: 'Nachkauf pruefen'. Lege den Crash-Waechter jetzt an.",
+    "chat_id": "test_mc06",
+    "setup_sql": "INSERT INTO finance.market_prices (symbol, price, currency, as_of, source) VALUES ('ZZDDT1', 21.80, 'EUR', CURRENT_DATE - 41, 'testfixture'), ('ZZDDT1', 23.47, 'EUR', CURRENT_DATE - 34, 'testfixture'), ('ZZDDT1', 22.15, 'EUR', CURRENT_DATE - 9, 'testfixture'), ('ZZDDT1', 20.95, 'EUR', CURRENT_DATE, 'testfixture') ON CONFLICT (symbol, as_of) DO NOTHING;",
+    "precondition_sql": "(SELECT max(price) FROM finance.market_prices WHERE symbol = 'ZZDDT1') = 23.47 AND (SELECT price FROM finance.market_prices WHERE symbol = 'ZZDDT1' ORDER BY as_of DESC LIMIT 1) = 20.95 AND NOT EXISTS (SELECT 1 FROM agent.monitor_triggers WHERE lower(label) = lower('Beispiel-ETF 20 Prozent unter Hoechststand'))",
+    "teardown_sql": "DELETE FROM finance.market_prices WHERE symbol = 'ZZDDT1';",
+    "expected_tool": "tool_create_monitor_trigger",
+    "expected_tool_args": { "trigger_type": "drawdown", "acquisition_method": "sql", "drawdown_pct": "20" },
+    "expected_card_contains": ["Höchststand", "23,47", "Meldung bei", "18,77"],
+    "expected_behavior": "The user confirms a fully specified crash watch on stored prices. The monitor agent must call tool_create_monitor_trigger with trigger_type drawdown, drawdown_pct 20, acquisition_method sql (acquisition_sql = newest price of ZZDDT1) AND history_sql over all stored prices of ZZDDT1 (rows date, price). It must NOT state a peak or an alert level of its own in chat - the database computes them and the confirmation shows them. Under the test bypass the gate declines; the agent must then report the creation as cancelled, not as done.",
+    "notes": "Live-Eigenschaft: der Hoechststand kam aus einer Modell-Zahl bzw. dem heutigen Kurs. Kurse erfunden (Symbol ZZDDT1, nicht im Depot); die Karte muss den Hoechststand 23,47 aus der Reihe und die Meldegrenze 18,77 tragen (Mock: expected_card_contains)."
   }
 ]

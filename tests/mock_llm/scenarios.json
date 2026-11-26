@@ -949,6 +949,14 @@
     "final": "Der Goldpreis-Waechter wurde nicht angelegt."
   },
   {
+    "_comment": "MONITOR mc06: Crash-Waechter auf gespeicherte Kurse; der Hoechststand kommt aus history_sql (DB), die Karte zeigt ihn.",
+    "match": "Lege den Crash-Waechter jetzt an",
+    "calls": [
+      { "tool": "tool_create_monitor_trigger", "args": { "domain": "finance", "label": "Beispiel-ETF 20 Prozent unter Hoechststand", "trigger_type": "drawdown", "acquisition_method": "sql", "acquisition_sql": "SELECT price FROM finance.market_prices WHERE symbol = 'ZZDDT1' ORDER BY as_of DESC LIMIT 1", "history_sql": "SELECT as_of, price FROM finance.market_prices WHERE symbol = 'ZZDDT1'", "drawdown_pct": "20", "expected_unit": "EUR", "check_interval": "1 day", "action_note": "Nachkauf pruefen" } }
+    ],
+    "final": "Der Crash-Waechter wurde nicht angelegt, die Bestaetigung wurde abgelehnt."
+  },
+  {
     "_comment": "ADVISOR ac10 (Paket 3 C) + FINANCE tc64: Anlageklassen mit EINER Karte (tool_set_asset_classes, Pflicht-$fromAI assignments als JSON-String). Eigene Match-Substrings je Agent.",
     "match": "Ordne die Anlageklassen jetzt zu",
     "calls": [
@@ -1389,7 +1397,7 @@
     "final": "Fuer das Testbroker Cash Girokonto gibt es noch keinen bestaetigten Kontostand. Bitte bestaetige zuerst den heutigen Stand, dann schick den Export noch einmal."
   },
   {
-    "_comment": "tc114 Befund 2026-11-03: Umbuchung vor dem Eroeffnungstag -> tool_book_transfer, die DB lehnt im Probelauf ab (before_opening), der Agent erklaert.",
+    "_comment": "tc114 Befund 2026-10-14: Umbuchung vor dem Eroeffnungstag -> tool_book_transfer, die DB lehnt im Probelauf ab (before_opening), der Agent erklaert.",
     "match": "auf __E2E__ OB Topf umgebucht",
     "calls": [
       { "tool": "tool_book_transfer", "args": { "from_account_name": "__E2E__ OB Giro", "to_account_name": "__E2E__ OB Topf", "amount": 100, "transaction_date": "yesterday" } }

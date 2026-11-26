@@ -10,16 +10,16 @@ Triggers are DATA rows evaluated deterministically by an hourly cron. The LLM on
 
 ## 1. Pin the metric down
 
-Before anything else, agree with the user on: the EXACT metric (spot vs. future, index vs. specific ETF, gross vs. net), the unit and currency (USD/t vs. EUR/kg — the classic failure), the decimal convention, and what the trigger should DO (action_note, German, sent verbatim in the alert).
+Before anything else, agree with the user on: the EXACT metric (spot vs. future, index vs. specific ETF, gross vs. net), the unit and currency (USD/t vs. EUR/kg — the classic failure), the decimal convention, and what the trigger should DO (action_note, German, sent verbatim in the alert). Keep the threshold in the currency and unit the user named; never convert it into another currency or unit yourself — choose the matching quote/unit of the acquisition method instead (gold below 2,500 EUR per troy ounce = fx_rate {"base":"XAU","quote":"EUR","unit":"ozt"}, threshold 2500).
 
 ## 2. Choose the cheapest reliable source (hierarchy)
 
-1. A **package method** — an installed package can offer its own acquisition method for its domain (e.g. a currency-pair table); the create tool's description lists the available ones and their `acquisition_params`. Free, deterministic, no LLM: ALWAYS prefer one that fits. If its package is uninstalled later, the trigger pauses instead of failing.
-2. `sql` — anything already in the user's own database (balances, cashflow, goal progress). Write ONE SELECT returning ONE numeric value; ALWAYS dry-run it via postgres_select first. It runs read-only (core_ro) on a schedule.
+1. A **package method** — an installed package can offer its own acquisition method for its domain (e.g. a currency-pair table); the create tool's description lists the available ones and their `acquisition_params`. Free, deterministic, no LLM: ALWAYS prefer one that fits. Exchange rates of any currency pair and gold/silver prices (XAU/XAG) ALWAYS go through the package method fx_rate, never web_search. If its probe fails only because the data is not there yet, tell the user instead of switching to web_search. If its package is uninstalled later, the trigger pauses instead of failing.
+2. `sql` — anything already in the user's own database (balances, cashflow, goal progress, stored prices). Write ONE SELECT returning ONE numeric value; ALWAYS dry-run it via postgres_select first. It runs read-only (core_ro) on a schedule. A drawdown on sql also needs `history_sql`: ONE SELECT returning the dated history of the same value as rows (date, value) — for a stored price all rows of that symbol — so the database finds the peak; without stored history, `SELECT CURRENT_DATE, (<acquisition_sql>)` (the peak then starts today).
 3. `web_search` — everything else (commodities, indices, interest rates, arbitrary public metrics). Costs a paid web-search call per check; cadence must be >= 12 hours (max 2 checks/day per trigger, DB-enforced).
 4. `none` — pure date deadlines and text reminders.
 
-Research candidate sources with web_search BEFORE committing: is the metric freely quoted, by whom, how fresh, in which unit? Tell the user which source you chose and why. A web trigger needs an original source whose page shows the value with its date; if only dealer or aggregator pages exist (for example retail precious-metal quotes), say so and offer another metric or a date reminder instead of a trigger that cannot be verified.
+Research candidate sources with web_search BEFORE committing: is the metric freely quoted, by whom, how fresh, in which unit? Tell the user which source you chose and why. A web trigger needs an original source whose page shows the value with its date; if only dealer or aggregator pages exist, say so and offer another metric or a date reminder instead of a trigger that cannot be verified. Gold and silver are not web metrics: the package method fx_rate carries their spot price.
 
 ## 3. Engineer the retrieval prompt (web_search only)
 
@@ -42,6 +42,8 @@ Daily for market prices and crash watches; weekly for slow rates (Basiszins); mo
 ## 6. Playback, then gate (probe included)
 
 Play the COMPLETE configuration back in chat (label, type, condition, source, full prompt/SQL, cadence, bounds, action note) and get a verbal OK. The create/set tool then TEST-FETCHES the value (exactly like the cron will) — the gate message shows the live probe result; a failing probe aborts before anything is written. If the probe value looks wrong (unit, magnitude), decline and iterate.
+
+Numbers come from the database, never from you. Before the card, name only what the user decided (threshold, percent, cadence) and values you just read with a tool in this conversation; never a value you looked up on the web or worked out yourself. Every stored derived value — the current value, the drawdown PEAK and the alert level — is computed by the tool: the card shows it, and the tool result returns it (`reference_value`, `reference_as_of`, `reference_since`). Before the card say "the confirmation shows the current value and the peak"; after it, quote the returned values. If you believe the peak should be different (e.g. an all-time high you know of), say so and fix the source (`history_sql`, a longer history), never pass or announce a number of your own.
 
 ## 7. Lifecycle facts to tell the user
 

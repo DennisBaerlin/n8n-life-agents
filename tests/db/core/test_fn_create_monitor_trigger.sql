@@ -253,6 +253,87 @@ BEGIN
   RAISE NOTICE 'PASS [S2.8]';
 END $$;
 
+-- Drawdown-Hoechststand: kommt aus der Reihe (fn_monitor_drawdown_reference), nie aus einer Modell-Zahl und nicht aus
+-- dem heutigen Probe-Wert, wenn es eine Reihe gibt. Karte (card_lines), Rueckgabe und gespeicherte Zeile tragen denselben Wert.
+DO $$
+DECLARE
+  v jsonb; v_row agent.monitor_triggers%ROWTYPE; v_peak jsonb; v_alarm jsonb;
+  c_hist CONSTANT text := 'SELECT d, v FROM (VALUES (''2026-10-05''::date, 21.80), (''2026-10-14''::date, 23.47), '
+                       || '(''2026-11-26''::date, 20.95)) x(d, v)';
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_reihe__',
+         'trigger_type','drawdown','acquisition_method','sql','acquisition_sql','SELECT 20.95','history_sql',c_hist,
+         'drawdown_pct','20','expected_unit','EUR','check_interval','1 day','reference_value','99',
+         'probe_observation', jsonb_build_object('ok', true, 'value', 20.95, 'as_of', '2026-11-26', 'source_url', 'sql')));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL create [dd Reihe]: got %', v; END IF;
+  SELECT * INTO v_row FROM agent.monitor_triggers WHERE id = (v->>'trigger_id')::int;
+  IF v_row.reference_value IS DISTINCT FROM 23.47 OR v_row.last_value IS DISTINCT FROM 20.95 THEN
+    RAISE EXCEPTION 'FAIL create [dd Reihe]: reference=% last=% (erwartet 23.47 / 20.95; Modell-Zahl 99 und Probe-Wert duerfen nicht gewinnen)',
+      v_row.reference_value, v_row.last_value;
+  END IF;
+  IF (v->>'reference_value')::numeric IS DISTINCT FROM 23.47 OR v->>'reference_as_of' IS DISTINCT FROM '2026-10-14'
+     OR v->>'reference_since' IS DISTINCT FROM '2026-10-05' OR v->>'reference_basis' IS DISTINCT FROM 'history' THEN
+    RAISE EXCEPTION 'FAIL create [dd Reihe]: Rueckgabe ohne Hoechststand: %', v;
+  END IF;
+  IF v_row.acquisition_spec IS DISTINCT FROM jsonb_build_object('query', 'SELECT 20.95') THEN
+    RAISE EXCEPTION 'FAIL create [dd Reihe]: Spec traegt mehr als die Abfrage (Reihe gilt nur fuer den Start): %', v_row.acquisition_spec;
+  END IF;
+  SELECT l INTO v_peak FROM jsonb_array_elements(v->'card_lines') l WHERE l->>'label' = 'core.label.peak';
+  SELECT l INTO v_alarm FROM jsonb_array_elements(v->'card_lines') l WHERE l->>'label' = 'core.label.alarm_at';
+  IF v_peak->>'value' IS DISTINCT FROM 'core.tpl.monitor_peak_history'
+     OR (v_peak#>>'{params,value,value}')::numeric IS DISTINCT FROM 23.47
+     OR v_peak#>>'{params,date,value}' IS DISTINCT FROM '2026-10-14'
+     OR v_peak#>>'{params,since,value}' IS DISTINCT FROM '2026-10-05' THEN
+    RAISE EXCEPTION 'FAIL create [dd Reihe]: Karten-Zeile Hoechststand falsch: %', v->'card_lines';
+  END IF;
+  -- 23.47 - 20 % = 18.776; bei 18.78 meldet die Regel (19.98 %) noch nicht, darum steht 18.77 auf der Karte
+  IF (v_alarm#>>'{params,value,value}')::numeric IS DISTINCT FROM 18.77 THEN
+    RAISE EXCEPTION 'FAIL create [dd Reihe]: Karten-Zeile Meldung-bei falsch (erwartet 18.77): %', v->'card_lines';
+  END IF;
+  RAISE NOTICE 'PASS create [dd: Hoechststand aus der Reihe in Zeile, Rueckgabe und Karte]';
+
+  -- sql-Drawdown ohne Reihe: korrigierbare Ablehnung (sonst gaelte still der heutige Wert als Hoechststand)
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_ohne__',
+         'trigger_type','drawdown','acquisition_method','sql','acquisition_sql','SELECT 20.95',
+         'drawdown_pct','20','check_interval','1 day',
+         'probe_observation', jsonb_build_object('ok', true, 'value', 20.95, 'as_of', '2026-11-26')));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%history_sql%' THEN
+    RAISE EXCEPTION 'FAIL create [dd sql ohne Reihe]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS create [dd sql ohne history_sql abgelehnt]';
+
+  -- history_sql nur bei sql-Drawdown: sonst Ablehnung (kein stilles Ignorieren)
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_th_reihe__',
+         'trigger_type','threshold','acquisition_method','sql','acquisition_sql','SELECT 20.95','history_sql',c_hist,
+         'comparator','lte','threshold_value','10','check_interval','1 day'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%history_sql%' THEN
+    RAISE EXCEPTION 'FAIL create [history_sql bei threshold]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS create [history_sql ausserhalb sql-Drawdown abgelehnt]';
+
+  -- Web-Drawdown: keine Reihe -> heutiger Probe-Wert, Karte sagt es ausdruecklich
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_web__',
+         'trigger_type','drawdown','acquisition_method','web_search','acquisition_prompt','Beispiel-Index Schlusskurs in EUR',
+         'drawdown_pct','20','expected_unit','EUR','check_interval','1 day',
+         'probe_observation', jsonb_build_object('ok', true, 'value', 112.34, 'unit', 'EUR', 'as_of', '2026-06-09')));
+  SELECT l INTO v_peak FROM jsonb_array_elements(v->'card_lines') l WHERE l->>'label' = 'core.label.peak';
+  IF (v->>'reference_value')::numeric IS DISTINCT FROM 112.34 OR v->>'reference_basis' IS DISTINCT FROM 'current'
+     OR v_peak->>'value' IS DISTINCT FROM 'core.tpl.monitor_peak_current' THEN
+    RAISE EXCEPTION 'FAIL create [dd web]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS create [dd web: heutiger Wert, Karte sagt ab heute]';
+
+  -- Nicht-Drawdown: keine Hoechststand-Zeile
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_th_keine__',
+         'trigger_type','threshold','acquisition_method','sql','acquisition_sql','SELECT 20.95',
+         'comparator','lte','threshold_value','10','check_interval','1 day'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true OR v ? 'reference_value'
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(v->'card_lines', '[]')) l WHERE l->>'label' = 'core.label.peak') THEN
+    RAISE EXCEPTION 'FAIL create [threshold ohne Hoechststand]: got %', v;
+  END IF;
+  RAISE NOTICE 'PASS create [threshold ohne Hoechststand-Zeile]';
+END $$;
+
 -- Schwelle mit deutschem Komma ("1,5") wird gelesen oder abgelehnt, nie ein Cast-RAISE.
 DO $$
 DECLARE v jsonb;

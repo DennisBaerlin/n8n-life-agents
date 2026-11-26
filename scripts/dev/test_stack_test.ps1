@@ -68,17 +68,26 @@ Assert-That ($lines -contains 'TELEGRAM_BOT_TOKEN=1:invented') 'gesetzter TEST_*
 Assert-That (-not ($lines -match '^GOOGLE_API_KEY=') -and -not ($lines -match 'UNRELATED')) 'leere und fremde Werte fehlen'
 Assert-That ($lines -contains 'LIFEAGENTS_HITL_CHAT_APPROVAL=true' -and $lines -contains 'LIFEAGENTS_DEPLOY_FULL=1' -and $lines -contains 'LLM_GATEWAY_SERIAL_TOOLS=0') 'Schalter als Zeilen'
 $plain = @((ConvertTo-TestStackExtra -Map $map -Values @{}) -split "`n" | Where-Object { $_ })
-$want = @('TEST_HARNESS_HEADER=X-Test-Auth', 'LIFEAGENTS_HITL_CHAT_APPROVAL=false', 'LIFEAGENTS_DEPLOY_FULL=0', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'BOT_PROFILE_PHOTO=0', 'TELEGRAM_WEBHOOK_TAKEOVER=1')
+$want = @('TEST_HARNESS_HEADER=X-Test-Auth', 'LIFEAGENTS_HITL_CHAT_APPROVAL=false', 'LIFEAGENTS_DEPLOY_FULL=0', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'BOT_PROFILE_PHOTO=0', 'TELEGRAM_WEBHOOK_TAKEOVER=1', 'CRON_DISABLE=refresh_fx_rates')
 Assert-That (($plain -join '|') -eq ($want -join '|')) 'ohne Werte nur die Test-Schalter mit ihren Vorgaben, in fester Reihenfolge'
 
 # --- Eine Adresse fuer TEST_*-Zuordnung und Test-Schalter: beide Bootstraps rufen scripts/lib/test_install_env.ps1 -----------
 $sw = Get-TestDevSwitches -HitlChatApproval -FullDeploy -SerialTools '1'
-Assert-That ((@($sw.Keys) -join ',') -eq 'TEST_HARNESS_HEADER,LIFEAGENTS_HITL_CHAT_APPROVAL,LIFEAGENTS_DEPLOY_FULL,LLM_GATEWAY_KEEPALIVE_HOURS,LLM_GATEWAY_SERIAL_TOOLS,BOT_PROFILE_PHOTO,TELEGRAM_WEBHOOK_TAKEOVER') 'Test-Schalter: Reihenfolge wie im klassischen Bootstrap, SerialTools nur wenn gesetzt'
+Assert-That ((@($sw.Keys) -join ',') -eq 'TEST_HARNESS_HEADER,LIFEAGENTS_HITL_CHAT_APPROVAL,LIFEAGENTS_DEPLOY_FULL,LLM_GATEWAY_KEEPALIVE_HOURS,LLM_GATEWAY_SERIAL_TOOLS,BOT_PROFILE_PHOTO,TELEGRAM_WEBHOOK_TAKEOVER,CRON_DISABLE') 'Test-Schalter: Reihenfolge wie im klassischen Bootstrap, SerialTools nur wenn gesetzt'
 Assert-That ($sw['LIFEAGENTS_HITL_CHAT_APPROVAL'] -eq 'true' -and $sw['LIFEAGENTS_DEPLOY_FULL'] -eq '1' -and $sw['LLM_GATEWAY_SERIAL_TOOLS'] -eq '1') 'Schalter-Werte aus den Parametern'
+# CRON_DISABLE nennt nur cron_enable-Schluessel, die genau ein Manifest deklariert: ein umbenannter Schluessel liesse den UPDATE des Seeds
+# still ins Leere laufen, und die Test-Installationen holten wieder echte Kurse.
+foreach ($k in @(([string]$sw['CRON_DISABLE']) -split '[ ,]+' | Where-Object { $_ })) {
+    $owners = @(Get-ChildItem (Join-Path $repo 'packages') -Directory | Where-Object {
+        $m = Join-Path $_.FullName 'manifest.json'
+        (Test-Path $m) -and (($j = [System.IO.File]::ReadAllText($m) | ConvertFrom-Json).config -and $j.config.cron_enable -and ($j.config.cron_enable.PSObject.Properties.Name -contains $k)) })
+    Assert-That ($owners.Count -eq 1) "CRON_DISABLE: '$k' ist cron_enable-Schluessel in genau einem Manifest"
+}
+Assert-That (@(([string]$sw['CRON_DISABLE']) -split '[ ,]+' | Where-Object { $_ }).Count -ge 1) 'CRON_DISABLE: mindestens ein Schluessel (sonst prueft die Schleife davor nichts)'
 $classic = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_n8n.ps1'))
 $envFile = @(ConvertTo-TestEnvFileLines -Map $map -Values @{ TEST_TELEGRAM_BOT_TOKEN = "1:it's-invented"; TEST_GOOGLE_API_KEY = '' })
 Assert-That ($envFile -contains "TELEGRAM_BOT_TOKEN='1:it'\''s-invented'" -and -not ($envFile -match '^GOOGLE_API_KEY=')) 'Env-Datei des Klassikers: gesetzte TEST_*-Werte shell-gequotet, leere fehlen'
-Assert-That ($envFile -contains "TEST_HARNESS_HEADER='X-Test-Auth'" -and $envFile -contains "BOT_PROFILE_PHOTO='0'" -and $envFile -contains "TELEGRAM_WEBHOOK_TAKEOVER='1'" -and $envFile -contains "LLM_GATEWAY_KEEPALIVE_HOURS='0'") 'Env-Datei des Klassikers traegt die Test-Schalter'
+Assert-That ($envFile -contains "TEST_HARNESS_HEADER='X-Test-Auth'" -and $envFile -contains "BOT_PROFILE_PHOTO='0'" -and $envFile -contains "TELEGRAM_WEBHOOK_TAKEOVER='1'" -and $envFile -contains "LLM_GATEWAY_KEEPALIVE_HOURS='0'" -and $envFile -contains "CRON_DISABLE='refresh_fx_rates'") 'Env-Datei des Klassikers traegt die Test-Schalter'
 Assert-That ($classic -match 'ConvertTo-TestEnvFileLines' -and $classic -notmatch 'envLines\.Add\(') 'klassischer Bootstrap baut seine Env-Datei nur ueber die Bibliothek'
 $stackSrc = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\dev\bootstrap_test_stack.ps1'))
 Assert-That ($stackSrc -match 'ConvertTo-TestStackExtra' -and $stackSrc -match '-ExtraText \$extra') 'Verbund reicht die Zusatz-Zeilen (Werte + Schalter) an die Antwort-Datei'

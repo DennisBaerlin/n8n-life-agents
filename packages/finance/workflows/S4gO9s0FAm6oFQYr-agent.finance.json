@@ -3510,7 +3510,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_cancel_handoff_task",
-                                         "description":  "HANDOFF MODE ONLY: an agreed plan entry without a booking. reason skipped = the user wants to leave it for now (\"later\", \"next one\", \"skip\"): no card, the entry stays open on the list, nothing is deleted. reason done_elsewhere = it already exists in the data (e.g. an entry of kind other the user handled outside): card \"already entered - tick off?\"; the tool refuses when nothing matching is found. reason dropped = the user says plainly it shall not be entered at all: card, then the entry is gone for good - never use dropped for \"later\" or \"next\". Never use it for an entry you just booked with handoff_task_id - that booking already closed it, and never for an entry that cannot be entered yet (tool_defer_handoff_task). ok:false with a reason -\u003e tell the user in one plain sentence and go on with the next entry.",
+                                         "description":  "HANDOFF MODE ONLY: an agreed plan entry without a booking. reason skipped = the user wants to leave it for now (\"later\", \"next one\", \"skip\"): no card, the entry stays open on the list, nothing is deleted. reason done_elsewhere = it already exists in the data (e.g. an entry of kind other the user handled outside): name that thing with ref_type and ref_name (its name as the user or the entry says it); card \"already entered - tick off?\" shows what is in the system. Nothing found -\u003e ok:false nothing_to_tick, several found -\u003e candidates: ask which one. reason dropped = the user says plainly it shall not be entered at all: card, then the entry is gone for good - never use dropped for \"later\" or \"next\". Never use it for an entry you just booked with handoff_task_id - that booking already closed it, and never for an entry that cannot be entered yet (tool_defer_handoff_task). ok:false with a reason -\u003e tell the user in one plain sentence and go on with the next entry.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "UjbM07yXlDjc1LlQ",
@@ -3523,6 +3523,8 @@
                                                                 "value":  {
                                                                               "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027The id of the agreed plan entry (from the entry list of your task)\u0027, \u0027string\u0027) }}",
                                                                               "reason":  "={{ $fromAI(\u0027reason\u0027, \u0027skipped, done_elsewhere or dropped\u0027, \u0027string\u0027, \u0027skipped\u0027) }}",
+                                                                              "ref_type":  "={{ $fromAI(\u0027ref_type\u0027, \u0027ONLY with done_elsewhere: the kind of thing that already exists - account, savings_goal, savings_plan, recurring_payment, pension, insurance or loan. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "ref_name":  "={{ $fromAI(\u0027ref_name\u0027, \u0027ONLY with done_elsewhere: the name of that thing. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -3542,6 +3544,26 @@
                                                                                {
                                                                                    "id":  "reason",
                                                                                    "displayName":  "reason",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ref_type",
+                                                                                   "displayName":  "ref_type",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ref_name",
+                                                                                   "displayName":  "ref_name",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,

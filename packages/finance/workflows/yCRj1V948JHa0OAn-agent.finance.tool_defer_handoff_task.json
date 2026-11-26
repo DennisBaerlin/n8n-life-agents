@@ -30,7 +30,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT core.fn_dry_run(\u0027core.fn_defer_handoff_task(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_defer_handoff_task(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, blocked_code: $(\u0027Start\u0027).item.json.blocked_code, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
                                                      }
@@ -136,7 +136,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027task_id\u0027)::int AS task_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027blocked_code\u0027 AS blocked_code FROM core.fn_defer_handoff_task(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027task_id\u0027)::int AS task_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027blocked_code\u0027 AS blocked_code FROM finance.fn_defer_handoff_task(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, blocked_code: $(\u0027Start\u0027).item.json.blocked_code, chat_id: $(\u0027Start\u0027).item.json.chat_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -163,7 +163,7 @@
                                                                                  {
                                                                                      "id":  "673117cd-b690-5f5d-ad03-807371b6f656",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.defer_handoff_task\u0027, lines: [ { kind: \u0027note\u0027, value: \u0027core.hitl.handoff_note\u0027, params: { text: (String($(\u0027Dry run\u0027).item.json.r.text || \u0027\u0027)) } }, { label: \u0027finance.label.handoff_blocked\u0027, kind: \u0027key\u0027, value: ((\u0027finance.handoff.blocked.\u0027 + String($(\u0027Dry run\u0027).item.json.r.blocked_code || \u0027\u0027))) } ].filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.defer_handoff_task\u0027, lines: [ { label: \u0027finance.label.handoff_blocked\u0027, kind: \u0027key\u0027, value: ((\u0027finance.handoff.blocked.\u0027 + String($(\u0027Dry run\u0027).item.json.r.blocked_code || \u0027\u0027))) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -401,7 +401,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**HITL + core.fn_defer_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Eintrage-Modus stellt der Buchhalter einen vereinbarten Eintrag zurück, den das System so noch nicht kann (Ende in der Zukunft, Zahlung bis Betrag, Ziel aus Einmalzahlungen, fehlende Sache oder fehlendes Werkzeug): Status deferred mit festem blocked_code statt eines Ersatzwegs in Notizen. Gültige Codes = Katalog-Keys finance.handoff.blocked.\u003ccode\u003e; ein unbekannter Code kommt im Probelauf als {ok:false, code:unknown_blocked_code, valid_codes} zurück (keine Karte). Die Karte zeigt den Satz des Eintrags und den Grund aus dem Katalog. Ein zurückgestellter Eintrag zählt nirgends als offen; der Korrektur-Schritt der Abfolge (core.fn_plan_rollout_next, step fix) bietet ihn nach einem Update wieder an. finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster.",
+                                         "content":  "## DB-Automatik\n**HITL + core.fn_defer_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Eintrage-Modus stellt der Buchhalter einen vereinbarten Eintrag zurück, den das System so noch nicht kann (Ende in der Zukunft, Zahlung bis Betrag, Sparziel aus nicht monatlichen Einzahlungen, fehlende Sache oder fehlendes Werkzeug): Status deferred mit festem blocked_code statt eines Ersatzwegs in Notizen. Gültige Codes = Katalog-Keys finance.handoff.blocked.\u003ccode\u003e; ein unbekannter Code scheitert im Probelauf (code unknown_blocked_code, keine Karte); die gültige Liste kennt der Agent aus der Tool-Beschreibung, die der Build aus denselben Keys schreibt (Dry run rejected reicht valid_codes nicht durch). Die Karte zeigt den Grund aus dem Katalog und den Satz des Eintrags (card_lines des Probelaufs). Ein zurückgestellter Eintrag zählt nirgends als offen; der Korrektur-Schritt der Abfolge (core.fn_plan_rollout_next, step fix) bietet ihn nach einem Update wieder an. finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster.",
                                          "height":  340,
                                          "width":  520,
                                          "color":  4

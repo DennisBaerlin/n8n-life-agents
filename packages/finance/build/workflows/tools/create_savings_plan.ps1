@@ -25,7 +25,7 @@ function Build-CreateSavingsPlan {
 
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_plan' -DryPos @(440, 0) -WritePos @(1540, 0) `
         -WriteName 'Create savings plan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding, CASE WHEN jsonb_typeof(r->'handoff_diff') = 'array' AND jsonb_array_length(r->'handoff_diff') > 0 THEN (r->'handoff_diff')::text ELSE '' END AS handoff_diff" `
         -Params ([ordered]@{
             handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
@@ -94,6 +94,7 @@ function Build-CreateSavingsPlan {
 
     $ret = Build-Return @(1980, 0) @(
         ,@('ok','true','boolean')
+        ,@('handoff_diff', "={{ `$('Create savings plan (atomic)').item.json.handoff_diff }}", 'string')   # Abweichung vom vereinbarten Soll nach dem Write (finance.fn_with_handoff); leer = wie vereinbart oder kein Soll
         ,@('savings_plan_id', "={{ `$('Create savings plan (atomic)').item.json.savings_plan_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Create savings plan (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('savings_squeeze', "={{ `$('Create savings plan (atomic)').item.json.savings_squeeze }}", 'string')

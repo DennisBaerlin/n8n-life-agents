@@ -7,17 +7,20 @@
 # (nur Eintraege der Person des Absenders; Endzustaende unveraenderlich per Trigger).
 function Build-CancelHandoffTask {
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('handoff_task_id', 'reason')
+    $trig = Build-Trigger @('handoff_task_id', 'reason', 'ref_type', 'ref_name')
     $S = "`$('Start').item.json"
     $params = [ordered]@{
         handoff_task_id = '$(''Start'').item.json.handoff_task_id'
         reason          = '$(''Start'').item.json.reason'
+        ref_type        = '$(''Start'').item.json.ref_type'
+        ref_name        = '$(''Start'').item.json.ref_name'
         chat_id         = '$(''Start'').item.json.chat_id'
     }
 
     # Ueberspringen aendert nichts Dauerhaftes (working -> open, die Stelle k von n bleibt): kein Tipp noetig.
     $ifSkip = Build-If 'Skip only?' @(220, -260) "={{ String($S.reason || '') === 'skipped' }}" 'true' 'equals' 'boolean'
-    $skip = Build-Pg 'Skip handoff task' @(440, -360) "=SELECT finance.fn_cancel_handoff_task(`$1::jsonb) AS r;" $params
+    $skipParams = [ordered]@{ handoff_task_id = $params.handoff_task_id; reason = $params.reason; chat_id = $params.chat_id }
+    $skip = Build-Pg 'Skip handoff task' @(440, -360) "=SELECT finance.fn_cancel_handoff_task(`$1::jsonb) AS r;" $skipParams
     $ifSkipOk = Build-If 'Skip ok?' @(660, -360) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
     $errSkip = Build-ToolError 'Skip rejected' @(880, -260) "={{ `$('Skip handoff task').item.json.r.reason || 'The entry could not be skipped.' }}"
     $retSkip = Build-Return @(880, -460) @(
@@ -51,7 +54,7 @@ function Build-CancelHandoffTask {
 
     $sticky = Build-Sticky 'Doc Plan-Eintrag abhaken' @(120, -760) `
         'HITL + finance.fn_cancel_handoff_task (Übergabe Berater -> Buchhalter)' `
-        'Im Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -> done (Karte „Schon eingetragen – abhaken?“), dropped -> cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_release_handoff_tasks behält claimed_at). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache -> Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.' 380 560
+        'Im Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -> done (Karte „Schon eingetragen – abhaken?“), dropped -> cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_cancel_handoff_task lässt claimed_at stehen). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache (ref_type + ref_name, sonst nothing_to_tick) -> Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.' 380 560
 
     $nodes = @($trig, $ifSkip, $skip, $ifSkipOk, $errSkip, $retSkip) + $wg.Nodes + @($ifElsewhere, $sumElsewhere, $sumDropped, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{

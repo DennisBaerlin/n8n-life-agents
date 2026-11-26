@@ -343,7 +343,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027split\u0027)::boolean AS split, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding, r-\u003e\u003e\u0027last_execution\u0027 AS last_execution FROM finance.fn_set_savings_plan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027split\u0027)::boolean AS split, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding, r-\u003e\u003e\u0027last_execution\u0027 AS last_execution, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_set_savings_plan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, savings_plan_name: $(\u0027Start\u0027).item.json.savings_plan_name, new_amount: $(\u0027Start\u0027).item.json.new_amount, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, status: $(\u0027Start\u0027).item.json.status, valid_from: $(\u0027Start\u0027).item.json.valid_from, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, asset_class: $(\u0027Start\u0027).item.json.asset_class, depot_execution_days: $(\u0027Start\u0027).item.json.depot_execution_days, valid_to: $(\u0027Start\u0027).item.json.valid_to, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -575,36 +575,42 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "650aeb71-d3d2-584d-ad9e-6f51a6e5bfa8",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fe0d41bc-1b03-53e8-9939-8f7029f988d6",
                                                                                      "name":  "savings_plan_id",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.savings_plan_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "fe0d41bc-1b03-53e8-9939-8f7029f988d6",
+                                                                                     "id":  "1fe23eb4-8abd-5731-b969-747c5d967609",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "1fe23eb4-8abd-5731-b969-747c5d967609",
+                                                                                     "id":  "6c7a169c-d75b-55e6-b404-733c688746d5",
                                                                                      "name":  "split",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.split }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6c7a169c-d75b-55e6-b404-733c688746d5",
+                                                                                     "id":  "1bc815ac-9c33-5170-8fb7-17e51e8eb0e0",
                                                                                      "name":  "savings_squeeze",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.savings_squeeze }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "1bc815ac-9c33-5170-8fb7-17e51e8eb0e0",
+                                                                                     "id":  "4e2be9d0-8210-5d33-928c-fc9dffb01e48",
                                                                                      "name":  "savings_funding",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.savings_funding }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4e2be9d0-8210-5d33-928c-fc9dffb01e48",
+                                                                                     "id":  "8aea41b2-aa22-5ddb-96a1-02f29eb333fd",
                                                                                      "name":  "last_execution",
                                                                                      "value":  "={{ $(\u0027Set plan (atomic)\u0027).item.json.last_execution || \u0027\u0027 }}",
                                                                                      "type":  "string"

@@ -13,6 +13,12 @@
                                                                                    "name":  "reason"
                                                                                },
                                                                                {
+                                                                                   "name":  "ref_type"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "ref_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "chat_id"
                                                                                }
                                                                            ]
@@ -197,7 +203,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_cancel_handoff_task(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, reason: $(\u0027Start\u0027).item.json.reason, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, reason: $(\u0027Start\u0027).item.json.reason, ref_type: $(\u0027Start\u0027).item.json.ref_type, ref_name: $(\u0027Start\u0027).item.json.ref_name, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -303,7 +309,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027task_id\u0027)::int AS task_id, r-\u003e\u003e\u0027status\u0027 AS status FROM finance.fn_cancel_handoff_task(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, reason: $(\u0027Start\u0027).item.json.reason, chat_id: $(\u0027Start\u0027).item.json.chat_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, reason: $(\u0027Start\u0027).item.json.reason, ref_type: $(\u0027Start\u0027).item.json.ref_type, ref_name: $(\u0027Start\u0027).item.json.ref_name, chat_id: $(\u0027Start\u0027).item.json.chat_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -619,7 +625,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**HITL + finance.fn_cancel_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -\u003e done (Karte „Schon eingetragen – abhaken?“), dropped -\u003e cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_release_handoff_tasks behält claimed_at). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache -\u003e Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.",
+                                         "content":  "## DB-Automatik\n**HITL + finance.fn_cancel_handoff_task (Übergabe Berater -\u003e Buchhalter)**\n\nIm Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -\u003e done (Karte „Schon eingetragen – abhaken?“), dropped -\u003e cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_cancel_handoff_task lässt claimed_at stehen). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache (ref_type + ref_name, sonst nothing_to_tick) -\u003e Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.",
                                          "height":  380,
                                          "width":  560,
                                          "color":  4

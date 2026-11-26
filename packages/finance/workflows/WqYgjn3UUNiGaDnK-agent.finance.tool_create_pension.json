@@ -445,7 +445,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_create_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_create_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, name: $(\u0027Start\u0027).item.json.name, pension_type: $(\u0027Start\u0027).item.json.pension_type, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.debit_id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -677,12 +677,18 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "f19958f2-d3bc-5e54-a8a3-c6a61d13c8fc",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5c996684-9a83-5550-b2d5-f9cfcaafa718",
                                                                                      "name":  "pension_id",
                                                                                      "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.pension_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "5c996684-9a83-5550-b2d5-f9cfcaafa718",
+                                                                                     "id":  "b66406fa-4f46-5bc7-9ae4-6cf21785e41a",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Create pension (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"

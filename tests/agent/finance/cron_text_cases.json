@@ -135,5 +135,29 @@
     ],
     "expect_keys": ["finance.bank_todo.howto"],
     "expect_buttons": ["core.reminders.btn_off"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf09",
+    "name": "Wechselkurs-Ausfall an den Owner (ko): der Tages-Feed liefert seit drei Tagen keinen neuen Stand -> eine Meldung mit Datum, Latch finance:fx gesetzt; Wertpapiere haben vorab einen frischen Kurs (keine zweite Meldung)",
+    "workflow": "agent.finance.cron_remind_missing_prices",
+    "schedule_key": "remind_missing_prices",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM finance.market_prices WHERE source = 'ctf09';",
+      "DELETE FROM core.notification_state WHERE source IN ('finance:fx', 'finance:prices');",
+      "DELETE FROM core.proactive_budget WHERE slot = 'fx_feed_down';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.market_prices (symbol, price, currency, as_of, source) SELECT DISTINCT h.symbol, 1, 'EUR', current_date, 'ctf09' FROM finance.depot_holdings h WHERE h.shares > 0 ON CONFLICT (symbol, as_of) DO NOTHING;",
+      "UPDATE core.config SET value = 'true' WHERE package = 'finance' AND category = 'cron_enable' AND key = 'refresh_fx_rates';",
+      "DELETE FROM finance.fx_rates WHERE source = 'open.er-api.com' AND as_of > current_date - 3;",
+      "SELECT finance.fn_ensure_currency('USD');",
+      "INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'USD', 1.1, current_date - 3, 'open.er-api.com') ON CONFLICT (base_currency, quote_currency, as_of) DO NOTHING;"
+    ],
+    "expect_keys": ["finance.dialog.fx_feed_down"],
+    "expect_sql": [
+      {"sql": "SELECT state FROM core.notification_state WHERE source = 'finance:fx' AND key = 'feed_down'", "expect": "fired"}
+    ]
   }
 ]

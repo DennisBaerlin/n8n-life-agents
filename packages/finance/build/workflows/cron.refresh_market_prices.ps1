@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_refresh_market_prices -> Build-CronRefreshMarketPrices. Dot-gesourct von build.ps1.
-# Deterministisch, kein LLM. Vier Eingaenge (Muster cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
+# Deterministisch, kein LLM. Vier Eingaenge (Nachholen wie cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
 # aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt),
 # (b) executeWorkflowTrigger 'Start' fuer den Sofort-Fetch aus tool_book_stock_buy/tool_set_holding nach
 # einem Depot-Write (kein NULL-Preis-Fenster bis zum naechsten Schedule), (c) n8n-Start und (d) stuendlicher

@@ -8,7 +8,6 @@ function Build-SetHolding {
     # Paket-interne Cross-Refs; Yahoo-Sub + Preis-Cron -Soft (2-Pass-Bootstrap).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-SetHolding' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-SetHolding' -Soft
-    $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-SetHolding'
     $trig = Build-Trigger @('depot_name','position','new_name','symbol','isin','currency','asset_class','provider_symbol','quote_currency')
 
     # Position per Depot-Name + aktuellem Symbol/ISIN (finance.fn_find_holding, wie book_stock_sell) statt
@@ -107,7 +106,8 @@ function Build-SetHolding {
     # Sofort-Preis-Fetch nach einer Symbol-/Feed-Symbol-Aenderung — ein neuer (oder
     # umgemappter) Ticker hat sonst bis zum naechsten 07:00-Lauf keinen Kurs. Bedingung = symbol oder
     # provider_symbol gesetzt (ein reiner provider_symbol-Override aendert auch den Feed-Key). Ruft denselben
-    # Markt-Preis-Cron als Sub auf wie book_stock_buy (Dual-Trigger 'Start'). Unabhaengig vom FX-Zweig unten.
+    # Markt-Preis-Cron als Sub auf wie book_stock_buy (Dual-Trigger 'Start'). Den Wechselkurs der Kurswaehrung haelt
+    # cron_refresh_fx_rates fuer jede Feed-Waehrung schon vor (kein FX-Abruf hier).
     $ifSymChanged = Build-If 'Symbol/Provider changed?' @(2200, -40) `
         "={{ !!(`$('Start').item.json.symbol) || !!(`$('Start').item.json.provider_symbol) }}" `
         'true' 'equals' 'boolean'
@@ -115,17 +115,10 @@ function Build-SetHolding {
     $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2420, -320) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
-    # Schedule NULL). Ruft den FX-Cron als Sub — eine Logik-Adresse fuer Check/Fetch/Upsert.
-    $fxGap = New-FinanceFxGapCheck -CheckPos @(2540, 160) -IfPos @(2640, 0)
-
-    $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(2860, -120) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
-        ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
-
-    # Kurs-Status nach den Sofort-Abrufen: die Antwort sagt, ob ein Kurs gefunden wurde.
+    # Kurs-Status nach dem Sofort-Abruf: die Antwort sagt, ob ein Kurs gefunden wurde.
     $priceStatus = New-FinancePriceStatusNode -Pos @(3080, -160) -HoldingIdExpr '$(''Set holding (atomic)'').item.json.holding_id'
-    # Die Aenderung ist schon gespeichert: ein Fehler im Kurs-/FX-Abruf darf sie nie als Fehler melden.
-    foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
+    # Die Aenderung ist schon gespeichert: ein Fehler im Kurs-Abruf darf sie nie als Fehler melden.
+    $callPriceRefresh['onError'] = 'continueRegularOutput'; $callPriceRefresh['alwaysOutputData'] = $true
 
     $ret = Build-Return @(3300, 0) @(
         ,@('ok','true','boolean')
@@ -139,15 +132,15 @@ function Build-SetHolding {
 
     $stickyOv = Build-Sticky 'Doc set_holding' @(1760, -240) `
         'fn_set_holding: nur Metadaten' `
-        'Ändert NUR name/symbol/isin/currency/asset_class/provider_symbol/quote_currency. shares + average_purchase_price sind Trigger-gepflegt (aus finance.transactions) -> falsche Stückzahl/avg über die Transaktionen korrigieren, nicht hier. asset_class = Allokations-Block-key (lowercase snake; korrigiert den Auto-Tag aus book_stock_buy); ungültiges Format -> {ok:false}. provider_symbol (Phase M) = Kurs-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency = native Quote-Währung (via fn_ensure_currency validiert -> {ok:false}). Dubletten-ISIN/-Symbol im Depot -> {ok:false}. NACH dem Write zwei unabhängige Sofort-Fetches: Symbol/provider_symbol geändert -> cron_refresh_market_prices; danach Check FX rates (finance.fn_fx_rate_status): fehlt oder veraltet ein Wechselkurs -> cron_refresh_fx_rates (je eliminieren das NULL-Fenster in den Roll-up-Views bis zum nächsten Schedule).' 220 560
+        'Ändert NUR name/symbol/isin/currency/asset_class/provider_symbol/quote_currency. shares + average_purchase_price sind Trigger-gepflegt (aus finance.transactions) -> falsche Stückzahl/avg über die Transaktionen korrigieren, nicht hier. asset_class = Allokations-Block-key (lowercase snake; korrigiert den Auto-Tag aus book_stock_buy); ungültiges Format -> {ok:false}. provider_symbol (Phase M) = Kurs-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency = native Quote-Währung (via fn_ensure_currency validiert -> {ok:false}). Dubletten-ISIN/-Symbol im Depot -> {ok:false}. NACH dem Write: Symbol/provider_symbol geändert -> Sofort-Fetch cron_refresh_market_prices (eliminiert das NULL-Fenster in den Roll-up-Views bis zum nächsten Schedule). Kein Wechselkurs-Abruf: cron_refresh_fx_rates hält jede Feed-Währung täglich vor.' 220 560
 
     $stickyYahoo = Build-Sticky 'Kauf-Zeit-Symbol-Validierung' @(440, -420) `
         'sub_resolve_yahoo_symbol (vor dem Gate, immer-laufend/non-blocking)' `
-        'Läuft IMMER (ISIN leer/Krypto -> Sub gibt sofort roh, kein Yahoo-Call) -> der fn-Node referenziert den Output sicher (ein IF-gegateter Sub würde am unausgeführten Zweig "node not executed" werfen). Load price reference liefert die Plausi-Referenz (letzter Kurs, sonst Einstand, nur in der gewünschten Währung) + FX-Karte (fn_fx_rate_map). GENUTZT wird ein Yahoo-Vorschlag nur nach symbol-/ISIN-Änderung UND wenn er verifiziert oder eine plausible Fremdwährungs-Notierung ist (Plausi-Pflicht 2026-10-27); ein ausdrücklich genanntes provider_symbol gilt immer (Karte warnt). Yahoo-Ausfall/Timeout (3s) -> {verified:false, provider_symbol:roh}, der Edit läuft trotzdem. NACH den Sofort-Abrufen liefert Price status (fn_holding_price_status) den Kurs-Status für die Antwort.' 300 560
+        'Läuft IMMER (ISIN leer/Krypto -> Sub gibt sofort roh, kein Yahoo-Call) -> der fn-Node referenziert den Output sicher (ein IF-gegateter Sub würde am unausgeführten Zweig "node not executed" werfen). Load price reference liefert die Plausi-Referenz (letzter Kurs, sonst Einstand, nur in der gewünschten Währung) + FX-Karte (fn_fx_rate_map). GENUTZT wird ein Yahoo-Vorschlag nur nach symbol-/ISIN-Änderung UND wenn er verifiziert oder eine plausible Fremdwährungs-Notierung ist (Plausi-Pflicht 2026-10-27); ein ausdrücklich genanntes provider_symbol gilt immer (Karte warnt). Yahoo-Ausfall/Timeout (3s) -> {verified:false, provider_symbol:roh}, der Edit läuft trotzdem. NACH dem Sofort-Abruf liefert Price status (fn_holding_price_status) den Kurs-Status für die Antwort.' 300 560
 
     $nodes = @($trig, $readCur, $ifFound, $errNotFound, $loadRef, $resolveYahoo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ifSymChanged, $callPriceRefresh,
-               $callFxRefresh, $priceStatus, $ret, $stickyDry, $stickyOv, $stickyYahoo) + $fxGap
+               $priceStatus, $ret, $stickyDry, $stickyOv, $stickyYahoo)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Find Holding' ) ) }
@@ -176,15 +169,9 @@ function Build-SetHolding {
         ) }
         'Symbol/Provider changed?' = @{ main = @(
             @( E 'Refresh market prices' ),  # true: Ticker/Feed-Symbol geaendert -> Sofort-Preis-Fetch
-            @( E 'Check FX rates' )           # false: weiter zum FX-Zweig
+            @( E 'Price status' )             # false: Kurs-Status ohne Abruf
         ) }
-        'Refresh market prices'  = @{ main = @( ,@( E 'Check FX rates' ) ) }
-        'Check FX rates'         = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
-        'FX refresh needed?'     = @{ main = @(
-            @( E 'Refresh FX rates' ),    # true: Wechselkurs fehlt -> Sub-Call des FX-Crons
-            @( E 'Price status' )          # false: alle Kurse da -> kein Call
-        ) }
-        'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
+        'Refresh market prices'  = @{ main = @( ,@( E 'Price status' ) ) }
         'Price status'           = @{ main = @( ,@( E 'Return' ) ) }
     }
 

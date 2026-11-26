@@ -8,7 +8,6 @@ function Build-BookStockBuy {
     # Paket-interne Cross-Refs; die ersten beiden -Soft (2-Pass-Bootstrap beim Erst-Build).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-BookStockBuy' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-BookStockBuy' -Soft
-    $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-BookStockBuy'
     $trig = Build-Trigger @('isin','symbol','name','shares','price_per_share','order_fee','depot_name','transaction_date','asset_class','provider_symbol','quote_currency','existing_position','cost_basis_total')
 
     $resDepot = Build-Pg 'Resolve Depot' @(220, 0) `
@@ -93,21 +92,15 @@ function Build-BookStockBuy {
 
     # Sofort-Preis-Fetch (Dual-Trigger): nach erfolgreichem Kauf den Markt-Preis-Cron als Sub aufrufen, damit
     # eine neu angelegte Position sofort einen Kurs hat (kein null_price-Fenster bis zum naechsten 07:00-Lauf).
-    # Eine Logik-Adresse fuer Symbol-Split/Fetch/Upsert.
+    # Eine Logik-Adresse fuer Symbol-Split/Fetch/Upsert. Den Wechselkurs der Kurswaehrung haelt cron_refresh_fx_rates fuer
+    # jede Feed-Waehrung schon vor (kein FX-Abruf hier).
     $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2860, -160) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
-        ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
-
-    # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
-    # Schedule NULL). Der Markt-Preis-Fetch oben deckt nur den Kurs, nicht den Waehrungsumrechnungssatz.
-    $fxGap = New-FinanceFxGapCheck -CheckPos @(2980, -340) -IfPos @(3080, -160)
-
-    $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(3300, -280) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
     # Kurs-Status nach dem Sofort-Abruf: die Antwort sagt, ob ein Kurs gefunden wurde.
     $priceStatus = New-FinancePriceStatusNode -Pos @(3520, -160) -HoldingIdExpr '$(''Create buy (atomic)'').item.json.holding_id'
-    # Der Kauf ist schon gebucht: ein Fehler im Kurs-/FX-Abruf darf ihn nie als Fehler melden (weiter zum Kurs-Status).
-    foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
+    # Der Kauf ist schon gebucht: ein Fehler im Kurs-Abruf darf ihn nie als Fehler melden (weiter zum Kurs-Status).
+    $callPriceRefresh['onError'] = 'continueRegularOutput'; $callPriceRefresh['alwaysOutputData'] = $true
 
     $ret = Build-Return @(3740, 0) @(
         ,@('ok','true','boolean')
@@ -137,14 +130,11 @@ function Build-BookStockBuy {
         'sub_resolve_yahoo_symbol (vor dem Gate, non-blocking)' `
         'Ermittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs (bei einer Übernahme mit Gesamtbetrag cost_basis_total den Stückpreis aus finance.fn_unit_price_from_total, gelesen in Get Settlement Account). LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -> Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -> Sub gibt roh zurück.' 300 520
 
-    $stickyFx = Build-Sticky 'FX-Sofort-Fetch (WP-3a)' @(3080, -480) `
-        'Wechselkurs fehlt -> cron_refresh_fx_rates' `
-        'Zwei Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS, liefert auch dessen echte Währung; (2) danach Check FX rates (finance.fn_fx_rate_status): nur wenn für eine aktive Währung ein Wechselkurs fehlt oder veraltet ist -> Refresh FX rates. Ohne (2) hätte eine EUR-geführte US-Position bis zum nächsten FX-Schedule keinen USD-Kurs -> market_value_eur NULL -> still 0 im Net-Worth.' 240 420
 
     $nodes = @($trig, $resDepot, $ifDepot, $errDepot, $getSettle, $resolveYahoo) + $wg.Nodes + @(
                $summary, $reqApproval, $ifApproved, $retCancelled,
-               $ifWriteOk, $errWrite, $callPriceRefresh, $callFxRefresh, $priceStatus, $ret,
-               $stickyDry, $stickyTriggers, $stickyOk, $stickyYahoo, $stickyFx) + $fxGap
+               $ifWriteOk, $errWrite, $callPriceRefresh, $priceStatus, $ret,
+               $stickyDry, $stickyTriggers, $stickyOk, $stickyYahoo)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Resolve Depot' ) ) }
@@ -168,16 +158,10 @@ function Build-BookStockBuy {
         ) }
         'Create buy (atomic)'    = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(
-            @( E 'Refresh market prices' ),   # true: Kauf gebucht -> Sofort-Preis-Fetch, dann FX-Zweig
+            @( E 'Refresh market prices' ),   # true: Kauf gebucht -> Sofort-Preis-Fetch
             @( E 'Buy rejected' )             # false: korrigierbare Ablehnung
         ) }
-        'Refresh market prices'  = @{ main = @( ,@( E 'Check FX rates' ) ) }
-        'Check FX rates'         = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
-        'FX refresh needed?'     = @{ main = @(
-            @( E 'Refresh FX rates' ),        # true: Wechselkurs fehlt -> FX-Sofort-Fetch
-            @( E 'Price status' )              # false: alle Kurse da -> kein FX-Call
-        ) }
-        'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
+        'Refresh market prices'  = @{ main = @( ,@( E 'Price status' ) ) }
         'Price status'           = @{ main = @( ,@( E 'Return' ) ) }
     }
 

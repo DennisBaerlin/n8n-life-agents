@@ -71,6 +71,26 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_ensure_currency [Idempotenz: ON CONFLICT DO NOTHING]';
 
+  -- TEST 6 [22]: volle ISO-4217-Ausnahmen (SIX List One): 3 Stellen, 4 Stellen, UYI 0
+  PERFORM finance.fn_ensure_currency('KWD');
+  PERFORM finance.fn_ensure_currency('CLF');
+  PERFORM finance.fn_ensure_currency('UYI');
+  PERFORM finance.fn_ensure_currency('UYW');
+  IF (SELECT minor_unit FROM finance.currencies WHERE code = 'KWD') IS DISTINCT FROM 3::smallint
+     OR (SELECT minor_unit FROM finance.currencies WHERE code = 'CLF') IS DISTINCT FROM 4::smallint
+     OR (SELECT minor_unit FROM finance.currencies WHERE code = 'UYW') IS DISTINCT FROM 4::smallint
+     OR (SELECT minor_unit FROM finance.currencies WHERE code = 'UYI') IS DISTINCT FROM 0::smallint THEN
+    RAISE EXCEPTION 'FAIL fn_ensure_currency [22 ISO-Ausnahmen]: KWD/CLF/UYW/UYI = %',
+      (SELECT jsonb_object_agg(code, minor_unit) FROM finance.currencies WHERE code IN ('KWD','CLF','UYW','UYI'));
+  END IF;
+  -- dieselbe Regel als Mengen-Helfer (fn_upsert_fx_rates registriert alle Feed-Waehrungen darueber)
+  IF finance.fn_currency_minor_unit('BHD') IS DISTINCT FROM 3::smallint
+     OR finance.fn_currency_minor_unit('JPY') IS DISTINCT FROM 0::smallint
+     OR finance.fn_currency_minor_unit('GGP') IS DISTINCT FROM 2::smallint THEN
+    RAISE EXCEPTION 'FAIL fn_currency_minor_unit [BHD 3, JPY 0, Nicht-ISO 2]';
+  END IF;
+  RAISE NOTICE 'PASS fn_ensure_currency [22: KWD 3, CLF/UYW 4, UYI 0, Nicht-ISO 2]';
+
 END $$;
 
 ROLLBACK;

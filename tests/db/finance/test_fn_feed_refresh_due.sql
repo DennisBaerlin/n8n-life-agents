@@ -13,25 +13,38 @@ BEGIN
   DELETE FROM finance.market_prices;
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2), ('GBP', 2) ON CONFLICT (code) DO NOTHING;
 
-  IF NOT EXISTS (SELECT 1 FROM finance.fn_active_currencies()) AND finance.fn_feed_refresh_due('fx') THEN
-    RAISE EXCEPTION 'FAIL [fx leer]: ohne Fremdwaehrung nie faellig';
+  -- [18] ohne Fremdwaehrungs-Objekt und ohne Kurs -> faellig (Vorhaltung haengt nicht am Bedarf)
+  IF EXISTS (SELECT 1 FROM finance.fn_active_currencies()) OR NOT finance.fn_feed_refresh_due('fx') THEN
+    RAISE EXCEPTION 'FAIL [18 fx leer]: ohne Objekt und ohne Kurs faellig';
   END IF;
 
-  INSERT INTO finance.accounts (name, account_type, currency, status)
-  VALUES ('__frd_usd__', 'cash', 'USD', 'active'), ('__frd_gbp__', 'cash', 'GBP', 'active');
-  IF NOT finance.fn_feed_refresh_due('fx') THEN
-    RAISE EXCEPTION 'FAIL [fx ohne Kurs]: Waehrung ohne jeden Kurs ist faellig';
-  END IF;
-
-  -- Stand eine Minute vor Tagesbeginn -> faellig; genau Tagesbeginn -> nicht faellig
+  -- Stand eine Minute vor Tagesbeginn -> faellig; genau Tagesbeginn -> nicht faellig (ohne jedes Konto)
   INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source, updated_at)
-  VALUES ('EUR', 'USD', 1.1, current_date - 1, 'test', v_start - interval '1 minute');
+  VALUES ('EUR', 'USD', 1.1, current_date - 1, 'open.er-api.com', v_start - interval '1 minute');
   IF NOT finance.fn_feed_refresh_due('fx') THEN
     RAISE EXCEPTION 'FAIL [fx gestern]: Stand vor Tagesbeginn ist faellig';
   END IF;
-  UPDATE finance.fx_rates SET updated_at = v_start WHERE quote_currency = 'USD';
+  -- [19b] nur ein EZB-Nachlauf von heute -> trotzdem faellig (nur der Tages-Feed zaehlt)
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source, updated_at)
+  VALUES ('EUR', 'GBP', 0.85, current_date - 400, 'ecb', v_start + interval '1 minute');
+  IF NOT finance.fn_feed_refresh_due('fx') THEN
+    RAISE EXCEPTION 'FAIL [19b ecb]: EZB-Zeilen von heute zaehlen nicht als Tages-Abruf';
+  END IF;
+  -- [19c] heute abgerufen, aber die Antwort trug einen Stand von vor zwei Tagen (Abruf vor der Veroeffentlichung oder
+  -- veralteter Feed) -> weiter faellig, bis der Stand der Quelle das aktuelle UTC-Datum erreicht
+  UPDATE finance.fx_rates SET updated_at = v_start, as_of = (now() AT TIME ZONE 'UTC')::date - 2 WHERE quote_currency = 'USD';
+  IF NOT finance.fn_feed_refresh_due('fx') THEN
+    RAISE EXCEPTION 'FAIL [19c alter Quell-Stand]: weiter faellig';
+  END IF;
+  -- [19] heute schon abgerufen, Quell-Stand aktuell -> nicht faellig, auch ohne Fremdwaehrungs-Objekt
+  UPDATE finance.fx_rates SET as_of = (now() AT TIME ZONE 'UTC')::date WHERE quote_currency = 'USD';
   IF finance.fn_feed_refresh_due('fx') THEN
-    RAISE EXCEPTION 'FAIL [fx heute]: Stand ab Tagesbeginn ist nicht faellig (GBP ohne Kurs: ein frischer Kurs genuegt)';
+    RAISE EXCEPTION 'FAIL [19 fx heute]: Stand ab Tagesbeginn ist nicht faellig';
+  END IF;
+  INSERT INTO finance.accounts (name, account_type, currency, status)
+  VALUES ('__frd_usd__', 'cash', 'USD', 'active'), ('__frd_gbp__', 'cash', 'GBP', 'active');
+  IF finance.fn_feed_refresh_due('fx') THEN
+    RAISE EXCEPTION 'FAIL [fx heute]: Konten aendern nichts an der Faelligkeit';
   END IF;
   UPDATE finance.fx_rates SET updated_at = v_start - interval '4 days' WHERE quote_currency = 'USD';
   IF NOT finance.fn_feed_refresh_due('fx') THEN

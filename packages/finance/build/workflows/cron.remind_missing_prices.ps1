@@ -1,13 +1,15 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_remind_missing_prices -> Build-CronRemindMissingPrices. Dot-gesourct von build.ps1.
-# Kurs-Luecken-Erinnerung: ein Kurs, der nicht gefunden wird, darf nie unentdeckt bleiben.
+# Kurs-Erinnerungen (Wertpapiere + Wechselkurse): ein Kurs, der nicht gefunden wird, darf nie unentdeckt bleiben.
 # Deterministisch bis auf eine optionale Websuche je Luecke und Latch-Fenster. Ablauf: Schedule (im Erinnerungs-
-# fenster) -> finance.fn_price_gaps() (Luecken missing|stale, Feed-Ausfall, Re-Arm behobener Luecken) ->
-#   Feed-Ausfall -> eine Meldung (Latch 'feed_down', 7 Tage);
+# fenster) -> finance.fn_price_gaps() (Luecken missing|stale, Feed-Ausfall, Re-Arm behobener Luecken) +
+# finance.fn_fx_feed_gap() (Wechselkurs-Dienst liefert nicht) ->
+#   Wechselkurs-Ausfall (unabhaengiger Zweig) -> eine Meldung (fn_feed_down_claim('fx'), 7 Tage);
+#   Wertpapier-Feed-Ausfall -> eine Meldung (fn_feed_down_claim('prices'), 7 Tage);
 #   sonst je Luecke: fn_price_gap_claim (Latch je Position, 7 Tage; direkt vor dem eigenen Versand) -> Yahoo-ISIN-Suche
 #   (sub_resolve_yahoo_symbol, Plausi-Pflicht) -> kein Kandidat: Websuche (core:web_search) nach Boersen-Tickern ->
 #   dieselbe Sub prueft sie (try_symbols) -> Karte [Uebernehmen]/[Nicht jetzt] oder Text-Hinweis.
-#   Uebernehmen -> fn_apply_price_symbol (Guard already_resolved) -> Kurs (+FX) sofort holen -> Ergebnis-Zeile.
+#   Uebernehmen -> fn_apply_price_symbol (Guard already_resolved) -> Kurs sofort holen -> Ergebnis-Zeile.
 # Warum Cron statt Monitor-Trigger: Dialog + Schreibzugriff auf eine Domaenen-Tabelle (packages/core/CLAUDE.md
 # Cron-vs-Trigger-Gesetz). Warum kein Callback-Knopf: der DB-Handler kann den Kurs nicht sofort holen.
 function Build-CronRemindMissingPrices {
@@ -15,7 +17,6 @@ function Build-CronRemindMissingPrices {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-CronRemindMissingPrices' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-CronRemindMissingPrices' -Soft
-    $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CronRemindMissingPrices'
     $webSearchName        = Resolve-CoreServiceAlias 'core:web_search' $CoreServiceMap
     $WebSearchId          = Get-RequiredWorkflowId $webSearchName 'Build-CronRemindMissingPrices'
 
@@ -32,10 +33,10 @@ function Build-CronRemindMissingPrices {
         'finance.dialog.price_gap_none', 'finance.dialog.price_gap_maybe', 'finance.dialog.price_gap_btn_apply',
         'finance.dialog.price_gap_btn_later', 'finance.dialog.price_gap_applied', 'finance.dialog.price_gap_applied_noprice',
         'finance.dialog.price_gap_already', 'finance.dialog.price_gap_failed', 'finance.dialog.price_gap_later',
-        'finance.dialog.price_feed_down', 'core.reminders.card_footer', 'core.hitl.unauthorized') + $script:UiRenderKeys)
+        'finance.dialog.price_feed_down', 'finance.dialog.fx_feed_down', 'finance.dialog.fx_feed_down_never', 'core.reminders.card_footer', 'core.hitl.unauthorized') + $script:UiRenderKeys)
     $find = Build-Pg 'Find gaps' @(-560, 0) @"
-=SELECT x.r AS doc, core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys))) AS ui
-FROM (SELECT finance.fn_price_gaps() AS r) x;
+=SELECT x.r AS doc, x.fx AS fx, core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys))) AS ui
+FROM (SELECT finance.fn_price_gaps() AS r, finance.fn_fx_feed_gap() AS fx) x;
 "@ $null
     $T   = "`$('Find gaps').first().json.ui.t"
     $lib = Get-UiRenderLibJs
@@ -55,9 +56,25 @@ return (Array.isArray(doc.gaps) ? doc.gaps : []).map((g) => ({ json: Object.assi
     $plan = [ordered]@{ parameters = [ordered]@{ jsCode = $planJs }; type = 'n8n-nodes-base.code'; typeVersion = 2
         position = @(-340, 0); id = (New-Id); name = 'Plan items' }
     $ifFeed = Build-If 'Feed down?' @(-140, 0) "={{ `$json.mode === 'feed_down' }}" 'true' 'equals' 'boolean'
-    $claimFeed = Build-Pg 'Claim feed down' @(60, -260) "SELECT finance.fn_price_gap_claim('feed_down') AS due;"
+    $claimFeed = Build-Pg 'Claim feed down' @(60, -260) "SELECT finance.fn_feed_down_claim('prices') AS due;"
     $ifFeedDue = Build-If 'Feed due?' @(260, -260) "={{ `$json.due }}" 'true' 'equals' 'boolean'
     $nFeed = New-TelegramSendNode 'Notify feed down' @(460, -320) "={{ `$('Plan items').first().json.text }}"
+
+    # Wechselkurs-Ausfall: unabhaengig von Wertpapier-Luecken (laeuft auch ohne gehaltene Position), eigener Slot und
+    # Latch (fn_feed_down_claim('fx')); keine Entwarnung, Re-Arm bei Rueckkehr macht fn_fx_feed_gap.
+    $ifFxDown = Build-If 'FX feed down?' @(-340, -560) "={{ !!(`$json.fx && `$json.fx.feed_down) }}" 'true' 'equals' 'boolean'
+    $claimFx = Build-Pg 'Claim FX feed down' @(-140, -560) "SELECT finance.fn_feed_down_claim('fx') AS due;"
+    $ifFxDue = Build-If 'FX due?' @(60, -560) "={{ `$json.due }}" 'true' 'equals' 'boolean'
+    $composeFx = [ordered]@{ parameters = [ordered]@{ jsCode = ($lib + @'
+const m = $('Find gaps').first().json;
+const U = uiRender(m.ui || {});
+const fx = m.fx || {};
+const head = fx.never
+  ? U.t('finance.dialog.fx_feed_down_never')
+  : U.fill(U.t('finance.dialog.fx_feed_down'), { date: { kind: 'date', value: fx.stale_since } });
+return [{ json: { text: head + '\n\n' + U.t('core.reminders.card_footer') } }];
+'@) }; type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(260, -560); id = (New-Id); name = 'Compose FX feed down' }
+    $nFx = New-TelegramSendNode 'Notify FX feed down' @(460, -560) "={{ `$json.text }}"
 
     $loop = Build-Loop 'Loop Over Items' @(60, 100)
     $done = Build-NoOp 'Done' @(260, -60)
@@ -183,11 +200,6 @@ return [{ json: Object.assign({}, $('Pick candidate').first().json, { tickers: o
         ([ordered]@{ chat_id = "={{ '' }}" })
     $callPrices['alwaysOutputData'] = $true
     $callPrices['onError'] = 'continueRegularOutput'
-    $fxGap = New-FinanceFxGapCheck -CheckPos @(2520, -560) -IfPos @(2620, -380)
-    $callFx = Build-CallWorkflow 'Refresh FX rates' @(2820, -460) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
-        ([ordered]@{ chat_id = "={{ '' }}" })
-    $callFx['alwaysOutputData'] = $true
-    $callFx['onError'] = 'continueRegularOutput'   # Lauf-Abbruch verloere die restlichen Karten; Read new price meldet den Stand
     $readNew = Build-Pg 'Read new price' @(3020, -380) `
         "=SELECT (SELECT to_jsonb(s) FROM finance.fn_holding_price_status(ARRAY[((`$1::jsonb)->>'holding_id')::int]) s) AS st;" `
         ([ordered]@{ holding_id = "$it.holding_id" })
@@ -223,29 +235,33 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
     $nResult = New-TelegramSendNode 'Notify result' @(3420, -160) "={{ `$json.text }}" -OnError 'continueRegularOutput'
 
     $stickyOverview = Build-Sticky 'Überblick' @(-920, -460) `
-        'Kurs-Lücken-Erinnerung (Owner 2026-10-27: nie unentdeckt)' `
-        'Schedule (core.config schedule.remind_missing_prices, Standard 25 10 * * * = im Erinnerungsfenster). Find gaps = finance.fn_price_gaps(): gehaltene Positionen ohne gültigen Kurs (missing = nie einer, stale = älter als advisor.price_stale_days; EINE Regel fn_price_status wie Depot-Übersicht und Berater), Referenzkurs für die Plausi-Prüfung, FX-Sätze; Seiteneffekt: behobene Lücken re-armen (core.fn_notify_resolve, source finance_prices). Plan items: Feed-Ausfall (keine Position ok, >= 2 stale) -> EINE Meldung (Latch feed_down, 7 Tage), sonst ein Item je Lücke. Ohne Lücke: Ende. Meldet unabhängig vom Finanzplan (der Berater-Drift-Check ist opt-in und war der Grund, dass eine Lücke unbemerkt blieb).' 340 620
+        'Kurs-Erinnerungen: Wertpapiere + Wechselkurse (nie unentdeckt)' `
+        'Schedule (core.config schedule.remind_missing_prices, Standard 25 10 * * * = im Erinnerungsfenster). Find gaps = finance.fn_price_gaps(): gehaltene Positionen ohne gültigen Kurs (missing = nie einer, stale = älter als advisor.price_stale_days; EINE Regel fn_price_status wie Depot-Übersicht und Berater), Referenzkurs für die Plausi-Prüfung, FX-Sätze; Seiteneffekt: behobene Lücken re-armen (core.fn_notify_resolve, source finance:prices). Daneben finance.fn_fx_feed_gap() (Wechselkurs-Dienst, Sticky Wechselkurs-Ausfall). Plan items: Feed-Ausfall (keine Position ok, >= 2 stale) -> EINE Meldung (fn_feed_down_claim(prices), 7 Tage), sonst ein Item je Lücke. Ohne Lücke: Ende. Meldet unabhängig vom Finanzplan (der Berater-Drift-Check ist opt-in und war der Grund, dass eine Lücke unbemerkt blieb).' 340 620
     $stickyLatch = Build-Sticky 'Latch je Karte' @(260, 340) `
         'fn_price_gap_claim direkt vor dem Versand' `
-        'Claim gap = core.fn_should_notify(finance_prices, holding_id, 7 Tage): erste Meldung sofort, dann höchstens alle 7 Tage, solange die Lücke besteht. Gesetzt wird er je Position erst in ihrer Schleifen-Runde: eine nicht angetippte Karte verschluckt so keine spätere (die Karte wartet höchstens 8 h, dann weiter wie "Nicht jetzt"). Bewusst kein fn_notify_reconcile (advisor-only, kein Paket-Grant).' 300 400
+        'Claim gap = core.fn_should_notify(finance:prices, holding_id, 7 Tage): erste Meldung sofort, dann höchstens alle 7 Tage, solange die Lücke besteht. Gesetzt wird er je Position erst in ihrer Schleifen-Runde: eine nicht angetippte Karte verschluckt so keine spätere (die Karte wartet höchstens 8 h, dann weiter wie "Nicht jetzt"). Bewusst kein fn_notify_reconcile (advisor-only, kein Paket-Grant).' 300 400
     $stickySearch = Build-Sticky 'Symbol-Suche mit Plausi-Pflicht' @(660, -320) `
         'Yahoo-ISIN-Suche, dann Websuche, beides geprüft' `
         'Resolve Yahoo symbol = derselbe Sub wie Kauf/Korrektur/Import (provider_symbol leer -> immer ISIN-Suche; Plausi gegen letzten Kurs, Band 0,8-1,25, ODER Einstand, Band 0,2-5, je in ihrer Währung, sonst in EUR verglichen). Pick candidate: übernehmbar nur mit ISIN, anderem Symbol als dem heutigen Feed-Symbol und adoptable (Sub). Sonst (nur mit ISIN) Websuche über core:web_search (bezahlte Anthropic-API, Anfrage = ISIN + Name, keine Bestände) -> Parse tickers (bis 3 Ticker mit Börsen-Suffix, nur aus dem Antwort-Teil, URLs/Domains entfernt; Websuche-Ticker nur in Positions-Währung) -> dieselbe Sub mit try_symbols prüft sie per Chart-Abruf + Plausi -> Pick web candidate. Ein erfundener Ticker scheitert dort; den Rest prüft der Owner auf der Karte (Name, Börse, Kurs). Krypto (ohne ISIN) -> nur Text-Hinweis.' 340 620
     $stickyApply = Build-Sticky 'Übernehmen' @(2020, -660) `
         'fn_apply_price_symbol + Sofort-Kurs' `
-        'Der Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -> "nichts überschrieben"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices -> Check FX rates (fn_fx_rate_status, kennt auch die vom Abruf gelernte Währung; bei Lücke Refresh FX rates, alle alwaysOutputData) -> Read new price (fn_holding_price_status, aggregiert -> immer ein Item) -> Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -> nur Hinweis "in 7 Tagen wieder".' 340 440
+        'Der Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -> "nichts überschrieben"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices (alwaysOutputData; den Wechselkurs jeder Feed-Währung hält cron_refresh_fx_rates schon vor) -> Read new price (fn_holding_price_status, aggregiert -> immer ein Item) -> Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -> nur Hinweis "in 7 Tagen wieder".' 340 440
     $stickyStale = Build-Sticky 'Doppel-Tipp-Schutz' @(1460, -480) `
         'Mehrere Karten in einer Execution' `
         'n8n bindet einen Tipp an die Execution, nicht an die Nachricht. Hinter der Karte merkt sich "(tap check)" die beantworteten Nachrichten; ein Tipp auf eine schon beantwortete Karte stellt die aktuelle neu (New-StaleTapGuard, Muster cron_remind_interest).' 300 260
     $stickyGate = Build-Sticky 'F9 Cron-Gate' @(-1100, -260) `
         'Paket aktiv UND cron_enable.remind_missing_prices' `
-        'core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''remind_missing_prices'')=''true'' (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false.' 300 300
+        'core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''remind_missing_prices'')=''true'' (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false. Aus heißt auch: keine Wechselkurs-Ausfall-Meldung.' 300 300
+    $stickyFx = Build-Sticky 'Wechselkurs-Ausfall' @(-340, -820) `
+        'Wechselkurse kommen nicht mehr: eine Meldung, keine Entwarnung' `
+        'Zweiter Ausgang von Find gaps, unabhängig von Wertpapier-Lücken (läuft auch ohne Depot). fn_fx_feed_gap misst am jüngsten Quell-Datum (as_of) der open.er-api.com-Zeilen: ab finance.fx_feed_alert_days Kalendertagen (Standard 2) ohne neuen Stand gilt der Dienst als ausgefallen, ohne jede Zeile ab der Paket-Installation (never: eigener Text ohne Datum); bei abgeschaltetem Abruf (cron_enable refresh_fx_rates) nie. Claim FX feed down = finance.fn_feed_down_claim(fx): eigener Slot fx_feed_down und Latch finance:fx, erste Meldung sofort, dann höchstens alle 7 Tage. Kehrt der Dienst zurück, re-armt fn_fx_feed_gap den Latch still (keine Entwarnung, wie bei Wertpapieren). Nur an den Owner.' 340 380
 
     $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $plan, $ifFeed, $claimFeed, $ifFeedDue, $nFeed,
                $loop, $done, $claim, $ifDue, $resolve, $pick, $ifAccept, $ifTryWeb, $web, $parse, $ifTickers,
-               $resolveWeb, $pickWeb, $nNone, $ask, $ifApply, $apply, $ifApplied, $callPrices, $callFx, $readNew,
+               $resolveWeb, $pickWeb, $nNone, $ask, $ifApply, $apply, $ifApplied, $callPrices, $readNew,
                $composeApplied, $composeRejected, $composeLater, $nResult,
-               $stickyOverview, $stickyLatch, $stickySearch, $stickyApply, $stickyStale, $stickyGate) + $fxGap + $gAsk.Nodes
+               $stickyOverview, $stickyLatch, $stickySearch, $stickyApply, $stickyStale, $stickyGate, $stickyFx,
+               $ifFxDown, $claimFx, $ifFxDue, $composeFx, $nFx) + $gAsk.Nodes
 
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
@@ -254,7 +270,17 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
             @( E 'Find gaps' ),
             @( E 'Disabled' )
         ) }
-        'Find gaps'                   = @{ main = @( ,@( E 'Plan items' ) ) }
+        'Find gaps'                   = @{ main = @( ,@( (E 'Plan items'), (E 'FX feed down?') ) ) }   # Wertpapier-Luecken + Wechselkurs-Ausfall unabhaengig
+        'FX feed down?'               = @{ main = @(
+            @( E 'Claim FX feed down' ),
+            @()
+        ) }
+        'Claim FX feed down'          = @{ main = @( ,@( E 'FX due?' ) ) }
+        'FX due?'                     = @{ main = @(
+            @( E 'Compose FX feed down' ),
+            @()
+        ) }
+        'Compose FX feed down'        = @{ main = @( ,@( E 'Notify FX feed down' ) ) }
         'Plan items'                  = @{ main = @( ,@( E 'Feed down?' ) ) }
         'Feed down?'                  = @{ main = @(
             @( E 'Claim feed down' ),    # true: Feed-Ausfall -> eine Meldung
@@ -302,13 +328,7 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
             @( E 'Refresh market prices' ),
             @( E 'Compose not applied' )
         ) }
-        'Refresh market prices'       = @{ main = @( ,@( E 'Check FX rates' ) ) }
-        'Check FX rates'              = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
-        'FX refresh needed?'          = @{ main = @(
-            @( E 'Refresh FX rates' ),
-            @( E 'Read new price' )
-        ) }
-        'Refresh FX rates'            = @{ main = @( ,@( E 'Read new price' ) ) }
+        'Refresh market prices'       = @{ main = @( ,@( E 'Read new price' ) ) }
         'Read new price'              = @{ main = @( ,@( E 'Compose applied' ) ) }
         'Compose applied'             = @{ main = @( ,@( E 'Notify result' ) ) }
         'Compose not applied'         = @{ main = @( ,@( E 'Notify result' ) ) }

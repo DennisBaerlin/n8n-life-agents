@@ -885,6 +885,8 @@
   "finance.dialog.price_gap_failed": "Die Kursquelle für {name} konnte ich nicht speichern. Frag mich im Chat nach dem Stand.",
   "finance.dialog.price_gap_later": "Okay, ich erinnere dich in 7 Tagen wieder an {name}.",
   "finance.dialog.price_feed_down": "📉 Der Kursdienst liefert seit dem {date} keine Wertpapierkurse mehr – die Depot-Werte sind so lange veraltet. Ich prüfe es täglich und melde mich in 7 Tagen wieder, falls es so bleibt.",
+  "finance.dialog.fx_feed_down": "💱 Der Kursdienst liefert seit dem {date} keine Wechselkurse mehr – Beträge in fremder Währung rechnen so lange mit dem Kurs vom {date}. Ich prüfe es täglich und melde mich in 7 Tagen wieder, falls es so bleibt.",
+  "finance.dialog.fx_feed_down_never": "💱 Ich konnte noch keine Wechselkurse abrufen – Beträge in fremder Währung kann ich so lange nicht in Euro umrechnen. Ich prüfe es täglich und melde mich in 7 Tagen wieder, falls es so bleibt.",
   "finance.gate.onboarding_required": "Bevor ich dich fundiert beraten kann, brauche ich erst dein Finanzbild. Schreib mir /onboarding (oder einfach: richte mich ein).",
   "finance.gate.onboarding_open": "Noch offen: {sections}.",
   "finance.gate.onboarding_member": "Die Finanzen richtet euer Haushalts-Owner ein – sobald das erledigt ist, kann ich dich beraten.",

@@ -5,12 +5,12 @@
 --   dem Sentinel-Marker '__E2E__', FK-sicher und atomar (laeuft in der Transaktion des Dispatchers).
 --   Guard 1 (Pre-Assertion): jede eingesammelte Konto-ID muss den Marker tragen + Runaway-Obergrenze -> bricht vor
 --     jedem DELETE ab. Guard 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
---   Tagesstaende (networth_snapshots) der Sentinel-Objekte gehen mit.
+--   Tagesstaende (networth_snapshots) der Sentinel-Objekte gehen mit, ebenso Kurs-Fixtures (fx_rates mit source = Marker).
 --   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
 --   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE).
 --   Eingabe: p_runid (optional); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
 --   Rueckgabe: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
---     real_estate, pension, networth_snapshots, recurring_payments, interest_rates, balances, import_staging}
+--     real_estate, pension, networth_snapshots, recurring_payments, interest_rates, balances, import_staging, fx_rates}
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_clear_e2e_data(p_runid text DEFAULT NULL)
@@ -25,7 +25,7 @@ DECLARE
     v_rp   int[];
     v_n    int;
     v_tx int; v_hold int; v_sp int; v_ins int; v_loan int; v_sg int; v_re int; v_pen int; v_nws int; v_rpc int; v_ir int;
-    v_bal int; v_ac int; v_stg int := 0;
+    v_bal int; v_ac int; v_stg int := 0; v_fx int;
 BEGIN
     -- Run-ID-Format-Guard: nur [a-z0-9] (verhindert LIKE-Injection ueber p_runid).
     IF COALESCE(p_runid,'') <> '' AND p_runid !~ '^[a-z0-9]+$' THEN
@@ -106,6 +106,8 @@ BEGIN
     -- 8b. Import-Staging-Rows, deren Payload den Sentinel traegt (payload-weiter Match)
     DELETE FROM finance.import_staging WHERE payload::text LIKE v_pat_any;  GET DIAGNOSTICS v_stg = ROW_COUNT;
     DELETE FROM finance.setup_session WHERE chat_id LIKE 'test_%';
+    -- 8c. Kurs-Fixtures der Berater-Faelle (Zeile ohne Namen: der Marker steht in source)
+    DELETE FROM finance.fx_rates WHERE source LIKE v_pat;  GET DIAGNOSTICS v_fx = ROW_COUNT;
 
     -- Guard 2: keine finance-Sentinel-Zeile darf zurueckbleiben.
     IF EXISTS (SELECT 1 FROM finance.accounts     WHERE name LIKE v_pat)
@@ -123,7 +125,7 @@ BEGIN
         'accounts', v_ac, 'transactions', v_tx, 'holdings', v_hold,
         'savings_plans', v_sp, 'insurances', v_ins, 'loans', v_loan,
         'savings_goals', v_sg, 'real_estate', v_re, 'pension', v_pen, 'networth_snapshots', v_nws, 'recurring_payments', v_rpc,
-        'interest_rates', v_ir, 'balances', v_bal, 'import_staging', v_stg
+        'interest_rates', v_ir, 'balances', v_bal, 'import_staging', v_stg, 'fx_rates', v_fx
     );
 END;
 $$;

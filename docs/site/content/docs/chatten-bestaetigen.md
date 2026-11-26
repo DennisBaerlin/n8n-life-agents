@@ -65,7 +65,7 @@ Geht deine Nachricht an den Assistenten — Text, Sprachnachricht, Foto oder Dok
 Nicht jeder Button ist eine Buchungs-Bestätigung:
 
 - **👍 / 👎** unter einem vorgeschlagenen Job (vom Karriere-Coach, siehe [Karriere-Coach](karriere-coach.html)) — reines Feedback, mit dem der Assistent lernt, welche Stellen zu dir passen.
-- **Cron ein/aus** — ein Knopf zum Abschalten einer wiederkehrenden Erinnerung oder eines automatischen Checks (z. B. „Abschalten" oder „Erinnerung abschalten"). Wieder anschalten geht mit `/reminders`: Das Menü zeigt alle Erinnerungen mit Zeitplan und einem An/Aus-Knopf.
+- **Cron ein/aus** — ein Knopf zum Abschalten einer wiederkehrenden Erinnerung oder eines automatischen Checks (z. B. „Abschalten" oder „🔕 Solche Erinnerungen abschalten"). Wieder anschalten geht mit `/reminders`: Das Menü zeigt alle Erinnerungen mit Zeitplan und einem An/Aus-Knopf.
 - **Lern-Loop-Einzelbestätigung** — schlägt der optionale tägliche Lern-Check (siehe [Monitor & Guide](monitor-guide.html)) etwas vor, das er sich dauerhaft merken will, bestätigst du das Stück für Stück per Knopf, nie im Block.
 
 ## Anhänge: Foto, PDF und Sprachnachricht

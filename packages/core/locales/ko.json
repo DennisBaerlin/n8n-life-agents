@@ -942,7 +942,7 @@
   "core.cmd.costs": "최근 7일과 30일의 AI 비용",
   "core.toast.reminder_mandatory": "이 알림은 항상 켜져 있어요 (기한)",
   "core.cron.off_reminders_hint": "/reminders 로 언제든지 다시 켤 수 있어요.",
-  "core.reminders.btn_off": "이 알림 끄기",
+  "core.reminders.btn_off": "🔕 이런 알림 끄기",
   "core.reminders.card_footer": "알림 관리: /reminders",
   "core.reminders.title": "내 알림",
   "core.reminders.intro_owner": "봇이 스스로 보내는 알림이에요. 항목을 누르면 켜거나 끌 수 있어요.",

@@ -942,7 +942,7 @@
   "core.cmd.costs": "KI-Kosten der letzten 7 und 30 Tage",
   "core.toast.reminder_mandatory": "Diese Erinnerung bleibt immer an (Fristen)",
   "core.cron.off_reminders_hint": "Wieder einschalten kannst du sie jederzeit mit /reminders.",
-  "core.reminders.btn_off": "Erinnerung abschalten",
+  "core.reminders.btn_off": "🔕 Solche Erinnerungen abschalten",
   "core.reminders.card_footer": "Erinnerungen verwalten: /reminders",
   "core.reminders.title": "Deine Erinnerungen",
   "core.reminders.intro_owner": "Das schickt der Bot von sich aus. Tippe auf einen Eintrag, um ihn an- oder auszuschalten.",

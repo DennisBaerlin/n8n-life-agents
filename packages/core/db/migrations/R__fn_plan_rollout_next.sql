@@ -38,7 +38,6 @@ DECLARE
     v_at      timestamptz;
     v_cnt     int;
     v_max     int;
-    v_young   timestamptz;
     v_items   jsonb;
     v_res     jsonb;
     v_buttons jsonb;
@@ -97,9 +96,9 @@ BEGIN
     -- Schritt 1: Uebergabe-Liste, einmal je hoechster Aufgabe und veroeffentlichter Version. Warten zaehlt auch laufende
     -- Claims (sonst liefe die Abfolge waehrend des Durchgehens weiter); Liste, Knopf und Schluessel (latch_key) kommen aus
     -- core.fn_handoff_overview wie beim Berater-Tool, damit dessen Merker denselben Schluessel trifft.
-    SELECT count(*), max(t.created_at),
+    SELECT count(*),
            COALESCE(bool_or(t.status = 'working' AND t.claimed_at > now() - make_interval(mins => v_ttl)), false)
-      INTO v_cnt, v_young, v_live
+      INTO v_cnt, v_live
       FROM agent.handoff_tasks t
      WHERE t.domain = p_domain AND t.person_id = p_person AND t.status IN ('open', 'working');
     IF v_cnt > 0 THEN
@@ -143,8 +142,9 @@ BEGIN
         END IF;
     END IF;
 
-    -- Schritt 2: warten, bis eingetragen ist, hoechstens rollout_wait_days
-    IF v_cnt > 0 AND v_young > now() - make_interval(days => v_wait) THEN
+    -- Schritt 2: still warten, solange etwas open/working ist, ohne Frist (nie "eingerichtet", bevor es stimmt);
+    -- deferred und cancelled halten nicht auf
+    IF v_cnt > 0 THEN
         RETURN jsonb_build_object('step', 2, 'wait', true, 'messages', '[]'::jsonb);
     END IF;
 

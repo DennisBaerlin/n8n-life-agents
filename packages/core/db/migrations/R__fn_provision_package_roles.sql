@@ -213,7 +213,12 @@ BEGIN
     IF to_regprocedure('core.fn_cancel_handoff_task(jsonb)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_cancel_handoff_task(jsonb) TO %I', v_rw);
     END IF;
-    -- Onboarding-Schnittstelle: Read (kombiniert core+package) an beide Rollen; der
+    IF to_regprocedure('core.fn_defer_handoff_task(jsonb)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_defer_handoff_task(jsonb) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_handoff_position(integer)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_position(integer) TO %I', v_rw);
+    END IF;    -- Onboarding-Schnittstelle: Read (kombiniert core+package) an beide Rollen; der
     -- INVOKER-Write nur an _rw (das _ro-Profil ist default_transaction_read_only -> kann ohnehin nicht schreiben).
     IF to_regprocedure('core.fn_onboarding_status(text, text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_onboarding_status(text, text) TO %I, %I', v_rw, v_ro);   -- (text, text): p_chat_id, core:V016 droppt die 1-Arg-Form

@@ -9,7 +9,7 @@
 --     * beansprucht atomar (UPDATE ... RETURNING) die Aufgaben DIESER Person und Domain mit id <= max_task_id, die open
 --       sind oder deren working-Claim aelter als advisor.handoff_claim_ttl_minutes ist (Default 120): open -> working,
 --       claimed_at = now(). Ein Doppeltipp findet nichts mehr -> Toast "nichts mehr offen".
---   Erfolg {ok:true, route:'handoff', domain, task_ids:[...], tasks:[{id, kind, payload, text}]} -> der Orchestrator
+--   Erfolg {ok:true, route:'handoff', domain, task_ids:[...], tasks:[{id, kind, payload, text, why, wanted, rest}]} -> der Orchestrator
 --   ('Handoff route?') startet den handoff_agent der Domain mit festem Auftrag; Dispatch-Fehler -> der Orchestrator gibt
 --   die Claims mit core.fn_release_handoff_tasks frei. Sonst {ok:false, reason, toast}. Nie RAISE (Dispatcher-Vertrag).
 --   VOLATILE (Claim), SECURITY INVOKER unter der Host-Cred des Dispatchers. Toasts in der Sprache des Tippenden.
@@ -58,9 +58,10 @@ BEGIN
            SET status = 'working', claimed_at = now()
          WHERE t.domain = v_domain AND t.person_id = v_pid AND t.id <= v_max::int
            AND (t.status = 'open' OR (t.status = 'working' AND t.claimed_at < now() - make_interval(mins => v_ttl)))
-        RETURNING t.id, t.kind, t.payload, t.text
+        RETURNING t.id, t.kind, t.payload, t.text, t.why, t.wanted
     )
-    SELECT jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'payload', c.payload, 'text', c.text) ORDER BY c.id)
+    SELECT jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'payload', c.payload, 'text', c.text, 'why', c.why,
+                                        'wanted', c.wanted, 'rest', core.fn_handoff_rest(c.id)) ORDER BY c.id)
       INTO v_tasks FROM c;
     IF v_tasks IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open',

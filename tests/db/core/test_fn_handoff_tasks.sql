@@ -124,18 +124,16 @@ BEGIN
   -- fertige Text-Struktur fuer beide Sender (Abfolge und Berater-Tool)
   IF r->'msg'->>'kind' IS DISTINCT FROM 'tpl' OR r->'msg'->>'value' IS DISTINCT FROM 'core.handoff.overview'
      OR r->'msg'->'params'->>'list' IS DISTINCT FROM E'1. Sparziel Notgroschen 5.000 €\n2. Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 msg]: %', r; END IF;
-  -- offen seit heute, ohne via spricht der Berater
-  IF r->'msg'->'params'->'since'->>'value' IS DISTINCT FROM 'core.handoff.since_today' OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_advisor' THEN
-    RAISE EXCEPTION 'FAIL [4 since/why]: %', r; END IF;
-  -- aeltester offener Punkt bestimmt das Datum (Tag des Haushalts); via rollout = Erinnerung
-  UPDATE agent.handoff_tasks SET created_at = now() - interval '23 days' WHERE id = v_id1;
+  -- ohne via spricht der Berater; kein "offen seit" (die Liste klingt nicht nach Erinnerung)
+  IF r->'msg'->'params' ? 'since' OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_advisor' THEN
+    RAISE EXCEPTION 'FAIL [4 why]: %', r; END IF;
+  -- via rollout = nach dem Veroeffentlichen, mit der Zahl der Eintraege (n=1 eigener Satz)
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111","via":"rollout"}');
-  IF r->'msg'->'params'->'since' IS DISTINCT FROM core.fn_ui_date(core.fn_today(now() - interval '23 days')) OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN
-    RAISE EXCEPTION 'FAIL [4 since alt]: %', r; END IF;
-  -- via resume = letzte Erinnerung an die Liste (core.fn_advisor_resume_due)
+  IF r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' OR (r->'msg'->'params'->'why'->'params'->>'n')::int <> 2 THEN
+    RAISE EXCEPTION 'FAIL [4 why rollout]: %', r; END IF;
+  -- via resume gibt es nicht mehr (keine Erinnerung an die Liste): faellt auf den Berater-Satz zurueck
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111","via":"resume"}');
-  IF r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_resume' THEN RAISE EXCEPTION 'FAIL [4 via resume]: %', r; END IF;
-  UPDATE agent.handoff_tasks SET created_at = now() WHERE id = v_id1;
+  IF r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_advisor' THEN RAISE EXCEPTION 'FAIL [4 via resume]: %', r; END IF;
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"222"}');
   IF (r->>'count')::int <> 0 OR r->'max_task_id' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [4 andere Person]: %', r; END IF;
   -- ein abgelaufener working-Claim (Lauf abgebrochen) erscheint wieder in der Uebersicht
@@ -176,7 +174,7 @@ BEGIN
   -- ---------- 6) Freigabe bei Dispatch-Fehler ----------
   r := core.fn_release_handoff_tasks(jsonb_build_object('task_ids', jsonb_build_array(v_id3)));
   IF (r->>'released')::int <> 1 OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id3) <> 'open'
-     OR (SELECT claimed_at FROM agent.handoff_tasks WHERE id = v_id3) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [6 release]: %', r; END IF;
+     OR (SELECT claimed_at FROM agent.handoff_tasks WHERE id = v_id3) IS NULL THEN RAISE EXCEPTION 'FAIL [6 release behaelt claimed_at]: %', r; END IF;
   r := core.fn_dispatch_callback(jsonb_build_object('data','handoff:finance:' || v_id3,'chat_id','111','chat_type','private'));
   IF r->>'route' <> 'handoff' OR r->'task_ids' <> jsonb_build_array(v_id3) THEN RAISE EXCEPTION 'FAIL [6 Dispatcher Owner]: %', r; END IF;
   RAISE NOTICE 'PASS [6 Freigabe + Dispatcher]';
@@ -191,15 +189,23 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 keine Zahl]: %', r; END IF;
   r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->>'text' <> 'Sparziel Notgroschen 5.000 €' THEN RAISE EXCEPTION 'FAIL [7 check]: %', r; END IF;
-  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
+  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111',
+         'entered_refs', jsonb_build_array(jsonb_build_object('type','savings_goal','id',41))));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id1) <> 'done'
      OR (SELECT closed_at FROM agent.handoff_tasks WHERE id = v_id1) IS NULL THEN RAISE EXCEPTION 'FAIL [7 complete]: %', r; END IF;
+  IF (SELECT close_reason FROM agent.handoff_tasks WHERE id = v_id1) IS DISTINCT FROM 'entered'
+     OR (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_id1) <> '[{"type":"savings_goal","id":41}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [7 close_reason/entered_refs]: %', (SELECT to_jsonb(t) FROM agent.handoff_tasks t WHERE id = v_id1); END IF;
   -- weiterer Teil derselben Vormerkung in derselben Runde (mehrere Eintraege fuer eine Vormerkung): ok, nichts geaendert
   r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [7 check Teil]: %', r; END IF;
-  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
+  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111',
+         'entered_refs', jsonb_build_array(jsonb_build_object('type','recurring_payment','id',9))));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id1) <> 'done' THEN
     RAISE EXCEPTION 'FAIL [7 zweiter Teil]: %', r; END IF;
+  IF (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_id1)
+     <> '[{"type":"savings_goal","id":41},{"type":"recurring_payment","id":9}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [7 zweiter Teil haengt an]: %', (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_id1); END IF;
   -- nach der Runde (Claim-Frist vorbei): abgelehnt
   ALTER TABLE agent.handoff_tasks DISABLE TRIGGER trg_handoff_tasks_final;
   UPDATE agent.handoff_tasks SET claimed_at = now() - interval '5 hours', closed_at = now() - interval '4 hours' WHERE id = v_id1;
@@ -214,17 +220,28 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 open]: %', r; END IF;
   RAISE NOTICE 'PASS [7 read/check/complete]';
 
-  -- ---------- 8) Ueberspringen / anderweitig erledigt ----------
-  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '222', 'reason', 'skipped'));
+  -- ---------- 8) Ueberspringen (streicht nicht) / streichen / schon im System ----------
+  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '222', 'reason', 'dropped'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 fremde Person]: %', r; END IF;
   r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'later'));
-  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 reason]: %', r; END IF;
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'invalid_reason' THEN RAISE EXCEPTION 'FAIL [8 reason]: %', r; END IF;
+  -- skipped (Wert des heutigen Buchhalters) gibt zurueck auf open, statt zu streichen; ohne Grund ebenso
   r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'skipped'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'cancelled' OR r->>'text' <> 'Dauerauftrag 100 € aufs Tagesgeld'
-     OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id3) <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [8 skipped]: %', r; END IF;
-  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id2, 'chat_id', '111', 'reason', 'done_elsewhere'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'done' THEN RAISE EXCEPTION 'FAIL [8 done_elsewhere aus open]: %', r; END IF;
-  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'skipped'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'open' OR r->>'text' <> 'Dauerauftrag 100 € aufs Tagesgeld'
+     OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id3) <> 'open' THEN RAISE EXCEPTION 'FAIL [8 skipped streicht]: %', r; END IF;
+  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id3) <> 'open' THEN
+    RAISE EXCEPTION 'FAIL [8 ohne Grund streicht]: %', r; END IF;
+  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'dropped'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'cancelled'
+     OR (SELECT status || '/' || close_reason FROM agent.handoff_tasks WHERE id = v_id3) <> 'cancelled/dropped' THEN RAISE EXCEPTION 'FAIL [8 dropped]: %', r; END IF;
+  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id2, 'chat_id', '111', 'reason', 'done_elsewhere',
+         'entered_refs', jsonb_build_array(jsonb_build_object('type','pension','id',3))));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'done'
+     OR (SELECT close_reason FROM agent.handoff_tasks WHERE id = v_id2) <> 'done_elsewhere'
+     OR (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_id2) <> '[{"type":"pension","id":3}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [8 done_elsewhere aus open]: %', r; END IF;
+  r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'dropped'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 schon geschlossen]: %', r; END IF;
   RAISE NOTICE 'PASS [8 cancel]';
 

@@ -1,6 +1,7 @@
 -- ============================================================
 -- fn_release_handoff_tasks (ATOMIC WRITE) — gibt beanspruchte Plan-Aufgaben nach einem gescheiterten Buchhalter-Start frei
---   p: { task_ids: [int, ...] } (die task_ids aus core.fn_handle_handoff_cb; fehlend/ungueltig -> released 0). working -> open, claimed_at NULL; andere
+--   p: { task_ids: [int, ...] } (die task_ids aus core.fn_handle_handoff_cb; fehlend/ungueltig -> released 0). working -> open; claimed_at
+--   bleibt als Provenienz der Runde (core.fn_handoff_position zaehlt "k von n" stabil weiter, auch nach "ueberspringen"); andere
 --   Zustaende bleiben (eine schon erledigte Aufgabe wird nie wieder offen). Rueckgabe {ok:true, released}.
 --   Aufgerufen vom Orchestrator (Host-Cred) im Fehler-Ausgang von 'Run handoff <domain>'.
 --   Tests: tests/db/core/test_fn_handoff_tasks.sql
@@ -14,7 +15,7 @@ DECLARE
     v_n int;
 BEGIN
     UPDATE agent.handoff_tasks
-       SET status = 'open', claimed_at = NULL
+       SET status = 'open'
      WHERE status = 'working'
        AND id IN (SELECT (e #>> '{}')::int FROM jsonb_array_elements(
                       CASE WHEN jsonb_typeof(p->'task_ids') = 'array' THEN p->'task_ids' ELSE '[]'::jsonb END) e

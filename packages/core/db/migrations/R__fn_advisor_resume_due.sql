@@ -1,8 +1,9 @@
 -- ============================================================
 -- core.fn_advisor_resume_due(p) — Erinnerung an eine angefangene Beratung (WRITE)
 --   Wer einen Plan-Entwurf liegen laesst, bekommt hoechstens zwei Nachrichten (Stufe 1 nach advisor.resume_first_days,
---   Stufe 2 nach advisor.resume_last_days, Defaults 4/14; first >= last -> Defaults), dann Ruhe. Nach dem
---   Veroeffentlichen erinnert sie einmal an noch offene Uebergabe-Punkte. Die DB entscheidet und baut die Text-
+--   Stufe 2 nach advisor.resume_last_days, Defaults 4/14; first >= last -> Defaults), dann Ruhe. An die Liste noch offener
+--   vereinbarter Eintraege nach dem Veroeffentlichen erinnert sie nie: die Liste kommt einmal (core.fn_plan_rollout_next),
+--   danach bleibt sie still im Menue sichtbar (handoffs_open). Die DB entscheidet und baut die Text-
 --   Struktur; der Cron agent.advisor.cron_resume_nudge rendert und sendet nur.
 --   p: { order:["core:household","<pkg>:<key>",…], plan_order:["<domain>",…] } — build-time wie beim Orchestrator, damit
 --      core.fn_get_next_step dieselbe Antwort gibt wie beim Gruss.
@@ -20,20 +21,13 @@
 --         neue Merker; core.fn_get_next_step liest den Stufe-2-Merker fuer das Ende des Vorrangs), Slot
 --         'advisor_resume', nur Entwuerfe juenger als advisor.rollout_draft_stale_days (30), Stillstand und Re-Arm ab draft.updated_at, Abstand 7 Tage, Re-Arm-Mindestabstand
 --         advisor.resume_rearm_days (14), Quellen-Grenze onboarding_nudge.
---       - kind nicht section -> Uebergabe-Erinnerung (einmal): erste Domain in p.plan_order mit can_write, aktivem Plan
---         ohne Entwurf (core.fn_advisor_plan_status state gaps|complete|enter) und offenen Punkten (core.fn_handoff_overview,
---         via 'resume'), deren Rollout-Liste fuer dieselbe hoechste Aufgabe festgeschrieben ist (plan_rollout
---         latch_key aus core.fn_handoff_overview, gedeckt laut core.fn_handoff_list_shown_at, nur lesend) und vor
---         >= advisor.resume_handoff_days (14) kam. Merker '<pid>:<domain>:handoff:<max>:1' ueber core.fn_nudge_stage
---         (eine Stufe), eine neue hoechste Aufgabe ist erst nach ihrer Rollout-Liste wieder moeglich.
 --   Thema ({topic}): das zuletzt Gespeicherte im Entwurf (Maximum ueber Abschnitts- und Thema-saved_at, bei Gleichstand
 --     das Thema): Thema-Text in Originalsprache, sonst der Katalog-Name <pkg>.plan_section.<key>, sonst ohne Teilsatz.
---   Rueckgabe {ok:true, items:[{person_id, chat_id, kind:'draft'|'handoff', stage, domain, package, plan_id, revision,
---     topic, open_tasks, max_task_id, msg:[tpl…], buttons:[{text_key, data}]}]}.
+--   Rueckgabe {ok:true, items:[{person_id, chat_id, kind:'draft', stage, domain, package, plan_id, revision,
+--     topic, open_tasks, msg:[tpl…], buttons:[{text_key, data}]}]}.
 --     draft: msg[0] core.advisor_resume.stage1|stage2 (revision: _revision) mit {plan} = <pkg>.plan.name und
 --       {topic_part} = core.advisor_resume.topic_part {topic} oder ''; msg[1] bei offenen Punkten
 --       core.advisor_resume.open_tasks {n} bzw. open_task_one; Knopf [Weiter] plan:resume:<domain>:<plan_id>.
---     handoff: msg[0] core.handoff.overview (why_resume); Knopf [Durchgehen] handoff:<domain>:<max>.
 --     Den zweiten Knopf [Nicht mehr erinnern] (rem:off:advisor_resume) setzt der Cron fest (cron_toggle_lint sucht ihn dort).
 --   VOLATILE (schreibt Merker und Budget) -> im Cron einmal in einer MATERIALIZED CTE aufrufen. INVOKER unter der
 --   Host-Cred des Crons, search_path gepinnt, Body schema-qualifiziert. Kein Write-Tool: nur Merker (wie das Analog).
@@ -50,7 +44,6 @@ DECLARE
     v_first  int;
     v_last   int;
     v_rearm  int;
-    v_hdays  int;
     v_stale  int;
     r        record;
     v_chat   bigint;
@@ -67,11 +60,6 @@ DECLARE
     v_topic  jsonb;
     v_open   int;
     v_msg    jsonb;
-    v_pl     jsonb;
-    v_ho     jsonb;
-    v_max    int;
-    v_rkey   text;
-    v_rat    timestamptz;
 BEGIN
     IF NOT core.fn_in_reminder_window() THEN
         RETURN jsonb_build_object('ok', true, 'items', v_out);
@@ -80,7 +68,6 @@ BEGIN
     v_last  := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'resume_last_days'), '')::int, 14);
     IF v_first >= v_last THEN v_first := 4; v_last := 14; END IF;
     v_rearm := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'resume_rearm_days'), '')::int, 14);
-    v_hdays := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'resume_handoff_days'), '')::int, 14);
     v_stale := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'rollout_draft_stale_days'), '')::int, 30);
 
     FOR r IN SELECT ap.person_id FROM agent.persons ap ORDER BY ap.person_id LOOP
@@ -153,37 +140,10 @@ BEGIN
             v_out := v_out || jsonb_build_array(jsonb_build_object(
                 'person_id', r.person_id, 'chat_id', v_chat, 'kind', 'draft', 'stage', v_stage, 'domain', v_draft.domain,
                 'package', v_pkg, 'plan_id', v_draft.id, 'revision', v_rev, 'topic', v_topic, 'open_tasks', v_open,
-                'max_task_id', NULL, 'msg', v_msg,
+                'msg', v_msg,
                 'buttons', jsonb_build_array(
                     jsonb_build_object('text_key', 'core.nudge.btn_continue', 'data', 'plan:resume:' || v_draft.domain || ':' || v_draft.id))));
 
-        ELSIF COALESCE(v_step->>'kind', '') <> 'section' THEN
-            FOR v_pl IN
-                SELECT pl FROM jsonb_array_elements(core.fn_advisor_plan_status(v_chat::text)) pl
-                  LEFT JOIN jsonb_array_elements_text(v_porder) WITH ORDINALITY AS o(d, oi) ON o.d = pl->>'domain'
-                 WHERE (pl->>'can_write')::boolean AND pl->>'state' IN ('gaps', 'complete', 'enter')
-                 ORDER BY COALESCE(o.oi, 100000), pl->>'domain'
-            LOOP
-                v_ho := core.fn_handoff_overview(jsonb_build_object('domain', v_pl->>'domain', 'chat_id', v_chat::text, 'via', 'resume'));
-                v_max := NULLIF(v_ho->>'max_task_id', '')::int;
-                CONTINUE WHEN v_max IS NULL;
-                v_rkey := v_ho->>'latch_key';
-                v_rat := core.fn_handoff_list_shown_at(v_rkey);
-                CONTINUE WHEN v_rat IS NULL;
-                v_stage := core.fn_nudge_stage(jsonb_build_object(
-                    'source', 'advisor_resume', 'key_prefix', r.person_id || ':' || (v_pl->>'domain') || ':handoff:' || v_max,
-                    'person_id', r.person_id, 'slot', 'advisor_resume', 'idle_since', v_rat, 'rearm_since', NULL,
-                    'first_days', v_hdays, 'last_days', 36500, 'gap_days', 0, 'rearm_days', 0,
-                    'exclusive_sources', jsonb_build_array('onboarding_nudge')));
-                CONTINUE WHEN v_stage IS NULL;
-                v_out := v_out || jsonb_build_array(jsonb_build_object(
-                    'person_id', r.person_id, 'chat_id', v_chat, 'kind', 'handoff', 'stage', 1, 'domain', v_pl->>'domain',
-                    'package', v_pl->>'package', 'plan_id', NULL, 'revision', false, 'topic', NULL,
-                    'open_tasks', (v_ho->>'count')::int, 'max_task_id', v_max, 'msg', jsonb_build_array(v_ho->'msg'),
-                    'buttons', jsonb_build_array(
-                        jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || (v_pl->>'domain') || ':' || v_max))));
-                EXIT;
-            END LOOP;
         END IF;
     END LOOP;
 

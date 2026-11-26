@@ -54,14 +54,14 @@ REVOKE ALL ON FUNCTION core.fn_handoff_list_shown_at(text) FROM public;
 
 -- ============================================================
 -- core.fn_handoff_overview(p) — offene vereinbarte Plan-Aufgaben einer Person fuer die Uebersicht [Durchgehen]
---   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' =
---   Erinnerung der gefuehrten Abfolge, 'resume' = letzte Erinnerung von core.fn_advisor_resume_due, sonst der Berater) }.
+--   p: { domain (Pflicht, Plan-Domain), chat_id (Identitaet, core.fn_handoff_person), via (optional: 'rollout' = Schritt 1
+--   der gefuehrten Abfolge nach dem Veroeffentlichen, sonst der Berater) }.
 --   Rueckgabe {count, max_task_id (NULL ohne offene), latch_key (core.fn_handoff_latch_key; NULL ohne offene),
 --   items: [text, ...] in Anlage-Reihenfolge, msg: Text-Struktur
---   core.handoff.overview (core.fn_ui_tpl) mit list (nummeriert), since (Tag des aeltesten offenen Punkts per
---   core.fn_today: heute -> core.handoff.since_today, sonst core.fn_ui_date; "offen seit", kein Gespraechsdatum: Punkte
---   aus mehreren Gespraechen und neu gespeicherte Abschnitte haetten sonst ein falsches) und why (warum die Liste jetzt
---   kommt, je via)}. Eine Adresse fuer beide Sender: agent.tool_send_handoff_overview und Schritt 1 von
+--   core.handoff.overview (core.fn_ui_tpl) mit list (nummeriert) und why (warum die Liste jetzt kommt: rollout ->
+--   core.handoff.why_rollout {n} bzw. why_rollout_one, sonst core.handoff.why_advisor)}. Kein "offen seit" und kein
+--   "geht auch spaeter": die Liste ist der Pflichtschritt nach dem Veroeffentlichen, keine Erinnerung.
+--   Eine Adresse fuer beide Sender: agent.tool_send_handoff_overview und Schritt 1 von
 --   core.fn_plan_rollout_next. Der Knopf traegt
 --   handoff:<domain>:<max_task_id> -> core.fn_handle_handoff_cb beansprucht nur bis dahin (eine spaeter vereinbarte
 --   Aufgabe kommt in die naechste Uebersicht). Es zaehlen open und working mit abgelaufenem Claim (advisor.handoff_claim_
@@ -76,13 +76,11 @@ AS $$
 DECLARE
     v_pid   text := core.fn_handoff_person(p->>'chat_id');
     v_out   jsonb;
-    v_since date;
     v_ttl   int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
 BEGIN
     SELECT jsonb_build_object('count', count(*), 'max_task_id', max(t.id),
-                              'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb)),
-           core.fn_today(min(t.created_at))
-      INTO v_out, v_since
+                              'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb))
+      INTO v_out
       FROM agent.handoff_tasks t
      WHERE t.domain = COALESCE(p->>'domain', '') AND t.person_id = v_pid
        AND (t.status = 'open' OR (t.status = 'working' AND t.claimed_at < now() - make_interval(mins => v_ttl)));
@@ -90,10 +88,9 @@ BEGIN
       'latch_key', core.fn_handoff_latch_key(p->>'domain', p->>'chat_id', (v_out->>'max_task_id')::int),
       'msg', core.fn_ui_tpl('core.handoff.overview', jsonb_build_object(
         'list', (SELECT string_agg(i || '. ' || (x #>> '{}'), E'\n' ORDER BY i) FROM jsonb_array_elements(v_out->'items') WITH ORDINALITY AS e(x, i)),
-        'since', CASE WHEN v_since IS NULL OR v_since >= core.fn_today() THEN core.fn_ui_tpl('core.handoff.since_today') ELSE core.fn_ui_date(v_since) END,
-        'why', CASE p->>'via' WHEN 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout')
-                                   WHEN 'resume' THEN core.fn_ui_tpl('core.handoff.why_resume')
-                                   ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
+        'why', CASE WHEN p->>'via' = 'rollout' AND (v_out->>'count')::int = 1 THEN core.fn_ui_tpl('core.handoff.why_rollout_one')
+                    WHEN p->>'via' = 'rollout' THEN core.fn_ui_tpl('core.handoff.why_rollout', jsonb_build_object('n', (v_out->>'count')::int))
+                    ELSE core.fn_ui_tpl('core.handoff.why_advisor') END)));
 END;
 $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_overview(jsonb) FROM public;

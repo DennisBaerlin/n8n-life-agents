@@ -85,7 +85,7 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Haftpflicht prüfen'
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_w2) <> 'working' THEN RAISE EXCEPTION 'FAIL [7 Probelauf]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w2, 'chat_id', '111', 'reason', 'skipped'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [7 skipped]: %', r; END IF;
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'open' THEN RAISE EXCEPTION 'FAIL [7 skipped bleibt offen]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w3, 'chat_id', '111', 'reason', 'done_elsewhere'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_w3) <> 'done' THEN RAISE EXCEPTION 'FAIL [7 done_elsewhere]: %', r; END IF;
   RAISE NOTICE 'PASS [7 cancel]';

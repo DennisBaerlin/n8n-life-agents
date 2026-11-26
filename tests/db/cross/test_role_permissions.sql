@@ -1821,10 +1821,12 @@ DECLARE
                               'fn_config_get', 'fn_monitor_trigger_summary', 'fn_list_monitor_triggers',
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read', 'fn_advisor_open_handoffs',
-                              'fn_advisor_open_points', 'fn_advisor_topic_index', 'fn_advisor_hint_state', 'fn_advisor_handoff_mentions'];
+                              'fn_advisor_open_points', 'fn_advisor_topic_index', 'fn_advisor_hint_state', 'fn_advisor_handoff_mentions',
+                              'fn_handoff_register'];
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
                                  'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_package_installed_at', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_handoff_done_ids', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
-                                 'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
+                                 'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task',
+                                 'fn_defer_handoff_task', 'fn_handoff_position'];
   v_n int := 0;
 BEGIN
   FOR v_pkg IN
@@ -1995,10 +1997,14 @@ BEGIN
     v := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
     IF v->>'code' IS DISTINCT FROM 'handoff_task_closed' THEN RAISE EXCEPTION 'cancel %', v; END IF;
     IF NOT EXISTS (SELECT 1 FROM core.fn_handoff_done_ids('finance') x WHERE x = v_id) THEN RAISE EXCEPTION 'done_ids'; END IF;
+    v := core.fn_handoff_position(v_id);
+    IF (v->>'n')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'position %', v; END IF;
+    v := core.fn_defer_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777', 'blocked_code', 'x_unknown'));
+    IF v->>'code' IS DISTINCT FROM 'unknown_blocked_code' THEN RAISE EXCEPTION 'defer %', v; END IF;
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
-    RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_handoff_task_check/complete/cancel]: %', SQLERRM;
+    RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_handoff_task_check/complete/cancel/position/defer]: %', SQLERRM;
   END;
   BEGIN
     SET LOCAL ROLE finance_rw;

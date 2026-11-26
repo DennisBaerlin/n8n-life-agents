@@ -60,7 +60,7 @@ BEGIN
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at) VALUES (d, 'core', 'erika', 's', 'other', 'Aufgabe W', 'working', now());
   v := core.fn_plan_rollout_next(d, 'erika');
   IF v->'messages'->0->'msg'->0->'params'->>'list' IS DISTINCT FROM '1. Aufgabe A' THEN RAISE EXCEPTION 'FAIL s1 working %', v; END IF;
-  IF v->'messages'->0->'msg'->0->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN RAISE EXCEPTION 'FAIL s1 why %', v; END IF;
+  IF v->'messages'->0->'msg'->0->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout_one' THEN RAISE EXCEPTION 'FAIL s1 why %', v; END IF;
   IF v->'messages'->0->'buttons'->0->>'data' IS DISTINCT FROM 'handoff:' || d || ':' || (SELECT min(id) FROM agent.handoff_tasks WHERE domain = d) THEN RAISE EXCEPTION 'FAIL s1 max ohne working %', v; END IF;
   PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
   DELETE FROM agent.handoff_tasks WHERE domain = d AND text = 'Aufgabe W';
@@ -75,8 +75,16 @@ BEGIN
   v := core.fn_plan_rollout_next(d, 'erika');
   IF (v->>'step')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'FAIL s1 neu %', v; END IF;
   PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latch'->>'key');
-  -- Warten endet nach rollout_wait_days
-  UPDATE agent.handoff_tasks SET created_at = now() - interval '8 days' WHERE domain = d;
+  -- stilles Warten ohne Frist: auch 30 Tage alte offene Eintraege halten Wert-Waechter und Schluss auf (kein "eingerichtet",
+  -- solange etwas offen ist); erst wenn nichts mehr open/working ist, geht es weiter
+  UPDATE agent.handoff_tasks SET created_at = now() - interval '30 days' WHERE domain = d;
+  UPDATE agent.advisor_plans SET watch_candidates = '["Oelpreis"]' WHERE id = v_plan;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 2 OR (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN
+    RAISE EXCEPTION 'FAIL s2 ohne Frist %', v; END IF;
+  -- zurueckgestellt und gestrichen halten nicht auf
+  UPDATE agent.handoff_tasks SET status = 'deferred', blocked_code = 'tool_missing' WHERE domain = d AND text = 'Aufgabe A';
+  UPDATE agent.handoff_tasks SET status = 'cancelled', closed_at = now(), close_reason = 'dropped' WHERE domain = d AND text = 'Aufgabe B';
   -- rollout_fn wirft: neutral, die Schritte danach laufen
   UPDATE core.advisors SET rollout_fn = 'core.fn_x_rollout_missing' WHERE domain = d;
   UPDATE agent.advisor_plans SET watch_candidates = '["Oelpreis"]' WHERE id = v_plan;

@@ -58,7 +58,7 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(220, -100)
         id = (New-Id); name = 'Build message'
     }
-    # Abmelden an der Nachricht selbst (RFC-8058-Prinzip) -> [Erinnerung abschalten] =
+    # Abmelden an der Nachricht selbst (RFC-8058-Prinzip) -> [Abschalt-Knopf core.reminders.btn_off] =
     # cron_off:reconcile_accounts (Owner-Callback -> core.fn_set_cron_enable); wieder an in /reminders.
     $notify = New-TelegramInlineKeyboardSendNode 'Notify overdue' @(440, -100) '={{ $json.message }}' `
         @( @{ Text = '={{ $json.btn_off }}'; Data = 'cron_off:reconcile_accounts' } )
@@ -70,7 +70,7 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -300) `
         'Monats-Check-Erinnerung (3. und 17. des Monats, kein LLM, kein Write)' `
-        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Welche Konten fällig sind, entscheidet allein finance.fn_statements_due() (Stichtag letzter Tag des Vormonats; gedruckte Auszüge folgen dem Takt ihrer Bank, Datei-Exporte müssen den Monat bis zum Ende abdecken). Dieselbe Regel liest der Bot, wenn jemand fragt, welcher Auszug fehlt. Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 600
+        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Welche Konten fällig sind, entscheidet allein finance.fn_statements_due() (Stichtag letzter Tag des Vormonats; gedruckte Auszüge folgen dem Takt ihrer Bank, Datei-Exporte müssen den Monat bis zum Ende abdecken). Dieselbe Regel liest der Bot, wenn jemand fragt, welcher Auszug fehlt. Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Abschalt-Knopf core.reminders.btn_off] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 600
 
     $stickyDesign = Build-Sticky 'Workflow danach' @(0, 160) `
         'Ein PDF -> eine Karte -> ein atomarer Write' `

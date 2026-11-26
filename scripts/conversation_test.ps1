@@ -17,7 +17,7 @@
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
 #                  timeout_s, expect_sql: [ { sql: "SELECT ...", equals: "<Wert>" } ] (nach der Runde, erste Zeile gleich equals),
-#                  lay: "off" (Runde ohne Laien-Messung, nur zusammen mit notes: Grund),
+#                  lay: "off" (Runde ohne Laien-Messung, nur zusammen mit notes: Grund), expect_cards: <Zahl der Karten dieser Runde>,
 #                  stop_on_fail: true (rote Runde bricht den Fall ab, die Folgerunden haetten keinen Boden),
 #                  expected_behavior: Rubric fuer judge_eval (nur -Real, ein Eintrag je Runde im Judge-Bundle) ] }
 # Ein /befehl ist ein Text mit fuehrendem Schraegstrich. Startzustand: alle Onboarding-Abschnitte completed, keine
@@ -280,6 +280,10 @@ function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid, $History) {
     # expect_node: ein fester Pfad (Knopf-Arm, Befehl) hat keinen Route-Agenten; dessen Orchestrator-Knoten steht im runData.
     if ((Test-HasField $Turn 'expect_node') -and $nodes -notcontains "$($Turn.expect_node)") {
         $fails += "Knoten '$($Turn.expect_node)' lief nicht"
+    }
+    if (Test-HasField $Turn 'expect_cards') {
+        $cardCount = @($conv.outputs | Where-Object { $_.card -and $_.method -eq 'sendMessage' }).Count
+        if ($cardCount -ne [int]$Turn.expect_cards) { $fails += "Karten: erwartet $($Turn.expect_cards), gesendet $cardCount" }
     }
     # expect_sql: Zustand nach der Runde (Karte entschieden, Write gelaufen). Ein Fehler der Abfrage selbst ist ein roter Fall, kein Abbruch.
     $sqlChecks = @()

@@ -81,11 +81,17 @@ function Get-LayProse([string]$Text) {
 
 $script:LayMonthWords = '(?:Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember|des|jedes)\b'
 
-# Ein Block aus Aufzaehlung oder Statuszeilen (Punkt, Strich, Nummer, Zeichen wie Haken/Kaestchen/Emoji) ab zwei Zeilen: eine
-# Uebersicht, kein Gespraech. "1. Maerz ..." ist ein Datum.
-function Test-LayList([string]$Text) {
+# Ein Block aus Aufzaehlung oder Statuszeilen (Punkt, Strich, Nummer, Zeichen wie Haken/Kaestchen/Emoji) ist eine Uebersicht, kein
+# Gespraech: ab zwei Zeilen. Mit Knopf reicht ein Punkt mit Nummer oder Aufzaehlungspunkt unter einer Einleitung (Systemliste mit
+# einem Eintrag, z. B. fuer die Bank); Haken, Zeigefinger, Strich oder eine erste Zeile machen daraus keine Liste. "1. Maerz ..." ist ein Datum.
+function Test-LayList([string]$Text, [int]$Buttons = 0) {
     $marker = "(?m)^\s*(?:[\u2022\u2013-]|\p{So}|[\uD800-\uDBFF][\uDC00-\uDFFF]|\d{1,2}[.)](?!\s*$($script:LayMonthWords)))\s+\S"
-    return [regex]::Matches("$Text", $marker).Count -ge 2
+    if ([regex]::Matches("$Text", $marker).Count -ge 2) { return $true }
+    if ($Buttons -le 0) { return $false }
+    $item = "^\s*(?:•|\d{1,2}[.)](?!\s*$($script:LayMonthWords)))\s+\S"
+    $lines = @("$Text" -split "`n" | Where-Object { $_.Trim() })
+    for ($i = 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match $item) { return $true } }
+    return $false
 }
 
 function Get-LaySentenceCount([string]$Text) {
@@ -194,7 +200,7 @@ function Measure-BotOutput {
         $isNew = $script:LaySendMethods -contains $method
         Get-LayMessageFindings -Text $text -Buttons @($o.buttons | Where-Object { $_ }).Count -Conversation:($isNew -and -not $o.card)
         if ($o.card) { $cardSeen = $true; continue }
-        if ($cardSeen -and $isNew -and -not (Test-LayList $text)) {
+        if ($cardSeen -and $isNew -and -not (Test-LayList $text @($o.buttons | Where-Object { $_ }).Count)) {
             $n = Get-LaySentenceCount $text
             if ($n -gt 1) { New-LayFinding 'L2' "$n Saetze nach einer Karte (hoechstens einer)" $text }
         }

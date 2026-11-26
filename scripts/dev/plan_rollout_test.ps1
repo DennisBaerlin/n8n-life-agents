@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # plan_rollout_test.ps1 — gratis: geführte Abfolge am Laufende echter Orchestrator-Läufe (Mock-LLM, Mock-Telegram).
 # Prüft: genau eine Rollout-Nachricht nach der Antwort, keine bei offener Karte oder Rückfrage, Antwort kommt auch bei Fehler im Sub,
-# Übergabe-Liste nicht doppelt, Bestandsplan bekommt Schritt 0. Laufzeit-Szenarien (Repo-scenarios bleibt unberührt).
+# Übergabe-Liste nicht doppelt, Bestandsplan bekommt Schritt 0, Wortlaut der Liste samt Folge-Zeile aus dem Textkatalog, stilles
+# Warten auf offene Einträge (zurückgestellte halten nicht auf). Laufzeit-Szenarien (Repo-scenarios bleibt unberührt).
 # Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1. Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1]. Exit = Anzahl roter Fälle.
 param([string[]]$Id, [string]$ForceAbortId, [int]$Timeout = 120)
 $ErrorActionPreference = 'Stop'
@@ -64,6 +65,29 @@ function New-OpenHandoff {
     Invoke-Sql "INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance', 'finance', '$p', 's', 'other', '__E2E__ Aufgabe') RETURNING id;"
 }
 function Has-Answer([string]$T) { @(Get-Sends | Where-Object { [string]$_.body.text -match [regex]::Escape($T) }).Count -ge 1 }
+# Erwartete Texte kommen aus dem Katalog (Key), nie als Wortlaut im Test; Telegram-Markdown-Escapes (\_) zaehlen nicht.
+$Catalog = [IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\locales\de.json'), $Utf8NoBom) | ConvertFrom-Json
+function Get-Text([string]$Key, [hashtable]$Params = @{}) {
+    $t = [string]$Catalog.$Key
+    if (-not $t) { throw "Katalog-Key fehlt: $Key" }
+    foreach ($k in $Params.Keys) { $t = $t.Replace("{$k}", [string]$Params[$k]) }
+    return $t
+}
+function Get-PlainText($Send) { return ([string]$Send.body.text).Replace('\', '') }
+function Get-ButtonData($Send) { if ($Send.body.reply_markup) { return ($Send.body.reply_markup | ConvertTo-Json -Depth 8 -Compress) } else { return '' } }
+function Get-HandoffList { @(Get-Sends | Where-Object { (Get-ButtonData $_) -match '"handoff:finance:' }) }
+function Get-ExpectedList([string]$Why) { return Get-Text 'core.handoff.overview' @{ why = (Get-Text $Why); list = '1. __E2E__ Aufgabe' } }
+# Folge-Zeile der Liste: die Paket-fn wird fuer den Fall durch eine mit fester Konten-Zahl ersetzt (Registry), danach zurueckgesetzt.
+$EffectsFn = Invoke-Sql "SELECT entry_effects_fn FROM core.advisors WHERE domain = 'finance';"
+# Ein abgebrochener Lauf kann den Ersatz stehen gelassen haben: nie ihn als Original zuruecksetzen.
+if ("$EffectsFn" -match 'fn_e2e_effects_stub') { $EffectsFn = 'finance.fn_entry_effects' }
+function Set-EffectStub([int]$Accounts) {
+    Invoke-Sql "CREATE OR REPLACE FUNCTION finance.fn_e2e_effects_stub(p text) RETURNS jsonb LANGUAGE sql AS 'SELECT jsonb_build_object(''accounts'', $Accounts)'; UPDATE core.advisors SET entry_effects_fn = 'finance.fn_e2e_effects_stub' WHERE domain = 'finance';" | Out-Null
+}
+function Reset-EffectStub {
+    $value = if ("$EffectsFn".Trim()) { "'$("$EffectsFn".Trim())'" } else { 'NULL' }
+    Invoke-Sql "UPDATE core.advisors SET entry_effects_fn = $value WHERE domain = 'finance'; DROP FUNCTION IF EXISTS finance.fn_e2e_effects_stub(text);" | Out-Null
+}
 
 $Cases = @(
  @{ id = 'rr1'; name = 'Antwort, danach genau eine Rollout-Nachricht (Bestandsplan: Schritt 0)'; run = {
@@ -101,13 +125,38 @@ $Cases = @(
     Send-Text 'ROLLOUTPING fuenf'
     Assert-Equal @(Get-Sends | Where-Object { [string]$_.body.text -match '__E2E__ Aufgabe' }).Count 0 'Uebergabe doppelt'
  } }
- @{ id = 'rr6'; name = 'Uebergabe-Liste als Erinnerung: offen seit, Grund, verschachtelte Texte aufgeloest'; run = {
+ @{ id = 'rr6'; name = 'Uebergabe-Liste aus der Abfolge: Katalog-Text mit verschachteltem Grund, Knopf, ohne Folge-Zeile ohne Warnung'; run = {
     $null = New-OpenHandoff
+    Set-EffectStub 0
     Send-Text 'ROLLOUTPING sechs'
-    $list = @(Get-Sends | Where-Object { [string]$_.body.text -match 'E2E' -and ($_.body.reply_markup | ConvertTo-Json -Depth 8 -Compress) -match '"handoff:' })
-    Assert-Equal $list.Count 1 'Uebergabe-Liste'
-    $txt = [string]$list[0].body.text
-    if ($txt -notmatch '\(offen seit heute\)' -or $txt -notmatch 'Ich erinnere dich, weil das noch offen ist\.' -or $txt -match 'core\.handoff\.') { throw "Text unerwartet: $txt" }
+    $list = Get-HandoffList
+    Assert-Equal @($list).Count 1 'Uebergabe-Liste'
+    # why_rollout_one steckt verschachtelt in core.handoff.overview; ein unaufgeloester Key bliebe sichtbar.
+    Assert-Equal (Get-PlainText $list[0]) (Get-ExpectedList 'core.handoff.why_rollout_one') 'Text der Liste'
+    if ((Get-ButtonData $list[0]) -notmatch [regex]::Escape((Get-Text 'core.handoff.btn_go'))) { throw "Knopf-Beschriftung fehlt: $(Get-ButtonData $list[0])" }
+ } }
+ @{ id = 'rr7'; name = 'Uebergabe-Liste mit Folge-Zeile, wenn Konten eine Warnung tragen'; run = {
+    $null = New-OpenHandoff
+    Set-EffectStub 2
+    Send-Text 'ROLLOUTPING sieben'
+    $list = Get-HandoffList
+    Assert-Equal @($list).Count 1 'Uebergabe-Liste'
+    $txt = Get-PlainText $list[0]
+    $effect = Get-Text 'core.handoff.effect' @{ n = 2 }
+    if (-not $txt.StartsWith((Get-ExpectedList 'core.handoff.why_rollout_one')) -or -not $txt.TrimEnd().EndsWith($effect)) { throw "Folge-Zeile fehlt oder steht falsch: $txt" }
+ } }
+ @{ id = 'rr8'; name = 'Stilles Warten ohne Frist auf einen offenen Eintrag; zurueckgestellt haelt nicht auf'; run = {
+    $tid = "$(New-OpenHandoff)".Trim()
+    Invoke-Sql "SELECT core.fn_handoff_overview_mark(jsonb_build_object('domain','finance','chat_id','$Owner','max_task_id','$tid')); UPDATE core.notification_state SET last_fired_at = now() - interval '90 days' WHERE source = 'plan_rollout';" | Out-Null
+    Send-Text 'ROLLOUTPING acht'
+    if (-not (Has-Answer 'Alles klar')) { throw 'Antwort fehlt' }
+    $follow = @(Get-Sends | Where-Object { Get-ButtonData $_ })
+    Assert-Equal $follow.Count 0 'Nachrichten der Abfolge, solange der Eintrag offen ist'
+    Invoke-Sql "UPDATE agent.handoff_tasks SET status = 'deferred', blocked_code = 'pay_until_amount' WHERE id = $tid;" | Out-Null
+    Clear-MockRequestLogs -Container $Container
+    Send-Text 'ROLLOUTPING neun'
+    $finish = @(Get-Sends | Where-Object { (Get-PlainText $_) -eq (Get-Text 'core.rollout.finish') })
+    Assert-Equal $finish.Count 1 'Schluss der Abfolge nach dem Zurueckstellen'
  } }
 )
 $failed = 0; $ran = 0
@@ -116,11 +165,12 @@ try {
         if ($Id.Count -and $Id -notcontains $c.id) { continue }
         $ran++
         Write-Host "[$($c.id)] $($c.name)" -ForegroundColor Cyan
-        try { Reset-Rollout; Test-ForceAbort $c.id $ForceAbortId; & $c.run; Write-Host '    [PASS]' -ForegroundColor Green }
+        try { Reset-Rollout; Reset-EffectStub; Test-ForceAbort $c.id $ForceAbortId; & $c.run; Write-Host '    [PASS]' -ForegroundColor Green }
         catch { $failed++; Write-CaseAbort -ErrorRecord $_ -CaseId $c.id }
     }
 } finally {
     Reset-Rollout
+    Reset-EffectStub
     Invoke-Sql "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key = 'plan_rollout';" | Out-Null
     $tmp = Join-Path $env:TEMP "rollout_scn_$PID.json"
     [IO.File]::WriteAllText($tmp, $RawScn, $Utf8NoBom); & docker cp $tmp "${Container}:/opt/mock_llm/scenarios.json" | Out-Null; Remove-Item $tmp -Force

@@ -55,6 +55,13 @@ Expect 'L2 Knopf-Quittung ist kein Gespraechstext' (Measure-BotOutput -Outputs @
 
 $menu = "✅ Haushalt ist eingerichtet.`n`nDein Stand – 1 von 3 erledigt`n`n✅ Haushalt`n◻ Beispielbereich (0/7)`n`n👉 Als Nächstes: Konten`nTippe auf Weiter, um loszulegen."
 Expect 'L2 System-Uebersicht mit Statuszeilen nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg $menu @('Weiter')))) @()
+$oneItem = "Das stellst du bei deiner Beispielbank ein:`n`n1. Dauerauftrag Beispielmiete einrichten: 200,00 € monatlich.`n`nTippe, wenn alles eingerichtet ist."
+Expect 'L2 System-Liste mit einem Punkt und Knopf nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg $oneItem @('Erledigt')))) @()
+Expect 'L2 dieselbe Form ohne Knopf zaehlt als Gespraech' (Measure-BotOutput -Outputs @($card, (Msg $oneItem))) @('L2')
+Expect 'L2 Haken oder Zeigefinger am Anfang machen mit Knopf keine Liste' (Measure-BotOutput -Outputs @($card, (Msg '✅ Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
+Expect 'L2 Zwischenzeile mit Zeichen ist kein Listenpunkt' (Measure-BotOutput -Outputs @($card, (Msg "Das ist gebucht.`n👉 Weiter geht es mit dem Notgroschen. Tippe unten." @('Weiter')))) @('L2')
+Expect 'L2 Strich in der ersten Zeile ist keine Systemliste' (Measure-BotOutput -Outputs @($card, (Msg '- Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
+Expect 'L2 Saetze mit Knopf ohne Listenzeile bleiben Gespraech'(Measure-BotOutput -Outputs @($card, (Msg 'Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
 Expect 'L2 ein Datum am Zeilenanfang ist keine Liste' (Measure-BotOutput -Outputs @($card, (Msg "1. März geht die erste Rate raus. Danach jeden Monat. Alles ist fertig."))) @('L2')
 Expect 'L2 eine einzelne Listenzeile macht aus Saetzen keine Liste' (Measure-BotOutput -Outputs @($card, (Msg "Das ist gebucht. Als Nächstes kommt das:`n• Notgroschen"))) @('L2')
 foreach ($t in @('3 % p. a. sind jetzt hinterlegt.', 'Konto, Karte usw. sind angelegt.', 'Die Rate ist mtl. eingetragen.',

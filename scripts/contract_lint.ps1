@@ -1502,10 +1502,11 @@ function Test-HandoffTools([string]$Pkg, [string]$PkgDir, [string]$Domain, $Adv)
     return $out
 }
 
-# Vorpruefung und Unterschied der Vormerkungen (advisors.<domain>.handoff_check_fn/handoff_diff_fn): Core ruft sie dynamisch und
-# behandelt eine fehlende oder falsch signierte fn wie "keine Pruefung", ein Tippfehler bliebe also still. Darum: eigene
-# Paket-fn <pkg>.fn_*, nur mit handoff_agent (sonst traegt niemand ein), definiert mit (jsonb) bzw. (int) und RETURNS jsonb.
-$script:HandoffFnArgs = @{ handoff_check_fn = '(?:\w+\s+)?jsonb'; handoff_diff_fn = '(?:\w+\s+)?(?:int|integer|int4)' }
+# Paket-fns rund um die Vormerkungen (advisors.<domain>.handoff_check_fn, handoff_diff_fn, entry_effects_fn): Core ruft sie
+# dynamisch und behandelt eine fehlende oder falsch signierte fn, als gaebe es keine; ein Tippfehler bliebe also still. Darum:
+# eigene Paket-fn <pkg>.fn_*, nur mit handoff_agent (sonst traegt niemand ein), feste Signatur und RETURNS jsonb.
+$script:HandoffFnArgs = @{ handoff_check_fn = '(?:\w+\s+)?jsonb'; handoff_diff_fn = '(?:\w+\s+)?(?:int|integer|int4)'; entry_effects_fn = '(?:\w+\s+)?text' }
+$script:HandoffFnSignature = @{ handoff_check_fn = '(jsonb)'; handoff_diff_fn = '(int)'; entry_effects_fn = '(text)' }
 function Test-HandoffFnField([string]$Pkg, [string]$Field, [string]$Fn, [bool]$HasAgent, [string]$SqlText) {
     if (-not $HasAgent) { return "$Field ohne handoff_agent -- niemand traegt die Vormerkungen ein, die fn liefe ins Leere." }
     if ($Fn -cnotmatch "^$([regex]::Escape($Pkg))\.fn_[a-z0-9_]+$") { return "$Field '$Fn' muss eine fn im eigenen Schema sein ($Pkg.fn_<name>, lowercase) -- Seeder und DB-CHECK lehnen die Zeile sonst ab." }
@@ -1513,13 +1514,14 @@ function Test-HandoffFnField([string]$Pkg, [string]$Field, [string]$Fn, [bool]$H
     $want = "(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+$([regex]::Escape($Fn))\s*\(\s*$arg\s*\)\s*RETURNS\s+jsonb\b"
     $code = [regex]::Replace([regex]::Replace($SqlText, '(?s)/\*.*?\*/', ' '), '(?m)--.*$', '')
     if ($code -notmatch $want) {
-        $sig = if ($Field -eq 'handoff_check_fn') { '(jsonb)' } else { '(int)' }
-        return "$Field '$Fn' ist nicht als $Fn$sig RETURNS jsonb im Paket definiert -- Core faende sie nicht und taete, als gaebe es keine."
+        return "$Field '$Fn' ist nicht als $Fn$($script:HandoffFnSignature[$Field]) RETURNS jsonb im Paket definiert -- Core faende sie nicht und taete, als gaebe es keine."
     }
 }
 foreach ($sa in @(
     @{ n = 'Vorpruefung passt';   f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true;  sql = 'CREATE OR REPLACE FUNCTION x.fn_c(p jsonb) RETURNS jsonb';             bad = $false },
     @{ n = 'Unterschied passt';   f = 'handoff_diff_fn';  fn = 'x.fn_d'; a = $true;  sql = "CREATE OR REPLACE FUNCTION x.fn_d(p_task_id int)`nRETURNS jsonb";     bad = $false },
+    @{ n = 'Folge-Zeile passt';   f = 'entry_effects_fn'; fn = 'x.fn_e'; a = $true;  sql = 'CREATE OR REPLACE FUNCTION x.fn_e(p_domain text) RETURNS jsonb';       bad = $false },
+    @{ n = 'Folge-Zeile falsch';  f = 'entry_effects_fn'; fn = 'x.fn_e'; a = $true;  sql = 'CREATE FUNCTION x.fn_e(p jsonb) RETURNS jsonb';                        bad = $true },
     @{ n = 'ohne handoff_agent';  f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $false; sql = 'CREATE FUNCTION x.fn_c(p jsonb) RETURNS jsonb';                        bad = $true },
     @{ n = 'fremdes Schema';      f = 'handoff_check_fn'; fn = 'y.fn_c'; a = $true;  sql = 'CREATE FUNCTION y.fn_c(p jsonb) RETURNS jsonb';                        bad = $true },
     @{ n = 'ohne fn_-Vorsilbe';   f = 'handoff_diff_fn';  fn = 'x.diff'; a = $true;  sql = 'CREATE FUNCTION x.diff(p int) RETURNS jsonb';                          bad = $true },
@@ -1606,7 +1608,7 @@ function Test-HandoffToolSpec([string]$Pkg, [string]$PkgDir, $Adv) {
 #         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true;
 #         handoff_agent nur mit plan_step und nur ein Agent aus provides.agents des eigenen Pakets.
 #         handoff_tools (Pflicht mit handoff_agent): je Vormerkungs-Art die Werkzeuge, die sie abschliessen (Test-HandoffTools).
-#         handoff_check_fn/handoff_diff_fn: nur mit handoff_agent, eigene Paket-fn in der festen Signatur (Test-HandoffFnField).
+#         handoff_check_fn/handoff_diff_fn/entry_effects_fn: nur mit handoff_agent, eigene Paket-fn in fester Signatur (Test-HandoffFnField).
 #         <pkg>.fn_handoff_tool_spec(): Werkzeuge, kinds und inputs passen zu handoff_tools und Start-Knoten (Test-HandoffToolSpec).
 #     (d) keine Workflow-id in zwei Dateien (Rename ohne git mv -> import:workflow nimmt eine der beiden still).
 #     (e) retired_workflows: eine stillgelegte id liegt nicht mehr im Baum und kein getrackter Workflow verweist

@@ -142,7 +142,7 @@
         "text": "Das Gehalt sind 2.400 netto, das kommt am Monatsletzten aufs Erlenbank Giro.",
         "expect_agent": "finance_advisor", "forbid_texts": ["NEXT_STEP", "Buchhalter", "bookkeeper"],
         "expect_sql": [ { "sql": "SELECT (count(*) > 0)::int FROM finance.recurring_payments;", "equals": "1" } ],
-        "expected_behavior": "After the confirmed card the reply says the salary of 2.400 EUR (end of month, Erlenbank Giro) is recorded as a regular income and the advisor asks at most ONE next question for the plan (for example the fixed costs). It does not repeat the income question and does not mention an internal agent."
+        "expected_behavior": "After the confirmed card the reply is ONE single sentence (the card already showed the details): it makes clear that the salary is recorded and, if the advisor goes on, asks at most ONE next question for the plan inside that same sentence (for example 'Gehalt ist eingetragen – wie hoch sind eure festen Ausgaben im Monat?'). Two or more sentences after the card are a FAIL. It need not repeat the amount; if it does, it is 2.400 EUR. It does not repeat the income question and does not mention an internal agent."
       }
     ]
   },
@@ -198,6 +198,63 @@
           { "sql": "SELECT count(*) FROM agent.handoff_tasks WHERE id IN (990031, 990032) AND status = 'done';", "equals": "2" },
           { "sql": "SELECT count(*) FROM finance.bank_todos WHERE handoff_task_id IN (990031, 990032) AND first_sent_at IS NOT NULL;", "equals": "3" },
           { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'finance:bank_todo' AND key ~ ':r0:owner$' AND state = 'fired' AND expires_at IS NULL;", "equals": "3" }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "s10",
+    "name": "S10 Eintragen mit Entscheidungen: eingetragen, zurueckgestellt, spaeter, gestrichen; die zweite Liste zeigt nur das Offene, von selbst kommt keine zweite",
+    "sender": "owner",
+    "start": "onboarding_done",
+    "hitl": "approve",
+    "mock_fresh_memory": true,
+    "notes": "Vier Vormerkungen, je ein anderer Ausgang: Aendern eines Dauerauftrags (tool_set_recurring_payment), noch nicht eintragbar (tool_defer_handoff_task, Karte), spaeter (tool_cancel_handoff_task skipped, ohne Karte, bleibt offen), nicht mehr eintragen (dropped, Karte). Runde 3 bittet um die Liste (Berater, tool_send_handoff_overview): Erledigtes, Zurueckgestelltes und Gestrichenes fehlen. Runde 4: ohne Bitte kommt sie nicht wieder. DB-Gesetze: test_handoff_task_states, test_fn_defer_handoff_task, test_fn_plan_rollout_next.",
+    "setup_sql": "UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE domain = 'finance'; DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE 'finance:%'; INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__E2E__ FE Giro', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'), ('__E2E__ FE Tagesgeld', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'); SELECT pg_temp.ok('uebertrag', finance.fn_create_recurring_transfer(jsonb_build_object('name', '__E2E__ FE Uebertrag', 'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FE Giro'), 'to_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FE Tagesgeld'), 'amount', 200, 'schedule_unit', 'month', 'schedule_day_of_month', 20, 'first_payment_date', (current_date + 40)::text))); INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) VALUES ('finance', '__E2E__ FE Plan', 'active', 1, now(), 'x'); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text) VALUES (990051, 'finance', 'finance', 'owner', 'wealth_building', 'recurring_transfer', '__E2E__ FE Uebertrag kuenftig am 1.'), (990052, 'finance', 'finance', 'owner', 'wealth_building', 'recurring_transfer', '__E2E__ FE Topf besparen bis zu einem Betrag'), (990053, 'finance', 'finance', 'owner', 'goals_triggers', 'other', '__E2E__ FE Vertrag pruefen'), (990054, 'finance', 'finance', 'owner', 'goals_triggers', 'other', '__E2E__ FE Zweitkonto eroeffnen');",
+    "precondition_sql": "(SELECT count(*) FROM agent.handoff_tasks WHERE id BETWEEN 990051 AND 990054 AND status = 'open') = 4",
+    "teardown_sql": "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE id BETWEEN 990051 AND 990054; DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ FE Plan'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source = 'finance:bank_todo' AND key ~ ':r[0-9]+:');",
+    "turns": [
+      {
+        "text": "wie geht es mit dem Plan weiter fe1", "stop_on_fail": true,
+        "expect_texts": ["FE Zweitkonto eroeffnen"]
+      },
+      {
+        "tap": "handoff:finance:990054", "timeout_s": 240, "stop_on_fail": true, "expect_cards": 3,
+        "expect_texts": ["Eintrag zurückstellen", "Nicht mehr eintragen"],
+        "forbid_texts": ["Dein Plan ist eingerichtet"],
+        "expect_sql": [
+          { "sql": "SELECT string_agg(id || ':' || status || ':' || COALESCE(blocked_code, close_reason, '-'), ',' ORDER BY id) FROM agent.handoff_tasks WHERE id BETWEEN 990051 AND 990054;", "equals": "990051:done:entered,990052:deferred:pay_until_amount,990053:open:-,990054:cancelled:dropped" }
+        ]
+      },
+      {
+        "text": "zeig mir die Liste noch einmal fe2", "expect_agent": "finance_advisor",
+        "expect_texts": ["FE Vertrag pruefen"],
+        "forbid_texts": ["FE Uebertrag kuenftig", "FE Topf besparen", "FE Zweitkonto"]
+      },
+      {
+        "text": "ok danke fe3",
+        "forbid_texts": ["FE Vertrag pruefen"],
+        "expect_sql": [ { "sql": "SELECT status FROM agent.handoff_tasks WHERE id = 990053;", "equals": "open" } ]
+      }
+    ]
+  },
+  {
+    "id": "s11",
+    "name": "S11 Karte abgebrochen: der Eintrag ist nicht verloren, nichts wird geaendert, keine Bank-Liste",
+    "sender": "owner",
+    "start": "onboarding_done",
+    "hitl": "decline",
+    "notes": "Der Buchhalter (Mock) aendert den Dauerauftrag der Vormerkung (tool_set_recurring_payment), die Karte wird abgebrochen. Die Vormerkung darf danach weder erledigt noch gestrichen sein; der Dauerauftrag bleibt.",
+    "setup_sql": "UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE domain = 'finance'; DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE 'finance:%'; INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__E2E__ FF Giro', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'), ('__E2E__ FF Tagesgeld', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'); SELECT pg_temp.ok('uebertrag', finance.fn_create_recurring_transfer(jsonb_build_object('name', '__E2E__ FF Uebertrag', 'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FF Giro'), 'to_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FF Tagesgeld'), 'amount', 200, 'schedule_unit', 'month', 'schedule_day_of_month', 20, 'first_payment_date', (current_date + 40)::text))); INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) VALUES ('finance', '__E2E__ FF Plan', 'active', 1, now(), 'x'); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text) VALUES (990055, 'finance', 'finance', 'owner', 'wealth_building', 'recurring_transfer', '__E2E__ FF Uebertrag kuenftig am 1.');",
+    "precondition_sql": "(SELECT count(*) FROM agent.handoff_tasks WHERE id = 990055 AND status = 'open') = 1",
+    "teardown_sql": "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE id = 990055; DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ FF Plan'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source = 'finance:bank_todo' AND key ~ ':r[0-9]+:');",
+    "turns": [
+      {
+        "tap": "handoff:finance:990055", "timeout_s": 240, "expect_cards": 1,
+        "forbid_texts": ["Tippe, wenn alles bei dieser Bank", "Dein Plan ist eingerichtet"],
+        "expect_sql": [
+          { "sql": "SELECT (status NOT IN ('done', 'cancelled'))::text FROM agent.handoff_tasks WHERE id = 990055;", "equals": "true" },
+          { "sql": "SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ FF Uebertrag' AND schedule_day_of_month = 20 AND valid_to IS NULL;", "equals": "1" }
         ]
       }
     ]

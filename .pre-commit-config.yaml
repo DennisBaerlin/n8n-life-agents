@@ -515,6 +515,12 @@ repos:
         pass_filenames: false
         files: ^scripts/(seed_reconcile_lint|dev/seed_reconcile_lint_test)\.ps1$
 
+      - id: native-process-test
+        name: native_process_test (a file as stdin reaches a native program byte-exact - the master build context is a tar; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/native_process_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/native_process|dev/native_process_test)\.ps1$
       - id: release-notes-check-test
         name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
         language: system

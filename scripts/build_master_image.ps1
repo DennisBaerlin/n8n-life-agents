@@ -36,6 +36,7 @@ $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\release_images.ps1')
 . (Join-Path $PSScriptRoot 'lib\release_tag.ps1')
+. (Join-Path $PSScriptRoot 'lib\native_process.ps1')
 
 $null = Get-ReleaseTagKind $Version   # wirft bei ungueltigem Format; dieselbe Form wie Tag, sign_release und Kern (is_prerelease_tag)
 function Invoke-Git { $o = & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') fehlgeschlagen." }; return $o }
@@ -89,10 +90,9 @@ try {
     $args2 += $(if ($NoPush) { @('--output', 'type=image,rewrite-timestamp=true') } else { @('--output', 'type=image,push=true,rewrite-timestamp=true') })
     $args2 += '-'
     Write-Host "Baue $ref ($plat) ..." -ForegroundColor Cyan
-    # Start-Process setzt die Argumente roh zusammen (PS 5.1 quotet nicht) -> selbst quoten.
-    $argLine = ($args2 | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' '
-    $p = Start-Process -FilePath docker -ArgumentList $argLine -RedirectStandardInput $ctx -NoNewWindow -Wait -PassThru
-    if ($p.ExitCode -ne 0) { throw "docker buildx build fehlgeschlagen (Exit $($p.ExitCode))." }
+    # Der Bau-Kontext (Tar) geht byte-genau an stdin; Start-Process allein schaffte das unter Linux nicht (native_process.ps1).
+    $code = Invoke-NativeStdinFile -FilePath docker -ArgumentList $args2 -StdinFile $ctx
+    if ($code -ne 0) { throw "docker buildx build fehlgeschlagen (Exit $code)." }
     $digest = ([System.IO.File]::ReadAllText($meta, $Utf8NoBom) | ConvertFrom-Json).'containerimage.digest'
     if ($digest -notmatch '^sha256:[0-9a-f]{64}$') { throw "Kein Digest in den Bau-Metadaten ($digest)." }
     Write-Host "Index: $ref@$digest" -ForegroundColor Green

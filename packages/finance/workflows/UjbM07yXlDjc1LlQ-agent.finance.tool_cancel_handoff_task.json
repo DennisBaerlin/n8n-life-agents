@@ -44,7 +44,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "2f14caa9-00f6-52d1-afab-6e4918a2d957",
-                                                                                   "leftValue":  "={{ String($(\u0027Start\u0027).item.json.reason || \u0027\u0027) === \u0027skipped\u0027 }}",
+                                                                                   "leftValue":  "={{ [\u0027\u0027, \u0027skipped\u0027].includes(String($(\u0027Start\u0027).item.json.reason || \u0027\u0027).trim().toLowerCase()) }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -338,7 +338,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "c34c7f89-15a9-5582-a659-bbacb9bddcaa",
-                                                                                   "leftValue":  "={{ String($(\u0027Start\u0027).item.json.reason || \u0027\u0027) === \u0027done_elsewhere\u0027 }}",
+                                                                                   "leftValue":  "={{ String($(\u0027Dry run\u0027).item.json.r.card_title_key || \u0027\u0027) === \u0027finance.hitl.cancel_handoff_task_done_elsewhere\u0027 }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",

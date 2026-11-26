@@ -18,7 +18,8 @@ function Build-CancelHandoffTask {
     }
 
     # Ueberspringen aendert nichts Dauerhaftes (working -> open, die Stelle k von n bleibt): kein Tipp noetig.
-    $ifSkip = Build-If 'Skip only?' @(220, -260) "={{ String($S.reason || '') === 'skipped' }}" 'true' 'equals' 'boolean'
+    # Dieselbe Normalisierung wie core.fn_cancel_handoff_task (trim, lower, leer = skipped), sonst landete ein leerer Grund auf der Streich-Karte.
+    $ifSkip = Build-If 'Skip only?' @(220, -260) "={{ ['', 'skipped'].includes(String($S.reason || '').trim().toLowerCase()) }}" 'true' 'equals' 'boolean'
     $skipParams = [ordered]@{ handoff_task_id = $params.handoff_task_id; reason = $params.reason; chat_id = $params.chat_id }
     $skip = Build-Pg 'Skip handoff task' @(440, -360) "=SELECT finance.fn_cancel_handoff_task(`$1::jsonb) AS r;" $skipParams
     $ifSkipOk = Build-If 'Skip ok?' @(660, -360) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
@@ -35,9 +36,9 @@ function Build-CancelHandoffTask {
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'task_id')::int AS task_id, r->>'status' AS status" `
         -Params $params
 
-    # Zwei Fassungen der Karte: "Schon eingetragen – abhaken?" (done_elsewhere) und "Nicht mehr eintragen" (dropped);
+    # Zwei Fassungen der Karte nach card_title_key des Probelaufs (dieselbe Lesart des Grunds wie der Write): "Schon eingetragen – abhaken?" (done_elsewhere) und "Nicht mehr eintragen" (dropped);
     # die Zeilen (Satz des Eintrags, was im System steht, was offen bleibt) liefert der Probelauf (card_lines).
-    $ifElsewhere = Build-If 'Done elsewhere?' @(880, 0) "={{ String($S.reason || '') === 'done_elsewhere' }}" 'true' 'equals' 'boolean'
+    $ifElsewhere = Build-If 'Done elsewhere?' @(880, 0) "={{ String(`$('Dry run').item.json.r.card_title_key || '') === 'finance.hitl.cancel_handoff_task_done_elsewhere' }}" 'true' 'equals' 'boolean'
     $sumElsewhere = New-HitlSummary -Pos @(1100, -100) -Title 'finance.hitl.cancel_handoff_task_done_elsewhere' -LinesExpr $wg.CardLinesExpr
     $sumDropped = New-HitlSummary -Name 'Build Approval Summary dropped' -Pos @(1100, 100) -Title 'finance.hitl.cancel_handoff_task_dropped' -LinesExpr $wg.CardLinesExpr
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1320, 0) $GateId 'agent.tool_human_approval' `

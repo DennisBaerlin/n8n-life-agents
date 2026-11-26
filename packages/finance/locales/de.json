@@ -803,6 +803,7 @@
   "finance.help.savings_goals.title": "Sparziele",
   "finance.help.savings_goals.description": "Sparziele mit Zielbetrag/-datum und automatisch berechneter Sparrate; dauerhafte Instandhaltungsrücklage für eine Immobilie.",
   "finance.help.savings_goals.ex1": "Lege ein neues Sparziel 'Notfallfonds' an: Zielbetrag 10000 Euro, bis Ende 2027, vom Lindenbank Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026.",
+  "finance.bank_note.on_list": "Das stellst du bei deiner Bank selbst ein. Es kommt am Ende auf deine Bank-Liste.",
   "finance.bank_todo.intro": "Das stellst du bei {bank}{holder} ein:",
   "finance.bank_todo.intro_generic": "Das stellst du bei deiner Bank{holder} ein:",
   "finance.bank_todo.nudge": "Hast du das schon bei {bank}{holder} eingestellt?",

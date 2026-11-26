@@ -15,6 +15,8 @@
 --   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
 --   -> {ok:false, reason}. Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name.
 --   ok:true traegt zusaetzlich existing_names, similar_names und card_lines (aehnlicher Name -> finance.note.similar_entry).
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -34,6 +36,10 @@ DECLARE
     v_names      JSONB;   -- fn_entity_name_report
     v_reject     JSONB;
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_create_pension(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangaben ("in 2 weeks") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date', 'value_updated_at', 'retirement_start_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

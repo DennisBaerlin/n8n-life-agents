@@ -8,7 +8,7 @@ function Build-SetPension {
     $trig = Build-Trigger @('pension_name','new_name','provider','contract_number','owner_person',
                            'current_value','value_updated_at','guaranteed_monthly_pension',
                            'retirement_start_date','status','notes',
-                           'contribution_amount','effective_from','schedule_interval','schedule_unit','debit_account_name')
+                           'contribution_amount','effective_from','schedule_interval','schedule_unit','debit_account_name','handoff_task_id')
 
     $resPen = Build-Pg 'Resolve Pension' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_pension((`$1::jsonb)->>'pension_name', TRUE);" `
@@ -45,6 +45,8 @@ function Build-SetPension {
         -WriteName 'Set pension (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'contribution_amount')::numeric AS contribution_amount, (r->>'monthly_contribution')::numeric AS monthly_contribution, r->>'first_due' AS first_due" `
         -Params ([ordered]@{
+            handoff_task_id            = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id                    = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             pension_id                 = '$(''Resolve Pension'').item.json.id'
             name                       = '$(''Start'').item.json.new_name'
             provider                   = '$(''Start'').item.json.provider'

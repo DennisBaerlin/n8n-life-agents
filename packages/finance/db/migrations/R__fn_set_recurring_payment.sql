@@ -34,6 +34,8 @@
 --   oder an einem Nicht-Uebertrag, until_free_money zusammen mit amount/valid_to, Ablehnung von fn_transfer_free_end,
 --   Split-Guards des Helfers inkl. last_booked und day_before_start, neuer Tag an einem Glied mit Nachfolger: code has_successor)
 --   -> {ok:false}.
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_recurring_payment(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -60,6 +62,10 @@ DECLARE
     v_prev_id  INT;
     v_day_moves BOOLEAN;
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_set_recurring_payment(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from', 'valid_to']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

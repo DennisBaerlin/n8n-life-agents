@@ -23,7 +23,7 @@
 --       - kind nicht section -> Uebergabe-Erinnerung (einmal): erste Domain in p.plan_order mit can_write, aktivem Plan
 --         ohne Entwurf (core.fn_advisor_plan_status state gaps|complete|enter) und offenen Punkten (core.fn_handoff_overview,
 --         via 'resume'), deren Rollout-Liste fuer dieselbe hoechste Aufgabe festgeschrieben ist (plan_rollout
---         '<domain>:<household|pid>:handoff:<max>', core.fn_plan_rollout_latch done, nur lesend) und vor
+--         latch_key aus core.fn_handoff_overview, gedeckt laut core.fn_handoff_list_shown_at, nur lesend) und vor
 --         >= advisor.resume_handoff_days (14) kam. Merker '<pid>:<domain>:handoff:<max>:1' ueber core.fn_nudge_stage
 --         (eine Stufe), eine neue hoechste Aufgabe ist erst nach ihrer Rollout-Liste wieder moeglich.
 --   Thema ({topic}): das zuletzt Gespeicherte im Entwurf (Maximum ueber Abschnitts- und Thema-saved_at, bei Gleichstand
@@ -167,10 +167,9 @@ BEGIN
                 v_ho := core.fn_handoff_overview(jsonb_build_object('domain', v_pl->>'domain', 'chat_id', v_chat::text, 'via', 'resume'));
                 v_max := NULLIF(v_ho->>'max_task_id', '')::int;
                 CONTINUE WHEN v_max IS NULL;
-                v_rkey := (v_pl->>'domain') || ':' || CASE WHEN (v_pl->>'per_user')::boolean THEN r.person_id ELSE 'household' END
-                          || ':handoff:' || v_max;
-                CONTINUE WHEN core.fn_plan_rollout_latch(v_rkey) IS DISTINCT FROM 'done';
-                SELECT ns.last_fired_at INTO v_rat FROM core.notification_state ns WHERE ns.source = 'plan_rollout' AND ns.key = v_rkey;
+                v_rkey := v_ho->>'latch_key';
+                v_rat := core.fn_handoff_list_shown_at(v_rkey);
+                CONTINUE WHEN v_rat IS NULL;
                 v_stage := core.fn_nudge_stage(jsonb_build_object(
                     'source', 'advisor_resume', 'key_prefix', r.person_id || ':' || (v_pl->>'domain') || ':handoff:' || v_max,
                     'person_id', r.person_id, 'slot', 'advisor_resume', 'idle_since', v_rat, 'rearm_since', NULL,

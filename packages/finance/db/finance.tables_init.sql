@@ -3071,6 +3071,10 @@ CREATE TABLE IF NOT EXISTS finance.bank_todos (
 );
 COMMENT ON COLUMN finance.bank_todos.first_sent_at IS 'Provenienz (Ausnahme c): erste Zustellung, Basis der Nachfass-Runden.';
 COMMENT ON COLUMN finance.bank_todos.closed_at IS 'Provenienz (Ausnahme c): Tipp auf erledigt.';
+-- Vormerkung (agent.handoff_tasks.id), in deren Eintragen der Punkt entstand oder zuletzt geaendert wurde. Kein FK: die
+-- Tabelle liegt in agent (finance_rw sieht sie nicht), Purge und E2E-Cleanup raeumen beide Seiten getrennt.
+ALTER TABLE finance.bank_todos ADD COLUMN IF NOT EXISTS handoff_task_id int;
+COMMENT ON COLUMN finance.bank_todos.handoff_task_id IS 'Provenienz (Ausnahme c): Vormerkung aus dem Eintragen, finance.fn_with_handoff; NULL = ausserhalb des Eintragens oder Altbestand.';
 CREATE UNIQUE INDEX IF NOT EXISTS bank_todos_one_open ON finance.bank_todos (head_id) WHERE status = 'open';
 
 -- Herkunft des Einstands einer Bestandsuebernahme (Provenienz-Ausnahme der Regel "keine ableitbaren Spalten"):

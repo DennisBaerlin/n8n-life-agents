@@ -11,6 +11,8 @@
 #
 # Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|household_open|fresh_household,
 #         hitl: decline|approve (Default decline), mock_fresh_memory: true (nur Mock: Chat-Gedaechtnis vor jeder Runde leeren),
+#         setup_sql / precondition_sql / teardown_sql (optional, nach dem Startzustand; Regeln wie in den anderen Treibern:
+#         Invoke-TestCaseSetup / Register-TestCaseTeardown in dev/test_n8n_state.ps1, __E2E__-Entitaeten, fn_clear_e2e_data danach),
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
 #                  timeout_s, expect_sql: [ { sql: "SELECT ...", equals: "<Wert>" } ] (nach der Runde, erste Zeile gleich equals),
@@ -319,10 +321,17 @@ foreach ($tc in $cases) {
     try {
         Test-ForceAbort $tc.id $ForceAbortId   # zeigt den Abbruch-Pfad (roter Fall, Lauf geht weiter) ohne LLM-Kosten
         Initialize-ConversationState $tc
+        Register-TestCaseTeardown $tc   # vor dem setup_sql: laeuft auch, wenn die Vorbereitung mittendrin scheitert
+        if (Test-HasField $tc 'setup_sql') { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" -Precondition "$($tc.precondition_sql)" }
         Clear-ChatSessionMemory -Container $Container -SessionId "$uid"   # einmal je Fall: Runden bauen aufeinander auf
     } catch {
         Write-Host "    [FAIL] Setup: $($_.Exception.Message)" -ForegroundColor Red
-        $res.setup_error = $_.Exception.Message; $failed++; $results += [pscustomobject]$res; continue
+        $res.setup_error = $_.Exception.Message; $failed++; $results += [pscustomobject]$res
+        # eine halb gelaufene Vorbereitung nicht liegen lassen: dieselben Aufraeum-Schritte wie nach den Runden
+        if (Test-HasField $tc 'setup_sql') { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) }
+        $td = Complete-TestCaseTeardown -Container $Container
+        if ($td) { Write-Host "    [FAIL] $td" -ForegroundColor Red; $failed++ }
+        continue
     }
     $n = 0; $abortCase = $false
     foreach ($turn in @($tc.turns)) {
@@ -363,9 +372,14 @@ foreach ($tc in $cases) {
         }
     }
     $results += [pscustomobject]$res
+    if (Test-HasField $tc 'setup_sql') { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) }
+    $td = Complete-TestCaseTeardown -Container $Container
+    if ($td) { Write-Host "    [FAIL] $td" -ForegroundColor Red; $failed++ }
     if ($script:stopRun) { break }
 }
 } finally {
+    $td = Complete-TestCaseTeardown -Container $Container
+    if ($td) { Write-Host "    [FAIL] $td" -ForegroundColor Red; $failed++ }
     # Auch bei Ctrl-C oder Fehler: wartende Karten-Executions stoppen, Karten-Sperre loesen (lib/paid_guard.ps1).
     Invoke-PaidRunCleanup -Container $Container -WorkflowId @($OrchWfId)
     # Geschlossene Geldkonten wieder oeffnen, __E2E__-Konten wegraeumen.

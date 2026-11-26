@@ -171,5 +171,35 @@
         "expected_behavior": "The reply is the orchestrator's own, short and in German (a greeting plus one sentence): it says in plain words that whoever runs the household (wording such as 'Haushaltsinhaber' or 'Owner' is equally fine) is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list, no button, no question to the member."
       }
     ]
+  },
+  {
+    "id": "s9",
+    "name": "S9 Nach dem Veroeffentlichen: Liste genau einmal, Durchgehen schliesst jede Vormerkung, Bank-Liste einmal gebuendelt am Ende",
+    "sender": "owner",
+    "start": "onboarding_done",
+    "hitl": "approve",
+    "notes": "Die Schalter plan_rollout und remind_bank_todo sind im Test-Substrat ab Installation aus (Zeitgeber-Sperre); der Fall schaltet sie fuer seine Dauer ein, das teardown_sql wieder aus. Vorzustand wie live: die Liste wurde mitten im Gespraech gezeigt und gemerkt (core.fn_handoff_overview_mark unter Version 1), danach veroeffentlicht (Version 2). Runde 1: die Abfolge am Laufende schickt die Liste. Runde 2: [Durchgehen]; der Buchhalter (Mock) aendert einen Dauerauftrag (tool_set_recurring_payment) und legt fuer eine zweite Vormerkung zwei jaehrliche Uebertraege an, drei Karten angenommen; am Laufende kommt die Bank-Liste als eine Nachricht. DB-Gesetze: test_fn_plan_rollout_next, test_fn_with_handoff, test_fn_plan_rollout.",
+    "setup_sql": "UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE domain = 'finance'; DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE 'finance:%'; INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__E2E__ FD Giro', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'), ('__E2E__ FD Tagesgeld', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'), ('__E2E__ FD Topf', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'); SELECT pg_temp.ok('uebertrag', finance.fn_create_recurring_transfer(jsonb_build_object('name', '__E2E__ FD Uebertrag', 'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FD Giro'), 'to_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FD Tagesgeld'), 'amount', 200, 'schedule_unit', 'month', 'schedule_day_of_month', 20, 'first_payment_date', (current_date + 40)::text))); INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) VALUES ('finance', '__E2E__ FD Plan', 'active', 1, now(), 'x'); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text) VALUES (990031, 'finance', 'finance', 'owner', 'wealth_building', 'recurring_transfer', '__E2E__ FD Uebertrag kuenftig am 1.'), (990032, 'finance', 'finance', 'owner', 'goals_triggers', 'recurring_transfer', '__E2E__ FD Zwei Uebertraege im Jahr in den Topf'); SELECT core.fn_handoff_overview_mark(jsonb_build_object('domain', 'finance', 'chat_id', '0', 'max_task_id', '990032')); UPDATE agent.advisor_plans SET status = 'superseded' WHERE plan_name = '__E2E__ FD Plan' AND version = 1; INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) VALUES ('finance', '__E2E__ FD Plan', 'active', 2, now(), 'x');",
+    "precondition_sql": "(SELECT count(*) FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE 'finance:household:%handoff:990032' AND state = 'fired') = 1",
+    "teardown_sql": "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE id IN (990031, 990032); DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ FD Plan'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source = 'finance:bank_todo' AND key ~ ':r[0-9]+:');",
+    "turns": [
+      {
+        "text": "wie geht es mit dem Plan weiter fd1", "stop_on_fail": true,
+        "expect_texts": ["FD Zwei Uebertraege im Jahr in den Topf"],
+        "expect_sql": [
+          { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'plan_rollout' AND key = 'finance:household:2:handoff:990032' AND state = 'fired' AND expires_at IS NULL;", "equals": "1" }
+        ]
+      },
+      {
+        "tap": "handoff:finance:990032", "timeout_s": 240,
+        "expect_texts": ["Es kommt am Ende auf deine Bank-Liste", "Das stellst du bei ", "Testbank ein:", "FD Rate A", "FD Rate B"],
+        "forbid_texts": ["Wichtig: Ich lege bei"],
+        "expect_sql": [
+          { "sql": "SELECT count(*) FROM agent.handoff_tasks WHERE id IN (990031, 990032) AND status = 'done';", "equals": "2" },
+          { "sql": "SELECT count(*) FROM finance.bank_todos WHERE handoff_task_id IN (990031, 990032) AND first_sent_at IS NOT NULL;", "equals": "3" },
+          { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'finance:bank_todo' AND key ~ ':r0:owner$' AND state = 'fired' AND expires_at IS NULL;", "equals": "3" }
+        ]
+      }
+    ]
   }
 ]

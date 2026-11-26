@@ -803,6 +803,7 @@
   "finance.help.savings_goals.title": "Savings goals",
   "finance.help.savings_goals.description": "Savings goals with a target amount/date and an automatically calculated savings rate; an ongoing maintenance reserve for a property.",
   "finance.help.savings_goals.ex1": "Create a new savings goal 'Emergency fund': target 10,000 euros by the end of 2027, from the Lindenbank Giro into Tagesgeld Plus, debit day 1, first booking on 1 Jul 2026.",
+  "finance.bank_note.on_list": "You set this up at your bank yourself. It goes on your bank list at the end.",
   "finance.bank_todo.intro": "To set up at {bank}{holder}:",
   "finance.bank_todo.intro_generic": "To set up at your bank{holder}:",
   "finance.bank_todo.nudge": "Have you set this up at {bank}{holder} yet?",

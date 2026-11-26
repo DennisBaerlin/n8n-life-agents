@@ -8,7 +8,7 @@ function Build-CreatePension {
     $trig = Build-Trigger @('name','pension_type','provider','contract_number','owner_person','current_value',
                            'value_updated_at','guaranteed_monthly_pension','retirement_start_date',
                            'contribution_amount','schedule_interval','schedule_unit','debit_account_name','schedule_day_of_month',
-                           'first_payment_date','notes')
+                           'first_payment_date','notes','handoff_task_id')
 
     # Dedup-Guard (aktive gleichnamige Altersvorsorge) — Block vor dem Gate.
     $checkDup = Build-Pg 'Check duplicate name' @(220, -200) `
@@ -48,6 +48,8 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
         -WriteName 'Create pension (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id, (r->>'recurring_payment_id')::int AS recurring_payment_id" `
         -Params ([ordered]@{
+            handoff_task_id            = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id                    = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             name                       = '$(''Start'').item.json.name'
             pension_type               = '$(''Start'').item.json.pension_type'
             provider                   = '$(''Start'').item.json.provider'

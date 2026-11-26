@@ -6,7 +6,7 @@ function Build-SetRecurringPayment {
     # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('payment_name','new_name','amount','valid_from','status','valid_to',
-                           'schedule_day_of_month','notes','until_free_money','executed_by')
+                           'schedule_day_of_month','notes','until_free_money','executed_by','handoff_task_id')
 
     # Resolve ueber alle Status (active_only=false): findet auch pausierte (resume) und nach Split
     # mehrere gleichnamige -> Ambiguitaet zeigt Kandidaten (status/valid_from/valid_to) zum Auswaehlen.
@@ -28,6 +28,7 @@ function Build-SetRecurringPayment {
         -WriteName 'Set payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->>'first_due', '') AS first_due" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id = '$(''Start'').item.json.chat_id'
             recurring_payment_id  = '$(''Resolve Payment'').item.json.id'
             amount                = '$(''Start'').item.json.amount'

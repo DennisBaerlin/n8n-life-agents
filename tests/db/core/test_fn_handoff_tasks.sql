@@ -117,6 +117,10 @@ BEGIN
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111"}');
   IF (r->>'count')::int <> 2 OR (r->>'max_task_id')::int <> v_id3 OR r->'items'->>0 <> 'Sparziel Notgroschen 5.000 €'
      OR r->'items'->>1 <> 'Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 Uebersicht]: %', r; END IF;
+  -- Merker-Schluessel der Liste: eine Adresse fuer Abfolge, Berater-Merker und letzte Erinnerung; traegt die Version des gueltigen Plans
+  IF r->>'latch_key' IS DISTINCT FROM 'finance:household:'
+       || COALESCE((SELECT version FROM agent.advisor_plans WHERE domain = 'finance' AND person_id IS NULL AND status = 'active'), 0)
+       || ':handoff:' || v_id3 THEN RAISE EXCEPTION 'FAIL [4 latch_key]: %', r; END IF;
   -- fertige Text-Struktur fuer beide Sender (Abfolge und Berater-Tool)
   IF r->'msg'->>'kind' IS DISTINCT FROM 'tpl' OR r->'msg'->>'value' IS DISTINCT FROM 'core.handoff.overview'
      OR r->'msg'->'params'->>'list' IS DISTINCT FROM E'1. Sparziel Notgroschen 5.000 €\n2. Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 msg]: %', r; END IF;
@@ -190,8 +194,18 @@ BEGIN
   r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id1) <> 'done'
      OR (SELECT closed_at FROM agent.handoff_tasks WHERE id = v_id1) IS NULL THEN RAISE EXCEPTION 'FAIL [7 complete]: %', r; END IF;
+  -- weiterer Teil derselben Vormerkung in derselben Runde (mehrere Eintraege fuer eine Vormerkung): ok, nichts geaendert
+  r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [7 check Teil]: %', r; END IF;
   r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
-  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 zweimal]: %', r; END IF;
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_id1) <> 'done' THEN
+    RAISE EXCEPTION 'FAIL [7 zweiter Teil]: %', r; END IF;
+  -- nach der Runde (Claim-Frist vorbei): abgelehnt
+  ALTER TABLE agent.handoff_tasks DISABLE TRIGGER trg_handoff_tasks_final;
+  UPDATE agent.handoff_tasks SET claimed_at = now() - interval '5 hours', closed_at = now() - interval '4 hours' WHERE id = v_id1;
+  ALTER TABLE agent.handoff_tasks ENABLE TRIGGER trg_handoff_tasks_final;
+  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 alte Runde]: %', r; END IF;
   -- offene (nicht beanspruchte) Aufgabe ist nicht abschliessbar
   r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement_pension','topic','Allgemein',
          'section_content','r','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Rentenbescheid hochladen'))));

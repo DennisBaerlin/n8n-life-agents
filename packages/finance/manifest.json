@@ -175,6 +175,7 @@
       "rollout_fn": "finance.fn_plan_rollout",
       "plan_validate_fn": "finance.fn_validate_financial_planning",
       "handoff_agent": "agent.finance",
+      "handoff_tools": { "savings_goal": ["create_savings_goal", "set_savings_goal"], "savings_plan": ["create_savings_plan", "set_savings_plan"], "recurring_payment": ["create_recurring_payment", "set_recurring_payment"], "recurring_transfer": ["create_recurring_transfer", "set_recurring_payment"], "other": ["create_pension", "set_pension"] },
       "section_facts_fn": "finance.fn_plan_section_facts",
       "hints_fn": "finance.fn_advisor_hints",
       "stages": [

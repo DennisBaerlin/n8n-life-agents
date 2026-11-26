@@ -176,6 +176,10 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   entries, `can_write`; claims open entries up to `max_task_id`). The orchestrator's build-time arm per domain with
   `advisors.<domain>.handoff_agent` starts that agent with a fixed English task and the entries as data (no agent-to-agent
   call); each entry is booked behind its normal card with `handoff_task_id`, which closes it in the same write.
+  `advisors.<domain>.handoff_tools` (`{ "<kind>": ["<tool>", …] }`, one key per value of `handoff_tasks.kind`) names the
+  write tools that can fulfil an entry of that kind; `contract_lint` checks that each has `handoff_task_id` in its start
+  node, its write payload and the handoff agent's binding, and that its write fn hands it to the package's `fn_with_handoff`.
+  An entry may need several writes in the same round: each carries the same `handoff_task_id`.
 - **Button follow-up (2026-10-28):** every button arm that starts an agent records it after the relay
   (`agent.fn_set_dispatch_followup`); the next routed message reads it once (`agent.fn_take_dispatch_followup`, 30 min) →
   router flag `followup_agent` (router rule 2a). One row per chat, last write wins; commands do not consume it. The same

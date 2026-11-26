@@ -204,13 +204,28 @@ jobs:
           TEMP: ${{ runner.temp }}   # die Skripte erwarten die Windows-Variable $env:TEMP
         run: ./scripts/dev/backup_roundtrip_test.ps1
 
+      # Die Container des Verbunds schreiben Dateien in den Log-Ordner (Sicherungen, Attrappen-Protokolle) mit ihrem Nutzer und 0600:
+      # der Runner darf sie nicht lesen (upload-artifact: EACCES), und die verschluesselte Sicherung gehoert ohnehin nicht ins
+      # Artefakt. Darum nur die Dateien, die der Bootstrap selbst schreibt (*.out, *.err), und die Container-Logs, hier gesammelt.
+      - name: Container-Logs sammeln
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/stack-logs"
+          for c in $(docker ps -a --filter "label=io.lifeagents.install=$N8NTEST_CONTAINER" --format '{{.Names}}'); do
+            docker logs --tail 300 "$c" > "$RUNNER_TEMP/stack-logs/$c.log" 2>&1 || true
+          done
+
       - name: Verbund-Logs sichern
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backup-roundtrip-logs
           # Log-Ordner des Verbunds: GetTempPath() = /tmp (unter Linux gilt TMPDIR, nicht TEMP), Projekt = N8NTEST_CONTAINER.
-          path: /tmp/lifeagents-test-stack/lastack
+          path: |
+            /tmp/lifeagents-test-stack/lastack/*.out
+            /tmp/lifeagents-test-stack/lastack/*.err
+            ${{ runner.temp }}/stack-logs
           if-no-files-found: warn
           retention-days: 7
 

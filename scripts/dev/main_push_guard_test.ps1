@@ -127,7 +127,7 @@ try {
     New-Item -ItemType Directory -Force (Join-Path $sandbox '.claude\hooks') | Out-Null
     Copy-Item (Join-Path $repo '.claude\hooks\dev_cycle_guard.ps1') (Join-Path $sandbox '.claude\hooks\')
     foreach ($name in 'privacy_lint.ps1', 'owner_fact_lint.ps1', 'privacy_outgoing.ps1', 'privacy_review_stamp.ps1', 'release_pin_guard.ps1', 'main_push_guard.ps1',
-        'lib\owner_machine.ps1', 'lib\release_images.ps1', 'lib\ci_wait.ps1', 'lib\main_push.ps1', 'lib\github_runs.ps1') {
+        'lib\owner_machine.ps1', 'lib\release_images.ps1', 'lib\hash.ps1', 'lib\ci_wait.ps1', 'lib\main_push.ps1', 'lib\github_runs.ps1') {
         $dst = Join-Path $sandbox "scripts\$name"
         New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
         Copy-Item (Join-Path $repo "scripts\$name") $dst

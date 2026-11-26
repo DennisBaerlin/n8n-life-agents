@@ -12,7 +12,8 @@
 --   gibt die Kurz-Zeile statt des Bank-Absatzes); (4) nur bei ok:true core.fn_complete_handoff_task -> done mit
 --   entered_refs [{type, id}] = die angelegte bzw. geaenderte Sache (ein weiterer Teil haengt seine an).
 --   Rueckgabe: Ergebnis der Ziel-fn + handoff_task_id + handoff_diff (finance.fn_handoff_diff_of gegen wanted nach dem
---   Write, [] = wie vereinbart, fehlt ohne wanted) + Kartenzeilen am Ende von card_lines in dieser Reihenfolge:
+--   Write, [] = wie vereinbart, fehlt ohne wanted); bei mehrteiligem Soll zaehlt ein noch nicht eingetragener Teil nicht als
+--   exists-Abweichung + Kartenzeilen am Ende von card_lines in dieser Reihenfolge:
 --   core.hitl.handoff_pos {k, n} (Stelle in der Runde, core.fn_handoff_position; fehlt ohne Claim), core.hitl.handoff_note
 --   {text}, core.hitl.handoff_why {why} (nur mit why), je geaendertem Feld core.hitl.value_before_after {field, before,
 --   after} (field = Katalog-Key finance.handoff.field.<feld>, Werte typisiert; der Probelauf zeigt so "bisher -> neu"),
@@ -113,6 +114,12 @@ BEGIN
     END IF;
     v_diff := CASE WHEN v_task->'wanted' IS NOT NULL AND v_task->'wanted' <> 'null'::jsonb
                    THEN finance.fn_handoff_diff_of(v_task->'wanted', v_task->'entered_refs') END;
+    -- mehrteiliges Soll: solange weniger Sachen eingetragen sind als Aufrufe vereinbart, ist der fehlende Teil nur noch
+    -- nicht dran und keine Abweichung (das Register sieht den Rest weiter ueber finance.fn_handoff_diff)
+    IF jsonb_typeof(v_task->'wanted') = 'array'
+       AND jsonb_array_length(COALESCE(v_task->'entered_refs', '[]'::jsonb)) < jsonb_array_length(v_task->'wanted') THEN
+        v_diff := COALESCE((SELECT jsonb_agg(d) FROM jsonb_array_elements(v_diff) d WHERE d->>'field' <> 'exists'), '[]'::jsonb);
+    END IF;
 
     RETURN v_r || jsonb_build_object(
         'handoff_task_id', (v_chk->>'task_id')::int,

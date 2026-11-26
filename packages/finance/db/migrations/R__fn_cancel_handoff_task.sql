@@ -21,10 +21,12 @@ AS $$
 DECLARE
     v_ref  jsonb;
     v_type text := lower(btrim(COALESCE(p->>'ref_type', '')));
+    -- wie core.fn_cancel_handoff_task normalisiert: sonst umginge ' done_elsewhere' die Suche nach der Sache
+    v_why  text := lower(btrim(COALESCE(p->>'reason', '')));
     v_refs jsonb;
     v_r    jsonb;
 BEGIN
-    IF p->>'reason' = 'done_elsewhere' THEN
+    IF v_why = 'done_elsewhere' THEN
         IF v_type NOT IN ('account', 'savings_goal', 'savings_plan', 'recurring_payment', 'pension', 'insurance', 'loan')
            OR NULLIF(btrim(COALESCE(p->>'ref_name', '')), '') IS NULL THEN
             RETURN jsonb_build_object('ok', false, 'code', 'nothing_to_tick',
@@ -43,7 +45,7 @@ BEGIN
         v_refs := jsonb_build_array(jsonb_build_object('type', v_type, 'id', (v_ref->'candidates'->0->>'id')::int));
     END IF;
     v_r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', p->>'handoff_task_id', 'chat_id', p->>'chat_id',
-               'reason', p->>'reason') || CASE WHEN v_refs IS NOT NULL THEN jsonb_build_object('entered_refs', v_refs) ELSE '{}'::jsonb END);
+               'reason', v_why) || CASE WHEN v_refs IS NOT NULL THEN jsonb_build_object('entered_refs', v_refs) ELSE '{}'::jsonb END);
     IF (v_r->>'ok')::boolean IS NOT TRUE THEN
         RETURN v_r;
     END IF;
@@ -54,7 +56,7 @@ BEGIN
             jsonb_build_object('label', 'finance.label.handoff_stays_open', 'kind', 'text',
                                'value', core.fn_handoff_tasks_read(ARRAY[(v_r->>'task_id')::int])->0->'rest')));
     END IF;
-    RETURN v_r || CASE WHEN p->>'reason' = 'dropped'
+    RETURN v_r || CASE WHEN v_why = 'dropped'
                        THEN jsonb_build_object('card_title_key', 'finance.hitl.cancel_handoff_task_dropped') ELSE '{}'::jsonb END
         || jsonb_build_object('card_lines', jsonb_build_array(jsonb_build_object(
             'kind', 'note', 'value', 'core.hitl.handoff_note', 'params', jsonb_build_object('text', v_r->>'text'))));

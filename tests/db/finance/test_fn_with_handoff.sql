@@ -229,8 +229,8 @@ BEGIN
      OR (SELECT x->'params'->>'why' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_why') <> 'So ist das Geld bis zum Termin da.'
      OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_rest') <> 'Rest einmal ueberweisen' THEN
     RAISE EXCEPTION 'FAIL [12 Werte]: %', r->'card_lines'; END IF;
-  -- erster von zwei vereinbarten Aufrufen: der zweite fehlt noch -> exists
-  IF r->'handoff_diff' IS DISTINCT FROM '[{"field": "exists", "wanted": true, "current": false}]'::jsonb THEN
+  -- erster von zwei vereinbarten Aufrufen: der zweite steht noch aus, das ist keine Abweichung
+  IF r->'handoff_diff' IS DISTINCT FROM '[]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [12 diff erster Teil]: %', r->'handoff_diff'; END IF;
   -- zweiter Teil mit anderem Betrag als vereinbart: angehaengt, Abweichung sichtbar
   r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_h12_b','from_account_id',v_a,'to_account_id',v_b,'amount',80,
@@ -292,6 +292,10 @@ BEGIN
   -- ohne genannte Sache / Sache nicht gefunden -> nothing_to_tick, Aufgabe bleibt working
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'nothing_to_tick' THEN RAISE EXCEPTION 'FAIL [14 ohne Sache]: %', r; END IF;
+  -- Grund mit Leerzeichen umgeht die Pruefung nicht (core trimmt ebenso)
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', ' Done_Elsewhere '));
+  IF r->>'code' IS DISTINCT FROM 'nothing_to_tick' OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN
+    RAISE EXCEPTION 'FAIL [14 Grund ungetrimmt]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere',
          'ref_type', 'pension', 'ref_name', '__t_h14_gibtsnicht'));
   IF r->>'code' IS DISTINCT FROM 'nothing_to_tick' OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN

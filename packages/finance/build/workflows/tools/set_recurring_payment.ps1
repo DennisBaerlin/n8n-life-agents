@@ -26,7 +26,7 @@ function Build-SetRecurringPayment {
     # Im Write fuehrt ein neuer Betrag zum Validity-Split, alles andere aendert in place.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_recurring_payment' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set payment (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->>'first_due', '') AS first_due" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->>'first_due', '') AS first_due, CASE WHEN jsonb_typeof(r->'handoff_diff') = 'array' AND jsonb_array_length(r->'handoff_diff') > 0 THEN (r->'handoff_diff')::text ELSE '' END AS handoff_diff" `
         -Params ([ordered]@{
             handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id = '$(''Start'').item.json.chat_id'
@@ -96,6 +96,7 @@ function Build-SetRecurringPayment {
 
     $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
+        ,@('handoff_diff', "={{ `$('Set payment (atomic)').item.json.handoff_diff }}", 'string')   # Abweichung vom vereinbarten Soll nach dem Write (finance.fn_with_handoff); leer = wie vereinbart oder kein Soll
         ,@('recurring_payment_id', "={{ `$('Set payment (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('split', "={{ `$('Set payment (atomic)').item.json.split }}", 'boolean')
         ,@('cashflow_coverage', "={{ `$('Set payment (atomic)').item.json.cashflow_coverage }}", 'string')

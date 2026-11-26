@@ -33,7 +33,7 @@ function Build-CreateRecurringTransfer {
 
     $wg = New-FnWriteGate -Fn 'finance.fn_create_recurring_transfer' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create recurring transfer (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding, CASE WHEN jsonb_typeof(r->'handoff_diff') = 'array' AND jsonb_array_length(r->'handoff_diff') > 0 THEN (r->'handoff_diff')::text ELSE '' END AS handoff_diff" `
         -Params ([ordered]@{
             handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
@@ -102,6 +102,7 @@ function Build-CreateRecurringTransfer {
 
     $ret = Build-Return @(2860, 0) @(
         ,@('ok','true','boolean')
+        ,@('handoff_diff', "={{ `$('Create recurring transfer (atomic)').item.json.handoff_diff }}", 'string')   # Abweichung vom vereinbarten Soll nach dem Write (finance.fn_with_handoff); leer = wie vereinbart oder kein Soll
         ,@('recurring_payment_id', "={{ `$('Create recurring transfer (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_equivalent', "={{ `$('Create recurring transfer (atomic)').item.json.monthly_equivalent }}", 'number')
         ,@('savings_funding', "={{ `$('Create recurring transfer (atomic)').item.json.savings_funding }}", 'string')

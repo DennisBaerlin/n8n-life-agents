@@ -14,7 +14,7 @@
   {"_comment": "tc159 Dauerauftrag teurer: tool_set_recurring_payment.", "match": "Stromabschlag Stadtwerke steigt ab jetzt auf 95 Euro", "calls": [{"tool": "tool_set_recurring_payment", "args": {"payment_name": "Stromabschlag Stadtwerke", "amount": "95"}}], "final": "Der Dauerauftrag wurde nicht geaendert."},
   {"_comment": "tc162 Neuer Abbuchungstag: tool_set_recurring_payment mit dem Tag roh.", "match": "Stromabschlag Stadtwerke wird ab jetzt immer am 20.", "calls": [{"tool": "tool_set_recurring_payment", "args": {"payment_name": "Stromabschlag Stadtwerke", "schedule_day_of_month": "20"}}], "final": "Der Abbuchungstag wurde nicht geaendert."},
   {"_comment": "tc160 Geld vormerken: tool_book_savings_reservation.", "match": "sollen 3000 Euro fuer das Sparziel '__E2E__ BR Ziel' vorgemerkt sein", "calls": [{"tool": "tool_book_savings_reservation", "args": {"savings_goal_name": "__E2E__ BR Ziel", "account_name": "__E2E__ BR Tagesgeld", "amount": 3000}}], "final": "Die Vormerkung wurde nicht gebucht."},
-  {"_comment": "tc161 Handoff-Eintrag ueberspringen: tool_cancel_handoff_task.", "match": "I do not want to enter this one, skip it", "calls": [{"tool": "tool_cancel_handoff_task", "args": {"handoff_task_id": "990011", "reason": "skipped"}}], "final": "Der Eintrag wurde nicht geschlossen."},
+  {"_comment": "tc161 Handoff-Eintrag ueberspringen: tool_cancel_handoff_task.", "match": "I do not want to enter this one, skip it", "calls": [{"tool": "tool_cancel_handoff_task", "args": {"handoff_task_id": "990011", "reason": "skipped"}}], "final": "Der Eintrag bleibt auf der Liste offen."},
   {
     "_comment": "Mehr Tool-Runden als das Memory-Fenster (mock_route_test [memory-thinking]): thinking_binding prueft die Signaturen wie die API.",
     "match": "__mock_thinking_binding__",
@@ -2246,5 +2246,9 @@
       { "tool": "tool_create_recurring_transfer", "args": { "name": "__E2E__ FD Rate B", "from_account_name": "__E2E__ FD Giro", "to_account_name": "__E2E__ FD Topf", "amount": 800, "schedule_unit": "year", "first_payment_date": "{{date:+120d}}", "handoff_task_id": "990032" } }
     ],
     "final": "Beide Eintraege sind eingetragen."
-  }
+  },
+  {"_comment": "tc171 Handoff-Eintrag geht so noch nicht: tool_defer_handoff_task.", "match": "bis dort 6000 Euro liegen", "calls": [{"tool": "tool_defer_handoff_task", "args": {"handoff_task_id": "990041", "blocked_code": "pay_until_amount"}}], "final": "Der Eintrag wurde nicht zurückgestellt."},
+  {"_comment": "tc172 Handoff-Eintrag mit geprueftem Aufruf: genau dieser Aufruf.", "match": "Uebertrag WT Reserve kommt kuenftig am Monatsersten", "calls": [{"tool": "tool_set_recurring_payment", "args": {"payment_name": "__E2E__ WT Reserve", "schedule_day_of_month": "1", "handoff_task_id": "990042"}}], "final": "Der Übertrag wurde nicht geändert."},
+  {"_comment": "tc173 Handoff-Eintrag steht schon im System: tool_cancel_handoff_task done_elsewhere.", "match": "Die Betriebsrente steht doch schon drin", "calls": [{"tool": "tool_cancel_handoff_task", "args": {"handoff_task_id": "990043", "reason": "done_elsewhere", "ref_type": "pension", "ref_name": "__E2E__ DE Werk"}}], "final": "Der Eintrag wurde nicht abgehakt."},
+  {"_comment": "tc174 Handoff-Eintrag ausdruecklich streichen: tool_cancel_handoff_task dropped.", "match": "Das zweite Tagesgeld will ich gar nicht mehr", "calls": [{"tool": "tool_cancel_handoff_task", "args": {"handoff_task_id": "990044", "reason": "dropped"}}], "final": "Der Eintrag wurde nicht gestrichen."}
 ]

@@ -515,12 +515,23 @@ $nToolImportRecurringSuggestions = New-ToolWorkflowNode 'tool_import_recurring_s
 $nToolSendRecurringSuggestions = New-ToolWorkflowNode 'tool_send_recurring_suggestions' `
     'SEND THE OPEN STANDING-ORDER SUGGESTIONS of this chat as separate messages, each with the buttons add / do not add (up to 10 per call, the most certain first). Call it once right after tool_reconcile_bank_statement or tool_import_recurring_suggestions reported new suggestions (recurring.unsent_count or unsent_count > 0), and when the user asks for the open suggestions. Writes nothing itself: a standing order is created only when the user taps add, with the values of the message; you never type suggestion values into tool_create_recurring_payment. The chat stays free meanwhile. Do not repeat or list the suggestions afterwards; follow the note of the result. Whether the user tapped add you learn from the database later (finance.recurring_payments), not in this turn.' `
     @() @(3440, 520)
-# Uebergabe Berater -> Buchhalter: einen vereinbarten Plan-Punkt ueberspringen oder als anderweitig erledigt schliessen.
+# Uebergabe Berater -> Buchhalter: einen vereinbarten Plan-Eintrag ueberspringen (bleibt offen), abhaken oder streichen.
 $nToolCancelHandoffTask = New-ToolWorkflowNode 'tool_cancel_handoff_task' `
-    'HANDOFF MODE ONLY: close an agreed plan entry without booking it. reason skipped = the user does not want to enter it (now or at all); reason done_elsewhere = it is already done or needed no booking here (e.g. an entry of kind other the user handled outside). One confirmation card shows the entry sentence. Never use it for an entry you just booked with handoff_task_id - that booking already closed it. ok:false with a reason (unknown or already closed entry) -> tell the user in plain words and go on with the next entry.' `
+    'HANDOFF MODE ONLY: an agreed plan entry without a booking. reason skipped = the user wants to leave it for now ("later", "next one", "skip"): no card, the entry stays open on the list, nothing is deleted. reason done_elsewhere = it already exists in the data (e.g. an entry of kind other the user handled outside): name that thing with ref_type and ref_name (its name as the user or the entry says it); card "already entered - tick off?" shows what is in the system. Nothing found -> ok:false nothing_to_tick, several found -> candidates: ask which one. reason dropped = the user says plainly it shall not be entered at all: card, then the entry is gone for good - never use dropped for "later" or "next". Never use it for an entry you just booked with handoff_task_id - that booking already closed it, and never for an entry that cannot be entered yet (tool_defer_handoff_task). ok:false with a reason -> tell the user in one plain sentence and go on with the next entry.' `
     @(
         ,@('handoff_task_id', 'The id of the agreed plan entry (from the entry list of your task)', 'string')
-        ,@('reason', 'skipped or done_elsewhere', 'string', 'skipped')
+        ,@('reason', 'skipped, done_elsewhere or dropped', 'string', 'skipped')
+        ,@('ref_type', 'ONLY with done_elsewhere: the kind of thing that already exists - account, savings_goal, savings_plan, recurring_payment, pension, insurance or loan. Empty otherwise.', 'string', '')
+        ,@('ref_name', 'ONLY with done_elsewhere: the name of that thing. Empty otherwise.', 'string', '')
+    ) @(3440, 520)
+# Gueltige Gruende = die Katalog-Keys finance.handoff.blocked.<code> (dieselbe Liste prueft core.fn_handoff_blocked_codes).
+$blockedCodes = @((Get-HitlLocaleKeys 'finance').Keys | Where-Object { $_ -like 'finance.handoff.blocked.*' } | ForEach-Object { $_.Substring(24) } | Sort-Object)
+if ($blockedCodes.Count -eq 0) { throw 'agent.finance: keine Katalog-Keys finance.handoff.blocked.* in packages/finance/locales/de.json' }
+$nToolDeferHandoffTask = New-ToolWorkflowNode 'tool_defer_handoff_task' `
+    "HANDOFF MODE ONLY: put an agreed plan entry back because the system cannot enter it as agreed yet. The entry keeps what was agreed and comes back on its own once an update can enter it; nothing goes into notes. Use it instead of any workaround (a smaller target amount with the real one in the notes, a shorter standing order, a dropped entry with remember to tell me later). blocked_code = the one reason that fits: $($blockedCodes -join ', '). One confirmation card shows the entry and the reason. ok:false with code unknown_blocked_code -> pick a code from the list above; another ok:false -> say the reason in one plain sentence and go on with the next entry." `
+    @(
+        ,@('handoff_task_id', 'The id of the agreed plan entry (from the entry list of your task)', 'string')
+        ,@('blocked_code', "Why the entry cannot be entered yet, one of: $($blockedCodes -join ', ')", 'string')
     ) @(3440, 520)
 
 $nToolCreatePension = New-ToolWorkflowNode 'tool_create_pension' `
@@ -949,7 +960,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nToolBookStockSell, $nToolBookLoanPayment, $nToolCreateSavingsGoal, $nToolBookSavingsGoalTransfer,
     $nToolBookSavingsReservation,
     $nToolReconcileAccount, $nToolReconcileAccountsBatch, $nToolCloseAccount,
-    $nToolCreateRecurringPayment, $nToolCreateRecurringTransfer, $nToolImportRecurringSuggestions, $nToolSendRecurringSuggestions, $nToolCancelHandoffTask, $nToolCreatePension,
+    $nToolCreateRecurringPayment, $nToolCreateRecurringTransfer, $nToolImportRecurringSuggestions, $nToolSendRecurringSuggestions, $nToolCancelHandoffTask, $nToolDeferHandoffTask, $nToolCreatePension,
     $nToolSetAccount, $nToolSetAccountInterest, $nToolSetRealEstate, $nToolSetPension, $nToolSetInsurance,
     $nToolSetLoan, $nToolSetRecurringPayment, $nToolSetSavingsGoal, $nToolSetHolding, $nToolSetAssetClasses, $nToolReplaceHoldingLots, $nToolVerifyPriceSymbol, $nToolVoidTransaction,
     $nToolCreateSavingsPlan, $nToolBookSavingsPlanExecution, $nToolBookRecurringOccurrence, $nToolBookInterest,
@@ -1018,6 +1029,7 @@ $connRest = [ordered]@{
     'tool_import_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_send_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_cancel_handoff_task' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_defer_handoff_task'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_pension'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_set_account'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_set_account_interest' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }

@@ -539,7 +539,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u0027depot_risk\u0027 AS depot_risk, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, (r-\u003e\u003e\u0027plan_monthly_amount\u0027)::numeric AS plan_monthly_amount, (r-\u003e\u003e\u0027replaced_transfer_id\u0027)::int AS replaced_transfer_id, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze, (r-\u003e\u003e\u0027recommended_monthly\u0027)::numeric AS recommended_monthly FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u0027depot_risk\u0027 AS depot_risk, (r-\u003e\u003e\u0027goal_id\u0027)::int AS goal_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_rate\u0027)::numeric AS monthly_rate, (r-\u003e\u003e\u0027target_date\u0027)::date AS target_date, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027savings_plan_id\u0027)::int AS savings_plan_id, (r-\u003e\u003e\u0027required_monthly_rate\u0027)::numeric AS required_monthly_rate, (r-\u003e\u003e\u0027plan_monthly_amount\u0027)::numeric AS plan_monthly_amount, (r-\u003e\u003e\u0027replaced_transfer_id\u0027)::int AS replaced_transfer_id, COALESCE(r-\u003e\u0027savings_squeeze\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_squeeze, (r-\u003e\u003e\u0027recommended_monthly\u0027)::numeric AS recommended_monthly, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_create_savings_goal(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, name: $(\u0027Start\u0027).item.json.goal_name, goal_type: $(\u0027Start\u0027).item.json.goal_type, target_amount: $(\u0027Start\u0027).item.json.target_amount, target_date: $(\u0027Start\u0027).item.json.target_date, monthly_savings_rate: $(\u0027Start\u0027).item.json.monthly_savings_rate, account_id: $(\u0027Resolve Account\u0027).item.json.id, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, notes: $(\u0027Start\u0027).item.json.notes, beneficiary_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, reserve_account_id: $(\u0027Resolve Reserve\u0027).item.json.id, priority: $(\u0027Start\u0027).item.json.priority, already_saved: $(\u0027Start\u0027).item.json.already_saved, savings_plan: $(\u0027Start\u0027).item.json.savings_plan_name, replace_transfer: $(\u0027Start\u0027).item.json.replace_transfer, real_estate_name: $(\u0027Start\u0027).item.json.real_estate_name, kind: $(\u0027Start\u0027).item.json.kind, target_months: $(\u0027Start\u0027).item.json.target_months, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -771,78 +771,84 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "bb6d4c6d-781f-5e21-bfdd-73ab9de29dc9",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5c93d8e9-7145-523c-a0fc-e9a8932dc67b",
                                                                                      "name":  "depot_risk_recorded",
                                                                                      "value":  "={{ !!$(\u0027Create savings goal (atomic)\u0027).item.json.depot_risk }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "5c93d8e9-7145-523c-a0fc-e9a8932dc67b",
+                                                                                     "id":  "0c3a99ae-f0d5-5853-bf0f-4ba3f16a822c",
                                                                                      "name":  "depot_risk_reminder_month",
                                                                                      "value":  "={{ ($(\u0027Create savings goal (atomic)\u0027).item.json.depot_risk || {}).reminder_month || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "0c3a99ae-f0d5-5853-bf0f-4ba3f16a822c",
+                                                                                     "id":  "99d15f60-8030-5dea-91dd-fdaa741ed690",
                                                                                      "name":  "goal_id",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.goal_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "99d15f60-8030-5dea-91dd-fdaa741ed690",
+                                                                                     "id":  "3239157a-05eb-547f-aafb-661e6cda6d01",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3239157a-05eb-547f-aafb-661e6cda6d01",
+                                                                                     "id":  "ca28395e-52d5-5b05-888b-5b5a545341d7",
                                                                                      "name":  "monthly_rate",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.monthly_rate }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "ca28395e-52d5-5b05-888b-5b5a545341d7",
+                                                                                     "id":  "9ed62c18-0032-57f8-9643-18e1c691630d",
                                                                                      "name":  "target_date",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.target_date }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "9ed62c18-0032-57f8-9643-18e1c691630d",
+                                                                                     "id":  "7460b601-3a94-5b1d-a294-0c17b16b9860",
                                                                                      "name":  "current_amount",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.current_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "7460b601-3a94-5b1d-a294-0c17b16b9860",
+                                                                                     "id":  "a2f3f629-9457-50a6-9437-896331d9b8aa",
                                                                                      "name":  "savings_plan_id",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.savings_plan_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a2f3f629-9457-50a6-9437-896331d9b8aa",
+                                                                                     "id":  "b4c2b51c-f30c-5985-8189-4b17cffa4941",
                                                                                      "name":  "required_monthly_rate",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.required_monthly_rate }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "b4c2b51c-f30c-5985-8189-4b17cffa4941",
+                                                                                     "id":  "5f33e34f-9550-5a9c-8634-539a58ab2715",
                                                                                      "name":  "plan_monthly_amount",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.plan_monthly_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "5f33e34f-9550-5a9c-8634-539a58ab2715",
+                                                                                     "id":  "24c76431-881f-543e-b54f-4a7311808715",
                                                                                      "name":  "replaced_transfer_id",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.replaced_transfer_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "24c76431-881f-543e-b54f-4a7311808715",
+                                                                                     "id":  "33be9697-0f3e-5bf6-bbac-ba4b6c439d57",
                                                                                      "name":  "savings_squeeze",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.savings_squeeze }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "33be9697-0f3e-5bf6-bbac-ba4b6c439d57",
+                                                                                     "id":  "2d6b200e-7dd5-5fc6-a1a9-4147629fd650",
                                                                                      "name":  "recommended_monthly",
                                                                                      "value":  "={{ $(\u0027Create savings goal (atomic)\u0027).item.json.recommended_monthly }}",
                                                                                      "type":  "number"

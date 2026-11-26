@@ -57,7 +57,7 @@ function Build-SetSavingsGoal {
     # Im Write: Rate aus Rest-Betrag/Rest-Zeit + Recurring-Sync + Status-Kaskade.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_goal' -DryPos @(1760, 0) -WritePos @(3080, 0) `
         -WriteName 'Set goal (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, CASE WHEN jsonb_typeof(r->'handoff_diff') = 'array' AND jsonb_array_length(r->'handoff_diff') > 0 THEN (r->'handoff_diff')::text ELSE '' END AS handoff_diff" `
         -Params ([ordered]@{
             handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
@@ -130,6 +130,7 @@ function Build-SetSavingsGoal {
 
     $ret = Build-Return @(3520, 0) @(
         ,@('ok','true','boolean')
+        ,@('handoff_diff', "={{ `$('Set goal (atomic)').item.json.handoff_diff }}", 'string')   # Abweichung vom vereinbarten Soll nach dem Write (finance.fn_with_handoff); leer = wie vereinbart oder kein Soll
         # Sparziel kurz vor dem Termin im Depot: nach "Risiko eingehen" festgehalten + Monat des letzten Checks
         ,@('depot_risk_recorded', "={{ !!`$('Set goal (atomic)').item.json.depot_risk }}", 'boolean')
         ,@('depot_risk_reminder_month', "={{ (`$('Set goal (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')

@@ -274,7 +274,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027split\u0027)::boolean AS split, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u003e\u0027first_due\u0027, \u0027\u0027) AS first_due FROM finance.fn_set_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027split\u0027)::boolean AS split, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u003e\u0027first_due\u0027, \u0027\u0027) AS first_due, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_set_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, recurring_payment_id: $(\u0027Resolve Payment\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, valid_from: $(\u0027Start\u0027).item.json.valid_from, status: $(\u0027Start\u0027).item.json.status, valid_to: $(\u0027Start\u0027).item.json.valid_to, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, name: $(\u0027Start\u0027).item.json.new_name, notes: $(\u0027Start\u0027).item.json.notes, until_free_money: $(\u0027Start\u0027).item.json.until_free_money, executed_by: $(\u0027Start\u0027).item.json.executed_by, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -506,24 +506,30 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "540c06fd-706f-57e4-bcef-bf325c4c549c",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Set payment (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "aea9fc0a-ddec-5185-b74c-1b8b90d5fff9",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Set payment (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "aea9fc0a-ddec-5185-b74c-1b8b90d5fff9",
+                                                                                     "id":  "9915d54a-0dd1-5428-9ba9-5b72d4f7f167",
                                                                                      "name":  "split",
                                                                                      "value":  "={{ $(\u0027Set payment (atomic)\u0027).item.json.split }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "9915d54a-0dd1-5428-9ba9-5b72d4f7f167",
+                                                                                     "id":  "103299a6-1319-5e97-9b07-3a049dfe6a34",
                                                                                      "name":  "cashflow_coverage",
                                                                                      "value":  "={{ $(\u0027Set payment (atomic)\u0027).item.json.cashflow_coverage }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "103299a6-1319-5e97-9b07-3a049dfe6a34",
+                                                                                     "id":  "a1b4e50e-d200-5455-974e-7b1084b23ee8",
                                                                                      "name":  "first_due",
                                                                                      "value":  "={{ $(\u0027Set payment (atomic)\u0027).item.json.first_due }}",
                                                                                      "type":  "string"

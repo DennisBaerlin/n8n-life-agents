@@ -230,6 +230,7 @@ BEGIN
   ('finance_rw', 'finance.fn_create_recurring_transfer'),
   ('finance_rw', 'finance.fn_create_savings_goal'),
   ('finance_rw', 'finance.fn_create_savings_plan'),
+  ('finance_rw', 'finance.fn_defer_handoff_task'),
   ('finance_rw', 'finance.fn_delete_account'),
   ('finance_rw', 'finance.fn_delete_holding'),
   ('finance_rw', 'finance.fn_delete_loan'),

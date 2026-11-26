@@ -468,7 +468,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027contribution_amount\u0027)::numeric AS contribution_amount, (r-\u003e\u003e\u0027monthly_contribution\u0027)::numeric AS monthly_contribution, r-\u003e\u003e\u0027first_due\u0027 AS first_due FROM finance.fn_set_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027pension_id\u0027)::int AS pension_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027contribution_amount\u0027)::numeric AS contribution_amount, (r-\u003e\u003e\u0027monthly_contribution\u0027)::numeric AS monthly_contribution, r-\u003e\u003e\u0027first_due\u0027 AS first_due, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_set_pension(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, pension_id: $(\u0027Resolve Pension\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, provider: $(\u0027Start\u0027).item.json.provider, contract_number: $(\u0027Start\u0027).item.json.contract_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, current_value: $(\u0027Start\u0027).item.json.current_value, value_updated_at: $(\u0027Start\u0027).item.json.value_updated_at, guaranteed_monthly_pension: $(\u0027Start\u0027).item.json.guaranteed_monthly_pension, retirement_start_date: $(\u0027Start\u0027).item.json.retirement_start_date, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, contribution_amount: $(\u0027Start\u0027).item.json.contribution_amount, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -700,30 +700,36 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "dbab108d-cf88-5481-a255-b7c34f0f4e4f",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "574e9e9f-85d3-5728-8dab-ba245626a01b",
                                                                                      "name":  "pension_id",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.pension_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "574e9e9f-85d3-5728-8dab-ba245626a01b",
+                                                                                     "id":  "6eb0c9f0-ec05-5b53-bbe4-5cb8fac55f77",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6eb0c9f0-ec05-5b53-bbe4-5cb8fac55f77",
+                                                                                     "id":  "3490c503-ee37-5c6f-8afc-c8522444354d",
                                                                                      "name":  "contribution_amount",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.contribution_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3490c503-ee37-5c6f-8afc-c8522444354d",
+                                                                                     "id":  "d55e9ab3-4023-59a2-99b4-973726014c10",
                                                                                      "name":  "monthly_contribution",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.monthly_contribution }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d55e9ab3-4023-59a2-99b4-973726014c10",
+                                                                                     "id":  "38e013fd-7dac-5e78-b1ca-bd80b7f9e664",
                                                                                      "name":  "first_due",
                                                                                      "value":  "={{ $(\u0027Set pension (atomic)\u0027).item.json.first_due }}",
                                                                                      "type":  "string"

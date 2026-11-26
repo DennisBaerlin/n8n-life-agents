@@ -257,7 +257,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding FROM finance.fn_create_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id, (r-\u003e\u003e\u0027monthly_equivalent\u0027)::numeric AS monthly_equivalent, COALESCE(r-\u003e\u0027cashflow_coverage\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS cashflow_coverage, COALESCE(r-\u003e\u0027savings_funding\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_funding, CASE WHEN jsonb_typeof(r-\u003e\u0027handoff_diff\u0027) = \u0027array\u0027 AND jsonb_array_length(r-\u003e\u0027handoff_diff\u0027) \u003e 0 THEN (r-\u003e\u0027handoff_diff\u0027)::text ELSE \u0027\u0027 END AS handoff_diff FROM finance.fn_create_recurring_payment(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ handoff_task_id: $(\u0027Start\u0027).item.json.handoff_task_id, chat_id: $(\u0027Start\u0027).item.json.chat_id, name: $(\u0027Start\u0027).item.json.name, account_id: $(\u0027Resolve Account\u0027).item.json.id, direction: $(\u0027Start\u0027).item.json.direction, amount: $(\u0027Start\u0027).item.json.amount, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, valid_from: $(\u0027Start\u0027).item.json.valid_from, valid_to: $(\u0027Start\u0027).item.json.valid_to, notes: $(\u0027Start\u0027).item.json.notes, counterparty_iban: $(\u0027Start\u0027).item.json.counterparty_iban, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -489,24 +489,30 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "f2b75e85-8491-5d55-83e6-566b49eec36a",
+                                                                                     "name":  "handoff_diff",
+                                                                                     "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.handoff_diff }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a241c3c6-1bb3-5b3d-99b2-0fd9a92d5a25",
                                                                                      "name":  "recurring_payment_id",
                                                                                      "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.recurring_payment_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a241c3c6-1bb3-5b3d-99b2-0fd9a92d5a25",
+                                                                                     "id":  "a98ad756-9350-55e5-8ff6-bb5da8d07c71",
                                                                                      "name":  "monthly_equivalent",
                                                                                      "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.monthly_equivalent }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a98ad756-9350-55e5-8ff6-bb5da8d07c71",
+                                                                                     "id":  "f3969bad-93a9-55ad-9bca-ef9659e4446c",
                                                                                      "name":  "cashflow_coverage",
                                                                                      "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.cashflow_coverage }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f3969bad-93a9-55ad-9bca-ef9659e4446c",
+                                                                                     "id":  "07485a79-395e-57f0-ad1c-b7a0c5546ff2",
                                                                                      "name":  "savings_funding",
                                                                                      "value":  "={{ $(\u0027Create recurring payment (atomic)\u0027).item.json.savings_funding }}",
                                                                                      "type":  "string"

@@ -46,7 +46,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     $wg = New-FnWriteGate -Fn 'finance.fn_create_pension' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Create pension (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id, (r->>'recurring_payment_id')::int AS recurring_payment_id" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, CASE WHEN jsonb_typeof(r->'handoff_diff') = 'array' AND jsonb_array_length(r->'handoff_diff') > 0 THEN (r->'handoff_diff')::text ELSE '' END AS handoff_diff" `
         -Params ([ordered]@{
             handoff_task_id            = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
             chat_id                    = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
@@ -94,6 +94,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
+        ,@('handoff_diff', "={{ `$('Create pension (atomic)').item.json.handoff_diff }}", 'string')   # Abweichung vom vereinbarten Soll nach dem Write (finance.fn_with_handoff); leer = wie vereinbart oder kein Soll
         ,@('pension_id', "={{ `$('Create pension (atomic)').item.json.pension_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Create pension (atomic)').item.json.recurring_payment_id }}", 'number')
     )

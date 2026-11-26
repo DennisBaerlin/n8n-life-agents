@@ -3510,7 +3510,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_cancel_handoff_task",
-                                         "description":  "HANDOFF MODE ONLY: close an agreed plan entry without booking it. reason skipped = the user does not want to enter it (now or at all); reason done_elsewhere = it is already done or needed no booking here (e.g. an entry of kind other the user handled outside). One confirmation card shows the entry sentence. Never use it for an entry you just booked with handoff_task_id - that booking already closed it. ok:false with a reason (unknown or already closed entry) -\u003e tell the user in plain words and go on with the next entry.",
+                                         "description":  "HANDOFF MODE ONLY: an agreed plan entry without a booking. reason skipped = the user wants to leave it for now (\"later\", \"next one\", \"skip\"): no card, the entry stays open on the list, nothing is deleted. reason done_elsewhere = it already exists in the data (e.g. an entry of kind other the user handled outside): name that thing with ref_type and ref_name (its name as the user or the entry says it); card \"already entered - tick off?\" shows what is in the system. Nothing found -\u003e ok:false nothing_to_tick, several found -\u003e candidates: ask which one. reason dropped = the user says plainly it shall not be entered at all: card, then the entry is gone for good - never use dropped for \"later\" or \"next\". Never use it for an entry you just booked with handoff_task_id - that booking already closed it, and never for an entry that cannot be entered yet (tool_defer_handoff_task). ok:false with a reason -\u003e tell the user in one plain sentence and go on with the next entry.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "UjbM07yXlDjc1LlQ",
@@ -3522,7 +3522,9 @@
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
                                                                               "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027The id of the agreed plan entry (from the entry list of your task)\u0027, \u0027string\u0027) }}",
-                                                                              "reason":  "={{ $fromAI(\u0027reason\u0027, \u0027skipped or done_elsewhere\u0027, \u0027string\u0027, \u0027skipped\u0027) }}",
+                                                                              "reason":  "={{ $fromAI(\u0027reason\u0027, \u0027skipped, done_elsewhere or dropped\u0027, \u0027string\u0027, \u0027skipped\u0027) }}",
+                                                                              "ref_type":  "={{ $fromAI(\u0027ref_type\u0027, \u0027ONLY with done_elsewhere: the kind of thing that already exists - account, savings_goal, savings_plan, recurring_payment, pension, insurance or loan. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "ref_name":  "={{ $fromAI(\u0027ref_name\u0027, \u0027ONLY with done_elsewhere: the name of that thing. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -3542,6 +3544,26 @@
                                                                                {
                                                                                    "id":  "reason",
                                                                                    "displayName":  "reason",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ref_type",
+                                                                                   "displayName":  "ref_type",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ref_name",
+                                                                                   "displayName":  "ref_name",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -3572,6 +3594,72 @@
                                    ],
                       "id":  "d7d14820-597c-5e53-b120-9c89ffc524ae",
                       "name":  "tool_cancel_handoff_task"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_defer_handoff_task",
+                                         "description":  "HANDOFF MODE ONLY: put an agreed plan entry back because the system cannot enter it as agreed yet. The entry keeps what was agreed and comes back on its own once an update can enter it; nothing goes into notes. Use it instead of any workaround (a smaller target amount with the real one in the notes, a shorter standing order, a dropped entry with remember to tell me later). blocked_code = the one reason that fits: end_date_future, goal_irregular_payments, pay_until_amount, target_missing, tool_missing. One confirmation card shows the entry and the reason. ok:false with code unknown_blocked_code -\u003e pick a code from the list above; another ok:false -\u003e say the reason in one plain sentence and go on with the next entry.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "yCRj1V948JHa0OAn",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/yCRj1V948JHa0OAn",
+                                                            "cachedResultName":  "agent.finance.tool_defer_handoff_task"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027The id of the agreed plan entry (from the entry list of your task)\u0027, \u0027string\u0027) }}",
+                                                                              "blocked_code":  "={{ $fromAI(\u0027blocked_code\u0027, \u0027Why the entry cannot be entered yet, one of: end_date_future, goal_irregular_payments, pay_until_amount, target_missing, tool_missing\u0027, \u0027string\u0027) }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "blocked_code",
+                                                                                   "displayName":  "blocked_code",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       3440,
+                                       520
+                                   ],
+                      "id":  "14ad6976-80ad-5246-9164-39a3115f8a70",
+                      "name":  "tool_defer_handoff_task"
                   },
                   {
                       "parameters":  {
@@ -8862,6 +8950,17 @@
                                                                          ]
                                                                      ]
                                                      },
+                        "tool_defer_handoff_task":  {
+                                                        "ai_tool":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Finance Agent",
+                                                                                "type":  "ai_tool"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                    },
                         "tool_create_pension":  {
                                                     "ai_tool":  [
                                                                     [

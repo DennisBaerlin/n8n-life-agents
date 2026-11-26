@@ -1,14 +1,8 @@
 -- ============================================================
 -- core.fn_get_llm_cost_report(p) — das Datenmodell von /costs (/kosten): KI-Kosten der letzten 7 und 30 Tage
 --   p: { chat_id, top_n? (1..10, Default 5) }
---   Quelle core.llm_usage (Gateway-Mitschrift) x agent.ai_models.pricing_usd_per_mtok (USD je Mio Tokens), bepreist
---   ueber model = n8n_model_id mit der aktuellen Preisliste. Je Zeile:
---     input        = input_tokens x input
---     cache_write  = (cache_creation - ephemeral_1h) x cache_write_5m + ephemeral_1h x cache_write_1h
---     cache_read   = cache_read x cache_read;  output = output x output
---     web_search   = web_search_requests x web_search_usd_per_request
---   Langkontext-Stufe: liegt die Gesamt-Eingabe (input + cache_creation + cache_read) ueber long_context.
---   above_input_tokens, gelten die long_context-Preise (Websuche bleibt). Warmhalte-Zeilen (keepalive) zaehlen ganz
+--   Quelle core.v_llm_usage_cost (Gateway-Mitschrift x agent.ai_models.pricing_usd_per_mtok, USD je Mio Tokens, aktuelle
+--   Preisliste; die Formel je Zeile samt Langkontext-Stufe steht dort). Warmhalte-Zeilen (keepalive) zaehlen ganz
 --   in den Topf keepalive. Zeilen ohne Preis (Modell nicht im Register) zaehlen nicht in Summen, nur als
 --   unpriced_requests.
 --   Tage = Kalendertage in der Sitzungs-Zeitzone (= Haushalts-Zeitzone, provisioning): d7 = heute + 6 Tage zurueck,
@@ -62,32 +56,14 @@ BEGIN
     v_cov7  := CASE WHEN v_since IS NULL THEN 0 ELSE LEAST(7,  v_today - v_since + 1) END;
     v_cov30 := CASE WHEN v_since IS NULL THEN 0 ELSE LEAST(30, v_today - v_since + 1) END;
 
-    WITH r AS (
-        SELECT u.*, u.ts::date AS d, m.pricing_usd_per_mtok AS pr
-          FROM core.llm_usage u
-          LEFT JOIN agent.ai_models m ON m.n8n_model_id = u.model
+    -- Preisformel je Zeile: core.v_llm_usage_cost (eine Adresse, auch fuer die Pause-Karte).
+    WITH k AS (
+        SELECT v.ts::date AS d, v.wf, v.model, v.keepalive, v.unpriced, v.ts::date >= v_today - 6 AS in7,
+               v.input_tokens, v.cache_creation_input_tokens, v.ephemeral_1h_input_tokens, v.cache_read_input_tokens,
+               v.c_input, v.c_write, v.c_read, v.c_output, v.c_web, v.usd AS c_total
+          FROM core.v_llm_usage_cost v
          -- Fenster als timestamptz-Bereich (Tagesgrenzen in der Sitzungs-Zeitzone) -> nutzt llm_usage_ts_idx
-         WHERE u.ts >= (v_today - 29)::timestamptz AND u.ts < (v_today + 1)::timestamptz
-    ), px AS (
-        SELECT r.*,
-               CASE WHEN r.pr ? 'long_context'
-                     AND (r.input_tokens + r.cache_creation_input_tokens + r.cache_read_input_tokens)
-                         > (r.pr->'long_context'->>'above_input_tokens')::numeric
-                    THEN r.pr->'long_context' ELSE r.pr END AS t
-          FROM r
-    ), c AS (
-        SELECT px.d, px.wf, px.model, px.keepalive, px.pr IS NULL AS unpriced,
-               px.d >= v_today - 6 AS in7,
-               px.input_tokens, px.cache_creation_input_tokens, px.ephemeral_1h_input_tokens, px.cache_read_input_tokens,
-               COALESCE(px.input_tokens * (px.t->>'input')::numeric / 1e6, 0) AS c_input,
-               COALESCE((GREATEST(px.cache_creation_input_tokens - px.ephemeral_1h_input_tokens, 0) * (px.t->>'cache_write_5m')::numeric
-                         + px.ephemeral_1h_input_tokens * (px.t->>'cache_write_1h')::numeric) / 1e6, 0) AS c_write,
-               COALESCE(px.cache_read_input_tokens * (px.t->>'cache_read')::numeric / 1e6, 0) AS c_read,
-               COALESCE(px.output_tokens * (px.t->>'output')::numeric / 1e6, 0) AS c_output,
-               COALESCE(px.web_search_requests * (px.pr->>'web_search_usd_per_request')::numeric, 0) AS c_web
-          FROM px
-    ), k AS (
-        SELECT c.*, c.c_input + c.c_write + c.c_read + c.c_output + c.c_web AS c_total FROM c
+         WHERE v.ts >= (v_today - 29)::timestamptz AND v.ts < (v_today + 1)::timestamptz
     ), w7 AS (
         SELECT COALESCE(sum(c_total), 0) AS total,
                count(*) FILTER (WHERE NOT keepalive) AS requests,

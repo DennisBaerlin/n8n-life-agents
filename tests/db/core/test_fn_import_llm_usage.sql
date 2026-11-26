@@ -113,4 +113,18 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_import_llm_usage (idempotent, ungueltig uebersprungen, wf NULL, Retention, Cursor)';
 END $$;
 
+-- Anbieter-Fehlercode (Gateway-Feld err): bekannter Code -> err_code, unbekannter -> NULL, die Zeile zaehlt trotzdem.
+DO $$
+DECLARE r jsonb; t text := to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
+BEGIN
+  r := core.fn_import_llm_usage(jsonb_build_object('rows', jsonb_build_array(
+         jsonb_build_object('id', '1000000000201-cccccc-000001', 't', t, 'status', 400, 'err', 'spend_limit'),
+         jsonb_build_object('id', '1000000000202-cccccc-000002', 't', t, 'status', 400, 'err', 'neu_unbekannt'))));
+  IF (r->>'imported')::int <> 2
+     OR (SELECT err_code FROM core.llm_usage WHERE id = '1000000000201-cccccc-000001') IS DISTINCT FROM 'spend_limit'
+     OR (SELECT err_code FROM core.llm_usage WHERE id = '1000000000202-cccccc-000002') IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [err_code]: % / %', r, (SELECT jsonb_agg(err_code) FROM core.llm_usage WHERE id LIKE '100000000020%');
+  END IF;
+END $$;
+
 ROLLBACK;

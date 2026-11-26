@@ -36,6 +36,9 @@
 //   System-Nachricht. stripWfTag entfernt sie direkt nach dem Parsen, VOR Caching/Keep-Alive-Schluessel, und der
 //   bereinigte Body ist das "Original" aller Rueckfallpfade -> Anthropic und das Modell sehen byte-gleiche Prompts,
 //   der gecachte Anfang aendert sich nicht. Header und Kennzeile gehen nie an Anthropic.
+// ANBIETER-FEHLER: jede Nicht-200-Antwort von /v1/messages (und ein Stream-`event: error`) bekommt einen festen Code
+//   (classifyUpstreamError) -> error.details.lifeagents_code/resume_at + Header x-lifeagents-llm-error, dauerhafte Codes
+//   x-should-retry:false; usage-Zeile `err`, Zustand unter GET /__llm_status (n8n-Agenten-Fehlerausgang verliert den Body).
 // PRIVACY: es werden NIE Header, Schluessel, Prompt- oder Antwort-Inhalte geloggt oder gespeichert (der Keep-Alive haelt
 //   den Anfang einer Agenten-Anfrage samt Auth-Header nur im Arbeitsspeicher, nie das Gespraech; usage.jsonl traegt nur
 //   Zahlen, Modell, Workflow-Name, Zeit) — Fehler nur als feste Codes (nie err.message: Node-Parse-Fehler zitieren
@@ -69,6 +72,7 @@ const KA_MAX = 16;                           // Obergrenze gemerkter Anfaenge (a
 const KA_HEADERS = ['x-api-key', 'authorization', 'anthropic-version', 'anthropic-beta'];
 const MAX_BODY = 32 * 1024 * 1024;           // Anfrage-Deckel (PDF-Belege als base64)
 const MAX_USAGE_SCAN = 16 * 1024 * 1024;     // JSON-Antworten nur bis hierhin fuer usage puffern
+const MAX_ERR_BODY = 64 * 1024;              // Anbieter-Fehler: groesser kommt von Anthropic nicht; Rest wird abgeschnitten
 // Hop-by-hop + von uns neu gesetzte Header (RFC 9110 §7.6.1); accept-encoding → identity, damit usage lesbar bleibt.
 // x-lifeagents-workflow = unsere Workflow-Kennung (nur fuer die Messung, nie an Anthropic).
 const WF_HEADER = 'x-lifeagents-workflow';
@@ -343,9 +347,12 @@ function keepAliveSend(key, e) {
       e.busy = false;
       const status = up.statusCode || 502;
       const usage = emptyUsage();
-      try { mergeUsage(usage, JSON.parse(Buffer.concat(parts).toString('utf8')).usage); } catch (x) { /* Nullen */ }
+      let json = null;
+      try { json = JSON.parse(Buffer.concat(parts).toString('utf8')); mergeUsage(usage, json.usage); } catch (x) { /* Nullen */ }
+      const cls = status === 200 ? null : classifyUpstreamError(status, json);
+      if (cls) noteLlmError(cls); else noteLlmOk();
       recordUsage(Object.assign({ wf: e.wf, model: e.model, stream: false, cached: true, fallback: false, keepalive: true,
-        status, ms: Date.now() - started }, usage));
+        status, ms: Date.now() - started }, usage, cls ? { err: cls.code } : {}));
       if (status === 200) e.lastRefresh = started; else drop('keepalive_' + status);
     });
     up.on('error', () => { e.busy = false; drop('keepalive_stream_error'); });
@@ -359,6 +366,55 @@ function keepAliveTick() {
     if (now - e.lastUse > KA_HOURS * 3600 * 1000) { keepAlive.delete(key); continue; }
     if (!e.busy && now - e.lastRefresh >= KA_EVERY_MS) keepAliveSend(key, e);
   }
+}
+
+// ---- Anbieter-Fehler sortieren ---------------------------------------------------------------------------------
+// Reihenfolge laut Anthropic (platform.claude.com/docs/en/api/errors, /api/rate-limits): error.details.error_code ->
+// error.type -> Text. Eigenes Monatslimit (400) und leeres Guthaben (400) sind nur am Text erkennbar; aendert Anthropic ihn,
+// faellt der Fall auf 'other' (heutiges Verhalten + Alarm), nie still falsch. Codes = CHECK core.llm_usage.err_code und
+// core.llm_incidents (Spiegel: packages/core/db/core.llm_incidents_init.sql). resume_at nur aus dem Datum im Text, ISO-UTC.
+const LLM_ERR_PERMANENT = new Set(['spend_limit', 'credit_empty', 'auth']);
+const RESUME_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}):(\d{2}) UTC/;
+function classifyUpstreamError(status, json) {
+  const e = json && typeof json === 'object' && json.error && typeof json.error === 'object' ? json.error : {};
+  const type = typeof e.type === 'string' ? e.type : '';
+  const msg = typeof e.message === 'string' ? e.message : '';
+  const ecode = e.details && typeof e.details === 'object' ? e.details.error_code : null;
+  let code = 'other';
+  if (ecode === 'enforced_spend_limit_reached' || /You have reached your (specified )?(workspace )?API usage limits/.test(msg)) code = 'spend_limit';
+  else if (type === 'billing_error' || status === 402 || /credit balance is too low/i.test(msg)) code = 'credit_empty';
+  else if (type === 'authentication_error' || status === 401) code = 'auth';
+  else if (type === 'overloaded_error' || status === 529) code = 'overloaded';
+  else if (type === 'rate_limit_error' || status === 429) code = 'rate_limited';
+  else if (type === 'api_error' || type === 'timeout_error' || status >= 500) code = 'upstream_error';
+  const m = code === 'spend_limit' ? RESUME_RE.exec(msg) : null;
+  return { code, resume_at: m ? m[1] + 'T' + m[2] + ':' + m[3] + ':00Z' : null };
+}
+// Zustand fuer /__llm_status (nur Arbeitsspeicher; ein Neustart vergisst ihn, der naechste Fehler setzt ihn neu).
+const llmState = { last_error: null, last_ok_at: null };
+function noteLlmError(c) { llmState.last_error = { code: c.code, resume_at: c.resume_at, at: new Date().toISOString() }; }
+function noteLlmOk() { llmState.last_ok_at = new Date().toISOString(); }
+// Fehler-Body anreichern: Status und error.type bleiben, dazu details.lifeagents_code/resume_at. Kein JSON-Umschlag ->
+// Original-Bytes. Liefert { buf, headers, cls }.
+function enrichError(status, upHeaders, buf) {
+  let json = null;
+  try { json = JSON.parse(buf.toString('utf8')); } catch (e) { json = null; }
+  const cls = classifyUpstreamError(status, json);
+  const headers = responseHeaders(upHeaders);
+  let out = buf;
+  if (json && json.error && typeof json.error === 'object') {
+    json.error.details = Object.assign({}, json.error.details && typeof json.error.details === 'object' ? json.error.details : {},
+      { lifeagents_code: cls.code, resume_at: cls.resume_at });
+    out = Buffer.from(JSON.stringify(json), 'utf8');
+    for (const k of Object.keys(headers)) if (k.toLowerCase() === 'content-length') delete headers[k];
+    headers['content-length'] = String(out.length);
+  }
+  headers['x-lifeagents-llm-error'] = cls.code;
+  if (LLM_ERR_PERMANENT.has(cls.code)) {
+    for (const k of Object.keys(headers)) if (k.toLowerCase() === 'x-should-retry') delete headers[k];
+    headers['x-should-retry'] = 'false';
+  }
+  return { buf: out, headers, cls };
 }
 
 // ---- Usage-Extraktion (Whitelist, nur Zahlen) ----------------------------------------------------
@@ -383,8 +439,9 @@ function emptyUsage() {
     ephemeral_1h_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0, web_search_requests: 0 };
 }
 
-// SSE: usage kommt in message_start (Eingabe-/Cache-Felder) und message_delta (Ausgabe, Server-Tools).
-function sseTap(acc) {
+// SSE: usage kommt in message_start (Eingabe-/Cache-Felder) und message_delta (Ausgabe, Server-Tools); ein `error`-Ereignis
+// (Anthropic: nach HTTP 200 moeglich, z. B. overloaded_error) geht an onError.
+function sseTap(acc, onError) {
   let buf = '';
   return (chunk) => {
     buf += chunk.toString('utf8');
@@ -397,6 +454,7 @@ function sseTap(acc) {
       try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
       if (ev && ev.type === 'message_start' && ev.message) mergeUsage(acc, ev.message.usage);
       else if (ev && ev.type === 'message_delta') mergeUsage(acc, ev.usage);
+      else if (ev && ev.type === 'error' && onError) onError(ev);
     }
   };
 }
@@ -449,16 +507,32 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
           forward(req, res, retryBuf, Object.assign({}, meta, { cached: false, fallback: true }), null);
           return;
         }
-        res.writeHead(status, responseHeaders(up.headers));
-        res.end(errBody);
-        finish(status, emptyUsage());
+        const en = enrichError(status, up.headers, errBody);
+        res.writeHead(status, en.headers);
+        res.end(en.buf);
+        finish(status, emptyUsage(), en.cls);
+      });
+      return;
+    }
+    // Anbieter-Fehler (nur gemessene /v1/messages): Body ist klein -> ganz lesen, sortieren, angereichert weiterreichen.
+    if (status !== 200 && meta.measure) {
+      const parts = [];
+      let len = 0;
+      up.on('data', (c) => { if (len < MAX_ERR_BODY) { parts.push(c); len += c.length; } });
+      up.on('error', () => { diag(clientGone ? 'client_closed' : 'upstream_stream_error'); if (!clientGone) res.destroy(); finish(status, emptyUsage(), classifyUpstreamError(status, null)); });
+      up.on('end', () => {
+        const en = enrichError(status, up.headers, Buffer.concat(parts));
+        res.writeHead(status, en.headers);
+        res.end(en.buf);
+        finish(status, emptyUsage(), en.cls);
       });
       return;
     }
     res.writeHead(status, responseHeaders(up.headers));
     const usage = emptyUsage();
     const isSse = String(up.headers['content-type'] || '').indexOf('text/event-stream') !== -1;
-    const tap = meta.measure && isSse ? sseTap(usage) : null;
+    let sseErr = null;
+    const tap = meta.measure && isSse ? sseTap(usage, (ev) => { sseErr = classifyUpstreamError(status, ev); }) : null;
     const jsonParts = [];
     let jsonLen = 0;
     up.on('data', (c) => {
@@ -473,9 +547,9 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
         try { mergeUsage(usage, JSON.parse(Buffer.concat(jsonParts).toString('utf8')).usage); }
         catch (e) { /* kein JSON (z. B. Fehlerseite) → Nullen */ }
       }
-      finish(status, usage);
+      finish(status, usage, sseErr);
     });
-    up.on('error', (e) => { diag(clientGone ? 'client_closed' : (e && e.code ? e.code : 'upstream_stream_error')); res.destroy(); finish(status, usage); });
+    up.on('error', (e) => { diag(clientGone ? 'client_closed' : (e && e.code ? e.code : 'upstream_stream_error')); res.destroy(); finish(status, usage, sseErr); });
   });
 
   upReq.on('error', (e) => {
@@ -485,21 +559,26 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
       return;
     }
     diag(clientGone ? 'client_closed' : (e && e.code ? e.code : 'upstream_error'));
+    // Abbruch durch den Aufrufer ist kein Anbieter-Zustand; sonst = Netz/Upstream weg.
+    const cls = clientGone ? null : { code: 'unreachable', resume_at: null };
     if (!clientGone && !res.headersSent) {
-      res.writeHead(502, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'llm-gateway: upstream unreachable' } }));
+      res.writeHead(502, { 'content-type': 'application/json', 'x-lifeagents-llm-error': 'unreachable' });
+      res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'llm-gateway: upstream unreachable',
+        details: { lifeagents_code: 'unreachable', resume_at: null } } }));
     } else if (!clientGone) { res.destroy(); }
-    finish(502, emptyUsage());
+    finish(502, emptyUsage(), cls);
   });
   upReq.end(buf);
 
-  function finish(status, usage) {
+  // cls = { code, resume_at } eines Anbieter-Fehlers (oder null): usage-Zeile `err` + Zustand fuer /__llm_status.
+  function finish(status, usage, cls) {
     if (done || !meta.measure) return;
     done = true;
+    if (cls) noteLlmError(cls); else if (status === 200) noteLlmOk();
     // Keep-Alive merkt sich den Anfang nur nach Erfolg MIT den eingefuegten Haltepunkten (nicht nach dem Fallback).
-    if (status === 200 && meta.cached && meta.onOk) { try { meta.onOk(); } catch (e) { diag('keepalive_record_error'); } }
+    if (status === 200 && !cls && meta.cached && meta.onOk) { try { meta.onOk(); } catch (e) { diag('keepalive_record_error'); } }
     recordUsage(Object.assign({ wf: meta.wf, model: meta.model, stream: meta.stream, cached: meta.cached,
-      fallback: meta.fallback, status, ms: Date.now() - meta.started }, usage));
+      fallback: meta.fallback, status, ms: Date.now() - meta.started }, usage, cls ? { err: cls.code } : {}));
   }
 }
 
@@ -617,6 +696,13 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL, upstream_idle_ms: UP_IDLE_MS,
       keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size }, usage_file: !!USAGE_FILE,
       telegram: { upstream: TG_UPSTREAM.origin, sticker_dir: !!TG_STICKER_DIR && fs.existsSync(TG_STICKER_DIR) } }));
+    return;
+  }
+  // Anbieter-Zustand (Sortierung oben): letzter Fehler {code, resume_at, at} und letzter Erfolg. Fuer den Fehlerausgang der
+  // n8n-Agenten und core.sub_error_notify; nur 127.0.0.1, wie /__health.
+  if (req.method === 'GET' && req.url === '/__llm_status') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, last_error: llmState.last_error, last_ok_at: llmState.last_ok_at }));
     return;
   }
   // Abruf der Mitschrift (nur 127.0.0.1, wie /__health) — VOR der Weiterleitung, sonst ginge der GET an Anthropic.

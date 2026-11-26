@@ -4,7 +4,7 @@
 # hochgefahrenen Substrat (scripts/dev/bootstrap_test_n8n.ps1) — kein Provisioning-Eingriff, kleiner Blast-Radius.
 #
 # Was es tut (idempotent):
-#   1) tests/mock_llm/{server.js,scenarios.json} in den Container kopieren (-> /opt/mock_llm/).
+#   1) tests/mock_llm/{server.js,scenarios.json,anthropic_errors.json} in den Container kopieren (-> /opt/mock_llm/).
 #   2) Den Mock als transiente systemd-unit `n8ntest-mock-llm` starten (127.0.0.1:<port>, Node ist
 #      durch n8n garantiert) + Health-Probe.
 #   3a) Den Upstream des LLM-Gateways (provisioning/llm_gateway) auf den Stub biegen: die Anthropic-Credential
@@ -189,6 +189,9 @@ $r = Invoke-Native docker @('exec',$Container,'mkdir','-p','/opt/mock_llm')
 if ($r.Code -ne 0) { throw "mkdir /opt/mock_llm fehlgeschlagen: $($r.Output -join "`n")" }
 $r = Invoke-Native docker @('cp',$ServerHost,"${Container}:$ServerInC")
 if ($r.Code -ne 0) { throw "docker cp server.js fehlgeschlagen: $($r.Output -join "`n")" }
+# Aufgezeichnete Anbieter-Fehler (Schalter /__upstream_error) liegen neben server.js; der Stub liest sie je Anfrage.
+$r = Invoke-Native docker @('cp',(Join-Path $RepoRoot 'tests\mock_llm\anthropic_errors.json'),"${Container}:/opt/mock_llm/anthropic_errors.json")
+if ($r.Code -ne 0) { throw "docker cp anthropic_errors.json fehlgeschlagen: $($r.Output -join "`n")" }
 Copy-Scenarios
 
 # --- 2) Mock als transiente systemd-unit starten (Reload: stop+start, um neue server.js zu ziehen) --

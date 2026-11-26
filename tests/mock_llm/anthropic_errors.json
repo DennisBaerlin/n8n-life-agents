@@ -1,0 +1,57 @@
+{
+  "_comment": "Aufgezeichnete Anthropic-Fehlerantworten fuer die Attrappe (tests/mock_llm/server.js: Marker __mock_upstream_err_<name>__ oder Schalter GET /__upstream_error?name=<name>). Texte nach der Anthropic-Doku und Nutzerberichten (Quellen: platform.claude.com/docs/en/api/errors, /api/rate-limits, /build-with-claude/streaming#error-events; github.com/anthropics/anthropic-sdk-typescript/issues/618). request_id erfunden. Datum fest: der Gateway liest es nur, er rechnet nicht damit.",
+  "spend_limit": {
+    "status": 400,
+    "body": { "type": "error", "error": { "type": "invalid_request_error", "message": "You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." }, "request_id": "req_011CMockSpendLimit000001" }
+  },
+  "spend_limit_workspace": {
+    "status": 400,
+    "body": { "type": "error", "error": { "type": "invalid_request_error", "message": "You have reached your specified workspace API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." }, "request_id": "req_011CMockSpendLimitWs0001" }
+  },
+  "tier_cap": {
+    "status": 429,
+    "body": { "type": "error", "error": { "type": "rate_limit_error", "message": "You have reached your API usage limits: your organization has crossed its monthly API usage threshold.", "details": { "error_code": "enforced_spend_limit_reached" } }, "request_id": "req_011CMockTierCap00000001" }
+  },
+  "credit_400": {
+    "status": 400,
+    "body": { "type": "error", "error": { "type": "invalid_request_error", "message": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits." }, "request_id": "req_011CMockCredit400000001" }
+  },
+  "billing_402": {
+    "status": 402,
+    "body": { "type": "error", "error": { "type": "billing_error", "message": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits." }, "request_id": "req_011CMockBilling40200001" }
+  },
+  "overloaded_529": {
+    "status": 529,
+    "body": { "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" }, "request_id": "req_011CMockOverloaded000001" }
+  },
+  "api_500": {
+    "status": 500,
+    "body": { "type": "error", "error": { "type": "api_error", "message": "Internal server error" }, "request_id": "req_011CMockApi500000000001" }
+  },
+  "api_500_noretry": {
+    "status": 500,
+    "headers": { "x-should-retry": "false" },
+    "body": { "type": "error", "error": { "type": "api_error", "message": "Internal server error" }, "request_id": "req_011CMockApi500NoRetry001" }
+  },
+  "timeout_504": {
+    "status": 504,
+    "body": { "type": "error", "error": { "type": "timeout_error", "message": "Request timed out" }, "request_id": "req_011CMockTimeout50400001" }
+  },
+  "rate_429": {
+    "status": 429,
+    "headers": { "retry-after": "2" },
+    "body": { "type": "error", "error": { "type": "rate_limit_error", "message": "This request would exceed the rate limit for your organization of 50 requests per minute." }, "request_id": "req_011CMockRate4290000001" }
+  },
+  "auth_401": {
+    "status": 401,
+    "body": { "type": "error", "error": { "type": "authentication_error", "message": "invalid x-api-key" }, "request_id": "req_011CMockAuth40100000001" }
+  },
+  "invalid_400": {
+    "status": 400,
+    "body": { "type": "error", "error": { "type": "invalid_request_error", "message": "messages: at least one message is required" }, "request_id": "req_011CMockInvalid40000001" }
+  },
+  "sse_overloaded": {
+    "status": 200,
+    "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_mock_sse_err\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-haiku-5-5\",\"stop_reason\":null,\"usage\":{\"input_tokens\":5,\"output_tokens\":1}}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n"
+  }
+}

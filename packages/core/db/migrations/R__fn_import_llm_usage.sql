@@ -1,8 +1,9 @@
 -- ============================================================
 -- fn_import_llm_usage (WRITE)
 --   Spielt die Gateway-Mitschrift (usage.jsonl, GET /__usage) in core.llm_usage ein.
---   p: { rows (Pflicht, Array): [ {id, t, wf, model, keepalive, status, input_tokens, cache_creation_input_tokens,
+--   p: { rows (Pflicht, Array): [ {id, t, wf, model, keepalive, status, err?, input_tokens, cache_creation_input_tokens,
 --                 ephemeral_1h_input_tokens, cache_read_input_tokens, output_tokens, web_search_requests}, ... ] }
+--   err = fester Code eines Anbieter-Fehlers (Gateway); unbekannter Code -> err_code NULL (die Zeile zaehlt trotzdem).
 --   Pflicht je Zeile sind id und t; fehlende Zaehler werden 0.
 --   Idempotent ueber id (ON CONFLICT DO NOTHING): die Abrufe ueberlappen bewusst um 10 Min (Uhr-Spruenge).
 --   Ungueltige Zeilen werden uebersprungen und gezaehlt, nie RAISE: eine kaputte Zeile darf weder den Report noch die
@@ -52,7 +53,7 @@ BEGIN
         BEGIN
             v_ts := (e->>'t')::timestamptz;
             CONTINUE WHEN v_ts > now() + interval '1 day';
-            INSERT INTO core.llm_usage (id, ts, wf, model, keepalive, status, input_tokens, cache_creation_input_tokens,
+            INSERT INTO core.llm_usage (id, ts, wf, model, keepalive, status, err_code, input_tokens, cache_creation_input_tokens,
                                         ephemeral_1h_input_tokens, cache_read_input_tokens, output_tokens, web_search_requests)
             VALUES (e->>'id',
                     v_ts,
@@ -60,6 +61,8 @@ BEGIN
                     left(e->>'model', 128),
                     COALESCE(e->'keepalive' = 'true'::jsonb, false),
                     CASE WHEN COALESCE(e->>'status', '') ~ '^[0-9]{3}$' THEN (e->>'status')::int END,
+                    CASE WHEN e->>'err' IN ('spend_limit', 'credit_empty', 'auth', 'overloaded', 'upstream_error', 'unreachable',
+                                         'rate_limited', 'other') THEN e->>'err' END,
                     COALESCE((e->>'input_tokens')::bigint, 0),
                     COALESCE((e->>'cache_creation_input_tokens')::bigint, 0),
                     COALESCE((e->>'ephemeral_1h_input_tokens')::bigint, 0),

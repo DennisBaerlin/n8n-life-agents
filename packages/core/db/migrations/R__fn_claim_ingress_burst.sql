@@ -12,10 +12,8 @@
 --       Laufs, der nach einem DB-Fehler schon fail-open allein lief -> nicht ein zweites Mal verarbeiten).
 --       Juengste Ankunft < 1 s her und eigene < 5 s her und nicht final -> wait (gleitendes Fenster, Obergrenze
 --       5 s; final = letzte Runde der Graph-Schleife -> nie mehr wait). Sonst alle Texte + alle Dateien beanspruchen
---       und ein Update bauen: Primaer = frueheste Datei (sonst fruehester Text), weitere Dateien in message_id-
---       Reihenfolge -> message.extra_files [{file_id, type photo|document, file_name?}] (Foto: groesste Aufloesung),
---       Texte/Bildunterschriften in message_id-Reihenfolge mit Leerzeile -> caption (bzw. text ohne Datei);
---       entities/caption_entities fallen weg (ihre Offsets passten nicht mehr). update nur, wenn > 1 Zeile.
+--       und in message_id-Reihenfolge zu einem Update zusammenfuehren (Regel: agent.fn_merge_ingress_updates).
+--       update nur, wenn > 1 Zeile.
 --   Beanspruchte Zeilen: claimed_by = eigene update_id, payload = NULL (Privatsphaere). Raeumt Zeilen > 2 min weg.
 --   Nebenlaeufigkeit: Die erste Anweisung ist ein eigenes PERFORM pg_advisory_xact_lock(<Namensraum>, <chat>)
 --   (VOLATILE-fn -> jede folgende Anweisung sieht unter READ COMMITTED einen frischen Schnappschuss nach dem
@@ -37,12 +35,8 @@ DECLARE
     v_now     timestamptz;
     v_young   timestamptz;
     v_burst   bigint[];   -- Kandidaten (unbeanspruchte text/file-Zeilen im Fenster + eigene)
-    v_file    bigint;     -- update_id der fruehesten Datei im Buendel
     v_ids     bigint[];   -- beanspruchte Zeilen
     v_primary jsonb;
-    v_text    text;
-    v_msg     jsonb;
-    v_extra   jsonb;      -- weitere Dateien des Buendels
 BEGIN
     IF v_exec IS NULL THEN
         RAISE EXCEPTION 'fn_claim_ingress_burst: exec_id is required';
@@ -90,33 +84,13 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'action', 'wait');
     END IF;
 
-    SELECT update_id INTO v_file FROM agent.ingress_buffer
-     WHERE update_id = ANY (v_burst) AND kind = 'file' ORDER BY message_id, update_id LIMIT 1;
-
     SELECT array_agg(update_id ORDER BY message_id, update_id) INTO v_ids
       FROM agent.ingress_buffer WHERE update_id = ANY (v_burst);
 
     IF cardinality(v_ids) > 1 THEN
-        SELECT payload INTO v_primary FROM agent.ingress_buffer WHERE update_id = COALESCE(v_file, v_ids[1]);
-        SELECT string_agg(t, E'\n\n' ORDER BY message_id, update_id) INTO v_text
-          FROM (SELECT message_id, update_id,
-                       NULLIF(btrim(COALESCE(payload->'message'->>'text', payload->'message'->>'caption', '')), '') AS t
-                  FROM agent.ingress_buffer WHERE update_id = ANY (v_ids)) s
-         WHERE t IS NOT NULL;
-        v_msg := (v_primary->'message') - 'text' - 'caption' - 'entities' - 'caption_entities';
-        IF v_text IS NOT NULL THEN
-            v_msg := v_msg || jsonb_build_object(CASE WHEN v_file IS NULL THEN 'text' ELSE 'caption' END, v_text);
-        END IF;
-        SELECT jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
-                   'file_id', COALESCE(m->'photo'->(jsonb_array_length(m->'photo') - 1)->>'file_id', m->'document'->>'file_id'),
-                   'type', CASE WHEN m ? 'photo' THEN 'photo' ELSE 'document' END,
-                   'file_name', m->'document'->>'file_name')) ORDER BY b.message_id, b.update_id) INTO v_extra
-          FROM agent.ingress_buffer b CROSS JOIN LATERAL (SELECT b.payload->'message' AS m) x
-         WHERE b.update_id = ANY (v_ids) AND b.kind = 'file' AND b.update_id <> v_file;
-        IF v_extra IS NOT NULL THEN
-            v_msg := v_msg || jsonb_build_object('extra_files', v_extra);
-        END IF;
-        v_primary := jsonb_set(v_primary, '{message}', v_msg);
+        -- Zusammenfuehren: eine Regel mit dem Nachspielen nach einer KI-Pause (agent.fn_merge_ingress_updates)
+        SELECT agent.fn_merge_ingress_updates(jsonb_agg(payload ORDER BY message_id, update_id)) INTO v_primary
+          FROM agent.ingress_buffer WHERE update_id = ANY (v_ids);
     END IF;
 
     UPDATE agent.ingress_buffer SET claimed_by = v_uid, payload = NULL WHERE update_id = ANY (v_ids);

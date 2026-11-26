@@ -24,6 +24,8 @@
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 # (o) still tote Keep-Alive-Verbindung (Attrappe schweigt auf der Verbindung): Standard frische Verbindung je Anfrage, auch direkt danach
 # kein Haenger; Wiederverwendung (Unit 8104, LLM_GATEWAY_UPSTREAM_IDLE_MS=4000): Limit greift, lange Antwort bleibt, Abbruch ohne Wiederholung.
+# (p) Anbieter-Fehler (aufgezeichnete Antworten tests/mock_llm/anthropic_errors.json): fester Code + Datum im angereicherten Fehler,
+# x-should-retry:false bei dauerhaften Codes, err in der usage-Zeile, Zustand unter /__llm_status, Stream-Fehler, Netz weg, kein Text im Journal.
 #
 # N8NTEST_RUNTIME=compose (Docker-Verbund, bootstrap_test_stack.ps1): statt der systemd-Einheiten starten eigene Container im
 # Netz-Namensraum des anchor (127.0.0.1 wie der echte Gateway): die Gateways aus dem Abbild und mit dem Code (/gw/server.js) des echten
@@ -197,7 +199,8 @@ Stop-TestUnits
 $emptyScenarios = Join-Path $env:TEMP 'gwtest_scenarios.json'
 [System.IO.File]::WriteAllText($emptyScenarios, '[]', $Utf8NoBom)
 Start-TestUnit $Units.mock @('MOCK_LLM_PORT=8096', "MOCK_LLM_LOG=$MockLog", "MOCK_LLM_SCENARIOS=$MockDir/scenarios.json") "$MockDir/server.js" 8096 `
-    -Files @{ (Join-Path $RepoRoot 'tests\mock_llm\server.js') = "$MockDir/server.js"; $emptyScenarios = "$MockDir/scenarios.json" }
+    -Files @{ (Join-Path $RepoRoot 'tests\mock_llm\server.js') = "$MockDir/server.js"; $emptyScenarios = "$MockDir/scenarios.json"
+        (Join-Path $RepoRoot 'tests\mock_llm\anthropic_errors.json') = "$MockDir/anthropic_errors.json" }
 Remove-Item $emptyScenarios -ErrorAction SilentlyContinue
 # Zaehler-Ordner: klassisch im Substrat, im Verbund ein tmpfs je Gateway-Einheit (Get-TestStackGatewayUnitArgs).
 if (-not $IsCompose) { Invoke-InC @('sh', '-c', "rm -rf $UsageDir && mkdir -p $UsageDir") | Out-Null }
@@ -415,6 +418,76 @@ try {
         Pass 'Abbruch des Aufrufers: keine zweite Anfrage upstream, nur client_closed'
     }
     else { Fail "Abbruch: Status=$($r4.Status) stub=$($e.Count) conns=$(@($e | ForEach-Object { $_.conn }) -join ',') fehler=$($errs -join ' | ')" }
+
+    # (p) Anbieter-Fehler sortieren (aufgezeichnete Anthropic-Antworten, tests/mock_llm/anthropic_errors.json): fester Code +
+    #     Datum im angereicherten Fehler (error.details.lifeagents_code/resume_at, Header x-lifeagents-llm-error), dauerhafte
+    #     Codes mit x-should-retry:false, Status und error.type unveraendert, err in der usage-Zeile, Zustand unter /__llm_status;
+    #     ein Erfolg danach setzt last_ok_at; der Anbieter-Text erreicht das Journal nie.
+    Write-Host '  (p) Anbieter-Fehler: fester Code, Datum, kein Wiederholen bei dauerhaften Codes, /__llm_status'
+    function Get-GwStatus([int]$Port) {
+        try { return (((Invoke-InC @('curl', '-s', "http://127.0.0.1:$Port/__llm_status")).Output -join '') | ConvertFrom-Json) } catch { return $null }
+    }
+    $pCases = @(
+        @{ n = 'spend_limit';           st = '400'; code = 'spend_limit';    resume = '2026-12-01T00:00:00Z'; perm = $true }
+        @{ n = 'spend_limit_workspace'; st = '400'; code = 'spend_limit';    resume = '2026-12-01T00:00:00Z'; perm = $true }
+        @{ n = 'tier_cap';              st = '429'; code = 'spend_limit';    resume = $null;                  perm = $true }
+        @{ n = 'credit_400';            st = '400'; code = 'credit_empty';   resume = $null;                  perm = $true }
+        @{ n = 'billing_402';           st = '402'; code = 'credit_empty';   resume = $null;                  perm = $true }
+        @{ n = 'auth_401';              st = '401'; code = 'auth';           resume = $null;                  perm = $true }
+        @{ n = 'overloaded_529';        st = '529'; code = 'overloaded';     resume = $null;                  perm = $false }
+        @{ n = 'api_500';               st = '500'; code = 'upstream_error'; resume = $null;                  perm = $false }
+        @{ n = 'timeout_504';           st = '504'; code = 'upstream_error'; resume = $null;                  perm = $false }
+        @{ n = 'rate_429';              st = '429'; code = 'rate_limited';   resume = $null;                  perm = $false }
+        @{ n = 'invalid_400';           st = '400'; code = 'other';          resume = $null;                  perm = $false }
+    )
+    foreach ($pc in $pCases) {
+        # Agenten-Anfrage (eigenes Werkzeug): laeuft ueber den 400-Rueckfallpfad (cache_control) -> beide Wege sortieren gleich.
+        $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; system = 'SYS'; tools = @($tool1)
+                    messages = @(@{ role = 'user'; content = "$Canary __mock_upstream_err_$($pc.n)__" }) }))
+        $j = $null; try { $j = $res.Body | ConvertFrom-Json } catch { }
+        $u = Get-LastUsage $Units.gw
+        $s = Get-GwStatus 8095
+        $why = @()
+        if ($res.Status -ne $pc.st) { $why += "Status $($res.Status)" }
+        if (-not $j -or $j.type -ne 'error' -or -not $j.error.type) { $why += 'Umschlag fehlt' }
+        if ($j.error.details.lifeagents_code -ne $pc.code) { $why += "code=$($j.error.details.lifeagents_code)" }
+        if ("$($j.error.details.resume_at)" -ne "$($pc.resume)") { $why += "resume_at=$($j.error.details.resume_at)" }
+        if (-not $u -or $u.err -ne $pc.code -or "$($u.status)" -ne $pc.st) { $why += "usage err=$($u.err) status=$($u.status)" }
+        if (-not $s -or $s.last_error.code -ne $pc.code -or "$($s.last_error.resume_at)" -ne "$($pc.resume)") { $why += "status-endpunkt=$($s | ConvertTo-Json -Compress -Depth 4)" }
+        if ($why.Count -eq 0) { Pass "$($pc.n) -> $($pc.code)" } else { Fail "$($pc.n): $($why -join '; ')" }
+    }
+    # Header (curl -D): x-lifeagents-llm-error immer, x-should-retry:false nur bei dauerhaften Codes; fremdes x-should-retry bleibt.
+    $hdrOk = $true
+    foreach ($pc in @(@{ n = 'spend_limit'; perm = 'false' }, @{ n = 'overloaded_529'; perm = '' }, @{ n = 'api_500_noretry'; perm = 'false' })) {
+        $hb = ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; messages = @(@{ role = 'user'; content = "__mock_upstream_err_$($pc.n)__" }) })
+        [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'gwtest_hdr.json'), $hb, $Utf8NoBom)
+        Invoke-Native docker @('cp', (Join-Path $env:TEMP 'gwtest_hdr.json'), "${Container}:/tmp/gwtest_hdr.json") | Out-Null
+        $hr = Invoke-InC @('curl', '-s', '-D', '-', '-o', '/dev/null', '-H', 'content-type: application/json', '-X', 'POST', 'http://127.0.0.1:8095/v1/messages', '--data-binary', '@/tmp/gwtest_hdr.json')
+        $hText = ($hr.Output -join "`n").ToLowerInvariant()
+        $sr = if ($hText -match 'x-should-retry:\s*(\S+)') { $Matches[1] } else { '' }
+        if ($hText -notmatch 'x-lifeagents-llm-error:\s*\S+' -or $sr -ne $pc.perm) { $hdrOk = $false; Write-Host "    $($pc.n): x-should-retry='$sr' (erwartet '$($pc.perm)')" }
+    }
+    if ($hdrOk) { Pass 'Header: Code immer, x-should-retry:false bei dauerhaften Codes, sonst unberuehrt' } else { Fail 'Header falsch' }
+    # Stream: event:error nach HTTP 200 -> Zustand overloaded, usage err (die Antwort ist schon unterwegs, bleibt unveraendert).
+    $res = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; stream = $true; messages = @(@{ role = 'user'; content = '__mock_upstream_err_sse_overloaded__' }) }))
+    $u = Get-LastUsage $Units.gw; $s = Get-GwStatus 8095
+    if ($res.Status -eq '200' -and $res.Body -match 'event: error' -and $u.err -eq 'overloaded' -and $s.last_error.code -eq 'overloaded') { Pass 'Stream-Fehler nach 200 erkannt' }
+    else { Fail "Stream: Status=$($res.Status) err=$($u.err) zustand=$($s.last_error.code)" }
+    # Erfolg danach: last_ok_at juenger als last_error.at; usage ohne err.
+    $null = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; messages = $msgs }))
+    $u = Get-LastUsage $Units.gw; $s = Get-GwStatus 8095
+    if ($s -and $s.last_ok_at -and ([datetime]$s.last_ok_at) -ge ([datetime]$s.last_error.at) -and $null -eq $u.err) { Pass 'Erfolg danach: last_ok_at aktuell, usage ohne err' }
+    else { Fail "nach Erfolg: $($s | ConvertTo-Json -Compress -Depth 4) err=$($u.err)" }
+    # Netz weg (Gateway-eigener 502): Code unreachable im Body und im Zustand.
+    $res = Send-Gw 8097 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; messages = $msgs }))
+    $j = $null; try { $j = $res.Body | ConvertFrom-Json } catch { }
+    $s = Get-GwStatus 8097
+    if ($res.Status -eq '502' -and $j.error.details.lifeagents_code -eq 'unreachable' -and $s.last_error.code -eq 'unreachable') { Pass 'Netz weg -> unreachable' }
+    else { Fail "Netz weg: Status=$($res.Status) body=$($res.Body) zustand=$($s | ConvertTo-Json -Compress -Depth 4)" }
+    # Kein Anbieter-Text im Journal (nur Codes und das Datum).
+    $jt = (@(Get-UnitJournal $Units.gw) -join "`n")
+    # -cnotmatch: der feste Code 'overloaded' ist erlaubt, der Anbieter-Text 'Overloaded' nicht.
+    if ($jt -cnotmatch 'regain access|credit balance|invalid x-api-key|Overloaded') { Pass 'Anbieter-Fehlertext nie im Journal' } else { Fail 'Anbieter-Fehlertext im Journal' }
 
     # (f) Privacy: Kanarien + Schluessel nie im Journal (inkl. kaputtem JSON)
     Write-Host '  (f) Privacy: Prompt-Inhalt und Schluessel nie im Journal'

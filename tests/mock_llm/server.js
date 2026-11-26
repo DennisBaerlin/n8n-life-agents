@@ -45,6 +45,20 @@ const fs = require('fs');
 const PORT = parseInt(process.env.MOCK_LLM_PORT || '8088', 10);
 const LOG_FILE = process.env.MOCK_LLM_LOG || '/tmp/mock_llm.jsonl';
 const SCENARIOS_FILE = process.env.MOCK_LLM_SCENARIOS || '/opt/mock_llm/scenarios.json';
+// Aufgezeichnete Anthropic-Fehlerantworten (anthropic_errors.json neben dieser Datei): Marker __mock_upstream_err_<name>__ im
+// Body (nur diese Anfrage) oder Schalter GET /__upstream_error?name=<name> (alle /v1/messages bis ?off=1) = Anbieter gesperrt
+// oder gestoert. Fehlt die Datei, bleiben beide wirkungslos (die Anfrage laeuft normal).
+const ERRORS_FILE = process.env.MOCK_LLM_ERRORS || require('path').join(__dirname, 'anthropic_errors.json');
+let upstreamErrorAll = null;
+function recordedError(name) {
+  try { const all = JSON.parse(fs.readFileSync(ERRORS_FILE, 'utf8')); return all[name] && all[name].status ? all[name] : null; }
+  catch (e) { return null; }
+}
+function sendRecordedError(res, rec) {
+  const h = Object.assign({ 'Content-Type': rec.sse ? 'text/event-stream' : 'application/json' }, rec.headers || {});
+  res.writeHead(rec.status, h);
+  res.end(rec.sse ? rec.sse : JSON.stringify(rec.body));
+}
 
 // Datums-Platzhalter {{date:<offset>[@<tag>]}} in Szenarien (match, args, Texte): Zwilling von scripts/lib/date_placeholder.ps1
 // (Grammatik dort), beide gegen tests/util/date_placeholder_vectors.json geprueft (scripts/dev/date_placeholder_test.ps1).
@@ -378,6 +392,12 @@ function logLine(entry) {
 let connSeq = 0;
 const server = http.createServer((req, res) => {
   if (req.url === '/__health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }
+  if (typeof req.url === 'string' && req.url.indexOf('/__upstream_error') === 0) {
+    const q = new URL(req.url, 'http://127.0.0.1').searchParams;
+    upstreamErrorAll = q.get('off') ? null : (recordedError(q.get('name') || '') ? q.get('name') : null);
+    logLine({ method: '__upstream_error', name: upstreamErrorAll });
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, name: upstreamErrorAll })); return;
+  }
   // Verbindungs-Nummer je TCP-Verbindung (llm_gateway_test (o): frische vs. wiederverwendete Upstream-Verbindung).
   if (!req.socket.mockConn) req.socket.mockConn = ++connSeq;
   const conn = req.socket.mockConn;
@@ -402,6 +422,16 @@ const server = http.createServer((req, res) => {
     let body = {};
     try { body = JSON.parse(raw); } catch (e) { /* leer lassen */ }
     const markers = cacheMarkers(body || {});
+    // Aufgezeichneter Anbieter-Fehler (Marker oder Schalter, s. ERRORS_FILE): mit Zeile im Log, damit Tests die Versuche zaehlen.
+    const errMark = /__mock_upstream_err_([a-z0-9_]{1,40})__/.exec(raw);
+    const errName = errMark ? errMark[1] : upstreamErrorAll;
+    const errRec = errName ? recordedError(errName) : null;
+    if (errRec) {
+      logLine({ url: req.url, dialect: 'anthropic', conn, model: body ? body.model : null, decision: 'upstream-error:' + errName,
+        max_tokens: body ? body.max_tokens : null, markers });
+      sendRecordedError(res, errRec);
+      return;
+    }
     // Test-Ausloeser (llm_gateway_test.ps1): Anthropic lehnt die Haltepunkte ab -> der Gateway muss EINMAL ohne
     // Einfuegen wiederholen. Ohne Marker (die Wiederholung) normal weiter.
     if (raw.indexOf('__mock_400_cache_control__') !== -1 && (markers.top || markers.tool || markers.system)) {

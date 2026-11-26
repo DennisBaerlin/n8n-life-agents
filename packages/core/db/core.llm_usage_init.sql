@@ -31,4 +31,14 @@ CREATE TABLE IF NOT EXISTS core.llm_usage (
     imported_at                 timestamptz NOT NULL DEFAULT now()          -- Provenienz: wann eingespielt
 );
 
+-- Fester Code eines Anbieter-Fehlers (Gateway classifyUpstreamError, usage-Feld `err`); NULL = kein Fehler. Wertevorrat =
+-- Gateway-Codes (provisioning/llm_gateway/server.js), Test llm_gateway_test (p).
+ALTER TABLE core.llm_usage ADD COLUMN IF NOT EXISTS err_code text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'llm_usage_err_code_valid') THEN
+        ALTER TABLE core.llm_usage ADD CONSTRAINT llm_usage_err_code_valid CHECK (err_code IS NULL OR err_code IN
+            ('spend_limit', 'credit_empty', 'auth', 'overloaded', 'upstream_error', 'unreachable', 'rate_limited', 'other'));
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS llm_usage_ts_idx ON core.llm_usage (ts);

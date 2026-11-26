@@ -19,6 +19,8 @@ Environment=LLM_GATEWAY_PORT=@@GATEWAY_PORT@@
 Environment=LLM_GATEWAY_KEEPALIVE_HOURS=@@KEEPALIVE_HOURS@@
 # Ein Werkzeug je Antwort (1 = an, 0 = aus; Kopf von server.js).
 Environment=LLM_GATEWAY_SERIAL_TOOLS=@@SERIAL_TOOLS@@
+# Leerlauf-Limit freier Verbindungen zu Anthropic in ms (0 = nie wiederverwenden; Begruendung an UP_IDLE_MS in server.js).
+Environment=LLM_GATEWAY_UPSTREAM_IDLE_MS=@@UPSTREAM_IDLE_MS@@
 # Ausgehend IPv4 bevorzugen (api.anthropic.com hat AAAA): ein haengender IPv6-Pfad im Heimnetz kostete sonst
 # den vollen TCP-Timeout je Claude-Aufruf — dieselbe Massnahme wie in n8n.service.tpl.
 Environment=NODE_OPTIONS=--dns-result-order=ipv4first

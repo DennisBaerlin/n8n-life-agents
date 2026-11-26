@@ -375,8 +375,12 @@ function logLine(entry) {
   catch (e) { /* Logging-Fehler nie den Response kippen */ }
 }
 
+let connSeq = 0;
 const server = http.createServer((req, res) => {
   if (req.url === '/__health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }
+  // Verbindungs-Nummer je TCP-Verbindung (llm_gateway_test (o): frische vs. wiederverwendete Upstream-Verbindung).
+  if (!req.socket.mockConn) req.socket.mockConn = ++connSeq;
+  const conn = req.socket.mockConn;
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
   req.on('end', () => {
@@ -406,9 +410,27 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'mock: cache_control rejected' } }));
       return;
     }
+    // Test-Ausloeser (llm_gateway_test (o)): still tote Keep-Alive-Verbindung. Die erste Anfrage mit Marker auf einer
+    // Verbindung wird beantwortet, jede weitere mit Marker auf DERSELBEN Verbindung bekommt nie ein Byte (kein FIN,
+    // kein RST) — wie ein Gegenueber, das die Verbindung verworfen hat, ohne es zu melden.
+    if (raw.indexOf('__mock_blackhole_reuse__') !== -1) {
+      if (req.socket.mockBlackhole) {
+        logLine({ url: req.url, dialect: 'anthropic', conn, decision: 'blackhole', max_tokens: body ? body.max_tokens : null });
+        setTimeout(() => req.socket.destroy(), 30000).unref();   // roter Lauf: nicht bis requestTimeout (300 s) offen lassen
+        return;
+      }
+      req.socket.mockBlackhole = true;
+      // Leerlauf-Schliessen des Node-Servers (keepAliveTimeout, Standard 5 s, setzt nach jeder Antwort den Socket-Timeout)
+      // fuer diese Verbindung aus: es schickte ein FIN, und der Gateway verwuerfe den Socket von selbst — der Fall waere
+      // nie rot. Das echte Gegenueber haelt Leerlauf-Verbindungen deutlich laenger.
+      res.on('finish', () => setImmediate(() => req.socket.setTimeout(0)));
+    }
+    // Test-Ausloeser (llm_gateway_test (o)): legitim langsame Antwort (__mock_delay_ms_<n>__), ohne Szenario-Datei.
+    const slow = /__mock_delay_ms_(\d{1,6})__/.exec(raw);
     let out;
     try { out = decide(body); }
     catch (e) { out = { payload: anthropicText('mock-error'), why: 'exception:' + (e && e.message), offered: [], task: '' }; }
+    if (slow) out.delay = Number(slow[1]);
     // Direkte JSON-Schema-Aufrufe (output_config.format) ohne gescriptete Antwort bekommen statt Freitext einen
     // schema-plausiblen Platzhalter (vorher auch MIT Szenario -> tc49/tc51 lasen nie ihre Szenario-Werte).
     const fmt = body && body.output_config && body.output_config.format;
@@ -424,7 +446,7 @@ const server = http.createServer((req, res) => {
     // "persona: butler") -> real_ingress_test prueft gratis, dass ein Flag das Modell erreicht.
     const sysText = !body ? '' : (typeof body.system === 'string' ? body.system
       : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
-    logLine({ url: req.url, dialect: 'anthropic', model: body ? body.model : null, offered: out.offered, task: out.task, decision: out.why, markers,
+    logLine({ url: req.url, dialect: 'anthropic', conn, model: body ? body.model : null, offered: out.offered, task: out.task, decision: out.why, markers,
       replay_lost: out.replay_lost || [],                   // mock_route_test: zurueckgespielte Aufrufe ohne Angaben
       file_blocks: fileBlocks(body && body.messages),       // infra_test: wie viele verschiedene Dateien im Request stehen
       system_tail: sysText.slice(-300),

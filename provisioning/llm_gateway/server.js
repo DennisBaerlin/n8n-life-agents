@@ -24,7 +24,8 @@
 //   parallele tool_use-Bloecke kamen im n8n-Agenten mit leeren Argumenten an (Begruendung an der Funktion).
 //   Schalter LLM_GATEWAY_SERIAL_TOOLS (Standard an, 0 = aus).
 // AUSFALLSICHER: Body nicht lesbar → Original-Bytes weiter. Anthropic-400 mit "cache_control"/"tool_choice" →
-//   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true.
+//   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true. Freie Upstream-Verbindungen
+//   leben hoechstens LLM_GATEWAY_UPSTREAM_IDLE_MS (Begruendung an UP_IDLE_MS).
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
 //   Anthropic-Feldnamen (input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read),
 //   nicht OTel-GenAI (dort noch "Development"). Zusaetzlich haengt sie (mit id + Workflow) an
@@ -91,7 +92,16 @@ const WF_NAME = /^[a-z0-9._-]{1,80}$/;
 const DROP_RES = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'te', 'trailer', 'upgrade']);
 
 const client = UPSTREAM.protocol === 'http:' ? http : https;
-const agent = new client.Agent({ keepAlive: true });
+// Leerlauf-Limit freier Upstream-Verbindungen: ohne Limit blieb eine Verbindung beliebig lange im Pool; war sie unterwegs
+// still verworfen (NAT, Gegenueber, kein FIN/RST), hing die naechste Anfrage darauf minutenlang (live 470 s bis
+// ECONNRESET). Mit Limit wird nur innerhalb einer Denk-Schleife wiederverwendet (Folge-Anfrage meist in Sekunden).
+// 4000 = undici keepAliveTimeout / agentkeepalive freeSocketTimeout (Node-globalAgent 5000): unter dem 5-s-Leerlauf
+// ueblicher Server. Agent-`timeout` zerstoert nur FREIE Sockets (lib/internal/http/agent.js onTimeout); auf aktiven loest
+// er nur ein 'timeout'-Ereignis aus -> lange Antworten (Opus ohne Stream: erstes Byte erst nach der ganzen Antwort) laufen
+// weiter, solange kein 'timeout'-Listener / req.setTimeout dazukommt. 0 = jede Anfrage auf frischer Verbindung (Notschalter).
+// Wert kommt validiert aus install_llm_gateway.sh (Unit bzw. gateway.env); hier nur Ganzzahl-Form, sonst Standard.
+const UP_IDLE_MS = (() => { const s = process.env.LLM_GATEWAY_UPSTREAM_IDLE_MS || '4000'; const v = Number(s); return /^\d{1,5}$/.test(s) && v <= 60000 ? v : 4000; })();
+const agent = UP_IDLE_MS > 0 ? new client.Agent({ keepAlive: true, timeout: UP_IDLE_MS }) : new client.Agent({ keepAlive: false });
 
 // ---- Telegram-Relay: Konstanten (Abschnitt unten) --------------------------------------------------------------
 const TG_UPSTREAM = new URL(process.env.LLM_GATEWAY_TELEGRAM_API || 'https://api.telegram.org');
@@ -413,7 +423,10 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
   const upReq = client.request(target, { method: req.method, headers: upstreamHeaders(req.headers, buf.length), agent });
   let done = false;
   let gotResponse = false;
-  res.on('close', () => { if (!res.writableEnded) upReq.destroy(); });
+  let clientGone = false;
+  // Aufrufer weg (n8n-Abbruch): Upstream abbrechen. Das destroy() meldet auf einem wiederverwendeten Socket ECONNRESET ->
+  // ohne clientGone griffe staleRetry und schickte dieselbe (bezahlte) Anfrage erneut, ohne dass jemand die Antwort liest.
+  res.on('close', () => { if (!res.writableEnded) { clientGone = true; upReq.destroy(); } });
 
   upReq.on('response', (up) => {
     gotResponse = true;
@@ -423,6 +436,7 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
     if (status === 400 && retryBuf) {
       const parts = [];
       up.on('data', (c) => parts.push(c));
+      up.on('error', () => { diag(clientGone ? 'client_closed' : 'upstream_stream_error'); if (!clientGone) res.destroy(); finish(status, emptyUsage()); });
       up.on('end', () => {
         const errBody = Buffer.concat(parts);
         const errText = errBody.toString('utf8');
@@ -459,20 +473,20 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
       }
       finish(status, usage);
     });
-    up.on('error', (e) => { diag(e && e.code ? e.code : 'upstream_stream_error'); res.destroy(); finish(status, usage); });
+    up.on('error', (e) => { diag(clientGone ? 'client_closed' : (e && e.code ? e.code : 'upstream_stream_error')); res.destroy(); finish(status, usage); });
   });
 
   upReq.on('error', (e) => {
-    if (staleRetry && !gotResponse && upReq.reusedSocket && e && e.code === 'ECONNRESET' && !res.headersSent) {
+    if (staleRetry && !clientGone && !gotResponse && upReq.reusedSocket && e && e.code === 'ECONNRESET' && !res.headersSent) {
       diag('stale_socket_retry');
       forward(req, res, buf, meta, retryBuf, false);
       return;
     }
-    diag(e && e.code ? e.code : 'upstream_error');
-    if (!res.headersSent) {
+    diag(clientGone ? 'client_closed' : (e && e.code ? e.code : 'upstream_error'));
+    if (!clientGone && !res.headersSent) {
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'llm-gateway: upstream unreachable' } }));
-    } else { res.destroy(); }
+    } else if (!clientGone) { res.destroy(); }
     finish(502, emptyUsage());
   });
   upReq.end(buf);
@@ -598,7 +612,7 @@ const server = http.createServer((req, res) => {
   if (typeof req.url === 'string' && req.url.indexOf('/__telegram/') === 0) { handleTelegram(req, res); return; }
   if (req.method === 'GET' && req.url === '/__health') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL,
+    res.end(JSON.stringify({ ok: true, upstream: UPSTREAM.origin, static_ttl: STATIC_TTL, upstream_idle_ms: UP_IDLE_MS,
       keepalive: { on: KA_ON, hours: KA_HOURS, entries: keepAlive.size }, usage_file: !!USAGE_FILE,
       telegram: { upstream: TG_UPSTREAM.origin, sticker_dir: !!TG_STICKER_DIR && fs.existsSync(TG_STICKER_DIR) } }));
     return;

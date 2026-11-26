@@ -289,21 +289,21 @@ BEGIN
                     v_chk := NULL;
                 END;
             END IF;
-            IF v_chk IS NOT NULL AND (v_chk->>'ok')::boolean IS NOT TRUE THEN
+            IF v_chk IS NOT NULL AND v_chk->'ok' IS DISTINCT FROM 'true'::jsonb THEN
                 RETURN v_chk || jsonb_build_object('ok', false, 'task_index', v_ti,
                     'code', COALESCE(v_chk->>'code', 'handoff_not_enterable'),
                     'reason', format('handoff_tasks #%s: %s', v_ti, COALESCE(v_chk->>'reason', 'the entry cannot be entered like this')));
             END IF;
-            IF (v_chk->>'unsupported')::boolean IS TRUE AND NOT (core.fn_handoff_blocked_codes(v_pkg) ? COALESCE(v_chk->>'blocked_code', '')) THEN
+            IF v_chk->'unsupported' = 'true'::jsonb AND NOT (core.fn_handoff_blocked_codes(v_pkg) ? COALESCE(v_chk->>'blocked_code', '')) THEN
                 RETURN jsonb_build_object('ok', false, 'code', 'unknown_blocked_code', 'task_index', v_ti,
                     'valid_codes', core.fn_handoff_blocked_codes(v_pkg),
                     'reason', format('handoff_tasks #%s: the entry check returned an unknown blocked_code', v_ti));
             END IF;
             v_checked := v_checked || jsonb_build_array(jsonb_build_object(
-                'wanted', CASE WHEN (v_chk->>'unsupported')::boolean IS TRUE THEN NULL
+                'wanted', CASE WHEN v_chk->'unsupported' = 'true'::jsonb THEN NULL
                                WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN v_chk->'calls'
                                WHEN jsonb_typeof(v_chk->'call') = 'object' THEN v_chk->'call' END,
-                'blocked_code', CASE WHEN (v_chk->>'unsupported')::boolean IS TRUE THEN v_chk->>'blocked_code' END));
+                'blocked_code', CASE WHEN v_chk->'unsupported' = 'true'::jsonb THEN v_chk->>'blocked_code' END));
         END LOOP;
     END IF;
 

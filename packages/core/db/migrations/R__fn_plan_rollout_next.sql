@@ -182,9 +182,12 @@ BEGIN
         v_max := v_cnt;
     END LOOP;
     IF jsonb_array_length(v_fix) > 0 THEN
+        -- n = was der Knopf beansprucht: alle nachholbaren bis v_max, auch frueher angebotene (core.fn_handle_handoff_cb)
+        SELECT count(*) INTO v_cnt FROM jsonb_array_elements(core.fn_handoff_register(p_domain, core.fn_person_chat_id(p_person)::text)) e
+         WHERE (e->>'possible_now')::boolean AND (e->>'task_id')::int <= v_max;
         RETURN jsonb_build_object('step', 'fix', 'messages', jsonb_build_array(jsonb_build_object(
-            'msg', jsonb_build_array(CASE WHEN jsonb_array_length(v_fix) = 1 THEN core.fn_ui_tpl('core.rollout.fix_offer_one')
-                                          ELSE core.fn_ui_tpl('core.rollout.fix_offer', jsonb_build_object('n', jsonb_array_length(v_fix))) END),
+            'msg', jsonb_build_array(CASE WHEN v_cnt = 1 THEN core.fn_ui_tpl('core.rollout.fix_offer_one')
+                                          ELSE core.fn_ui_tpl('core.rollout.fix_offer', jsonb_build_object('n', v_cnt)) END),
             'buttons', jsonb_build_array(jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || p_domain || ':' || v_max || ':fix')),
             'latch', v_fix->0, 'latches', v_fix)));
     END IF;

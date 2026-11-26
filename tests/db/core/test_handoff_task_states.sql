@@ -78,7 +78,19 @@ BEGIN
         VALUES ('finance', 'finance', 'erika', 'g', 'other', 't', '"text"');
   EXCEPTION WHEN check_violation THEN v_ok := true; END;
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [3 wanted als Zeichenkette]'; END IF;
-  RAISE NOTICE 'PASS [3 wanted unveraenderlich]';
+  -- einzige Ausnahme: beim Nachholen (deferred -> working) einmal von NULL auf den Aufruf der Vorpruefung
+  UPDATE agent.handoff_tasks SET status = 'deferred', blocked_code = 'tool_missing' WHERE id = v_id2;
+  v_ok := false;
+  BEGIN UPDATE agent.handoff_tasks SET wanted = '{"tool":"x","input":{}}' WHERE id = v_id2;
+  EXCEPTION WHEN raise_exception THEN v_ok := true; END;
+  IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [3 wanted an deferred ohne Nachholen]'; END IF;
+  UPDATE agent.handoff_tasks SET status = 'working', blocked_code = NULL, claimed_at = now(), wanted = '{"tool":"x","input":{}}' WHERE id = v_id2;
+  v_ok := false;
+  BEGIN UPDATE agent.handoff_tasks SET wanted = '{"tool":"y","input":{}}' WHERE id = v_id2;
+  EXCEPTION WHEN raise_exception THEN v_ok := true; END;
+  IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [3 wanted zweimal gesetzt]'; END IF;
+  UPDATE agent.handoff_tasks SET status = 'open' WHERE id = v_id2;
+  RAISE NOTICE 'PASS [3 wanted unveraenderlich, ausser einmal beim Nachholen]';
 
   -- ---------- 4) why, entered_refs, close_reason ----------
   v_ok := false;

@@ -263,12 +263,12 @@ BEGIN
   PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latches'->0->>'key');
   v := core.fn_plan_rollout_next(d, 'erika');
   IF v->>'step' = 'fix' THEN RAISE EXCEPTION 'FAIL fix zweimal %', v; END IF;
-  -- zwei neue Aufgaben, je eigener Merker; Text mit Zahl
+  -- zwei neue Aufgaben, je eigener Merker; die Zahl nennt alles, was der Knopf beansprucht (auch die frueher angebotene)
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
   VALUES (d, 'core', 'erika', 's', 'other', 'wartet 2', 'deferred', 'tool_missing'), (d, 'core', 'erika', 's', 'other', 'wartet 3', 'deferred', 'tool_missing');
   v := core.fn_plan_rollout_next(d, 'erika');
   IF v->>'step' IS DISTINCT FROM 'fix' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.fix_offer'
-     OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 2 OR jsonb_array_length(v->'messages'->0->'latches') <> 2 THEN
+     OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 3 OR jsonb_array_length(v->'messages'->0->'latches') <> 2 THEN
     RAISE EXCEPTION 'FAIL fix zwei %', v; END IF;
 END $$;
 ROLLBACK;

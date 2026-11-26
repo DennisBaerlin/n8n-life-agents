@@ -48,9 +48,9 @@ BEGIN
     'goals_triggers', jsonb_build_object('topics', jsonb_build_array(jsonb_build_object('topic', 'Ziele', 'content', 'c'))),
     'wealth_building', jsonb_build_object('content', 'w')));
 
-  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, status, blocked_code, wanted, why)
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, status, blocked_code, why)
   VALUES ('finance','finance','erika','goals_triggers','Ziele','recurring_transfer','zurueckgestellt','deferred','end_date_future',
-          '{"tool":"create_recurring_transfer","input":{"amount":50}}', 'Damit das Ziel rechtzeitig voll ist.') RETURNING id INTO v_def;
+          'Damit das Ziel rechtzeitig voll ist.') RETURNING id INTO v_def;
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, status, claimed_at, closed_at, close_reason, wanted, entered_refs)
   VALUES ('finance','finance','erika','goals_triggers','Ziele','savings_goal','abweichend eingetragen','done', now(), now(), 'entered',
           '{"tool":"create_savings_goal","input":{"target_amount":1200}}', '[{"type":"savings_goal","id":5}]') RETURNING id INTO v_dev;
@@ -104,6 +104,8 @@ BEGIN
   r := core.fn_handle_handoff_cb(jsonb_build_object('data','handoff:finance:' || v_leg_c || ':fix','chat_id','111','chat_type','private'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'handoff' OR jsonb_array_length(r->'task_ids') <> 3 THEN RAISE EXCEPTION 'FAIL [3 Claim]: %', r; END IF;
   IF (SELECT status || '/' || COALESCE(blocked_code, '-') FROM agent.handoff_tasks WHERE id = v_def) <> 'working/-' THEN RAISE EXCEPTION 'FAIL [3 deferred -> working]'; END IF;
+  -- beim Vereinbaren zurueckgestellt (ohne Soll): der Aufruf der Vorpruefung wird beim Nachholen zum wanted
+  IF (SELECT wanted->>'tool' FROM agent.handoff_tasks WHERE id = v_def) IS DISTINCT FROM 'set_x' THEN RAISE EXCEPTION 'FAIL [3 deferred ohne wanted]'; END IF;
   SELECT id INTO v_new FROM agent.handoff_tasks WHERE follows_task_id = v_leg_c;
   IF v_new IS NULL OR (SELECT status FROM agent.handoff_tasks WHERE id = v_new) <> 'working'
      OR (SELECT wanted->>'tool' FROM agent.handoff_tasks WHERE id = v_new) <> 'set_x'

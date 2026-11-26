@@ -11,7 +11,7 @@
 --       claimed_at = now(). Ein Doppeltipp findet nichts mehr -> Toast "nichts mehr offen".
 --     * handoff:<domain>:<max_task_id>:fix = Knopf des Korrektur-Schritts (core.fn_plan_rollout_next, step fix): beansprucht
 --       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now und task_id <= max: deferred -> working
---       (blocked_code weg); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern bekommt eine neue Aufgabe working
+--       (blocked_code weg; ohne Soll wird der Aufruf der Vorpruefung zum wanted); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern bekommt eine neue Aufgabe working
 --       mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf follows_task_id: hoechstens eine Korrektur).
 --   Erfolg {ok:true, route:'handoff', domain, task_ids:[...], tasks:[{id, kind, payload, text, why, wanted, rest}]} -> der Orchestrator
 --   ('Handoff route?') startet den handoff_agent der Domain mit festem Auftrag; Dispatch-Fehler -> der Orchestrator gibt
@@ -65,7 +65,8 @@ BEGIN
               FROM jsonb_array_elements(core.fn_handoff_register(v_domain, v_chat)) e
              WHERE (e->>'possible_now')::boolean AND (e->>'task_id')::int <= v_max::int
         ), redo AS (
-            UPDATE agent.handoff_tasks t SET status = 'working', blocked_code = NULL, claimed_at = now()
+            UPDATE agent.handoff_tasks t SET status = 'working', blocked_code = NULL, claimed_at = now(),
+                   wanted = COALESCE(t.wanted, reg.call)
               FROM reg WHERE t.id = reg.id AND reg.status = 'deferred' AND t.status = 'deferred'
             RETURNING t.id, t.kind, t.payload, t.text, t.why, t.wanted
         ), follow AS (

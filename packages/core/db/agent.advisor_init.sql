@@ -252,13 +252,15 @@ END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS handoff_tasks_follows_uq ON agent.handoff_tasks (follows_task_id) WHERE follows_task_id IS NOT NULL;
 
 -- Uebergangs-Gesetz (A2A: abgeschlossene Aufgaben starten nicht neu). Erlaubt: open -> working|deferred|done|cancelled,
--- working -> open|deferred|done|cancelled, deferred -> working|cancelled. wanted aendert sich nie. Ein Endzustand aendert
+-- working -> open|deferred|done|cancelled, deferred -> working|cancelled. wanted aendert sich nie, ausser einmal von NULL auf den
+-- Aufruf der Vorpruefung beim Nachholen (deferred -> working; beim Vereinbaren gab es noch keinen). Ein Endzustand aendert
 -- sich nicht mehr, ausser zwei Provenienz-Folgen: entered_refs eines done wird angehaengt (weiterer Teil derselben Runde)
 -- und follows_task_id faellt auf NULL (ON DELETE SET NULL der Vorgaenger-Aufgabe). DELETE bleibt erlaubt (Purge, E2E).
 CREATE OR REPLACE FUNCTION agent.fn_handoff_tasks_final_guard()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF NEW.wanted IS DISTINCT FROM OLD.wanted THEN
+    IF NEW.wanted IS DISTINCT FROM OLD.wanted
+       AND NOT (OLD.wanted IS NULL AND OLD.status = 'deferred' AND NEW.status = 'working') THEN
         RAISE EXCEPTION 'agent.handoff_tasks: wanted of task % is fixed once agreed', OLD.id;
     END IF;
     IF OLD.status IN ('done', 'cancelled') THEN

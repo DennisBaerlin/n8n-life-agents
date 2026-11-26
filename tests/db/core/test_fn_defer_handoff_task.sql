@@ -66,8 +66,13 @@ BEGIN
   RAISE NOTICE 'PASS [4 cancel aus deferred]';
 
   -- ---------- 5) Lesefenster: why, wanted, rest ----------
-  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
+  -- Ids beginnen je Entwurf neu: der gueltige Plan fuehrt Id 4 fuer einen anderen Punkt; zaehlt die Plan-Zeile der Vereinbarung
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, created_at)
   VALUES ('finance', NULL, 'T', 'active', 1, jsonb_build_object('goals_triggers', jsonb_build_object('topics', jsonb_build_array(
+    jsonb_build_object('topic', 'Kita', 'content', 'c', 'open_points', jsonb_build_array(jsonb_build_object('id', 4, 'text', 'anderer Punkt des gueltigen Plans')))))),
+    now() - interval '10 days');
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
+  VALUES ('finance', NULL, 'T', 'draft', 2, jsonb_build_object('goals_triggers', jsonb_build_object('topics', jsonb_build_array(
     jsonb_build_object('topic', 'Rente', 'content', 'c', 'open_points', jsonb_build_array(jsonb_build_object('id', 4, 'text', 'Betrag, sobald der Anbieter sich meldet')))))));
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, open_point_id)
   VALUES ('finance', 'finance', 'erika', 'goals_triggers', 'Rente', 'other', 'Betriebsrente eintragen', 4) RETURNING id INTO v_id3;

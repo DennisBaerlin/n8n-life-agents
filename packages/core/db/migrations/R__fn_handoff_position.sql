@@ -4,7 +4,7 @@
 --   setzt es fuer alle in einem UPDATE). k = Rang nach id, n = Groesse der Runde; erledigte, uebersprungene (zurueck auf
 --   open, claimed_at bleibt) und zurueckgestellte bleiben mitgezaehlt, damit die Zahl auf der naechsten Karte nicht springt.
 --   Rueckgabe {k, n} oder NULL (nie beansprucht, unbekannte id). Nur lesend; der Zaehler kommt nie vom Modell.
---   Konsument: finance.fn_with_handoff (Kartenzeile core.hitl.handoff_pos {k, n}).
+--   Aufrufer: die Paket-fn hinter den Eintrags-Karten (Kartenzeile core.hitl.handoff_pos {k, n}).
 --   SECURITY DEFINER (die Paket-Schreibrolle sieht agent.* nicht), EXECUTE an <pkg>_rw via core.fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_handoff_position.sql
 -- ============================================================

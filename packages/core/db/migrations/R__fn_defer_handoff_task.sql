@@ -7,7 +7,7 @@
 --   die Vorpruefung durchlaeuft. Nur Aufgaben der Person des Absenders (core.fn_handoff_person).
 --   Erfolg {ok:true, task_id, status:'deferred', blocked_code, text}; korrigierbar {ok:false, code: unknown_blocked_code
 --   (+ valid_codes) | handoff_task_invalid | handoff_task_closed, reason}.
---   Aufgerufen ueber die Paket-fn hinter agent.<pkg>.tool_defer_handoff_task. SECURITY DEFINER, EXECUTE an <pkg>_rw via
+--   Aufrufer: die Paket-fn hinter dem Zurueckstellen-Werkzeug des Pakets. SECURITY DEFINER, EXECUTE an <pkg>_rw via
 --   core.fn_provision_package_roles. Tests: tests/db/core/test_fn_defer_handoff_task.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_defer_handoff_task(p jsonb)

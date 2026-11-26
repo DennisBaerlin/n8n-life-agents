@@ -26,21 +26,23 @@ $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_tasks_read(int[]) FROM public;
 
 -- core.fn_handoff_rest(p_task_id) — Text des offenen Punkts (open_point_id) einer Aufgabe, solange er offen ist, sonst NULL.
---   Die Ids leben im interview_state des Plans der Domain (Haushalt person_id NULL, per_user die Person); der gueltige Plan
---   geht vor dem Entwurf (beim Veroeffentlichen wandert der Entwurf samt Ids in die gueltige Zeile).
+--   Die Ids leben im interview_state der Plan-Zeile, in der die Aufgabe vereinbart wurde, und beginnen je Entwurf neu (ein
+--   Ueberarbeitungs-Entwurf und der gueltige Plan fuehren dieselbe Id fuer verschiedene Punkte). Darum zaehlt die juengste
+--   Plan-Zeile der Domain (Haushalt person_id NULL, per_user die Person), die vor der Aufgabe angelegt wurde; beim
+--   Veroeffentlichen wird die Entwurfs-Zeile selbst zur gueltigen (gleiche id, gleiche Punkte).
 CREATE OR REPLACE FUNCTION core.fn_handoff_rest(p_task_id int)
 RETURNS text
 LANGUAGE sql STABLE
 SET search_path = pg_catalog, pg_temp
 AS $$
-    -- gueltiger Plan zuerst: ein dort geschlossener Punkt ist kein Rest mehr, auch wenn ein Entwurf ihn noch offen fuehrt
     SELECT CASE WHEN o.resolved THEN NULL ELSE o.text END
       FROM agent.handoff_tasks t
-      JOIN agent.advisor_plans ap ON ap.domain = t.domain AND (ap.person_id IS NULL OR ap.person_id = t.person_id)
-                                 AND ap.status IN ('active', 'draft')
-      JOIN LATERAL core.fn_plan_open_points(ap.interview_state) o ON o.id = t.open_point_id
+      JOIN LATERAL (SELECT ap.interview_state FROM agent.advisor_plans ap
+                     WHERE ap.domain = t.domain AND (ap.person_id IS NULL OR ap.person_id = t.person_id)
+                       AND ap.created_at <= t.created_at
+                     ORDER BY ap.created_at DESC, ap.id DESC LIMIT 1) pl ON true
+      JOIN LATERAL core.fn_plan_open_points(pl.interview_state) o ON o.id = t.open_point_id
      WHERE t.id = p_task_id AND t.open_point_id IS NOT NULL
-     ORDER BY (ap.status = 'active') DESC
      LIMIT 1;
 $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_rest(int) FROM public;

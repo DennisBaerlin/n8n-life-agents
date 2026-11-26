@@ -885,7 +885,7 @@
   "finance.dialog.price_gap_failed": "I could not save the price source for {name}. Ask me in the chat about the current status.",
   "finance.dialog.price_gap_later": "Okay, I will remind you about {name} again in 7 days.",
   "finance.dialog.price_feed_down": "📉 The price service has not delivered any security prices since {date} – depot values are outdated until then. I check daily and will get back to you in 7 days if it stays that way.",
-  "finance.dialog.fx_feed_down": "💱 The exchange-rate service has not delivered any new rates since {date} – amounts in foreign currencies are converted with the rate of {date} until then. I check daily and will get back to you in 7 days if it stays that way.",
+  "finance.dialog.fx_feed_down": "💱 Neither the exchange-rate service nor the backup source (ECB) has delivered new rates since {date} – amounts in foreign currencies are converted with the rate of {date} until then. I check daily and will get back to you in 7 days if it stays that way.",
   "finance.dialog.fx_feed_down_never": "💱 I have not been able to fetch any exchange rates yet – until then I cannot convert amounts in foreign currencies into euros. I check daily and will get back to you in 7 days if it stays that way.",
   "finance.gate.onboarding_required": "Before I can give you sound advice, I need your financial picture first. Send me /onboarding (or simply: set me up).",
   "finance.gate.onboarding_open": "Still open: {sections}.",

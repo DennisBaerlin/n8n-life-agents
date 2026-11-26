@@ -3,7 +3,7 @@
 # Kurs-Erinnerungen (Wertpapiere + Wechselkurse): ein Kurs, der nicht gefunden wird, darf nie unentdeckt bleiben.
 # Deterministisch bis auf eine optionale Websuche je Luecke und Latch-Fenster. Ablauf: Schedule (im Erinnerungs-
 # fenster) -> finance.fn_price_gaps() (Luecken missing|stale, Feed-Ausfall, Re-Arm behobener Luecken) +
-# finance.fn_fx_feed_gap() (Wechselkurs-Dienst liefert nicht) ->
+# finance.fn_fx_feed_gap() (weder Tages-Feed noch EZB-Ersatz liefert) ->
 #   Wechselkurs-Ausfall (unabhaengiger Zweig) -> eine Meldung (fn_feed_down_claim('fx'), 7 Tage);
 #   Wertpapier-Feed-Ausfall -> eine Meldung (fn_feed_down_claim('prices'), 7 Tage);
 #   sonst je Luecke: fn_price_gap_claim (Latch je Position, 7 Tage; direkt vor dem eigenen Versand) -> Yahoo-ISIN-Suche
@@ -254,7 +254,7 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
         'core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''remind_missing_prices'')=''true'' (DB entscheidet, fail-closed). Läuft unter finance_rw (Latch + fn_apply_price_symbol). Toggle: /reminders oder lifeagents config set cron_enable remind_missing_prices false. Aus heißt auch: keine Wechselkurs-Ausfall-Meldung.' 300 300
     $stickyFx = Build-Sticky 'Wechselkurs-Ausfall' @(-340, -820) `
         'Wechselkurse kommen nicht mehr: eine Meldung, keine Entwarnung' `
-        'Zweiter Ausgang von Find gaps, unabhängig von Wertpapier-Lücken (läuft auch ohne Depot). fn_fx_feed_gap misst am jüngsten Quell-Datum (as_of) der open.er-api.com-Zeilen: ab finance.fx_feed_alert_days Kalendertagen (Standard 2) ohne neuen Stand gilt der Dienst als ausgefallen, ohne jede Zeile ab der Paket-Installation (never: eigener Text ohne Datum); bei abgeschaltetem Abruf (cron_enable refresh_fx_rates) nie. Claim FX feed down = finance.fn_feed_down_claim(fx): eigener Slot fx_feed_down und Latch finance:fx, erste Meldung sofort, dann höchstens alle 7 Tage. Kehrt der Dienst zurück, re-armt fn_fx_feed_gap den Latch still (keine Entwarnung, wie bei Wertpapieren). Nur an den Owner.' 340 380
+        'Zweiter Ausgang von Find gaps, unabhängig von Wertpapier-Lücken (läuft auch ohne Depot). fn_fx_feed_gap misst am jüngsten Quell-Datum (as_of) beider Quellen und meldet erst, wenn beide ausfallen: der Tages-Feed open.er-api.com ab finance.fx_feed_alert_days Kalendertagen (Standard 2) ohne neuen Stand (ohne jede Zeile ab der Paket-Installation), die Ersatzquelle EZB (Nachlauf und Ersatz-Abruf von cron_refresh_fx_rates) ab ebenso vielen Werktagen ohne neuen Kurs (Wochenende ist kein Ausfall). never (eigener Text ohne Datum) = aus keiner Quelle je ein Kurs; bei abgeschaltetem Abruf (cron_enable refresh_fx_rates) nie. Claim FX feed down = finance.fn_feed_down_claim(fx): eigener Slot fx_feed_down und Latch finance:fx, erste Meldung sofort, dann höchstens alle 7 Tage. Kehrt der Dienst zurück, re-armt fn_fx_feed_gap den Latch still (keine Entwarnung, wie bei Wertpapieren). Nur an den Owner.' 340 380
 
     $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $plan, $ifFeed, $claimFeed, $ifFeedDue, $nFeed,
                $loop, $done, $claim, $ifDue, $resolve, $pick, $ifAccept, $ifTryWeb, $web, $parse, $ifTickers,

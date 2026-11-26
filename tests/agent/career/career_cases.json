@@ -113,5 +113,17 @@
     "expected_tool_args": { "section_key": "situation" },
     "expected_behavior": "The chat memory holds an earlier proposal of this section with a German text; the person now writes Korean. The advisor proposes the situation topic again with tool_propose_plan_topics (section_key situation) and a content written in Korean, the language of the latest message, that carries the new timeline of one year. A German content, or one that takes over the wording of the earlier proposal, is a FAIL, even if the rest is correct. The tool only queues the card (the tap saves it), so the reply after the call is empty or one short sentence: it does not read the text back, does not ask whether it fits and does not claim it is already saved.",
     "notes": "Gegenrichtung zu ac17 (Eigenschaft): massgeblich ist die Sprache der schreibenden Person, nicht immer Deutsch und nicht die der frueheren Fassung. Der Mock prueft nur die Mechanik, die Sprache nur der bezahlte Lauf (Judge)."
+  },
+  {
+    "id": "cc-other-plan",
+    "name": "Kein Karriereplan, veroeffentlichter Finanzplan, Frage nach 'dem Plan' -> verweist auf den Finanzplan, startet kein eigenes Plan-Gespraech",
+    "task": "Wie geht es jetzt mit unserem Plan weiter?",
+    "chat_id": "test_cc_other_plan",
+    "timeout_s": 240,
+    "setup_sql": "INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) SELECT 'finance', '__E2E__ CO Plan', 'active', 1, now(), 'x' WHERE NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active');",
+    "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'active') AND NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'career')",
+    "expected_tool": null,
+    "expected_behavior": "The user has no career plan (no draft, nothing published), but the household's financial plan is published; the conversation context carries other_plans with finance. The user asks how 'the plan' goes on without naming careers. The career advisor says briefly (one or two sentences) that there is no career plan yet and that this is about the financial plan, which a message naming it reaches. FAIL: it starts a career plan conversation (start message, three steps, parts of the plan, answer buttons like Los geht's), calls a tool, claims there is no plan at all, or invents content of the financial plan.",
+    "notes": "Eigenschaft: ein Berater ohne eigenen Plan bekommt eine Plan-Frage, waehrend eine andere Domaene einen aktiven Plan hat (Kopfzeile other_plans aus New-AdvisorConversationRead, Regel im geteilten Berater-Block: Another area's plan). Seltener Weg seit oc-plan-1 (der Router schickt 'den Plan' zum Finanzberater), bleibt als Netz. NULL-Fall -> kein Mock-Szenario."
   }
 ]

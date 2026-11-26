@@ -651,7 +651,9 @@ function New-AdvisorGateChain {
 }
 
 # Stand des Plan-Gespraechs fuer den Kontext-Kopf eines Plan-Beraters (Regeln: packages/core/contexts/advisor_conversation.md):
-# core.fn_advisor_progress, core.fn_open_chat_prompt, core.fn_advisor_open_points in einer Abfrage. Fail-open: ohne Antwort
+# core.fn_advisor_progress, core.fn_open_chat_prompt, core.fn_advisor_open_points und die Plaene anderer Domaenen (aktiv oder Entwurf,
+# Paket aktiv), die dieser Absender sieht: Haushaltsplan nur mit Haushalts-Sicht (core.fn_sender_sees_household, dieselbe Regel wie das
+# Tor im Vermittler), persoenlicher Plan nur der eigene (core.fn_chat_person). Eine Abfrage. Fail-open: ohne Antwort
 # (DB-Fehler) fehlt nur der Kopf. $DomainJs = roher JS-Ausdruck der Domaene (E2E-Sentinel wie bei den Plan-Werkzeugen).
 function New-AdvisorConversationRead {
     param([Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$StartNode, [Parameter(Mandatory)][string]$DomainJs,
@@ -659,12 +661,15 @@ function New-AdvisorConversationRead {
     $n = Build-Pg $Name $Pos `
         ("=SELECT core.fn_advisor_progress(jsonb_build_object('domain', (`$1::jsonb)->>'domain', 'chat_id', (`$1::jsonb)->>'chat_id')) AS progress, " +
          "core.fn_open_chat_prompt((`$1::jsonb)->>'chat_id') AS open_prompt, " +
-         "core.fn_advisor_open_points((`$1::jsonb)->>'domain', (`$1::jsonb)->>'chat_id') AS open_points;") `
+         "core.fn_advisor_open_points((`$1::jsonb)->>'domain', (`$1::jsonb)->>'chat_id') AS open_points, " +
+         "(SELECT string_agg(DISTINCT p.domain || CASE WHEN p.status = 'draft' THEN ' (draft)' ELSE '' END, ', ' ORDER BY p.domain || CASE WHEN p.status = 'draft' THEN ' (draft)' ELSE '' END) " +
+         "FROM agent.advisor_plans p JOIN core.advisors a ON a.domain = p.domain WHERE p.status IN ('active', 'draft') AND p.domain <> (`$1::jsonb)->>'domain' AND core.fn_package_active(a.package) " +
+         "AND CASE WHEN p.person_id IS NULL THEN core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') ELSE p.person_id = core.fn_chat_person((`$1::jsonb)->>'chat_id')->>'person_id' END) AS other_plans;") `
         ([ordered]@{ chat_id = "String(`$('$StartNode').item.json.chat_id || '')"; domain = $DomainJs }) -ContinueOnError
     $n
 }
 
-# JS-Ausdruck (ohne ={{ }}) fuer das Ende des System-Prompts: '' oder Zeilen progress / open_prompt / open_points. Die offene
+# JS-Ausdruck (ohne ={{ }}) fuer das Ende des System-Prompts: '' oder Zeilen progress / open_prompt / open_points / other_plans. Die offene
 # Frage nur, wenn sie diesem Agenten gehoert ($AgentName = Wert von agent.chat_prompts.agent).
 function Get-AdvisorConversationHeadJs([string]$AgentName, [string]$ReadNode = 'Advisor conversation read') {
     return "(() => { const r = `$('$ReadNode').item.json || {}; " +
@@ -673,6 +678,7 @@ function Get-AdvisorConversationHeadJs([string]$AgentName, [string]$ReadNode = '
         "if (pr.ok === true) { const cur = pr.current || null; out.push('progress: ' + (cur && cur.n ? 'part ' + cur.n + ' of ' + (pr.parts_total || 0) + ' (' + cur.section_key + ')' : 'all ' + (pr.parts_total || 0) + ' parts present') + ' | ' + (pr.parts_done || 0) + ' done | mode ' + pr.mode + ' | phase ' + pr.phase); } " +
         "if (op && op.id && String(op.agent || '') === '$AgentName') { out.push('open_prompt: ' + op.kind + ' ' + JSON.stringify(String(op.label || '')) + ' (' + op.id + ')'); } " +
         "if (Array.isArray(pts) && pts.length) { out.push('open_points: ' + pts.map(o => '[' + o.id + '] ' + o.text).join('; ')); } " +
+        "if (r.other_plans) { out.push('other_plans: ' + String(r.other_plans)); } " +
         "return out.length ? '\n' + out.join('\n') : ''; })()"
 }
 

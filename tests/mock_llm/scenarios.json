@@ -149,6 +149,24 @@
     "final_router": "FRAME"
   },
   {
+    "_comment": "oc-plan-1: Frage nach 'dem Plan' ohne Bereich bei veroeffentlichtem Finanzplan -> Call_agent_finance_advisor_ (die Wahl selbst prueft der bezahlte Tier).",
+    "match": "eigentlich mit dem Plan weiter",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Wie geht es eigentlich mit dem Plan weiter?" } }
+    ],
+    "final": "Als Naechstes tragen wir die vereinbarten Eintraege ein, die Liste kommt gleich.",
+    "final_router": "FRAME"
+  },
+  {
+    "_comment": "oc-plan-2: Karriereplan ausdruecklich genannt -> Call_agent_career_advisor_ (Gegenfall zu oc-plan-1).",
+    "match": "mit meinem Karriereplan weiter",
+    "calls": [
+      { "tool": "Call_agent_career_advisor_", "args": { "task": "Wie geht es mit meinem Karriereplan weiter?" } }
+    ],
+    "final": "Einen Karriereplan gibt es noch nicht. Sollen wir ihn gemeinsam anlegen?",
+    "final_router": "FRAME"
+  },
+  {
     "_comment": "Router memory signal (ri66, Befund 2026-10-26): der Router schreibt nach dem Spezialisten eine EIGENE Fassung statt des Signals -> gesendet wird trotzdem der Spezialisten-Text woertlich, im Router-Gedaechtnis steht danach NOFRAME.",
     "match": "Relay-Test Umformulierung",
     "calls": [

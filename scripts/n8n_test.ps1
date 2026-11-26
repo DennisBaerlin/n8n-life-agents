@@ -234,15 +234,16 @@ foreach ($tc in $cases) {
     Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  tool=$calledTool$(if ($allWrite.Count -gt 1) { "  (alle: $($allWrite -join ', '))" })"
 
     $pass = $false
+    $detNotes = @()   # Grund einer roten deterministischen Pruefung, auch fuer die Urteils-Ablage (judge_record)
     if ($null -eq $tc.expected_tool) {
         # tolerated_tools (Case-Feld): Lese-Werkzeuge, die wegen eines anderen Falls in -WriteTools stehen und hier erlaubt sind.
         $notTolerated = @($allWrite | Where-Object { @($tc.tolerated_tools) -notcontains $_ })
         if ($notTolerated.Count -eq 0) { $pass = $true }
-        else { Write-Host "    FEHLER: Tool='$($notTolerated -join ', ')' aufgerufen, obwohl keins erwartet" -ForegroundColor Red }
+        else { $detNotes += "Tool='$($notTolerated -join ', ')' aufgerufen, obwohl keins erwartet"; Write-Host "    FEHLER: $($detNotes[-1])" -ForegroundColor Red }
     } else {
         # Pass, wenn das erwartete Werkzeug im Lauf aufgerufen wurde (nicht nur, wenn es zufaellig als erstes protokolliert ist).
         if ($allWrite -contains $tc.expected_tool) { $pass = $true; $calledTool = $tc.expected_tool }
-        else { Write-Host "    FEHLER: Tool='$($allWrite -join ', ')', erwartet='$($tc.expected_tool)'" -ForegroundColor Red }
+        else { $detNotes += "Tool='$($allWrite -join ', ')', erwartet='$($tc.expected_tool)'"; Write-Host "    FEHLER: $($detNotes[-1])" -ForegroundColor Red }
     }
 
     if ($pass -and $tc.expected_tool_args) {
@@ -252,6 +253,7 @@ foreach ($tc in $cases) {
         $argErrors = Test-ToolArg $writeCall.inputObj $tc.expected_tool_args
         if ($argErrors.Count -gt 0) {
             $pass = $false
+            $detNotes += "Tool='$calledTool' mit falschen/fehlenden Argumenten: $($argErrors -join '; ')"
             Write-Host "    FEHLER: Tool='$calledTool' mit falschen/fehlenden Argumenten:" -ForegroundColor Red
             foreach ($ae in $argErrors) { Write-Host "      - $ae" -ForegroundColor Red }
         } else {
@@ -312,7 +314,7 @@ foreach ($tc in $cases) {
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
-            other_write_tools = $otherTools
+            other_write_tools = $otherTools; write_tools = ($allWrite -join ', '); det_note = ($detNotes -join '; ')
             read_tools = $readTools; read_tool_outputs = (Get-ReadToolOutput $runData); next_step_button = $stepLabel; answer_buttons = (@($choiceSplit.options) | ForEach-Object { "[$_]" }) -join ' '; actual_output = $agentText.text
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan

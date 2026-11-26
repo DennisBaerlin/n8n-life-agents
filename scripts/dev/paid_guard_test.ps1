@@ -105,6 +105,13 @@ try {
     Assert-That ($r1.reason -eq 'nennt den Saldo, "mit Anfuehrung" und Umlaut ae' -and $r1.model -eq 'm-test' -and $r1.commit -eq 'abc1234' -and $r1.dirty -eq $false) 'Zeile 1: Begruendung unveraendert (auch mit Anfuehrungszeichen), Modell, Commit'
     Assert-That ($r2.verdict -eq 'ERROR' -and $r2.det_pass -eq $false -and $r2.dirty -eq $true) 'Zeile 2: auch ein Judge-ERROR wird festgehalten'
     Assert-That ($null -ne ($r1.ts -as [datetime])) 'Zeitstempel lesbar'
+    Assert-That ($null -eq $r1.PSObject.Properties['write_tools'] -and $null -eq $r1.PSObject.Properties['det_note']) 'ohne Werkzeug-Angaben keine leeren Felder'
+    $e3 = [pscustomobject]@{ id = 'tc03'; suite = 'n8n_test-demo_cases'; det_pass = $false; write_tools = 'tool_a, tool_b'; read_tools = 'postgres_select'; det_note = "Tool='tool_a', erwartet='tool_c'" }
+    Add-JudgeRunRecord -Path $file -Entry $e3 -Verdict 'FAIL' -Reason 'x' -Model 'm-test' -Overall 'FAIL' -Commit 'abc1234'
+    $r3 = ([System.IO.File]::ReadAllLines($file, $Utf8NoBom) | Select-Object -Last 1) | ConvertFrom-Json
+    Assert-That ($r3.write_tools -eq 'tool_a, tool_b' -and $r3.read_tools -eq 'postgres_select' -and $r3.det_note -eq "Tool='tool_a', erwartet='tool_c'") 'gerufene Werkzeuge und Grund der roten deterministischen Pruefung stehen in der Zeile'
+    $suiteSrc = @('n8n_test.ps1', 'orch_test.ps1') | ForEach-Object { [System.IO.File]::ReadAllText((Join-Path $repo "scripts\$_"), $Utf8NoBom) }
+    Assert-That (@($suiteSrc | Where-Object { $_ -match 'write_tools = ' -and $_ -match 'det_note = ' }).Count -eq 2) 'beide Suiten geben write_tools und det_note ins Bewerter-Buendel'
     $fileC = Get-JudgeRunFile -RepoRoot $repo -Suite 'calibrate' -LocalRoot $tmpRoot
     Add-JudgeRunRecord -Path $fileC -Entry ([pscustomobject]@{ id = 'jl1'; human_verdict = 'FAIL' }) -Verdict 'PASS' -Reason 'x' -Model 'm-test' -Mode 'calibrate'
     $rc = ([System.IO.File]::ReadAllLines($fileC, $Utf8NoBom) | Select-Object -First 1) | ConvertFrom-Json

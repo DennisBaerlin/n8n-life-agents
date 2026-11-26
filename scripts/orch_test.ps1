@@ -232,15 +232,17 @@ foreach ($tc in $cases) {
 
     $expect = [string]$tc.expected_route
     $pass = Test-ExpectedRoute -Routed $routed -Expected $expect -RouteAgents $routeAgents
+    $detNotes = @()   # Grund einer roten deterministischen Pruefung, auch fuer die Urteils-Ablage (judge_record)
     if (-not $pass) {
         $want = if ($expect) { $expect } else { 'kein Routing' }
+        $detNotes += "erwartet $want, got $routeShown"
         Write-Host "    FEHLER: erwartet $want, got $routeShown" -ForegroundColor Red
     }
     $specialistOut = Get-SpecialistOutput $runData
     if ($tc.verbatim_relay) {
         $vr = Test-VerbatimRelay $specialistOut (Get-SentOutput $runData)
         Write-Host "    verbatim_relay: $($vr.ok) ($($vr.reason))"
-        if (-not $vr.ok) { $pass = $false }
+        if (-not $vr.ok) { $pass = $false; $detNotes += "verbatim_relay: $($vr.reason)" }
     }
     # expected_signal: FRAME|NOFRAME, das der Router nach dem Spezialisten liefert (Relay compose.signal;
     # Regel 6 gilt fuer alle Personen, NOFRAME = ernst -> kein Sticker).
@@ -248,7 +250,7 @@ foreach ($tc in $cases) {
         $sig = ''
         if ($runData.PSObject.Properties.Name.Contains('Relay compose')) { try { $sig = [string]$runData.'Relay compose'[0].data.main[0][0].json.signal } catch { } }
         Write-Host "    signal: '$sig' (erwartet $($tc.expected_signal))"
-        if ($sig -ne "$($tc.expected_signal)") { $pass = $false }
+        if ($sig -ne "$($tc.expected_signal)") { $pass = $false; $detNotes += "signal '$sig', erwartet $($tc.expected_signal)" }
     }
     # expected_mood / expect_body_empty: Stimmung bzw. reine Reaktion aus 'Relay compose' (Grammatik N1: FRAME <MOOD>,
     # REACT <MOOD> [+ Text]); die Entscheidung ueber die Reaktion faellt danach in agent.fn_claim_reaction.
@@ -258,12 +260,12 @@ foreach ($tc in $cases) {
         if ($null -ne $tc.expected_mood) {
             $mood = if ($rc) { [string]$rc.mood } else { '' }
             Write-Host "    mood: '$mood' (erwartet '$($tc.expected_mood)')"
-            if ($mood -ne "$($tc.expected_mood)") { $pass = $false }
+            if ($mood -ne "$($tc.expected_mood)") { $pass = $false; $detNotes += "mood '$mood', erwartet '$($tc.expected_mood)'" }
         }
         if ($tc.expect_body_empty) {
             $bodyEmpty = $rc -and -not [string]$rc.body
             Write-Host "    body leer: $bodyEmpty"
-            if (-not $bodyEmpty) { $pass = $false }
+            if (-not $bodyEmpty) { $pass = $false; $detNotes += 'body nicht leer' }
         }
     }
     if ($tc.expected_behavior) {
@@ -271,7 +273,7 @@ foreach ($tc in $cases) {
             id = $tc.id; name = $tc.name; task = $tc.task
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_route
             det_pass = $pass; actual_tool = $routeShown; actual_tool_input = ''
-            read_tools = ''; specialist_output = $specialistOut; actual_output = (Get-SentOutput $runData)
+            read_tools = ''; write_tools = ($tools -join ', '); det_note = ($detNotes -join '; '); specialist_output = $specialistOut; actual_output = (Get-SentOutput $runData)
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }

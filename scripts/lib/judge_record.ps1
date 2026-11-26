@@ -3,7 +3,8 @@
 # Dot-sourcen:  . "$PSScriptRoot\lib\judge_record.ps1"
 # Anlass: tests/agent/judge_bundle.json ist nach dem Lauf leer (der naechste Lauf ueberschreibt es), Urteil und Begruendung waren danach nur
 # noch in alten Session-Verlaeufen zu finden. Eine Zeile je bewertetem Fall: ts, mode (bundle|calibrate), suite, case_id, verdict, reason,
-# det_pass, overall, model, commit (kurz), dirty; bei -Calibrate zusaetzlich human_verdict. Ein Fall ohne Urteil (Kostengrenze, Abbruch vor
+# det_pass, overall, model, commit (kurz), dirty, falls vorhanden write_tools/read_tools (Namen) und det_note (Grund der roten
+# deterministischen Pruefung); bei -Calibrate zusaetzlich human_verdict. Ein Fall ohne Urteil (Kostengrenze, Abbruch vor
 # dem Aufruf) bekommt keine Zeile; ein Judge-ERROR schon.
 # Ort: .local des Haupt-Checkouts (gitignored, ueberlebt das Aufraeumen eines Worktrees); Schreibfehler stoeren den Lauf nie.
 
@@ -42,6 +43,10 @@ function Add-JudgeRunRecord {
         }
         if ($Mode -eq 'calibrate') { $rec['human_verdict'] = "$($Entry.human_verdict)" }
         else { $rec['det_pass'] = $(if ($Entry.PSObject.Properties['det_pass']) { [bool]$Entry.det_pass } else { $null }); $rec['overall'] = $Overall }
+        # Nachlesbar ohne Konsole: welche Werkzeuge liefen (nur Namen) und warum die deterministische Pruefung rot war.
+        foreach ($k in 'write_tools', 'read_tools', 'det_note') {
+            if ($Mode -ne 'calibrate' -and $Entry.PSObject.Properties[$k] -and "$($Entry.$k)") { $rec[$k] = "$($Entry.$k)" }
+        }
         $rec['model'] = $Model; $rec['commit'] = $Commit; $rec['dirty'] = $Dirty
         $dir = Split-Path $Path -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }

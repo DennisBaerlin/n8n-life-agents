@@ -6,7 +6,7 @@
 --   [5] L5 Details > 8                     [6] L6 doppelter Fakt (benannte Zeile/Detailzeile, egal welcher Text-Key),
 --                                              tpl-Label kein Anker, 0 zaehlt nicht
 --   [7] L7 warn ohne Betrag/Datum, month zaehlt, undated-Key frei   [8] L8 Summe trotz gap
---   [9] kaputte Form -> shape statt Exception   [10] kein EXECUTE fuer PUBLIC
+--   [9] kaputte Form -> shape statt Exception (auch footer ohne https-Link)   [10] kein EXECUTE fuer PUBLIC
 -- Self-contained (BEGIN..ROLLBACK), rein (keine Tabellen).
 BEGIN;
 
@@ -171,6 +171,16 @@ BEGIN
          pg_temp.sec(jsonb_build_array(pg_temp.it('"C"', pg_temp.m(5))), pg_temp.m(5)))));
   IF r <> 'shape@sections[0].items[0] shape@sections[0].value L1@sections[1].value' THEN
     RAISE EXCEPTION 'FAIL [9d] kaputter Betrag -> shape am Ort + weitere Regeln, got %', r; END IF;
+  -- footer: {text, link{text, url https}} oder null; ein anderer Link waere im Renderer still weg
+  IF pg_temp.lint(jsonb_build_object('footer', jsonb_build_object('text', core.fn_ui_tpl('core.app.gap'),
+       'link', jsonb_build_object('text', core.fn_ui_tpl('core.app.gap'), 'url', 'https://example.org')))) <> ''
+     OR pg_temp.lint('{"footer": null}'::jsonb) <> '' THEN
+    RAISE EXCEPTION 'FAIL [9e] gueltiger/leerer footer ohne Befund'; END IF;
+  IF pg_temp.lint(jsonb_build_object('footer', jsonb_build_object('text', core.fn_ui_tpl('core.app.gap'),
+       'link', jsonb_build_object('text', core.fn_ui_tpl('core.app.gap'), 'url', 'javascript:alert(1)')))) IS DISTINCT FROM 'shape@footer'
+     OR pg_temp.lint('{"footer": "Text"}'::jsonb) IS DISTINCT FROM 'shape@footer'
+     OR pg_temp.lint('{"footer": {"link": {"url": "https://example.org"}}}'::jsonb) IS DISTINCT FROM 'shape@footer' THEN
+    RAISE EXCEPTION 'FAIL [9e] footer ohne https-Link oder kein Objekt -> shape'; END IF;
   RAISE NOTICE 'PASS [9] shape';
 
   -- [10] kein EXECUTE fuer PUBLIC

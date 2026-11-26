@@ -118,6 +118,9 @@ body.loading #app { opacity: .45; }
 .hero-note { color: var(--hint); font-size: 13px; margin-top: 6px; }
 .hero-note[hidden] { display: none; }
 .mark-bar { display: inline-block; width: 4px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--kid); border-radius: 2px; }
+/* view.footer: Quellen-Hinweis, den eine Lizenz auf der Seite verlangt (letzte Zeile, Nebentext) */
+.foot { color: var(--hint); font-size: 13px; text-align: center; margin: 24px 16px 8px; overflow-wrap: anywhere; }
+.foot-link { color: var(--active); }
 /* 24 px Tippflaeche um ein 15-px-Zeichen */
 .info-btn { display: inline-block; min-width: 24px; line-height: 24px; text-align: center; margin: -4px 0 -4px 2px; font-size: 15px; }
 
@@ -429,6 +432,26 @@ button.row:active, button.banner:active { opacity: .6; }
     if (v.hero && typeof v.hero === 'object') app.appendChild(hero(v.hero, R));
     (Array.isArray(v.banners) ? v.banners : []).forEach((b) => { if (b) app.appendChild(banner(b, R)); });
     (Array.isArray(v.sections) ? v.sections : []).forEach((s) => { if (s) app.appendChild(section(s, R)); });
+    if (v.footer && typeof v.footer === 'object') app.appendChild(footer(v.footer, R));
+  }
+  // view.footer {text, link: {text, url}}: Text + ein Link, nur https (kein HTML aus Daten); in Telegram oeffnet openLink
+  // den Browser, sonst verliesse der Link die App
+  function footer(f, R) {
+    const p = el('p', 'foot');
+    if (f.text) p.appendChild(el('span', null, txt(R, f.text)));
+    const l = f.link;
+    if (l && typeof l === 'object' && typeof l.url === 'string' && /^https:\/\//.test(l.url)) {
+      if (f.text) p.appendChild(document.createTextNode(' '));
+      const a = el('a', 'foot-link', txt(R, l.text));
+      a.href = l.url;
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      a.addEventListener('click', (e) => {
+        if (TG && typeof TG.openLink === 'function') { e.preventDefault(); TG.openLink(l.url); }
+      });
+      p.appendChild(a);
+    }
+    return p;
   }
   function gapNote(R) {
     const g = el('div', 'gap');

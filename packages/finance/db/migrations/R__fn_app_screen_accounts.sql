@@ -77,6 +77,7 @@ DECLARE
     v_banners  jsonb := '[]'::jsonb;
     v_shown    int := 0;
     v_out      boolean;                 -- geht im naechsten Monat etwas ab
+    v_curs     text[] := '{}';          -- Waehrungen der gezeigten Konten (Quellen-Hinweis, finance.fn_app_fx_footer)
 
 BEGIN
     IF core.fn_is_free_sql_session() THEN
@@ -103,6 +104,7 @@ BEGIN
         -- leeres Konto ohne Bewegung entfaellt (B10) — ausser es traegt schon eine Warnung (Sparplan ab naechstem Monat)
         CONTINUE WHEN v_acc.balance = 0 AND jsonb_array_length(v_occ->'rows') = 0 AND v_ls->>'state' NOT IN ('warn', 'alert');
         v_shown := v_shown + 1;
+        v_curs := v_curs || v_cur || ARRAY(SELECT jsonb_array_elements_text(v_occ -> 'currencies'));
 
         -- Banner (nur probe): outlook warn + alert, Ziel-Geld-Luecke nur alert
         IF v_probe THEN
@@ -335,6 +337,7 @@ BEGIN
         'title', core.fn_ui_tpl('finance.app.accounts.title'),
         'hero', NULL,
         'banners', '[]'::jsonb,
+        'footer', finance.fn_app_fx_footer(v_curs),
         'sections', CASE WHEN jsonb_array_length(v_secs) = 0
                          THEN jsonb_build_array(jsonb_build_object(
                                   'title', core.fn_ui_tpl('finance.app.accounts.section_none'),

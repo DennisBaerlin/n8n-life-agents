@@ -244,6 +244,8 @@
   "finance.app.overview.hero": "Household net worth",
   "finance.app.overview.hero_own": "My net worth",
   "finance.app.overview.hero_note": "Assets {assets} · Debts {debts}",
+  "finance.app.fx_source": "Exchange rates:",
+  "finance.app.fx_source_link": "Rates By Exchange Rate API",
   "finance.app.overview.hero_note_bookval": "Assets {assets} · Debts {debts} · securities without a current price at purchase value",
   "finance.app.overview.hero_note_bookval_only": "Securities without a current price counted at purchase value",
   "finance.app.overview.section_liquid": "Quickly available",

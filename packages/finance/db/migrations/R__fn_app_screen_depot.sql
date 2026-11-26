@@ -72,6 +72,7 @@ DECLARE
     v_stale_hh date;
     v_perf     jsonb;
     v_banners  jsonb;
+    v_curs     text[];    -- Kurs-Waehrungen der sichtbaren Positionen (Quellen-Hinweis, finance.fn_app_fx_footer)
 BEGIN
     IF core.fn_is_free_sql_session() THEN
         RETURN jsonb_build_object('ok', false, 'code', 'forbidden');
@@ -385,6 +386,16 @@ BEGIN
      WHERE i.bucket = 'depot'
        AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND i.owner_person_id = v_pid));
 
+    -- Waehrungen der sichtbaren Depots (dieselbe Sicht-Regel wie oben): Kurs-Waehrung jeder Position und die
+    -- Kontowaehrung (fn_depot_performance rechnet die Zahlungen des Depot-Kontos um)
+    SELECT array_agg(DISTINCT c.cur) INTO v_curs FROM (
+        SELECT a.currency::text AS cur
+          FROM finance.fn_visible_depots(v_hh, v_pid) d JOIN finance.accounts a ON a.id = d.id
+        UNION
+        SELECT COALESCE(o.price_currency, o.currency)::text
+          FROM finance.fn_visible_depots(v_hh, v_pid) d JOIN finance.depot_holdings_overview o ON o.account_id = d.id
+         WHERE o.shares > 0) c;
+
     RETURN jsonb_build_object(
         'ok', true,
         'gap_note', core.fn_ui_tpl('finance.app.gap'),
@@ -403,6 +414,7 @@ BEGIN
                 THEN core.fn_ui_tpl('finance.app.depot.hero_note_date', jsonb_build_object('date', core.fn_ui_date(v_date)))
                 END),
         'banners', '[]'::jsonb,
+        'footer', finance.fn_app_fx_footer(v_curs),
         'sections', v_depots);
 END;
 $$;

@@ -593,6 +593,18 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.app.goals.hero_note_monthly', jsonb_build_object(
                                   'amount', core.fn_ui_money(v_monthly, 'EUR'))) END),
         'banners', '[]'::jsonb,
+        -- Kurs benutzt: Anteil eines sichtbaren Ziels auf einem Konto fremder Waehrung (auch im Rest 'weitere n'), Kurs-
+        -- Waehrung der Positionen eines Deckungs-Depots, Sparplan-Raten (stehen in ihrer Waehrung auf der Seite)
+        'footer', finance.fn_app_fx_footer(ARRAY(
+            SELECT s.account_currency::text FROM finance.savings_goal_account_share s
+              JOIN finance.savings_goals sg ON sg.id = s.goal_id
+             WHERE s.goal_status = 'active' AND (v_hh OR sg.beneficiary_person_id = v_pid)
+               AND (COALESCE(s.share_native, s.share_eur, 0) <> 0 OR s.has_fx_gap)
+            UNION
+            SELECT COALESCE(o.price_currency, o.currency)::text FROM finance.depot_holdings_overview o
+             WHERE o.shares > 0 AND v_dep ? o.account_id::text
+            UNION
+            SELECT c #>> '{}' FROM jsonb_path_query(v_sections, 'lax $.**.currency') c)),
         'sections', v_sections);
 END;
 $$;

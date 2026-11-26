@@ -244,6 +244,8 @@
   "finance.app.overview.hero": "Vermögen Haushalt",
   "finance.app.overview.hero_own": "Mein Vermögen",
   "finance.app.overview.hero_note": "Besitz {assets} · Schulden {debts}",
+  "finance.app.fx_source": "Wechselkurse:",
+  "finance.app.fx_source_link": "Rates By Exchange Rate API",
   "finance.app.overview.hero_note_bookval": "Besitz {assets} · Schulden {debts} · Wertpapiere ohne aktuellen Kurs zum Kaufwert",
   "finance.app.overview.hero_note_bookval_only": "Wertpapiere ohne aktuellen Kurs zum Kaufwert gerechnet",
   "finance.app.overview.section_liquid": "Schnell verfügbar",

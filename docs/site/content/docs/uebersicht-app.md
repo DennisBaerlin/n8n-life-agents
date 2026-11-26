@@ -14,6 +14,8 @@ Unten wechselst du über Reiter zwischen den Bildschirmen. Ein Bildschirm, zu de
 
 Steht irgendwo **„unvollständig – ein Kurs oder Wechselkurs fehlt“**, fehlt für einen Betrag der aktuelle Kurs. Die Summe ist dann zu niedrig, bis der Kurs da ist.
 
+Rechnet ein Reiter einen Betrag in fremder Währung in Euro um, steht ganz unten klein **„Wechselkurse: Rates By Exchange Rate API“** mit einem Link zum Anbieter der Tageskurse. Den Hinweis verlangen dessen Nutzungsbedingungen; bei Beträgen nur in Euro erscheint er nicht.
+
 Zeilen mit einem kleinen Pfeil nach unten **klappen beim Antippen auf** und zeigen mehr Einzelheiten, ein zweiter Tipp klappt sie wieder zu. So bleibt die Liste kurz, und die Details sind trotzdem einen Tipp entfernt. Steht neben einer Überschrift „zusammen …“, ist das die Summe dieses Abschnitts.
 
 Überall gilt dieselbe Bildsprache:

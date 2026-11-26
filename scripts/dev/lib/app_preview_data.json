@@ -193,7 +193,8 @@
           "items": [
             {"label": {"kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {}}, "sub": null, "value": {"kind": "money", "value": 1200, "currency": "USD"}, "gap": false, "pill": null, "progress": null, "target": null, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {}}, "value": "Max Muster"}, {"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {}}, "value": {"kind": "date", "value": "2026-10-28"}}]}
           ] }
-      ]
+      ],
+      "footer": { "text": { "kind": "tpl", "value": "finance.app.fx_source", "params": {} }, "link": { "text": { "kind": "tpl", "value": "finance.app.fx_source_link", "params": {} }, "url": "https://www.exchangerate-api.com" } }
     },
     "goals": {
       "ok": true,

@@ -18,7 +18,8 @@
 --        info), ausser ihr Key steht in p_undated_keys (echte Handlungsaufforderung ohne Zahl, z. B. „Kurs fehlt“)
 --     L8 section.value nicht null, obwohl eine Zeile gap:true traegt (Summe waere unvollstaendig)
 --     shape  kaputte Form (View kein Objekt, sections/items/details kein Array, Element kein Objekt, Betrag keine
---            Zahl) mit Pfad; nie eine Exception, die uebrigen Regeln laufen weiter
+--            Zahl, footer weder null noch {text, link{text, url https://…}}) mit Pfad; nie eine Exception, die uebrigen
+--            Regeln laufen weiter
 --   path: 0-basiert wie im JSON, z. B. sections[2].items[0].pill
 --   Seiten-uebergreifende Doppelung (dieselbe Zahl auf zwei Tabs) prueft diese fn nicht (Abnahme auf den gerenderten
 --   Seiten, Checkliste Abschnitt 12).
@@ -60,6 +61,13 @@ BEGIN
     -- Ein Betrag ist eine JSON-Zahl (core.fn_ui_money) oder null; alles andere ist shape an Hero/Abschnitt/Zeile, und
     -- gerechnet wird nur mit echten Zahlen (keine Cast-Exception, die uebrigen Regeln laufen weiter).
     IF jsonb_path_exists(COALESCE(p_view->'hero', 'null'::jsonb), v_badm) THEN rule := 'shape'; path := 'hero'; RETURN NEXT; END IF;
+    -- footer (optional): der Renderer setzt nur einen https-Link, ein anderer waere still weg
+    IF jsonb_typeof(COALESCE(p_view->'footer', 'null'::jsonb)) <> 'null'
+       AND (jsonb_typeof(p_view->'footer') <> 'object' OR jsonb_typeof(p_view->'footer'->'text') IS DISTINCT FROM 'object'
+            OR jsonb_typeof(p_view->'footer'->'link'->'text') IS DISTINCT FROM 'object'
+            OR COALESCE(p_view->'footer'->'link'->>'url', '') !~ '^https://[^\s]+$') THEN
+        rule := 'shape'; path := 'footer'; RETURN NEXT;
+    END IF;
 
     IF p_view->'hero'->'value'->>'kind' = 'money' AND jsonb_typeof(p_view->'hero'->'value'->'value') = 'number' THEN
         v_hamt := (p_view->'hero'->'value'->>'value')::numeric;

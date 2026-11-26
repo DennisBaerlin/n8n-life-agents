@@ -129,7 +129,7 @@ Assert-That (Test-Throws { ConvertFrom-TestStackLabelResult -Code 1 -Output @('e
 
 # --- PS 5.1 reicht ein " innerhalb eines Arguments nicht an native Programme weiter (Vorlage/Skript zerfaellt still) ------
 # Darum in test_stack.ps1 kein " in einem Literal, das als Docker-Argument geht: weder `" noch '…"…'. Ausnahme: der eine
-# Quoter in Invoke-TestStackProcess (Start-Process bekommt eine fertige Zeile).
+# Quoter in Invoke-NativeStdinFile (der Prozess bekommt eine fertige Zeile; scripts/lib/native_process.ps1).
 $text = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\lib\test_stack.ps1'))
 $src = $text -split "`r?`n"
 $argLines = @{}

@@ -188,6 +188,10 @@ jobs:
         shell: pwsh
         run: ./scripts/dev/new_ci_env.ps1
 
+      # Billiger Vortest auf dem Linux-Runner: stdin aus einer Datei muss byte-genau ankommen (der Bau-Kontext ist ein Tar).
+      - name: stdin aus Datei (Vortest)
+        shell: pwsh
+        run: ./scripts/dev/native_process_test.ps1
       - name: Verbund aufbauen (kalt)
         shell: pwsh
         env:

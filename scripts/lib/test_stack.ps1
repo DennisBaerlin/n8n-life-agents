@@ -187,16 +187,16 @@ function ConvertFrom-TestStackLabelResult([int]$Code, [string[]]$Output, [string
 # --- Docker-Schritte (bewiesen auf dem echten Weg: bootstrap_test_stack.ps1 kalt, -Reset, -Down) ----------------------------
 # Kurze Aufrufe ueber Invoke-Native (scripts/lib/test_common.ps1).
 . (Join-Path $PSScriptRoot 'test_common.ps1')
+. (Join-Path $PSScriptRoot 'native_process.ps1')
 
-# Invoke-TestStackProcess -- langer Docker-Aufruf mit stdin aus einer Datei (UTF-8 ohne BOM; Pipe aus PS 5.1 kodiert nach
-# $OutputEncoding um) und stdout/stderr in <LogBase>.out/.err. Start-Process quotet nicht: Argumente hier selbst quoten.
+# Invoke-TestStackProcess -- langer Docker-Aufruf mit stdin aus einer Datei (byte-genau: der Bau-Kontext ist ein Tar; Pipe aus
+# PS 5.1 kodiert nach $OutputEncoding um, Start-Process liest die Datei unter Linux als Text, Grund in native_process.ps1) und
+# stdout/stderr in <LogBase>.out/.err.
 function Invoke-TestStackProcess([string[]]$DockerArgs, [string]$StdinFile, [string]$LogBase) {
-    $argLine = ($DockerArgs | ForEach-Object { if ($_ -eq '' -or $_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' '
-    $p = Start-Process -FilePath docker -ArgumentList $argLine -RedirectStandardInput $StdinFile `
-        -RedirectStandardOutput "$LogBase.out" -RedirectStandardError "$LogBase.err" -NoNewWindow -Wait -PassThru
+    $code = Invoke-NativeStdinFile -FilePath docker -ArgumentList $DockerArgs -StdinFile $StdinFile -StdoutFile "$LogBase.out" -StderrFile "$LogBase.err"
     $out = @()
     if (Test-Path "$LogBase.out") { $out = @([System.IO.File]::ReadAllText("$LogBase.out", $script:TestStackUtf8) -split "`r?`n" | Where-Object { $_ -ne '' }) }
-    return [pscustomobject]@{ Code = $p.ExitCode; Output = $out; ErrFile = "$LogBase.err" }
+    return [pscustomobject]@{ Code = $code; Output = $out; ErrFile = "$LogBase.err" }
 }
 function Get-TestStackEmptyFile([string]$LogDir) {
     $f = Join-Path $LogDir 'empty.stdin'

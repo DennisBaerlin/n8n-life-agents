@@ -21,9 +21,13 @@
 --     plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver
 --       Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar.
 --     Rueckgabe {ok:true, route:'plan', verb: start|share|explain|wish, domain, version?, summary? (explain/wish)}.
---   Berater-Verben: plan:scan|event|alert|watch|drift:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp
+--   Berater-Verben: plan:scan|event|alert|watch|drift|check:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp
 --     (Sperre 10 Minuten), Tageslimit advisor.button_starts_per_day (je Haushalt) und leere Daten -> Toast. Eine alte Version bekommt den Stale-Toast, ohne das Limit zu verbrauchen.
 --     data nur aus festen Feldlisten (Art, Wert, Einheit, Datum, Domain), nie reason, action_note oder URL; event/alert/drift lesen nur, wenn die fn existiert.
+--     check = [Jetzt pruefen] des Pruef-Schritts (ohne Version): data.entries = erledigter Altbestand ohne Provenienz aus
+--     core.fn_handoff_register (row_kind legacy, status done), den der Pruef-Schritt angeboten hat (Merker <domain>:<who>:check:<id>)
+--     und der noch nicht beim Berater war (Merker ...:checked:<id>, nach bestandener Sperre gesetzt: einmal je Aufgabe);
+--     task_id, kind, text, section_key, topic; hoechstens 20; fuer den Auftrag "Eintrag pruefen".
 --   Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang).
 --   SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers; die Plan-Status-fn ist DEFINER), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_handle_plan_cb.sql
@@ -50,6 +54,7 @@ DECLARE
     v_limit  int;
     v_slot   boolean := false;
     v_day    text;
+    v_ck     text;
     v_own_pid text;
     v_active agent.advisor_plans%ROWTYPE;
     v_resume boolean := false;
@@ -78,7 +83,7 @@ BEGIN
         v_data   := 'plan:' || v_domain;
     END IF;
 
-    IF v_verb IN ('scan', 'event', 'alert', 'watch', 'drift') THEN
+    IF v_verb IN ('scan', 'event', 'alert', 'watch', 'drift', 'check') THEN
         v_domain := split_part(v_data, ':', 3);
         v_ver    := split_part(v_data, ':', 4);
         IF v_chat !~ '^[0-9]{1,18}$' OR v_domain = '' OR split_part(v_data, ':', 5) <> '' OR (v_ver <> '' AND v_ver !~ '^[0-9]{1,9}$') THEN
@@ -120,6 +125,16 @@ BEGIN
             EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''kind'', a->''kind'', ''value'', a->''value'', ''unit'', a->''unit'', ''date'', a->''date'', ''domain'', $1)), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_monitor_recent_alerts($1, 7)) a LIMIT 20) q'
               INTO v_cand USING v_domain;
             IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;
+        ELSIF v_verb = 'check' AND v_active.id IS NOT NULL THEN
+            -- nur feste Felder des Registers, nie wanted/diff/call (Daten fuer den Auftrag an den Berater)
+            SELECT jsonb_agg(jsonb_build_object('task_id', e->'task_id', 'kind', e->'kind', 'text', e->'text', 'section_key', e->'section_key', 'topic', e->'topic') ORDER BY (e->>'task_id')::int)
+              INTO v_cand
+              FROM (SELECT e FROM jsonb_array_elements(core.fn_handoff_register(v_domain, v_chat)) e
+                     WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
+                       AND core.fn_plan_rollout_latch(v_domain || ':' || COALESCE(v_own_pid, 'household') || ':check:' || (e->>'task_id')) = 'done'
+                       AND core.fn_plan_rollout_latch(v_domain || ':' || COALESCE(v_own_pid, 'household') || ':checked:' || (e->>'task_id')) <> 'done'
+                     ORDER BY (e->>'task_id')::int LIMIT 20) q;
+            IF v_cand IS NOT NULL THEN v_out := jsonb_build_object('entries', v_cand); END IF;
         ELSIF v_verb = 'drift' AND to_regprocedure('core.fn_advisor_review_read(text,text,jsonb)') IS NOT NULL THEN
             EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''metric_key'', a->''metric_key'', ''kind'', a->''kind'', ''label'', a->''label'', ''value'', a->''value'', ''target'', a->''target'', ''drift'', a->''drift'')), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_advisor_review_read($1, $2)->''alerts'') a LIMIT 20) q'
               INTO v_cand USING v_domain, v_sender->>'person_id';
@@ -140,6 +155,14 @@ BEGIN
         IF NOT v_slot THEN
             PERFORM core.fn_notify_resolve('plan_verb', v_verb || ':' || v_domain || ':' || v_chat);
             RETURN jsonb_build_object('ok', false, 'reason', 'limit', 'toast', core.fn_ui_text('core.toast.plan_verb_limit', v_lang));
+        END IF;
+        -- check: jede uebergebene Aufgabe geht genau einmal an den Berater (Merker erst nach Sperre und Tageslimit)
+        IF v_verb = 'check' THEN
+            FOR v_n IN SELECT (x->>'task_id')::int FROM jsonb_array_elements(v_out->'entries') x LOOP
+                v_ck := v_domain || ':' || COALESCE(v_own_pid, 'household') || ':checked:' || v_n;
+                PERFORM core.fn_should_notify('plan_rollout', v_ck, interval '30 minutes');
+                PERFORM core.fn_notify_commit('plan_rollout', v_ck);
+            END LOOP;
         END IF;
         RETURN jsonb_build_object('ok', true, 'route', 'plan', 'verb', v_verb, 'domain', v_domain, 'version', v_active.version, 'data', v_out);
     END IF;

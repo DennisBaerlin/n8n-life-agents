@@ -41,14 +41,15 @@
 --       Vertrag docs/package-contract.md) vor jedem Write: Aufruf (call|calls) -> wanted; unsupported + blocked_code (Code aus
 --       core.fn_handoff_blocked_codes) -> die Aufgabe entsteht als deferred (ein mitgelieferter Aufruf wird trotzdem wanted); ok:false (handoff_ref_ambiguous,
 --       handoff_not_enterable, handoff_choice_needed ...) -> ganzer Save abgelehnt, die Ablehnung kommt mit task_index (1-basiert)
---       zurueck; wirft die Paket-fn, gilt der Eintrag als ungeprueft (ohne wanted). Angegeben (auch '[]') ersetzt es die OFFENEN
+--       zurueck, Kandidaten bzw. Optionen auch als Satz im reason (core.fn_handoff_check_hint); wirft die Paket-fn, gilt der Eintrag als ungeprueft (ohne wanted). Angegeben (auch '[]') ersetzt es die OFFENEN
 --       Aufgaben und die beim Vereinbaren zurueckgestellten (deferred ohne claimed_at): mit topic die des Themas plus die
 --       themenlosen des Abschnitts, ohne topic alle des Abschnitts; weggelassen bleiben sie unveraendert; beanspruchte, beim
 --       Eintragen zurueckgestellte und abgeschlossene bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
 --       Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
 --   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, status:'draft',
 --     draft_created, sections, section_count, topics, topic_replaced, open_points [{id, text}] (ungeschlossene des gespeicherten
---     Themas), handoff_task_count, handoff_task_ids, handoffs_deferred, card_lines} (Post-State: welche
+--     Themas), handoff_task_count, handoff_task_ids, handoffs_deferred, deferred [{text, blocked_code}] (zurueckgestellte
+--     Eintraege in Eingabe-Reihenfolge), card_lines} (Post-State: welche
 --     Sektionen der Draft JETZT hat; topics = Themen-Bezeichnungen des Abschnitts in Reihenfolge; topic_replaced und
 --     draft_created = DB-entschieden; card_lines = Notiz core.hitl.plan_legacy_replaced beim Abloesen eines Alt-Texts und je
 --     Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}, bei zurueckgestellten core.hitl.handoff_planned_deferred {text}).
@@ -292,7 +293,8 @@ BEGIN
             IF v_chk IS NOT NULL AND v_chk->'ok' IS DISTINCT FROM 'true'::jsonb THEN
                 RETURN v_chk || jsonb_build_object('ok', false, 'task_index', v_ti,
                     'code', COALESCE(v_chk->>'code', 'handoff_not_enterable'),
-                    'reason', format('handoff_tasks #%s: %s', v_ti, COALESCE(v_chk->>'reason', 'the entry cannot be entered like this')));
+                    'reason', format('handoff_tasks #%s: %s', v_ti, COALESCE(v_chk->>'reason', 'the entry cannot be entered like this'))
+                              || core.fn_handoff_check_hint(v_chk, p->>'chat_id'));
             END IF;
             IF v_chk->'unsupported' = 'true'::jsonb AND NOT (core.fn_handoff_blocked_codes(v_pkg) ? COALESCE(v_chk->>'blocked_code', '')) THEN
                 RETURN jsonb_build_object('ok', false, 'code', 'unknown_blocked_code', 'task_index', v_ti,
@@ -496,6 +498,9 @@ BEGIN
         'handoff_task_count', jsonb_array_length(v_tasks),
         'handoff_task_ids', v_ids,
         'handoffs_deferred', (SELECT count(*) FROM jsonb_array_elements(v_checked) c WHERE c->>'blocked_code' IS NOT NULL),
+        'deferred', COALESCE((SELECT jsonb_agg(jsonb_build_object('text', btrim(t->>'text'), 'blocked_code', v_checked->(i::int - 1)->>'blocked_code') ORDER BY i)
+                                FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)
+                               WHERE v_checked->(i::int - 1)->>'blocked_code' IS NOT NULL), '[]'::jsonb),
         'card_lines', CASE WHEN v_legacy THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'core.hitl.plan_legacy_replaced'))
                            ELSE '[]'::jsonb END
                    || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note',

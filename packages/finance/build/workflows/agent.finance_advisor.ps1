@@ -239,13 +239,25 @@ function Build-AgentFinanceAdvisor {
 
     # Plan teilen: ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
     # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
-    # Uebersicht der vereinbarten Eintraege mit Knopf [Durchgehen] (vor dem Publish oder wenn das Gespraech ohne Publish endet;
-    # nach dem Publish sendet tool_publish_plan sie selbst). domain fix wie die Plan-Tools.
+    # Uebersicht der vereinbarten Eintraege mit Knopf [Jetzt eintragen], nur auf Bitte des Nutzers (nach dem Publish sendet die
+    # Abfolge sie selbst). domain fix wie die Plan-Tools.
     $nToolHandoffOverview = $null
+    $nToolHandoffCorrection = $null
     if ($hasHandoff) {
         $nToolHandoffOverview = New-AdvisorToolNode 'tool_send_handoff_overview' (Resolve-CoreServiceAlias 'core:send_handoff_overview' $CoreServiceMap) `
-            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with a [Go through] button; each entry then comes on its own confirmation card. Call it when agreed items should be entered before publishing (the user asks, or an open one explains a database warning or cannot wait), or when the conversation ends without publishing while entries are open. Do NOT call it right after tool_publish_plan - publishing sends the list itself. Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
+            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
             @() ([ordered]@{ domain = $DOMAIN_EXPR }) @(1120, 208) -StartNode $START_NODE
+        # Eintrag pruefen: neue Vormerkung mit Verweis auf einen erledigten Eintrag ohne Soll (Domain kommt aus der alten Vormerkung).
+        $nToolHandoffCorrection = New-AdvisorToolNode 'tool_record_handoff_correction' (Resolve-CoreServiceAlias 'core:record_handoff_correction' $CoreServiceMap) `
+            'Entry check only: when an entry from the entry-check task does not match the published plan, record the entry that is still needed as a new agreed entry linked to the old one (the old one stays as it is). Same fields as an agreed entry in handoff_tasks: kind, payload in tool form, text, why, option. The tool runs the entry check first: ok:false with candidates or options means ask the user with them as buttons, recommended first, then call again. A confirmation card follows; after the tap the entry comes on the list to enter. Do not call it for an entry that matches the plan.' `
+            @(
+                ,@('handoff_task_id', 'id of the old entry from the entry-check task data', 'string')
+                ,@('kind', 'savings_goal, savings_plan, recurring_payment, recurring_transfer or other', 'string')
+                ,@('payload', 'JSON object string with the tool input of the entry, names not ids, raw figures', 'string', '')
+                ,@('text', 'One plain sentence with the figures, as the user will see it on the card', 'string')
+                ,@('why', 'One sentence why this entry is needed for the plan, at most 160 characters', 'string', '')
+                ,@('option', 'Key of the option the user chose after an ok:false with options, else empty', 'string', '')
+            ) ([ordered]@{}) @(1280, 208) -StartNode $START_NODE
     }
 
     $nToolPlanWish = New-AdvisorToolNode 'tool_record_plan_wish' (Resolve-CoreServiceAlias 'core:record_plan_wish' $CoreServiceMap) `
@@ -346,7 +358,7 @@ function Build-AgentFinanceAdvisor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.finance_advisor — Finanzberater (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor, audience=advisor: gemeinsame Gesprächsregeln aller Berater vor dem Paket-Teil) + Conversation context (viewer owner/member, plan none/draft/published; Advisor conversation read: Stand des Plan-Gesprächs, offene Frage, offene Punkte, Pläne anderer Bereiche (aktiv oder Entwurf, nur sichtbare)) + Plan readiness -> Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Plan-Themen und Funde der Schlussprüfung als offene Frage (tool_propose_plan_topics, tool_record_check_findings, ohne Gate: erst der Tipp speichert); Writes NUR tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks am Thema in tool_propose_plan_topics mit (auf der Themen-Karte sichtbar, beim Tipp vorgemerkt); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor, audience=advisor: gemeinsame Gesprächsregeln aller Berater vor dem Paket-Teil) + Conversation context (viewer owner/member, plan none/draft/published; Advisor conversation read: Stand des Plan-Gesprächs, offene Frage, offene Punkte, Pläne anderer Bereiche (aktiv oder Entwurf, nur sichtbare)) + Plan readiness -> Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Plan-Themen und Funde der Schlussprüfung als offene Frage (tool_propose_plan_topics, tool_record_check_findings, ohne Gate: erst der Tipp speichert); Writes NUR tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks am Thema in tool_propose_plan_topics mit (auf der Themen-Karte sichtbar, beim Tipp vorgemerkt); tool_send_handoff_overview schickt die Übersicht mit Knopf Jetzt eintragen (nur auf Bitte; nach dem Publish die Abfolge), der Orchestrator startet danach agent.finance über einen festen Knopf-Arm. Eintrag prüfen (Knopf plan:check der Abfolge): erledigte Einträge ohne Soll; passt einer nicht, legt tool_record_handoff_correction eine neue Vormerkung mit Verweis an (Karte).' 300 700
 
     $stickyDomain = Build-Sticky 'Doc: Domain-Switch' @(400, -200) `
         'domain = fixer Binding-Input (+ e2e-Sentinel)' `
@@ -376,6 +388,7 @@ function Build-AgentFinanceAdvisor {
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
     if ($nToolHandoffOverview) { $nodes += $nToolHandoffOverview }
+    if ($nToolHandoffCorrection) { $nodes += $nToolHandoffCorrection }
     # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler; optional.
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
     $nodes += $svc.Nodes
@@ -407,6 +420,7 @@ function Build-AgentFinanceAdvisor {
     $conns['tool_record_check_findings'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_defer_hint']            = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
+    if ($nToolHandoffCorrection) { $conns['tool_record_handoff_correction'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_sync_plan']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

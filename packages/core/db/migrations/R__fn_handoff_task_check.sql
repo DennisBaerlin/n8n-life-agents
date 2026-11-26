@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_handoff_task_check(p) — darf dieser Write die vereinbarte Plan-Aufgabe abschliessen?
 --   p: { handoff_task_id, chat_id }. Gueltig nur, wenn die Aufgabe existiert, der Person des Absenders gehoert
---   (core.fn_handoff_person) und working ist (per [Durchgehen] beansprucht). Erfolg {ok:true, task_id, kind, text, part:false}.
+--   (core.fn_handoff_person) und working ist (per [Jetzt eintragen] beansprucht). Erfolg {ok:true, task_id, kind, text, part:false}.
 --   Weiterer Teil: eine Vormerkung kann mehrere Eintraege brauchen (zwei jaehrliche Uebertraege fuer eine Vereinbarung);
 --   eine in dieser Runde erledigte Aufgabe (done, Abschluss nach dem Claim und juenger als advisor.handoff_claim_ttl_minutes)
 --   gilt deshalb weiter -> {ok:true, …, part:true}. Sonst {ok:false, code:'handoff_task_invalid', reason} (korrigierbar,

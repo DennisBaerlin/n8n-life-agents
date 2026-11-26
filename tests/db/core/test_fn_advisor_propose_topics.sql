@@ -132,4 +132,27 @@ BEGIN
   RAISE NOTICE 'PASS [5 Stapel + Fehler]';
 END $$;
 
+-- ---------- 6) "geht noch nicht": deferred_entries mit Grund aus dem Katalog des Pakets (Sprache der Person) ----------
+CREATE FUNCTION core.fn_t_pt_check(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN p->'payload'->>'t' = 'later' THEN '{"ok":true,"unsupported":true,"blocked_code":"tool_missing"}'::jsonb
+              ELSE '{"ok":true}'::jsonb END $f$;
+DO $$
+DECLARE r jsonb;
+BEGIN
+  UPDATE core.advisors SET handoff_check_fn = 'core.fn_t_pt_check' WHERE domain = '__pt__';
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES ('core.handoff.blocked.tool_missing', 'de', 'Dafuer gibt es noch keinen Weg.', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
+  r := agent.fn_advisor_propose_topics(jsonb_build_object('domain','__pt__','chat_id','111','section_key','goals_triggers',
+         'topics', jsonb_build_array(jsonb_build_object('topic','Rad','content','Ein Rad ansparen.',
+            'handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Rad eintragen'),
+                                               jsonb_build_object('kind','other','payload',jsonb_build_object('t','later'),'text','Rad aus Einzahlungen'))))));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR r->'deferred_entries' IS DISTINCT FROM '[{"text":"Rad aus Einzahlungen","reason":"Dafuer gibt es noch keinen Weg."}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [6 deferred_entries]: %', r; END IF;
+  r := agent.fn_advisor_propose_topics(jsonb_build_object('domain','__pt__','chat_id','111','section_key','goals_triggers',
+         'topics', '[{"topic":"Rad","content":"Ein Rad ansparen."}]'));
+  IF r->'deferred_entries' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [6 ohne]: %', r; END IF;
+  RAISE NOTICE 'PASS [6 deferred_entries]';
+END $$;
+
 ROLLBACK;

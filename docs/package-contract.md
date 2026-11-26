@@ -183,6 +183,9 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   An entry that cannot be entered as agreed yet is `deferred` (`core.fn_defer_handoff_task`, or directly at agreement when the
   entry check says `unsupported`); it never counts as open. `core.fn_handoff_register` lists deferred, deviating and legacy
   entries; after an update the guided sequence offers the ones that work now (step `fix`, button `handoff:<domain>:<max>:fix`).
+  Legacy entries closed before the agreed call was kept go once to the advisor (step `check`, button `plan:check:<domain>`,
+  task "Entry check"); one that no longer matches the plan gets a new entry via `tool_record_handoff_correction`
+  (`follows_task_id`, the old one stays).
   The handoff agent defers such an entry with `tool_defer_handoff_task` instead of a workaround; skipping leaves an entry open,
   `dropped` ends it for good.
 - **Button follow-up (2026-10-28):** every button arm that starts an agent records it after the relay

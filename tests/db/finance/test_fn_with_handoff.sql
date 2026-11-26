@@ -86,7 +86,9 @@ BEGIN
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_w2) <> 'working' THEN RAISE EXCEPTION 'FAIL [7 Probelauf]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w2, 'chat_id', '111', 'reason', 'skipped'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'open' THEN RAISE EXCEPTION 'FAIL [7 skipped bleibt offen]: %', r; END IF;
-  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w3, 'chat_id', '111', 'reason', 'done_elsewhere'));
+  INSERT INTO finance.insurances (name, valid_from) VALUES ('__t_handoff_hausrat', CURRENT_DATE);
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w3, 'chat_id', '111', 'reason', 'done_elsewhere',
+         'ref_type', 'insurance', 'ref_name', '__t_handoff_hausrat'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_w3) <> 'done' THEN RAISE EXCEPTION 'FAIL [7 done_elsewhere]: %', r; END IF;
   RAISE NOTICE 'PASS [7 cancel]';
 END $$;
@@ -125,7 +127,13 @@ BEGIN
   -- 8) Dauerauftrag aendern mit Vormerkung: done im selben Write, Kurz-Zeile statt Absatz, Bank-Punkt traegt die Vormerkung
   r := core.fn_dry_run('finance.fn_set_recurring_payment(jsonb)'::regprocedure,
          jsonb_build_object('recurring_payment_id', v_rp, 'schedule_day_of_month', 1, 'chat_id', '111', 'handoff_task_id', v_t8::text));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->-1->>'value' <> 'core.hitl.handoff_note'
+  -- Karte: Stelle, Vereinbart, dann "bisher -> neu" fuer den Tag (Ist-Wert aus den Daten, nicht vom Modell)
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->-2->>'value' <> 'core.hitl.handoff_note'
+     OR r->'card_lines'->-3->>'value' <> 'core.hitl.handoff_pos'
+     OR r->'card_lines'->-1->>'value' <> 'core.hitl.value_before_after'
+     OR r->'card_lines'->-1->'params'->'field'->>'value' <> 'finance.handoff.field.day'
+     OR (r->'card_lines'->-1->'params'->'before'->'params'->>'day')::int <> 20
+     OR (r->'card_lines'->-1->'params'->'after'->'params'->>'day')::int <> 1
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t8) <> 'working' THEN RAISE EXCEPTION 'FAIL [8 Probelauf]: %', r; END IF;
   r := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'schedule_day_of_month', 1, 'chat_id', '111', 'handoff_task_id', v_t8::text));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoff_task_id')::int <> v_t8
@@ -169,6 +177,176 @@ BEGIN
     RAISE EXCEPTION 'FAIL [11 Schalter aus -> Absatz]: %', r; END IF;
   UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key = 'remind_bank_todo';
   RAISE NOTICE 'PASS [11 Bank-Punkt im Eintragen]';
+
+  -- eingetragen wird, welche Sache betroffen war (entered_refs), nie ein gespeicherter Unterschied
+  IF (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t8) IS DISTINCT FROM
+       jsonb_build_array(jsonb_build_object('type','recurring_payment','id',(SELECT r2.id FROM finance.recurring_payments r2
+                                                                              WHERE r2.name = '__t_ho_uebertrag' ORDER BY r2.id DESC LIMIT 1)))
+     OR (SELECT entered_refs->0->>'type' FROM agent.handoff_tasks WHERE id = v_t9) <> 'pension'
+     OR (SELECT (entered_refs->0->>'id')::int FROM agent.handoff_tasks WHERE id = v_t10) <> v_pen THEN
+    RAISE EXCEPTION 'FAIL [11 entered_refs]: % / %', (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t8),
+      (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t9); END IF;
+  RAISE NOTICE 'PASS [11 entered_refs]';
+END $$;
+
+-- 12) Eintrag mit Grund, Rest und vereinbartem Soll: Kartenzeilen in der Reihenfolge Stelle, Vereinbart, Warum, Rest;
+--     der Rest bleibt nach dem Abschluss offen; Abweichung vom Soll steht im Ergebnis (handoff_diff), gespeichert wird sie nicht;
+--     ein weiterer Teil derselben Runde haengt seine Sache an.
+DO $$
+DECLARE
+  r     jsonb;
+  v_a   int; v_b int;
+  v_t   int; v_t2 int;
+  v_l   jsonb;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_h12_giro', 'cash', 'EUR') RETURNING id INTO v_a;
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_h12_tages', 'cash', 'EUR') RETURNING id INTO v_b;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
+  VALUES ('finance', NULL, 'T', 'active', 1, jsonb_build_object('goals_triggers', jsonb_build_object('topics', jsonb_build_array(
+    jsonb_build_object('topic', 'Ruecklage', 'content', 'c', 'open_points', jsonb_build_array(
+      jsonb_build_object('id', 7, 'text', 'Rest einmal ueberweisen')))))));
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, why, open_point_id, wanted, status, claimed_at)
+  VALUES ('finance','finance','erika','goals_triggers','Ruecklage','recurring_transfer','Monatlich 300 € zur Rücklage',
+          'So ist das Geld bis zum Termin da.', 7,
+          jsonb_build_array(
+            jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('amount',300,'schedule_day_of_month',1)),
+            jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('amount',100,'schedule_day_of_month',1))),
+          'working', now() - interval '3 minutes') RETURNING id INTO v_t;  -- eigene Runde: alle Aufgaben dieser Transaktion teilen sonst now()
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance','finance','erika','goals_triggers','other','Zweiter Eintrag derselben Runde','working',
+          (SELECT claimed_at FROM agent.handoff_tasks WHERE id = v_t)) RETURNING id INTO v_t2;
+
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_h12_a','from_account_id',v_a,'to_account_id',v_b,'amount',300,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'chat_id','111',
+         'handoff_task_id',v_t::text));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [12 Write]: %', r; END IF;
+  SELECT jsonb_agg(x->>'value' ORDER BY n) INTO v_l
+    FROM jsonb_array_elements(r->'card_lines') WITH ORDINALITY t(x, n) WHERE x->>'value' LIKE 'core.hitl.%';
+  IF v_l IS DISTINCT FROM '["core.hitl.handoff_pos","core.hitl.handoff_note","core.hitl.handoff_why","core.hitl.handoff_rest"]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [12 Reihenfolge]: %', v_l; END IF;
+  IF (SELECT x->'params' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_pos')
+       IS DISTINCT FROM '{"k": 1, "n": 2}'::jsonb
+     OR (SELECT x->'params'->>'why' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_why') <> 'So ist das Geld bis zum Termin da.'
+     OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_rest') <> 'Rest einmal ueberweisen' THEN
+    RAISE EXCEPTION 'FAIL [12 Werte]: %', r->'card_lines'; END IF;
+  -- erster von zwei vereinbarten Aufrufen: der zweite fehlt noch -> exists
+  IF r->'handoff_diff' IS DISTINCT FROM '[{"field": "exists", "wanted": true, "current": false}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [12 diff erster Teil]: %', r->'handoff_diff'; END IF;
+  -- zweiter Teil mit anderem Betrag als vereinbart: angehaengt, Abweichung sichtbar
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_h12_b','from_account_id',v_a,'to_account_id',v_b,'amount',80,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'chat_id','111',
+         'handoff_task_id',v_t::text));
+  IF (r->>'ok')::boolean IS NOT TRUE OR jsonb_array_length((SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t)) <> 2
+     OR jsonb_array_length(r->'handoff_diff') <> 1 OR r->'handoff_diff'->0->>'field' <> 'amount'
+     OR (r->'handoff_diff'->0->>'wanted')::numeric <> 100 OR (r->'handoff_diff'->0->>'current')::numeric <> 80 THEN
+    RAISE EXCEPTION 'FAIL [12 zweiter Teil]: % / %', r->'handoff_diff', (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t); END IF;
+  -- abgeleitet ueber die Registry-fn, nicht gespeichert
+  IF jsonb_array_length(finance.fn_handoff_diff(v_t)) <> 1 THEN RAISE EXCEPTION 'FAIL [12 fn_handoff_diff]: %', finance.fn_handoff_diff(v_t); END IF;
+  IF finance.fn_handoff_diff(v_t2) IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [12 offen -> []]'; END IF;
+  -- Rest bleibt offen
+  IF core.fn_handoff_rest(v_t) IS DISTINCT FROM 'Rest einmal ueberweisen' THEN RAISE EXCEPTION 'FAIL [12 Rest geschlossen]'; END IF;
+  RAISE NOTICE 'PASS [12 Grund, Rest, Soll]';
+END $$;
+
+-- 13) Rollen-Perspektive: der Write laeuft unter finance_rw (agent.* nur ueber die core-Fenster)
+DO $$
+DECLARE
+  r   jsonb;
+  v_a int; v_b int; v_t int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_h13_giro', 'cash', 'EUR') RETURNING id INTO v_a;
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_h13_tages', 'cash', 'EUR') RETURNING id INTO v_b;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, why, wanted, status, claimed_at)
+  VALUES ('finance','finance','erika','s','recurring_transfer','Übertrag 40 €','Grund.',
+          jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('amount',40)),'working', now())
+  RETURNING id INTO v_t;
+  SET LOCAL ROLE finance_rw;
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_h13','from_account_id',v_a,'to_account_id',v_b,'amount',40,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'chat_id','111',
+         'handoff_task_id',v_t::text));
+  RESET ROLE;
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'handoff_diff' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [13 finance_rw]: %', r; END IF;
+  RAISE NOTICE 'PASS [13 finance_rw]';
+END $$;
+
+-- 14) Abhaken "schon im System": nur mit gefundener Sache (sonst nothing_to_tick, keine Karte); die Karte zeigt, was im
+--     System steht und was offen bleibt; die Sache wird als entered_refs vermerkt. Streichen zeigt den vereinbarten Satz.
+DO $$
+DECLARE
+  r     jsonb;
+  v_acc int; v_ins int; v_t int; v_t2 int; v_t3 int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_h14_giro', 'cash', 'EUR') RETURNING id INTO v_acc;
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state)
+  VALUES ('finance', NULL, 'T14', 'draft', 2, jsonb_build_object('s', jsonb_build_object('topics', jsonb_build_array(
+    jsonb_build_object('topic', 'Vorsorge', 'content', 'c', 'open_points', jsonb_build_array(
+      jsonb_build_object('id', 9, 'text', 'Betrag, sobald der Anbieter sich meldet')))))));
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, open_point_id, status, claimed_at)
+  VALUES ('finance','finance','erika','s','Vorsorge','other','Betriebsrente eintragen',9,'working',now()) RETURNING id INTO v_t;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance','finance','erika','s','other','Hausrat prüfen','working',now()) RETURNING id INTO v_t2;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance','finance','erika','s','other','Sparbuch auflösen','working',now()) RETURNING id INTO v_t3;
+  PERFORM finance.fn_create_pension(jsonb_build_object('name','__t_h14_brente','pension_type','occupational'));
+
+  -- ohne genannte Sache / Sache nicht gefunden -> nothing_to_tick, Aufgabe bleibt working
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'nothing_to_tick' THEN RAISE EXCEPTION 'FAIL [14 ohne Sache]: %', r; END IF;
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere',
+         'ref_type', 'pension', 'ref_name', '__t_h14_gibtsnicht'));
+  IF r->>'code' IS DISTINCT FROM 'nothing_to_tick' OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN
+    RAISE EXCEPTION 'FAIL [14 nicht gefunden]: %', r; END IF;
+  -- gefunden: Karte im Probelauf mit "Steht im System" (Name aus den Daten) und "Bleibt offen" (Rest)
+  r := core.fn_dry_run('finance.fn_cancel_handoff_task(jsonb)'::regprocedure, jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111',
+         'reason', 'done_elsewhere', 'ref_type', 'pension', 'ref_name', '__T_H14_BRENTE'));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR (SELECT x->>'value' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'label' = 'finance.label.handoff_in_system') <> '__t_h14_brente'
+     OR (SELECT x->>'value' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'label' = 'finance.label.handoff_stays_open')
+          <> 'Betrag, sobald der Anbieter sich meldet'
+     OR r->>'card_title_key' <> 'finance.hitl.cancel_handoff_task_done_elsewhere'
+     OR r->'card_lines'->0->'params'->>'text' <> 'Betriebsrente eintragen' THEN RAISE EXCEPTION 'FAIL [14 Karte]: %', r; END IF;
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere',
+         'ref_type', 'pension', 'ref_name', '__t_h14_brente'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status || '/' || close_reason FROM agent.handoff_tasks WHERE id = v_t) <> 'done/done_elsewhere'
+     OR (SELECT entered_refs->0->>'type' FROM agent.handoff_tasks WHERE id = v_t) <> 'pension' THEN RAISE EXCEPTION 'FAIL [14 abhaken]: %', r; END IF;
+  -- ohne Rest: "Bleibt offen" leer
+  INSERT INTO finance.insurances (name, valid_from) VALUES ('__t_h14_hausrat', CURRENT_DATE) RETURNING id INTO v_ins;
+  r := core.fn_dry_run('finance.fn_cancel_handoff_task(jsonb)'::regprocedure, jsonb_build_object('handoff_task_id', v_t2, 'chat_id', '111',
+         'reason', 'done_elsewhere', 'ref_type', 'insurance', 'ref_name', '__t_h14_hausrat'));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR (SELECT x->'value' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'label' = 'finance.label.handoff_stays_open') <> 'null'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [14 ohne Rest]: %', r; END IF;
+  -- streichen: vereinbarter Satz auf der Karte
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t3, 'chat_id', '111', 'reason', 'dropped'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Sparbuch auflösen'
+     OR r->>'card_title_key' <> 'finance.hitl.cancel_handoff_task_dropped'
+     OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t3) <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [14 dropped]: %', r; END IF;
+  RAISE NOTICE 'PASS [14 abhaken]';
+END $$;
+
+-- 15) Zurueckstellen statt Notiz: Karte mit dem vereinbarten Satz, unbekannter Code korrigierbar mit der gueltigen Liste
+DO $$
+DECLARE
+  r   jsonb;
+  v_t int;
+BEGIN
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance','finance','erika','s','savings_goal','Ziel aus zwei Sonderzahlungen','working',now()) RETURNING id INTO v_t;
+  -- die gueltigen Codes sind die Katalog-Keys finance.handoff.blocked.<code>; die Test-DB laedt den Paket-Katalog nicht
+  INSERT INTO core.ui_texts (key, lang, text, package)
+  VALUES ('finance.handoff.blocked.goal_irregular_payments', 'de', 'Geht noch nicht.', 'finance')
+  ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
+  r := finance.fn_defer_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'blocked_code', 'kein_code'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'unknown_blocked_code' OR NOT (r->'valid_codes' ? 'goal_irregular_payments') THEN
+    RAISE EXCEPTION 'FAIL [15 unbekannt]: %', r; END IF;
+  r := core.fn_dry_run('finance.fn_defer_handoff_task(jsonb)'::regprocedure,
+         jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'blocked_code', 'goal_irregular_payments'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Ziel aus zwei Sonderzahlungen'
+     OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN RAISE EXCEPTION 'FAIL [15 Probelauf]: %', r; END IF;
+  r := finance.fn_defer_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'blocked_code', 'goal_irregular_payments'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status || '/' || blocked_code FROM agent.handoff_tasks WHERE id = v_t)
+       <> 'deferred/goal_irregular_payments' THEN RAISE EXCEPTION 'FAIL [15 deferred]: %', r; END IF;
+  RAISE NOTICE 'PASS [15 zurueckstellen]';
 END $$;
 
 ROLLBACK;

@@ -28,11 +28,15 @@
 --     inflow_ends = spaetester letzter Termin endender Zugaenge, wenn das Konto danach unter die Schwelle faellt
 --                   (runs_out_on nach diesem Termin). Beide Felder liest nur finance.account_funding_overview (Berater);
 --                   die App zeigt sie bewusst nicht.
+--   timing_fixable (nur mit runs_out_on vor den letzten 31 Tagen des Horizonts, sonst NULL): behebt ein frueherer Tag der
+--     Eingaenge die Luecke? Wahr, wenn kein Tag unter der Schwelle bleibt, sobald je Zufluss-Kette ihr naechster Termin der
+--     folgenden 31 Tage schon da waere (jeder Dauerauftrag-Eingang bis zu einen Monat frueher). Falsch bei einem endenden Zubringer oder echtem Fehlbetrag;
+--     fn_savings_funding_fold raet nur bei wahr zum Vorziehen.
 --   Konsumenten: fn_account_low_state (Konten-Tab, Spiegel-Pille am Sparplan), fn_savings_funding_fold,
 --   finance.account_funding_overview, fn_transfer_free_end.
 --   Rueckgabe: {ok, account_id, currency, balance, monthly_in, monthly_out, everyday, everyday_per_day, min_projected
 --   (absoluter tiefster Stand), min_date, runs_out_on, horizon_end, state, fx_gap, reserved (Ziel-Geld am Start),
---   min_free (tiefster Stand minus Schwelle), min_free_date (sein Tag), drawdown, inflow_ends}
+--   min_free (tiefster Stand minus Schwelle), min_free_date (sein Tag), drawdown, inflow_ends, timing_fixable}
 --   | {ok:false, reason} (Kreditkonto, unbekannt)
 --   Tests: tests/db/finance/test_fn_account_funding.sql
 -- ============================================================
@@ -65,6 +69,7 @@ DECLARE
     v_free_date DATE;
     v_drawdown JSONB;
     v_in_ends  DATE;
+    v_fixable  BOOLEAN;
 BEGIN
     SELECT * INTO v_acct FROM finance.accounts WHERE id = p_account_id;
     IF NOT FOUND OR v_acct.account_type = 'loan' THEN
@@ -109,7 +114,7 @@ BEGIN
     ), f AS (
         -- je Vorkommen: Abfluss eines ziel-verknuepften Sparplans (verbraucht das Ziel-Geld seines Ziels) bzw. Zufluss
         -- einer Ziel-Rate (neues Ziel-Geld, nicht frei)
-        SELECT pf.due_date, pf.amount, sp.savings_goal_id AS g_out, sg.id AS g_in
+        SELECT pf.due_date, pf.amount, sp.savings_goal_id AS g_out, sg.id AS g_in, h.head
           FROM finance.fn_account_planned_flows(p_account_id, v_d0, v_until) pf
          CROSS JOIN LATERAL (SELECT finance.fn_recurring_lineage_head(pf.recurring_payment_id) AS head) h
           LEFT JOIN finance.savings_plans sp ON pf.amount < 0 AND sp.recurring_payment_id = h.head AND sp.savings_goal_id IS NOT NULL
@@ -134,8 +139,16 @@ BEGIN
            (SELECT min(st.day) FROM st WHERE st.day >= v_today AND st.bal < st.thr),
            (SELECT min(st.bal - st.thr) FROM st WHERE st.day >= v_today),
            (SELECT st.day FROM st WHERE st.day >= v_today ORDER BY st.bal - st.thr, st.day LIMIT 1),
-           COALESCE((SELECT bool_or(st.fx_gap) FROM st), false)
-    INTO v_bal, v_min, v_min_date, v_out_on, v_min_free, v_free_date, v_gap;
+           COALESCE((SELECT bool_or(st.fx_gap) FROM st), false),
+           -- frueherer Tag hilft: an jedem Tag unter der Schwelle reicht es, wenn je Zufluss-Kette ihr naechster Termin der
+           -- folgenden 31 Tage schon da waere (je Kette einer: zwei Monatstermine liegen oft weniger als 31 Tage auseinander).
+           -- Nur Tage, deren 31-Tage-Fenster im Horizont liegt; sonst fehlten Eingaenge nach v_until.
+           NOT EXISTS (SELECT 1 FROM st WHERE st.day >= v_today AND st.day <= v_until - 31 AND st.bal < st.thr
+                         AND st.bal - st.thr + COALESCE((SELECT sum(n.amount) FROM (
+                                 SELECT DISTINCT ON (f.head) f.amount FROM f
+                                  WHERE f.amount > 0 AND f.due_date > st.day AND f.due_date <= st.day + 31
+                                  ORDER BY f.head, f.due_date) n), 0) < 0)
+    INTO v_bal, v_min, v_min_date, v_out_on, v_min_free, v_free_date, v_gap, v_fixable;
     v_bal := COALESCE(v_bal, finance.fn_get_balance_as_of(p_account_id, v_today), 0);
     v_gap := v_gap OR v_fgap;
 
@@ -172,6 +185,7 @@ BEGIN
         'everyday', v_everyday, 'everyday_per_day', v_per_day,
         'min_projected', round(v_min, 2), 'min_date', v_min_date, 'runs_out_on', v_out_on, 'horizon_end', v_until,
         'state', v_state, 'fx_gap', v_gap, 'reserved', round(v_res, 2), 'min_free', round(v_min_free, 2), 'min_free_date', v_free_date,
-        'drawdown', v_drawdown, 'inflow_ends', v_in_ends);
+        'drawdown', v_drawdown, 'inflow_ends', v_in_ends,
+        'timing_fixable', CASE WHEN v_out_on IS NOT NULL AND v_out_on <= v_until - 31 THEN v_fixable END);
 END;
 $$;

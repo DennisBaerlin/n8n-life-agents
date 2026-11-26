@@ -40,7 +40,7 @@ BEGIN
   r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '9 minutes'));
   IF (r->>'due')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 zu frueh]: %', r; END IF;
   r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '11 minutes'));
-  IF (r->>'due')::boolean IS NOT TRUE OR (r->>'incident_id')::bigint <> inc THEN RAISE EXCEPTION 'FAIL [2 faellig]: %', r; END IF;
+  IF (r->>'due')::boolean IS NOT TRUE OR (r->>'incident_id')::bigint <> inc OR r->>'opened_at' IS NULL THEN RAISE EXCEPTION 'FAIL [2 faellig]: %', r; END IF;
   r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '11 minutes'));
   IF (r->>'due')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 Sperre]: %', r; END IF;
   r := core.fn_llm_probe_result(jsonb_build_object('incident_id', inc, 'ok', false, 'code', 'spend_limit', 'trigger', 'cron', 'at', t0 + interval '11 minutes'));

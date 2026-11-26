@@ -1,0 +1,389 @@
+{
+    "id":  "OXCkBEPjtixssZXK",
+    "name":  "core.sub_send_messages",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "messages"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "538fbb92-49b5-5f4e-9b4a-4620c35c04a4",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let list = [];\ntry { list = JSON.parse(String($(\u0027Start\u0027).first().json.messages || \u0027[]\u0027)); } catch (e) { list = []; }\nif (!Array.isArray(list)) list = [];\nconst esc = (s) =\u003e String(s || \u0027\u0027).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn list.filter((m) =\u003e m \u0026\u0026 String(m.chat_id || \u0027\u0027).match(/^-?[0-9]{1,18}$/) \u0026\u0026 String(m.text || \u0027\u0027).trim()).map((m) =\u003e {\n  let rows = Array.isArray(m.buttons) ? m.buttons.filter((r) =\u003e Array.isArray(r) \u0026\u0026 r.length) : [];\n  let shape = rows.map((r) =\u003e r.length).join(\u0027+\u0027);\n  if (rows.length \u0026\u0026 ![\u00271\u0027, \u00272\u0027, \u00271+1\u0027].includes(shape)) { rows = rows.flat().slice(0, 2).map((b) =\u003e [b]); shape = rows.map((r) =\u003e r.length).join(\u0027+\u0027); }\n  const buttons = rows.flat().map((b) =\u003e ({ text: String((b \u0026\u0026 b.text) || \u0027?\u0027), data: String((b \u0026\u0026 b.data) || \u0027\u0027).slice(0, 64) }));\n  return { json: { chat_id: String(m.chat_id), html: esc(String(m.text).trim()), shape: shape || \u00270\u0027, buttons } };\n});"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "41d670fa-6cd2-5188-9efe-0bcd190b3e44",
+                      "name":  "Split messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+                                                         "fallbackOutput":  "extra"
+                                                     },
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "368d1866-734b-593a-9123-952df2e80e11",
+                                                                                                                    "leftValue":  "={{ $json.shape === \u00271\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s1",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "ab94a86a-5967-5825-8729-aa002c9be986",
+                                                                                                                    "leftValue":  "={{ $json.shape === \u00272\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s2",
+                                                                          "renameOutput":  true
+                                                                      },
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "combinator":  "and",
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "id":  "7100fbc1-df02-5c6d-9860-503b11454acf",
+                                                                                                                    "leftValue":  "={{ $json.shape === \u00271+1\u0027 }}",
+                                                                                                                    "operator":  {
+                                                                                                                                     "operation":  "equals",
+                                                                                                                                     "type":  "boolean"
+                                                                                                                                 },
+                                                                                                                    "rightValue":  true
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  3
+                                                                                                         }
+                                                                                         },
+                                                                          "outputKey":  "s1_1",
+                                                                          "renameOutput":  true
+                                                                      }
+                                                                  ]
+                                                   }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "aa3ea3e7-de89-57b7-9d90-eb54952bd49e",
+                      "name":  "Buttons"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ $json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       -240
+                                   ],
+                      "id":  "2be00e77-4cb3-5ba4-995b-e5418fe1604e",
+                      "name":  "Send 1",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ $json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       -80
+                                   ],
+                      "id":  "d9358741-5c56-5170-a011-321cac1c45fc",
+                      "name":  "Send 2",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ $json.html }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.buttons[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.buttons[0].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.buttons[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.buttons[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       80
+                                   ],
+                      "id":  "5ae1dc44-1484-5849-8f80-0391d79ef5a8",
+                      "name":  "Send 1+1",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ $json.html }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       240
+                                   ],
+                      "id":  "0362a9cf-2579-503b-8d9c-883aae6ffb7f",
+                      "name":  "Send plain",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_send_messages — fertige Nachrichten mit Knöpfen senden (kein LLM)**\n\nStart (messages = JSON-Text einer Liste {chat_id, text, buttons}) -\u003e Split messages (je Nachricht ein Item; ungültige chat_id oder leerer Text fällt weg; Text als HTML-Plain escapt) -\u003e Buttons (Form der Tastatur: 1 Knopf, 2 nebeneinander, 2 untereinander, sonst ohne) -\u003e Send 1 / Send 2 / Send 1+1 / Send plain. n8n-Tastaturen haben feste Plätze, darum eine Sende-Node je Form; eine andere Form wird zu höchstens zwei Knöpfen untereinander. Texte und Knöpfe baut die DB fertig in der Sprache des Empfängers (KI-Pause: core.fn_llm_incident_note, core.fn_llm_probe_result, core.fn_handle_llm_cb). Sendefehler: onError continue, die übrigen Nachrichten gehen trotzdem raus.",
+                                         "height":  420,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -900,
+                                       -520
+                                   ],
+                      "id":  "fdfbd55e-6109-50f7-bdf1-3c275555b112",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Split messages",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Split messages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Buttons",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Buttons":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send 1",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send 2",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send 1+1",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Send plain",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

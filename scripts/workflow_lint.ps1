@@ -136,8 +136,13 @@ if ($en) {
     # Text-Read darf den Alarm nie aufhalten: onError=continue + alwaysOutputData, kein Retry.
     $c = $en.connections
     $lt = $nodes | Where-Object { $_.name -eq 'Load alert texts' } | Select-Object -First 1
-    Check 'Verdrahtung: On Error -> Load alert texts -> Format Message' {
-        $c.'On Error'.main[0][0].node -eq 'Load alert texts' -and $c.'Load alert texts'.main[0][0].node -eq 'Format Message'
+    # Dazwischen die KI-Pause-Erkennung (Read LLM status -> Note LLM pause, beide onError continue + alwaysOutputData).
+    Check 'Verdrahtung: On Error -> Load alert texts -> Read LLM status -> Note LLM pause -> Format Message' {
+        $c.'On Error'.main[0][0].node -eq 'Load alert texts' -and $c.'Load alert texts'.main[0][0].node -eq 'Read LLM status' -and
+        $c.'Read LLM status'.main[0][0].node -eq 'Note LLM pause' -and $c.'Note LLM pause'.main[0][0].node -eq 'Format Message'
+    }
+    Check 'KI-Pause-Erkennung: onError=continue + alwaysOutputData (der Alarm haengt nie an Gateway oder DB)' {
+        @($nodes | Where-Object { $_.name -in @('Read LLM status', 'Note LLM pause') -and $_.onError -eq 'continueRegularOutput' -and $_.alwaysOutputData -eq $true }).Count -eq 2
     }
     Check 'Load alert texts: onError=continue, alwaysOutputData, kein Retry' {
         $null -ne $lt -and $lt.onError -eq 'continueRegularOutput' -and $lt.alwaysOutputData -eq $true -and -not $lt.retryOnFail
@@ -358,6 +363,8 @@ $tgEscapeAllowLike = @(
     # Karten der offenen Frage: 'Build prompt' (Get-CardRenderJs) escapt jeden Wert (& < >) und setzt nur eigene Tags,
     # parse_mode=HTML; Logik-Test oben (core.sub_send_chat_prompt).
     'core.sub_send_chat_prompt :: *'
+    # Fertige DB-Texte (KI-Pause): 'Split messages' escapt jeden Text (& < >), parse_mode=HTML, keine eigenen Tags.
+    'core.sub_send_messages :: *'
 )
 # Formatter-Allowlist (bewusst unformatierte Betraege/Daten in einer Nachricht/Summary, je mit Grund; Form +
 # Key-Konvention 'wf :: node' wie $tgEscapeAllow). Leer = jede Geld-/Datums-Anzeige muss Fmt-MoneyJs/Fmt-DateJs nutzen.

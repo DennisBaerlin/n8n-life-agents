@@ -45,6 +45,10 @@ const EN = { 'core.error.title': 'n8n error', 'core.error.workflow': 'Workflow',
   'core.error.error': 'Error', 'core.error.time': 'Time', 'core.error.unknown': 'Unknown error' };
 const t = (k) => (T[k] && T[k] !== k) ? T[k] : EN[k];
 const loc = ui.locale || 'en-GB';
+// Sortierte KI-Pause (Note LLM pause): kein Roh-Alarm, die Owner-Karte geht ueber 'Pause card?'.
+let pause = false;
+try { pause = (($('Note LLM pause').first().json || {}).r || {}).suppress_alert === true; } catch (e) { pause = false; }
+if (pause) return [];
 const out = [];
 for (const item of $('On Error').all()) {
   const e = item.json.execution;
@@ -101,7 +105,7 @@ return out;
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-240, -380) -Header 'Ablauf' `
         'core.sub_error_notify' `
         ("Globaler Fehler-Notifier: n8n ruft ihn automatisch, wenn ein Workflow mit settings.errorWorkflow auf ihn fällt (nur automatische Executions, nicht manuelle Tests im Editor).`n`n" +
-         "On Error (Error Trigger) -> Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -> Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -> englische Ersatztexte, der Alarm geht immer raus) -> Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der 'Bot denkt nach'-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).`n`n" +
+         "On Error (Error Trigger) -> Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -> Read LLM status -> Note LLM pause (KI-Pause erkannt: kein Roh-Alarm, Owner-Karte; Doc: KI-Pause) -> Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -> englische Ersatztexte, der Alarm geht immer raus) -> Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der 'Bot denkt nach'-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).`n`n" +
          "Genutzte Felder des Error Triggers: execution.error.message, execution.lastNodeExecuted, execution.url (optional), workflow.name.") `
         -Height 360 -Width 500
 
@@ -134,11 +138,42 @@ return out;
         ([ordered]@{ execution_id = 'String(($(''On Error'').first().json.execution || {}).id || '''')' })
     $clearThinking['onError'] = 'continueRegularOutput'
 
-    $nodes = @($onError, $loadTexts, $format, $send, $clearLock, $clearThinking, $stickyOverview, $stickyFormat, $stickyLock)
+    # KI-Pause: scheiterte der Lauf an einer Anthropic-Ablehnung, traegt execution.error nur n8ns HTTP-Ueberschrift. Den festen Code
+    # liefert der Gateway (/__llm_status). Als Pause zaehlt der Fehler nur, wenn (a) die Meldung eine n8n-HTTP-Ueberschrift ist und
+    # (b) der Gateway-Fehler juenger als 2 Min und nach dem letzten Erfolg ist; sonst 'other' (Alarm wie bisher). So verschluckt ein
+    # Telegram- oder DB-Fehler nie still einen Alarm, ausser er faellt in dieselben 2 Minuten einer Anbieter-Sperre.
+    $llmStatus = [ordered]@{
+        parameters = [ordered]@{ url = 'http://127.0.0.1:8090/__llm_status'; options = [ordered]@{ timeout = 3000 } }
+        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @(110, 0)
+        id = (New-Id); name = 'Read LLM status'; onError = 'continueRegularOutput'; alwaysOutputData = $true
+    }
+    $codeJs = "(() => { const s = `$('Read LLM status').first().json || {}; const e = s.last_error; const ex = `$('On Error').first().json.execution || {}; " +
+        "const msg = String((ex.error || {}).message || ''); " +
+        "const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); " +
+        "return (http && e && e.at && Date.parse(e.at) > Date.now() - 120000 && (!s.last_ok_at || Date.parse(e.at) >= Date.parse(s.last_ok_at))) ? String(e.code || 'other') : 'other'; })()"
+    $llmNote = Build-Pg 'Note LLM pause' @(165, 0) "=SELECT core.fn_llm_incident_note(`$1::jsonb) AS r;" ([ordered]@{
+        code      = $codeJs
+        resume_at = "String(((`$('Read LLM status').first().json || {}).last_error || {}).resume_at || '')"
+        source    = "'error_notify'" })
+    $llmNote['onError'] = 'continueRegularOutput'
+    $llmNote['alwaysOutputData'] = $true
+    $ifCard = Build-If 'Pause card?' @(330, 160) "={{ (((`$('Note LLM pause').first().json.r || {}).messages) || []).length > 0 }}" 'true' 'equals' 'boolean'
+    $idSendMsgs = Get-RequiredWorkflowId 'core.sub_send_messages' -Caller 'Build-CoreSubErrorNotify'
+    $sendCard = Build-CallWorkflow 'Send LLM pause' @(550, 160) $idSendMsgs 'core.sub_send_messages' ([ordered]@{
+        messages = "={{ JSON.stringify(((`$('Note LLM pause').first().json.r || {}).messages) || []) }}"; chat_id = '' })
+    $stickyPause = Build-Sticky 'Doc: KI-Pause' @(560, 260) -Header 'Ablauf' `
+        'KI-Pause statt Roh-Alarm' `
+        "Load alert texts -> Read LLM status (Gateway /__llm_status, onError continue) -> Note LLM pause (core.fn_llm_incident_note, source error_notify; Code nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem letzten Erfolg, sonst other) -> Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -> Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -> other, der Alarm geht wie bisher raus." `
+        -Height 240 -Width 420
+
+    $nodes = @($onError, $loadTexts, $llmStatus, $llmNote, $format, $send, $ifCard, $sendCard, $clearLock, $clearThinking, $stickyOverview, $stickyFormat, $stickyLock, $stickyPause)
     $conns = [ordered]@{
         # Ausfuehrungs-Reihenfolge (v1) folgt der Leinwand-Position, nicht dieser Liste: Clear thinking lease (oben) zuerst.
         'On Error'         = @{ main = @( ,@( (E 'Load alert texts'), (E 'Clear card lock'), (E 'Clear thinking lease') ) ) }
-        'Load alert texts' = @{ main = @( ,@( E 'Format Message' ) ) }
+        'Load alert texts' = @{ main = @( ,@( E 'Read LLM status' ) ) }
+        'Read LLM status'  = @{ main = @( ,@( E 'Note LLM pause' ) ) }
+        'Note LLM pause'   = @{ main = @( ,@( (E 'Format Message'), (E 'Pause card?') ) ) }
+        'Pause card?'      = @{ main = @( @( E 'Send LLM pause' ), @() ) }
         'Format Message' = @{ main = @( ,@( E 'Send Telegram Alert' ) ) }
     }
 

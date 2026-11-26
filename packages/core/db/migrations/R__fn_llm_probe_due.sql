@@ -7,7 +7,8 @@
 --
 --   fn_llm_probe_due(p {at? (Testzeit)}): beansprucht den offenen Vorfall, wenn next_probe_at erreicht ist und keine
 --     Nachschau laeuft (probe_lock_until, 2 Min). Raeumt gemerkte Nachrichten von Vorfaellen weg, die vor > 7 Tagen endeten.
---     Rueckgabe {ok:true, due, incident_id?, kind?}.
+--     Rueckgabe {ok:true, due, incident_id?, kind?, opened_at?} (opened_at: ein Erfolg des Gateways danach zaehlt
+--     ohne eigene Probe, core.sub_llm_probe).
 --   fn_llm_probe_result(p {incident_id, ok, trigger 'cron'|'button', at?}): ok -> Vorfall 'recovered' und Nachrichten:
 --     je Person mit gemerkten Nachrichten „wieder da“ + Zitat (eine) bzw. Anzahl + letzte (mehrere) mit [Jetzt beantworten]
 --     [Nicht mehr noetig]; Sprachnachrichten nur als Satz (kein Nachspielen, ihre Zeilen fallen weg); der Owner bekommt die
@@ -22,13 +23,14 @@ DECLARE
     v_at  timestamptz := COALESCE((p->>'at')::timestamptz, now());
     v_id  bigint;
     v_kind text;
+    v_opened timestamptz;
 BEGIN
     DELETE FROM agent.llm_held_messages h USING core.llm_incidents i
      WHERE h.incident_id = i.id AND i.closed_at < v_at - interval '7 days';
     UPDATE core.llm_incidents SET probe_lock_until = v_at + interval '2 minutes'
      WHERE closed_at IS NULL AND next_probe_at <= v_at AND (probe_lock_until IS NULL OR probe_lock_until <= v_at)
-    RETURNING id, kind INTO v_id, v_kind;
-    RETURN jsonb_build_object('ok', true, 'due', v_id IS NOT NULL, 'incident_id', v_id, 'kind', v_kind);
+    RETURNING id, kind, opened_at INTO v_id, v_kind, v_opened;
+    RETURN jsonb_build_object('ok', true, 'due', v_id IS NOT NULL, 'incident_id', v_id, 'kind', v_kind, 'opened_at', v_opened);
 END;
 $$;
 

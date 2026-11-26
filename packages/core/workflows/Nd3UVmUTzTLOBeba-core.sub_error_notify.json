@@ -42,7 +42,50 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Texte aus \u0027Load alert texts\u0027 (Owner-Sprache); DB weg/Fehler -\u003e englische Ersatztexte (der Alarm geht immer raus).\nlet ui = {};\ntry { ui = ($(\u0027Load alert texts\u0027).first().json || {}).r || {}; } catch (e) { ui = {}; }\nconst T = ui.t || {};\nconst EN = { \u0027core.error.title\u0027: \u0027n8n error\u0027, \u0027core.error.workflow\u0027: \u0027Workflow\u0027, \u0027core.error.node\u0027: \u0027Node\u0027,\n  \u0027core.error.error\u0027: \u0027Error\u0027, \u0027core.error.time\u0027: \u0027Time\u0027, \u0027core.error.unknown\u0027: \u0027Unknown error\u0027 };\nconst t = (k) =\u003e (T[k] \u0026\u0026 T[k] !== k) ? T[k] : EN[k];\nconst loc = ui.locale || \u0027en-GB\u0027;\nconst out = [];\nfor (const item of $(\u0027On Error\u0027).all()) {\n  const e = item.json.execution;\n  const w = item.json.workflow;\n  // Suite-Rauschen unterdruecken: Harness-getriggerte Executions (Root-Trigger = Test Webhook)\n  // alerten nie -- die Test-Skripte berichten Fehler/Timeout-Stopps selbst.\n  const trig = e \u0026\u0026 e.executionContext \u0026\u0026 e.executionContext.triggerNode;\n  if (trig \u0026\u0026 trig.type === \u0027n8n-nodes-base.webhook\u0027 \u0026\u0026 trig.name === \u0027Test Webhook\u0027) continue;\n  let ts;\n  try { ts = new Date().toLocaleString(loc, { timeZone: $now.zoneName }); } catch (x) { ts = new Date().toISOString(); }\n  const lines = [\n    \u0027⚠️ \u0027 + t(\u0027core.error.title\u0027), \u0027\u0027,\n    t(\u0027core.error.workflow\u0027) + \u0027: \u0027 + w.name,\n    t(\u0027core.error.node\u0027) + \u0027: \u0027 + (e.lastNodeExecuted || \u0027?\u0027),\n    t(\u0027core.error.error\u0027) + \u0027: \u0027 + ((e.error \u0026\u0026 e.error.message) || t(\u0027core.error.unknown\u0027)),\n    t(\u0027core.error.time\u0027) + \u0027: \u0027 + ts\n  ];\n  if (e.url) lines.push(e.url);\n  out.push({ json: { text: lines.join(String.fromCharCode(10)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) } });\n}\nreturn out;",
+                                         "url":  "http://127.0.0.1:8090/__llm_status",
+                                         "options":  {
+                                                         "timeout":  3000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       110,
+                                       0
+                                   ],
+                      "id":  "7220ba48-454e-5300-8621-c497f7d76285",
+                      "name":  "Read LLM status",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_llm_incident_note($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ code: (() =\u003e { const s = $(\u0027Read LLM status\u0027).first().json || {}; const e = s.last_error; const ex = $(\u0027On Error\u0027).first().json.execution || {}; const msg = String((ex.error || {}).message || \u0027\u0027); const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); return (http \u0026\u0026 e \u0026\u0026 e.at \u0026\u0026 Date.parse(e.at) \u003e Date.now() - 120000 \u0026\u0026 (!s.last_ok_at || Date.parse(e.at) \u003e= Date.parse(s.last_ok_at))) ? String(e.code || \u0027other\u0027) : \u0027other\u0027; })(), resume_at: String((($(\u0027Read LLM status\u0027).first().json || {}).last_error || {}).resume_at || \u0027\u0027), source: \u0027error_notify\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       165,
+                                       0
+                                   ],
+                      "id":  "5d22fee9-e654-5308-bb83-b78af501810d",
+                      "name":  "Note LLM pause",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "// Texte aus \u0027Load alert texts\u0027 (Owner-Sprache); DB weg/Fehler -\u003e englische Ersatztexte (der Alarm geht immer raus).\nlet ui = {};\ntry { ui = ($(\u0027Load alert texts\u0027).first().json || {}).r || {}; } catch (e) { ui = {}; }\nconst T = ui.t || {};\nconst EN = { \u0027core.error.title\u0027: \u0027n8n error\u0027, \u0027core.error.workflow\u0027: \u0027Workflow\u0027, \u0027core.error.node\u0027: \u0027Node\u0027,\n  \u0027core.error.error\u0027: \u0027Error\u0027, \u0027core.error.time\u0027: \u0027Time\u0027, \u0027core.error.unknown\u0027: \u0027Unknown error\u0027 };\nconst t = (k) =\u003e (T[k] \u0026\u0026 T[k] !== k) ? T[k] : EN[k];\nconst loc = ui.locale || \u0027en-GB\u0027;\n// Sortierte KI-Pause (Note LLM pause): kein Roh-Alarm, die Owner-Karte geht ueber \u0027Pause card?\u0027.\nlet pause = false;\ntry { pause = (($(\u0027Note LLM pause\u0027).first().json || {}).r || {}).suppress_alert === true; } catch (e) { pause = false; }\nif (pause) return [];\nconst out = [];\nfor (const item of $(\u0027On Error\u0027).all()) {\n  const e = item.json.execution;\n  const w = item.json.workflow;\n  // Suite-Rauschen unterdruecken: Harness-getriggerte Executions (Root-Trigger = Test Webhook)\n  // alerten nie -- die Test-Skripte berichten Fehler/Timeout-Stopps selbst.\n  const trig = e \u0026\u0026 e.executionContext \u0026\u0026 e.executionContext.triggerNode;\n  if (trig \u0026\u0026 trig.type === \u0027n8n-nodes-base.webhook\u0027 \u0026\u0026 trig.name === \u0027Test Webhook\u0027) continue;\n  let ts;\n  try { ts = new Date().toLocaleString(loc, { timeZone: $now.zoneName }); } catch (x) { ts = new Date().toISOString(); }\n  const lines = [\n    \u0027⚠️ \u0027 + t(\u0027core.error.title\u0027), \u0027\u0027,\n    t(\u0027core.error.workflow\u0027) + \u0027: \u0027 + w.name,\n    t(\u0027core.error.node\u0027) + \u0027: \u0027 + (e.lastNodeExecuted || \u0027?\u0027),\n    t(\u0027core.error.error\u0027) + \u0027: \u0027 + ((e.error \u0026\u0026 e.error.message) || t(\u0027core.error.unknown\u0027)),\n    t(\u0027core.error.time\u0027) + \u0027: \u0027 + ts\n  ];\n  if (e.url) lines.push(e.url);\n  out.push({ json: { text: lines.join(String.fromCharCode(10)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) } });\n}\nreturn out;",
                                          "mode":  "runOnceForAllItems"
                                      },
                       "type":  "n8n-nodes-base.code",
@@ -80,6 +123,77 @@
                                                               "name":  "Telegram account"
                                                           }
                                       }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "db812c18-baf1-589f-a2a3-1f9e770b5f75",
+                                                                                   "leftValue":  "={{ ((($(\u0027Note LLM pause\u0027).first().json.r || {}).messages) || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       330,
+                                       160
+                                   ],
+                      "id":  "e57066a7-bc66-5d5d-b8dc-7edf59940b06",
+                      "name":  "Pause card?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OXCkBEPjtixssZXK",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OXCkBEPjtixssZXK",
+                                                            "cachedResultName":  "core.sub_send_messages"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "messages":  "={{ JSON.stringify((($(\u0027Note LLM pause\u0027).first().json.r || {}).messages) || []) }}",
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       550,
+                                       160
+                                   ],
+                      "id":  "7e745788-f645-57a5-8c02-29b9f4259b4d",
+                      "name":  "Send LLM pause"
                   },
                   {
                       "parameters":  {
@@ -131,7 +245,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**core.sub_error_notify**\n\nGlobaler Fehler-Notifier: n8n ruft ihn automatisch, wenn ein Workflow mit settings.errorWorkflow auf ihn fällt (nur automatische Executions, nicht manuelle Tests im Editor).\n\nOn Error (Error Trigger) -\u003e Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -\u003e Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -\u003e englische Ersatztexte, der Alarm geht immer raus) -\u003e Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der \u0027Bot denkt nach\u0027-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).\n\nGenutzte Felder des Error Triggers: execution.error.message, execution.lastNodeExecuted, execution.url (optional), workflow.name.",
+                                         "content":  "## Ablauf\n**core.sub_error_notify**\n\nGlobaler Fehler-Notifier: n8n ruft ihn automatisch, wenn ein Workflow mit settings.errorWorkflow auf ihn fällt (nur automatische Executions, nicht manuelle Tests im Editor).\n\nOn Error (Error Trigger) -\u003e Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -\u003e Read LLM status -\u003e Note LLM pause (KI-Pause erkannt: kein Roh-Alarm, Owner-Karte; Doc: KI-Pause) -\u003e Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -\u003e englische Ersatztexte, der Alarm geht immer raus) -\u003e Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der \u0027Bot denkt nach\u0027-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).\n\nGenutzte Felder des Error Triggers: execution.error.message, execution.lastNodeExecuted, execution.url (optional), workflow.name.",
                                          "height":  360,
                                          "width":  500,
                                          "color":  4
@@ -176,6 +290,22 @@
                                    ],
                       "id":  "3ec7b870-50b9-5611-89ba-d1a985441082",
                       "name":  "Doc: Clear card lock"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**KI-Pause statt Roh-Alarm**\n\nLoad alert texts -\u003e Read LLM status (Gateway /__llm_status, onError continue) -\u003e Note LLM pause (core.fn_llm_incident_note, source error_notify; Code nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem letzten Erfolg, sonst other) -\u003e Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -\u003e Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -\u003e other, der Alarm geht wie bisher raus.",
+                                         "height":  240,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       560,
+                                       260
+                                   ],
+                      "id":  "d0e74cfb-0ce1-52b9-a43d-17a3fee9414b",
+                      "name":  "Doc: KI-Pause"
                   }
               ],
     "connections":  {
@@ -205,12 +335,53 @@
                                                               [
                                                                   {
                                                                       "index":  0,
-                                                                      "node":  "Format Message",
+                                                                      "node":  "Read LLM status",
                                                                       "type":  "main"
                                                                   }
                                                               ]
                                                           ]
                                              },
+                        "Read LLM status":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Note LLM pause",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Note LLM pause":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Format Message",
+                                                                    "type":  "main"
+                                                                },
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Pause card?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Pause card?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Send LLM pause",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+
+                                                         ]
+                                                     ]
+                                        },
                         "Format Message":  {
                                                "main":  [
                                                             [

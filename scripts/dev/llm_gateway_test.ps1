@@ -19,7 +19,7 @@
 # (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
 # Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
-# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
+# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP), dazu eine echte 401 mit erfundenem Schluessel (kostenlos) -> Code auth. (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
 # Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 # (o) still tote Keep-Alive-Verbindung (Attrappe schweigt auf der Verbindung): Standard frische Verbindung je Anfrage, auch direkt danach
@@ -522,6 +522,14 @@ try {
         $keyLeak = @($jr | Where-Object { $_.Contains($realKey) })
         if ($res.Status -eq '200' -and $res.Body -match '"input_tokens"\s*:\s*[1-9]' -and $keyLeak.Count -eq 0) { Pass 'TLS/Host/Auth/Kompression ok (count_tokens 200)' }
         else { Fail "Status=$($res.Status) body=$($res.Body.Substring(0, [Math]::Min(200, $res.Body.Length)))" }
+        # Echte Anbieter-Ablehnung, kostenlos (falscher Schluessel -> 401, keine Tokens): sortiert als auth, Zustand gesetzt.
+        $res = Send-Gw 8098 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 1; messages = @(@{ role = 'user'; content = 'Hallo' }) })) 'test-fake-invalid-key'
+        $j = $null; try { $j = $res.Body | ConvertFrom-Json } catch { }
+        $s = $null; try { $s = ((Invoke-InC @('curl', '-s', 'http://127.0.0.1:8098/__llm_status')).Output -join '') | ConvertFrom-Json } catch { }
+        if ($res.Status -eq '401' -and $j.error.type -eq 'authentication_error' -and $j.error.details.lifeagents_code -eq 'auth' -and $s.last_error.code -eq 'auth') {
+            Pass 'echte 401 von Anthropic -> auth (Code im Fehler und unter /__llm_status)'
+        }
+        else { Fail "echte 401: Status=$($res.Status) code=$($j.error.details.lifeagents_code) zustand=$($s.last_error.code)" }
     }
 
     # (m) Telegram-Relay

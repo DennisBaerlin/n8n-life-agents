@@ -1,0 +1,433 @@
+{
+    "id":  "CFY1HhfWFFpYz6sk",
+    "name":  "core.sub_llm_probe",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "trigger"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1320,
+                                       0
+                                   ],
+                      "id":  "c96ac24e-7af4-5d05-b49c-b17953d0ca27",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_llm_probe_due(\u0027{}\u0027::jsonb)::text AS r;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "faf33c51-33c1-539d-9732-5bb1ddb5c5fb",
+                      "name":  "Probe due",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e2d96da4-f3fd-5811-ac4e-bafdc581d275",
+                                                                                   "leftValue":  "={{ JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).due === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "31949f6c-ae6b-5fc0-8226-65533192e39c",
+                      "name":  "Due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://127.0.0.1:8090/__llm_status",
+                                         "options":  {
+                                                         "timeout":  3000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "406bcf1a-f3ee-5a09-93ab-ef4554afd5c2",
+                      "name":  "Read LLM status",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "bcfb4598-b527-5408-9e43-a6ed3a969d1a",
+                                                                                   "leftValue":  "={{ !!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "bf2dc304-cd25-5ace-83a1-e1feaba21edf",
+                      "name":  "Seen ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT json_object_agg(e-\u003e\u003e\u0027key\u0027, core.fn_config_get(e-\u003e\u003e\u0027pkg\u0027, \u0027model\u0027, e-\u003e\u003e\u0027key\u0027)) AS model FROM jsonb_array_elements(($1::jsonb)-\u003e\u0027items\u0027) AS e",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ items: [{\"pkg\":\"core\",\"key\":\"orchestrator\"}] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -220,
+                                       160
+                                   ],
+                      "id":  "a76a4084-645c-5cc5-ab33-00deb9c11ddb",
+                      "name":  "Load model config",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/v1/messages",
+                                         "authentication":  "predefinedCredentialType",
+                                         "nodeCredentialType":  "anthropicApi",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "anthropic-version",
+                                                                                         "value":  "2023-06-01"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "x-lifeagents-workflow",
+                                                                                         "value":  "={{ $workflow.name }}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ model: ({\"claude-haiku-latest\":\"claude-haiku-5-5\",\"claude-sonnet-latest\":\"claude-sonnet-5-5\",\"claude-opus-latest\":\"claude-opus-5-5\"}[$(\u0027Load model config\u0027).first().json.model.orchestrator] || null), max_tokens: 1, system: \"Reply with the single word ok.\", messages: [{ role: \u0027user\u0027, content: (\u0027ping\u0027) }], output_config: { effort: \u0027low\u0027 } }) }}",
+                                         "options":  {
+                                                         "timeout":  30000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.4,
+                      "position":  [
+                                       0,
+                                       160
+                                   ],
+                      "id":  "82a4766b-b68f-5031-8292-da822fd583b7",
+                      "name":  "Probe Claude",
+                      "retryOnFail":  false,
+                      "maxTries":  1,
+                      "waitBetweenTries":  3000,
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "anthropicApi":  {
+                                                               "id":  "__CRED_ANTHROPIC__",
+                                                               "name":  "Anthropic account"
+                                                           }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_llm_probe_result($1::jsonb)::text AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ incident_id: JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).incident_id, ok: (!!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at)) || ($(\u0027Probe Claude\u0027).isExecuted \u0026\u0026 Array.isArray($(\u0027Probe Claude\u0027).first().json.content)), trigger: String($(\u0027Start\u0027).first().json.trigger || \u0027cron\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "4e360cb7-ba63-504c-bb4f-91153635d4a4",
+                      "name":  "Probe result",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b46eece2-fad1-589a-bf46-9a7e2cf2368a",
+                                                                                   "leftValue":  "={{ (JSON.parse($(\u0027Probe result\u0027).first().json.r || \u0027{}\u0027).messages || []).length \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "bc4cfdbc-154a-53c8-bf22-38dd95cd018c",
+                      "name":  "Messages?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OXCkBEPjtixssZXK",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OXCkBEPjtixssZXK",
+                                                            "cachedResultName":  "core.sub_send_messages"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "messages":  "={{ JSON.stringify(JSON.parse($(\u0027Probe result\u0027).first().json.r || \u0027{}\u0027).messages || []) }}",
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "e4d6b957-b102-5aa1-ad6c-a180b7521cba",
+                      "name":  "Send messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.sub_llm_probe — Nachschau während einer KI-Pause (Limit, Guthaben, Schlüssel, Störung)**\n\nStart (trigger cron|button) -\u003e Probe due (core.fn_llm_probe_due: offene Pause, Zeitpunkt erreicht, keine andere Nachschau läuft; Plan und Sperre in der DB) -\u003e Due? -\u003e Read LLM status (Gateway GET /__llm_status) -\u003e Seen ok? = der Gateway sah nach dem letzten Fehler und nach Beginn der Pause schon einen Erfolg (eine echte Nachricht war die Probe) -\u003e direkt Probe result; sonst Load model config -\u003e Probe Claude (Router-Modell, max_tokens 1, ein Versuch; eine Ablehnung wegen Limit oder Guthaben kostet nichts) -\u003e Probe result (core.fn_llm_probe_result: Erfolg = Antwort mit content; schließt die Pause und baut die Nachrichten, sonst nächste Nachschau nach Plan; Knopf: Satz „noch gesperrt“) -\u003e Messages? -\u003e Send messages (core.sub_send_messages). Kein Stop and Error: eine Probe, die scheitert, ist der erwartete Fall.",
+                                         "height":  460,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1340,
+                                       -460
+                                   ],
+                      "id":  "9c7eab2c-7ae3-5d55-96cd-a59702d09b01",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Probe due",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Probe due":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Due?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Due?":  {
+                                     "main":  [
+                                                  [
+                                                      {
+                                                          "index":  0,
+                                                          "node":  "Read LLM status",
+                                                          "type":  "main"
+                                                      }
+                                                  ],
+                                                  [
+
+                                                  ]
+                                              ]
+                                 },
+                        "Read LLM status":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Seen ok?",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Seen ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Probe result",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Load model config",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Load model config":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Probe Claude",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Probe Claude":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Probe result",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Probe result":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Messages?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Messages?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Send messages",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "saveDataSuccessExecution":  "none"
+                 }
+}

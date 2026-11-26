@@ -60,6 +60,8 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM core.llm_incidents WHERE id = inc AND owner_notified_at IS NOT NULL
                    AND resume_at = '2026-12-01T00:00:00Z' AND next_probe_at > now()) THEN RAISE EXCEPTION 'FAIL [1 Zeile]'; END IF;
   IF (SELECT count(*) FROM agent.llm_held_messages WHERE incident_id = inc AND kind = 'text') <> 1 THEN RAISE EXCEPTION 'FAIL [1 gemerkt]'; END IF;
+  IF jsonb_array_length(r->'messages') <> 1 OR r->'messages'->0->>'chat_id' <> '7701' OR r->'messages'->0->>'text' <> t
+     OR jsonb_array_length(r->'messages'->0->'buttons') <> 2 THEN RAISE EXCEPTION 'FAIL [1 Sendeliste]: %', r->'messages'; END IF;
 
   -- (2) Owner schreibt erneut: kurzer Satz, keine Knoepfe, dieselbe Pause, zweite Nachricht gemerkt
   r := core.fn_llm_incident_note(jsonb_build_object('code','spend_limit','resume_at','2026-12-01T00:00:00Z','source','orchestrator',
@@ -105,6 +107,8 @@ BEGIN
   -- ohne Schreiber (Cron-Fehler) und Owner noch nicht informiert -> owner_card mit genau einem Knopf (Guthaben-Anleitung)
   IF r->'owner_card' IS NULL OR jsonb_array_length(r->'owner_card'->'buttons') <> 1
      OR r->'owner_card'->'buttons'->0->0->>'data' <> 'llm:guide:' || (r->>'incident_id') THEN RAISE EXCEPTION 'FAIL [6 owner_card]: %', r; END IF;
+  -- Sendeliste: ohne Schreiber nur die Karte an die Owner-chat_id
+  IF jsonb_array_length(r->'messages') <> 1 OR r->'messages'->0->>'chat_id' <> '7701' THEN RAISE EXCEPTION 'FAIL [6 Sendeliste]: %', r->'messages'; END IF;
   r2 := core.fn_llm_incident_note(jsonb_build_object('code','credit_empty','source','error_notify'));
   IF r2->'owner_card' IS NOT NULL AND r2->'owner_card' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [6 Karte nur einmal]: %', r2; END IF;
 

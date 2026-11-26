@@ -24,7 +24,7 @@ Diese Dinge brauchst du vorher:
 - Einen **Anthropic-API-Key** (Pflicht) — alle Agenten denken mit Claude: Weiterleiten, Buchen, Hilfe, Belege lesen, Websuche und Beratung. Anthropic nutzt Daten aus der API nicht zum Training (mehr auf der Seite [Datenschutz](datenschutz.html)).
 - Optional einen **Google-Gemini-API-Key im bezahlten Tarif** (nicht die kostenlose Stufe) — nur für Sprachnachrichten, weil Claude kein Audio versteht. Ohne ihn bittet der Bot bei einer Sprachnachricht, als Text zu schreiben; nachtragen geht später jederzeit.
 
-Das Projekt selbst ist kostenlos (MIT-Lizenz) und braucht kein GitHub-Konto. Laufende Kosten entstehen nur für deinen Rechner und die KI-Nutzung nach Verbrauch, die Anthropic (und für Sprachnachrichten Google) direkt mit dir abrechnet.
+Das Projekt selbst ist kostenlos (MIT-Lizenz) und braucht kein GitHub-Konto. Laufende Kosten entstehen nur für deinen Rechner und die KI-Nutzung nach Verbrauch, die Anthropic (und für Sprachnachrichten Google) direkt mit dir abrechnet. Setzt du bei Anthropic ein monatliches KI-Ausgabenlimit oder ist dein Guthaben aufgebraucht, macht der Bot Pause und sagt dir das in einfachen Worten: mit dem Verbrauch des Monats laut eigener Messung, dem Tag, an dem es von selbst weitergeht, und einem Knopf mit Anleitung zum Erhöhen bzw. Aufladen. Was in der Pause geschrieben wird, merkt er sich und bietet es danach mit einem Knopf zum Beantworten an. Bei einer Störung bei Anthropic bekommt nur Bescheid, wer gerade schreibt.
 
 ## Der eine Installations-Befehl
 

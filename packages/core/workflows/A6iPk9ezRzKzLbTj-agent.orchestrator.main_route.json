@@ -2503,7 +2503,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Registry-Handler: Owner-Hinweis und Nachricht ändern**\n\nLiefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).",
+                                         "content":  "## DB-Automatik\n**Registry-Handler: Owner-Hinweis und Nachricht ändern**\n\nLiefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. result.reply = {text, buttons} geht als neue Nachricht an den Tippenden (core.sub_send_messages). Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).",
                                          "height":  300,
                                          "width":  380,
                                          "color":  4
@@ -2516,6 +2516,196 @@
                                    ],
                       "id":  "32958ac3-efc2-5d5e-9b49-d8f50f36a97d",
                       "name":  "Doc Registry-Felder"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ed93a68a-1e07-51ea-a2f4-d39a1f4044a4",
+                                                                                   "leftValue":  "={{ !!((($(\u0027Dispatch callback\u0027).item.json.result || {})).reply \u0026\u0026 (($(\u0027Dispatch callback\u0027).item.json.result || {})).reply.text) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       2620
+                                   ],
+                      "id":  "2ec37280-4765-529b-a84e-145dac96f43d",
+                      "name":  "Registry reply?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OXCkBEPjtixssZXK",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OXCkBEPjtixssZXK",
+                                                            "cachedResultName":  "core.sub_send_messages"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "messages":  "={{ JSON.stringify([{ chat_id: String(($(\u0027Trigger normalize\u0027).item.json.callback_query.from || {}).id || \u0027\u0027), text: (($(\u0027Dispatch callback\u0027).item.json.result || {})).reply.text, buttons: (($(\u0027Dispatch callback\u0027).item.json.result || {})).reply.buttons || [] }]) }}",
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -180,
+                                       2620
+                                   ],
+                      "id":  "1ed5a827-d7ac-51f9-8f77-95e628b2155d",
+                      "name":  "Send registry reply"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a1dfa9ab-db23-57a1-8e79-99643019c695",
+                                                                                   "leftValue":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).startsWith(\u0027llm:\u0027) \u0026\u0026 (($(\u0027Dispatch callback\u0027).item.json.result || {})).route === \u0027llm_probe\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       2780
+                                   ],
+                      "id":  "eb83c9b1-4106-557b-b160-c763fb15ae1d",
+                      "name":  "LLM probe route?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "CFY1HhfWFFpYz6sk",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/CFY1HhfWFFpYz6sk",
+                                                            "cachedResultName":  "core.sub_llm_probe"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "trigger":  "button",
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -180,
+                                       2780
+                                   ],
+                      "id":  "cf086b64-35a5-5703-b19f-5352e0677886",
+                      "name":  "Run LLM probe"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "11de5aa3-7566-5821-8ea2-d84c8ca28ef3",
+                                                                                   "leftValue":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).startsWith(\u0027llm:\u0027) \u0026\u0026 (($(\u0027Dispatch callback\u0027).item.json.result || {})).route === \u0027replay\u0027 \u0026\u0026 !!(($(\u0027Dispatch callback\u0027).item.json.result || {})).update }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       2940
+                                   ],
+                      "id":  "2334766d-71c8-52e4-b2ff-2c315bffa5bb",
+                      "name":  "Replay route?"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "runOnceForEachItem",
+                                         "jsCode":  "// Form wie Ingress claim r.update: Trigger normalize nimmt r.update statt des Roh-Updates.\nreturn { json: { r: { update: $(\u0027Dispatch callback\u0027).item.json.result.update } } };"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       2940
+                                   ],
+                      "id":  "ecc7aa25-d741-50a3-8ab0-51e18429e8b8",
+                      "name":  "Replay update"
                   },
                   {
                       "parameters":  {
@@ -4647,11 +4837,198 @@
                       "type":  "n8n-nodes-base.stopAndError",
                       "typeVersion":  1,
                       "position":  [
-                                       1380,
+                                       1820,
                                        220
                                    ],
                       "id":  "358f513f-0705-518e-9993-722ab32e16ce",
                       "name":  "Agent error alert"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "http://127.0.0.1:8090/__llm_status",
+                                         "options":  {
+                                                         "timeout":  3000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       1380,
+                                       380
+                                   ],
+                      "id":  "5bd4a1f4-5bd0-5194-976c-01a7f9e67dd0",
+                      "name":  "Read LLM status",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_llm_incident_note($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ code: (() =\u003e { const s = $(\u0027Read LLM status\u0027).first().json || {}; const e = s.last_error; return (e \u0026\u0026 e.at \u0026\u0026 Date.parse(e.at) \u003e Date.now() - 120000 \u0026\u0026 (!s.last_ok_at || Date.parse(e.at) \u003e= Date.parse(s.last_ok_at))) ? String(e.code || \u0027other\u0027) : \u0027other\u0027; })(), resume_at: String((($(\u0027Read LLM status\u0027).first().json || {}).last_error || {}).resume_at || \u0027\u0027), source: \u0027orchestrator\u0027, chat_id: String((($(\u0027Trigger normalize\u0027).first().json.message || {}).chat || {}).id || \u0027\u0027), update: $(\u0027Trigger normalize\u0027).first().json }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1600,
+                                       380
+                                   ],
+                      "id":  "ed1372cf-1a24-5e90-a016-6fc069b3cbb0",
+                      "name":  "Note LLM pause",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1f4f3385-bdf9-5f00-b5f0-4db52ed6ef26",
+                                                                                   "leftValue":  "={{ !($(\u0027Note LLM pause\u0027).isExecuted \u0026\u0026 (($(\u0027Note LLM pause\u0027).first().json.r || {}).suppress_alert === true)) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1600,
+                                       220
+                                   ],
+                      "id":  "54028039-af60-5101-90e1-a579ca87c228",
+                      "name":  "Alert needed?"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c947a378-d2c3-5282-a5be-563487048015",
+                                                                                   "leftValue":  "={{ ($(\u0027Note LLM pause\u0027).isExecuted \u0026\u0026 (($(\u0027Note LLM pause\u0027).first().json.r || {}).suppress_alert === true)) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1430,
+                                       -40
+                                   ],
+                      "id":  "0e54df60-b803-5ca9-88a0-b7aec7f69bd3",
+                      "name":  "LLM pause reply?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "OXCkBEPjtixssZXK",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/OXCkBEPjtixssZXK",
+                                                            "cachedResultName":  "core.sub_send_messages"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "messages":  "={{ JSON.stringify((($(\u0027Note LLM pause\u0027).first().json.r || {}).messages) || []) }}",
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1600,
+                                       -40
+                                   ],
+                      "id":  "ae2f37e5-bb69-521f-816a-8cd938624ce7",
+                      "name":  "Send LLM pause"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT agent.fn_delete_hitl_pending($1::jsonb) AS r, agent.fn_delete_thinking_lease($1::jsonb) AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String((($(\u0027Trigger normalize\u0027).first().json.message || {}).chat || {}).id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1820,
+                                       -40
+                                   ],
+                      "id":  "1a044d72-5e4f-5650-8795-3f1f4767d3c3",
+                      "name":  "Clear locks after pause",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**KI-Pause: Limit, Guthaben, Schlüssel, Störung beim Anbieter**\n\nDer Fehler-Ausgang des Agenten trägt nur n8ns Überschrift („Bad request – please check your parameters“), nie den Text des Anbieters. Darum: Agent error reply -\u003e Read LLM status (Gateway GET /__llm_status: letzter Anbieter-Fehler als fester Code + Datum, onError continue) -\u003e Note LLM pause (core.fn_llm_incident_note: Code nur, wenn der Fehler jünger als 2 Min und nach dem letzten Erfolg ist, sonst other = bisheriger Weg; merkt die Nachricht, öffnet bzw. übernimmt die Pause, baut die Texte in der Sprache des Empfängers) -\u003e Close thinking lease -\u003e LLM pause reply? -\u003e Send LLM pause (core.sub_send_messages: Antwort an den Schreiber, beim ersten Mal die Karte an den Owner) -\u003e Clear locks after pause; sonst Relay compose wie bisher. Alert needed? lässt den Roh-Alarm nur bei unsortierten Fehlern durch. Nachschau und Entwarnung: core.cron_llm_probe / core.sub_llm_probe; Knöpfe llm:* über die Callback-Registry (core.fn_handle_llm_cb).",
+                                         "height":  420,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1360,
+                                       560
+                                   ],
+                      "id":  "596ec0a0-ff81-51e4-944a-8bb1a1768982",
+                      "name":  "Doc KI-Pause"
                   },
                   {
                       "parameters":  {
@@ -5472,7 +5849,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. maxIterations=6: der Router ruft meist ein Tool (Aufruf + Signal-Zeile = 2 Läufe), bei mehreren Anliegen nacheinander mehrere (der Gateway schaltet parallele Tool-Aufrufe ab) - eine Tool-Schleife bricht ab statt Tokens zu verbrennen. Agent-Fehler: Die Node wirft beim Limit \"Max iterations (6) reached\"; der Fehler-Ausgang (onError continueErrorOutput) führt über Agent error reply in dieselbe Zustell-Kette (Relay compose: Limit -\u003e core.orch.step_limit, anderer Fehler -\u003e core.orch.relay_empty; keine Reaktion/kein Sticker) und danach in Agent error alert (Stop and Error mit der echten Meldung) - der Nutzer bekommt einen Hinweis, der Owner den Fehler-Alarm. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht; Block bei Agenten-Wechsel siehe Doc: Previous specialist). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (der Router darf Spezialisten-Antworten nicht umformulieren):der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit einer Signal-Zeile FRAME, NOFRAME oder FRAME \u003cMOOD\u003e (LOVE/CHEER/RELIEF/FUN) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; eine erste Zeile REACT \u003cMOOD\u003e schneidet Relay compose immer ab (allein = nur Reaktion, kein Text; mit Text = Reaktion + Text). Nichts Brauchbares -\u003e core.orch.relay_empty. Router-Flags am Ende des System-Prompts: persona, user_style (agent.fn_chat_style: expressive/neutral/terse aus den letzten 20 Nachrichten, Emoji-Spiegeln) und daypart (core.fn_daypart, passende Begrüßung). STICKER, REAKTION, RAHMENSATZ (KEIN LLM): Relay compose -\u003e Claim expression (EINE Abfrage, Write-Cred, onError continue): agent.fn_claim_persona_sticker (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach endgültig bestätigter Karte dieses Laufs + FRAME, ersetzt ein 👀; Stimmung ❤/🎉/🙏/😁 aus der Router-Zeile, nie neben einem Sticker, nie bei NOFRAME oder Fehler-Hinweis; Tages-Obergrenze je Person nach Stil aus core.config persona.mood_reactions_per_day, die reine Reaktion zählt nicht; Aus-Schalter persona.reactions_enabled), dann agent.fn_claim_persona_frame (Persona != neutral + FRAME + Spezialisten-Text: erste solche Antwort des Tages = Tagesgruß mit Vornamen, sonst fester Katalog-Rahmensatz core.persona.frame.\u003ccode\u003e.\u003cn\u003e, gewählt per message_id). -\u003e Sticker due? -\u003e Send sticker -\u003e Reaction due? -\u003e Send reaction (beide über den Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue; beide False-Ausgänge verdrahtet) -\u003e Has text? -\u003e Relay-Kette (Text = Rahmensatz + Leerzeile + Body; fehlt die zugesagte Reaktion bei leerem Body, ein kurzer Ersatztext statt Stille) bzw. bei reiner Reaktion direkt Router memory signal -\u003e Finish card lock. Die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach.Teile \u003c= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -\u003e kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -\u003e errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
+                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. maxIterations=6: der Router ruft meist ein Tool (Aufruf + Signal-Zeile = 2 Läufe), bei mehreren Anliegen nacheinander mehrere (der Gateway schaltet parallele Tool-Aufrufe ab) - eine Tool-Schleife bricht ab statt Tokens zu verbrennen. Agent-Fehler: Die Node wirft beim Limit \"Max iterations (6) reached\"; der Fehler-Ausgang (onError continueErrorOutput) führt über Agent error reply in dieselbe Zustell-Kette (Relay compose: Limit -\u003e core.orch.step_limit, anderer Fehler -\u003e core.orch.relay_empty; keine Reaktion/kein Sticker) und danach in Agent error alert (Stop and Error mit der echten Meldung) - der Nutzer bekommt einen Hinweis, der Owner den Fehler-Alarm. Ausnahme KI-Pause (Limit, Guthaben, Schlüssel, Störung beim Anbieter): passende Nachricht statt Hinweis, kein Alarm (Doc KI-Pause). Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht; Block bei Agenten-Wechsel siehe Doc: Previous specialist). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (der Router darf Spezialisten-Antworten nicht umformulieren):der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit einer Signal-Zeile FRAME, NOFRAME oder FRAME \u003cMOOD\u003e (LOVE/CHEER/RELIEF/FUN) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; eine erste Zeile REACT \u003cMOOD\u003e schneidet Relay compose immer ab (allein = nur Reaktion, kein Text; mit Text = Reaktion + Text). Nichts Brauchbares -\u003e core.orch.relay_empty. Router-Flags am Ende des System-Prompts: persona, user_style (agent.fn_chat_style: expressive/neutral/terse aus den letzten 20 Nachrichten, Emoji-Spiegeln) und daypart (core.fn_daypart, passende Begrüßung). STICKER, REAKTION, RAHMENSATZ (KEIN LLM): Relay compose -\u003e Claim expression (EINE Abfrage, Write-Cred, onError continue): agent.fn_claim_persona_sticker (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach endgültig bestätigter Karte dieses Laufs + FRAME, ersetzt ein 👀; Stimmung ❤/🎉/🙏/😁 aus der Router-Zeile, nie neben einem Sticker, nie bei NOFRAME oder Fehler-Hinweis; Tages-Obergrenze je Person nach Stil aus core.config persona.mood_reactions_per_day, die reine Reaktion zählt nicht; Aus-Schalter persona.reactions_enabled), dann agent.fn_claim_persona_frame (Persona != neutral + FRAME + Spezialisten-Text: erste solche Antwort des Tages = Tagesgruß mit Vornamen, sonst fester Katalog-Rahmensatz core.persona.frame.\u003ccode\u003e.\u003cn\u003e, gewählt per message_id). -\u003e Sticker due? -\u003e Send sticker -\u003e Reaction due? -\u003e Send reaction (beide über den Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue; beide False-Ausgänge verdrahtet) -\u003e Has text? -\u003e Relay-Kette (Text = Rahmensatz + Leerzeile + Body; fehlt die zugesagte Reaktion bei leerem Body, ein kurzer Ersatztext statt Stille) bzw. bei reiner Reaktion direkt Router memory signal -\u003e Finish card lock. Die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach.Teile \u003c= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -\u003e kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -\u003e errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
                                          "height":  320,
                                          "width":  800,
                                          "color":  4
@@ -10070,10 +10447,78 @@
                                                                        "index":  0,
                                                                        "node":  "Edit tapped message?",
                                                                        "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Registry reply?",
+                                                                       "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "LLM probe route?",
+                                                                       "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Replay route?",
+                                                                       "type":  "main"
                                                                    }
                                                                ]
                                                            ]
                                               },
+                        "Registry reply?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send registry reply",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+
+                                                             ]
+                                                         ]
+                                            },
+                        "LLM probe route?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Run LLM probe",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+
+                                                              ]
+                                                          ]
+                                             },
+                        "Replay route?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Replay update",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
+                        "Replay update":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Trigger normalize",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
                         "Owner notice?":  {
                                               "main":  [
                                                            [
@@ -10898,28 +11343,93 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Close thinking lease",
-                                                                       "type":  "main"
-                                                                   },
-                                                                   {
-                                                                       "index":  0,
-                                                                       "node":  "Agent error alert",
+                                                                       "node":  "Read LLM status",
                                                                        "type":  "main"
                                                                    }
                                                                ]
                                                            ]
                                               },
+                        "Read LLM status":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Note LLM pause",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Note LLM pause":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Close thinking lease",
+                                                                    "type":  "main"
+                                                                },
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Alert needed?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Alert needed?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Agent error alert",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
                         "Close thinking lease":  {
                                                      "main":  [
                                                                   [
                                                                       {
                                                                           "index":  0,
-                                                                          "node":  "Relay compose",
+                                                                          "node":  "LLM pause reply?",
                                                                           "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
                                                  },
+                        "LLM pause reply?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Send LLM pause",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Relay compose",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Send LLM pause":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Clear locks after pause",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
                         "Relay compose":  {
                                               "main":  [
                                                            [

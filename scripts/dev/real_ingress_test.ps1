@@ -505,6 +505,79 @@ foreach ($tc in $cases) {
         # callback_data, die tap_sql liefert (z. B. aus dem Stapel), optional expect_toast (Teiltext der Quittung). Nach
         # jedem Schritt muss die Orchestrator-Execution success sein und check_sql (optional) genau 't' liefern.
         # pre_sql/post_sql wie bei node_ran.
+        # ================= LLM_PAUSE: KI-Pause ueber den echten Eingang (aufgezeichnete Anthropic-Antwort der Attrappe) =================
+        # fixture = Name in tests/mock_llm/anthropic_errors.json (Schalter /__upstream_error, gilt fuer alle Claude-Aufrufe bis off).
+        # steps[] nacheinander: {send: 'owner'|'member', text} = Nachricht an den echten Eingang; {tap: 'owner'|'member', action}
+        # = Knopf llm:<action>:<offener bzw. zuletzt geschlossener Vorfall>; {recover: true} = Attrappe wieder normal. Je Schritt:
+        # Orchestrator-Lauf success (kein Stop and Error = kein Roh-Alarm), dann expect {owner|member: {texts[], forbid[],
+        # buttons[] (callback_data-Praefixe genau in dieser Menge), none: true (keine Nachricht an diesen Chat)}} und optional
+        # check_sql (muss 't' liefern). Nie ein Text 'Bad request' an irgendwen.
+        if ($tc.kind -eq 'llm_pause') {
+            $mp = if ($state.mock_llm.port) { $state.mock_llm.port } else { 8088 }
+            $setLlmErr = {
+                param([string]$Name)
+                $q = if ($Name) { "name=$Name" } else { 'off=1' }
+                $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mp/__upstream_error?$q'" 2>$null | Out-Null
+                $ErrorActionPreference = $prev
+            }
+            [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.llm_held_messages; DELETE FROM core.llm_incidents;'))
+            $who = @{ owner = [long]$tc.chat_id; member = [long]$PairedUidLena }
+            $seqOk = $true; $n = 0
+            try {
+                & $setLlmErr "$($tc.fixture)"
+                foreach ($st in @($tc.steps)) {
+                    $n++
+                    Clear-MockTelegramRequests -Container $Container
+                    if ($st.recover) { & $setLlmErr ''; Write-Host "    Schritt ${n}: Attrappe wieder normal"; continue }
+                    $orchBase = Get-MaxExecId $OrchWfId
+                    if ($st.send) {
+                        Clear-ChatSessionMemory -Container $Container -SessionId "$($who[$st.send])"
+                        Send-TelegramUpdate $who[$st.send] $who[$st.send] "$($st.text)" | Out-Null
+                    } else {
+                        $iq = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT id FROM core.llm_incidents ORDER BY (closed_at IS NULL) DESC, id DESC LIMIT 1;')
+                        $incId = "$($iq.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)"
+                        Send-TelegramCallback $who[$st.tap] $who[$st.tap] "llm:$($st.action):$incId"
+                    }
+                    $tmo = if ($st.timeout_s) { [int]$st.timeout_s } else { $Timeout }
+                    $orch = Wait-NewExecTerminal $OrchWfId $orchBase $tmo
+                    $why = @()
+                    if (-not $orch -or $orch.status -ne 'success') { $why += "Orchestrator-Lauf status=$($orch.status)" }
+                    $reqs = @(Get-MockTelegramRequests -Container $Container | Where-Object { "$($_.method)" -in @('sendMessage', 'editMessageText') })
+                    foreach ($role in @('owner', 'member')) {
+                        $exp = $st.expect.$role
+                        if (-not $exp) { continue }
+                        $mine = @($reqs | Where-Object { "$($_.body.chat_id)" -eq "$($who[$role])" -and "$($_.method)" -eq 'sendMessage' })
+                        if ($exp.none) { if ($mine.Count -gt 0) { $why += "$role bekam $($mine.Count) Nachricht(en), erwartet keine" }; continue }
+                        $hay = (@(foreach ($r in $mine) { Get-StringLeaves $r.body }) -join "`n")
+                        foreach ($t in @($exp.texts)) { if ($t -and -not $hay.Contains("$t")) { $why += "${role}: Text fehlt '$t'" } }
+                        foreach ($t in @($exp.forbid)) { if ($t -and $hay.Contains("$t")) { $why += "${role}: Text darf nicht vorkommen '$t'" } }
+                        if ($null -ne $exp.buttons) {
+                            $cbs = @(foreach ($r in $mine) {
+                                $rm = $r.body.reply_markup
+                                if ($rm -is [string]) { try { $rm = $rm | ConvertFrom-Json } catch { $rm = $null } }
+                                @($rm.inline_keyboard | ForEach-Object { @($_) }) | ForEach-Object { ("$($_.callback_data)" -replace ':[0-9]+$', '') }
+                            })
+                            if ((@($cbs | Sort-Object) -join ',') -ne (@($exp.buttons | Sort-Object) -join ',')) { $why += "${role}: Knoepfe '$($cbs -join ',')' statt '$(@($exp.buttons) -join ',')'" }
+                        }
+                    }
+                    $allText = (@(foreach ($r in $reqs) { Get-StringLeaves $r.body }) -join "`n")
+                    if ($allText.Contains('Bad request')) { $why += 'Roh-Fehlertext gesendet' }
+                    if ($st.check_sql) {
+                        $cs = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($st.check_sql)")
+                        if ("$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)" -ne 't') { $why += "check_sql nicht erfuellt: $($st.check_sql)" }
+                    }
+                    $label = if ($st.send) { "$($st.send) schreibt" } else { "$($st.tap) tippt $($st.action)" }
+                    Write-Host "    Schritt ${n}: $label -> $(if ($why.Count) { $why -join '; ' } else { 'ok' })"
+                    if ($why.Count) { $seqOk = $false; if ($Verbose) { Write-Host "    gesendet: $($allText.Substring(0, [Math]::Min(800, $allText.Length)))" -ForegroundColor DarkGray }; break }
+                }
+            } finally { & $setLlmErr '' }
+            [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.llm_held_messages; DELETE FROM core.llm_incidents;'))
+            if ($seqOk) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
+            else { $failed++; Write-Host "    [FAIL] KI-Pause bricht bei Schritt $n ab" -ForegroundColor Red }
+            continue
+        }
+
         if ($tc.kind -eq 'sequence') {
             if ($tc.pre_sql) {
                 $ps = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.pre_sql)")

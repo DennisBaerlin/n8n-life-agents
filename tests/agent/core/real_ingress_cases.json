@@ -1633,5 +1633,50 @@
     "expected_output_not_contains": "drei bis sechs Monatsausgaben",
     "expect_task_contains": ["\"task\":\"Router-Test das soll der Buchhalter jetzt bitte direkt vormerken\""],
     "notes": "Zug 2 hat kein eigenes Szenario: der Mock waehlt oc52 aus dem Verlauf, hat dessen Call schon emittiert und antwortet als Router mit Text (kein Tool). Der vorige Zug (Zug 2) hat damit keine Tool-Zeile, der Buchhalter bekommt den Satz woertlich."
+  },
+  {
+    "id": "ri115",
+    "name": "KI-Pause Monatslimit: Owner-Karte einmal, Kurzsatz, Mitglied ohne Knoepfe, kein Roh-Alarm; Erholung per Knopf, gemerkte Nachrichten nachspielen",
+    "kind": "llm_pause",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "fixture": "spend_limit",
+    "steps": [
+      { "send": "owner", "text": "Wie hoch ist mein aktueller Kontostand beim Lindenbank Giro?",
+        "expect": { "owner": { "texts": ["KI-Ausgabenlimit ist erreicht", "Jede Frage an die KI kostet ein wenig Geld", "01.12.2026 um 01:00 Uhr", "habe ich mir gemerkt"], "forbid": ["API", "Credits"], "buttons": ["llm:guide", "llm:wait"] } },
+        "check_sql": "SELECT count(*) = 1 FROM core.llm_incidents WHERE closed_at IS NULL AND kind = 'spend_limit' AND owner_notified_at IS NOT NULL" },
+      { "send": "owner", "text": "Und bitte auch den Stand vom Tagesgeld",
+        "expect": { "owner": { "texts": ["Ich mache noch Pause"], "buttons": [] } } },
+      { "send": "member", "text": "Wie hoch ist mein aktueller Kontostand beim Lindenbank Giro?",
+        "expect": { "member": { "texts": ["this month's AI spending limit has been reached"], "forbid": ["$"], "buttons": [] }, "owner": { "none": true } } },
+      { "tap": "owner", "action": "guide",
+        "expect": { "owner": { "texts": ["platform.claude.com/settings/spend-limits", "Adjust limit"], "buttons": ["llm:check"] } },
+        "check_sql": "SELECT owner_choice = 'raise' FROM core.llm_incidents WHERE closed_at IS NULL" },
+      { "recover": true },
+      { "tap": "owner", "action": "check",
+        "expect": { "owner": { "texts": ["Ich bin wieder da", "2 Nachrichten"], "buttons": ["llm:replay", "llm:drop"] }, "member": { "texts": ["I'm back"], "buttons": ["llm:replay", "llm:drop"] } },
+        "check_sql": "SELECT count(*) = 0 FROM core.llm_incidents WHERE closed_at IS NULL" },
+      { "tap": "owner", "action": "replay", "timeout_s": 120,
+        "expect": { "owner": { "texts": ["Kontostand betraegt 1234,56 EUR"] } },
+        "check_sql": "SELECT NOT EXISTS (SELECT 1 FROM agent.llm_held_messages WHERE from_id = 880055071) AND EXISTS (SELECT 1 FROM agent.llm_held_messages WHERE from_id = 880055200)" }
+    ],
+    "notes": "Attrappe spielt die aufgezeichnete Anthropic-Antwort (400, eigenes Monatslimit, Datum 2026-12-01 00:00 UTC). Owner-Sprache de, Lena en. Der Nachspiel-Lauf geht ueber den Knopf zurueck in Trigger normalize und routet wie eine neue Nachricht (Szenario Kontostand)."
+  },
+  {
+    "id": "ri116",
+    "name": "KI-Pause Stoerung: nur wer schreibt, bekommt den Hinweis; Owner nie; Entwarnung nur an Personen mit gemerkter Nachricht",
+    "kind": "llm_pause",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "fixture": "overloaded_529",
+    "steps": [
+      { "send": "member", "text": "Wie hoch ist mein aktueller Kontostand beim Lindenbank Giro?", "timeout_s": 240,
+        "expect": { "member": { "texts": ["is having problems right now", "I've kept your message"], "buttons": [] }, "owner": { "none": true } },
+        "check_sql": "SELECT count(*) = 1 FROM core.llm_incidents WHERE closed_at IS NULL AND kind = 'outage' AND owner_notified_at IS NULL" },
+      { "recover": true },
+      { "tap": "owner", "action": "check",
+        "expect": { "member": { "texts": ["I'm back"], "buttons": ["llm:replay", "llm:drop"] }, "owner": { "none": true } } }
+    ],
+    "notes": "n8n wiederholt 529 selbst (gemessen 7 Versuche, ~81 s) -> timeout_s 240. Der Owner-Tipp auf check ist nur der Ausloeser der Nachschau (sonst Cron alle 2 Min); er bekommt nur die Quittung, keine Nachricht (Owner-Entscheidung: Stoerung nie an den Owner)."
   }
 ]

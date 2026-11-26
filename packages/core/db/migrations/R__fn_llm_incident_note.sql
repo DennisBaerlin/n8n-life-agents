@@ -18,7 +18,8 @@
 --   Eingabe p: { code (Pflicht), resume_at? (ISO-UTC 'YYYY-MM-DDTHH:MI:SSZ'), source? ('orchestrator'|'error_notify'),
 --     chat_id? (Telegram-Absender), update? (Telegram-Update mit message) }
 --   Rueckgabe: {ok:true, kind|null, incident_id?, reply_text?, reply_buttons ([[{text,data}]]), owner_card?:{text, buttons},
---     suppress_alert (true = sortierter Fall, kein Roh-Alarm), held} | {ok:false, reason:'unknown_code'}
+--     suppress_alert (true = sortierter Fall, kein Roh-Alarm), held, messages:[{chat_id, text, buttons}] (dieselben Texte
+--     mit Empfaenger fuer core.sub_send_messages)} | {ok:false, reason:'unknown_code'}
 --   Tests: tests/db/core/test_fn_llm_incident_note.sql
 -- ============================================================
 
@@ -213,7 +214,15 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'kind', v_inc.kind, 'incident_id', v_inc.id, 'reply_text', v_reply,
-        'reply_buttons', COALESCE(v_btn, '[]'::jsonb), 'owner_card', v_card, 'suppress_alert', true, 'held', v_held);
+        'reply_buttons', COALESCE(v_btn, '[]'::jsonb), 'owner_card', v_card, 'suppress_alert', true, 'held', v_held,
+        -- dieselben Texte als Sendeliste fuer core.sub_send_messages (Antwort an den Schreiber, Karte an den Owner)
+        'messages', (SELECT COALESCE(jsonb_agg(m), '[]'::jsonb) FROM (
+            SELECT jsonb_build_object('chat_id', v_chat::text, 'text', v_reply, 'buttons', COALESCE(v_btn, '[]'::jsonb)) AS m
+             WHERE v_reply IS NOT NULL AND v_chat IS NOT NULL
+            UNION ALL
+            SELECT jsonb_build_object('chat_id', o::text, 'text', v_card->>'text', 'buttons', v_card->'buttons')
+              FROM agent.fn_person_chat_id(agent.fn_owner_person_id()) o
+             WHERE v_card IS NOT NULL AND o IS NOT NULL) x));
 END;
 $$;
 

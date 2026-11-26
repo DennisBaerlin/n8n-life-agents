@@ -1440,6 +1440,8 @@
   "core.handoff.why_rollout": "Your plan is published – one step is still missing. For the plan to work, we enter what we agreed: {n} things, one tap each.",
   "core.handoff.why_rollout_one": "Your plan is published – one step is still missing. For the plan to work, we enter what we agreed: one thing, one tap.",
   "core.handoff.why_advisor": "Here's the list to enter.",
+  "core.handoff.effect": "Until then, my forecast for {n} accounts is not right.",
+  "core.handoff.effect_one": "Until then, my forecast for one account is not right.",
   "core.handoff.btn_go": "Enter now",
   "core.toast.prompt_outdated": "There is already something newer for this.",
   "core.toast.prompt_not_yours": "This question belongs to another chat.",

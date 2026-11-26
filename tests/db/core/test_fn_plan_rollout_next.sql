@@ -271,4 +271,41 @@ BEGIN
      OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 3 OR jsonb_array_length(v->'messages'->0->'latches') <> 2 THEN
     RAISE EXCEPTION 'FAIL fix zwei %', v; END IF;
 END $$;
+
+-- Folge-Zeile der Liste (core.advisors.entry_effects_fn): nur mit Hinweisen der Klasse entry (accounts > 0), eigener Satz fuer 1;
+-- fehlende oder werfende Paket-fn -> keine Zeile.
+INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step) VALUES ('__rolle__', 'core', '__rolle___planning', 'core.fn_x', TRUE);
+CREATE FUNCTION core.fn_t_effects(p_domain text) RETURNS jsonb LANGUAGE plpgsql AS $f$
+BEGIN
+  IF current_setting('t.eff', true) = 'throw' THEN RAISE EXCEPTION 'kaputt'; END IF;
+  RETURN jsonb_build_object('accounts', COALESCE(NULLIF(current_setting('t.eff', true), ''), '0')::int);
+END $f$;
+DO $$
+DECLARE
+  d CONSTANT TEXT := '__rolle__';
+  v JSONB;
+BEGIN
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at) VALUES (d, 'p', 'active', 1, now());
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES (d, 'core', 'erika', 's', 'other', 'Aufgabe');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages'->0->'msg') <> 1 THEN RAISE EXCEPTION 'FAIL eff ohne fn %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  UPDATE core.advisors SET entry_effects_fn = 'core.fn_t_effects' WHERE domain = d;
+  PERFORM set_config('t.eff', '2', true);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF jsonb_array_length(v->'messages'->0->'msg') <> 2 OR v->'messages'->0->'msg'->1->>'value' <> 'core.handoff.effect'
+     OR (v->'messages'->0->'msg'->1->'params'->>'n')::int <> 2 THEN RAISE EXCEPTION 'FAIL eff 2 %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  PERFORM set_config('t.eff', '1', true);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->'messages'->0->'msg'->1->>'value' IS DISTINCT FROM 'core.handoff.effect_one' THEN RAISE EXCEPTION 'FAIL eff 1 %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  PERFORM set_config('t.eff', '0', true);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF jsonb_array_length(v->'messages'->0->'msg') <> 1 THEN RAISE EXCEPTION 'FAIL eff 0 %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  PERFORM set_config('t.eff', 'throw', true);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages'->0->'msg') <> 1 THEN RAISE EXCEPTION 'FAIL eff wirft %', v; END IF;
+END $$;
 ROLLBACK;

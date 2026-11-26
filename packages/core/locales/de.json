@@ -1440,6 +1440,8 @@
   "core.handoff.why_rollout": "Dein Plan ist veröffentlicht – ein Schritt fehlt noch. Damit der Plan wirkt, tragen wir ein, was wir vereinbart haben: {n} Dinge, je ein Tipp.",
   "core.handoff.why_rollout_one": "Dein Plan ist veröffentlicht – ein Schritt fehlt noch. Damit der Plan wirkt, tragen wir ein, was wir vereinbart haben: eine Sache, ein Tipp.",
   "core.handoff.why_advisor": "Hier ist die Liste zum Eintragen.",
+  "core.handoff.effect": "Solange das fehlt, stimmt meine Vorschau für {n} Konten nicht.",
+  "core.handoff.effect_one": "Solange das fehlt, stimmt meine Vorschau für ein Konto nicht.",
   "core.handoff.btn_go": "Jetzt eintragen",
   "core.toast.prompt_outdated": "Dazu gibt es schon etwas Neueres.",
   "core.toast.prompt_not_yours": "Diese Frage gehört zu einem anderen Chat.",

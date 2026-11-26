@@ -1440,6 +1440,8 @@
   "core.handoff.why_rollout": "계획이 게시됐어요. 한 단계가 남았어요. 계획이 제대로 작동하도록 함께 정한 것을 입력해요: {n}가지, 하나에 한 번 누르면 돼요.",
   "core.handoff.why_rollout_one": "계획이 게시됐어요. 한 단계가 남았어요. 계획이 제대로 작동하도록 함께 정한 것을 입력해요: 한 가지, 한 번 누르면 돼요.",
   "core.handoff.why_advisor": "입력할 목록이에요.",
+  "core.handoff.effect": "그 전까지는 계좌 {n}개의 예상이 정확하지 않아요.",
+  "core.handoff.effect_one": "그 전까지는 계좌 1개의 예상이 정확하지 않아요.",
   "core.handoff.btn_go": "지금 입력하기",
   "core.toast.prompt_outdated": "이미 더 새로운 내용이 있어요.",
   "core.toast.prompt_not_yours": "이 질문은 다른 채팅의 질문이에요.",

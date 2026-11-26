@@ -121,7 +121,7 @@ BEGIN
                 RETURN jsonb_build_object('step', 1, 'loser', true, 'messages', '[]'::jsonb);
             END IF;
             RETURN jsonb_build_object('step', 1, 'messages', jsonb_build_array(jsonb_build_object(
-                'msg', jsonb_build_array(v_res->'msg'),
+                'msg', jsonb_build_array(v_res->'msg') || CASE WHEN jsonb_typeof(v_res->'effect') = 'object' THEN jsonb_build_array(v_res->'effect') ELSE '[]'::jsonb END,
                 'buttons', jsonb_build_array(jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || p_domain || ':' || v_max)),
                 'latch', jsonb_build_object('source', 'plan_rollout', 'key', v_key))));
         END IF;

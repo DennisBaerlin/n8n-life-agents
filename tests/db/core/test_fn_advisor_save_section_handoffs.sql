@@ -12,6 +12,7 @@ CREATE FUNCTION core.fn_t_precheck(p jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f
 BEGIN
   CASE p->'payload'->>'t'
     WHEN 'unsupported' THEN RETURN '{"ok":true,"unsupported":true,"blocked_code":"end_date_future"}'::jsonb;
+    WHEN 'unsupported_call' THEN RETURN '{"ok":true,"unsupported":true,"blocked_code":"end_date_future","call":{"tool":"create_savings_goal","input":{"name":"Rad"}}}'::jsonb;
     WHEN 'badcode' THEN RETURN '{"ok":true,"unsupported":true,"blocked_code":"no_such_code"}'::jsonb;
     WHEN 'ambiguous' THEN RETURN '{"ok":false,"code":"handoff_ref_ambiguous","reason":"two accounts match","candidates":[{"id":1,"label":"A"},{"id":2,"label":"B"}]}'::jsonb;
     WHEN 'choice' THEN
@@ -84,8 +85,13 @@ BEGIN
          'section_content','Ziele.',
          'handoff_tasks', jsonb_build_array(
             jsonb_build_object('kind','savings_goal','payload',jsonb_build_object('name','Urlaub','target_amount',1200),'text','Sparziel Urlaub'),
-            jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','unsupported'),'text','Uebertrag bis Jahresende'))));
-  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoffs_deferred')::int <> 1 THEN RAISE EXCEPTION 'FAIL [2 save]: %', r; END IF;
+            jsonb_build_object('kind','recurring_transfer','payload',jsonb_build_object('t','unsupported'),'text','Uebertrag bis Jahresende'),
+            jsonb_build_object('kind','savings_goal','payload',jsonb_build_object('t','unsupported_call'),'text','Sparziel Rad unregelmaessig'))));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoffs_deferred')::int <> 2 THEN RAISE EXCEPTION 'FAIL [2 save]: %', r; END IF;
+  -- geht noch nicht, aber der Aufruf liess sich bauen: das Soll wird trotzdem gespeichert
+  IF (SELECT status || '/' || (wanted->>'tool') FROM agent.handoff_tasks WHERE text = 'Sparziel Rad unregelmaessig') IS DISTINCT FROM 'deferred/create_savings_goal'
+     OR (SELECT wanted FROM agent.handoff_tasks WHERE text = 'Uebertrag bis Jahresende') IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [2 unsupported mit Aufruf]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
   IF (SELECT wanted FROM agent.handoff_tasks WHERE text = 'Sparziel Urlaub') <> '{"tool":"create_savings_goal","input":{"name":"Urlaub","target_amount":1200}}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [2 wanted]: %', (SELECT wanted FROM agent.handoff_tasks WHERE text = 'Sparziel Urlaub'); END IF;
   IF (SELECT status || '/' || blocked_code FROM agent.handoff_tasks WHERE text = 'Uebertrag bis Jahresende') <> 'deferred/end_date_future' THEN
@@ -135,7 +141,7 @@ BEGIN
   r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building','topic','Ziele',
          'section_content','Ziele neu.', 'handoff_tasks', '[]'));
   IF (r->>'ok')::boolean IS NOT TRUE
-     OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text IN ('Sparziel Urlaub', 'Uebertrag bis Jahresende'))
+     OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text IN ('Sparziel Urlaub', 'Uebertrag bis Jahresende', 'Sparziel Rad unregelmaessig'))
      OR NOT EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text = 'Beim Eintragen zurueckgestellt') THEN
     RAISE EXCEPTION 'FAIL [4 ersetzen]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
   RAISE NOTICE 'PASS [4 ersetzen]';

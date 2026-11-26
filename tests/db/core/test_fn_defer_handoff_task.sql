@@ -80,6 +80,12 @@ BEGIN
   IF r->0->>'why' <> 'Der Übertrag endet mit dem Ziel.' OR r->0->'wanted'->>'tool' <> 'create_recurring_transfer'
      OR r->0->'rest' <> 'null'::jsonb OR r->1->>'rest' <> 'Betrag, sobald der Anbieter sich meldet' THEN
     RAISE EXCEPTION 'FAIL [5 read]: %', r; END IF;
+  -- Provenienz fuer die Paket-fns (Unterschied, Kartenzeilen): entered_refs, close_reason, open_point_id
+  UPDATE agent.handoff_tasks SET status = 'done', closed_at = now(), close_reason = 'done_elsewhere',
+         entered_refs = '[{"type":"pension","id":2}]' WHERE id = v_id3;
+  r := core.fn_handoff_tasks_read(ARRAY[v_id3]);
+  IF r->0->'entered_refs' IS DISTINCT FROM '[{"type":"pension","id":2}]'::jsonb OR r->0->>'close_reason' IS DISTINCT FROM 'done_elsewhere'
+     OR (r->0->>'open_point_id')::int IS DISTINCT FROM 4 OR r->0 ? 'person_id' THEN RAISE EXCEPTION 'FAIL [5 Provenienz]: %', r; END IF;
   RAISE NOTICE 'PASS [5 Lesefenster]';
 END $$;
 

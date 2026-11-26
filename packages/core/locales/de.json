@@ -1432,7 +1432,7 @@
   "core.hitl.handoff_pos": "Eintrag {k} von {n}",
   "core.hitl.handoff_why": "Warum: {why}",
   "core.hitl.handoff_rest": "Bleibt offen: {text}",
-  "core.hitl.value_before_after": "bisher {before} → neu {after}",
+  "core.hitl.value_before_after": "{field}: bisher {before} → neu {after}",
   "core.hitl.plan_legacy_replaced": "Ersetzt den bisherigen Gesamttext dieses Abschnitts.",
   "core.toast.handoff_nothing_open": "Schon erledigt oder läuft gerade.",
   "core.orch.toast_handoff": "Der erste Punkt kommt gleich …",

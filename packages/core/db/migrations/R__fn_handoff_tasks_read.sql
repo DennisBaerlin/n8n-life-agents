@@ -2,9 +2,10 @@
 -- core.fn_handoff_tasks_read(p_ids) — publiziertes Lesefenster der vereinbarten Plan-Aufgaben fuer den Buchhalter
 --   Der Buchhalter (finance_ro, postgres_select) liest die Aufgaben seines Auftrags per id nach (agent.* ist ihm per D10
 --   verschlossen): SELECT core.fn_handoff_tasks_read(ARRAY[12,13]). Rueckgabe jsonb-Array [{id, kind, payload, text,
---   status, why, wanted, rest}] in id-Reihenfolge; unbekannte ids fehlen. why = Grund der Vereinbarung, wanted = der beim
---   Vereinbaren gepruefte Aufruf (NULL ohne Vorpruefung), rest = Text des offenen Punkts, der beim Eintragen offen bleibt
---   (core.fn_handoff_rest). Nur die angefragten ids (der Auftrag nennt sie), keine Personen- oder Domain-Liste.
+--   status, why, wanted, rest, entered_refs, close_reason, open_point_id}] in id-Reihenfolge; unbekannte ids fehlen. why = Grund
+--   der Vereinbarung, wanted = der beim Vereinbaren gepruefte Aufruf (NULL ohne Vorpruefung), rest = Text des offenen Punkts,
+--   der beim Eintragen offen bleibt (core.fn_handoff_rest); entered_refs/close_reason = Provenienz des Abschlusses (Paket-fns
+--   fuer den Unterschied Soll gegen Ist und die Kartenzeilen, die agent.* nicht sehen). Nur die angefragten ids (der Auftrag nennt sie), keine Personen- oder Domain-Liste.
 --   SECURITY DEFINER, EXECUTE an <pkg>_ro/_rw via core.fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_handoff_tasks.sql, tests/db/core/test_fn_defer_handoff_task.sql, tests/db/cross/test_role_permissions.sql
 -- ============================================================
@@ -18,7 +19,8 @@ AS $$
 BEGIN
     RETURN (SELECT COALESCE(jsonb_agg(jsonb_build_object('id', t.id, 'kind', t.kind, 'payload', t.payload, 'text', t.text,
                                                          'status', t.status, 'why', t.why, 'wanted', t.wanted,
-                                                         'rest', core.fn_handoff_rest(t.id)) ORDER BY t.id), '[]'::jsonb)
+                                                         'rest', core.fn_handoff_rest(t.id), 'entered_refs', t.entered_refs,
+                                                         'close_reason', t.close_reason, 'open_point_id', t.open_point_id) ORDER BY t.id), '[]'::jsonb)
               FROM agent.handoff_tasks t
              WHERE t.id = ANY (COALESCE(p_ids, ARRAY[]::int[])));
 END;

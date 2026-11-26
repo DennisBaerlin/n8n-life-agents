@@ -39,7 +39,7 @@
 --       derselbe Text wie ein offener Punkt des Themas = dieser Punkt), option (optional: Schluessel der vom Nutzer gewaehlten
 --       Option der Vorpruefung)}. Vorpruefung: hat die Domain core.advisors.handoff_check_fn, laeuft sie je Eintrag (mode agree,
 --       Vertrag docs/package-contract.md) vor jedem Write: Aufruf (call|calls) -> wanted; unsupported + blocked_code (Code aus
---       core.fn_handoff_blocked_codes) -> die Aufgabe entsteht als deferred; ok:false (handoff_ref_ambiguous,
+--       core.fn_handoff_blocked_codes) -> die Aufgabe entsteht als deferred (ein mitgelieferter Aufruf wird trotzdem wanted); ok:false (handoff_ref_ambiguous,
 --       handoff_not_enterable, handoff_choice_needed ...) -> ganzer Save abgelehnt, die Ablehnung kommt mit task_index (1-basiert)
 --       zurueck; wirft die Paket-fn, gilt der Eintrag als ungeprueft (ohne wanted). Angegeben (auch '[]') ersetzt es die OFFENEN
 --       Aufgaben und die beim Vereinbaren zurueckgestellten (deferred ohne claimed_at): mit topic die des Themas plus die
@@ -300,8 +300,7 @@ BEGIN
                     'reason', format('handoff_tasks #%s: the entry check returned an unknown blocked_code', v_ti));
             END IF;
             v_checked := v_checked || jsonb_build_array(jsonb_build_object(
-                'wanted', CASE WHEN v_chk->'unsupported' = 'true'::jsonb THEN NULL
-                               WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN v_chk->'calls'
+                'wanted', CASE WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN v_chk->'calls'
                                WHEN jsonb_typeof(v_chk->'call') = 'object' THEN v_chk->'call' END,
                 'blocked_code', CASE WHEN v_chk->'unsupported' = 'true'::jsonb THEN v_chk->>'blocked_code' END));
         END LOOP;

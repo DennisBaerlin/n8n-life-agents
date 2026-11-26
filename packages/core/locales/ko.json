@@ -1432,7 +1432,7 @@
   "core.hitl.handoff_pos": "{n}개 중 {k}번째 항목",
   "core.hitl.handoff_why": "이유: {why}",
   "core.hitl.handoff_rest": "남은 일: {text}",
-  "core.hitl.value_before_after": "이전 {before} → 새로 {after}",
+  "core.hitl.value_before_after": "{field}: 기존 {before} → 변경 {after}",
   "core.hitl.plan_legacy_replaced": "이 섹션의 기존 전체 텍스트를 대체합니다.",
   "core.toast.handoff_nothing_open": "이미 끝났거나 진행 중이에요.",
   "core.orch.toast_handoff": "첫 번째 항목이 곧 나와요 …",

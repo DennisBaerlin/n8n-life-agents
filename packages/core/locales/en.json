@@ -1432,7 +1432,7 @@
   "core.hitl.handoff_pos": "Entry {k} of {n}",
   "core.hitl.handoff_why": "Why: {why}",
   "core.hitl.handoff_rest": "Still open: {text}",
-  "core.hitl.value_before_after": "before {before} → now {after}",
+  "core.hitl.value_before_after": "{field}: was {before} → now {after}",
   "core.hitl.plan_legacy_replaced": "Replaces the previous full text of this section.",
   "core.toast.handoff_nothing_open": "Already done or in progress.",
   "core.orch.toast_handoff": "The first item is on its way …",

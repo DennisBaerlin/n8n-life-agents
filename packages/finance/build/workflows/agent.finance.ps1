@@ -303,7 +303,7 @@ $nToolCreateRealEstate = New-ToolWorkflowNode 'tool_create_real_estate' `
     @(
         ,@('name', 'Display name (e.g. "Wohnung Beispielstadt")', 'string')
         ,@('current_value', 'Estimated current market value in EUR (optional)', 'string', '')
-        ,@('value_updated_at', ('Date of last valuation (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
+        ,@('value_updated_at', ('Date of last valuation, only if the user names one (' + (Get-DateParamHint) + '); empty = today'), 'string', '')
         ,@('owner_person', 'OPTIONAL: the single household member who owns this property (as the user names them - a first name is enough; never ask for a surname). Leave EMPTY for a joint/household asset.', 'string', '')
         ,@('status', 'active or sold (optional, default active)', 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
@@ -532,7 +532,7 @@ $nToolCreatePension = New-ToolWorkflowNode 'tool_create_pension' `
         ,@('contract_number', 'Contract or policy number', 'string', '')
         ,@('owner_person', 'OPTIONAL: the single household member this provision belongs to (as the user names them - a first name is enough; never ask for a surname). Leave EMPTY for a joint/household provision.', 'string', '')
         ,@('current_value', 'Current accumulated value in EUR (Rückkaufswert/Deckungskapital). Empty if unknown.', 'string', '')
-        ,@('value_updated_at', ('Date the value is as of, (' + (Get-DateParamHint) + ')'), 'string', '')
+        ,@('value_updated_at', ('Date the value is as of, only if the user names one (' + (Get-DateParamHint) + '); empty = today'), 'string', '')
         ,@('guaranteed_monthly_pension', 'Monthly payout in EUR the contract GUARANTEES at retirement (optional). Never an Anwartschaft or claim earned so far - that is a pension_statement via the import', 'string', '')
         ,@('retirement_start_date', ('Expected start of payout (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
         ,@('contribution_amount', 'Contribution PER DEBIT in EUR as the user states it, positive. If set, debit_account_name is required.', 'string', '')

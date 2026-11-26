@@ -1,7 +1,8 @@
 -- ============================================================
 -- fn_monitor_ro_eval (HELPER)
 --   Fuehrt eine gespeicherte Monitor-sql-Spec strukturell read-only aus. Eingabe: p_query (Spec-SQL), p_search_path.
---   Einziger Aufrufer: agent.fn_monitor_acquire (sql-Zweig; Cron fn_monitor_evaluate + Test-Abruf fn_monitor_probe).
+--   Aufrufer: agent.fn_monitor_acquire (sql-Zweig; Cron fn_monitor_evaluate + Test-Abruf fn_monitor_probe) und
+--   agent.fn_monitor_drawdown_reference (Hoechststand aus history_query: Unterabfrage mit Aggregat bzw. ORDER BY/LIMIT).
 --   SECURITY DEFINER mit Eigentuemer core_ro_eval (NOLOGIN, erbt nur core_ro; ALTER OWNER am Rollen-Ort
 --   util_create_core_ro.sql): die Abfrage laeuft mit genau den Leserechten von core_ro, und in einer DEFINER-fn lehnt
 --   PostgreSQL jedes Setzen von role/session_authorization ab -> eine eingebettete set_config('role', ...) kann die

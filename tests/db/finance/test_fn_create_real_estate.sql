@@ -49,6 +49,14 @@ BEGIN
 
   RAISE NOTICE 'PASS fn_create_real_estate [2 mit Wert + owner_person_id]: id=%, value=350000', v_id;
 
+  -- TEST 3: Wert ohne Bewertungsdatum -> die fn stempelt heute (wie fn_set_real_estate), das Modell liefert keinen Stempel.
+  v_result := finance.fn_create_real_estate('{"name":"__test_immo3__","current_value":"250000"}'::jsonb);
+  IF (SELECT value_updated_at FROM finance.real_estate WHERE id = (v_result->>'real_estate_id')::int)
+     IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL fn_create_real_estate [3 Stempel]: value_updated_at nicht heute: %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_create_real_estate [3 Wert ohne Datum -> heute]';
+
 END $$;
 
 ROLLBACK;

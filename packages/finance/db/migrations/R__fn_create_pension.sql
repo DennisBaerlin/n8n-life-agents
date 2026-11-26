@@ -5,7 +5,7 @@
 --   Rhythmus (schedule_interval/schedule_unit, Default 1 x Monat; das LLM rechnet nie in einen Monatswert um --
 --   pension_overview.monthly_contribution leitet ihn aus rp.monthly_equivalent ab).
 --   Eingabe jsonb: name, pension_type, provider, contract_number, owner_person_id (Slug, NULL=Haushalt), current_value (opt;
---   Rueckkaufswert/Deckungskapital), value_updated_at (opt), guaranteed_monthly_pension (opt),
+--   Rueckkaufswert/Deckungskapital), value_updated_at (opt; leer bei Wert = heute), guaranteed_monthly_pension (opt),
 --   retirement_start_date (opt), contribution_amount (opt, positiv, je Abbuchung), schedule_interval/schedule_unit (opt),
 --   debit_account_id (opt, n8n-
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
@@ -125,7 +125,7 @@ BEGIN
         NULLIF(p->>'contract_number',''),
         NULLIF(p->>'owner_person_id',''),   -- typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
         v_current,
-        NULLIF(p->>'value_updated_at','')::date,
+        COALESCE(NULLIF(p->>'value_updated_at','')::date, CASE WHEN v_current IS NOT NULL THEN core.fn_today() END),
         NULLIF(p->>'guaranteed_monthly_pension','')::numeric,
         NULLIF(p->>'retirement_start_date','')::date,
         v_rp_id,

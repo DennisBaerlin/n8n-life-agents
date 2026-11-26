@@ -21,6 +21,7 @@
 # Assertion (auto je Case-Form):
 #   - Case hat `expected_route` (orch_cases.json): prueft `Call 'agent.<route>'` im Orchestrator-runData.
 #   - Case hat `expected_tool` (finance_cases.json etc.): prueft, ob genau dieses Write-Tool aufgerufen wurde.
+#   - Optional `expected_card_contains` (Liste): diese Texte stehen auf der Bestaetigungs-Karte (Mock-Telegram).
 #
 # Modi:
 #   .\scripts\dev\mock_route_test.ps1                       # Orchestrator-Routing (orch_cases.json)
@@ -317,6 +318,19 @@ foreach ($tc in $cases) {
             }
         } else {
             Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red
+        }
+
+        # expected_card_contains: Texte, die auf der Bestaetigungs-Karte stehen muessen (Karten-Werte rechnet die DB; der
+        # bezahlte Tier sieht die Karte nicht, darum prueft sie nur dieser Mock-Lauf). Karte = Send mit Knoepfen.
+        if ($pass -and $tc.PSObject.Properties['expected_card_contains']) {
+            $cardText = (@(Get-MockTelegramRequests -Container $Container) | Where-Object { $_.body -and $_.body.reply_markup } |
+                ForEach-Object { [string]$_.body.text }) -join "`n"
+            foreach ($want in @($tc.expected_card_contains)) {
+                if (-not $cardText.Contains([string]$want)) {
+                    $pass = $false
+                    Write-Host "    FEHLER: Karte ohne '$want'. Karte: $cardText" -ForegroundColor Red
+                }
+            }
         }
 
         # Absender kommt an: Ein Fall mit bekannter numerischer chat_id (TestSenderUids) muss im Agenten als diese Person samt Rolle ankommen

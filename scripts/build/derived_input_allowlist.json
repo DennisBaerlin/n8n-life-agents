@@ -1,0 +1,14 @@
+[
+  {
+    "tool": "tool_publish_plan",
+    "field": "reminders",
+    "rule": "D",
+    "reason": "remind_on rechnet nicht das Modell, sondern core.fn_period_reminder_date (per postgres_select); das Modell kopiert den Wert. Ziel: fn_plan_sync nimmt die rohe Zeitangabe und rechnet selbst, danach Eintrag entfernen."
+  },
+  {
+    "tool": "tool_create_account",
+    "field": "opening_balance",
+    "rule": "D",
+    "reason": "Saldo wie auf Kontoauszug oder App, das Minuszeichen steht dort; das Modell setzt es nur bei der Angabe im Minus. Ziel: Betrag plus Richtung (wie book_transaction.direction), die fn setzt das Vorzeichen, danach Eintrag entfernen."
+  }
+]

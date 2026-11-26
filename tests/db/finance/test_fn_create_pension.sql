@@ -126,4 +126,16 @@ BEGIN
   RAISE NOTICE 'PASS create_pension [Jahresbeitrag braucht ein Startdatum]';
 END $$;
 
+-- Wert ohne Stichtag -> die fn stempelt heute (wie fn_set_pension), das Modell liefert keinen Stempel.
+DO $$
+DECLARE r jsonb;
+BEGIN
+  r := finance.fn_create_pension(jsonb_build_object('name','__t_cp_stempel__','pension_type','private','current_value','5000'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT value_updated_at FROM finance.pension WHERE name = '__t_cp_stempel__') IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL create_pension [Stempel]: %', r;
+  END IF;
+  RAISE NOTICE 'PASS create_pension [Wert ohne Datum -> heute]';
+END $$;
+
 ROLLBACK;

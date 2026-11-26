@@ -16,7 +16,7 @@
 function Build-CreateMonitorTrigger {
     $trig = Build-Trigger @(
         'domain', 'package', 'label', 'trigger_type', 'acquisition_method',
-        'acquisition_prompt', 'acquisition_sql', 'acquisition_params',
+        'acquisition_prompt', 'acquisition_sql', 'acquisition_params', 'history_sql',
         'comparator', 'threshold_value', 'drawdown_pct',
         'due_date', 'warn_days_before',
         'expected_unit', 'min_plausible', 'max_plausible', 'max_jump_pct',
@@ -95,6 +95,7 @@ function Build-CreateMonitorTrigger {
     params: { op: (s.comparator === 'lte' ? '<=' : '>='), value: s.threshold_value, unit: unit(s.expected_unit) } });
   if (s.trigger_type === 'drawdown') L.push({ label: 'core.label.condition', kind: 'tpl', value: 'core.tpl.monitor_drawdown',
     params: { pct: s.drawdown_pct } });
+  for (const l of ($('Dry run').item.json.r.card_lines || [])) L.push(l);
   if (s.trigger_type === 'date') L.push(Number(s.warn_days_before) > 0
     ? { label: 'core.label.due', kind: 'tpl', value: 'core.tpl.monitor_due_warn',
         params: { date: { kind: 'date', value: p.due_resolved }, days: s.warn_days_before } }
@@ -134,7 +135,7 @@ function Build-CreateMonitorTrigger {
     # Probelauf vor der Karte: dieselbe fn mit denselben Parametern, immer zurueckgerollt; ok:false -> keine Karte.
     $wg = New-FnWriteGate -Fn 'agent.fn_create_monitor_trigger' -DryPos @(1620, 0) -WritePos @(2600, 0) `
         -WriteName 'Create trigger (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'armed_count')::int AS armed_count" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'armed_count')::int AS armed_count, (r->>'reference_value')::numeric AS reference_value, r->>'reference_as_of' AS reference_as_of, r->>'reference_since' AS reference_since" `
         -Params ([ordered]@{
             chat_id            = '$(''Start'').item.json.chat_id'
             domain             = '$(''Resolve domain'').item.json.domain'
@@ -145,6 +146,7 @@ function Build-CreateMonitorTrigger {
             acquisition_prompt = '$(''Start'').item.json.acquisition_prompt'
             acquisition_sql    = '$(''Start'').item.json.acquisition_sql'
             acquisition_params = $paramsExpr
+            history_sql        = '$(''Start'').item.json.history_sql'
             comparator         = '$(''Start'').item.json.comparator'
             threshold_value    = '$(''Start'').item.json.threshold_value'
             drawdown_pct       = '$(''Start'').item.json.drawdown_pct'
@@ -170,11 +172,14 @@ function Build-CreateMonitorTrigger {
         ,@('next_check_at', '={{ $json.next_check_at }}', 'string')
         ,@('check_interval', '={{ $json.check_interval }}', 'string')
         ,@('armed_count', '={{ $json.armed_count }}', 'number')
+        ,@('reference_value', '={{ $json.reference_value }}', 'number')
+        ,@('reference_as_of', '={{ $json.reference_as_of }}', 'string')
+        ,@('reference_since', '={{ $json.reference_since }}', 'string')
     )
 
     $stickyOverview = Build-Sticky 'Doc Create Trigger' @(120, -460) `
         'Probe vor Gate + agent.fn_create_monitor_trigger (atomar)' `
-        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> PROBELAUF (Dry run = agent.fn_create_monitor_trigger mit denselben Werten, immer zurückgerollt via core.fn_dry_run; ok:false -> Dry run rejected, KEINE Karte) -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed; prüft nach dem Tipp erneut). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
+        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> PROBELAUF (Dry run = agent.fn_create_monitor_trigger mit denselben Werten, immer zurückgerollt via core.fn_dry_run; ok:false -> Dry run rejected, KEINE Karte) -> HITL-Summary MIT Test-Abruf-Wert und den Zeilen der fn (card_lines des Probelaufs: bei Drawdown Höchststand + Meldegrenze aus agent.fn_monitor_drawdown_reference; sql-Drawdown braucht history_sql = Werte-Reihe, das Modell liefert nie eine Zahl dafür) -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation; Höchststand aus derselben fn wie die Karte; prüft nach dem Tipp erneut; Rückgabe nennt den Höchststand fürs Modell). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 620
 
     $stickyBranch = Build-Sticky 'Doc Probe-Branch' @(880, -340) `
         'Exklusive Branches statt Merge' `

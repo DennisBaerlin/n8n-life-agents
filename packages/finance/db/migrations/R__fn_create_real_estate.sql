@@ -1,7 +1,8 @@
 -- ============================================================
 -- fn_create_real_estate (ATOMIC WRITE)
 --   Ein INSERT — als Function gefuehrt, weil jedes Write-Tool fn_* ruft.
---   Eingabe jsonb: name, current_value (Betrag, auch deutsch geschrieben: "350.000"), value_updated_at, owner_person_id (Slug, NULL=Haushalt),
+--   Eingabe jsonb: name, current_value (Betrag, auch deutsch geschrieben: "350.000"), value_updated_at (leer bei Wert = heute),
+--   owner_person_id (Slug, NULL=Haushalt),
 --   status, notes, living_area_m2, year_built (beide optional, fuer die Instandhaltungsruecklage).
 --   Rueckgabe: {ok:true, real_estate_id, card_lines (aehnlicher Eintrag + fn_maintenance_card_lines: Empfehlung nach
 --   II. BV / "noch keine Ruecklage")}. Korrigierbar (Wert unlesbar, unbekannter status, Flaeche <= 0, Baujahr in der Zukunft oder
@@ -48,7 +49,8 @@ BEGIN
      ORDER BY re.id LIMIT 1;
     INSERT INTO finance.real_estate
         (name, current_value, value_updated_at, owner_person_id, status, notes, living_area_m2, year_built)
-    VALUES (p->>'name', v_cv, NULLIF(p->>'value_updated_at', '')::date,
+    VALUES (p->>'name', v_cv,
+            COALESCE(NULLIF(p->>'value_updated_at', '')::date, CASE WHEN v_cv IS NOT NULL THEN core.fn_today() END),
             NULLIF(p->>'owner_person_id', ''),   -- typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
             COALESCE(NULLIF(p->>'status', ''), 'active')::finance.property_status,
             NULLIF(p->>'notes', ''),

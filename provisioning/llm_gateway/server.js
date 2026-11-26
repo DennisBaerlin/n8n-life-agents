@@ -350,7 +350,7 @@ function keepAliveSend(key, e) {
       let json = null;
       try { json = JSON.parse(Buffer.concat(parts).toString('utf8')); mergeUsage(usage, json.usage); } catch (x) { /* Nullen */ }
       const cls = status === 200 ? null : classifyUpstreamError(status, json);
-      if (cls) noteLlmError(cls); else noteLlmOk();
+      if (cls) noteLlmError(cls); else noteLlmOk(started);
       recordUsage(Object.assign({ wf: e.wf, model: e.model, stream: false, cached: true, fallback: false, keepalive: true,
         status, ms: Date.now() - started }, usage, cls ? { err: cls.code } : {}));
       if (status === 200) e.lastRefresh = started; else drop('keepalive_' + status);
@@ -391,9 +391,15 @@ function classifyUpstreamError(status, json) {
   return { code, resume_at: m ? m[1] + 'T' + m[2] + ':' + m[3] + ':00Z' : null };
 }
 // Zustand fuer /__llm_status (nur Arbeitsspeicher; ein Neustart vergisst ihn, der naechste Fehler setzt ihn neu).
-const llmState = { last_error: null, last_ok_at: null };
+// last_ok_started_at = Start der juengsten erfolgreichen Anfrage: nur ein Erfolg, der NACH einem Fehler begann, beweist, dass
+// der Anbieter wieder annimmt (ein langer Stream, der vorher startete, endet sonst spaeter und taeuschte eine Erholung vor).
+const llmState = { last_error: null, last_ok_at: null, last_ok_started_at: null };
 function noteLlmError(c) { llmState.last_error = { code: c.code, resume_at: c.resume_at, at: new Date().toISOString() }; }
-function noteLlmOk() { llmState.last_ok_at = new Date().toISOString(); }
+function noteLlmOk(startedMs) {
+  llmState.last_ok_at = new Date().toISOString();
+  const s = new Date(startedMs).toISOString();
+  if (!llmState.last_ok_started_at || s > llmState.last_ok_started_at) llmState.last_ok_started_at = s;
+}
 // Fehler-Body anreichern: Status und error.type bleiben, dazu details.lifeagents_code/resume_at. Kein JSON-Umschlag ->
 // Original-Bytes. Liefert { buf, headers, cls }.
 function enrichError(status, upHeaders, buf) {
@@ -406,9 +412,10 @@ function enrichError(status, upHeaders, buf) {
     json.error.details = Object.assign({}, json.error.details && typeof json.error.details === 'object' ? json.error.details : {},
       { lifeagents_code: cls.code, resume_at: cls.resume_at });
     out = Buffer.from(JSON.stringify(json), 'utf8');
-    for (const k of Object.keys(headers)) if (k.toLowerCase() === 'content-length') delete headers[k];
-    headers['content-length'] = String(out.length);
   }
+  // Immer neu setzen: auch ein nicht-JSON-Body kann bei MAX_ERR_BODY abgeschnitten sein (sonst wartete der Aufrufer auf Bytes).
+  for (const k of Object.keys(headers)) if (k.toLowerCase() === 'content-length') delete headers[k];
+  headers['content-length'] = String(out.length);
   headers['x-lifeagents-llm-error'] = cls.code;
   if (LLM_ERR_PERMANENT.has(cls.code)) {
     for (const k of Object.keys(headers)) if (k.toLowerCase() === 'x-should-retry') delete headers[k];
@@ -574,7 +581,7 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
   function finish(status, usage, cls) {
     if (done || !meta.measure) return;
     done = true;
-    if (cls) noteLlmError(cls); else if (status === 200) noteLlmOk();
+    if (cls) noteLlmError(cls); else if (status === 200) noteLlmOk(meta.started);
     // Keep-Alive merkt sich den Anfang nur nach Erfolg MIT den eingefuegten Haltepunkten (nicht nach dem Fallback).
     if (status === 200 && !cls && meta.cached && meta.onOk) { try { meta.onOk(); } catch (e) { diag('keepalive_record_error'); } }
     recordUsage(Object.assign({ wf: meta.wf, model: meta.model, stream: meta.stream, cached: meta.cached,
@@ -702,7 +709,8 @@ const server = http.createServer((req, res) => {
   // n8n-Agenten und core.sub_error_notify; nur 127.0.0.1, wie /__health.
   if (req.method === 'GET' && req.url === '/__llm_status') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, last_error: llmState.last_error, last_ok_at: llmState.last_ok_at }));
+    res.end(JSON.stringify({ ok: true, last_error: llmState.last_error, last_ok_at: llmState.last_ok_at,
+      last_ok_started_at: llmState.last_ok_started_at }));
     return;
   }
   // Abruf der Mitschrift (nur 127.0.0.1, wie /__health) — VOR der Weiterleitung, sonst ginge der GET an Anthropic.

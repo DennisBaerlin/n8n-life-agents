@@ -5,8 +5,8 @@
 --   schreibt. Plan (naechste Nachschau nach einer gescheiterten): Stoerung 2 -> 5 -> 10 Min; ohne Owner-Wahl 10 -> 30 ->
 --   60 Min; raise alle 10 Min; wait genau resume_at + 1 Min, danach alle 10 Min. Erste Nachschau setzt fn_llm_incident_note.
 --
---   fn_llm_probe_due(p {at? (Testzeit)}): beansprucht den offenen Vorfall, wenn next_probe_at erreicht ist und keine
---     Nachschau laeuft (probe_lock_until, 2 Min). Raeumt gemerkte Nachrichten von Vorfaellen weg, die vor > 7 Tagen endeten.
+--   fn_llm_probe_due(p {trigger? ('button' = sofort, ohne Plan und Sperre), at? (Testzeit)}): beansprucht den offenen Vorfall,
+--     wenn next_probe_at erreicht ist und keine Nachschau laeuft (probe_lock_until, 2 Min). Raeumt gemerkte Nachrichten von Vorfaellen weg, die vor > 7 Tagen endeten.
 --     Rueckgabe {ok:true, due, incident_id?, kind?, opened_at?} (opened_at: ein Erfolg des Gateways danach zaehlt
 --     ohne eigene Probe, core.sub_llm_probe).
 --   fn_llm_probe_result(p {incident_id, ok, trigger 'cron'|'button', at?}): ok -> Vorfall 'recovered' und Nachrichten:
@@ -27,8 +27,10 @@ DECLARE
 BEGIN
     DELETE FROM agent.llm_held_messages h USING core.llm_incidents i
      WHERE h.incident_id = i.id AND i.closed_at < v_at - interval '7 days';
+    -- Knopf (trigger button): ohne Plan und ohne Sperre, sonst kaeme nach dem Toast nichts, solange eine geplante Nachschau laeuft.
     UPDATE core.llm_incidents SET probe_lock_until = v_at + interval '2 minutes'
-     WHERE closed_at IS NULL AND next_probe_at <= v_at AND (probe_lock_until IS NULL OR probe_lock_until <= v_at)
+     WHERE closed_at IS NULL
+       AND (p->>'trigger' = 'button' OR (next_probe_at <= v_at AND (probe_lock_until IS NULL OR probe_lock_until <= v_at)))
     RETURNING id, kind, opened_at INTO v_id, v_kind, v_opened;
     RETURN jsonb_build_object('ok', true, 'due', v_id IS NOT NULL, 'incident_id', v_id, 'kind', v_kind, 'opened_at', v_opened);
 END;

@@ -27,9 +27,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT core.fn_llm_probe_due(\u0027{}\u0027::jsonb)::text AS r;",
+                                         "query":  "=SELECT core.fn_llm_probe_due($1::jsonb)::text AS r;",
                                          "options":  {
-
+                                                         "queryReplacement":  "={{ JSON.stringify({ trigger: String($(\u0027Start\u0027).first().json.trigger || \u0027cron\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -96,7 +96,8 @@
                                    ],
                       "id":  "406bcf1a-f3ee-5a09-93ab-ef4554afd5c2",
                       "name":  "Read LLM status",
-                      "onError":  "continueRegularOutput"
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -109,7 +110,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "bcfb4598-b527-5408-9e43-a6ed3a969d1a",
-                                                                                   "leftValue":  "={{ !!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at) }}",
+                                                                                   "leftValue":  "={{ !!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at) }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -205,7 +206,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_llm_probe_result($1::jsonb)::text AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ incident_id: JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).incident_id, ok: (!!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at)) || ($(\u0027Probe Claude\u0027).isExecuted \u0026\u0026 Array.isArray($(\u0027Probe Claude\u0027).first().json.content)), trigger: String($(\u0027Start\u0027).first().json.trigger || \u0027cron\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ incident_id: JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).incident_id, ok: (!!($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at \u0026\u0026 (!($(\u0027Read LLM status\u0027).first().json || {}).last_error || Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at) \u003e Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_error.at)) \u0026\u0026 Date.parse(($(\u0027Read LLM status\u0027).first().json || {}).last_ok_started_at) \u003e Date.parse(JSON.parse($(\u0027Probe due\u0027).first().json.r || \u0027{}\u0027).opened_at)) || ($(\u0027Probe Claude\u0027).isExecuted \u0026\u0026 Array.isArray($(\u0027Probe Claude\u0027).first().json.content)), trigger: String($(\u0027Start\u0027).first().json.trigger || \u0027cron\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

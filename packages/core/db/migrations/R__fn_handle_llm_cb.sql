@@ -68,7 +68,7 @@ BEGIN
         END IF;
         UPDATE core.llm_incidents SET owner_choice = 'raise', next_probe_at = LEAST(next_probe_at, now() + interval '10 minutes')
          WHERE id = v_inc.id;
-        RETURN jsonb_build_object('ok', true, 'toast', '', 'edit', jsonb_build_object('keep_text', true),
+        RETURN jsonb_build_object('ok', true, 'toast', core.fn_ui_text('core.llm_pause.toast_ok', v_lang), 'edit', jsonb_build_object('keep_text', true),
             'reply', jsonb_build_object(
                 'text', core.fn_ui_text(CASE v_inc.kind WHEN 'spend_limit' THEN 'core.llm_pause.guide_raise' ELSE 'core.llm_pause.guide_topup' END, v_lang),
                 'buttons', jsonb_build_array(jsonb_build_array(jsonb_build_object(
@@ -79,7 +79,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'no_date', 'toast', core.fn_ui_text('core.orch.toast_action_unavailable', v_lang));
         END IF;
         UPDATE core.llm_incidents SET owner_choice = 'wait', next_probe_at = v_inc.resume_at + interval '1 minute' WHERE id = v_inc.id;
-        RETURN jsonb_build_object('ok', true, 'toast', '', 'edit', jsonb_build_object('keep_text', true),
+        RETURN jsonb_build_object('ok', true, 'toast', core.fn_ui_text('core.llm_pause.toast_ok', v_lang), 'edit', jsonb_build_object('keep_text', true),
             'reply', jsonb_build_object(
                 'text', core.fn_ui_text('core.llm_pause.wait_ok', v_lang, jsonb_build_object(
                     'date', core.fn_ui_date(v_inc.resume_at::date), 'time', to_char(v_inc.resume_at, 'HH24:MI'))),

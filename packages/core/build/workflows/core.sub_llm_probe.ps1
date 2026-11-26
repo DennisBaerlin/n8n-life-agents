@@ -10,22 +10,17 @@
 function Build-CoreSubLlmProbe {
     $trig = Build-Trigger @('trigger') @(-1320, 0)
 
-    $due = Build-Pg 'Probe due' @(-1100, 0) "=SELECT core.fn_llm_probe_due('{}'::jsonb)::text AS r;" $null
+    # Knopf (trigger button): sofort nachschauen, auch wenn gerade eine geplante Nachschau laeuft (sonst kaeme nach dem Toast nichts).
+    $due = Build-Pg 'Probe due' @(-1100, 0) "=SELECT core.fn_llm_probe_due(`$1::jsonb)::text AS r;" ([ordered]@{
+        trigger = "String(`$('Start').first().json.trigger || 'cron')" })
     $D = "JSON.parse(`$('Probe due').first().json.r || '{}')"
     $ifDue = Build-If 'Due?' @(-880, 0) "={{ $D.due === true }}" 'true' 'equals' 'boolean'
 
-    $status = [ordered]@{
-        parameters = [ordered]@{
-            url = 'http://127.0.0.1:8090/__llm_status'   # lokaler LLM-Gateway, Zustand der Anbieter-Fehler (nur 127.0.0.1)
-            options = [ordered]@{ timeout = 3000 }
-        }
-        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @(-660, 0)
-        id = (New-Id); name = 'Read LLM status'; onError = 'continueRegularOutput'
-    }
-    # Erfolg des Gateways nach dem letzten Fehler UND nach Beginn der Pause = die KI antwortet wieder (eine echte Nachricht
-    # war die Probe). ISO-Zeiten derselben Uhr (Gateway) bzw. der DB -> Vergleich ueber Date.parse.
+    $status = New-LlmStatusNode -Position @(-660, 0)
+    # Ein Erfolg des Gateways, der NACH dem letzten Fehler und nach Beginn der Pause begann (last_ok_started_at), = die KI antwortet
+    # wieder (eine echte Nachricht war die Probe); ein vorher gestarteter langer Stream zaehlt nicht. Vergleich ueber Date.parse.
     $S = "(`$('Read LLM status').first().json || {})"
-    $seenOk = "!!$S.last_ok_at && (!$S.last_error || Date.parse($S.last_ok_at) > Date.parse($S.last_error.at)) && Date.parse($S.last_ok_at) > Date.parse($D.opened_at)"
+    $seenOk = "!!$S.last_ok_started_at && (!$S.last_error || Date.parse($S.last_ok_started_at) > Date.parse($S.last_error.at)) && Date.parse($S.last_ok_started_at) > Date.parse($D.opened_at)"
     $ifSeen = Build-If 'Seen ok?' @(-440, 0) "={{ $seenOk }}" 'true' 'equals' 'boolean'
 
     $model = New-ModelConfigNode -Position @(-220, 160) -Keys @( ,@('core', 'orchestrator') )

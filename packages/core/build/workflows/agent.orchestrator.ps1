@@ -1456,19 +1456,14 @@ return [{ json: { body: made ? '' : (rc.body || ''), has_text: made ? false : rc
     # zwei Verbindungen von 'Note LLM pause' bestimmt n8n (executionOrder v1) nach der Position auf der Leinwand (oben zuerst):
     # 'Close thinking lease' (y -160) liegt ueber 'Alert needed?' (y 220) -- beim Verschieben prueft [step-limit] in mock_route_test.
     $nAgentErrorAlert = Build-Err 'Agent error alert' @(1820, 220) "={{ 'Orchestrator agent failed (the user got a reply): ' + `$('Agent error reply').item.json.error }}"
-    # KI-Pause (Anbieter sperrt oder ist gestoert): der Fehler-Ausgang traegt nur n8ns Ueberschrift ("Bad request - please check
-    # your parameters"), nie den Anbieter-Text -> den festen Code liefert der Gateway unter /__llm_status (letzter Fehler juenger als
-    # 2 Min und nach dem letzten Erfolg; sonst 'other' = bisheriger Weg). core.fn_llm_incident_note merkt die Nachricht und baut die
-    # Texte; bei einem sortierten Fall (suppress_alert) gehen sie statt relay_empty raus und der Roh-Alarm entfaellt.
-    $nLlmStatus = [ordered]@{
-        parameters = [ordered]@{ url = 'http://127.0.0.1:8090/__llm_status'; options = [ordered]@{ timeout = 3000 } }
-        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @(1380, 380)
-        id = (New-Id); name = 'Read LLM status'; onError = 'continueRegularOutput'
-    }
-    $llmCodeJs = "(() => { const s = `$('Read LLM status').first().json || {}; const e = s.last_error; return (e && e.at && Date.parse(e.at) > Date.now() - 120000 && (!s.last_ok_at || Date.parse(e.at) >= Date.parse(s.last_ok_at))) ? String(e.code || 'other') : 'other'; })()"
+    # KI-Pause (Anbieter sperrt oder ist gestoert): den festen Code liest Get-LlmPauseCodeJs aus der Fehlermeldung bzw. (bei n8ns
+    # HTTP-Ueberschrift) aus dem Gateway-Zustand; sonst 'other' = bisheriger Weg. core.fn_llm_incident_note merkt die Nachricht und
+    # baut die Texte; bei einem sortierten Fall (suppress_alert) gehen sie statt relay_empty raus und der Roh-Alarm entfaellt.
+    $nLlmStatus = New-LlmStatusNode -Position @(1380, 380)
+    $agentErrJs = "`$('Agent error reply').first().json.error"
     $nLlmNote = New-OrchPg 'Note LLM pause' @(1600, 380) "SELECT core.fn_llm_incident_note(`$1::jsonb) AS r;" $CRED_POSTGRES ([ordered]@{
-        code      = $llmCodeJs
-        resume_at = "String(((`$('Read LLM status').first().json || {}).last_error || {}).resume_at || '')"
+        code      = (Get-LlmPauseCodeJs -MessageJs $agentErrJs)
+        resume_at = (Get-LlmPauseCodeJs -MessageJs $agentErrJs -Field resume_at)
         source    = "'orchestrator'"
         chat_id   = "String(((`$('Trigger normalize').first().json.message || {}).chat || {}).id || '')"
         update    = "`$('Trigger normalize').first().json" })

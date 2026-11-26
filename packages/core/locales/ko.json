@@ -1141,6 +1141,7 @@
   "core.llm_pause.toast_dropped": "알겠어요, 정리했어요.",
   "core.llm_pause.toast_over": "이미 해결됐어요. 다시 답하고 있어요.",
   "core.llm_pause.toast_checking": "확인하는 중이에요 …",
+  "core.llm_pause.toast_ok": "알겠어요.",
   "core.wf.orchestrator_main_route": "라우터",
   "core.wf.guide": "도움말 도우미",
   "core.wf.monitor": "모니터",

@@ -32,8 +32,9 @@ BEGIN
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:guide:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS NULL THEN RAISE EXCEPTION 'FAIL [1 Mitglied guide]: %', r; END IF;
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:guide:' || inc, 'chat_id', '7901', 'chat_type', 'private'));
+  -- Quittung nie leer: der Orchestrator ersetzt einen leeren Toast durch „Aktion nicht verfuegbar“
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'reply'->'buttons'->0->0->>'data' <> 'llm:check:' || inc
-     OR (r->'edit'->>'keep_text')::boolean IS NOT TRUE
+     OR COALESCE(r->>'toast', '') = '' OR (r->'edit'->>'keep_text')::boolean IS NOT TRUE
      OR (SELECT owner_choice FROM core.llm_incidents WHERE id = inc) <> 'raise'
      OR (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) > now() + interval '10 minutes' THEN
     RAISE EXCEPTION 'FAIL [1 Owner guide]: %', r; END IF;
@@ -42,7 +43,7 @@ BEGIN
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:wait:' || inc, 'chat_id', '7901', 'chat_type', 'private'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT owner_choice FROM core.llm_incidents WHERE id = inc) <> 'wait'
      OR (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) <> timestamptz '2026-12-01T00:01:00Z'
-     OR r->'reply'->'buttons'->0->0->>'data' <> 'llm:guide:' || inc THEN RAISE EXCEPTION 'FAIL [2 wait]: %', r; END IF;
+     OR r->'reply'->'buttons'->0->0->>'data' <> 'llm:guide:' || inc OR COALESCE(r->>'toast', '') = '' THEN RAISE EXCEPTION 'FAIL [2 wait]: %', r; END IF;
 
   -- (3) check: route llm_probe, Nachschau sofort faellig
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:check:' || inc, 'chat_id', '7901', 'chat_type', 'private'));
@@ -77,6 +78,15 @@ BEGIN
   -- nichts mehr offen -> Toast, keine Route
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
   IF r->>'route' IS NOT NULL OR r->>'toast' IS NULL THEN RAISE EXCEPTION 'FAIL [5 nichts offen]: %', r; END IF;
+
+  -- (5b) gemerktes Update ist selbst schon ein Buendel (Foto + 2 extra_files), danach noch ein Foto: alle vier Dateien bleiben
+  INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at) VALUES
+    (9300011, inc, 7902, 7902, 21, 'file', '{"update_id":9300011,"message":{"message_id":21,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"photo":[{"file_id":"p1"}],"caption":"Belege","extra_files":[{"file_id":"p2","type":"photo"},{"file_id":"p3","type":"photo"}]}}', now()),
+    (9300012, inc, 7902, 7902, 22, 'file', '{"update_id":9300012,"message":{"message_id":22,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"photo":[{"file_id":"p4"}]}}', now());
+  r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
+  IF r->'update'->'message'->'photo'->0->>'file_id' <> 'p1'
+     OR (SELECT string_agg(e->>'file_id', ',' ORDER BY o) FROM jsonb_array_elements(r->'update'->'message'->'extra_files') WITH ORDINALITY x(e, o)) <> 'p2,p3,p4'
+     OR r->'update'->'message'->>'caption' <> 'Belege' THEN RAISE EXCEPTION 'FAIL [5b Buendel nachspielen]: %', r->'update'; END IF;
 
   -- (6) ein einzelner Text: das Update unveraendert; drop loescht nur die eigenen
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7901', 'chat_type', 'private'));

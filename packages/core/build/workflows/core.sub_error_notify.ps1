@@ -138,22 +138,14 @@ return out;
         ([ordered]@{ execution_id = 'String(($(''On Error'').first().json.execution || {}).id || '''')' })
     $clearThinking['onError'] = 'continueRegularOutput'
 
-    # KI-Pause: scheiterte der Lauf an einer Anthropic-Ablehnung, traegt execution.error nur n8ns HTTP-Ueberschrift. Den festen Code
-    # liefert der Gateway (/__llm_status). Als Pause zaehlt der Fehler nur, wenn (a) die Meldung eine n8n-HTTP-Ueberschrift ist und
-    # (b) der Gateway-Fehler juenger als 2 Min und nach dem letzten Erfolg ist; sonst 'other' (Alarm wie bisher). So verschluckt ein
-    # Telegram- oder DB-Fehler nie still einen Alarm, ausser er faellt in dieselben 2 Minuten einer Anbieter-Sperre.
-    $llmStatus = [ordered]@{
-        parameters = [ordered]@{ url = 'http://127.0.0.1:8090/__llm_status'; options = [ordered]@{ timeout = 3000 } }
-        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @(110, 0)
-        id = (New-Id); name = 'Read LLM status'; onError = 'continueRegularOutput'; alwaysOutputData = $true
-    }
-    $codeJs = "(() => { const s = `$('Read LLM status').first().json || {}; const e = s.last_error; const ex = `$('On Error').first().json.execution || {}; " +
-        "const msg = String((ex.error || {}).message || ''); " +
-        "const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); " +
-        "return (http && e && e.at && Date.parse(e.at) > Date.now() - 120000 && (!s.last_ok_at || Date.parse(e.at) >= Date.parse(s.last_ok_at))) ? String(e.code || 'other') : 'other'; })()"
+    # KI-Pause: Code aus der Fehlermeldung bzw. dem Gateway-Zustand (Regel und Reihenfolge: Get-LlmPauseCodeJs); sonst 'other' (Alarm
+    # wie bisher). Ein Telegram- oder DB-Fehler verschluckt so nie still einen Alarm, ausser er traegt eine n8n-HTTP-Ueberschrift und
+    # faellt in dieselben 2 Minuten einer Anbieter-Sperre.
+    $llmStatus = New-LlmStatusNode -Position @(110, 0)
+    $errMsgJs = "((`$('On Error').first().json.execution || {}).error || {}).message"
     $llmNote = Build-Pg 'Note LLM pause' @(165, 0) "=SELECT core.fn_llm_incident_note(`$1::jsonb) AS r;" ([ordered]@{
-        code      = $codeJs
-        resume_at = "String(((`$('Read LLM status').first().json || {}).last_error || {}).resume_at || '')"
+        code      = (Get-LlmPauseCodeJs -MessageJs $errMsgJs)
+        resume_at = (Get-LlmPauseCodeJs -MessageJs $errMsgJs -Field resume_at)
         source    = "'error_notify'" })
     $llmNote['onError'] = 'continueRegularOutput'
     $llmNote['alwaysOutputData'] = $true

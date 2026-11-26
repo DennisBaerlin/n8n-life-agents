@@ -43,6 +43,9 @@ BEGIN
   IF (r->>'due')::boolean IS NOT TRUE OR (r->>'incident_id')::bigint <> inc OR r->>'opened_at' IS NULL THEN RAISE EXCEPTION 'FAIL [2 faellig]: %', r; END IF;
   r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '11 minutes'));
   IF (r->>'due')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 Sperre]: %', r; END IF;
+  -- Knopf: sofort, trotz Sperre und vor dem Plan-Zeitpunkt (sonst kaeme nach dem Toast nichts)
+  r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '11 minutes', 'trigger', 'button'));
+  IF (r->>'due')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [2 Knopf trotz Sperre]: %', r; END IF;
   r := core.fn_llm_probe_result(jsonb_build_object('incident_id', inc, 'ok', false, 'code', 'spend_limit', 'trigger', 'cron', 'at', t0 + interval '11 minutes'));
   IF jsonb_array_length(r->'messages') <> 0
      OR (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) <> t0 + interval '41 minutes'

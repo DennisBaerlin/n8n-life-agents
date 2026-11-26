@@ -4858,14 +4858,15 @@
                                    ],
                       "id":  "5bd4a1f4-5bd0-5194-976c-01a7f9e67dd0",
                       "name":  "Read LLM status",
-                      "onError":  "continueRegularOutput"
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "SELECT core.fn_llm_incident_note($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ code: (() =\u003e { const s = $(\u0027Read LLM status\u0027).first().json || {}; const e = s.last_error; return (e \u0026\u0026 e.at \u0026\u0026 Date.parse(e.at) \u003e Date.now() - 120000 \u0026\u0026 (!s.last_ok_at || Date.parse(e.at) \u003e= Date.parse(s.last_ok_at))) ? String(e.code || \u0027other\u0027) : \u0027other\u0027; })(), resume_at: String((($(\u0027Read LLM status\u0027).first().json || {}).last_error || {}).resume_at || \u0027\u0027), source: \u0027orchestrator\u0027, chat_id: String((($(\u0027Trigger normalize\u0027).first().json.message || {}).chat || {}).id || \u0027\u0027), update: $(\u0027Trigger normalize\u0027).first().json }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ code: (() =\u003e { const msg = String($(\u0027Agent error reply\u0027).first().json.error || \u0027\u0027); const m = /\"lifeagents_code\":\"([a-z_]+)\"/.exec(msg); if (/\"lifeagents_code\":\"/.test(msg)) return m ? m[1] : \u0027other\u0027; const s = $(\u0027Read LLM status\u0027).first().json || {}; const e = s.last_error; const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); const okStart = s.last_ok_started_at || s.last_ok_at; return (http \u0026\u0026 e \u0026\u0026 e.at \u0026\u0026 Date.parse(e.at) \u003e Date.now() - 120000 \u0026\u0026 (!okStart || Date.parse(e.at) \u003e= Date.parse(okStart))) ? String(e.code || \u0027other\u0027) : \u0027other\u0027; })(), resume_at: (() =\u003e { const msg = String($(\u0027Agent error reply\u0027).first().json.error || \u0027\u0027); const m = /\"resume_at\":\"([0-9T:Z-]+)\"/.exec(msg); if (/\"lifeagents_code\":\"/.test(msg)) return m ? m[1] : \u0027\u0027; const s = $(\u0027Read LLM status\u0027).first().json || {}; const e = s.last_error; const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); const okStart = s.last_ok_started_at || s.last_ok_at; return (http \u0026\u0026 e \u0026\u0026 e.at \u0026\u0026 Date.parse(e.at) \u003e Date.now() - 120000 \u0026\u0026 (!okStart || Date.parse(e.at) \u003e= Date.parse(okStart))) ? String(e.resume_at || \u0027\u0027) : \u0027\u0027; })(), source: \u0027orchestrator\u0027, chat_id: String((($(\u0027Trigger normalize\u0027).first().json.message || {}).chat || {}).id || \u0027\u0027), update: $(\u0027Trigger normalize\u0027).first().json }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

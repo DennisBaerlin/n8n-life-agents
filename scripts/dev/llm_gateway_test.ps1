@@ -476,7 +476,9 @@ try {
     # Erfolg danach: last_ok_at juenger als last_error.at; usage ohne err.
     $null = Send-Gw 8095 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; messages = $msgs }))
     $u = Get-LastUsage $Units.gw; $s = Get-GwStatus 8095
-    if ($s -and $s.last_ok_at -and ([datetime]$s.last_ok_at) -ge ([datetime]$s.last_error.at) -and $null -eq $u.err) { Pass 'Erfolg danach: last_ok_at aktuell, usage ohne err' }
+    # last_ok_started_at = Start der erfolgreichen Anfrage (nur ein danach begonnener Erfolg beweist die Erholung, core.sub_llm_probe).
+    if ($s -and $s.last_ok_at -and $s.last_ok_started_at -and ([datetime]$s.last_ok_started_at) -ge ([datetime]$s.last_error.at) -and
+        ([datetime]$s.last_ok_started_at) -le ([datetime]$s.last_ok_at) -and $null -eq $u.err) { Pass 'Erfolg danach: last_ok_at + last_ok_started_at aktuell, usage ohne err' }
     else { Fail "nach Erfolg: $($s | ConvertTo-Json -Compress -Depth 4) err=$($u.err)" }
     # Netz weg (Gateway-eigener 502): Code unreachable im Body und im Zustand.
     $res = Send-Gw 8097 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-haiku-5-5'; max_tokens = 10; messages = $msgs }))

@@ -2443,6 +2443,35 @@ function New-AnthropicMessagesNode {
     }
 }
 
+# KI-Pause: Zustand der Anbieter-Fehler am lokalen Gateway (GET /__llm_status, provisioning/llm_gateway/server.js). Nie fatal:
+# onError continue + alwaysOutputData (die Folge-Knoten werten ein leeres/fehlerhaftes Item als „kein Code“).
+function New-LlmStatusNode {
+    param([Parameter(Mandatory)][int[]]$Position, [string]$Name = 'Read LLM status')
+    [ordered]@{
+        parameters = [ordered]@{ url = 'http://127.0.0.1:8090/__llm_status'; options = [ordered]@{ timeout = 3000 } }
+        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @([int]$Position[0], [int]$Position[1])
+        id = (New-Id); name = $Name; onError = 'continueRegularOutput'; alwaysOutputData = $true
+    }
+}
+# Get-LlmPauseCodeJs — JS-Ausdruck: fester Gateway-Code eines gescheiterten Claude-Aufrufs oder 'other' (= kein KI-Pause-Fall).
+# -MessageJs = JS-Ausdruck der n8n-Fehlermeldung. Reihenfolge: (1) der vom Gateway eingefuegte Code steht in der Meldung (LangChain
+# reicht den Body bei 5xx/529 durch: '529 {"type":"error",...,"lifeagents_code":"overloaded"}') -> sicher dieser Anfrage zugeordnet;
+# (2) n8n verpackt 4xx als HTTP-Ueberschrift ('Bad request - please check your parameters'), dann zaehlt der Gateway-Zustand, wenn
+# der Fehler juenger als 2 Min ist und nach dem Start des letzten Erfolgs liegt; (3) sonst 'other'. -StatusNode = Knoten von
+# New-LlmStatusNode. -Field 'code' | 'resume_at' (Datum des Anbieters, '' wenn keins).
+function Get-LlmPauseCodeJs {
+    param([Parameter(Mandatory)][string]$MessageJs, [string]$StatusNode = 'Read LLM status', [ValidateSet('code', 'resume_at')][string]$Field = 'code')
+    $fromMsg = if ($Field -eq 'code') { '/"lifeagents_code":"([a-z_]+)"/' } else { '/"resume_at":"([0-9T:Z-]+)"/' }
+    $fromState = if ($Field -eq 'code') { "String(e.code || 'other')" } else { "String(e.resume_at || '')" }
+    $none = if ($Field -eq 'code') { "'other'" } else { "''" }
+    "(() => { const msg = String($MessageJs || ''); const m = $fromMsg.exec(msg); " +
+    "if (/`"lifeagents_code`":`"/.test(msg)) return m ? m[1] : $none; " +
+    "const s = `$('$StatusNode').first().json || {}; const e = s.last_error; " +
+    "const http = /^(Bad request|Authorization failed|Payment required|Forbidden|Your request is invalid|The service (is receiving|failed|was not able)|Bad gateway|Service unavailable|Gateway timed out)/.test(msg); " +
+    "const okStart = s.last_ok_started_at || s.last_ok_at; " +
+    "return (http && e && e.at && Date.parse(e.at) > Date.now() - 120000 && (!okStart || Date.parse(e.at) >= Date.parse(okStart))) ? $fromState : $none; })()"
+}
+
 # Get-AnthropicFileBlocksJs — JS-Ausdruck fuer das Block-ARRAY aller Dateien von New-TelegramFilesReader: PDF ->
 # document-Block, sonst image-Block (jpeg/png/gif/webp — die Allow-List erzwingt der Download-Baustein). Bei mehreren
 # Dateien steht vor jedem Block "File n of N:" (Anthropic Vision: mehrere Bilder beschriften), bei einer nichts.

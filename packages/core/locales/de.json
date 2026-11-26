@@ -1141,6 +1141,7 @@
   "core.llm_pause.toast_dropped": "Alles klar, erledigt.",
   "core.llm_pause.toast_over": "Das hat sich erledigt, ich antworte wieder.",
   "core.llm_pause.toast_checking": "Ich schaue nach …",
+  "core.llm_pause.toast_ok": "Alles klar.",
   "core.wf.orchestrator_main_route": "Router",
   "core.wf.guide": "Hilfe-Assistent",
   "core.wf.monitor": "Beobachtung",

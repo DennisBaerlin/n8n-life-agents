@@ -7,6 +7,7 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 - Genau ein `draft` und ein `active` je `(domain, person_id)` — die Partial-UNIQUEs brauchen **`NULLS NOT DISTINCT`**, sonst kollidieren zwei household-NULL-Zeilen nicht und die Invariante gilt still nicht.
 - `person_id` kommt nur aus `agent.fn_resolve_sender(chat_id)` (Registry-Scope), nie vom LLM; Owner-Anker `agent.fn_owner_person_id()`.
 - Publish prüft vor dem Write, dass jeder Plan-Top-Block aus genau einer Sektion stammt (`jsonb_each`-Merge ist storage-order → Doppelung verlöre still eine Hälfte) → `{ok:false, reason}`.
+- **Vormerkung `deferred`:** Nicht-Endzustand statt `open` mit Grund (Leser zählen `open`, ein blockierter Punkt gilt nie als eintragbar). Abgeschlossene nie wieder öffnen, Korrektur = neue Vormerkung mit `follows_task_id`. Soll gegen Ist nur abgeleitet (`handoff_diff_fn`).
 
 ## Trigger-Monitoring (`agent.monitor_*`)
 
@@ -35,8 +36,7 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 ## Eingangs-Bündelung (`agent.ingress_buffer`)
 
 - Telegram liefert „Weiterleiten mit Kommentar“ als zwei unverknüpfte Updates in offener Reihenfolge. Der Orchestrator-Eingang legt deshalb jede message ab (`fn_record_ingress_message`), wartet 1,5 s und beansprucht dann (`fn_claim_ingress_burst`): Ein Lauf verarbeitet alle Texte und alle Dateien desselben (chat, from), die anderen enden still. Jeder Befehl und jede Sprachnachricht läuft für sich.
-- Mehrere Dateien, Grenzen, *Bei uns anders* → `docs/reference/core.md` *Eingangs-Bündelung*.
-- Der Claim nimmt per eigener Anweisung zuerst den Advisory-Lock je Chat und liest erst danach (frischer Schnappschuss). Eine ältere unbeanspruchte Zeile gehört zu einem Lauf, der nach einem DB-Fehler schon allein lief, und wird darum nicht ein zweites Mal verarbeitet. Fail-open: Bei jedem DB-Fehler läuft die Nachricht einzeln.
+- Mehrere Dateien, Grenzen, Claim-Reihenfolge, *Bei uns anders* → `docs/reference/core.md` *Eingangs-Bündelung*.
 - **Bei uns anders:** kein Wiederaufnahme-Cron für Zeilen, deren Lauf in den 1,5–5 s stirbt (ein n8n-Neustart verliert ohnehin jeden laufenden Lauf).
 
 ## Mini-App (`core.app_*`)

@@ -114,6 +114,21 @@ BEGIN
   -- ---------- (9) die Overview traegt keinen Plan-Zustand (ihre Cron-/Karten-Aufrufer brauchen nur Abschnitte) ----------
   IF core.fn_onboarding_overview('111') ? 'plans' THEN RAISE EXCEPTION 'FAIL [9 overview ohne plans]'; END IF;
 
+  -- ---------- (10) zurueckgestellte Eintraege: eigener Zaehlwert, halten "enter" nicht auf ----------
+  DELETE FROM agent.handoff_tasks;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
+  VALUES ('finance', 'finance', 'erika', 'g', 'other', 'wartet auf ein Update', 'deferred', 'tool_missing');
+  SELECT e INTO f FROM jsonb_array_elements(core.fn_advisor_plan_status('111')) e WHERE e->>'domain' = 'finance';
+  IF f->>'state' = 'enter' OR (f->>'handoffs_open')::int <> 0 OR (f->>'handoffs_deferred')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [10 nur deferred]: %', f; END IF;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance', 'finance', 'erika', 'g', 'other', 'offen');
+  SELECT e INTO f FROM jsonb_array_elements(core.fn_advisor_plan_status('111')) e WHERE e->>'domain' = 'finance';
+  IF f->>'state' <> 'enter' OR (f->>'handoffs_open')::int <> 1 OR (f->>'handoffs_deferred')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [10 offen + deferred]: %', f; END IF;
+  v := core.fn_advisor_progress(jsonb_build_object('domain', 'finance', 'chat_id', '111'));
+  IF (v->'handoffs'->>'total')::int <> 1 OR (v->'handoffs'->>'done')::int <> 0 OR (v->'handoffs'->>'deferred')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [10 progress]: %', v->'handoffs'; END IF;
+
   RAISE NOTICE 'PASS test_fn_advisor_plan_status (none/draft/gaps/complete, Haushalt vs. persoenlich, Mitglied, inaktiv, fail-closed, werfende Paket-fn neutral, Overview ohne plans)';
 END $$;
 

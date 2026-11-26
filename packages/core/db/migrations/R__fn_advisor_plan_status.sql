@@ -13,6 +13,7 @@
 --             none     -> weder Entwurf noch aktiver Plan ("erstellen")
 --     open      = gaps_fn-Ergebnis (0 ausser bei gaps)
 --     handoffs_open = noch nicht eingetragene vereinbarte Eintraege (0 ausser bei enter): Menue "noch n Eintraege"
+--     handoffs_deferred = zurueckgestellte Eintraege (warten auf ein Update; jede Phase mit aktivem Plan, sonst 0)
 --     part, parts_total = bei draft der naechste offene Teil (Nummer in der Reihenfolge) und die Zahl der Teile aus
 --                 core.fn_advisor_progress (eine Zaehlung): Menue "fortsetzen, Teil 4 von 9"; sonst NULL
 --     ready/missing = readiness_fn {ready, missing:[{key, section}]} (ohne readiness_fn: reif, [])
@@ -28,7 +29,7 @@
 --   (text,text) geprueft, Name per format(%s) aus dem regproc (kein Caller-Text im EXECUTE). Fehlt eine fn
 --   (Manifest-Typo/Apply-Order) ODER wirft sie -> neutral (0 Luecken bzw. reif) statt Fehler: Menue und Knopf-Handler
 --   ("nie RAISE") duerfen an einem Paket-Fehler nicht brechen; die Paket-fn ist dann im eigenen db_test rot.
---   Rueckgabe jsonb-Array [{domain, package, state, open, part, parts_total, handoffs_open, ready, missing, per_user, can_write}] ORDER BY domain.
+--   Rueckgabe jsonb-Array [{domain, package, state, open, part, parts_total, handoffs_open, handoffs_deferred, ready, missing, per_user, can_write}] ORDER BY domain.
 --   SECURITY DEFINER (owned by der DDL-Cred): liest agent.advisor_plans (RLS), core.* und ruft die Paket-fns; EXECUTE
 --   nur core_ro (Menue-Read, Grant in util_create_core_ro.sql) + die Host-Cred (Knopf-Handler). STABLE, search_path
 --   gepinnt, Body schema-qualifiziert. LANGUAGE plpgsql: ruft alphabetisch spaetere R__-fns -> late-bound.
@@ -123,6 +124,7 @@ BEGIN
             'part',      CASE WHEN v_state = 'draft' AND v_prog->>'current_key' IS NOT NULL THEN (v_prog->>'parts_done')::int + 1 END,
             'parts_total', CASE WHEN v_state = 'draft' THEN (v_prog->>'parts_total')::int END,
             'handoffs_open', CASE WHEN v_state = 'enter' THEN (v_prog->'handoffs'->>'total')::int - (v_prog->'handoffs'->>'done')::int ELSE 0 END,
+            'handoffs_deferred', CASE WHEN v_state IN ('enter', 'gaps', 'complete') THEN COALESCE((v_prog->'handoffs'->>'deferred')::int, 0) ELSE 0 END,
             'ready',     COALESCE((v_ready->>'ready')::boolean, true),
             'missing',   CASE WHEN jsonb_typeof(v_ready->'missing') = 'array' THEN v_ready->'missing' ELSE '[]'::jsonb END,
             'per_user',  v_scope = 'per_user',

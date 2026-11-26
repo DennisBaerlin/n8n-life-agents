@@ -216,4 +216,59 @@ BEGIN
   v := core.fn_plan_rollout_next(d, 'erika');
   IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL P0 Berater-Weg nach Publish %', v; END IF;
 END $$;
+
+-- Korrektur-Schritt (step fix): nach dem Update angebotene Nachhol-Eintraege aus dem Register, einmal je Aufgabe,
+-- nie bei offenen Eintraegen oder offenem Entwurf; ohne Vorpruefung, die jetzt durchlaeuft, kein Angebot.
+INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step) VALUES ('__rollf__', 'core', '__rollf___planning', 'core.fn_x', TRUE);
+CREATE FUNCTION core.fn_t_fix_check(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE WHEN COALESCE(current_setting('t.fix_mode', true), '') = 'now'
+              THEN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', 'set_x', 'input', '{}'::jsonb))
+              ELSE '{"ok":true,"unsupported":true,"blocked_code":"tool_missing"}'::jsonb END $f$;
+DO $$
+DECLARE
+  d CONSTANT TEXT := '__rollf__';
+  v JSONB;
+  v_def INT;
+  v_open INT;
+BEGIN
+  UPDATE core.config SET value = 'false' WHERE category = 'advisor' AND key = 'plan_sync_required';
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, interview_state)
+  VALUES (d, 'p', 'active', 1, now(), '{"s":{"content":"x"}}');
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
+  VALUES (d, 'core', 'erika', 's', 'other', 'wartet', 'deferred', 'tool_missing') RETURNING id INTO v_def;
+  -- ohne Vorpruefung: kein Angebot, deferred haelt den Schluss nicht auf
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'fix' THEN RAISE EXCEPTION 'FAIL fix ohne Vorpruefung %', v; END IF;
+  UPDATE core.advisors SET handoff_check_fn = 'core.fn_t_fix_check' WHERE domain = d;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'fix' THEN RAISE EXCEPTION 'FAIL fix geht noch nicht %', v; END IF;
+  PERFORM set_config('t.fix_mode', 'now', true);
+  -- offener Eintrag: still warten, kein Angebot
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES (d, 'core', 'erika', 's', 'other', 'offen') RETURNING id INTO v_open;
+  PERFORM core.fn_notify_commit('plan_rollout', (core.fn_plan_rollout_next(d, 'erika'))->'messages'->0->'latch'->>'key');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' <> '2' OR (v->>'wait')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL fix bei offenem Eintrag %', v; END IF;
+  UPDATE agent.handoff_tasks SET status = 'cancelled', closed_at = now(), close_reason = 'dropped' WHERE id = v_open;
+  -- offener Entwurf: kein Angebot
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version) VALUES (d, 'p', 'draft', 2);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'fix' THEN RAISE EXCEPTION 'FAIL fix bei Entwurf %', v; END IF;
+  DELETE FROM agent.advisor_plans WHERE domain = d AND status = 'draft';
+  -- jetzt: ein Angebot mit Merker je Aufgabe
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'fix' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.fix_offer_one'
+     OR v->'messages'->0->'buttons'->0->>'text_key' <> 'core.handoff.btn_go'
+     OR v->'messages'->0->'buttons'->0->>'data' <> 'handoff:' || d || ':' || v_def || ':fix'
+     OR v->'messages'->0->'latches'->0->>'key' <> d || ':household:1:fix:' || v_def THEN RAISE EXCEPTION 'FAIL fix Angebot %', v; END IF;
+  PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latches'->0->>'key');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' = 'fix' THEN RAISE EXCEPTION 'FAIL fix zweimal %', v; END IF;
+  -- zwei neue Aufgaben, je eigener Merker; Text mit Zahl
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
+  VALUES (d, 'core', 'erika', 's', 'other', 'wartet 2', 'deferred', 'tool_missing'), (d, 'core', 'erika', 's', 'other', 'wartet 3', 'deferred', 'tool_missing');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'fix' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.fix_offer'
+     OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 2 OR jsonb_array_length(v->'messages'->0->'latches') <> 2 THEN
+    RAISE EXCEPTION 'FAIL fix zwei %', v; END IF;
+END $$;
 ROLLBACK;

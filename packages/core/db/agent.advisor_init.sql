@@ -248,7 +248,8 @@ DO $$ BEGIN
             CHECK (follows_task_id IS NULL OR follows_task_id <> id);
     END IF;
 END $$;
-CREATE INDEX IF NOT EXISTS handoff_tasks_follows_idx ON agent.handoff_tasks (follows_task_id) WHERE follows_task_id IS NOT NULL;
+-- Je abgeschlossener Aufgabe hoechstens eine Korrektur (zwei Tipps auf das Nachhol-Angebot legten sonst zwei an).
+CREATE UNIQUE INDEX IF NOT EXISTS handoff_tasks_follows_uq ON agent.handoff_tasks (follows_task_id) WHERE follows_task_id IS NOT NULL;
 
 -- Uebergangs-Gesetz (A2A: abgeschlossene Aufgaben starten nicht neu). Erlaubt: open -> working|deferred|done|cancelled,
 -- working -> open|deferred|done|cancelled, deferred -> working|cancelled. wanted aendert sich nie. Ein Endzustand aendert

@@ -1989,6 +1989,15 @@ BEGIN
   END;
   IF v->0->>'text' IS DISTINCT FROM 'rp handoff' THEN RAISE EXCEPTION 'FAIL [finance_ro -> fn_handoff_tasks_read leer]: %', v; END IF;
   BEGIN
+    SET LOCAL ROLE finance_ro;
+    v := core.fn_handoff_register('finance', '777');
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_ro -> core.fn_handoff_register]: %', SQLERRM;
+  END;
+  IF jsonb_typeof(v) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'FAIL [finance_ro -> fn_handoff_register kein Array]: %', v; END IF;
+  BEGIN
     SET LOCAL ROLE finance_rw;
     v := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
     IF (v->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'check %', v; END IF;

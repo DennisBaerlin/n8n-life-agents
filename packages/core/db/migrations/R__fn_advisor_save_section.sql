@@ -34,22 +34,31 @@
 --       open_points oder einem Aufgaben-Text -> code mixed_script {word}.
 --     handoff_tasks (optional, Array ODER JSON-String, leerer String = keine): im Abschnitt vereinbarte Eintraege fuer den
 --       Buchhalter, je {kind: savings_goal|savings_plan|recurring_payment|recurring_transfer|other, payload (Objekt, rohe
---       Nutzerwerte, optional), text (Alltags-Satz, 1..300 Zeichen)}. Angegeben (auch '[]') ersetzt es die OFFENEN Aufgaben:
---       mit topic die des Themas plus die themenlosen des Abschnitts, ohne topic alle des Abschnitts; weggelassen bleiben sie
---       unveraendert; working/done/cancelled bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
+--       Nutzerwerte, optional), text (Alltags-Satz, 1..300 Zeichen), why (optional, 1..160: warum vereinbart, Kartenzeile beim
+--       Eintragen), rest (optional, 1..120: was beim Eintragen bewusst offen bleibt -> offener Punkt des Themas, open_point_id;
+--       derselbe Text wie ein offener Punkt des Themas = dieser Punkt), option (optional: Schluessel der vom Nutzer gewaehlten
+--       Option der Vorpruefung)}. Vorpruefung: hat die Domain core.advisors.handoff_check_fn, laeuft sie je Eintrag (mode agree,
+--       Vertrag docs/package-contract.md) vor jedem Write: Aufruf (call|calls) -> wanted; unsupported + blocked_code (Code aus
+--       core.fn_handoff_blocked_codes) -> die Aufgabe entsteht als deferred; ok:false (handoff_ref_ambiguous,
+--       handoff_not_enterable, handoff_choice_needed ...) -> ganzer Save abgelehnt, die Ablehnung kommt mit task_index (1-basiert)
+--       zurueck; wirft die Paket-fn, gilt der Eintrag als ungeprueft (ohne wanted). Angegeben (auch '[]') ersetzt es die OFFENEN
+--       Aufgaben und die beim Vereinbaren zurueckgestellten (deferred ohne claimed_at): mit topic die des Themas plus die
+--       themenlosen des Abschnitts, ohne topic alle des Abschnitts; weggelassen bleiben sie unveraendert; beanspruchte, beim
+--       Eintragen zurueckgestellte und abgeschlossene bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
 --       Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
 --   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, status:'draft',
 --     draft_created, sections, section_count, topics, topic_replaced, open_points [{id, text}] (ungeschlossene des gespeicherten
---     Themas), handoff_task_count, card_lines} (Post-State: welche
+--     Themas), handoff_task_count, handoff_task_ids, handoffs_deferred, card_lines} (Post-State: welche
 --     Sektionen der Draft JETZT hat; topics = Themen-Bezeichnungen des Abschnitts in Reihenfolge; topic_replaced und
 --     draft_created = DB-entschieden; card_lines = Notiz core.hitl.plan_legacy_replaced beim Abloesen eines Alt-Texts und je
---     Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}).
+--     Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}, bei zurueckgestellten core.hitl.handoff_planned_deferred {text}).
 --     section_key gegen den Textkatalog: fuehrt das Paket der Domain Abschnitts-Keys (core.ui_texts <paket>.plan_section.<key>),
 --       ist nur einer davon erlaubt, sonst code unknown_section_key + valid_keys (Tippfehler legte sonst einen Phantom-Abschnitt
 --       an). Fuehrt der Katalog keine (Test-DB ohne Seed, Paket ohne Plan), bleibt der Key frei. Keys mit Praefix annex_ (Anbauten,
 --       ^annex_[a-z0-9_]{1,40}$) sind immer erlaubt.
 --   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen (code topic_label_too_long), topic_required, topic_too_long,
---     block_in_two_topics, why_too_long, open_point_too_long, unknown_open_point {open}, unknown_topic {topics}, topic_exists,
+--     block_in_two_topics, why_too_long, open_point_too_long, handoff_why_too_long, handoff_rest_too_long, unknown_blocked_code,
+--     Ablehnungen der Vorpruefung, unknown_open_point {open}, unknown_topic {topics}, topic_exists,
 --     mixed_script {word}, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
 --     [, code]} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
@@ -92,6 +101,12 @@ DECLARE
     v_next    INT;
     v_word    TEXT;
     v_rep_idx INT;
+    v_real    TEXT := regexp_replace(COALESCE(v_domain, ''), '^__e2e_(.+)__$', '\1');
+    v_chkfn   regprocedure;
+    v_chk     JSONB;
+    v_checked JSONB := '[]'::jsonb;   -- je Aufgabe {wanted, blocked_code} aus der Vorpruefung, in Reihenfolge
+    v_ids     JSONB := '[]'::jsonb;
+    v_ti      INT;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -202,6 +217,18 @@ BEGIN
         IF v_bad IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'handoff_tasks rejected: ' || v_bad);
         END IF;
+        SELECT min(i) INTO v_ti FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)
+         WHERE length(btrim(COALESCE(t->>'why', ''))) > 160;
+        IF v_ti IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'handoff_why_too_long', 'max', 160, 'task_index', v_ti,
+                'reason', format('handoff_tasks #%s: why must be one sentence of at most 160 characters', v_ti));
+        END IF;
+        SELECT min(i) INTO v_ti FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)
+         WHERE length(btrim(COALESCE(t->>'rest', ''))) > 120;
+        IF v_ti IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'handoff_rest_too_long', 'max', 120, 'task_index', v_ti,
+                'reason', format('handoff_tasks #%s: rest must be at most 120 characters', v_ti));
+        END IF;
     END IF;
     -- Felder neben dem Text: why (aufklappbarer Hintergrund), open_points (bewusst Offenes, die DB vergibt Ids), resolves.
     IF length(v_why) > 400 THEN
@@ -227,7 +254,9 @@ BEGIN
         SELECT core.fn_mixed_script_word(t) AS w, n FROM (
             SELECT v_content AS t, 1 AS n UNION ALL SELECT v_why, 2
             UNION ALL SELECT x, 3 FROM jsonb_array_elements_text(v_ops) x
-            UNION ALL SELECT t->>'text', 4 FROM jsonb_array_elements(v_tasks) t) s) m
+            UNION ALL SELECT t->>'text', 4 FROM jsonb_array_elements(v_tasks) t
+            UNION ALL SELECT t->>'why', 5 FROM jsonb_array_elements(v_tasks) t
+            UNION ALL SELECT t->>'rest', 6 FROM jsonb_array_elements(v_tasks) t) s) m
      WHERE w IS NOT NULL ORDER BY n LIMIT 1;
     IF v_word IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'mixed_script', 'word', v_word,
@@ -241,6 +270,41 @@ BEGIN
     v_hpid := core.fn_handoff_person(p->>'chat_id');
     IF jsonb_array_length(v_tasks) > 0 AND v_hpid IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'cannot resolve the person for the handoff tasks');
+    END IF;
+
+    -- Vorpruefung je Eintrag (Paket-fn aus der Registry, Name nie aus Nutzereingabe; CHECK auf <schema>.fn_<name>).
+    -- Vor jedem Write: eine Ablehnung gibt {ok:false} zurueck, ohne dass ein Entwurf entstanden ist.
+    IF jsonb_array_length(v_tasks) > 0 THEN
+        v_chkfn := to_regprocedure((SELECT a.handoff_check_fn FROM core.advisors a WHERE a.domain = v_real) || '(jsonb)');
+        FOR v_ti IN 1 .. jsonb_array_length(v_tasks) LOOP
+            v_chk := NULL;
+            IF v_chkfn IS NOT NULL THEN
+                BEGIN
+                    EXECUTE format('SELECT %s($1)', v_chkfn::regproc) INTO v_chk USING jsonb_build_object(
+                        'mode', 'agree', 'domain', v_real, 'chat_id', p->>'chat_id',
+                        'kind', v_tasks->(v_ti - 1)->>'kind',
+                        'payload', COALESCE(NULLIF(v_tasks->(v_ti - 1)->'payload', 'null'::jsonb), '{}'::jsonb),
+                        'text', btrim(v_tasks->(v_ti - 1)->>'text'), 'option', v_tasks->(v_ti - 1)->>'option');
+                EXCEPTION WHEN OTHERS THEN
+                    v_chk := NULL;
+                END;
+            END IF;
+            IF v_chk IS NOT NULL AND (v_chk->>'ok')::boolean IS NOT TRUE THEN
+                RETURN v_chk || jsonb_build_object('ok', false, 'task_index', v_ti,
+                    'code', COALESCE(v_chk->>'code', 'handoff_not_enterable'),
+                    'reason', format('handoff_tasks #%s: %s', v_ti, COALESCE(v_chk->>'reason', 'the entry cannot be entered like this')));
+            END IF;
+            IF (v_chk->>'unsupported')::boolean IS TRUE AND NOT (core.fn_handoff_blocked_codes(v_pkg) ? COALESCE(v_chk->>'blocked_code', '')) THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'unknown_blocked_code', 'task_index', v_ti,
+                    'valid_codes', core.fn_handoff_blocked_codes(v_pkg),
+                    'reason', format('handoff_tasks #%s: the entry check returned an unknown blocked_code', v_ti));
+            END IF;
+            v_checked := v_checked || jsonb_build_array(jsonb_build_object(
+                'wanted', CASE WHEN (v_chk->>'unsupported')::boolean IS TRUE THEN NULL
+                               WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN v_chk->'calls'
+                               WHEN jsonb_typeof(v_chk->'call') = 'object' THEN v_chk->'call' END,
+                'blocked_code', CASE WHEN (v_chk->>'unsupported')::boolean IS TRUE THEN v_chk->>'blocked_code' END));
+        END LOOP;
     END IF;
 
     -- Relative Zeitangaben (*_date / since) rechnet die DB; as_of jedes Top-Level-Objekt-Blocks stempelt die fn
@@ -297,6 +361,13 @@ BEGIN
         v_state := core.fn_plan_close_points(v_state, ARRAY(SELECT btrim(r)::int FROM jsonb_array_elements_text(v_res) r),
                                              concat_ws('/', v_key, v_topic));
     END IF;
+    -- Rest eines Eintrags = offener Punkt desselben Ziels (Thema bzw. Abschnitt); gleicher Text nur einmal.
+    v_ops := v_ops || COALESCE((SELECT jsonb_agg(to_jsonb(d.r) ORDER BY d.i) FROM (
+                 SELECT DISTINCT ON (lower(btrim(t->>'rest'))) btrim(t->>'rest') AS r, i
+                   FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)
+                  WHERE btrim(COALESCE(t->>'rest', '')) <> ''
+                    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_ops) o WHERE lower(o) = lower(btrim(t->>'rest')))
+                  ORDER BY lower(btrim(t->>'rest')), i) d), '[]'::jsonb);
     -- Ids fortlaufend je Entwurf; geschlossene zaehlen mit, damit keine Id zweimal vorkommt.
     SELECT COALESCE(max(o.id), 0) + 1 INTO v_next FROM core.fn_plan_open_points(v_state) o;
     SELECT COALESCE(jsonb_agg(jsonb_build_object('id', v_next + i::int - 1, 'text', t) ORDER BY i), '[]'::jsonb)
@@ -378,7 +449,7 @@ BEGIN
     -- Ersetztes Thema: vereinbarte, noch nicht erledigte Aufgaben ziehen mit (Endzustaende sind unveraenderlich).
     IF v_replace IS NOT NULL AND lower(v_replace) <> lower(v_topic) THEN
         UPDATE agent.handoff_tasks SET topic = v_topic
-         WHERE domain = v_domain AND section_key = v_key AND status IN ('open', 'working')
+         WHERE domain = v_domain AND section_key = v_key AND status IN ('open', 'working', 'deferred')
            AND person_id IS NOT DISTINCT FROM v_hpid AND lower(topic) = lower(v_replace);
     END IF;
 
@@ -387,12 +458,24 @@ BEGIN
     -- Weggelassen = unveraendert: eine Prosa-Korrektur ohne den optionalen Parameter darf nichts Vereinbartes loeschen.
     IF v_given THEN
         DELETE FROM agent.handoff_tasks
-         WHERE domain = v_domain AND section_key = v_key AND status = 'open' AND person_id IS NOT DISTINCT FROM v_hpid
+         WHERE domain = v_domain AND section_key = v_key AND person_id IS NOT DISTINCT FROM v_hpid
+           AND (status = 'open' OR (status = 'deferred' AND claimed_at IS NULL))
            AND (v_topic IS NULL OR topic IS NULL OR lower(topic) = lower(v_topic));
     END IF;
-    INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, payload, text)
-    SELECT v_domain, v_pkg, v_hpid, v_key, v_topic, t->>'kind', COALESCE(NULLIF(t->'payload', 'null'::jsonb), '{}'::jsonb), btrim(t->>'text')
-    FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i) ORDER BY i;
+    WITH ins AS (
+        INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, payload, text, why, wanted,
+                                         status, blocked_code, open_point_id)
+        SELECT v_domain, v_pkg, v_hpid, v_key, v_topic, t->>'kind', COALESCE(NULLIF(t->'payload', 'null'::jsonb), '{}'::jsonb),
+               btrim(t->>'text'), NULLIF(btrim(COALESCE(t->>'why', '')), ''),
+               NULLIF(v_checked->(i::int - 1)->'wanted', 'null'::jsonb),
+               CASE WHEN v_checked->(i::int - 1)->>'blocked_code' IS NOT NULL THEN 'deferred' ELSE 'open' END,
+               v_checked->(i::int - 1)->>'blocked_code',
+               (SELECT (o->>'id')::int FROM jsonb_array_elements(v_ops) o
+                 WHERE NOT o ? 'resolved_at' AND lower(btrim(o->>'text')) = lower(btrim(t->>'rest')) LIMIT 1)
+        FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i) ORDER BY i
+        RETURNING id
+    )
+    SELECT COALESCE(jsonb_agg(id ORDER BY id), '[]'::jsonb) INTO v_ids FROM ins;
 
     SELECT COALESCE(jsonb_agg(k ORDER BY k), '[]'::jsonb) INTO v_keys
     FROM jsonb_object_keys(v_state) AS k;
@@ -412,9 +495,13 @@ BEGIN
         'open_points', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', o->'id', 'text', o->'text') ORDER BY (o->>'id')::int)
                                    FROM jsonb_array_elements(v_ops) o WHERE NOT o ? 'resolved_at'), '[]'::jsonb),
         'handoff_task_count', jsonb_array_length(v_tasks),
+        'handoff_task_ids', v_ids,
+        'handoffs_deferred', (SELECT count(*) FROM jsonb_array_elements(v_checked) c WHERE c->>'blocked_code' IS NOT NULL),
         'card_lines', CASE WHEN v_legacy THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'core.hitl.plan_legacy_replaced'))
                            ELSE '[]'::jsonb END
-                   || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'core.hitl.handoff_planned',
+                   || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note',
+                                    'value', CASE WHEN v_checked->(i::int - 1)->>'blocked_code' IS NOT NULL
+                                                  THEN 'core.hitl.handoff_planned_deferred' ELSE 'core.hitl.handoff_planned' END,
                                     'params', jsonb_build_object('text', btrim(t->>'text'))) ORDER BY i)
                                 FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)), '[]'::jsonb)
     );

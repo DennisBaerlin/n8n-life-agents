@@ -218,6 +218,9 @@ BEGIN
     END IF;
     IF to_regprocedure('core.fn_handoff_position(integer)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_position(integer) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_handoff_register(text,text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_register(text, text) TO %I, %I', v_rw, v_ro);
     END IF;    -- Onboarding-Schnittstelle: Read (kombiniert core+package) an beide Rollen; der
     -- INVOKER-Write nur an _rw (das _ro-Profil ist default_transaction_read_only -> kann ohnehin nicht schreiben).
     IF to_regprocedure('core.fn_onboarding_status(text, text)') IS NOT NULL THEN

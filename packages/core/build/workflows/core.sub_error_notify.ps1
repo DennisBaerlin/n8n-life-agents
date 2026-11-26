@@ -138,8 +138,8 @@ return out;
         ([ordered]@{ execution_id = 'String(($(''On Error'').first().json.execution || {}).id || '''')' })
     $clearThinking['onError'] = 'continueRegularOutput'
 
-    # KI-Pause: Code aus der Fehlermeldung bzw. dem Gateway-Zustand (Regel und Reihenfolge: Get-LlmPauseCodeJs); sonst 'other' (Alarm
-    # wie bisher). Ein Telegram- oder DB-Fehler verschluckt so nie still einen Alarm, ausser er traegt eine n8n-HTTP-Ueberschrift und
+    # KI-Pause: Code aus der Fehlermeldung bzw. dem Gateway-Zustand (Regel und Reihenfolge: Get-LlmPauseCodeJs); sonst 'other'
+    # (normaler Roh-Alarm). Ein Telegram- oder DB-Fehler verschluckt so nie still einen Alarm, ausser er traegt eine n8n-HTTP-Ueberschrift und
     # faellt in dieselben 2 Minuten einer Anbieter-Sperre.
     $llmStatus = New-LlmStatusNode -Position @(110, 0)
     $errMsgJs = "((`$('On Error').first().json.execution || {}).error || {}).message"
@@ -155,7 +155,7 @@ return out;
         messages = "={{ JSON.stringify(((`$('Note LLM pause').first().json.r || {}).messages) || []) }}"; chat_id = '' })
     $stickyPause = Build-Sticky 'Doc: KI-Pause' @(560, 260) -Header 'Ablauf' `
         'KI-Pause statt Roh-Alarm' `
-        "Load alert texts -> Read LLM status (Gateway /__llm_status, onError continue) -> Note LLM pause (core.fn_llm_incident_note, source error_notify; Code nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem letzten Erfolg, sonst other) -> Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -> Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -> other, der Alarm geht wie bisher raus." `
+        "Load alert texts -> Read LLM status (Gateway /__llm_status, onError continue) -> Note LLM pause (core.fn_llm_incident_note; Code aus der Fehlermeldung, wenn der Gateway ihn eingefügt hat, sonst nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem Start des letzten Erfolgs: Get-LlmPauseCodeJs; sonst other) -> Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -> Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -> other, der normale Roh-Alarm geht raus." `
         -Height 240 -Width 420
 
     $nodes = @($onError, $loadTexts, $llmStatus, $llmNote, $format, $send, $ifCard, $sendCard, $clearLock, $clearThinking, $stickyOverview, $stickyFormat, $stickyLock, $stickyPause)

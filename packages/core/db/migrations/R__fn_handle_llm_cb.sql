@@ -1,6 +1,7 @@
 -- ============================================================
 -- core.fn_handle_llm_cb (ATOMIC WRITE) — Knoepfe der KI-Pause (Callback-Registry-Prefix 'llm', member_permeable)
---   data = llm:<aktion>:<incident_id>; der Dispatcher core.fn_dispatch_callback hat den Absender schon aufgeloest.
+--   data = llm:<aktion>:<incident_id>; der Dispatcher core.fn_dispatch_callback laesst nur aufgeloeste Absender durch, die fn
+--   loest ihn fuer Rolle und Sprache selbst noch einmal auf (agent.fn_resolve_sender).
 --   Nur Privatchat. Aktionen:
 --     guide  (Owner): owner_choice raise, Nachschau spaetestens in 10 Min; reply = Anleitung (Limit bzw. Guthaben) mit
 --            [Erledigt – jetzt nachschauen]; edit keep_text (Knoepfe der Karte weg). Schluessel/Stoerung -> Toast.
@@ -10,7 +11,8 @@
 --            (agent.fn_merge_ingress_updates), alle eigenen Zeilen geloescht (Sprachnachrichten werden nicht nachgespielt);
 --            route 'replay' + update -> der Orchestrator speist es in 'Trigger normalize' wie eine neue Nachricht.
 --     drop   (jede Person): eigene gemerkte Nachrichten loeschen.
---   Beendeter oder unbekannter Vorfall (guide/wait/check) -> Toast; unbekannte Aktion/Gruppe -> ok:false. Nie RAISE.
+--   ok:false (immer mit Toast, nie RAISE): invalid (Gruppenchat, unbekannte Aktion, Vorfall-id keine Zahl), owner_only
+--   (guide/wait/check von einem Mitglied), over (Vorfall beendet oder unbekannt), no_guide (Schluessel/Stoerung), no_date (wait ohne Datum).
 --   Generische Registry-Felder: toast, edit {keep_text}, reply {text, buttons} (Nachricht an den Tippenden), route + update.
 --   Rueckgabe: {ok, toast?, reply?, edit?, route?, update?, incident_id?} | {ok:false, reason, toast}
 --   Tests: tests/db/core/test_fn_handle_llm_cb.sql

@@ -2456,7 +2456,7 @@ function New-LlmStatusNode {
 # Get-LlmPauseCodeJs — JS-Ausdruck: fester Gateway-Code eines gescheiterten Claude-Aufrufs oder 'other' (= kein KI-Pause-Fall).
 # -MessageJs = JS-Ausdruck der n8n-Fehlermeldung. Reihenfolge: (1) der vom Gateway eingefuegte Code steht in der Meldung (LangChain
 # reicht den Body bei 5xx/529 durch: '529 {"type":"error",...,"lifeagents_code":"overloaded"}') -> sicher dieser Anfrage zugeordnet;
-# (2) n8n verpackt 4xx als HTTP-Ueberschrift ('Bad request - please check your parameters'), dann zaehlt der Gateway-Zustand, wenn
+# (2) n8n verpackt 4xx und 5xx ohne Body als HTTP-Ueberschrift ('Bad request - please check your parameters'), dann zaehlt der Gateway-Zustand, wenn
 # der Fehler juenger als 2 Min ist und nach dem Start des letzten Erfolgs liegt; (3) sonst 'other'. -StatusNode = Knoten von
 # New-LlmStatusNode. -Field 'code' | 'resume_at' (Datum des Anbieters, '' wenn keins).
 function Get-LlmPauseCodeJs {

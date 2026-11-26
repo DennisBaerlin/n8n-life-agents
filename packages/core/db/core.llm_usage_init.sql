@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS core.llm_usage (
 );
 
 -- Fester Code eines Anbieter-Fehlers (Gateway classifyUpstreamError, usage-Feld `err`); NULL = kein Fehler. Wertevorrat =
--- Gateway-Codes (provisioning/llm_gateway/server.js), Test llm_gateway_test (p).
+-- Gateway-Codes (provisioning/llm_gateway/server.js), Test scripts/dev/llm_gateway_test.ps1 Fall p.
 ALTER TABLE core.llm_usage ADD COLUMN IF NOT EXISTS err_code text;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'llm_usage_err_code_valid') THEN

@@ -293,7 +293,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**KI-Pause statt Roh-Alarm**\n\nLoad alert texts -\u003e Read LLM status (Gateway /__llm_status, onError continue) -\u003e Note LLM pause (core.fn_llm_incident_note, source error_notify; Code nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem letzten Erfolg, sonst other) -\u003e Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -\u003e Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -\u003e other, der Alarm geht wie bisher raus.",
+                                         "content":  "## Ablauf\n**KI-Pause statt Roh-Alarm**\n\nLoad alert texts -\u003e Read LLM status (Gateway /__llm_status, onError continue) -\u003e Note LLM pause (core.fn_llm_incident_note; Code aus der Fehlermeldung, wenn der Gateway ihn eingefügt hat, sonst nur bei n8n-HTTP-Überschrift UND Gateway-Fehler jünger als 2 Min nach dem Start des letzten Erfolgs: Get-LlmPauseCodeJs; sonst other) -\u003e Format Message (sortierter Fall: kein Roh-Alarm) und Pause card? -\u003e Send LLM pause (core.sub_send_messages: die Owner-Karte, nur beim ersten Mal je Pause). DB oder Gateway weg -\u003e other, der normale Roh-Alarm geht raus.",
                                          "height":  240,
                                          "width":  420,
                                          "color":  4

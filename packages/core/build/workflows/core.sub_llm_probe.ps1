@@ -10,7 +10,7 @@
 function Build-CoreSubLlmProbe {
     $trig = Build-Trigger @('trigger') @(-1320, 0)
 
-    # Knopf (trigger button): sofort nachschauen, auch wenn gerade eine geplante Nachschau laeuft (sonst kaeme nach dem Toast nichts).
+    # trigger geht mit: der Knopf schaut sofort nach (Regel: core.fn_llm_probe_due).
     $due = Build-Pg 'Probe due' @(-1100, 0) "=SELECT core.fn_llm_probe_due(`$1::jsonb)::text AS r;" ([ordered]@{
         trigger = "String(`$('Start').first().json.trigger || 'cron')" })
     $D = "JSON.parse(`$('Probe due').first().json.r || '{}')"

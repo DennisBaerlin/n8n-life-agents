@@ -3,8 +3,8 @@
 #
 # --- core.sub_send_messages (fertige Nachrichten mit Knoepfen senden) ------------------------------------------------
 # Sendet eine Liste {chat_id, text, buttons:[[{text,data}]]}, die eine DB-fn fertig gebaut hat (KI-Pause:
-# core.fn_llm_incident_note, core.fn_llm_probe_result, Antwort von core.fn_handle_llm_cb). Gerufen vom Orchestrator und von
-# core.sub_llm_probe. Eingang messages = JSON-Text (der Aufruf-Knoten wandelt Felder in Text). Ausgang je Nachricht das
+# core.fn_llm_incident_note, core.fn_llm_probe_result, Antwort von core.fn_handle_llm_cb). Gerufen vom Orchestrator, von
+# core.sub_llm_probe und von core.sub_error_notify. Eingang messages = JSON-Text (der Aufruf-Knoten wandelt Felder in Text). Ausgang je Nachricht das
 # Telegram-Ergebnis; ein Sendefehler bricht nicht ab (onError continue), die uebrigen gehen trotzdem raus.
 function Build-CoreSubSendMessages {
     $trig = Build-Trigger @('messages') @(-880, 0)

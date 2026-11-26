@@ -8,7 +8,7 @@
 -- Kinds:   spend_limit (eigenes Monatslimit oder Stufen-Obergrenze), credit_empty, auth, outage (ueberlastet,
 --          Serverfehler, Netz weg). rate_limited/other oeffnen keinen Vorfall (fn).
 -- Privacy: llm_held_messages haelt das rohe Telegram-Update wie agent.ingress_buffer; geloescht beim Beantworten,
---          Verwerfen und spaetestens 7 Tage nach Ende des Vorfalls (core.fn_llm_probe_result). Kein Backup (fluechtig).
+--          Verwerfen und spaetestens 7 Tage nach Ende des Vorfalls (core.fn_llm_probe_due). Kein Backup (fluechtig).
 -- Tests:   tests/db/core/test_fn_llm_incident_note.sql, test_fn_llm_probe_due.sql, test_fn_handle_llm_cb.sql
 -- ============================================================
 

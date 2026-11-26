@@ -1,9 +1,10 @@
 -- ============================================================
 -- core.fn_llm_incident_note (ATOMIC WRITE) — eine Pause der KI melden (Anbieter sperrt oder ist gestoert)
 --   Aufrufer: Fehlerausgang des Orchestrator-Agenten (mit Update und Absender) und core.sub_error_notify (ohne), jeweils mit
---   dem festen Gateway-Code aus GET /__llm_status (provisioning/llm_gateway/server.js classifyUpstreamError).
+--   dem festen Gateway-Code (classifyUpstreamError in provisioning/llm_gateway/server.js), gelesen aus der Fehlermeldung bzw.
+--   dem Gateway-Zustand GET /__llm_status (Regel: Get-LlmPauseCodeJs in scripts/build/lib/build_helpers.ps1).
 --   Art aus dem Code: spend_limit -> spend_limit, credit_empty -> credit_empty, auth -> auth, overloaded/upstream_error/
---   unreachable -> outage; rate_limited/other -> kein Vorfall (der Aufrufer bleibt beim bisherigen Weg samt Alarm).
+--   unreachable -> outage; rate_limited/other -> kein Vorfall (der Aufrufer sendet den normalen Hinweis und den Roh-Alarm).
 --   Vorfall (core.llm_incidents, hoechstens einer offen): offener gleicher Art oder Stoerung waehrend einer Sperre -> der offene
 --   (keine Herabstufung; resume_at wird nachgezogen); sonst neuer Vorfall, ein offener anderer wird 'superseded' und seine
 --   gemerkten Nachrichten ziehen mit. Erste Nachschau nach 2 Min (Stoerung) bzw. 10 Min (core.fn_llm_probe_due).
@@ -15,9 +16,10 @@
 --     spend_limit [Anleitung] (+ [Warten] mit Datum), credit_empty [Anleitung], auth keine. Schreibt der Owner selbst, ist
 --     die Karte die Antwort (reply_*), sonst owner_card (Empfaenger = Owner, sendet der Workflow).
 --     Owner erneut: Kurzsatz; Mitglied: eigener Text ohne Betrag und Knoepfe; Stoerung: ein Satz an den Schreiber.
---   Eingabe p: { code (Pflicht), resume_at? (ISO-UTC 'YYYY-MM-DDTHH:MI:SSZ'), source? ('orchestrator'|'error_notify'),
+--   Eingabe p: { code (Pflicht), resume_at? (ISO-UTC 'YYYY-MM-DDTHH:MI:SSZ'), source? ('orchestrator'|'error_notify', nur Lesbarkeit des Aufrufs, nicht ausgewertet),
 --     chat_id? (Telegram-Absender), update? (Telegram-Update mit message) }
---   Rueckgabe: {ok:true, kind|null, incident_id?, reply_text?, reply_buttons ([[{text,data}]]), owner_card?:{text, buttons},
+--   Rueckgabe: kein Vorfall (rate_limited/other) -> {ok:true, kind:null, suppress_alert:false, held:false};
+--     sonst {ok:true, kind, incident_id, reply_text?, reply_buttons ([[{text,data}]]), owner_card?:{text, buttons},
 --     suppress_alert (true = sortierter Fall, kein Roh-Alarm), held, messages:[{chat_id, text, buttons}] (dieselben Texte
 --     mit Empfaenger fuer core.sub_send_messages)} | {ok:false, reason:'unknown_code'}
 --   Tests: tests/db/core/test_fn_llm_incident_note.sql

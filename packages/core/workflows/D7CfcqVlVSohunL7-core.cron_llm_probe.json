@@ -118,7 +118,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**core.cron_llm_probe — Takt der Nachschau während einer KI-Pause**\n\nSchedule (schedule.llm_probe, Standard alle 2 Minuten) -\u003e Core active? -\u003e Run probe (core.sub_llm_probe, trigger cron). Ohne offene Pause passiert nichts außer einer DB-Abfrage; den Plan (Störung 2/5/10 Min, ohne Owner-Wahl 10/30/60, raise 10, wait ab dem Datum des Anbieters) hält core.fn_llm_probe_due. Erfolgreiche Läufe werden nicht gespeichert.",
+                                         "content":  "## Ablauf\n**core.cron_llm_probe — Takt der Nachschau während einer KI-Pause**\n\nSchedule (schedule.llm_probe, Standard alle 2 Minuten) -\u003e Core active? -\u003e Run probe (core.sub_llm_probe, trigger cron). Ohne offene Pause nur ein kurzer DB-Aufruf (Aufräumen alter gemerkter Nachrichten), keine Anfrage an Claude; Plan und Sperre der Nachschau hält core.fn_llm_probe_due. Erfolgreiche Läufe werden nicht gespeichert.",
                                          "height":  380,
                                          "width":  300,
                                          "color":  4

@@ -371,7 +371,7 @@ function keepAliveTick() {
 // ---- Anbieter-Fehler sortieren ---------------------------------------------------------------------------------
 // Reihenfolge laut Anthropic (platform.claude.com/docs/en/api/errors, /api/rate-limits): error.details.error_code ->
 // error.type -> Text. Eigenes Monatslimit (400) und leeres Guthaben (400) sind nur am Text erkennbar; aendert Anthropic ihn,
-// faellt der Fall auf 'other' (heutiges Verhalten + Alarm), nie still falsch. Codes = CHECK core.llm_usage.err_code und
+// faellt der Fall auf 'other' (normaler Hinweis + Roh-Alarm), nie still falsch. Codes = CHECK core.llm_usage.err_code und
 // core.llm_incidents (Spiegel: packages/core/db/core.llm_incidents_init.sql). resume_at nur aus dem Datum im Text, ISO-UTC.
 const LLM_ERR_PERMANENT = new Set(['spend_limit', 'credit_empty', 'auth']);
 const RESUME_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}):(\d{2}) UTC/;

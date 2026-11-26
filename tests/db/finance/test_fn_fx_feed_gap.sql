@@ -2,7 +2,8 @@
 -- test_fn_fx_feed_gap — "liefert der Wechselkurs-Dienst noch?" (finance.fn_fx_feed_gap) + Claim fn_feed_down_claim('fx')
 --   [20] feed_down an den Grenzen 1/2 Tage, gemessen am Quell-Datum as_of (nicht updated_at) gegen das UTC-Datum
 --   [20b] never: ohne jede Feed-Zeile ab Paket-Installation (core.fn_package_installed_at), Anker juenger/aelter
---   [20c] EZB-Nachlauf-Zeilen (source ecb) verdecken keinen Ausfall
+--   [20c] Ersatzquelle EZB: alte EZB-Zeilen verdecken keinen Ausfall, frische schon (Meldung erst, wenn beide ausfallen)
+--   [20f] fn_weekdays_between: Arbeitstage zwischen zwei Daten (EZB veroeffentlicht nur Mo-Fr)
 --   [20d] Rueckkehr -> Latch finance:fx/feed_down wieder 'ok' (spaeterer Ausfall meldet neu)
 --   [20e] cron_enable refresh_fx_rates aus -> nie feed_down
 --   [21] Config finance.fx_feed_alert_days wird gelesen, fehlend -> Default 2
@@ -45,6 +46,12 @@ BEGIN
     IF (r->>'feed_down')::boolean IS DISTINCT FROM true OR (r->>'never')::boolean IS DISTINCT FROM true
        OR r->>'stale_since' IS NOT NULL THEN
         RAISE EXCEPTION 'FAIL [20b never alt]: %', r; END IF;
+    -- [20b] nie ein Tages-Feed, aber frische EZB-Kurse (Nachlauf bis gestern) -> Kurse kommen an, keine Meldung
+    INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'USD', 1.1, v_today - 1, 'ecb');
+    r := finance.fn_fx_feed_gap();
+    IF (r->>'feed_down')::boolean IS DISTINCT FROM false OR (r->>'never')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'FAIL [20b nur EZB frisch]: %', r; END IF;
+    DELETE FROM finance.fx_rates;
 
     -- [20] Feed 1 Tag aus (juengstes Quell-Datum gestern) -> kein Ausfall, auch wenn updated_at alt ist
     INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source, updated_at) VALUES
@@ -58,11 +65,23 @@ BEGIN
     IF (r->>'feed_down')::boolean IS DISTINCT FROM true OR (r->>'stale_since')::date IS DISTINCT FROM v_today - 2 THEN
         RAISE EXCEPTION 'FAIL [20 2 Tage, as_of statt updated_at]: %', r; END IF;
 
-    -- [20c] EZB-Zeile von heute verdeckt den Ausfall nicht
-    INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'JPY', 1500, v_today, 'ecb');
+    -- [20c] Ersatzquelle EZB: eine alte EZB-Zeile (Nachlauf) verdeckt den Ausfall nicht, stale_since = juengstes Datum
+    -- beider Quellen; eine frische EZB-Zeile heisst "Kurse kommen an" -> keine Meldung (E3 erst, wenn beide ausfallen)
+    INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'JPY', 150, v_today - 10, 'ecb');
     r := finance.fn_fx_feed_gap();
     IF (r->>'feed_down')::boolean IS DISTINCT FROM true OR (r->>'stale_since')::date IS DISTINCT FROM v_today - 2 THEN
-        RAISE EXCEPTION 'FAIL [20c ecb]: %', r; END IF;
+        RAISE EXCEPTION 'FAIL [20c ecb alt]: %', r; END IF;
+    INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of, source) VALUES ('EUR', 'JPY', 151, v_today - 1, 'ecb');
+    r := finance.fn_fx_feed_gap();
+    IF (r->>'feed_down')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'FAIL [20c ecb frisch -> kein Ausfall]: %', r; END IF;
+    DELETE FROM finance.fx_rates WHERE source = 'ecb' AND as_of = v_today - 1;
+    -- [20f] Arbeitstage der EZB (Mo-Fr, Grenzen exklusiv): Fr -> Mo = 0 (Wochenende ist kein Ausfall), Fr -> Mi = 2
+    IF finance.fn_weekdays_between('2026-11-20', '2026-11-23') <> 0
+       OR finance.fn_weekdays_between('2026-11-20', '2026-11-25') <> 2
+       OR finance.fn_weekdays_between('2026-11-23', '2026-11-23') <> 0
+       OR finance.fn_weekdays_between('2026-11-25', '2026-11-20') <> 0 THEN
+        RAISE EXCEPTION 'FAIL [20f Arbeitstage]'; END IF;
 
     -- [21] Config 3 -> 2 Tage aus ist noch kein Ausfall; fehlender Wert -> Default 2 (unlesbare Werte lehnt die
     -- Typ-Pruefung von core.config schon beim Schreiben ab)
@@ -109,6 +128,6 @@ BEGIN
     PERFORM finance.fn_feed_down_claim('fx');
     RESET ROLE;
 
-    RAISE NOTICE 'PASS test_fn_fx_feed_gap [20 Grenzen am as_of, 20b never, 20c ecb, 20d Rueckkehr, 20e aus, 21 Config, Claim]';
+    RAISE NOTICE 'PASS test_fn_fx_feed_gap [20 Grenzen am as_of, 20b never, 20c ecb Ersatz, 20d Rueckkehr, 20e aus, 21 Config, 20f Arbeitstage, Claim]';
 END $$;
 ROLLBACK;

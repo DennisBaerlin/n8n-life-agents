@@ -146,17 +146,16 @@ BEGIN
         CROSS JOIN LATERAL (SELECT (l.mkey IS NOT NULL AND EXISTS (
                                        SELECT 1 FROM finance.recurring_payment_keys k
                                        WHERE k.key_type = 'sepa_mandate' AND k.key_value = l.mkey
-                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
-                                OR (l.iban IS NOT NULL AND EXISTS (
+                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id)))) AS mand,
+                                   (l.iban IS NOT NULL AND EXISTS (
                                        SELECT 1 FROM finance.recurring_payment_keys k
                                        WHERE k.key_type = 'counterparty_iban' AND k.key_value = l.iban
-                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
-                                AS hit) ky
+                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id)))) AS iban) ky
         CROSS JOIN LATERAL (
             SELECT CASE
                 WHEN abs(l.d - o.due) <= 10
                      AND abs(l.amt) BETWEEN abs(o.expected) * 0.5 AND abs(o.expected) * 1.5
-                     AND ( ky.hit
+                     AND ( ky.mand OR ky.iban
                         OR (l.iban IS NOT NULL AND o.other_acct IS NOT NULL AND l.iban =
                                (SELECT a.account_number FROM finance.accounts a WHERE a.id = o.other_acct)) )
                 THEN 'A'
@@ -167,7 +166,7 @@ BEGIN
                 WHEN (l.d - o.due) BETWEEN 11 AND 14 AND o.long_cycle AND abs(l.amt - o.expected) <= 0.005 AND nm.hit
                 THEN 'B'
                 WHEN abs(l.d - o.due) <= 10 AND o.due <= p_period_end
-                     AND o.expected > 0 AND o.target_account_id IS NULL AND ky.hit AND l.iban IS NOT NULL
+                     AND o.expected > 0 AND o.target_account_id IS NULL AND ky.iban
                      AND l.amt > o.expected * 1.5
                      -- Gegen-IBAN gilt je Kette (Gehalt und Zuschuss teilen sie): nur die groesste Einnahme-Kette des
                      -- Kontos nach Monatswert, sonst naehme der Zuschuss ein frueh gezahltes Gehalt bzw. die Jahres-
@@ -181,6 +180,7 @@ BEGIN
                            AND r2.account_id = p_account_id AND r2.target_account_id IS NULL AND r2.amount > 0
                            AND r2.id NOT IN (SELECT finance.fn_recurring_lineage(o.rp_id))
                            AND r2.monthly_equivalent >= o.mon
+                           -- Praedikat von active_recurring_payments, aber am Zeilendatum statt heute (Auszug liegt zurueck)
                            AND r2.status = 'active' AND r2.valid_from <= l.d AND (r2.valid_to IS NULL OR r2.valid_to > l.d))
                 THEN 'C'
             END AS stage

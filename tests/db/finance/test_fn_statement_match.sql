@@ -330,6 +330,17 @@ BEGIN
            jsonb_build_object('date', '2026-05-01', 'amount', 9000, 'counterparty', 'Arbeitgeber Muster',
                               'creditor_id', 'DE00ZZZ00000000002', 'mandate_ref', 'SMY-1', 'purpose', 'Bezuege')));
   IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [Y2 Mandat ohne IBAN]: %', v_m; END IF;
+
+  -- (Y3) Einnahme-Kette nur mit Mandat, Zeile mit Mandat und unbekannter IBAN ueber 150 %: keine Stufe C (Stufe C nur ueber die Gegen-IBAN)
+  v_all := finance.fn_add_recurring_payment(v_acc, 30, '__smy Bonus Beispiel__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, DATE '2026-05-20', DATE '2026-05-20', NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_all, 'sepa_mandate', 'DE00ZZZ00000000006|SMY-2', 'user');
+  v_m := finance.fn_statement_match(v_acc, DATE '2026-04-30', DATE '2026-05-31', jsonb_build_array(
+           jsonb_build_object('date', '2026-05-20', 'amount', 9000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE75512108001245126199', 'creditor_id', 'DE00ZZZ00000000006',
+                              'mandate_ref', 'SMY-2', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [Y3 Mandat-Treffer ist kein Stufe-C-Schluessel]: %', v_m; END IF;
   RAISE NOTICE 'PASS [Stufe C: Split-Kette zaehlt ueber ihr aktives Glied, nur mit Gegen-IBAN]';
 END $$;
 ROLLBACK;

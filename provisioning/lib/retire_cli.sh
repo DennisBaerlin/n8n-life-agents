@@ -12,7 +12,7 @@
 # Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc; traegt auch Gespraeche, geaenderte Einstellungen und Paket-Zugaenge),
 #   move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
 #   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. move_snapshot nutzt auch
-#   `lifeagents move` (B2); es fuehrt auf backup_cli.sh backup_fingerprint.
+#   `lifeagents move`; es fuehrt auf backup_cli.sh backup_fingerprint.
 #
 # Exit: 0 ok; 1 Abbruch (Grund auf stderr, nichts weiter geaendert); --status: 0 nicht stillgelegt, 10 mitten drin, 11 fertig.
 

@@ -6,7 +6,7 @@
 --   waehrend des Durchgehens (Claim juenger als advisor.handoff_claim_ttl_minutes) still warten, 3 Paket-Schritt
 --   (core.advisors.rollout_fn, z. B. Bank-Zettel) schon vor dem Warten auf liegen gebliebene Eintraege, 2 still warten,
 --   solange ein Eintrag open/working ist (ohne Frist; deferred und cancelled halten nicht auf), fix Korrektur-Schritt, check Pruef-Schritt,
---   4 Wert-Waechter, 5 Schluss. advisor.rollout_wait_days gilt nur fuer Schritt 0, das wait eines Paket-Schritts und ein unbeantwortetes Pruef-Angebot.
+--   4 Wert-Waechter, 5 Schluss. advisor.rollout_wait_days gilt nur fuer Schritt 0, das wait eines Paket-Schritts und eine offene Pruefung.
 --   fix: Zeilen des Ersatzweg-Registers mit possible_now (was nachholbar ist, legt allein core.fn_handoff_register fest);
 --   eine Nachricht core.rollout.fix_offer {n} bzw. fix_offer_one, Knopf core.handoff.btn_go mit
 --   handoff:<domain>:<max_task_id>:fix (core.fn_handle_handoff_cb), je Aufgabe ein Merker '<prefix>fix:<task_id>' in latches
@@ -17,7 +17,7 @@
 --   '<domain>:<who>:check:<task_id>' ohne Version (einmal je Aufgabe), hoechstens 20 je Angebot.
 --   Pruefung offen ({step:'check', wait:true}): haelt 4 und 5 zurueck. Angeboten und noch nicht uebergeben (kein Merker
 --   ...:checked:<task_id> aus core.fn_handle_plan_cb): advisor.rollout_wait_days ab dem Angebot. Uebergeben:
---   advisor.rollout_gap_hours ab der Uebergabe, bis das Ergebnis feststeht: Merker ...:check_done:<task_id> (agent.fn_record_handoff_check:
+--   advisor.rollout_wait_days ab der Uebergabe, bis das Ergebnis feststeht: Merker ...:check_done:<task_id> (agent.fn_record_handoff_check:
 --   passt zum Plan oder Korrektur-Karte abgebrochen) gibt den Eintrag sofort frei, eine Korrektur ist ein offener Eintrag und haelt
 --   ueber 1 und 2; die Frist faengt eine offene Rueckfrage und ein nie festgehaltenes Ergebnis. Ein
 --   beanspruchtes, noch nicht festgeschriebenes Angebot: {step:'check', loser:true}.
@@ -243,7 +243,7 @@ BEGIN
                                              AND c.key = p_domain || ':' || v_who || ':checked:' || (e->>'task_id')
          WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
            AND core.fn_plan_rollout_latch(p_domain || ':' || v_who || ':check_done:' || (e->>'task_id')) <> 'done'
-           AND CASE WHEN c.key IS NOT NULL THEN c.last_fired_at > now() - make_interval(hours => v_gap)
+           AND CASE WHEN c.key IS NOT NULL THEN c.last_fired_at > now() - make_interval(days => v_wait)
                     ELSE o.last_fired_at > now() - make_interval(days => v_wait) END) THEN
         RETURN jsonb_build_object('step', 'check', 'wait', true, 'messages', '[]'::jsonb);
     END IF;

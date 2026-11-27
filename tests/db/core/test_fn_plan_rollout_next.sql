@@ -470,8 +470,12 @@ BEGIN
   PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
   DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key = d || ':household:check_done:' || v_old;
 
-  -- Abstand nach der Uebergabe vorbei, keine Korrektur: die Abfolge geht weiter, erst der Werte-Schritt, dann der Schluss
+  -- Uebergeben, kein Ergebnis (offene Rueckfrage): wartet advisor.rollout_wait_days wie ein unbeantwortetes Angebot, nach einem Tag noch
   UPDATE core.notification_state SET last_fired_at = now() - interval '21 hours' WHERE source = 'plan_rollout' AND key = v_checked;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->>'wait')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL Schluss einen Tag nach der Uebergabe ohne Ergebnis %', v; END IF;
+  -- Wartezeit nach der Uebergabe vorbei, kein Ergebnis: die Abfolge geht weiter, erst der Werte-Schritt, dann der Schluss
+  UPDATE core.notification_state SET last_fired_at = now() - interval '8 days' WHERE source = 'plan_rollout' AND key = v_checked;
   v := core.fn_plan_rollout_next(d, 'erika');
   IF v->>'step' IS DISTINCT FROM '4' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL Werte-Schritt nach dem Abstand %', v; END IF;
   PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');

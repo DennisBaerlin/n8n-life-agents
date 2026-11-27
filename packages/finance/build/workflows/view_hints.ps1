@@ -10,13 +10,13 @@
 # Format je Eintrag: 'spalte' ODER 'spalte = Bedeutung'. Keine Apostrophe/Backticks/geschweifte Doppelklammern (Description-Parser).
 function Get-FinanceViewHints {
     [ordered]@{
-        'account_overview'               = @('id', 'name = account name', 'account_type', 'balance', 'currency', 'status', 'settlement_account_id', 'balance_eur', 'label = sign plus name, for replies only')
+        'account_overview'               = @('id', 'name = account name', 'account_holder = owner as a name, Haushalt for a joint account', 'account_type', 'balance', 'currency', 'status', 'settlement_account_id', 'balance_eur', 'label = sign plus name, for replies only')
         'depot_holdings_overview'        = @('id = holding_id', 'account_id = the depot id', 'account_name = the DEPOT name', 'name = the position (security) name', 'isin', 'symbol', 'shares', 'book_value', 'market_value', 'market_value_eur', 'price_as_of')
         'savings_goal_progress'          = @('id', 'name = goal name', 'target_amount', 'current_amount', 'progress_percent', 'status')
         'active_recurring_payments'      = @('id', 'name', 'account_id', 'target_account_id', 'amount', 'rhythm', 'monthly_equivalent', 'last_valid_day')
         'upcoming_recurring_payments'    = @('id', 'name', 'account_id', 'amount', 'rhythm', 'starts_on', 'last_valid_day', 'counted_in_cashflow')
         'monthly_cashflow_overview'      = @('id', 'name', 'account_id', 'account_name', 'monthly_equivalent_eur', 'cashflow_class', 'starts_on', 'last_valid_day')
-        'pension_overview'               = @('id', 'name', 'provider', 'owner', 'current_value', 'monthly_contribution', 'status')
+        'pension_overview'               = @('id', 'name', 'provider', 'owner = owner as a name, Haushalt for a joint provision', 'current_value', 'monthly_contribution', 'status')
         'savings_plan_overview'          = @('id', 'name', 'depot_name', 'settlement_account_name', 'savings_goal_name', 'amount_per_execution', 'monthly_amount', 'next_execution', 'last_execution', 'last_valid_day')
         'standing_order_overview'        = @('name', 'kind', 'from_account', 'to_account', 'amount_per_execution', 'rhythm', 'monthly_amount', 'starts_on', 'last_execution', 'last_valid_day', 'executed_by = bank|manual|unknown: who makes the transfer (manual = the user transfers it themselves, no standing order at a bank)')
         'account_funding_overview'       = @('account_id', 'account_name', 'state', 'min_projected', 'runs_out_on')
@@ -25,9 +25,9 @@ function Get-FinanceViewHints {
         'savings_goal_reserve_breakdown' = @('goal_id', 'source', 'account_id', 'account_name', 'reserved_amount')
         'depot_performance'              = @('depot_name', 'is_total', 'return_pa_pct', 'return_since_start_pct', 'takeover_start_date', 'price_stale', 'missing_reason')
         'account_everyday_spending'      = @('account_id', 'account_name', 'has_history', 'everyday_per_day', 'everyday_per_month')
-        'loan_overview'                  = @('id', 'name', 'lender', 'current_remaining_debt', 'monthly_annuity', 'status')
+        'loan_overview'                  = @('id', 'name', 'lender', 'borrower = owner as a name, Haushalt for a joint loan', 'current_remaining_debt', 'monthly_annuity', 'status')
         'active_insurances'              = @('id', 'name', 'insurance_company', 'annual_premium = empty when the premium is still missing (say so, never guess it)', 'account_name', 'last_valid_day')
-        'real_estate_overview'           = @('id', 'name', 'current_value', 'associated_debt', 'net_equity')
+        'real_estate_overview'           = @('id', 'name', 'owner = owner as a name, Haushalt for joint property', 'current_value', 'associated_debt', 'net_equity')
     }
 }
 

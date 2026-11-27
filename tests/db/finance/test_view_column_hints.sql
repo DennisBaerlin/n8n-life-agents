@@ -12,10 +12,11 @@ DECLARE
     v_view TEXT;
     v_col  TEXT;
     v_n    INT := 0;
+    v_hints TEXT[];
 BEGIN
-    FOR v_line IN SELECT unnest(ARRAY[
+    v_hints := ARRAY[
         -- view-hints:begin
-        'account_overview|id, name, account_type, balance, currency, status, settlement_account_id, balance_eur, label',
+        'account_overview|id, name, account_holder, account_type, balance, currency, status, settlement_account_id, balance_eur, label',
         'depot_holdings_overview|id, account_id, account_name, name, isin, symbol, shares, book_value, market_value, market_value_eur, price_as_of',
         'savings_goal_progress|id, name, target_amount, current_amount, progress_percent, status',
         'active_recurring_payments|id, name, account_id, target_account_id, amount, rhythm, monthly_equivalent, last_valid_day',
@@ -30,11 +31,12 @@ BEGIN
         'savings_goal_reserve_breakdown|goal_id, source, account_id, account_name, reserved_amount',
         'depot_performance|depot_name, is_total, return_pa_pct, return_since_start_pct, takeover_start_date, price_stale, missing_reason',
         'account_everyday_spending|account_id, account_name, has_history, everyday_per_day, everyday_per_month',
-        'loan_overview|id, name, lender, current_remaining_debt, monthly_annuity, status',
+        'loan_overview|id, name, lender, borrower, current_remaining_debt, monthly_annuity, status',
         'active_insurances|id, name, insurance_company, annual_premium, account_name, last_valid_day',
-        'real_estate_overview|id, name, current_value, associated_debt, net_equity'
+        'real_estate_overview|id, name, owner, current_value, associated_debt, net_equity'
         -- view-hints:end
-    ]) LOOP
+    ];
+    FOREACH v_line IN ARRAY v_hints LOOP
         v_view := split_part(v_line, '|', 1);
         FOREACH v_col IN ARRAY string_to_array(split_part(v_line, '|', 2), ', ') LOOP
             v_n := v_n + 1;
@@ -43,6 +45,19 @@ BEGIN
                 RAISE EXCEPTION 'FAIL [view_hints]: finance.%.% gibt es nicht - view_hints.ps1 und diesen Test nachziehen', v_view, v_col;
             END IF;
         END LOOP;
+    END LOOP;
+    -- Person als Name: zeigt eine genannte Ansicht den Besitzer als Namen (owner, account_holder, borrower), steht die Spalte im
+    -- Spickzettel. Fehlt sie, raet das Modell einen Namen (owner_name) und die erste Abfrage scheitert.
+    FOR v_view, v_col IN
+        SELECT c.table_name::text, c.column_name::text FROM information_schema.columns c
+        WHERE c.table_schema = 'finance' AND c.column_name IN ('owner', 'account_holder', 'borrower')
+          AND EXISTS (SELECT 1 FROM unnest(v_hints) h WHERE split_part(h, '|', 1) = c.table_name)
+        ORDER BY 1, 2
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM unnest(v_hints) h WHERE split_part(h, '|', 1) = v_view
+                         AND v_col = ANY (string_to_array(split_part(h, '|', 2), ', '))) THEN
+            RAISE EXCEPTION 'FAIL [view_hints]: finance.%.% (Besitzer als Name) fehlt im Spickzettel - view_hints.ps1 und diesen Test nachziehen', v_view, v_col;
+        END IF;
     END LOOP;
     IF v_n < 50 THEN RAISE EXCEPTION 'FAIL [view_hints]: nur % Spalten geprueft - Liste leer?', v_n; END IF;
     RAISE NOTICE 'PASS [view_hints: % Spalten existieren]', v_n;

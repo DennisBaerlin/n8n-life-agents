@@ -2,7 +2,8 @@
 -- fn_plan_rollout_lagging (READ-ONLY) — Chats fuer den taeglichen Nachzuegler-Lauf
 --   Eingabe: keine.
 --   Chats mit aktivem Plan und moeglichem offenem Schritt: noch nicht durchgesehen, offene Aufgaben, zurueckgestellte oder
---   ohne Provenienz abgeschlossene Aufgaben ohne festgeschriebenes Angebot (Korrektur- und Pruef-Schritt),
+--   ohne close_reason abgeschlossene (done, cancelled: Altbestand ohne Provenienz) Aufgaben ohne festgeschriebenes Angebot
+--   (Korrektur- und Pruef-Schritt),
 --   Wert-Kandidaten oder Schluss nicht festgeschrieben.
 --   Entscheidung und Claim bleiben in core.fn_plan_rollout_claim; hier nur die Vorauswahl.
 --   Rueckgabe: {chats:[chat_id,...]}. Tests: tests/db/core/test_fn_plan_rollout_claim.sql

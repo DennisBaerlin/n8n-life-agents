@@ -2,7 +2,7 @@
 -- core.fn_handoff_task_check(p) — darf dieser Write die vereinbarte Plan-Aufgabe abschliessen?
 --   p: { handoff_task_id, chat_id }. Gueltig nur, wenn die Aufgabe existiert, der Person des Absenders gehoert
 --   (core.fn_handoff_person) und working ist (per [Jetzt eintragen] beansprucht) oder in dieser Runde wieder freigegeben wurde
---   (open mit Claim juenger als advisor.handoff_claim_ttl_minutes: Karte nicht bestaetigt oder "spaeter"; so traegt ein "doch
+--   (open mit Claim juenger als advisor.handoff_claim_ttl_minutes: Karte nicht bestaetigt, core.fn_reopen_handoff_task, oder uebersprungen, core.fn_cancel_handoff_task skipped; so traegt ein "doch
 --   eintragen" im selben Gespraech ohne neuen Tipp auf die Liste ein; ebenso die Folge-Aufgabe einer in dieser Runde
 --   beanspruchten). Erfolg {ok:true, task_id, kind, text, part:false}.
 --   Weiterer Teil: eine Vormerkung kann mehrere Eintraege brauchen (zwei jaehrliche Uebertraege fuer eine Vereinbarung);
@@ -36,7 +36,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
             'reason', 'Handoff task ' || v_id || ' does not exist for this user. Re-read the task list or leave handoff_task_id empty.');
     END IF;
-    IF v_t.status = 'done' AND v_t.closed_at >= v_t.claimed_at AND v_t.closed_at > now() - make_interval(mins => v_ttl) THEN
+    -- eine Folge-Aufgabe wird ohne eigenen Claim eingetragen (claimed_at leer): ihr Abschluss zaehlt dann selbst als Runde
+    IF v_t.status = 'done' AND v_t.closed_at >= COALESCE(v_t.claimed_at, v_t.closed_at) AND v_t.closed_at > now() - make_interval(mins => v_ttl) THEN
         -- was noch fehlt, laeuft ueber die Folge-Aufgabe (core.fn_reopen_handoff_task); unter der alten stuende es sonst doppelt da
         SELECT f.id INTO v_follow FROM agent.handoff_tasks f WHERE f.follows_task_id = v_t.id;
         IF v_follow IS NOT NULL THEN

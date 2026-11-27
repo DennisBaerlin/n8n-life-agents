@@ -12,8 +12,10 @@
 --     * handoff:<domain>:<max_task_id>:fix = Knopf des Korrektur-Schritts (core.fn_plan_rollout_next, step fix): beansprucht
 --       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now und task_id <= max: deferred -> working
 --       (blocked_code weg; ohne Soll wird der Aufruf der Vorpruefung zum wanted; mit Soll bleibt es gespeichert, der Auftrag
---       traegt als wanted aber den jetzt geprueften Aufruf); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern bekommt eine neue Aufgabe working
---       mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf follows_task_id: hoechstens eine Korrektur).
+--       traegt als wanted aber den jetzt geprueften Aufruf); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern
+--       bekommt eine neue Aufgabe working mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf
+--       follows_task_id: hoechstens eine Folge-Aufgabe; hat core.fn_reopen_handoff_task sie schon offen angelegt, faellt die
+--       alte aus dem Register und der Knopf legt keine zweite an).
 --   Erfolg {ok:true, route:'handoff', domain, task_ids:[...], tasks:[{id, kind, payload, text, why, wanted, rest}]} -> der Orchestrator
 --   ('Handoff route?') startet den handoff_agent der Domain mit festem Auftrag; Dispatch-Fehler -> der Orchestrator gibt
 --   die Claims mit core.fn_release_handoff_tasks frei. Sonst {ok:false, reason, toast}. Nie RAISE (Dispatcher-Vertrag).

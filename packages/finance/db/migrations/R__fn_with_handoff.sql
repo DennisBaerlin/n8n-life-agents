@@ -7,8 +7,8 @@
 --   Ablauf in derselben Transaktion: (1) core.fn_handoff_task_check (Aufgabe working oder in dieser Runde freigegeben, oder
 --   in dieser Runde schon erledigt = weiterer Teil derselben Vormerkung: mit Soll nur ein vereinbarter Aufruf dieses
 --   Werkzeugs, zu dem noch keine Sache eingetragen ist, ohne Soll nur eine fn_create_*; dieselbe Sache nie zweimal; Person
---   des Absenders aus p.chat_id), sonst {ok:false, code:'handoff_task_invalid', reason} ohne Write; (2) Stand der geaenderten Sache vor dem Write (nur fn_set_*,
---   finance.fn_handoff_ref_state); (3) die Ziel-fn mit p ohne handoff_task_id, waehrend der transaktionslokale Wert
+--   des Absenders aus p.chat_id), sonst {ok:false, code:'handoff_task_invalid', reason} ohne Write; (2) Stand der geaenderten
+--   Sache vor dem Write (nur fn_set_*, finance.fn_handoff_ref_state); (3) die Ziel-fn mit p ohne handoff_task_id, waehrend der transaktionslokale Wert
 --   finance.handoff_task_id gesetzt ist (finance.fn_bank_note_recorded haengt damit den Bank-Punkt an die Vormerkung und
 --   gibt die Kurz-Zeile statt des Bank-Absatzes); (4) nur bei ok:true core.fn_complete_handoff_task -> done mit
 --   entered_refs [{type, id, call?}] = die angelegte bzw. geaenderte Sache (ein weiterer Teil haengt seine an); call = Stelle
@@ -19,8 +19,8 @@
 --   core.hitl.handoff_pos {k, n} (Stelle in der Runde, core.fn_handoff_position; fehlt ohne Claim), core.hitl.handoff_note
 --   {text}, core.hitl.handoff_why {why} (nur mit why), je geaendertem Feld core.hitl.value_before_after {field, before,
 --   after} (field = Katalog-Key finance.handoff.field.<feld>, Werte typisiert; der Probelauf zeigt so "bisher -> neu"),
---   core.hitl.handoff_rest {text} (nur mit offenem Rest). ok:false der Ziel-fn -> unveraendert zurueck, die Aufgabe bleibt
---   working. Status-Wechsel stehen nicht in den Aenderungs-Zeilen (die Karte des Werkzeugs zeigt sie).
+--   core.hitl.handoff_rest {text} (nur mit offenem Rest). ok:false der Ziel-fn -> unveraendert zurueck, der Zustand der
+--   Aufgabe aendert sich nicht. Status-Wechsel stehen nicht in den Aenderungs-Zeilen (die Karte des Werkzeugs zeigt sie).
 --   p_fn ist eine Build-/Code-Konstante der aufrufenden fn, nie Nutzer-Input (dynamischer EXECUTE nur darauf).
 --   SECURITY INVOKER (laeuft unter finance_rw wie die Ziel-fn; agent.* liest sie nur ueber core.fn_handoff_tasks_read und
 --   core.fn_handoff_position). Tests: tests/db/finance/test_fn_with_handoff.sql, tests/db/finance/test_fn_reopen_handoff_task.sql

@@ -437,7 +437,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**finance.fn_reopen_handoff_task**\n\nKarte nicht bestätigt (abgebrochen, abgelaufen, vom Owner abgelehnt): eine vereinbarte Plan-Aufgabe dieses Aufrufs (handoff_task_id) geht sofort von working zurück auf open, die Stelle „Eintrag k von n“ bleibt. War sie durch einen früheren Teil schon erledigt, kommt der fehlende Teil als neue offene Aufgabe wieder. Ohne handoff_task_id passiert nichts.",
+                                         "content":  "## DB-Automatik\n**finance.fn_reopen_handoff_task**\n\nKarte nicht bestätigt (abgebrochen, abgelaufen, vom Owner abgelehnt, nicht zustellbar): eine vereinbarte Plan-Aufgabe dieses Aufrufs (handoff_task_id) geht sofort von working zurück auf open, die Stelle „Eintrag k von n“ bleibt. War sie durch einen früheren Teil schon erledigt, kommt der fehlende Teil als neue offene Aufgabe wieder. Ohne handoff_task_id passiert nichts.",
                                          "height":  200,
                                          "width":  420,
                                          "color":  4

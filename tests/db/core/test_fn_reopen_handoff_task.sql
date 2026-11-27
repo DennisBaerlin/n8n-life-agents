@@ -108,6 +108,12 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5 alte Aufgabe nimmt weiteren Teil an]: %', r; END IF;
   r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_new, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5 neue Aufgabe sofort eintragbar]: %', r; END IF;
+  -- so (ohne eigenen Claim) eingetragen, nimmt sie in derselben Runde auch ihren weiteren Teil an
+  r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_new, 'chat_id', '111', 'entered_refs', '[{"type":"x","id":2}]'::jsonb));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [5 Folge-Aufgabe abschliessen]: %', r; END IF;
+  r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_new, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [5 weiterer Teil der Folge-Aufgabe]: %', r; END IF;
   -- zweite Karte desselben Teils abgebrochen: keine zweite Folge-Aufgabe
   r := core.fn_reopen_handoff_task(jsonb_build_object('handoff_task_id', v_done, 'chat_id', '111',
          'missing', '[{"tool":"create_x","input":{"n":2}}]'::jsonb));

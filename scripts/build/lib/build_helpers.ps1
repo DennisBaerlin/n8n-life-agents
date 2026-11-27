@@ -225,7 +225,9 @@ function New-RequiredRowGate {
 }
 
 # Ergebnis eines Write-Tools ohne Bestaetigung am HITL-Gate: {ok:false, cancelled:true, message}. Der Text nennt den Fall aus der
-# Gate-Ausgabe (-Source, Default $json: Approved? reicht sie durch; steht ein Knoten dazwischen, den Gate-Knoten nennen): outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. Ein gleicher
+# Gate-Ausgabe: outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. -Source = n8n-Ausdruck dieser Ausgabe,
+# Default $json (Approved? reicht sie durch); steht ein Knoten dazwischen, den Gate-Knoten nennen, z. B.
+# $('Request Approval').item.json. Ein gleicher
 # Text fuer Abbrechen und Ablauf liesse das Modell raten (es vermutete einen Technikfehler). Unbekannter Ausgang ->
 # neutraler Satz, nie eine erfundene Ursache. Die Meldung liest nur das aufrufende LLM (Tool-Ergebnis = Modell-Schicht -> englisch laut
 # Sprachpolitik; die Antwort an den Nutzer formuliert der Agent in dessen Sprache). $Action = englische Nominalphrase ("the account creation").

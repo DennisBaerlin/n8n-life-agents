@@ -8,8 +8,9 @@
 --   gebraucht). payload = Werkzeug-Eingabe in der Form von finance.fn_handoff_tool_spec (Namen, nie Kennungen), dazu
 --   optional tool (Werkzeug-Schluessel; sonst aus kind und Ziel-Feld abgeleitet) und die Plan-Felder until_amount (Raten bis
 --   zu diesem Gesamtbetrag) und, nur bei kind savings_goal, schedule_unit/schedule_interval (Rhythmus der Quelle).
---   recheck: status done -> finance.fn_handoff_repair (Aenderung vom heutigen Stand zum Soll); sonst wird wanted (falls
---   gesetzt, auch eine Liste) bzw. payload erneut geprueft.
+--   recheck: status done -> finance.fn_handoff_repair (Aenderung vom heutigen Stand zum Soll; ein vereinbarter Aufruf, zu dem
+--   noch nichts eingetragen ist, kommt erneut geprueft als Aufruf zurueck; eine eingetragene und wieder geloeschte Sache als
+--   handoff_not_enterable missing 'exists'); sonst wird wanted (falls gesetzt, auch eine Liste) bzw. payload erneut geprueft.
 --   Rueckgabe:
 --     {ok:true, call:{tool, input}} | {ok:true, calls:[…]} (Namen der eindeutig gefundenen Sachen; relative Daten beim
 --       Vereinbaren zu ISO aufgeloest, damit das Soll fest bleibt) | {ok:true} (kind other ohne Werkzeug-Felder).

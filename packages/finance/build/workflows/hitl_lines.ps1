@@ -494,9 +494,9 @@ function Get-FinanceImportCardLinesExpr([Parameter(Mandatory)][string]$RowsExpr)
 # sofort wieder frei (finance.fn_reopen_handoff_task), dann die Abbruch-Meldung. Ohne die Freigabe bliebe sie bis zur
 # Claim-Frist beansprucht und fehlte in Liste und Menue, obwohl der Agent "bleibt offen" sagt. Laeuft fuer jede nicht
 # bestaetigte Karte (Tipp, Ablauf, Owner, Zustellfehler); ohne handoff_task_id tut die fn nichts. Die Meldung liest die
-# Gate-Ausgabe vom Gate-Knoten, weil der Freigabe-Knoten dazwischen steht.
-# Liefert @{ Nodes = Freigabe, Meldung, Sticky }. Verdrahtung beim Aufrufer: 'Approved?' [1] -> 'Reopen handoff task' ->
-# 'Return cancelled'.
+# Gate-Ausgabe vom Gate-Knoten, weil der Knoten 'Reopen handoff task' dazwischen steht.
+# Liefert @{ Nodes = @('Reopen handoff task', 'Return cancelled', Sticky) }; der Aufrufer haengt alle drei in seine
+# Knotenliste und verdrahtet 'Approved?' [1] -> 'Reopen handoff task' -> 'Return cancelled'.
 function New-HandoffCancelBranch {
     param([Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$Action, [string]$GateName = 'Request Approval')
     $reopen = Build-Pg 'Reopen handoff task' $Pos "=SELECT finance.fn_reopen_handoff_task(`$1::jsonb) AS r;" ([ordered]@{
@@ -506,6 +506,6 @@ function New-HandoffCancelBranch {
     $ret = Build-ToolCancelled 'Return cancelled' @(($Pos[0] + 220), $Pos[1]) $Action -Source "`$('$GateName').item.json"
     $sticky = Build-Sticky 'Doc Karte nicht bestätigt' @($Pos[0], ($Pos[1] + 180)) `
         'finance.fn_reopen_handoff_task' `
-        'Karte nicht bestätigt (abgebrochen, abgelaufen, vom Owner abgelehnt): eine vereinbarte Plan-Aufgabe dieses Aufrufs (handoff_task_id) geht sofort von working zurück auf open, die Stelle „Eintrag k von n“ bleibt. War sie durch einen früheren Teil schon erledigt, kommt der fehlende Teil als neue offene Aufgabe wieder. Ohne handoff_task_id passiert nichts.' 200 420
+        'Karte nicht bestätigt (abgebrochen, abgelaufen, vom Owner abgelehnt, nicht zustellbar): eine vereinbarte Plan-Aufgabe dieses Aufrufs (handoff_task_id) geht sofort von working zurück auf open, die Stelle „Eintrag k von n“ bleibt. War sie durch einen früheren Teil schon erledigt, kommt der fehlende Teil als neue offene Aufgabe wieder. Ohne handoff_task_id passiert nichts.' 200 420
     @{ Nodes = @($reopen, $ret, $sticky) }
 }

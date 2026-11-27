@@ -717,11 +717,28 @@ repos:
         stages: [pre-push]
 
       - id: capabilities-catalog
-        name: build.ps1 -VerifyCatalog (capabilities catalog drift)
+        name: build.ps1 -VerifyCatalog -VerifyWorkflows (capabilities catalog drift; a generated workflow JSON that differs from a fresh build)
         language: system
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog -VerifyWorkflows
+        pass_filenames: false
+        # Commit: nur wenn eine Eingabe des Baus (oder ein generiertes JSON, Routing-Case) gestagt ist. Reine Loeschungen sieht der Filter
+        # nicht; sie faengt der volle Lauf (pre-push bzw. CI mit --all-files), ebenso Merge-Commits ohne Commit-Hooks.
+        files: ^(packages/|scripts/(build/|lib/(dotenv|next_step_marker|choices_marker)\.ps1)|tests/agent/)
+
+      - id: capabilities-catalog-full
+        name: build.ps1 -VerifyCatalog -VerifyWorkflows (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog -VerifyWorkflows
         pass_filenames: false
         always_run: true
+        stages: [pre-push]
+
+      - id: workflow-drift-test
+        name: workflow_drift_test (a hand-edited, orphaned, missing or id-less workflow JSON turns -VerifyWorkflows red; throwaway repo, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/workflow_drift_test.ps1
+        pass_filenames: false
+        files: ^scripts/(build/build\.ps1|build/lib/workflow_lifecycle\.ps1|dev/workflow_drift_test\.ps1|lib/git_sandbox\.ps1)$
 
       - id: fn-catalog
         name: gen_fn_catalog -Verify (fn catalog drift)

@@ -2,8 +2,9 @@
 # Durchspiel-Werkzeug: fuehrt Gespraeche wie ein Mensch ueber den echten Telegram-Eingang des Orchestrators
 # (Freitext, /befehl, Knopf-Tipp; Absender Owner oder Mitglied) und schreibt jede Bot-Ausgabe je Runde auf:
 # Text, Knoepfe, Sticker, Reaktion, Knopf-Quittung, dazu welcher Agent lief, HITL-Karten und Kosten der Runde.
-# Es bewertet nichts von selbst; optionale Pruefungen je Runde (expect_texts / forbid_texts / expect_agent) sind fuer
-# die feste Vorher/Nachher-Abnahme gedacht. Faelle: tests/agent/cross/conversation_cases.json.
+# Ueber den Inhalt urteilt es nicht; jede Runde misst es mit der Laien-Messung (Form: lib/lay_metrics.ps1, ein Verstoss ist
+# ein Fehler). Optionale Pruefungen je Runde (expect_texts / forbid_texts / expect_agent) sind fuer die feste
+# Vorher/Nachher-Abnahme gedacht. Faelle: tests/agent/cross/conversation_cases.json.
 #
 # Eingang wie real_ingress_test (Webhook + Secret zur Laufzeit aus dem Orchestrator-Workflow). Anders als dort kann ein
 # Fall mehrere Runden fahren, ohne das Gedaechtnis dazwischen zu leeren (einmal je Fall), und der Lauf laeuft auch mit dem
@@ -16,6 +17,7 @@
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
 #                  timeout_s, expect_sql: [ { sql: "SELECT ...", equals: "<Wert>" } ] (nach der Runde, erste Zeile gleich equals),
+#                  lay: "off" (Runde ohne Laien-Messung, nur zusammen mit notes: Grund), expect_cards: <Zahl der Karten dieser Runde>,
 #                  stop_on_fail: true (rote Runde bricht den Fall ab, die Folgerunden haetten keinen Boden),
 #                  expected_behavior: Rubric fuer judge_eval (nur -Real, ein Eintrag je Runde im Judge-Bundle) ] }
 # Ein /befehl ist ein Text mit fuehrendem Schraegstrich. Startzustand: alle Onboarding-Abschnitte completed, keine
@@ -43,7 +45,7 @@
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1) + enable_mock_telegram.ps1; ohne -Real zusaetzlich enable_mock_llm.ps1,
 # mit -Real das Gegenteil (Assert-LlmGatewayUpstream prueft den tatsaechlichen Upstream); -Real sperrt der Owner-Fenster-Hook.
 # Ausgabe: .local/conversation_runs/<Zeit>-<mock|real>.md (lesbar) + .json (maschinenlesbar), Pfad am Ende.
-# Exit-Code = Anzahl Fehler (Execution nicht success/Timeout, Setup-Fehler, verletzte expect_*/forbid_*).
+# Exit-Code = Anzahl Fehler (Execution nicht success/Timeout, Setup-Fehler, verletzte expect_*/forbid_*, Laien-Regel).
 param(
     [string[]]$Id,
     [switch]$Real,
@@ -63,6 +65,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\paid_guard.ps1"
 . "$PSScriptRoot\lib\judge_card_text.ps1"
+. "$PSScriptRoot\lib\lay_metrics.ps1"
 $conn      = Get-TestN8nConnection
 $N8nUrl    = $conn.Url
 $ApiKey    = $conn.ApiKey
@@ -223,7 +226,7 @@ function Send-TelegramDocIngress([long]$ChatId, [long]$FromUid, [string]$FileId,
 
 function Test-HasField($Obj, [string]$Name) { return ($Obj.PSObject.Properties.Name -contains $Name) -and $null -ne $Obj.$Name -and "$($Obj.$Name)" -ne '' }
 
-function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
+function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid, $History) {
     # mock_fresh_memory: der Mock zaehlt Werkzeug-Runden im Gedaechtnis mit und waehlt sein Szenario ueber alle frueheren Nutzertexte;
     # elf aufeinander aufbauende Runden waeren so an die Zaehlstaende der Runden davor gekettet. Mit dem echten Modell nie (die
     # Runden sollen aufeinander aufbauen).
@@ -278,6 +281,10 @@ function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
     if ((Test-HasField $Turn 'expect_node') -and $nodes -notcontains "$($Turn.expect_node)") {
         $fails += "Knoten '$($Turn.expect_node)' lief nicht"
     }
+    if (Test-HasField $Turn 'expect_cards') {
+        $cardCount = @($conv.outputs | Where-Object { $_.card -and $_.method -eq 'sendMessage' }).Count
+        if ($cardCount -ne [int]$Turn.expect_cards) { $fails += "Karten: erwartet $($Turn.expect_cards), gesendet $cardCount" }
+    }
     # expect_sql: Zustand nach der Runde (Karte entschieden, Write gelaufen). Ein Fehler der Abfrage selbst ist ein roter Fall, kein Abbruch.
     $sqlChecks = @()
     foreach ($chk in @($Turn.expect_sql)) {
@@ -288,12 +295,18 @@ function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
         $sqlChecks += [pscustomobject]@{ sql = "$($chk.sql)"; equals = "$($chk.equals)"; got = $got; ok = $okSql }
         if (-not $okSql) { $fails += "DB-Pruefung: erwartet '$($chk.equals)', gefunden '$got' ($($chk.sql))" }
     }
+    # Laien-Messung (lib/lay_metrics.ps1) auf jeder Runde; Ausnahme je Runde nur mit "lay": "off" und Grund in notes (mock_lint C9).
+    # Ein Laien-Verstoss zaehlt als Fehler, loest aber kein stop_on_fail aus: der Zustand fuer die Folgerunden steht ja.
+    $functional = $fails.Count
+    $layOff = (Test-HasField $Turn 'lay') -and "$($Turn.lay)" -eq 'off' -and (Test-HasField $Turn 'notes')
+    $lay = @(if (-not $layOff) { Measure-BotOutput -Outputs $conv.outputs -UserInput $input -History $History })
+    foreach ($f in $lay) { $fails += "Laien-Regel $($f.rule): $($f.detail) ('$($f.excerpt)')" }
     $rubric = if (Test-HasField $Turn 'expected_behavior') { "$($Turn.expected_behavior)" } else { '' }
     $stopOnFail = (Test-HasField $Turn 'stop_on_fail') -and [bool]$Turn.stop_on_fail
     return [pscustomobject]@{
         n = $N; kind = $kind; input = $input; status = $status; seconds = $secs; execution = $(if ($ex) { "$($ex.id)" } else { '' })
         agents = $agents; cards = @($conv.outputs | Where-Object { $_.card }).Count; card_decision = $(if ($approve) { 'angenommen' } else { 'abgelehnt' })
-        outputs = $conv.outputs; other_calls = $conv.other
+        outputs = $conv.outputs; other_calls = $conv.other; lay = $lay; lay_off = $layOff; functional_failures = $functional
         usage = [pscustomobject]@{ requests = $usage.Count; cost_usd = [Math]::Round($cost, 4); unpriced = $unpriced; models = $models }
         nodes = $nodes; failures = $fails; sql_checks = $sqlChecks; rubric = $rubric; stop_on_fail = $stopOnFail
     }
@@ -340,7 +353,7 @@ foreach ($tc in $cases) {
             Write-Host "    [FAIL] Kostengrenze $MaxCostUsd USD ueberschritten ($([Math]::Round($script:runCost, 3)) USD) - Lauf angehalten." -ForegroundColor Red
             $failed++; $script:stopRun = $true; break
         }
-        try { $rd = Invoke-Round $tc $turn $n $uid }
+        try { $rd = Invoke-Round $tc $turn $n $uid $res.rounds }
         catch { Write-Host "    [FAIL] Runde ${n}: $($_.Exception.Message)" -ForegroundColor Red; $failed++; break }
         $res.rounds += $rd
         $script:runCost += $rd.usage.cost_usd
@@ -366,7 +379,7 @@ foreach ($tc in $cases) {
             }
         }
         if ($abortCase) { break }
-        if ($rd.stop_on_fail -and $rd.failures.Count) {
+        if ($rd.stop_on_fail -and $rd.functional_failures) {
             Write-Host "    Fall abgebrochen: Runde $n ist rot und als stop_on_fail markiert (die Folgerunden haetten keinen Boden)." -ForegroundColor Red
             break
         }
@@ -427,7 +440,8 @@ foreach ($r in $results) {
             if (@($o.buttons).Count) { [void]$md.AppendLine("Knoepfe: " + ((@($o.buttons) | ForEach-Object { "[$($_.label)]" }) -join ' ')) }
         }
         if ($rd.other_calls) { [void]$md.AppendLine(""); [void]$md.AppendLine("*($($rd.other_calls) weitere technische Telegram-Aufrufe)*") }
-        foreach ($c in @($rd.sql_checks)) { [void]$md.AppendLine(""); [void]$md.AppendLine("DB-Pruefung $(if ($c.ok) { 'ok' } else { 'ROT' }): ``$($c.sql)`` = '$($c.got)' (erwartet '$($c.equals)')") }
+        if ($rd.lay_off) { [void]$md.AppendLine(""); [void]$md.AppendLine("*Laien-Messung fuer diese Runde ausgeschaltet (Grund in der Fall-Datei).*") }
+        foreach ($c in @($rd.sql_checks)) { [void]$md.AppendLine("");[void]$md.AppendLine("DB-Pruefung $(if ($c.ok) { 'ok' } else { 'ROT' }): ``$($c.sql)`` = '$($c.got)' (erwartet '$($c.equals)')") }
         foreach ($f in $rd.failures) { [void]$md.AppendLine(""); [void]$md.AppendLine("**Pruefung:** $f") }
     }
 }
@@ -437,7 +451,8 @@ foreach ($r in $results) {
 Write-Host ""
 Write-Host ("-" * 64)
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
-Write-Host "$($cases.Count) Fall/Faelle gespielt, $failed Fehler." -ForegroundColor $color
+$verdict = if ($failed -eq 0) { 'bestanden' } else { 'FAIL' }   # run_free_gates liest die letzte Zeile mit einem dieser Woerter
+Write-Host "$($cases.Count) Fall/Faelle gespielt, $failed Fehler -- $verdict." -ForegroundColor $color
 Write-Host "Aufzeichnung: $base.md" -ForegroundColor Cyan
 Write-Host "              $base.json" -ForegroundColor Cyan
 # Ohne Rubric-Runde bleibt ein vorhandenes Bundle (z. B. von n8n_test) unangetastet; mit -Real ersetzt es dieser Lauf.

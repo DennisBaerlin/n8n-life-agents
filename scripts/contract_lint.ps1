@@ -1502,6 +1502,100 @@ function Test-HandoffTools([string]$Pkg, [string]$PkgDir, [string]$Domain, $Adv)
     return $out
 }
 
+# Paket-fns rund um die Vormerkungen (advisors.<domain>.handoff_check_fn, handoff_diff_fn, entry_effects_fn): Core ruft sie
+# dynamisch und behandelt eine fehlende oder falsch signierte fn, als gaebe es keine; ein Tippfehler bliebe also still. Darum:
+# eigene Paket-fn <pkg>.fn_*, nur mit handoff_agent (sonst traegt niemand ein), feste Signatur und RETURNS jsonb.
+$script:HandoffFnArgs = @{ handoff_check_fn = '(?:\w+\s+)?jsonb'; handoff_diff_fn = '(?:\w+\s+)?(?:int|integer|int4)'; entry_effects_fn = '(?:\w+\s+)?text' }
+$script:HandoffFnSignature = @{ handoff_check_fn = '(jsonb)'; handoff_diff_fn = '(int)'; entry_effects_fn = '(text)' }
+function Test-HandoffFnField([string]$Pkg, [string]$Field, [string]$Fn, [bool]$HasAgent, [string]$SqlText) {
+    if (-not $HasAgent) { return "$Field ohne handoff_agent -- niemand traegt die Vormerkungen ein, die fn liefe ins Leere." }
+    if ($Fn -cnotmatch "^$([regex]::Escape($Pkg))\.fn_[a-z0-9_]+$") { return "$Field '$Fn' muss eine fn im eigenen Schema sein ($Pkg.fn_<name>, lowercase) -- Seeder und DB-CHECK lehnen die Zeile sonst ab." }
+    $arg = $script:HandoffFnArgs[$Field]
+    $want = "(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+$([regex]::Escape($Fn))\s*\(\s*$arg\s*\)\s*RETURNS\s+jsonb\b"
+    $code = [regex]::Replace([regex]::Replace($SqlText, '(?s)/\*.*?\*/', ' '), '(?m)--.*$', '')
+    if ($code -notmatch $want) {
+        return "$Field '$Fn' ist nicht als $Fn$($script:HandoffFnSignature[$Field]) RETURNS jsonb im Paket definiert -- Core faende sie nicht und taete, als gaebe es keine."
+    }
+}
+foreach ($sa in @(
+    @{ n = 'Vorpruefung passt';   f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true;  sql = 'CREATE OR REPLACE FUNCTION x.fn_c(p jsonb) RETURNS jsonb';             bad = $false },
+    @{ n = 'Unterschied passt';   f = 'handoff_diff_fn';  fn = 'x.fn_d'; a = $true;  sql = "CREATE OR REPLACE FUNCTION x.fn_d(p_task_id int)`nRETURNS jsonb";     bad = $false },
+    @{ n = 'Folge-Zeile passt';   f = 'entry_effects_fn'; fn = 'x.fn_e'; a = $true;  sql = 'CREATE OR REPLACE FUNCTION x.fn_e(p_domain text) RETURNS jsonb';       bad = $false },
+    @{ n = 'Folge-Zeile falsch';  f = 'entry_effects_fn'; fn = 'x.fn_e'; a = $true;  sql = 'CREATE FUNCTION x.fn_e(p jsonb) RETURNS jsonb';                        bad = $true },
+    @{ n = 'ohne handoff_agent';  f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $false; sql = 'CREATE FUNCTION x.fn_c(p jsonb) RETURNS jsonb';                        bad = $true },
+    @{ n = 'fremdes Schema';      f = 'handoff_check_fn'; fn = 'y.fn_c'; a = $true;  sql = 'CREATE FUNCTION y.fn_c(p jsonb) RETURNS jsonb';                        bad = $true },
+    @{ n = 'ohne fn_-Vorsilbe';   f = 'handoff_diff_fn';  fn = 'x.diff'; a = $true;  sql = 'CREATE FUNCTION x.diff(p int) RETURNS jsonb';                          bad = $true },
+    @{ n = 'fn fehlt';            f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true;  sql = 'CREATE FUNCTION x.fn_other(p jsonb) RETURNS jsonb';                    bad = $true },
+    @{ n = 'falsche Signatur';    f = 'handoff_diff_fn';  fn = 'x.fn_d'; a = $true;  sql = 'CREATE FUNCTION x.fn_d(p jsonb) RETURNS jsonb';                        bad = $true },
+    @{ n = 'zweites Argument';    f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true;  sql = 'CREATE FUNCTION x.fn_c(p jsonb, q text) RETURNS jsonb';                bad = $true },
+    @{ n = 'nur im Zeilenkommentar'; f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true; sql = '-- CREATE FUNCTION x.fn_c(p jsonb) RETURNS jsonb';                  bad = $true },
+    @{ n = 'nur im Blockkommentar';  f = 'handoff_check_fn'; fn = 'x.fn_c'; a = $true; sql = "/*`nCREATE FUNCTION x.fn_c(p jsonb) RETURNS jsonb`n*/";               bad = $true })) {
+    if ([bool](Test-HandoffFnField 'x' $sa.f $sa.fn $sa.a $sa.sql) -ne $sa.bad) { $errors.Add("HANDOFF-FN Selbst-Assert '$($sa.n)': erwartet Fund=$($sa.bad) -- Check 16c ist defekt.") }
+}
+
+# Werkzeug-Form der Vorpruefung: definiert ein Paket <pkg>.fn_handoff_tool_spec() (Vorpruefung, Unterschied und Abschluss der
+# Vormerkung lesen sie), muss sie zu den Werkzeugen passen: dieselben Werkzeuge wie handoff_tools, je Werkzeug 'kinds' = die Arten,
+# unter denen es dort steht, und 'inputs' = die Build-Trigger-Felder ohne handoff_task_id. Sonst baute die Vorpruefung Aufrufe, die
+# das Werkzeug nicht versteht. Erwartete Form je Eintrag: '<tool>', jsonb_build_object('kinds', jsonb_build_array(...), ...,
+# 'inputs', jsonb_build_array(...), ...).
+function Get-HandoffSpecFindings([string]$SpecSql, [hashtable]$ToolKinds, [hashtable]$ToolInputs) {
+    $out = New-Object System.Collections.Generic.List[string]
+    $code = [regex]::Replace([regex]::Replace($SpecSql, '(?s)/\*.*?\*/', ' '), '(?m)--.*$', '')
+    $heads = @([regex]::Matches($code, "'([a-z_]+)'\s*,\s*jsonb_build_object\s*\(\s*'kinds'\s*,\s*jsonb_build_array\s*\(([^)]*)\)"))
+    if (-not $heads.Count) { $out.Add('Werkzeug-Eintraege nicht lesbar (erwartet je Werkzeug zuerst kinds) -- die Pruefung kann nicht laufen.'); return $out }
+    $names = { param($text) @([regex]::Matches($text, "'([a-z_0-9]+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) }
+    $seen = @()
+    for ($i = 0; $i -lt $heads.Count; $i++) {
+        $tool = $heads[$i].Groups[1].Value; $seen += $tool
+        $end = if ($i + 1 -lt $heads.Count) { $heads[$i + 1].Index } else { $code.Length }
+        $body = $code.Substring($heads[$i].Index, $end - $heads[$i].Index)
+        if (-not $ToolKinds.ContainsKey($tool)) { $out.Add("'$tool' steht in keiner Liste von handoff_tools."); continue }
+        $kinds = @(& $names $heads[$i].Groups[2].Value)
+        $wantKinds = @($ToolKinds[$tool] | Sort-Object -Unique)
+        if (($kinds -join ',') -cne ($wantKinds -join ',')) { $out.Add("'$tool': kinds '$($kinds -join ', ')', handoff_tools nennt es unter '$($wantKinds -join ', ')'.") }
+        $in = [regex]::Match($body, "'inputs'\s*,\s*jsonb_build_array\s*\(([^)]*)\)")
+        if (-not $in.Success) { $out.Add("'$tool' ohne inputs."); continue }
+        if (-not $ToolInputs.ContainsKey($tool)) { $out.Add("'$tool': kein Build-Trigger gefunden."); continue }
+        $have = @(& $names $in.Groups[1].Value)
+        $want = @($ToolInputs[$tool] | Where-Object { $_ -ne 'handoff_task_id' } | Sort-Object -Unique)
+        $missing = @($want | Where-Object { $have -cnotcontains $_ })
+        $extra = @($have | Where-Object { $want -cnotcontains $_ })
+        if ($missing.Count) { $out.Add("'$tool': inputs ohne Start-Knoten-Feld(er) $($missing -join ', ').") }
+        if ($extra.Count) { $out.Add("'$tool': inputs nennt $($extra -join ', '), der Start-Knoten kennt das nicht.") }
+    }
+    foreach ($tool in @($ToolKinds.Keys | Sort-Object)) { if ($seen -cnotcontains $tool) { $out.Add("'$tool' (handoff_tools) fehlt.") } }
+    return $out
+}
+$hsSpec = "SELECT jsonb_build_object('create_x', jsonb_build_object('kinds', jsonb_build_array('goal'), 'type', 'goal',`n 'inputs', jsonb_build_array('name','amount'), 'refs', jsonb_build_object('name', jsonb_build_object('type','goal'))),`n 'set_x', jsonb_build_object('kinds', jsonb_build_array('goal','other'), 'inputs', jsonb_build_array('name')));"
+$hsKinds = @{ create_x = @('goal'); set_x = @('other', 'goal') }
+$hsIn = @{ create_x = @('name', 'amount', 'handoff_task_id'); set_x = @('name', 'handoff_task_id') }
+foreach ($sa in @(
+    @{ n = 'passt';                sql = $hsSpec; k = $hsKinds; i = $hsIn; bad = $false },
+    @{ n = 'neues Start-Feld';     sql = $hsSpec; k = $hsKinds; i = @{ create_x = @('name', 'amount', 'day'); set_x = @('name') }; bad = $true },
+    @{ n = 'Feld nur in der Liste'; sql = $hsSpec; k = $hsKinds; i = @{ create_x = @('name'); set_x = @('name') }; bad = $true },
+    @{ n = 'andere Art';           sql = $hsSpec; k = @{ create_x = @('other'); set_x = @('goal', 'other') }; i = $hsIn; bad = $true },
+    @{ n = 'Werkzeug fehlt';       sql = $hsSpec; k = @{ create_x = @('goal'); set_x = @('goal', 'other'); del_x = @('goal') }; i = $hsIn; bad = $true },
+    @{ n = 'Werkzeug zu viel';     sql = $hsSpec; k = @{ create_x = @('goal') }; i = $hsIn; bad = $true },
+    @{ n = 'unlesbare Form';       sql = 'SELECT 1;'; k = $hsKinds; i = $hsIn; bad = $true })) {
+    if ([bool]@(Get-HandoffSpecFindings $sa.sql $sa.k $sa.i).Count -ne $sa.bad) { $errors.Add("HANDOFF-SPEC Selbst-Assert '$($sa.n)': erwartet Fund=$($sa.bad) -- Check 16c ist defekt.") }
+}
+function Test-HandoffToolSpec([string]$Pkg, [string]$PkgDir, $Adv) {
+    $spec = Join-Path $PkgDir 'db\migrations\R__fn_handoff_tool_spec.sql'
+    if (-not (Test-Path $spec) -or $Adv.PSObject.Properties.Name -notcontains 'handoff_tools') { return }
+    $toolKinds = @{}
+    foreach ($k in $Adv.handoff_tools.PSObject.Properties) { foreach ($t in @($k.Value)) { $toolKinds["$t"] = @($toolKinds["$t"] | Where-Object { $_ }) + $k.Name } }
+    $toolInputs = @{}
+    foreach ($t in $toolKinds.Keys) {
+        $f = Join-Path $PkgDir "build\workflows\tools\$t.ps1"
+        if (-not (Test-Path $f)) { continue }
+        $trig = [regex]::Match([System.IO.File]::ReadAllText($f, $Utf8NoBom), 'Build-Trigger\s+@\(([^)]*)\)', 'Singleline')
+        if ($trig.Success) { $toolInputs[$t] = @([regex]::Matches($trig.Groups[1].Value, "'([a-z_0-9]+)'") | ForEach-Object { $_.Groups[1].Value }) }
+    }
+    foreach ($m in @(Get-HandoffSpecFindings ([System.IO.File]::ReadAllText($spec, $Utf8NoBom)) $toolKinds $toolInputs)) {
+        "HANDOFF-SPEC: packages/$Pkg/db/migrations/R__fn_handoff_tool_spec.sql $m"
+    }
+}
+
 # ---------------------------------------------------------------
 # (16) FAKTEN-SCHICHT (docs/package-contract.md §2/§3.3):
 #     (a) Gegenrichtung zu 15b: jeder household-skopierte context_validators-Key braucht ein context_skeletons-
@@ -1514,6 +1608,8 @@ function Test-HandoffTools([string]$Pkg, [string]$PkgDir, [string]$Domain, $Adv)
 #         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true;
 #         handoff_agent nur mit plan_step und nur ein Agent aus provides.agents des eigenen Pakets.
 #         handoff_tools (Pflicht mit handoff_agent): je Vormerkungs-Art die Werkzeuge, die sie abschliessen (Test-HandoffTools).
+#         handoff_check_fn/handoff_diff_fn/entry_effects_fn: nur mit handoff_agent, eigene Paket-fn in fester Signatur (Test-HandoffFnField).
+#         <pkg>.fn_handoff_tool_spec(): Werkzeuge, kinds und inputs passen zu handoff_tools und Start-Knoten (Test-HandoffToolSpec).
 #     (d) keine Workflow-id in zwei Dateien (Rename ohne git mv -> import:workflow nimmt eine der beiden still).
 #     (e) retired_workflows: eine stillgelegte id liegt nicht mehr im Baum und kein getrackter Workflow verweist
 #         auf sie (sonst loeschte retire_workflows einen lebenden Pfad).
@@ -1586,6 +1682,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                     $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent ohne plan_step=true -- der Uebergabe-Arm haengt am Plan-Weg und wuerde nie gebaut.")
                 }
                 foreach ($e in @(Test-HandoffTools $pkg $pdir.FullName $p.Name $p.Value)) { $errors.Add($e) }
+                foreach ($e in @(Test-HandoffToolSpec $pkg $pdir.FullName $p.Value)) { $errors.Add($e) }
             } elseif ($p.Value.PSObject.Properties.Name -contains 'handoff_tools') {
                 $errors.Add("HANDOFF-TOOLS: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_tools ohne handoff_agent -- niemand traegt die Vormerkungen ein.")
             }
@@ -1604,6 +1701,12 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                 if ($p.Value.plan_step -ne $true) {
                     $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)'.$fk ohne plan_step=true -- wird nie gelesen (core.fn_advisor_plan_status kennt nur plan_step-Domains).")
                 }
+            }
+            foreach ($fk in @($script:HandoffFnArgs.Keys | Sort-Object)) {
+                if ($p.Value.PSObject.Properties.Name -notcontains $fk) { continue }
+                $sqlText = (Get-ChildItem (Join-Path $pdir.FullName 'db') -Recurse -Filter '*.sql' -ErrorAction SilentlyContinue | ForEach-Object { [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) }) -join "`n"
+                $msg = Test-HandoffFnField $pkg $fk ([string]$p.Value.$fk) ($p.Value.PSObject.Properties.Name -contains 'handoff_agent') $sqlText
+                if ($msg) { $errors.Add("HANDOFF-FN: packages/$pkg/manifest.json advisors '$($p.Name)'.$msg") }
             }
             if ($p.Value.PSObject.Properties.Name -contains 'learn_notes' -and $p.Value.learn_notes -eq $true -and (& $scopeOf ([string]$p.Value.plan_context)) -ne 'household') {
                 $errors.Add("LEARN-NOTES: packages/$pkg/manifest.json advisors '$($p.Name)' setzt learn_notes=true fuer den per_user-Plan-Kontext '$($p.Value.plan_context)' -- core.fn_note_context_allowed vergleicht exakt (suffigierte Plan-Dokumente) -> wirkungslos.")

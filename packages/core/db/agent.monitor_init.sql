@@ -119,7 +119,11 @@ CREATE TABLE IF NOT EXISTS agent.monitor_triggers (
 
     CONSTRAINT monitor_triggers_bounds_sane CHECK (
         min_plausible IS NULL OR max_plausible IS NULL OR min_plausible < max_plausible
-    )
+    ),
+
+    -- Absturz-Waechter ohne Sprung-Grenze: ein Absturz IST ein grosser Sprung, die Sprung-Sperre in
+    -- fn_validate_observation verwuerfe genau den Wert, der feuern soll. Bestands-DBs: core:V041.
+    CONSTRAINT monitor_triggers_drawdown_no_jump CHECK (trigger_type <> 'drawdown' OR max_jump_pct IS NULL)
 );
 
 -- Methoden-Name: Form-CHECK (Mitgliedschaft = FK, core:V020), keine IN-Liste mit Paket-Methoden (Core kennt kein

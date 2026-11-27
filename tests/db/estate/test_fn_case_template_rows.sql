@@ -109,4 +109,42 @@ BEGIN
   RAISE NOTICE 'PASS [Extra-Stubs der Preview]';
 END $$;
 
+-- Aufgaben-Texte kommen aus dem Textkatalog in der Haushalts-Sprache (Owner), nicht als deutsches Literal aus der
+-- Vorlage: Titel und Erklaerung je Sprache, fan_out-Titel mit der Beschreibung, ohne Erklaer-Key -> detail NULL.
+DO $$
+DECLARE v_title text; v_detail text;
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family','fx',NULL,'lazy',E'## P', jsonb_build_object('facts', jsonb_build_object('persons',
+    jsonb_build_array(
+      jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner','birth_date','1980-05-20','telegram_user_id',111,'language','en'),
+      jsonb_build_object('person_id','hans','first_name','Hans','last_name','M','role','partner','birth_date','1979-02-02','telegram_user_id',222)))))
+  ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('estate.task.death_certificate.title',  'en', 'T-EN death certificate', 'estate'),
+    ('estate.task.death_certificate.title',  'de', 'T-DE Totenschein', 'estate'),
+    ('estate.task.death_certificate.detail', 'en', 'D-EN doctor', 'estate'),
+    ('estate.task.secure_firearms.title',    'en', 'T-EN firearm', 'estate'),
+    ('estate.task.care_pet.title',           'en', 'T-EN pet', 'estate')
+  ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
+  DELETE FROM core.ui_texts WHERE key = 'estate.task.care_pet.detail';
+  INSERT INTO estate.special_assets (owner_person_id, asset_type, description) VALUES ('hans','firearm','Beispiel-Flinte');
+  INSERT INTO estate.special_assets (owner_person_id, asset_type, description) VALUES ('hans','pet','Beispiel-Katze');
+
+  SELECT title, detail INTO v_title, v_detail FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')
+   WHERE template_key = 'death_certificate';
+  IF v_title IS DISTINCT FROM 'T-EN death certificate' OR v_detail IS DISTINCT FROM 'D-EN doctor' THEN
+    RAISE EXCEPTION 'FAIL [Katalog-Text in Owner-Sprache en: title=%, detail=%]', v_title, v_detail; END IF;
+  IF NOT EXISTS (SELECT 1 FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')
+                  WHERE template_key = 'secure_firearms' AND title = 'T-EN firearm — Beispiel-Flinte') THEN
+    RAISE EXCEPTION 'FAIL [fan_out-Titel = Katalog-Text + Beschreibung]'; END IF;
+  SELECT detail INTO v_detail FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')
+   WHERE template_key = 'care_pet' LIMIT 1;
+  IF v_detail IS NOT NULL THEN RAISE EXCEPTION 'FAIL [ohne Erklaer-Key detail NULL, got %]', v_detail; END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'estate' AND table_name = 'task_templates' AND column_name IN ('title', 'detail')) THEN
+    RAISE EXCEPTION 'FAIL [task_templates traegt noch feste Texte (title/detail)]'; END IF;
+  RAISE NOTICE 'PASS [Aufgaben-Texte aus dem Katalog in der Haushalts-Sprache]';
+END $$;
+
 ROLLBACK;

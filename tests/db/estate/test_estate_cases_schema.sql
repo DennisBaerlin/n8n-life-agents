@@ -55,8 +55,8 @@ BEGIN
   -- task_templates offset-Paarung: count gesetzt aber unit NULL -> CHECK.
   v_ok := false;
   BEGIN
-    INSERT INTO estate.task_templates (template_key, case_type, phase, ord, title, offset_count, offset_unit)
-    VALUES ('zz_test','death','later',999,'X', 3, NULL);
+    INSERT INTO estate.task_templates (template_key, case_type, phase, ord, offset_count, offset_unit)
+    VALUES ('zz_test','death','later',999, 3, NULL);
   EXCEPTION WHEN check_violation THEN v_ok := true; END;
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [offset_count ohne unit nicht geblockt]'; END IF;
   RAISE NOTICE 'PASS [task_templates offset-Paarung-CHECK]';

@@ -337,16 +337,16 @@ CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON estate.onboarding_sta
 --     * hardness: critical (zeitkritisch/rechtlich hart) / recommended / optional — Sortier-/Render-Prio.
 --     * retired: Soft-Delete (Muster active_*) — ein ueberholtes Template wird nie geloescht (bestehende
 --       case_tasks referenzieren es per FK), nur retired=true -> es instanziiert nicht mehr.
---   Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types): Titel-/Fristen-Korrekturen
---   erreichen Bestands-Substrate per Re-Apply.
+--   Titel und Erklaerung je Vorlage stehen nur im Textkatalog (estate.task.<template_key>.title|.detail, ohne
+--   .detail-Key keine Erklaerung); fn_case_template_rows rendert sie in der Haushalts-Sprache. Die frueheren Spalten
+--   title/detail entfernt estate:V003. Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types):
+--   Fristen-Korrekturen erreichen Bestands-Substrate per Re-Apply.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.task_templates (
     template_key    text NOT NULL PRIMARY KEY CHECK (template_key ~ '^[a-z0-9_]+$'),
     case_type       text NOT NULL CHECK (case_type IN ('death', 'incapacity')),
     phase           text NOT NULL CHECK (phase IN ('immediate', 'first_week', 'first_month', 'later')),
     ord             int  NOT NULL,
-    title           text NOT NULL,                              -- deutscher Aufgaben-Titel (Schicht 5, dem Nutzer gezeigt)
-    detail          text,                                       -- optionaler Erklaer-/Warn-Text (deutsch)
     deadline_anchor text NOT NULL DEFAULT 'event' CHECK (deadline_anchor IN ('event', 'knowledge')),
     offset_count    int CHECK (offset_count IS NULL OR offset_count >= 0),   -- NULL = unverzueglich
     offset_unit     text CHECK (offset_unit IN ('business_day', 'day', 'week', 'month')),
@@ -359,49 +359,58 @@ CREATE TABLE IF NOT EXISTS estate.task_templates (
     CONSTRAINT task_templates_offset_pairing CHECK ((offset_count IS NULL) = (offset_unit IS NULL))
 );
 
+-- Bestands-DB: die Text-Spalten bleiben bis estate:V003 stehen (Inits laufen vor den Migrationen); ohne NOT NULL nimmt
+-- der Seed unten die Zeilen ohne Text an.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'estate' AND table_name = 'task_templates' AND column_name = 'title') THEN
+        ALTER TABLE estate.task_templates ALTER COLUMN title DROP NOT NULL;
+    END IF;
+END $$;
+
 INSERT INTO estate.task_templates
-    (template_key, case_type, phase, ord, title, detail, deadline_anchor, offset_count, offset_unit, condition_key, fan_out, legal_source, hardness) VALUES
+    (template_key, case_type, phase, ord, deadline_anchor, offset_count, offset_unit, condition_key, fan_out, legal_source, hardness) VALUES
     -- ---------- DEATH ----------
-    ('death_certificate',        'death', 'immediate',   10, 'Ärztliche Todesbescheinigung (Totenschein) ausstellen lassen', 'Ein Arzt stellt den Totenschein aus — Voraussetzung für alles Weitere.', 'event', NULL, NULL, NULL, NULL, '§ 28 PStG (Vorstufe)', 'critical'),
-    ('secure_key_email',         'death', 'immediate',   20, 'Schlüsselkonto (E-Mail) und SIM/2FA-Gerät des Verstorbenen sichern', 'Das E-Mail-Konto und das 2FA-Gerät gaten die Zurücksetzung aller anderen Konten — zuerst sichern, nichts vorschnell löschen.', 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
-    ('claim_life_accident',      'death', 'immediate',   30, 'Lebens-/Unfallversicherung: Meldefrist prüfen und Anspruch anmelden', 'Unfalltod muss oft binnen 48 Stunden gemeldet werden (GDV-AUB), Lebensversicherungen 24–72 Stunden je Vertrag. Bezugsrecht prüfen.', 'event', 2, 'day', NULL, NULL, 'GDV-AUB / AVB', 'critical'),
-    ('engage_undertaker',        'death', 'immediate',   40, 'Bestatter beauftragen (Bestattungsart/Wünsche, ggf. Vorsorgevertrag)', 'Der Bestatter übernimmt meist auch die Sterbefallanzeige beim Standesamt.', 'event', 2, 'day', NULL, NULL, NULL, 'critical'),
-    ('sterbefallanzeige',        'death', 'immediate',   50, 'Sterbefallanzeige beim Standesamt', 'Spätestens am dritten auf den Tod folgenden Werktag — der Bestatter erledigt das üblicherweise.', 'event', 3, 'business_day', NULL, NULL, '§ 28 PStG', 'critical'),
-    ('finance_absent_death',     'death', 'immediate',   60, 'Versicherungen und Bank-Ansprüche MANUELL prüfen (Meldefristen 24–48 h!)', 'Es sind keine Finanzdaten im System erfasst (finance-Paket nicht installiert) — prüfe Policen und Konten des Verstorbenen selbst, viele Ansprüche haben sehr kurze Fristen.', 'event', NULL, NULL, 'finance_absent', NULL, NULL, 'critical'),
-    ('order_death_certs',        'death', 'first_week',  110, 'Ca. 5–10 Sterbeurkunden beim Standesamt bestellen', 'Viele Stellen (Banken, Versicherer, Grundbuch) verlangen Originale.', 'event', 1, 'week', NULL, NULL, NULL, 'recommended'),
-    ('do_not_dissolve_account',  'death', 'first_week',  120, 'Konto des Verstorbenen NICHT auflösen', 'Renten-Rückbuchungen brauchen das Konto; ein Oder-Konto oder eine transmortale Vollmacht hält den Partner liquide.', 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
-    ('notify_employer',          'death', 'first_week',  130, 'Arbeitgeber informieren (Lohn, betriebliche Vorsorge)', 'Bei einem Arbeitsunfall zusätzlich die Berufsgenossenschaft.', 'event', 3, 'day', 'employed', NULL, NULL, 'recommended'),
-    ('notify_health_insurer',    'death', 'first_week',  140, 'Krankenkasse informieren', 'Die gesetzliche Krankenversicherung endet am Todestag.', 'event', 1, 'week', NULL, NULL, '§ 190 SGB V', 'recommended'),
-    ('pension_survivor',         'death', 'first_week',  150, 'Renten Service / DRV informieren; Sterbevierteljahr beantragen', 'Der Witwen-/Witwerrenten-Vorschuss (Sterbevierteljahr) läuft über den Renten Service, Antrag binnen ~30 Tagen.', 'event', 30, 'day', 'pension_relevant', NULL, '§ 99 SGB VI', 'recommended'),
-    ('secure_firearms',          'death', 'first_week',  160, 'Waffe der zuständigen Behörde melden und sichern', 'Erben müssen den Besitz binnen eines Monats anzeigen und die Waffe sichern lassen.', 'event', 1, 'month', NULL, 'firearm', '§ 20 WaffG', 'critical'),
-    ('care_pet',                 'death', 'first_week',  170, 'Versorgung des Haustiers sicherstellen', NULL, 'event', NULL, NULL, NULL, 'pet', NULL, 'recommended'),
-    ('minor_children_custody',   'death', 'first_week',  180, 'Sorgerecht für minderjährige Kinder klären', 'Prüfe eine Sorgerechtsverfügung; sonst entscheidet das Familiengericht.', 'event', 1, 'week', 'minor_children', NULL, NULL, 'critical'),
-    ('death_abroad_accident',    'death', 'first_week',  190, 'Todesfall im Ausland / Arbeitsunfall: Konsulat bzw. Berufsgenossenschaft einschalten', NULL, 'event', 3, 'day', 'abroad_or_work_accident', NULL, NULL, 'recommended'),
-    ('deliver_will',             'death', 'first_month', 210, 'Testament beim Nachlassgericht abliefern', 'Wer ein Testament besitzt, muss es unverzüglich beim Nachlassgericht abliefern.', 'event', 2, 'week', 'has_will', NULL, '§ 2259 BGB', 'recommended'),
-    ('check_beneficiaries',      'death', 'first_month', 220, 'Bezugsberechtigungen (Lebensversicherung) prüfen', 'Ein Bezugsrecht wird außerhalb des Testaments ausgezahlt — auf überholte Begünstigte (Ex-Partner-Falle) achten.', 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
-    ('manage_contracts',         'death', 'first_month', 230, 'Laufende Verträge (Strom/Telefon/Abos) prüfen, kündigen oder umschreiben', 'Sonderkündigungsrechte nutzen; Kundennummern stehen im Register.', 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
-    ('tenancy',                  'death', 'first_month', 240, 'Vermieter informieren; Mietverhältnis regeln', 'Eintritt/Fortsetzung oder Sonderkündigung des Mietverhältnisses.', 'event', 1, 'month', 'tenant', NULL, '§§ 563/564 BGB', 'recommended'),
-    ('inheritance_refusal',      'death', 'first_month', 250, 'Erbe prüfen: Ausschlagung nur binnen 6 Wochen ab Kenntnis', 'Wer sich wie ein Erbe verhält, kann das Recht zur Ausschlagung verwirken — bei Schuldenverdacht schnell Notar/Anwalt.', 'knowledge', 6, 'week', NULL, NULL, '§ 1944 BGB', 'critical'),
-    ('estate_tax_notice',        'death', 'first_month', 260, 'Erbschaft dem Finanzamt anzeigen', 'Anzeigepflicht binnen drei Monaten ab Kenntnis des Erwerbs.', 'knowledge', 3, 'month', NULL, NULL, '§ 30 ErbStG', 'recommended'),
-    ('business_interest_death',  'death', 'first_month', 270, 'Unternehmensbeteiligung: Gesellschaftsvertrag prüfen', 'Der Gesellschaftsvertrag geht dem Erbrecht vor — Notar/Anwalt einschalten.', 'event', 2, 'week', NULL, 'business_interest', 'Gesellschaftsvertrag', 'critical'),
-    ('digital_estate',           'death', 'first_month', 280, 'Digitalen Nachlass regeln (Konten memorialisieren/löschen)', 'Facebook-Gedenkzustand ist irreversibel; Inaktivitätslöschung läuft (Google ~2 J., GMX ~6 Mon.).', 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
-    ('vehicle_death',            'death', 'first_month', 290, 'Fahrzeug ummelden, versichern oder verkaufen', NULL, 'event', 1, 'month', NULL, 'vehicle', NULL, 'recommended'),
-    ('probate_certificate',      'death', 'later',       310, 'Erbschein/Nachlassabwicklung klären', 'Ein notarielles Testament macht den Erbschein oft überflüssig; eine transmortale Vollmacht beschleunigt.', 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
-    ('final_tax_return',         'death', 'later',       320, 'Letzte Einkommensteuererklärung des Verstorbenen (Steuerberater)', NULL, 'event', 3, 'month', 'adult_subject', NULL, NULL, 'optional'),
+    ('death_certificate',        'death', 'immediate',   10, 'event', NULL, NULL, NULL, NULL, '§ 28 PStG (Vorstufe)', 'critical'),
+    ('secure_key_email',         'death', 'immediate',   20, 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
+    ('claim_life_accident',      'death', 'immediate',   30, 'event', 2, 'day', NULL, NULL, 'GDV-AUB / AVB', 'critical'),
+    ('engage_undertaker',        'death', 'immediate',   40, 'event', 2, 'day', NULL, NULL, NULL, 'critical'),
+    ('sterbefallanzeige',        'death', 'immediate',   50, 'event', 3, 'business_day', NULL, NULL, '§ 28 PStG', 'critical'),
+    ('finance_absent_death',     'death', 'immediate',   60, 'event', NULL, NULL, 'finance_absent', NULL, NULL, 'critical'),
+    ('order_death_certs',        'death', 'first_week',  110, 'event', 1, 'week', NULL, NULL, NULL, 'recommended'),
+    ('do_not_dissolve_account',  'death', 'first_week',  120, 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
+    ('notify_employer',          'death', 'first_week',  130, 'event', 3, 'day', 'employed', NULL, NULL, 'recommended'),
+    ('notify_health_insurer',    'death', 'first_week',  140, 'event', 1, 'week', NULL, NULL, '§ 190 SGB V', 'recommended'),
+    ('pension_survivor',         'death', 'first_week',  150, 'event', 30, 'day', 'pension_relevant', NULL, '§ 99 SGB VI', 'recommended'),
+    ('secure_firearms',          'death', 'first_week',  160, 'event', 1, 'month', NULL, 'firearm', '§ 20 WaffG', 'critical'),
+    ('care_pet',                 'death', 'first_week',  170, 'event', NULL, NULL, NULL, 'pet', NULL, 'recommended'),
+    ('minor_children_custody',   'death', 'first_week',  180, 'event', 1, 'week', 'minor_children', NULL, NULL, 'critical'),
+    ('death_abroad_accident',    'death', 'first_week',  190, 'event', 3, 'day', 'abroad_or_work_accident', NULL, NULL, 'recommended'),
+    ('deliver_will',             'death', 'first_month', 210, 'event', 2, 'week', 'has_will', NULL, '§ 2259 BGB', 'recommended'),
+    ('check_beneficiaries',      'death', 'first_month', 220, 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
+    ('manage_contracts',         'death', 'first_month', 230, 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
+    ('tenancy',                  'death', 'first_month', 240, 'event', 1, 'month', 'tenant', NULL, '§§ 563/564 BGB', 'recommended'),
+    ('inheritance_refusal',      'death', 'first_month', 250, 'knowledge', 6, 'week', NULL, NULL, '§ 1944 BGB', 'critical'),
+    ('estate_tax_notice',        'death', 'first_month', 260, 'knowledge', 3, 'month', NULL, NULL, '§ 30 ErbStG', 'recommended'),
+    ('business_interest_death',  'death', 'first_month', 270, 'event', 2, 'week', NULL, 'business_interest', 'Gesellschaftsvertrag', 'critical'),
+    ('digital_estate',           'death', 'first_month', 280, 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
+    ('vehicle_death',            'death', 'first_month', 290, 'event', 1, 'month', NULL, 'vehicle', NULL, 'recommended'),
+    ('probate_certificate',      'death', 'later',       310, 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
+    ('final_tax_return',         'death', 'later',       320, 'event', 3, 'month', 'adult_subject', NULL, NULL, 'optional'),
     -- ---------- INCAPACITY (Vorsorgefall) ----------
-    ('check_poa',                'incapacity', 'immediate',   10, 'Vorsorgevollmacht/Betreuungsverfügung im Register prüfen', 'Ohne Vorsorgevollmacht bestellt das Gericht einen Betreuer; § 1358 BGB deckt nur enge Gesundheitsfragen zwischen Ehegatten.', 'event', NULL, NULL, NULL, NULL, '§ 1358 BGB', 'critical'),
-    ('secure_ongoing_payments',  'incapacity', 'immediate',   20, 'Zugriff auf laufende Zahlungen sichern (Bankvollmacht prüfen)', 'Daueraufträge, Miete und Versicherungen laufen weiter — die Handlungsfähigkeit muss gesichert sein.', 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
-    ('present_patient_directive','incapacity', 'immediate',   30, 'Patientenverfügung den behandelnden Ärzten vorlegen', NULL, 'event', NULL, NULL, NULL, NULL, NULL, 'recommended'),
-    ('finance_absent_incap',     'incapacity', 'immediate',   40, 'Bankvollmachten und laufende Verpflichtungen MANUELL prüfen', 'Es sind keine Finanzdaten im System erfasst (finance-Paket nicht installiert) — prüfe Vollmachten und Verträge selbst.', 'event', NULL, NULL, 'finance_absent', NULL, NULL, 'critical'),
-    ('apply_betreuung',          'incapacity', 'first_week',  110, 'Ohne Vorsorgevollmacht: Betreuung beim Betreuungsgericht anregen', NULL, 'event', 1, 'week', 'no_poa', NULL, NULL, 'critical'),
-    ('notify_employer_incap',    'incapacity', 'first_week',  120, 'Arbeitgeber und Krankenkasse informieren (Entgeltfortzahlung/Krankengeld)', NULL, 'event', 3, 'day', 'employed', NULL, NULL, 'recommended'),
-    ('minor_children_incap',     'incapacity', 'first_week',  130, 'Betreuung/Sorge für minderjährige Kinder organisieren', NULL, 'event', 1, 'week', 'minor_children', NULL, NULL, 'critical'),
-    ('care_application',         'incapacity', 'first_month', 210, 'Pflegegrad bei der Pflegekasse beantragen', 'Leistungen gibt es frühestens ab dem Antragsmonat — früh beantragen.', 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
-    ('manage_contracts_incap',   'incapacity', 'first_month', 220, 'Laufende Verträge und Abos sichten (weiterführen/kündigen)', 'Erfordert eine gültige Vollmacht.', 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
-    ('business_interest_incap',  'incapacity', 'first_month', 230, 'Unternehmensbeteiligung: Handlungsfähigkeit sichern (Prokura/Vollmacht)', NULL, 'event', 2, 'week', NULL, 'business_interest', NULL, 'recommended')
+    ('check_poa',                'incapacity', 'immediate',   10, 'event', NULL, NULL, NULL, NULL, '§ 1358 BGB', 'critical'),
+    ('secure_ongoing_payments',  'incapacity', 'immediate',   20, 'event', NULL, NULL, NULL, NULL, NULL, 'critical'),
+    ('present_patient_directive','incapacity', 'immediate',   30, 'event', NULL, NULL, NULL, NULL, NULL, 'recommended'),
+    ('finance_absent_incap',     'incapacity', 'immediate',   40, 'event', NULL, NULL, 'finance_absent', NULL, NULL, 'critical'),
+    ('apply_betreuung',          'incapacity', 'first_week',  110, 'event', 1, 'week', 'no_poa', NULL, NULL, 'critical'),
+    ('notify_employer_incap',    'incapacity', 'first_week',  120, 'event', 3, 'day', 'employed', NULL, NULL, 'recommended'),
+    ('minor_children_incap',     'incapacity', 'first_week',  130, 'event', 1, 'week', 'minor_children', NULL, NULL, 'critical'),
+    ('care_application',         'incapacity', 'first_month', 210, 'event', 2, 'week', NULL, NULL, NULL, 'recommended'),
+    ('manage_contracts_incap',   'incapacity', 'first_month', 220, 'event', 1, 'month', NULL, NULL, NULL, 'recommended'),
+    ('business_interest_incap',  'incapacity', 'first_month', 230, 'event', 2, 'week', NULL, 'business_interest', NULL, 'recommended')
 ON CONFLICT (template_key) DO UPDATE SET
-    case_type = excluded.case_type, phase = excluded.phase, ord = excluded.ord, title = excluded.title,
-    detail = excluded.detail, deadline_anchor = excluded.deadline_anchor, offset_count = excluded.offset_count,
+    case_type = excluded.case_type, phase = excluded.phase, ord = excluded.ord,
+    deadline_anchor = excluded.deadline_anchor, offset_count = excluded.offset_count,
     offset_unit = excluded.offset_unit, condition_key = excluded.condition_key, fan_out = excluded.fan_out,
     legal_source = excluded.legal_source, hardness = excluded.hardness, retired = excluded.retired;
 
@@ -459,8 +468,9 @@ CREATE TRIGGER trg_cases_touch BEFORE UPDATE ON estate.cases
 --     UNIQUE(case_id, template_key, subject_ref) macht die Instanziierung idempotent (ON CONFLICT) —
 --     mit NULL waeren zwei gleiche Template-Tasks beide einfuegbar.
 --   * title/detail/phase/due_date/hardness/legal_source = Snapshot beim Instanziieren (der Katalog
---     kann sich spaeter aendern, die laufende Checkliste bleibt stabil). due_date DB-berechnet
---     (fn_compute_due_date), NULL = unverzueglich/kein Datum.
+--     kann sich spaeter aendern, die laufende Checkliste bleibt stabil). Vorlagen-Texte in der Haushalts-Sprache
+--     (Textkatalog); cron_remind_case_tasks rendert sie beim Versand aus dem Katalog in der Empfaenger-Sprache.
+--     due_date DB-berechnet (fn_compute_due_date), NULL = unverzueglich/kein Datum.
 --   * status open|done|not_applicable. not_applicable = Condition beim Instanziieren FALSE (sichtbar
 --     n.a., nicht still weg) oder manuell abgehakt als "trifft nicht zu". done_at materialisiert.
 -- ============================================================

@@ -19,7 +19,8 @@
 --     comparator, threshold_value, drawdown_pct,
 --     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),
 --     warn_days_before, expected_unit, min_plausible, max_plausible,
---     max_jump_pct, check_interval (Text, z. B. '1 day'), action_note, probe_observation.
+--     max_jump_pct (nicht bei drawdown, CHECK monitor_triggers_drawdown_no_jump -> {ok:false}),
+--     check_interval (Text, z. B. '1 day'), action_note, probe_observation.
 --     first_check (optional, Datum oder relativ, Regel agent.fn_resolve_monitor_due; Tagesbeginn = erster Lauf und Anker des
 --     Rhythmus; leer = sofort; Vergangenheit/unlesbar -> {ok:false}). Zahl-Felder als Text mit Punkt oder Komma
 --     (agent.fn_parse_decimal_or_null); unlesbar -> {ok:false}.
@@ -196,6 +197,12 @@ BEGIN
     END IF;
     IF v_jump IS NOT NULL AND v_jump <= 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'max_jump_pct must be positive');
+    END IF;
+    IF v_jump IS NOT NULL AND v_type = 'drawdown' THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'max_jump_pct cannot be set on a drawdown trigger: a crash IS a big jump, so the jump guard would '
+                   || 'discard exactly the values that should fire the alert. Leave max_jump_pct empty - '
+                   || 'min_plausible/max_plausible still catch wrong magnitudes.');
     END IF;
     IF v_warn < 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'warn_days_before must be >= 0');

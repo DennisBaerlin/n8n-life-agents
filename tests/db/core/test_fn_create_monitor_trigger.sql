@@ -349,4 +349,30 @@ BEGIN
   RAISE NOTICE 'PASS [S3.2] %', v;
 END $$;
 
+-- Absturz-Waechter ohne Sprung-Grenze: ein Absturz IST ein grosser Sprung, die Sprung-Sperre in
+-- fn_validate_observation verwuerfe genau die Werte, die den Alarm ausloesen sollen (DB-Gesetz + Ablehnung als Daten).
+DO $$
+DECLARE v jsonb; v_cnt int;
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_jump__',
+         'trigger_type','drawdown','acquisition_method','web_search','acquisition_prompt','Beispiel-Index Schlusskurs in EUR',
+         'drawdown_pct',20,'expected_unit','EUR','max_jump_pct',5,'check_interval','1 day'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%max_jump_pct%drawdown%' THEN
+    RAISE EXCEPTION 'FAIL [dd+jump] drawdown mit max_jump_pct muss {ok:false} mit Grund liefern, got %', v;
+  END IF;
+  SELECT count(*) INTO v_cnt FROM agent.monitor_triggers WHERE label = '__t_mon_dd_jump__';
+  IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [dd+jump] abgelehnter Waechter wurde trotzdem geschrieben'; END IF;
+  RAISE NOTICE 'PASS [dd+jump] fn lehnt drawdown + max_jump_pct ab';
+
+  BEGIN
+    INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, acquisition_spec,
+                                        drawdown_pct, expected_unit, max_jump_pct, check_interval)
+    VALUES ('__t_mon__', '__t_mon_dd_jump_raw__', 'drawdown', 'web_search', '{"prompt":"x"}'::jsonb,
+            20, 'EUR', 5, interval '1 day');
+    RAISE EXCEPTION 'FAIL [dd+jump] CHECK fehlt: drawdown mit max_jump_pct liess sich roh einfuegen';
+  EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'PASS [dd+jump] CHECK monitor_triggers_drawdown_no_jump greift';
+  END;
+END $$;
+
 ROLLBACK;

@@ -12,7 +12,8 @@
 --   career.fn_skill_gap, nie hier.
 --   Die Suchkriterien des Job-Scanners (target_locations/search_radius_km/employment_types) leben als
 --   Block der targets-Sektion in diesem Sidecar (Suchkriterien = career_planning-Fakten, kein Tabellen-Konstrukt);
---   der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert.
+--   der Cron cron.score_jobs liest sie. Hier partial-tolerant strukturiert; employment_types nur vollzeit|teilzeit
+--   (Wertevorrat von career.fn_job_search_employment).
 --   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_planning(p_facts jsonb)
@@ -122,10 +123,17 @@ BEGIN
         END IF;
     END IF;
 
-    -- employment_types: Array (z. B. ['vollzeit','teilzeit']; nur tolerant strukturiert)
-    IF p_facts ? 'employment_types' AND jsonb_typeof(p_facts->'employment_types') <> 'null'
-       AND jsonb_typeof(p_facts->'employment_types') <> 'array' THEN
-        RETURN 'career_planning.employment_types must be an array';
+    -- employment_types: Array aus vollzeit|teilzeit (Schreibweise egal); der Wertevorrat ist genau, was
+    -- career.fn_job_search_employment in Such-Filter uebersetzt -- ein anderer Wert waere ein stilles Versprechen.
+    IF p_facts ? 'employment_types' AND jsonb_typeof(p_facts->'employment_types') <> 'null' THEN
+        IF jsonb_typeof(p_facts->'employment_types') <> 'array' THEN
+            RETURN 'career_planning.employment_types must be an array';
+        END IF;
+        IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_facts->'employment_types') e
+                    WHERE jsonb_typeof(e) <> 'string' OR lower(btrim(e #>> '{}')) NOT IN ('vollzeit', 'teilzeit')) THEN
+            RETURN 'career_planning.employment_types allows only "vollzeit" and "teilzeit" (the job search filters by '
+                || 'exactly these), got ' || (p_facts->'employment_types')::text;
+        END IF;
     END IF;
 
     -- transition-Block (Runway-Szenario; rohe Nutzer-Werte, beide optional): { probation_months?,

@@ -125,7 +125,8 @@ END $$;
 -- (agent.fn_advisor_save_section) und beim Nachholen (core.fn_handoff_register): loest Kennungen auf und liefert den fertigen
 -- Aufruf des Schreib-Werkzeugs, "geht noch nicht" mit blocked_code oder eine korrigierbare Ablehnung. handoff_diff_fn =
 -- Paket-fn(int task_id) -> jsonb [{field, wanted, current}], der abgeleitete Unterschied zwischen wanted und dem heutigen
--- Stand der eingetragenen Sache (leer = wie vereinbart). Vertrag: docs/package-contract.md; Aufruf nur ueber Registry +
+-- Stand der eingetragenen Sache (leer = wie vereinbart; ein Element mit call:{tool, input} = vereinbarter Aufruf, zu dem
+-- noch nichts eingetragen ist). Vertrag: docs/package-contract.md; Aufruf nur ueber Registry +
 -- to_regprocedure, Fehler neutral. Ohne Feld entfaellt die Pruefung bzw. das Register kennt keine Abweichung.
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS handoff_check_fn text;
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS handoff_diff_fn text;

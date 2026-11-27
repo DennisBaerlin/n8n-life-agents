@@ -15,7 +15,7 @@
 --     core.hitl.handoff_planned_deferred {text}, core.hitl.handoff_why {why} (nur mit why)]}.
 --   Korrigierbar ohne Write {ok:false, code, reason}: handoff_task_invalid (unbekannt oder nicht die Person des Absenders),
 --     handoff_task_not_closed (open/working/deferred: dafuer gibt es Eintragen bzw. den Korrektur-Schritt fix),
---     handoff_task_not_legacy (nicht done oder mit close_reason: Soll und Register vorhanden bzw. bewusst gestrichen),
+--     handoff_task_not_legacy (nicht done oder mit close_reason: im Register bzw. bewusst anders erledigt oder gestrichen),
 --     handoff_not_permitted (Schreibrecht des Plan-Kontexts, agent.fn_check_write_permission),
 --     handoff_task_followed (hat schon eine Folge-Aufgabe; UNIQUE follows_task_id ist der Backstop), handoff_kind_invalid,
 --     handoff_text_invalid, handoff_why_too_long, invalid payload, unknown_blocked_code, Ablehnungen der Vorpruefung
@@ -53,7 +53,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_not_closed',
             'reason', format('Entry %s is still %s; only a closed entry gets a correction.', v_old.id, v_old.status));
     END IF;
-    -- Nur Altbestand: mit Provenienz Abgeschlossenes hat Soll und Register (fix); Gestrichenes war eine Entscheidung des Nutzers.
+    -- Nur Altbestand: mit close_reason Abgeschlossenes steht entweder im Register (entered mit Soll, core.fn_handoff_register)
+    -- oder ist bewusst anders erledigt bzw. gestrichen (Entscheidung des Nutzers).
     IF v_old.status <> 'done' OR v_old.close_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_not_legacy',
             'reason', format('Entry %s was not entered before the agreed call was kept; only such an entry gets a correction here.', v_old.id));

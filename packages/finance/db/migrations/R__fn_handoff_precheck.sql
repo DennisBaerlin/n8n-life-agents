@@ -1,16 +1,15 @@
 -- ============================================================
 -- fn_handoff_precheck (READ, STABLE) -- Vorpruefung eines vereinbarten Plan-Eintrags: fertiger Aufruf oder klarer Grund
 --   Registry-Feld core.advisors.handoff_check_fn (Signatur (jsonb) -> jsonb). Aufrufer: agent.fn_advisor_save_section beim
---   Vereinbaren (mode agree, je Eintrag im Probelauf) und core.fn_handoff_register / Korrektur-Schritt (mode recheck).
+--   Vereinbaren (mode agree, je Eintrag im Probelauf) und core.fn_handoff_register (mode recheck).
 --   Beim Eintragen wird damit nichts mehr entschieden: der Aufruf ist geprueft, Wahl und Aufteilung sind beim Vereinbaren
 --   geklaert, das Modell rechnet nicht.
---   Eingabe p: {mode agree|recheck, kind, payload, option?, task_id?, status?, wanted?} (domain, chat_id, text werden nicht
+--   Eingabe p: {mode agree|recheck, kind, payload, option?, wanted?} (domain, chat_id, text, task_id, status werden nicht
 --   gebraucht). payload = Werkzeug-Eingabe in der Form von finance.fn_handoff_tool_spec (Namen, nie Kennungen), dazu
 --   optional tool (Werkzeug-Schluessel; sonst aus kind und Ziel-Feld abgeleitet) und die Plan-Felder until_amount (Raten bis
 --   zu diesem Gesamtbetrag) und, nur bei kind savings_goal, schedule_unit/schedule_interval (Rhythmus der Quelle).
---   recheck: status done -> finance.fn_handoff_repair (Aenderung vom heutigen Stand zum Soll; ein vereinbarter Aufruf, zu dem
---   noch nichts eingetragen ist, kommt erneut geprueft als Aufruf zurueck; eine eingetragene und wieder geloeschte Sache als
---   handoff_not_enterable missing 'exists'); sonst wird wanted (falls gesetzt, auch eine Liste) bzw. payload erneut geprueft.
+--   recheck: wanted (falls gesetzt, auch eine Liste) bzw. payload wird erneut geprueft. Fuer eine erledigte Aufgabe reicht
+--   core.fn_handoff_register als wanted nur die vereinbarten Aufrufe, zu denen noch nichts eingetragen ist.
 --   Rueckgabe:
 --     {ok:true, call:{tool, input}} | {ok:true, calls:[…]} (Namen der eindeutig gefundenen Sachen; relative Daten beim
 --       Vereinbaren zu ISO aufgeloest, damit das Soll fest bleibt) | {ok:true} (kind other ohne Werkzeug-Felder).
@@ -301,72 +300,6 @@ BEGIN
 END;
 $$;
 
--- fn_handoff_repair: recheck einer erledigten Aufgabe -> Aufruf(e) vom heutigen Stand zum Soll (finance.fn_handoff_diff).
--- Ein abweichendes Feld: Aenderung ueber das set_*-Werkzeug der Sache (nur die Felder, die es aendert; Konto-Wechsel nicht).
--- Ein vereinbarter Aufruf, der noch nicht eingetragen ist (Unterschied mit call): der Aufruf selbst, erneut geprueft.
--- Eine eingetragene und wieder geloeschte Sache ist nicht ausdrueckbar.
-CREATE OR REPLACE FUNCTION finance.fn_handoff_repair(p_task_id int)
-RETURNS jsonb
-LANGUAGE plpgsql
-STABLE
-AS $$
-DECLARE
-    v_diff  jsonb := finance.fn_handoff_diff(p_task_id);
-    v_kind  text;
-    v_d     jsonb;
-    v_type  text;
-    v_id    int;
-    v_calls jsonb := '[]'::jsonb;
-    v_call  jsonb;
-    v_chk   jsonb;
-    v_name  text;
-    v_tool  text;
-    v_key   text;
-    v_bad   text[] := '{}';
-BEGIN
-    IF jsonb_array_length(v_diff) = 0 THEN
-        RETURN jsonb_build_object('ok', true);
-    END IF;
-    FOR v_type, v_id IN SELECT DISTINCT d->'ref'->>'type', (d->'ref'->>'id')::int FROM jsonb_array_elements(v_diff) d
-                         WHERE d ? 'ref' AND d->>'field' <> 'exists' LOOP
-        v_name := finance.fn_handoff_ref_state(v_type, v_id)->>'name';
-        v_tool := CASE v_type WHEN 'savings_goal' THEN 'set_savings_goal' WHEN 'savings_plan' THEN 'set_savings_plan'
-                              WHEN 'recurring_payment' THEN 'set_recurring_payment' WHEN 'pension' THEN 'set_pension' END;
-        v_call := jsonb_build_object((finance.fn_handoff_tool_spec()->v_tool)->>'target', v_name);
-        FOR v_d IN SELECT d FROM jsonb_array_elements(v_diff) d
-                    WHERE d->'ref'->>'type' = v_type AND (d->'ref'->>'id')::int = v_id AND d->>'field' <> 'exists' LOOP
-            -- Feld im set-Werkzeug, das diesen Stand-Wert aendert (Umkehrung von state)
-            SELECT key INTO v_key FROM jsonb_each_text(finance.fn_handoff_tool_spec()->v_tool->'state') WHERE value = v_d->>'field';
-            IF v_key IS NULL THEN
-                v_bad := v_bad || (v_d->>'field');
-            ELSE
-                v_call := v_call || jsonb_build_object(v_key, v_d->'wanted');
-            END IF;
-        END LOOP;
-        v_calls := v_calls || jsonb_build_array(jsonb_build_object('tool', v_tool, 'input', v_call));
-    END LOOP;
-    FOR v_d IN SELECT d FROM jsonb_array_elements(v_diff) d WHERE d->>'field' = 'exists' LOOP
-        IF NOT v_d ? 'call' THEN
-            v_bad := v_bad || 'exists'::text;
-            CONTINUE;
-        END IF;
-        v_kind := COALESCE(v_kind, core.fn_handoff_tasks_read(ARRAY[p_task_id])->0->>'kind');
-        v_chk := finance.fn_handoff_check_call(v_kind, COALESCE(v_d->'call'->'input', '{}'::jsonb)
-                                                       || jsonb_build_object('tool', v_d->'call'->>'tool'), NULL);
-        IF (v_chk->>'ok')::boolean IS NOT TRUE OR (v_chk->>'unsupported')::boolean IS TRUE OR NOT v_chk ? 'call' THEN
-            RETURN v_chk;
-        END IF;
-        v_calls := v_calls || jsonb_build_array(v_chk->'call');
-    END LOOP;
-    IF cardinality(v_bad) > 0 THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'handoff_not_enterable', 'missing', to_jsonb(v_bad),
-            'reason', 'The difference to the agreed entry cannot be expressed as one change: ' || array_to_string(v_bad, ', ') || '.');
-    END IF;
-    RETURN CASE WHEN jsonb_array_length(v_calls) = 1 THEN jsonb_build_object('ok', true, 'call', v_calls->0)
-                ELSE jsonb_build_object('ok', true, 'calls', v_calls) END;
-END;
-$$;
-
 CREATE OR REPLACE FUNCTION finance.fn_handoff_precheck(p jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -380,9 +313,6 @@ DECLARE
     v_calls jsonb := '[]'::jsonb;
 BEGIN
     IF COALESCE(p->>'mode', 'agree') = 'recheck' THEN
-        IF p->>'status' = 'done' THEN
-            RETURN finance.fn_handoff_repair((p->>'task_id')::int);
-        END IF;
         IF jsonb_typeof(v_w) IN ('object', 'array') THEN
             FOR v_c IN SELECT x FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_w) = 'array' THEN v_w ELSE jsonb_build_array(v_w) END) x LOOP
                 v_r := finance.fn_handoff_check_call(v_kind, COALESCE(v_c->'input', '{}'::jsonb) || jsonb_build_object('tool', v_c->>'tool'), NULL);

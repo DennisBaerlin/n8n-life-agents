@@ -14,12 +14,19 @@
 --   check {pass, total, done}: Prüfpunkte (Art finding ohne Uebersicht) des letzten Durchgangs am Entwurf.
 --   handoffs {total, done, deferred}: vereinbarte Aufgaben der Domaene seit Anlage der aktuellen Plan-Zeile; total ohne cancelled
 --     und ohne deferred (zurueckgestellt wartet auf ein Update, keine Aufgabe des Nutzers), deferred = deren Zahl.
+--   rollout_next: 'check', wenn die Gefuehrte Abfolge (core.fn_plan_rollout_next) den Pruef-Schritt anbieten wird: kein Entwurf, aktiver
+--     Plan, Absender bekommt Schritte (Haushaltsplan nur der Owner), die Schritte davor sind durch ([Plan durchsehen] erledigt oder nicht
+--     verlangt, kein Eintrag der Person open/working, kein nachholbarer Eintrag mit freiem fix-Merker) und ein erledigter Altbestand ohne
+--     Provenienz (core.fn_handoff_register row_kind legacy) hat noch keinen festgeschriebenen Pruef-Merker; sonst NULL. Ein Paket-Schritt
+--     (core.advisors.rollout_fn) kann davor kommen, ein Entwurf ueber der Stale-Grenze zaehlt hier noch als Entwurf (beides bewusst
+--     nicht nachgebaut: der Kopf meldet dann hoechstens nichts). Der Kontext-Kopf zeigt ihn, damit der Berater keine Frage stellt,
+--     die den Schritt zurueckhaelt (Laufende im Orchestrator).
 --   stages [{key, parts_total, parts_done, done}], stage_current (Etappe des naechsten offenen Teils, sonst die letzte),
 --   stage_boundary (der naechste offene Teil ist der erste einer Etappe und die vorige ist fertig; bei einer Etappe nie),
 --   current = der naechste offene Teil {n, stage, section_key, annex?, slot?} (erstes offenes in Folge, kein gespeicherter Fokus),
 --   parts [{key, stage, state done|current|open, headline (erstes Thema), annex?, slot?}] in Folge.
 --   Eingabe p: {domain, chat_id}. Rueckgabe {ok:true, mode, phase, parts_total, parts_done, current_key, open_points, check,
---   handoffs, stages, stage_current, stage_boundary, current, parts} | {ok:false, reason} (unaufgeloester Absender, fehlende Domaene,
+--   handoffs, rollout_next, stages, stage_current, stage_boundary, current, parts} | {ok:false, reason} (unaufgeloester Absender, fehlende Domaene,
 --   persoenlicher Plan aus Frei-SQL).
 --   SECURITY DEFINER (liest agent.*), STABLE, search_path gepinnt; EXECUTE core_ro (util_create_core_ro.sql) + Host-Cred.
 --   Tests: tests/db/core/test_fn_advisor_progress.sql, tests/db/cross/test_role_permissions.sql
@@ -57,6 +64,10 @@ DECLARE
     v_h_def   int;
     v_bound   boolean := false;
     v_prev    text;
+    v_next    text;
+    v_who     text;
+    v_pid     text;
+    v_reg     jsonb;
 BEGIN
     IF v_domain IS NULL OR NOT core.fn_chat_id_ok(v_chat) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'domain and chat_id are required');
@@ -126,6 +137,29 @@ BEGIN
         WHEN v_draft.id IS NOT NULL THEN 'publish'
         WHEN COALESCE(v_h_total, 0) > COALESCE(v_h_done, 0) THEN 'enter'
         ELSE 'done' END;
+    -- Vorbedingungen wie core.fn_plan_rollout_next vor dem Pruef-Schritt (Schritt 0, offene Eintraege, fix); die billigen
+    -- zuerst, das Register (ruft Paket-fns je Eintrag) nur, wenn ein Altbestand ueberhaupt da ist.
+    v_who := COALESCE(v_target, 'household');
+    v_pid := COALESCE(v_target, v_sender->>'person_id');
+    IF v_draft.id IS NULL AND v_active.id IS NOT NULL
+       AND (v_target IS NOT NULL OR v_pid IS NOT DISTINCT FROM agent.fn_owner_person_id())
+       AND NOT (v_active.synced_at IS NULL
+                AND COALESCE(core.fn_config_get((SELECT a.package FROM core.advisors a WHERE a.domain = v_domain), 'advisor', 'plan_sync_required'), 'false') = 'true')
+       AND NOT EXISTS (SELECT 1 FROM agent.handoff_tasks t
+                        WHERE t.domain = v_domain AND t.person_id = v_pid AND t.status IN ('open', 'working'))
+       AND EXISTS (SELECT 1 FROM agent.handoff_tasks t
+                    WHERE t.domain = v_domain AND t.person_id = v_pid AND t.status = 'done' AND t.close_reason IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM agent.handoff_tasks f WHERE f.follows_task_id = t.id)) THEN
+        v_reg := core.fn_handoff_register(v_domain, v_chat);
+        IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_reg) e
+                        WHERE (e->>'possible_now')::boolean
+                          AND core.fn_plan_rollout_latch(v_domain || ':' || v_who || ':' || v_active.version || ':fix:' || (e->>'task_id')) <> 'done') THEN
+            SELECT 'check' INTO v_next FROM jsonb_array_elements(v_reg) e
+             WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
+               AND core.fn_plan_rollout_latch(v_domain || ':' || v_who || ':check:' || (e->>'task_id')) <> 'done'
+             LIMIT 1;
+        END IF;
+    END IF;
     v_mode := CASE WHEN v_active.id IS NOT NULL
                      OR EXISTS (SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(v_draft.interview_state) = 'object' THEN v_draft.interview_state ELSE '{}'::jsonb END) s
                                  WHERE btrim(COALESCE(s.value->>'legacy_content', '')) <> '')
@@ -137,6 +171,7 @@ BEGIN
         'open_points', (SELECT count(*) FROM core.fn_plan_open_points(v_state) o WHERE NOT o.resolved),
         'check', jsonb_build_object('pass', COALESCE(v_pass, 0), 'total', COALESCE(v_total, 0), 'done', COALESCE(v_ok, 0)),
         'handoffs', jsonb_build_object('total', COALESCE(v_h_total, 0), 'done', COALESCE(v_h_done, 0), 'deferred', COALESCE(v_h_def, 0)),
+        'rollout_next', v_next,
         'stages', v_stages,
         'stage_current', COALESCE(v_cur->>'stage', (SELECT e->>'stage' FROM jsonb_array_elements(v_parts) e ORDER BY (e->>'n')::int DESC LIMIT 1)),
         'stage_boundary', v_bound,

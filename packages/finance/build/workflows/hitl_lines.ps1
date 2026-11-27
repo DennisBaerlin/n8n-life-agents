@@ -503,7 +503,8 @@ function New-HandoffCancelBranch {
         handoff_task_id = '$(''Start'').item.json.handoff_task_id'
         chat_id         = '$(''Start'').item.json.chat_id'
     })
-    $ret = Build-ToolCancelled 'Return cancelled' @(($Pos[0] + 220), $Pos[1]) $Action -Source "`$('$GateName').item.json"
+    $ret = Build-ToolCancelled 'Return cancelled' @(($Pos[0] + 220), $Pos[1]) $Action -Source "`$('$GateName').item.json" `
+        -HandoffIdExpr "`$('Start').first().json.handoff_task_id"
     $sticky = Build-Sticky 'Doc Karte nicht bestätigt' @($Pos[0], ($Pos[1] + 180)) `
         'finance.fn_reopen_handoff_task' `
         'Karte nicht bestätigt (abgebrochen, abgelaufen, vom Owner abgelehnt, nicht zustellbar): eine vereinbarte Plan-Aufgabe dieses Aufrufs (handoff_task_id) geht sofort von working zurück auf open, die Stelle „Eintrag k von n“ bleibt. War sie durch einen früheren Teil schon erledigt, kommt der fehlende Teil als neue offene Aufgabe wieder. Ohne handoff_task_id passiert nichts.' 200 420

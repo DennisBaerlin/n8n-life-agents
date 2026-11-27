@@ -339,6 +339,22 @@ function sseFrames(p) {
   return out.join('');
 }
 
+function systemTextOf(body) {
+  return !body ? '' : (typeof body.system === 'string' ? body.system
+    : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
+}
+// Szenario-Feld final_when_system [{contains, final}]: steht `contains` im System-Prompt, gilt dessen final (erster Treffer).
+// So spielt der Mock ein Modell, das einer Zeile des Kontext-Kopfs folgt (z. B. dem naechsten Schritt aus der DB); ohne die
+// Zeile antwortet er wie das echte Modell ohne sie. Der deterministische Teil (DB-Feld, Kopfzeile) ist damit gratis pruefbar.
+function finalFor(scenario, body) {
+  const alt = scenario && Array.isArray(scenario.final_when_system) ? scenario.final_when_system : [];
+  if (alt.length) {
+    const sys = systemTextOf(body);
+    for (const a of alt) if (a && a.contains && sys.indexOf(a.contains) !== -1) return a.final;
+  }
+  return scenario && scenario.final;
+}
+
 // Entscheidungslogik: offered/task/k extrahieren, dann das Szenario-Mapping, dann der Payload.
 function decide(body) {
   const scenarios = loadScenarios();
@@ -359,7 +375,7 @@ function decide(body) {
     // scripted = reines Antwort-Szenario ohne calls, dessen `final` JSON ist (z. B. die Vision-Antwort eines
     // Dokument-Tools): die gewollte Antwort, die der Schema-Platzhalter NICHT ueberschreiben darf. Freitext-finals
     // (Chat-Szenarien) bleiben fuer Schema-Calls beim Platzhalter.
-    return { payload: anthropicText(scenario && scenario.final), why: 'no-scenario-or-no-calls', offered, task,
+    return { payload: anthropicText(finalFor(scenario, body)), why: 'no-scenario-or-no-calls', offered, task,
       scripted: isJson(scenario && scenario.final), delay,
       stop_reason: scenario && scenario.stop_reason, http_status: scenario && Number(scenario.http_status) };
   }
@@ -381,7 +397,7 @@ function decide(body) {
   if (isRouter && eligible.length > 0) {
     return { payload: anthropicText(scenario.final_router || 'NOFRAME'), why: 'router-signal-after-' + eligible.length + '-calls', offered, task, delay, replay_lost };
   }
-  return { payload: anthropicText(scenario.final), why: 'final-after-' + eligible.length + '-calls', offered, task, delay, replay_lost };
+  return { payload: anthropicText(finalFor(scenario, body)), why: 'final-after-' + eligible.length + '-calls', offered, task, delay, replay_lost };
 }
 
 function logLine(entry) {
@@ -474,8 +490,7 @@ const server = http.createServer((req, res) => {
     // Aufzeichnung (eine JSON-Zeile je Call; der Harness liest sie via `docker exec cat`).
     // system_tail: die letzten Zeichen des System-Prompts (dort stehen die wechselnden Runtime-Flags, z. B.
     // "persona: butler") -> real_ingress_test prueft gratis, dass ein Flag das Modell erreicht.
-    const sysText = !body ? '' : (typeof body.system === 'string' ? body.system
-      : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
+    const sysText = systemTextOf(body);
     logLine({ url: req.url, dialect: 'anthropic', conn, model: body ? body.model : null, offered: out.offered, task: out.task, decision: out.why, markers,
       replay_lost: out.replay_lost || [],                   // mock_route_test: zurueckgespielte Aufrufe ohne Angaben
       file_blocks: fileBlocks(body && body.messages),       // infra_test: wie viele verschiedene Dateien im Request stehen

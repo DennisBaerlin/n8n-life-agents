@@ -19,7 +19,8 @@
 --   gilt neutral: possible_now=false bzw. keine deviation.
 --   Rueckgabe jsonb-Array in id-Reihenfolge [{task_id, kind, text, why, section_key, topic, status, row_kind, blocked_code,
 --   wanted, entered_refs, diff, possible_now, call}]; unaufgeloester Absender -> [].
---   Konsumenten: core.fn_plan_rollout_next (step fix), core.fn_handle_handoff_cb (Knopf ...:fix), Berater-Lesefenster.
+--   Konsumenten: core.fn_plan_rollout_next (step fix, check), core.fn_advisor_progress (rollout_next), core.fn_handle_handoff_cb
+--   (Knopf ...:fix), Berater-Lesefenster.
 --   STABLE, SECURITY DEFINER (liest agent.handoff_tasks + agent.advisor_plans), EXECUTE an <pkg>_ro/_rw via
 --   core.fn_provision_package_roles. Tests: tests/db/core/test_fn_handoff_register.sql
 -- ============================================================

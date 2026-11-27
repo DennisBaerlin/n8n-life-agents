@@ -25,7 +25,7 @@
 #      sonst laeuft der Fall als nicht erkannter Absender. Nicht numerische chat_ids bleiben der Owner.
 #   C7 (Vorbedingung): jeder Fall mit setup_sql traegt ein precondition_sql, das DB-Zustand liest (SELECT/EXISTS); Ausnahmen nur ueber das
 #      sinkende Ratchet tests/util/precondition_allowlist.json (Logik + Selbsttest: scripts/lib/precondition_check.ps1).
-#   C8 (Laien-Regeln): final/final_router jedes Szenarios halten L1-L3, L9, L12 aus scripts/lib/lay_metrics.ps1; Ausnahme nur mit
+#   C8 (Laien-Regeln): final/final_router/final_when_system jedes Szenarios halten L1-L3, L9, L12 aus scripts/lib/lay_metrics.ps1; Ausnahme nur mit
 #      "lay": "off" und Begruendung in notes.
 #   C9 (Durchspiel-Ausnahmen): eine Runde in conversation_cases.json mit "lay": "off" traegt eine Begruendung in notes.
 #   C10 (Daten-Reife): ein Fall, dessen setup_sql einen Plan einer Domain mit readiness_fn (Manifest advisors) anlegt oder aendert, prueft diese fn im precondition_sql
@@ -279,9 +279,10 @@ foreach ($s in $scenarios) {
         if (-not ($s.PSObject.Properties['notes'] -and "$($s.notes)".Trim())) { Write-Host "  [FAIL] C8 Szenario '$label': lay off braucht eine Begruendung in notes." -ForegroundColor Red; $failed++ }
         continue
     }
-    foreach ($field in @('final', 'final_router')) {
-        if (-not $s.PSObject.Properties[$field]) { continue }
-        $text = "$($s.$field)"
+    $texts = @(foreach ($field in @('final', 'final_router')) { if ($s.PSObject.Properties[$field]) { ,@($field, "$($s.$field)") } })
+    if ($s.PSObject.Properties['final_when_system']) { foreach ($a in @($s.final_when_system)) { $texts += ,@('final_when_system', "$($a.final)") } }
+    foreach ($pair in $texts) {
+        $field = $pair[0]; $text = $pair[1]
         if ($field -eq 'final_router' -and $text -ceq 'FRAME') { continue }
         foreach ($f in @(Measure-BotText -Text $text)) {
             Write-Host "  [FAIL] C8 Szenario '$label' ($field): Laien-Regel $($f.rule): $($f.detail) ('$($f.excerpt)')" -ForegroundColor Red

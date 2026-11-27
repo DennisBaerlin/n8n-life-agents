@@ -1322,6 +1322,29 @@ try {
     }
 }
 
+# hitlT7: Karte eines Werkzeugs mit vereinbartem Eintrag (handoff_task_id) abgebrochen -> der Text ans Modell verlangt genau einen Satz
+# ohne Frage und ohne anderen Weg (Eintrage-Modus); die Rueckfrage "what to change" gilt nur ohne Eintrag (hitlT1). Der Eintrag ist danach
+# wieder offen (fn_reopen_handoff_task des Pakets). Domaene = die erste aktive mit Eintrags-Pruefung (core.advisors.handoff_check_fn).
+$cancelHoWfId = ($wfList.data | Where-Object { $_.name -like 'agent.*.tool_cancel_handoff_task' } | Select-Object -First 1).id
+function Remove-ProbeHandoff { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.handoff_tasks WHERE id = 990091;') | Out-Null }
+try {
+    Test-ForceAbort 'hitlT7' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    Remove-ProbeHandoff
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT 990091, a.domain, a.package, 'owner', 'wealth_building', 'other', '__E2E__ hitlT7 Probe', 'working', now() FROM core.advisors a WHERE a.domain = (SELECT p.domain FROM core.advisors p JOIN core.package_registry r ON r.package = p.package WHERE r.status = 'active' AND p.handoff_check_fn IS NOT NULL ORDER BY p.domain LIMIT 1);")
+    $probs = @(if ($r.Code -ne 0) { "Probe-Eintrag anlegen: $($r.Output -join ' ')" })
+    $toolBase = Get-MaxExecId -WfId $cancelHoWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'cancel-handoff-test' @{ chat_id = [string]$PairedUidOwner; handoff_task_id = '990091'; reason = 'dropped'; ref_type = ''; ref_name = '' }
+    $probs += Complete-CardTaps 'hitlT7' @($false)
+    $probs += Get-CancelledMessageProblem (Wait-NewExec $cancelHoWfId $toolBase -Finished) 'exactly one short sentence' 'ask what to change|ask whether'
+    $st = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', 'SELECT status FROM agent.handoff_tasks WHERE id = 990091;')).Output | Select-Object -First 1)".Trim()
+    if ($st -ne 'open') { $probs += "Eintrag nach Abbruch '$st', erwartet open" }
+    Remove-ProbeHandoff
+    Write-RepeatCase 'hitlT7' 'Text ans Modell: Eintrags-Karte abgebrochen, genau ein Satz ohne Frage' $probs
+} catch {
+    Register-Abort $_ 'hitlT7' -Extra { Remove-ProbeHandoff }
+}
+
 try {
     Test-ForceAbort 'hitlC0' $ForceAbortId
     Clear-MockTelegramRequests -Container $Container

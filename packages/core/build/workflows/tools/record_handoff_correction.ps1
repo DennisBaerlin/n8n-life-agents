@@ -23,7 +23,7 @@ function Build-RecordHandoffCorrection {
     $reqApproval = Build-CallWorkflow 'Request Approval' @(880, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
     $ifApproved = Build-If 'Approved?' @(1100, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1320, 200) 'the record_handoff_correction action'
+    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1320, 200) 'the record_handoff_correction action' -HandoffIdExpr 'true' -HandoffMore
     $ifWriteOk = Build-If 'Write ok?' @(1540, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Correction rejected' @(1760, 200) "={{ `$('Record correction (atomic)').item.json.reason }}"
     $ret = Build-Return @(1760, 0) @(

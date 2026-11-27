@@ -185,6 +185,29 @@ BEGIN
   IF core.fn_chat_person('test_e2e_finance')->>'person_id' <> 'erika' OR (core.fn_chat_person('999')->>'found')::boolean THEN
     RAISE EXCEPTION 'FAIL [7 fn_chat_person]'; END IF;
   RAISE NOTICE 'PASS [7 Test-Sentinel]';
+
+  -- ---------- 8) choice, deren Senden nie bestaetigt wurde, blockiert die Schlange nicht ----------
+  DELETE FROM agent.chat_prompts WHERE chat_id = '222';
+  r := core.fn_create_choice_prompt(jsonb_build_object('chat_id','222','agent','agent.finance_advisor','options','["Ja","Nein"]'));
+  v_c2 := (r->>'prompt_id')::bigint;
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, status, card, options, payload)
+  VALUES ('222','lena','agent.finance_advisor','hint','queued', '{"lines":[{"kind":"text","text":"Wartet"}]}',
+          '[{"key":"now","label":"A"}]', '{"label":"wartet"}')
+  RETURNING id INTO v_t2;
+  -- im Lauf, der sie angelegt hat (Laufbeginn vor dem Anlegen): sie haengt an der Antwort, die gerade gesendet wird
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','222','run_started_at', now() - interval '1 minute','replied', true));
+  IF (r->>'send')::boolean IS NOT FALSE OR (SELECT status FROM agent.chat_prompts WHERE id = v_c2) <> 'open' THEN
+    RAISE EXCEPTION 'FAIL [8 selber Lauf]: %', r; END IF;
+  -- ein Lauf kurz danach (der Send des ersten kann noch haengen): bleibt stehen
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','222','run_started_at', now() + interval '9 minutes','replied', true));
+  IF (r->>'send')::boolean IS NOT FALSE OR (SELECT status FROM agent.chat_prompts WHERE id = v_c2) <> 'open' THEN
+    RAISE EXCEPTION 'FAIL [8 kurz danach]: %', r; END IF;
+  -- ein spaeterer Lauf: die Knoepfe hat niemand gesehen -> ersetzt, die wartende Frage kommt
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','222','run_started_at', now() + interval '11 minutes','replied', false));
+  IF (SELECT status FROM agent.chat_prompts WHERE id = v_c2) <> 'superseded'
+     OR (r->>'send')::boolean IS NOT TRUE OR (r->>'prompt_id')::bigint IS DISTINCT FROM v_t2 THEN
+    RAISE EXCEPTION 'FAIL [8 spaeterer Lauf]: %', r; END IF;
+  RAISE NOTICE 'PASS [8 nie gesendete choice]';
 END $$;
 
 ROLLBACK;

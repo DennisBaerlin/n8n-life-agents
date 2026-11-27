@@ -6,8 +6,9 @@
 --     2. Offene Zeile, die vor run_started_at gesendet wurde, und replied=true (der Lauf hat geantwortet):
 --          Art choice -> superseded (der Text war die Antwort; die Knoepfe der alten Nachricht sind veraltet);
 --          andere Art -> neu senden (resend:true), die alte Nachricht verliert ihre Knoepfe.
---        Eine offene Zeile (nicht choice), deren Senden nie bestaetigt wurde (sent_at NULL), wird erneut geliefert.
---        Sonst bleibt sie stehen: nichts zu senden.
+--        Eine offene Zeile (nicht choice), deren Senden nie bestaetigt wurde (sent_at NULL), wird erneut geliefert;
+--        eine choice ohne bestaetigtes Senden, die mehr als 10 Minuten vor run_started_at angelegt wurde -> superseded
+--        (ihre Knoepfe hat niemand gesehen, die Schlange laeuft weiter). Sonst bleibt sie stehen: nichts zu senden.
 --     3. Keine offene Zeile -> die erste wartende Zeile des juengsten Stapels (nach ord) wird open und gesendet: ein neuer
 --        Vorschlag mitten in einem Stapel (Anmerkung zu einem Prüfpunkt) kommt zuerst, danach geht der alte Stapel weiter.
 --     4. Nichts wartet -> core.fn_advisor_hint_prompt legt hoechstens einen faelligen Hinweis (Art hint) an.
@@ -65,6 +66,10 @@ BEGIN
             END IF;
         ELSIF v_open.sent_at IS NULL AND v_open.kind <> 'choice' THEN
             v_id := v_open.id;   -- geoeffnet, aber das Senden ist nie bestaetigt worden
+        ELSIF v_open.sent_at IS NULL AND v_open.created_at < v_since - interval '10 minutes' THEN
+            -- choice, deren Antwort nie ankam: ohne diesen Zweig bliebe sie fuer immer offen und hielte die Schlange an.
+            -- 10 Minuten Abstand: ein haengender Telegram-Send (bis ~5 Min) eines noch laufenden Laufs gilt nicht als verloren.
+            UPDATE agent.chat_prompts SET status = 'superseded', decided_at = clock_timestamp() WHERE id = v_open.id;
         END IF;
     END IF;
 

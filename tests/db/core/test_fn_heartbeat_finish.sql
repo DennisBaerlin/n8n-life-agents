@@ -2,7 +2,8 @@
 -- Ergebnis des Sendens eines Waechter-Textes (core.fn_heartbeat_finish). Der Ablauf mit claim steht in
 -- test_fn_heartbeat_claim.sql; hier nur der Vertrag der fn selbst.
 --   1) sent=true: Merker festgeschrieben (state fired, ohne Frist), Stufe vermerkt, nur fuer den eigenen Vorfall
---   2) sent=false: Merker wieder frei, Abstand 30 min * 2^(Fehlschlaege-1), hoechstens 24 h
+--   2) sent=false: Merker wieder frei, Abstand 30 min * 2^(Fehlschlaege-1), hoechstens 24 h; mehrere gescheiterte Texte
+--      eines Laufs zaehlen als ein Fehlschlag
 --   3) Entwarnung schliesst den Vorfall; Rueckblick schliesst nur die eigene Luecke
 --   4) kaputter Schluessel oder sent kein boolean -> Fehler (Code-Fehler, kein ok:false)
 -- Self-contained (BEGIN..ROLLBACK).
@@ -17,6 +18,7 @@ DECLARE
   v_inc  timestamptz := now() - interval '1 hour';
   v_ep   bigint := floor(extract(epoch FROM now() - interval '1 hour'))::bigint;
   v_key  text;
+  v_at   timestamptz;
   v_ok   boolean;
   v_row  core.heartbeats%ROWTYPE;
   v_obs  core.heartbeat_observer%ROWTYPE;
@@ -40,12 +42,16 @@ BEGIN
 
   -- ===== 2) sent=false =====
   v_key := 'loop:' || v_ep || ':2';
+  v_at  := now();
   FOR i IN 1..7 LOOP
+    -- je Lauf (at = Ablauf des vorigen Abstands) zwei gescheiterte Texte: der zweite zaehlt nicht noch einmal
     PERFORM core.fn_should_notify('heartbeat', v_key, interval '30 minutes');
-    PERFORM core.fn_heartbeat_finish(jsonb_build_object('key', v_key, 'sent', false));
+    PERFORM core.fn_heartbeat_finish(jsonb_build_object('key', v_key, 'sent', false, 'at', v_at));
+    PERFORM core.fn_heartbeat_finish(jsonb_build_object('key', 'lookback:' || v_ep, 'sent', false, 'at', v_at));
     SELECT * INTO v_obs FROM core.heartbeat_observer;
-    IF v_obs.fail_count <> i OR v_obs.retry_after <> now() + least(interval '30 minutes' * (2 ^ (i - 1)), interval '24 hours') THEN
-      RAISE EXCEPTION 'FAIL [2a] Abstand nach % Fehlschlaegen: % / %', i, v_obs.fail_count, v_obs.retry_after; END IF;
+    IF v_obs.fail_count <> i OR v_obs.retry_after <> v_at + least(interval '30 minutes' * (2 ^ (i - 1)), interval '24 hours') THEN
+      RAISE EXCEPTION 'FAIL [2a] Abstand nach % Laeufen: % / %', i, v_obs.fail_count, v_obs.retry_after; END IF;
+    v_at := v_obs.retry_after;
   END LOOP;
   IF (SELECT state FROM core.notification_state WHERE source = 'heartbeat' AND key = v_key) <> 'ok' THEN
     RAISE EXCEPTION 'FAIL [2b] Merker nach Fehlschlag frei'; END IF;

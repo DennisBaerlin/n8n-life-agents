@@ -21,7 +21,8 @@
 --   (3) Host-Daten: advisor_plans, user-Monitor-Trigger (DELETE — Deny-Truncate-Trigger), abgeschlossene
 --       Update-Auftraege (ein offener bleibt fuer den laufenden root-Runner), Lern-Kandidaten +
 --       Watermark, die notification_state-Latches der zurueckgesetzten Pakete + der Advisor-Engine (Knock-
---       Dedup bleibt), alle agent.*_chat_memory; Nicht-Owner-Personen ueber agent.fn_remove_household_person
+--       Dedup bleibt), alle agent.*_chat_memory, gemerkte Nachrichten einer KI-Pause (agent.llm_held_messages) und die
+--       offenen Fragen der Chats (agent.chat_prompts); Nicht-Owner-Personen ueber agent.fn_remove_household_person
 --       (Kaskade Profil-Eintraege/per-user-Kontexte/Latches; erst jetzt — ihre FK-Referenzierer sind weg);
 --       agent-verwaltete Kontexte auf den Nach-Installations-Stand: alle ausser family + den household-Fakten-
 --       Skeletten werden geloescht (Plan-Docs inkl. „## Gelernt", per-user-Kontexte, Laufzeit-Docs) — der
@@ -107,7 +108,9 @@ BEGIN
     DELETE FROM agent.reminder_pause;                         -- Pause je Person
     DELETE FROM core.proactive_budget;                        -- Tagesbudget ungefragter Nachrichten
     DELETE FROM core.proactive_deferred;
-    DELETE FROM agent.reaction_log;                           -- Reaktions-Protokoll (Tages-Obergrenze, Verlauf)
+    DELETE FROM agent.reaction_log;                           -- Reaktions-Protokoll
+    DELETE FROM agent.llm_held_messages;                      -- in einer KI-Pause gemerkte Roh-Nachrichten (der Vorfall selbst ist Systemzustand und bleibt)
+    DELETE FROM agent.chat_prompts;                           -- offene Fragen der Chats (Karten-Texte, Antwort-Knoepfe)
     -- Update-Protokoll (wer hat wann aktualisiert); ein offener Auftrag bleibt, sonst koennte der laufende root-Runner
     -- ihn nicht mehr abschliessen und melden. Der Release-Latch 'release_update' bleibt (Systemzustand, kein Nutzerdatum).
     DELETE FROM core.update_requests WHERE finished_at IS NOT NULL;

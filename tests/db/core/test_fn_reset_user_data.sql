@@ -49,6 +49,50 @@ BEGIN
   RAISE NOTICE 'PASS (i)+(ii) Marker-Menge exakt + Vollstaendigkeit';
 END $$;
 
+-- ===== (v) Jede Tabelle in agent/core ist fuer den Reset eingeordnet =====
+-- Paket-Tabellen leert der Reset deny-by-default; die Host-Tabellen stehen einzeln in der fn. Eine neue Tabelle mit
+-- Nutzer-Inhalt fiele dort still durch. Darum: jede Basistabelle in agent/core wird entweder von core.fn_reset_user_data,
+-- dem Personen-Abbau oder dem Onboarding-Reset genannt (bzw. heisst *_chat_memory), oder sie steht hier als bewusst
+-- behalten, mit Grund. Eine neue Tabelle ohne Einordnung macht den Test rot.
+DO $$
+DECLARE
+  v_src  text := pg_get_functiondef('core.fn_reset_user_data(text)'::regprocedure)
+              || pg_get_functiondef('agent.fn_remove_household_person(jsonb)'::regprocedure)
+              || pg_get_functiondef('core.fn_reset_onboarding_state()'::regprocedure);
+  v_keep text[] := ARRAY[
+    -- Stammdaten und Einstellungen aus Manifest/Seed, kein Nutzer-Inhalt
+    'agent.ai_models', 'core.advisors', 'core.app_screens', 'core.callback_handlers', 'core.config', 'core.context_renderers',
+    'core.cron_labels', 'core.help_catalog', 'core.monitor_acquisition_methods', 'core.package_registry', 'core.prompt_kinds',
+    'core.schema_version', 'core.services', 'core.ui_languages', 'core.ui_personas', 'core.ui_texts',
+    -- Schluessel der Installation
+    'core.app_secret', 'core.backup_key',
+    -- Systemzustand ohne Nutzer-Inhalt (Waechter, KI-Pause, Verbrauchszaehler, Menue-Auftrag)
+    'core.heartbeat_observer', 'core.heartbeats', 'core.llm_incidents', 'core.llm_usage', 'core.menu_refresh',
+    -- fluechtig, Minuten-Frist, raeumt sich selbst (Kopf der jeweiligen Init-Datei)
+    'agent.hitl_pending', 'agent.ingress_buffer', 'agent.thinking_lease', 'agent.pairing_state',
+    -- Sperrliste: Sicherheits-Entscheidung des Owners, bleibt wie die Knock-Dedup
+    'agent.access_blocks',
+    -- faellt ueber die Eltern-Zeile (ON DELETE CASCADE der geloeschten user-Trigger)
+    'agent.monitor_observations',
+    -- Read-Model der family-Fakten, folgt dem Personen-Abbau per Trigger
+    'agent.persons'];
+  v_bad  text;
+  v_gone text;
+BEGIN
+  SELECT string_agg(x.t, ', ' ORDER BY x.t) INTO v_bad
+    FROM (SELECT n.nspname || '.' || c.relname AS t, c.relname AS r
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname IN ('agent', 'core') AND c.relkind IN ('r', 'p') AND NOT c.relispartition) x
+   WHERE position(x.t IN v_src) = 0 AND x.r NOT LIKE '%\_chat\_memory' ESCAPE '\' AND NOT x.t = ANY (v_keep);
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL (v) Tabelle ohne Reset-Einordnung (in core.fn_reset_user_data leeren oder hier mit Grund behalten): %', v_bad;
+  END IF;
+  -- die Behalten-Liste schrumpft mit: ein Eintrag ohne Tabelle ist veraltet
+  SELECT string_agg(k, ', ') INTO v_gone FROM unnest(v_keep) k WHERE to_regclass(k) IS NULL;
+  IF v_gone IS NOT NULL THEN RAISE EXCEPTION 'FAIL (v) Behalten-Liste nennt Tabellen, die es nicht gibt: %', v_gone; END IF;
+  RAISE NOTICE 'PASS (v) jede agent/core-Tabelle ist fuer den Reset eingeordnet';
+END $$;
+
 -- ===== (iv) FK-Referenzierer von agent.persons =====
 DO $$
 DECLARE v_bad text;
@@ -136,6 +180,13 @@ BEGIN
     ('finance', 'reserve_breach:1'), ('advisor:finance', 'm'), ('knock', '123'), ('zzskip:pipeline', '5'),
     ('onboarding', 'household_ready'), ('onboarding_nudge', 'x:1'), ('plan_news', 'x:finance:p1'), ('persona_sticker', 'p1'), ('persona_greet', 'powner:2026-01-01');
   INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 900301, 1, 'seen', U&'\+01F440');
+  -- Roh-Nachricht aus einer KI-Pause und eine offene Frage des Chats ohne Plan-Bezug (Nutzer-Inhalt ausserhalb der Plaene)
+  WITH i AS (INSERT INTO core.llm_incidents (kind, next_probe_at, closed_at, close_reason)
+             VALUES ('outage', now(), now(), 'recovered') RETURNING id)
+  INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at)
+  SELECT 900301001, i.id, 900301, 900301, 7, 'text', '{"message":{"text":"zz reset held"}}', now() FROM i;
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, status, options, payload)
+  VALUES ('900301', 'powner', 'agent.guide', 'choice', 'open', '[{"key":"o1","label":"zz a"},{"key":"o2","label":"zz b"}]', '{"label":"zz a | zz b"}');
   CREATE TABLE agent.zz_reset_chat_memory (id serial PRIMARY KEY, session_id text, message jsonb);
   INSERT INTO agent.zz_reset_chat_memory (session_id, message) VALUES ('1', '{"type":"human"}');
 
@@ -205,6 +256,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM agent.advisor_plans) OR EXISTS (SELECT 1 FROM agent.monitor_triggers WHERE label = 'zz reset trigger')
      OR EXISTS (SELECT 1 FROM agent.zz_reset_chat_memory) OR EXISTS (SELECT 1 FROM agent.reaction_log) THEN
     RAISE EXCEPTION 'FAIL (iii) Plaene/user-Trigger/Chat-Memory/Reaktions-Protokoll nicht geleert';
+  END IF;
+  IF EXISTS (SELECT 1 FROM agent.llm_held_messages) OR EXISTS (SELECT 1 FROM agent.chat_prompts) THEN
+    RAISE EXCEPTION 'FAIL (iii) gemerkte Nachrichten der KI-Pause / offene Chat-Fragen nicht geleert';
   END IF;
   IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('finance', 'advisor:finance', 'onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker', 'persona_greet'))
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'knock')

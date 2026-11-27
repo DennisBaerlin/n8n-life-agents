@@ -7,7 +7,9 @@
 --               'lookback:<epoch>' -> offene Luecke geschlossen. Immer nur, wenn Vorfall bzw. Luecke noch dieselbe ist,
 --               die Stufe nur aufwaerts.
 --   sent=false: Merker wieder frei (core.fn_notify_resolve); fail_count + 1, retry_after = now + 30 min · 2^(fail_count−1),
---               hoechstens 24 h (blockierter Bot, Netz weg: nicht jede 10 Minuten vergeblich).
+--               hoechstens 24 h (blockierter Bot, Netz weg: nicht jede 10 Minuten vergeblich). Gezaehlt wird je Lauf:
+--               weitere Fehlschlaege, solange retry_after in der Zukunft liegt (die uebrigen Texte desselben Laufs),
+--               aendern nichts.
 --   Rueckgabe: {ok:true}. Kaputter Schluessel oder sent kein boolean wirft (Code-Fehler im Workflow).
 --   INVOKER wie core.fn_heartbeat_claim.
 --   Tests: tests/db/core/test_fn_heartbeat_finish.sql
@@ -32,7 +34,7 @@ BEGIN
         UPDATE core.heartbeat_observer
            SET fail_count  = fail_count + 1,
                retry_after = v_now + least(interval '30 minutes' * (2 ^ least(fail_count, 10)), interval '24 hours')
-         WHERE id;
+         WHERE id AND (retry_after IS NULL OR retry_after <= v_now);   -- ein Lauf mit mehreren Texten zaehlt als ein Fehlschlag
         RETURN jsonb_build_object('ok', true);
     END IF;
 

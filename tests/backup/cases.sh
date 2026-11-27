@@ -12,11 +12,13 @@
 #   P  Start-App: Probelauf, Blatt ueber stdin, Hintergrund-Lauf, Sperre, Abbruch.
 #   V  Aufbau der Sicherung gegen diese Version (Versions-Sperre): neuer/aelter/vertraeglich, Release im Kopf.
 #   S  Abgleich nach dem Einspielen: Code-Fakten im Stand dieser Version, Nutzer-Werte aus der Sicherung.
+#   B  Vollstaendige Sicherung: Kostenverlauf, "schon gezeigt"-Merker, Sperrliste; eine aeltere Sicherung laesst sie unberuehrt.
 #   N  Fehlende Pakete ohne Terminal: ohne backup-Block uebersprungen, mit Daten ohne freiwillige Zugaenge eingerichtet.
 # Schluessel: der echte Test-Schluessel des Substrats (zufaellig) + erfundene. Meldungen nennen nie einen Schluesselwert.
 # Am Ende steht core.backup_key wieder wie vorher.
 #
-# Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
+# Usage: bash cases.sh <root> [1|2|3|4] Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
+#        Ohne Teil laufen alle Abschnitte; die Teile (Abschnitt "Teile" unten) zusammen fahren jeden Fall, L je Teil ueber dessen Ausgaben.
 # shellcheck disable=SC2016,SC2034,SC2012,SC2329  # Pruef-Ausdruecke in einfachen Quotes (eval in ok_if); nur eigene Dateinamen; cleanup laeuft per trap
 set -uo pipefail
 ROOT="$1"
@@ -103,7 +105,64 @@ token() { printf '%s\n' "$(printf '%s' "$1" | backup_key_token)"; }
 N0="$(rows)"
 BACKUP_RESTORE_LOCK_T="$W/restore.lock"
 : > "$W/bk_before"; for _f in /var/backups/lifeagents/lifeagents-backup-*.nla.enc; do [ -e "$_f" ] && printf '%s\n' "$_f" >> "$W/bk_before"; done
+# Fingerabdruck fuer „schreibt nichts“: Nutzerdaten, Schluessel, Paket-Liste, backup.state.
+fp() { printf '%s|' "$(rows)" "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT md5(string_agg(key || value, ',' ORDER BY key)) FROM core.backup_key")" \
+  "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT string_agg(package || status || version, ',' ORDER BY package) FROM core.package_registry")" \
+  "$(cksum < "$BACKUP_STATE_FILE" 2>/dev/null)"; }
+js() { jq -r "$1" "$W/out.$n" 2>/dev/null | tail -n1; }   # letzte Zeile mit JSON (stderr steht davor)
+frame() { { printf 'sheet %s\n' "$( [ -s "$1" ] && base64 -w0 < "$1")"; base64 < "$2"; } > "$W/frame"; }
+rs_state() { BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore-status --json 2>/dev/null | jq -r '.state + ":" + (.code // "")'; }
+# q <sql> — Aufbau-Schritt des Tests; Fehler landen in q.err und erscheinen in der Fall-Meldung (sonst sucht man blind).
+q() { pg_su_psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c "$1" >/dev/null 2>>"$W/q.err" || { printf 'q: %s\n' "${1:0:80}" >> "$W/q.err"; return 1; }; }
+VER0="$(cat "$ROOT/VERSION")"
+# hand-injected: das Substrat hat keinen Release-Build; VERSION ist die Quelle von _bkp_release_tag, der Export laeuft echt.
+setver() { printf '%s\n' "$1" > "$ROOT/VERSION"; }
+fin() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) || ':' || md5(COALESCE(string_agg(t::text, ',' ORDER BY t.id), '')) FROM (SELECT id, name, account_type FROM finance.accounts) t"; }
+# vfp -> Fingerabdruck fuer „nichts geaendert“: Kontexte/Schluessel/Pakete/backup.state (fp) | Konten (fin) | neue Sicherungsdateien.
+vfp() { printf '%s|%s|%s' "$(fp)" "$(fin)" "$(new_backups | wc -l)"; }
+# vexp <ordner> -> Pfad der frischen Sicherung (Standard-Name, traegt die Release aus VERSION)
+vexp() { mkdir -p "$W/v/$1"; exp_to "$W/v/$1" "$W/out.v$1"; ls -1 "$W/v/$1"/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1; }
+vplan() { n=$((n + 1)); "$CLI" backup restore "$1" --plan --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
+vyes() { n=$((n + 1)); "$CLI" backup restore "$1" --yes --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
+# vblock <fall> <bundle> <code> [release] — Probelauf und echter Lauf lehnen mit <code> ab, nichts geaendert.
+vblock() {
+  local f="$1" b="$2" want="$3" rel="${4:-}" v0 c1 r1 c2
+  v0="$(vfp)"
+  vplan "$b"; c1="$(js .code)"; r1="$(js '.release // ""')"
+  vyes "$b"; c2="$(js .code)"
+  ok_if "$f" '[ "$c1" = "$want" ] && [ "$c2" = "$want" ] && { [ -z "$rel" ] || [ "$r1" = "$rel" ]; } && [ "$(vfp)" = "$v0" ]' \
+    "Probelauf=$c1 echt=$c2 release=$r1 / $( [ "$(vfp)" = "$v0" ] && echo unveraendert || echo GEAENDERT) / $(tail -n2 "$W/q.err" 2>/dev/null)"
+}
+# Blatt-Eingaben fuer R, P und K: falsches Blatt (KC), Tippfehler in Zeile 3 so, dass das Pruefzeichen sicher nicht passt
+# (typo_lib.sh; ein fester Tausch rutschte bei 1 von 256 Schluesseln durch), Token mit Tippfehler (typo_token: Pruefsumme passt
+# sicher nicht), passendes Blatt, nur der Notfallschluessel (eine Zeile, wie kopiert).
+# shellcheck source=typo_lib.sh
+. "$ROOT/backup/typo_lib.sh"
+l3="$(paper "$KA" | sed -n 3p | sed -E 's/^3:[[:space:]]+//; s/-//g; s/[[:space:]].*$//')"
+c3="$(typo_char 3 "$l3")"
+paper "$KC" > "$W/kc"
+paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
+typo_token "$(printf '%s' "$KA" | backup_key_token)" > "$W/tok_typo"
+paper "$KA" > "$W/ka"
+token "$KA" > "$W/kaT"
 
+# Teile (je ein eigenes Substrat in der CI, free-gates.yml): 1 = E R, 2 = P V, 3 = S B N, 4 = K U F; L laeuft in jedem Teil ueber
+# dessen Ausgaben (L.blatt-ohne-rohschluessel nur in Teil 4, das Blatt entsteht in K), ohne Teil laeuft alles in dieser
+# Reihenfolge. Die Grenzen folgen den Abhaengigkeiten: P und K brauchen die Sicherungen A/B aus E (Teile 2 und 4 erzeugen sie vorab mit prep_ab, ohne Faelle); V/S/B/N bauen eigene Sicherungen (vexp);
+# N erwartet die Release v0.2.0, die V hinterlaesst (Teil 3 setzt sie selbst); P, U und F setzen ihren Schluessel-Stand selbst.
+PART="${2:-}"
+case "$PART" in ''|1|2|3|4) ;; *) fail setup "unbekannter Teil '$PART' (1 bis 4 oder leer = alle)"; exit "$fails" ;; esac
+in_part() { [ -z "$PART" ] || [ "$PART" = "$1" ]; }
+# prep_ab <fall>: Sicherung A (aktiver Schluessel KA, Standard-Name) und B (KB) wie in E; danach ist KB aktiv wie nach E.
+prep_ab() {
+  set_active "$KA"; mkdir -p "$W/a"; exp_to "$W/a" "$W/out.pa"
+  A="$(ls -1 "$W"/a/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
+  set_active "$KB"; mkdir -p "$W/b"; exp_to "$W/b" "$W/out.pb"
+  B="$(ls -1 "$W"/b/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
+  [ -s "$A" ] && [ -s "$B" ] || { fail "$1" "Sicherungen A/B nicht erzeugt: $(tail -n2 "$W/out.pa" "$W/out.pb" | tr '\n' ' ')"; exit "$fails"; }
+}
+
+if in_part 1; then
 # ---------------------------------------------------------------------------- E: Export
 cli backup export "$W/x.nla.enc"; rc=$?
 # Export mit Pfad schreibt genau dorthin; den Standard-Namen pruefen wir ueber ein Export ohne Pfad im Arbeitsordner.
@@ -175,28 +234,20 @@ ok_if E.export-mit-zweitem-schluessel '[ -s "$B" ]'
 # ---------------------------------------------------------------------------- R: Restore auf "neuem Rechner"
 cli backup restore "$A" --yes; rc=$?
 ok_if R.ohne-eingabe-abbruch '[ "$rc" -ne 0 ] && said -- "--key-stdin" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
-paper "$KC" > "$W/kc"; cli_in "$W/kc" backup restore "$A" --key-stdin --yes; rc=$?
+cli_in "$W/kc" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.falscher-schluessel '[ "$rc" -ne 0 ] && said "gehört nicht zu dieser Sicherung" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
-# Tippfehler in Zeile 3 so, dass das Pruefzeichen sicher nicht passt (typo_lib.sh; ein fester Tausch rutschte bei 1 von 256 Schluesseln durch).
-# shellcheck source=typo_lib.sh
-. "$ROOT/backup/typo_lib.sh"
-l3="$(paper "$KA" | sed -n 3p | sed -E 's/^3:[[:space:]]+//; s/-//g; s/[[:space:]].*$//')"
-c3="$(typo_char 3 "$l3")"
 bash "$ROOT/backup/typo_lib_test.sh" "$ROOT" > "$W/typo_lib.out" 2>&1; rc=$?
 ok_if R.typo-lib '[ "$rc" -eq 0 ] && [ -n "$c3" ]' "rc=$rc c3='$c3' $(tail -n 5 "$W/typo_lib.out" | tr '\n' ' ')"
 # Kein Zugangsschluessel im argv beim Bau der Credentials (Restore setzt Zugaenge ueber denselben Weg).
 bash "$ROOT/backup/secret_argv_cases.sh" "$ROOT" > "$W/secret_argv.out" 2>&1; rc=$?
 ok_if S.secret-argv '[ "$rc" -eq 0 ] && grep -q "^PASS" "$W/secret_argv.out"' "rc=$rc $(grep '^FAIL' "$W/secret_argv.out" | tr '\n' ' ')"
-paper "$KA" | sed -E "3s/^(3:  )./\\1${c3}/" > "$W/typo"
 cli_in "$W/typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && active_is "$KB"' "rc=$rc"
-# Notfallschluessel als Token mit einem Tippfehler (typo_token: Ersatz, bei dem die Pruefsumme sicher nicht passt).
-typo_token "$(printf '%s' "$KA" | backup_key_token)" > "$W/tok_typo"
 cli_in "$W/tok_typo" backup restore "$A" --key-stdin --yes; rc=$?
 ok_if R.token-tippfehler '[ -s "$W/tok_typo" ] && [ "$rc" -ne 0 ] && said "hat einen Fehler" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
 # Beschaedigt: gleicher Name (ID passt), halbe Datei; mit dem passenden Blatt -> "beschaedigt", nichts geaendert.
 mkdir -p "$W/kaputt"; head -c "$(( $(stat -c %s "$A") / 2 ))" "$A" > "$W/kaputt/$fa"
-paper "$KA" > "$W/ka"; cli_in "$W/ka" backup restore "$W/kaputt/$fa" --key-stdin --yes; rc=$?
+cli_in "$W/ka" backup restore "$W/kaputt/$fa" --key-stdin --yes; rc=$?
 ok_if R.beschaedigt '[ "$rc" -ne 0 ] && said "beschädigt" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
 # Gescheiterte TX (Constraint lehnt die wiederhergestellten Kontext-Zeilen ab): Uebernahme rollt mit zurueck.
 if [ "${N0:-0}" -gt 0 ]; then
@@ -209,7 +260,6 @@ else
 fi
 # Nur der Notfallschluessel (eine Zeile, wie kopiert) — dabei /proc beobachten (Leck-Probe L). Das alte Blatt fuehrt unten
 # (K.altes-blatt-gueltig, P.hintergrund-*) ebenfalls bis zur Uebernahme.
-token "$KA" > "$W/kaT"
 : > "$W/proc_hits"
 ( "$CLI" backup restore "$A" --key-stdin --yes > "$W/out.r4" 2>&1 < "$W/kaT"; echo $? > "$W/rc.r4" ) &
 bg=$!
@@ -242,13 +292,11 @@ ok_if R.rs-apply-ohne-option-laut '! ( set -u; for f in release_inputs.sh apply_
 ok_if_local R.vorab-sicherung '[ -n "$(new_backups)" ]' \
   "keine neue Sicherung vor dem Ersetzen"
 
+fi
+
+if in_part 2; then
+[ "$PART" != 2 ] || prep_ab P.vorbereitet
 # ---------------------------------------------------------------------------- P: Start-App (Probelauf, stdin, Hintergrund)
-# Fingerabdruck fuer „schreibt nichts“: Nutzerdaten, Schluessel, Paket-Liste, backup.state.
-fp() { printf '%s|' "$(rows)" "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT md5(string_agg(key || value, ',' ORDER BY key)) FROM core.backup_key")" \
-  "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT string_agg(package || status || version, ',' ORDER BY package) FROM core.package_registry")" \
-  "$(cksum < "$BACKUP_STATE_FILE" 2>/dev/null)"; }
-js() { jq -r "$1" "$W/out.$n" 2>/dev/null | tail -n1; }   # letzte Zeile mit JSON (stderr steht davor)
-frame() { { printf 'sheet %s\n' "$( [ -s "$1" ] && base64 -w0 < "$1")"; base64 < "$2"; } > "$W/frame"; }
 set_active "$KB"
 F0="$(fp)"
 n=$((n + 1)); "$CLI" backup restore "$A" --plan --json > "$W/out.$n" 2>/dev/null < /dev/null; rc=$?
@@ -278,7 +326,6 @@ frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "
 wait "$lk"
 ok_if P.zweiter-lauf-belegt '[ "$rc" -ne 0 ] && [ "$(js .code)" = busy ] && active_is "$KB"' "rc=$rc $(js .code)"
 # Hintergrund-Lauf: kehrt sofort zurueck, Stand ueber restore-status; danach gilt das Blatt. /proc + Protokoll ohne Schluessel.
-rs_state() { BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" "$CLI" backup restore-status --json 2>/dev/null | jq -r '.state + ":" + (.code // "")'; }
 : > "$W/proc_hits2"
 frame "$W/ka" "$A"; n=$((n + 1)); BACKUP_RESTORE_LOCK="$BACKUP_RESTORE_LOCK_T" LIFEAGENTS_LOG_DIR="$W/log" "$CLI" backup restore "$(basename "$A")" --in-stdin --yes --detach --json > "$W/out.$n" 2>/dev/null < "$W/frame"; rc=$?
 ok_if P.hintergrund-startet '[ "$rc" -eq 0 ] && [ "$(js .ok)" = true ]' "rc=$rc $(js .code)"
@@ -317,27 +364,6 @@ pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS public.bk_leer, publ
 # hier, nicht Paket-Nummern. Den Unterschied erzeugt echtes DDL im Substrat vor bzw. nach einem echten Export; jede Ablehnung
 # muss vor jeder Aenderung kommen (Fingerabdruck gleich, keine Vorab-Sicherung). VERSION steuert die Release im Kopf.
 set_active "$KA"
-VER0="$(cat "$ROOT/VERSION")"
-# hand-injected: das Substrat hat keinen Release-Build; VERSION ist die Quelle von _bkp_release_tag, der Export laeuft echt.
-setver() { printf '%s\n' "$1" > "$ROOT/VERSION"; }
-# q <sql> — Aufbau-Schritt des Tests; Fehler landen in q.err und erscheinen in der Fall-Meldung (sonst sucht man blind).
-q() { pg_su_psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c "$1" >/dev/null 2>>"$W/q.err" || { printf 'q: %s\n' "${1:0:80}" >> "$W/q.err"; return 1; }; }
-fin() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) || ':' || md5(COALESCE(string_agg(t::text, ',' ORDER BY t.id), '')) FROM (SELECT id, name, account_type FROM finance.accounts) t"; }
-# vfp -> Fingerabdruck fuer „nichts geaendert“: Kontexte/Schluessel/Pakete/backup.state (fp) | Konten (fin) | neue Sicherungsdateien.
-vfp() { printf '%s|%s|%s' "$(fp)" "$(fin)" "$(new_backups | wc -l)"; }
-# vexp <ordner> -> Pfad der frischen Sicherung (Standard-Name, traegt die Release aus VERSION)
-vexp() { mkdir -p "$W/v/$1"; exp_to "$W/v/$1" "$W/out.v$1"; ls -1 "$W/v/$1"/lifeagents-backup-*.nla.enc 2>/dev/null | head -n1; }
-vplan() { n=$((n + 1)); "$CLI" backup restore "$1" --plan --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
-vyes() { n=$((n + 1)); "$CLI" backup restore "$1" --yes --json > "$W/out.$n" 2>"$W/err.$n" < /dev/null; }
-# vblock <fall> <bundle> <code> [release] — Probelauf und echter Lauf lehnen mit <code> ab, nichts geaendert.
-vblock() {
-  local f="$1" b="$2" want="$3" rel="${4:-}" v0 c1 r1 c2
-  v0="$(vfp)"
-  vplan "$b"; c1="$(js .code)"; r1="$(js '.release // ""')"
-  vyes "$b"; c2="$(js .code)"
-  ok_if "$f" '[ "$c1" = "$want" ] && [ "$c2" = "$want" ] && { [ -z "$rel" ] || [ "$r1" = "$rel" ]; } && [ "$(vfp)" = "$v0" ]' \
-    "Probelauf=$c1 echt=$c2 release=$r1 / $( [ "$(vfp)" = "$v0" ] && echo unveraendert || echo GEAENDERT) / $(tail -n2 "$W/q.err" 2>/dev/null)"
-}
 # Ein Nutzer-Trigger, damit agent.monitor_triggers in shared.json Zeilen (und damit Spalten) traegt.
 trg="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT agent.fn_create_monitor_trigger('{\"label\": \"bk Testfrist\", \"trigger_type\": \"date\", \"due_date\": \"2030-01-01\", \"action_note\": \"Testfrist\", \"check_interval\": \"1 day\"}'::jsonb)" 2>&1)"
 ntr="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'")"
@@ -430,6 +456,11 @@ vplan "$V0"
 ok_if V.paket-aus '[ "$(js .ok)" = true ] && [ "$(js ".packages[] | select(.name == \"estate\") | .state")" = activate ]' "$(js .code)"
 cli package activate estate
 
+fi
+
+if in_part 3; then
+# Ohne V davor: die Release, die V hinterlaesst (V.status-release im N-Abschnitt erwartet sie).
+[ "$PART" != 3 ] || setver v0.2.0
 # ---------------------------------------------------------------------------- S: Abgleich mit dieser Version nach dem Einspielen
 # Eingespielte Tabellen tragen auch Code-Fakten (Rollen eines Onboarding-Abschnitts aus sections.json, Katalog-Zeilen einer
 # *_init.sql); eine Sicherung aus einem aelteren Stand bringt dort ihren alten Wert mit. Nach dem Einspielen muessen sie dem
@@ -554,7 +585,10 @@ ok_if V.status-release '[ "$(rs_state)" = fail:version_newer ] && [ "$(rsr)" = v
 cli package install paperless
 setver "$VER0"
 set_active "$KB"
+fi
 
+if in_part 4; then
+[ "$PART" != 4 ] || prep_ab K.vorbereitet
 # ---------------------------------------------------------------------------- K: backup key
 # Stand fuer K wie nach R: Blatt-Schluessel KA aktiv, KB als prev.
 set_active "$KB"; cli_in "$W/ka" backup restore "$A" --key-stdin --yes
@@ -677,6 +711,7 @@ out="$(dr_backup - - 0)"; ok_if F.doctor-frische-installation-gruen 'printf "%s"
 out="$(DR_SIZE=$((45 * 1024 * 1024)) dr_backup 3600 - 30)"; ok_if F.doctor-grosse-sicherung-gelb 'printf "%s" "$out" | grep -q "Sicherung ist 45 MB groß" && [ "$(printf "%s" "$out" | tail -n1)" = fail=0 ]' "$out"
 out="$(dr_backup - - 5)"; ok_if F.doctor-nie-gesichert-nach-frist-rot 'printf "%s" "$out" | grep -q "^  \[FAIL\] Letzte Sicherung: noch keine" && [ "$(printf "%s" "$out" | tail -n1)" = fail=1 ]' "$out"
 export PATH="$PATH_VOR_F"; unset BACKUP_LOCAL_DIR
+fi
 
 # ---------------------------------------------------------------------------- L: Leck-Probe Ausgaben + tmpfs
 leak=0
@@ -686,8 +721,10 @@ for f in "$W"/out.* ; do
   grep -qiFf "$W/needles" "$f" && { leak=1; printf 'LEAK in %s\n' "${f##*/}" >&2; }
 done
 ok_if L.kein-schluessel-in-ausgaben '[ "$leak" = 0 ]' "Schluessel in einer CLI-Ausgabe"
-printf '%s\n' "$KA" > "$W/needle_a"
-ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Token"
+if in_part 4; then
+  printf '%s\n' "$KA" > "$W/needle_a"
+  ok_if L.blatt-ohne-rohschluessel '! grep -qFf "$W/needle_a" "$W/blatt.txt"' "Rohform statt Token"
+fi
 ok_if L.tmpfs-leer '[ -z "$(ls -d /dev/shm/lifeagents-bkp.* /tmp/la_drv.* 2>/dev/null)" ]' "Reste im tmpfs"
 
 exit "$fails"

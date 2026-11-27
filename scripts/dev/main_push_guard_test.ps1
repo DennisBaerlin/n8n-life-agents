@@ -72,6 +72,14 @@ Assert-True 'nur laufender Lauf: kein abgeschlossener' ($p.Count -eq 1 -and $p[0
 $p = @(Get-PinParentProblems $all (New-Runs ('b' * 40) $all) $shaA)
 Assert-True 'Laeufe auf anderem Stand zaehlen nicht' ($p.Count -eq 3) ($p -join ';')
 
+Write-Host 'Handstart mit Suiten-Auswahl (free-gates.yml, Merker im run-name) zaehlt nie:'
+$part = New-Run 'free-gates' $shaA 'completed' 'success' $later
+$part | Add-Member display_title 'free-gates [Auswahl] backup'; $part | Add-Member event 'workflow_dispatch'
+$p = @(Get-MainPushProblems $all @((New-Run 'ci' $shaA), $part, (New-Run 'genericity' $shaA)) $shaA)
+Assert-True 'nur Auswahl-Lauf gruen: gesperrt' ($p.Count -eq 1 -and $p[0] -eq 'free-gates: kein Lauf') ($p -join ';')
+$p = @(Get-PinParentProblems $all @((New-Run 'ci' $shaA), (New-Run 'free-gates' $shaA 'completed' 'failure'), $part, (New-Run 'genericity' $shaA)) $shaA)
+Assert-True 'Elternstand: juengerer Auswahl-Lauf ueberdeckt Rot nicht' ($p.Count -eq 1 -and $p[0] -eq 'free-gates: rot (failure)') ($p -join ';')
+
 $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $sandbox = Join-Path $env:TEMP "main_push_guard_$id"
 $bare = Join-Path $env:TEMP "main_push_remote_$id"

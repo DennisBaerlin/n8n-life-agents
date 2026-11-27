@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # check_ci_status.ps1 — CI-Ampel: ist der letzte Lauf jedes GitHub-Workflows auf main (Release: der letzte Tag-Lauf)
-# gruen? Genutzt vom SessionStart-Hook .claude/hooks/check_ci_status.ps1 (-Hook: knapper Kontext-Text,
-# still bei gruen/Fehler) und manuell. Read-only gegen die GitHub-API; Token aus dem Git-Credential-Store (GCM,
+# gruen? Ein Handstart mit Suiten-Auswahl zaehlt nicht (Test-CiPartialRun, scripts/lib/ci_wait.ps1). Genutzt vom
+# SessionStart-Hook .claude/hooks/check_ci_status.ps1 (-Hook: knapper Kontext-Text, still bei gruen/Fehler) und manuell. Read-only gegen die GitHub-API; Token aus dem Git-Credential-Store (GCM,
 # derselbe Weg wie git push), nie interaktiv. Exit-Code = Anzahl roter Workflows (Fehler beim Abfragen -> 0 + Hinweis).
 #
 #
@@ -39,7 +39,7 @@ if ($Wait) {
             if ($v.verdict -eq 'green') { Write-Host "GRUEN: $Wait" -ForegroundColor Green; exit 0 }
             if ($v.verdict -eq 'red') { Write-Host "ROT: $Wait (Logs: gh run view $(([long]$v.run.id).ToString()) --log-failed)" -ForegroundColor Red; exit 1 }
             if ($v.verdict -eq 'none' -and ((Get-Date) - $start).TotalMinutes -ge 10) {
-                Write-Host "NICHT ENTSCHIEDEN: nach 10 Minuten kein Lauf von '$Wait' auf diesem Stand (Name oder Hash falsch, oder der Workflow laeuft hier nicht von selbst)" -ForegroundColor Yellow; exit 2
+                Write-Host "NICHT ENTSCHIEDEN: nach 10 Minuten kein Lauf von '$Wait' auf diesem Stand (Name oder Hash falsch, oder der Workflow laeuft hier nicht von selbst; ein Handstart mit Suiten-Auswahl zaehlt nie als Lauf des Stands)" -ForegroundColor Yellow; exit 2
             }
         }
         if (((Get-Date) - $start).TotalMinutes -ge $TimeoutMin) { Write-Host "NICHT ENTSCHIEDEN: Zeitgrenze $TimeoutMin min erreicht, letzter Stand: $last" -ForegroundColor Yellow; exit 2 }
@@ -57,7 +57,7 @@ try {
 # Je Workflow der juengste abgeschlossene Lauf: Push-Workflows auf main, release auf einem Tag (v*).
 $red = @()
 foreach ($g in ($runs | Where-Object { "$($_.path)" -like '.github/workflows/*' } | Group-Object name)) {   # ohne Dependabot-Hintergrundlaeufe
-    $latest = $g.Group | Where-Object { $_.status -eq 'completed' -and ($_.head_branch -eq 'main' -or ($_.name -eq 'release' -and $_.head_branch -like 'v*')) } |
+    $latest = $g.Group | Where-Object { $_.status -eq 'completed' -and -not (Test-CiPartialRun $_) -and ($_.head_branch -eq 'main' -or ($_.name -eq 'release' -and $_.head_branch -like 'v*')) } |
         Sort-Object { [datetime]$_.created_at } -Descending | Select-Object -First 1
     if (-not $latest) { continue }
     $ok = $latest.conclusion -in @('success', 'skipped', 'neutral')

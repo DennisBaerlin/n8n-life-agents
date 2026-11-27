@@ -10,9 +10,11 @@
 # Sicherung (Restore derselben Daten). Braucht kein n8n-Aufruf, kein LLM, kein Netz.
 # N8NTEST_RUNTIME=compose: im master des Verbunds (bootstrap_test_stack.ps1); statt des Backup-Timers pausiert die Tick-Schleife des master
 # (sie sicherte sonst stuendlich zwischen den Faellen).
-# Usage:  .\scripts\dev\backup_test.ps1 [-Verbose]
+# Usage:  .\scripts\dev\backup_test.ps1 [-Part 1|2|3|4] [-Verbose]
+#   -Part: nur dieser Teil von cases.sh (Abschnitt "Teile" dort, der auch unbekannte Teile ablehnt); ohne -Part alle Faelle. Die CI
+#   faehrt die Teile auf je einem Substrat.
 # Exit-Code = Anzahl Fehler.
-param([switch]$Verbose)
+param([string]$Part, [switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -40,7 +42,8 @@ foreach ($pair in @(@('provisioning', 'provisioning'), @('packages', 'packages')
 
 try {
     Suspend-TestTimers -Container $Container -Runtime $suiteRuntime
-    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/backup/cases.sh", $root)
+    $caseArgs = @('exec', $Container, 'bash', "$root/backup/cases.sh", $root); if ($Part) { $caseArgs += $Part }
+    $r = Invoke-Native docker $caseArgs
 } finally {
     Resume-TestTimers -Container $Container -Runtime $suiteRuntime
 }

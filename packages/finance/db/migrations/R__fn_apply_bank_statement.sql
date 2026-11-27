@@ -6,7 +6,8 @@
 --   geaendert) -> gelernte Kontonummer -> Abweichung vor dem Zeitraum als Abgleich am Schnitt-Tag -> je Treffer die
 --   bestehende Buch-fn mit Ist-Betrag und Ist-Datum (Dauerauftrag/Transfer/Kredit ueber fn_book_recurring_occurrence,
 --   Sparplan ueber fn_book_savings_plan_execution mit geschaetzten Stueck -> shares_estimated, Zins ueber
---   fn_book_interest_occurrence) -> Schluessel lernen -> Plan-Anpassungen (fn_split_recurring_payment) -> schon
+--   fn_book_interest_occurrence) -> Schluessel lernen -> Plan-Anpassungen (fn_split_recurring_payment; Beitrag von
+--   Versicherung/Vorsorge ueber fn_change_owned_recurring) -> schon
 --   gebuchte Zahlungen mit Buchungsdatum nach period_end aufs Zeilendatum verschieben (redated_count) -> Abgleich auf
 --   den Endsaldo am period_end (bucht den Rest als eine Abgleichsbuchung und ueberspringt die fehlenden Vorkommen) ->
 --   Aggregat in finance.bank_statements, Herkunft bank_statement_id an jeder hier entstandenen Buchung.
@@ -365,8 +366,14 @@ BEGIN
         END LOOP;
 
         FOR v_k IN SELECT e FROM jsonb_array_elements(v_prep->'plan_adjustments') e LOOP
-            v_r := finance.fn_split_recurring_payment((v_k->>'recurring_payment_id')::int, (v_k->>'eff_from')::date,
-                       (v_k->>'amount')::numeric, NULL, NULL, NULL, NULL, NULL, NULL);
+            IF EXISTS (SELECT 1 FROM finance.insurances i WHERE i.recurring_payment_id = (v_k->>'head')::int)
+               OR EXISTS (SELECT 1 FROM finance.pension pe WHERE pe.recurring_payment_id = (v_k->>'head')::int) THEN
+                v_r := finance.fn_change_owned_recurring((v_k->>'head')::int, (v_k->>'eff_from')::date,
+                           (v_k->>'amount')::numeric, NULL, NULL, NULL);
+            ELSE
+                v_r := finance.fn_split_recurring_payment((v_k->>'recurring_payment_id')::int, (v_k->>'eff_from')::date,
+                           (v_k->>'amount')::numeric, NULL, NULL, NULL, NULL, NULL, NULL);
+            END IF;
             IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
                 RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = (v_k->>'name') || ': ' || (v_r->>'reason');
             END IF;

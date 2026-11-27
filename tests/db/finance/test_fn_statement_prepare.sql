@@ -225,3 +225,90 @@ BEGIN
     RAISE NOTICE 'PASS [SX4 Stufe C ohne Plan-Anpassung]';
 END $$;
 ROLLBACK;
+
+-- Beitrag einer Versicherung bzw. Vorsorge aendert sich: beim 2. gleichen Ist-Betrag wird die besessene Kette wie ein
+-- einfacher Dauerauftrag angepasst (der Beitrag steht nur an der Kette; der Split haengt den Besitzer um). Sonst rechnete
+-- die Monatsrechnung dauerhaft mit dem alten Beitrag.
+BEGIN;
+DO $$
+DECLARE
+    ps DATE := date_trunc('month', CURRENT_DATE - 120)::date;
+    pe DATE := (date_trunc('month', CURRENT_DATE - 120) + interval '1 month - 1 day')::date;
+    a INT; r_ins INT; r_pen INT; v_ins INT; v_pen INT; v_res JSONB; v_stmt JSONB; v_prep JSONB; v_app JSONB;
+BEGIN
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_spo_giro__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 1000, 'opening_balance_date', (ps - 40)::text))->>'account_id')::int;
+    v_res := finance.fn_create_insurance(jsonb_build_object('name', '__t_spo Hausrat__', 'insurance_company', 'Beispiel AG',
+                 'premium_amount', 20, 'schedule_unit', 'month', 'schedule_day_of_month', 5,
+                 'first_payment_date', (ps - interval '2 months' + interval '4 days')::date::text, 'debit_account_id', a));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP insurance: %', v_res; END IF;
+    SELECT id, recurring_payment_id INTO v_ins, r_ins FROM finance.insurances WHERE name = '__t_spo Hausrat__';
+    v_res := finance.fn_create_pension(jsonb_build_object('name', '__t_spo Rente__', 'pension_type', 'private',
+                 'contribution_amount', 100, 'schedule_interval', 1, 'schedule_unit', 'month', 'schedule_day_of_month', 15,
+                 'debit_account_id', a, 'first_payment_date', (ps - interval '2 months' + interval '14 days')::date::text));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP pension: %', v_res; END IF;
+    v_pen := (v_res->>'pension_id')::int; r_pen := (v_res->>'recurring_payment_id')::int;
+    -- Vormonat schon mit neuem Beitrag gebucht
+    v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r_ins,
+                 'due_date', (ps - interval '1 month' + interval '4 days')::date, 'amount', 23));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP Vormonat Versicherung: %', v_res; END IF;
+    v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r_pen,
+                 'due_date', (ps - interval '1 month' + interval '14 days')::date, 'amount', 110));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP Vormonat Vorsorge: %', v_res; END IF;
+    -- Vor-Monat 2 (aelter als der Vormonat) ist nicht im Auszug: als erledigt markieren, sonst stuende er unter fehlt
+    INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date)
+    VALUES (r_ins, (ps - interval '2 months' + interval '4 days')::date), (r_pen, (ps - interval '2 months' + interval '14 days')::date);
+    INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+    VALUES (r_ins, 'sepa_mandate', 'DE00ZZZ00000000003|SPO-INS', 'user'), (r_pen, 'sepa_mandate', 'DE00ZZZ00000000004|SPO-PEN', 'user');
+
+    v_stmt := jsonb_build_object('account_name', '__t_spo_giro__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+        'opening_balance', 1000 - 23 - 110, 'closing_balance', 1000 - 23 - 110 - 23 - 110, 'lines', jsonb_build_array(
+            jsonb_build_object('date', (ps + 4)::text, 'amount', -23, 'counterparty', 'Beispiel AG', 'creditor_id', 'DE00ZZZ00000000003', 'mandate_ref', 'SPO-INS', 'purpose', 'Hausrat Beitrag'),
+            jsonb_build_object('date', (ps + 14)::text, 'amount', -110, 'counterparty', 'Vorsorgekasse', 'creditor_id', 'DE00ZZZ00000000004', 'mandate_ref', 'SPO-PEN', 'purpose', 'Rente Beitrag')));
+    v_prep := finance.fn_statement_prepare(v_stmt);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'matched') <> 2 THEN
+        RAISE EXCEPTION 'SETUP Treffer erwartet: %', v_prep;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'plan_adjustments') x WHERE (x->>'head')::int = r_ins)
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'plan_adjustments') x WHERE (x->>'head')::int = r_pen) THEN
+        RAISE EXCEPTION 'FAIL [SO1 Versicherung und Vorsorge: Plan-Anpassung beim 2. gleichen Beitrag]: %', v_prep->'plan_adjustments';
+    END IF;
+    v_app := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_app->'plan_adjusted') <> 2 THEN
+        RAISE EXCEPTION 'FAIL [SO2 apply passt beide Ketten an]: %', v_app;
+    END IF;
+    -- Besitzer zeigen auf den neuen Kopf, die Monatsrechnung kennt den neuen Beitrag
+    IF (SELECT r.amount FROM finance.insurances i JOIN finance.recurring_payments r ON r.id = i.recurring_payment_id WHERE i.id = v_ins) IS DISTINCT FROM -23
+       OR (SELECT r.amount FROM finance.pension p JOIN finance.recurring_payments r ON r.id = p.recurring_payment_id WHERE p.id = v_pen) IS DISTINCT FROM -110 THEN
+        RAISE EXCEPTION 'FAIL [SO3 Besitzer zeigen auf die Kette mit neuem Beitrag]';
+    END IF;
+    RAISE NOTICE 'PASS [SO1-SO3 Beitrag von Versicherung und Vorsorge wird angepasst]';
+
+    -- Schon geplante kuenftige Beitragsaenderung (Nachfolger-Glied): keine zweite Anpassung am alten Glied, apply bucht
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_spo_giro2__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 1000, 'opening_balance_date', (ps - 40)::text))->>'account_id')::int;
+    v_res := finance.fn_create_insurance(jsonb_build_object('name', '__t_spo Glas__', 'insurance_company', 'Beispiel AG',
+                 'premium_amount', 20, 'schedule_unit', 'month', 'schedule_day_of_month', 5,
+                 'first_payment_date', (ps - interval '2 months' + interval '4 days')::date::text, 'debit_account_id', a));
+    SELECT id, recurring_payment_id INTO v_ins, r_ins FROM finance.insurances WHERE name = '__t_spo Glas__';
+    INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+    VALUES (r_ins, 'sepa_mandate', 'DE00ZZZ00000000005|SPO-GLAS', 'user');
+    v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r_ins,
+                 'due_date', (ps - interval '1 month' + interval '4 days')::date, 'amount', 23));
+    INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date) VALUES (r_ins, (ps - interval '2 months' + interval '4 days')::date);
+    v_res := finance.fn_split_recurring_payment(r_ins, pe + 60, -25, NULL, NULL, NULL, NULL, NULL, NULL);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP kuenftige Aenderung: %', v_res; END IF;
+    v_stmt := jsonb_build_object('account_name', '__t_spo_giro2__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+        'opening_balance', 977, 'closing_balance', 954, 'lines', jsonb_build_array(
+            jsonb_build_object('date', (ps + 4)::text, 'amount', -23, 'counterparty', 'Beispiel AG',
+                               'creditor_id', 'DE00ZZZ00000000005', 'mandate_ref', 'SPO-GLAS', 'purpose', 'Glas Beitrag')));
+    v_prep := finance.fn_statement_prepare(v_stmt);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'matched') <> 1
+       OR jsonb_array_length(v_prep->'plan_adjustments') <> 0 THEN
+        RAISE EXCEPTION 'FAIL [SO4 geplante Aenderung: keine Anpassung am alten Glied]: %', v_prep;
+    END IF;
+    v_app := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [SO5 apply mit geplanter Aenderung]: %', v_app; END IF;
+    RAISE NOTICE 'PASS [SO4-SO5 geplante kuenftige Aenderung bleibt, Auszug bucht]';
+END $$;
+ROLLBACK;

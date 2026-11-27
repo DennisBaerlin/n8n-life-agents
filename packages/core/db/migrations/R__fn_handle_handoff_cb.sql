@@ -10,8 +10,7 @@
 --       sind oder deren working-Claim aelter als advisor.handoff_claim_ttl_minutes ist (Default 120): open -> working,
 --       claimed_at = now(). Ein Doppeltipp findet nichts mehr -> Toast "nichts mehr offen".
 --     * handoff:<domain>:<max_task_id>:fix = Knopf des Korrektur-Schritts (core.fn_plan_rollout_next, step fix): beansprucht
---       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now (nie ein abweichendes Feld einer
---       erledigten Aufgabe) und task_id <= max: deferred -> working
+--       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now und task_id <= max: deferred -> working
 --       (blocked_code weg; ohne Soll wird der Aufruf der Vorpruefung zum wanted; mit Soll bleibt es gespeichert, der Auftrag
 --       traegt als wanted aber den jetzt geprueften Aufruf); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern
 --       bekommt eine neue Aufgabe working mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf

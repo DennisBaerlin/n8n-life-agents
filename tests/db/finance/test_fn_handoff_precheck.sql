@@ -3,7 +3,7 @@
 --   (mode recheck). Fertiger Aufruf in Werkzeug-Form mit eindeutigen Namen; mehrdeutiger Name -> Kandidaten (Geld der Kinder
 --   nie als Kandidat ohne genauen Namen); fehlende Sache, fehlende Faehigkeit -> "geht noch nicht" mit festem Grund-Schluessel;
 --   fehlende Pflichtfelder und fremde Felder -> korrigierbare Ablehnung; "bis Betrag X" -> genau eine empfohlene Aufteilung,
---   Summe der Raten plus Rest = X; Wahl per option; erledigte Aufgabe: nur ein nie eingetragener vereinbarter Aufruf wird nachgeholt (tests/db/finance/test_fn_handoff_repair.sql).
+--   Summe der Raten plus Rest = X; Wahl per option; Nachholen einer erledigten Aufgabe -> tests/db/finance/test_handoff_catch_up.sql.
 BEGIN;
 
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)

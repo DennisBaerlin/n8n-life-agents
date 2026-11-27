@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_handoff_diff (READ, STABLE) -- Unterschied zwischen dem vereinbarten Soll einer Plan-Aufgabe und dem heutigen Stand
 --   Registry-Feld core.advisors.handoff_diff_fn (Signatur (int) -> jsonb), gelesen von core.fn_handoff_register: eine erledigte
---   Aufgabe mit nicht leerem Unterschied ist "anders eingetragen". Der Unterschied wird nie gespeichert, sondern bei jedem
+--   Aufgabe mit nicht leerem Unterschied steht dort als row_kind deviation. Der Unterschied wird nie gespeichert, sondern bei jedem
 --   Lesen neu gerechnet: korrigiert der Nutzer die Sache selbst, verschwindet die Zeile von allein.
 --   fn_handoff_diff(p_task_id int): liest wanted und entered_refs ueber core.fn_handoff_tasks_read (agent.* ist der
 --   Paketrolle verschlossen) und rechnet nur fuer status done; sonst [].
@@ -11,7 +11,7 @@
 --   Tage als Zahl, Daten ueber core.fn_resolve_date (nicht aufloesbar -> kein Vergleich), Namen und Status ohne Gross-/
 --   Kleinschreibung. Ohne wanted (Altbestand) -> [].
 --   Rueckgabe: [{field, wanted, current, ref:{type, id}}], [] = wie vereinbart. Ein vereinbarter Aufruf, zu dem noch keine
---   Sache eingetragen ist -> {field:'exists', wanted:true, current:false, call:{tool, input}} (der Aufruf ist nachholbar);
+--   Sache eingetragen ist -> {field:'exists', wanted:true, current:false, call:{tool, input}} (was davon nachgeholt wird, legt core.fn_handoff_register fest);
 --   eingetragen und wieder geloescht -> {field:'exists', wanted:true, current:false, ref} ohne call. Tests: tests/db/finance/test_fn_handoff_diff.sql
 -- ============================================================
 -- fn_handoff_pairs: ordnet jedem vereinbarten Aufruf seine eingetragene Sache zu -> [{i, call, ref | null}] (i = Stelle im

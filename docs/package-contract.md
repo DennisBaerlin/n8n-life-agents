@@ -183,8 +183,9 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   An entry that cannot be entered as agreed yet is `deferred` (`core.fn_defer_handoff_task`, or directly at agreement when the
   entry check says `unsupported`); it never counts as open. `core.fn_handoff_register` lists deferred, deviating and legacy
   entries; the guided sequence offers what can be entered now (step `fix`, button `handoff:<domain>:<max>:fix`): deferred
-  entries, cancelled legacy entries and agreed calls that were never entered (a difference element with `call`). An entry
-  that was entered as agreed and changed later stays listed with its difference and is never offered.
+  entries, cancelled legacy entries and a completed entry whose whole difference consists of agreed calls that were never
+  entered (elements with `call`); its recheck gets exactly those calls as `wanted`. An entry with a changed field or a
+  deleted thing stays listed with its difference and is never offered.
   Legacy entries closed before the agreed call was kept go once to the advisor (step `check`, button `plan:check:<domain>`,
   task "Entry check"); one that no longer matches the plan gets a new entry via `tool_record_handoff_correction`
   (`follows_task_id`, the old one stays).

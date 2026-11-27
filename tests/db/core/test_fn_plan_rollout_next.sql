@@ -217,7 +217,7 @@ BEGIN
   IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL P0 Berater-Weg nach Publish %', v; END IF;
 END $$;
 
--- Korrektur-Schritt (step fix): nach dem Update angebotene Nachhol-Eintraege aus dem Register, einmal je Aufgabe,
+-- Korrektur-Schritt (step fix): nachholbare Eintraege aus dem Register, einmal je Aufgabe,
 -- nie bei offenen Eintraegen oder offenem Entwurf; ohne Vorpruefung, die jetzt durchlaeuft, kein Angebot. Eine erledigte
 -- Aufgabe wird nur mit einem nie eingetragenen vereinbarten Aufruf angeboten, nie wegen eines abweichenden Felds.
 INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step) VALUES ('__rollf__', 'core', '__rollf___planning', 'core.fn_x', TRUE);

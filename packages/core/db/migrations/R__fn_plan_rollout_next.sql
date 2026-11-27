@@ -7,9 +7,8 @@
 --   (core.advisors.rollout_fn, z. B. Bank-Zettel) schon vor dem Warten auf liegen gebliebene Eintraege, 2 still warten,
 --   solange ein Eintrag open/working ist (ohne Frist; deferred und cancelled halten nicht auf), fix Korrektur-Schritt, check Pruef-Schritt,
 --   4 Wert-Waechter, 5 Schluss. advisor.rollout_wait_days gilt nur fuer Schritt 0 und das wait eines Paket-Schritts.
---   fix: Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now: zurueckgestellt, gestrichener Altbestand
---   oder ein vereinbarter Aufruf, der nie eingetragen wurde, und jetzt eintragbar; ein abweichendes Feld einer erledigten
---   Aufgabe nie. Eine Nachricht core.rollout.fix_offer {n} bzw. fix_offer_one, Knopf core.handoff.btn_go mit
+--   fix: Zeilen des Ersatzweg-Registers mit possible_now (was nachholbar ist, legt allein core.fn_handoff_register fest);
+--   eine Nachricht core.rollout.fix_offer {n} bzw. fix_offer_one, Knopf core.handoff.btn_go mit
 --   handoff:<domain>:<max_task_id>:fix (core.fn_handle_handoff_cb), je Aufgabe ein Merker '<prefix>fix:<task_id>' in latches
 --   (ein Angebot je Aufgabe; nie bei offenem Entwurf).
 --   check: erledigter Altbestand ohne Soll (Register row_kind legacy, status done) nach fix; eine Nachricht core.rollout.check_offer {n}

@@ -4,7 +4,7 @@
 --     ohne handoff_task_id (Karte ausserhalb des Eintragens) passiert nichts; laeuft unter finance_rw;
 --   * zwei vereinbarte Aufrufe, der erste eingetragen, die Karte des zweiten nicht bestaetigt -> der fehlende Aufruf kommt
 --     als neue offene Vormerkung (follows_task_id) wieder; finance.fn_handoff_diff nennt ihn (call), die Vorpruefung im
---     recheck liefert ihn als Aufruf; eine geloeschte Sache traegt keinen Aufruf;
+--     recheck prueft genau ihn (das Register reicht ihn als wanted); eine geloeschte Sache traegt keinen Aufruf;
 --   * zwei Aenderungen verschiedener Sachen unter einer Vormerkung gehen beide durch, dieselbe Sache zweimal nicht;
 --   * jede eingetragene Sache traegt den vereinbarten Aufruf, den sie erfuellt (nicht die Reihenfolge der Karten); ohne
 --     offenen vereinbarten Aufruf nimmt eine erledigte Vormerkung nichts mehr an;
@@ -78,11 +78,12 @@ BEGIN
   v_rp1 := (r->>'recurring_payment_id')::int;
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'done' THEN RAISE EXCEPTION 'FAIL [2 erster Teil]: %', r; END IF;
 
-  -- der fehlende Teil steht im Unterschied mit seinem Aufruf; der recheck liefert ihn als Aufruf
+  -- der fehlende Teil steht im Unterschied mit seinem Aufruf; der recheck prueft ihn als wanted (core.fn_handoff_register)
   r := finance.fn_handoff_diff(v_t);
   IF jsonb_array_length(r) <> 1 OR r->0->>'field' <> 'exists' OR r->0->'call' IS DISTINCT FROM v_c2 OR r->0 ? 'ref' THEN
     RAISE EXCEPTION 'FAIL [2 Unterschied nennt den Aufruf]: %', r; END IF;
-  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','task_id',v_t,'status','done','kind','recurring_transfer'));
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','task_id',v_t,'status','done','kind','recurring_transfer',
+         'wanted', r->0->'call'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'call'->'input'->>'name' IS DISTINCT FROM '__t_ro_teil2'
      OR (r->'call'->'input'->>'amount')::numeric <> 100 THEN RAISE EXCEPTION 'FAIL [2 recheck liefert den fehlenden Teil]: %', r; END IF;
 
@@ -208,7 +209,8 @@ BEGIN
   r := finance.fn_handoff_diff(v_t);
   IF jsonb_array_length(r) <> 1 OR r->0->>'field' <> 'exists' OR r->0->'call' IS DISTINCT FROM v_main THEN
     RAISE EXCEPTION 'FAIL [5 Unterschied nach Zuordnung]: %', r; END IF;
-  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','task_id',v_t,'status','done','kind','recurring_transfer'));
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','task_id',v_t,'status','done','kind','recurring_transfer',
+         'wanted', r->0->'call'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'call'->>'tool' IS DISTINCT FROM 'create_recurring_transfer'
      OR r->'call'->'input'->>'name' <> '__t_ro_raten' OR r ? 'calls' THEN RAISE EXCEPTION 'FAIL [5 Nachholen nur der Raten]: %', r; END IF;
   RAISE NOTICE 'PASS [5 Zuordnung]';

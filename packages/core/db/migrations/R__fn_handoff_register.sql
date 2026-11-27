@@ -11,11 +11,12 @@
 --   Nie dabei: eine Aufgabe, der schon eine Korrektur folgt (follows_task_id).
 --   possible_now/call = jetzt nachholbar: Vorpruefung core.advisors.handoff_check_fn im Modus recheck ({mode, domain, chat_id,
 --   task_id, status, kind, payload, text, wanted}); wahr, wenn sie jetzt einen Aufruf liefert (call bzw. calls).
---   deviation wird nur vorgeprueft, wenn ihr Unterschied einen vereinbarten Aufruf nennt, der nie eingetragen wurde (Element
---   mit call); der Aufruf ist dann genau dieser Rest. Ein abweichendes Feld oder eine wieder geloeschte Sache ist eine
---   spaetere Aenderung des Nutzers: die Zeile bleibt mit diff sichtbar, wird aber nie nachgeholt. legacy done bleibt
---   falsch: ohne Soll weiss nur der Berater, was gemeint war. Fehlt eine Registry-fn oder wirft sie, gilt neutral:
---   possible_now=false bzw. keine deviation.
+--   deviation ist nur nachholbar, wenn ihr ganzer Unterschied aus vereinbarten Aufrufen besteht, die nie eingetragen wurden
+--   (jedes Element mit call); vorgeprueft wird dann genau dieser Rest (wanted = der eine Aufruf bzw. die Liste), nie das
+--   ganze Soll. Ein abweichendes Feld oder eine wieder geloeschte Sache ist eine spaetere Aenderung des Nutzers: die Zeile
+--   bleibt mit diff sichtbar, wird aber nie nachgeholt, auch nicht ihr fehlender Rest (die Vereinbarung gilt so nicht mehr).
+--   legacy done bleibt falsch: ohne Soll weiss nur der Berater, was gemeint war. Fehlt eine Registry-fn oder wirft sie,
+--   gilt neutral: possible_now=false bzw. keine deviation.
 --   Rueckgabe jsonb-Array in id-Reihenfolge [{task_id, kind, text, why, section_key, topic, status, row_kind, blocked_code,
 --   wanted, entered_refs, diff, possible_now, call}]; unaufgeloester Absender -> [].
 --   Konsumenten: core.fn_plan_rollout_next (step fix), core.fn_handle_handoff_cb (Knopf ...:fix), Berater-Lesefenster.
@@ -39,6 +40,7 @@ DECLARE
     v_diff   jsonb;
     v_chk    jsonb;
     v_call   jsonb;
+    v_want   jsonb;
     v_out    jsonb := '[]'::jsonb;
 BEGIN
     IF v_pid IS NULL OR COALESCE(p_domain, '') = '' THEN RETURN v_out; END IF;
@@ -81,12 +83,18 @@ BEGIN
         END IF;
 
         v_call := NULL;
-        IF v_chkfn IS NOT NULL AND NOT (v_kind = 'legacy' AND t.status = 'done')
-           AND NOT (v_kind = 'deviation' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_diff) x WHERE x ? 'call')) THEN
+        v_want := t.wanted;
+        IF v_kind = 'deviation' THEN
+            v_want := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_diff) x WHERE jsonb_typeof(x->'call') IS DISTINCT FROM 'object')
+                           THEN NULL
+                           WHEN jsonb_array_length(v_diff) = 1 THEN v_diff->0->'call'
+                           ELSE (SELECT jsonb_agg(x->'call' ORDER BY n) FROM jsonb_array_elements(v_diff) WITH ORDINALITY AS d(x, n)) END;
+        END IF;
+        IF v_chkfn IS NOT NULL AND NOT (v_kind = 'legacy' AND t.status = 'done') AND NOT (v_kind = 'deviation' AND v_want IS NULL) THEN
             BEGIN
                 EXECUTE format('SELECT %s($1)', v_chkfn::regproc) INTO v_chk USING jsonb_build_object(
                     'mode', 'recheck', 'domain', p_domain, 'chat_id', p_chat_id, 'task_id', t.id, 'status', t.status,
-                    'kind', t.kind, 'payload', t.payload, 'text', t.text, 'wanted', t.wanted);
+                    'kind', t.kind, 'payload', t.payload, 'text', t.text, 'wanted', v_want);
             EXCEPTION WHEN OTHERS THEN
                 v_chk := NULL;
             END;

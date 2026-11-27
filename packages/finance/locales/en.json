@@ -1227,7 +1227,6 @@
   "finance.hitl.defer_handoff_task": "Put entry on hold – please check:",
   "finance.label.handoff_in_system": "In the system",
   "finance.label.handoff_stays_open": "Still open",
-  "finance.label.handoff_agreed": "Agreed",
   "finance.label.handoff_blocked": "Why not yet",
   "finance.handoff.blocked.end_date_future": "I cannot enter an end date in the future here yet.",
   "finance.handoff.blocked.pay_until_amount": "I cannot enter a payment that runs until a certain amount is reached yet.",

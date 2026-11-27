@@ -1227,7 +1227,6 @@
   "finance.hitl.defer_handoff_task": "항목 보류 – 확인해 주세요:",
   "finance.label.handoff_in_system": "시스템에 있는 것",
   "finance.label.handoff_stays_open": "남은 일",
-  "finance.label.handoff_agreed": "정한 내용",
   "finance.label.handoff_blocked": "아직 안 되는 이유",
   "finance.handoff.blocked.end_date_future": "미래의 종료일은 아직 여기에 입력할 수 없어요.",
   "finance.handoff.blocked.pay_until_amount": "정해진 금액까지 이어지는 이체는 아직 입력할 수 없어요.",

@@ -1227,7 +1227,6 @@
   "finance.hitl.defer_handoff_task": "Eintrag zurückstellen – bitte prüfen:",
   "finance.label.handoff_in_system": "Steht im System",
   "finance.label.handoff_stays_open": "Bleibt offen",
-  "finance.label.handoff_agreed": "Vereinbart",
   "finance.label.handoff_blocked": "Warum noch nicht",
   "finance.handoff.blocked.end_date_future": "Ein Ende in der Zukunft kann ich hier noch nicht eintragen.",
   "finance.handoff.blocked.pay_until_amount": "Eine Zahlung, die bis zu einem bestimmten Betrag läuft, kann ich noch nicht eintragen.",

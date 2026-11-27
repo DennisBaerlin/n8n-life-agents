@@ -965,9 +965,9 @@ function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [stri
     Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; topic = $Topic; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }
 }
 # finance verlangt den Gesamtcheck (advisor.final_check_required) -> ein bewusst offener Probe-Fund, damit die Karte ihn zeigt.
-function Send-PlanPublish([string]$Domain, [string]$Change, [string]$ChatId = $OwnerUnpaired,
+function Send-PlanPublish([string]$Domain, [string]$ChatId = $OwnerUnpaired,
                           [string]$Findings = '[{"text":"Probe-Fund offen","outcome":"deferred"},{"text":"Probe-Fund geklaert","outcome":"resolved"}]') {
-    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; reminders = '[]'; chat_id = $ChatId }
+    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_name = ''; context_description = ''; check_findings = $Findings; check_passes = '2'; reminders = '[]'; chat_id = $ChatId }
 }
 # Endete der letzte Lauf des Tools im Probelauf-Abbruch (keine Karte)? Liefert die Probleme (leer = ja).
 function Get-DryRunRejectProblem($Exec, [string]$Code) {
@@ -1107,7 +1107,7 @@ try {
     Write-RepeatCase 'hitlP8' 'Text nur aus Markdown-Zeichen: Karte zeigt ihn roh' $probs
 } catch { Register-Abort $_ 'hitlP8' }
 
-# hitlP7: Veroeffentlichen-Karte: Planname statt Kontextname; Schluessel = Domain (andere Aenderungs-Zusammenfassung = gleiche Karte).
+# hitlP7: Veroeffentlichen-Karte: Planname statt Kontextname, Aenderungen aus der DB (erster Plan); Schluessel = Domain (zweiter Aufruf = gleiche Karte).
 try {
     Test-ForceAbort 'hitlP7' $ForceAbortId
     $probs = @()
@@ -1116,18 +1116,19 @@ try {
     $probs += Complete-CardTaps 'hitlP7s' @($true)
     Clear-HitlPending -Container $Container
     Clear-MockTelegramRequests -Container $Container
-    Send-PlanPublish '__e2e_finance__' 'Erste Fassung hitlP7a'
-    $m = Wait-ButtonSend 'hitlP7a' ''
+    $p7Name = Get-LocaleText 'finance' 'de' 'finance.plan.name'
+    Send-PlanPublish '__e2e_finance__'
+    $m = Wait-ButtonSend $p7Name ''
     if (-not $m) { $probs += 'Veroeffentlichen-Karte nicht abgefangen' }
     else {
         # Gesamtcheck-Zeile mit den Zahlen der DB, darunter nur der nicht geklaerte Fund.
         $fc = (Get-LocaleText 'core' 'de' 'core.tpl.final_check_counts').Replace('{n}', '2').Replace('{resolved}', '1').Replace('{open}', '1').Replace('{passes}', '2')
-        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name'), $fc, 'Probe-Fund offen') ($InternalNames + @('Probe-Fund geklaert'))
-        $probs += Complete-CardTaps 'hitlP7a' @($false)
+        $probs += Get-CardTextProblems ([string]$m.body.text) @($p7Name, $fc, 'Probe-Fund offen', (Get-LocaleText 'core' 'de' 'core.tpl.plan_changes_first')) ($InternalNames + @('Probe-Fund geklaert'))
+        $probs += Complete-CardTaps $p7Name @($false)
         Clear-MockTelegramRequests -Container $Container
         $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-        Send-PlanPublish '__e2e_finance__' 'Neue Fassung hitlP7b'
-        $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP7b'
+        Send-PlanPublish '__e2e_finance__'
+        $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) $p7Name
     }
     Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
     Write-RepeatCase 'hitlP7' 'Veroeffentlichen-Karte: Planname, Sperre je Domain' $probs

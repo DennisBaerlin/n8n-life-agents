@@ -71,13 +71,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v1]: Plan-Zeile nicht active/plan_md fehlt';
   END IF;
   RAISE NOTICE 'PASS fn_advisor_publish_plan [v1 -> active]';
-  -- Plan teilen: change_summary + Sprache des Owners als Provenienz der Version gespeichert
-  IF (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v1) IS DISTINCT FROM 'Erste Fassung: Notgroschen festgelegt'
+  -- Plan teilen: die Aenderungs-Zusammenfassung bildet die DB aus dem Themen-Unterschied (agent.fn_advisor_plan_changes) in
+  -- der Sprache des Owners; ein mitgeschicktes change_summary zaehlt nicht. Dieselbe Zeile steht als erste auf der Karte.
+  IF (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v1)
+        IS DISTINCT FROM core.fn_ui_text('core.tpl.plan_changes_first', agent.fn_person_lang(agent.fn_owner_person_id())->>'lang')
      OR (SELECT change_summary_lang FROM agent.advisor_plans WHERE id = v_plan_v1)
         IS DISTINCT FROM (agent.fn_person_lang(agent.fn_owner_person_id())->>'lang') THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [change_summary]: %', (SELECT row_to_json(a) FROM agent.advisor_plans a WHERE id = v_plan_v1);
   END IF;
-  RAISE NOTICE 'PASS fn_advisor_publish_plan [change_summary + Sprache gespeichert]';
+  IF v_result->'card_lines'->0 IS DISTINCT FROM jsonb_build_object('label', 'core.label.changes', 'kind', 'text',
+       'value', (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v1)) THEN
+    RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [Kartenzeile Aenderungen]: %', v_result->'card_lines';
+  END IF;
+  RAISE NOTICE 'PASS fn_advisor_publish_plan [Aenderungen aus der DB, gespeichert mit Sprache, erste Kartenzeile]';
 
   -- Assert: Context-Doc korrekt (lazy, global, managed_by=agent [Spalte], package=Domain, content=plan_md)
   SELECT name, description, agent_name, load_strategy, content, managed_by, package, metadata INTO v_ctx
@@ -120,6 +126,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_advisor_save_section [revision draft]: erwartet neue Zeile v2, got %', v_result;
   END IF;
 
+  v_facts := agent.fn_advisor_plan_changes(v_plan_v2);
   SELECT agent.fn_advisor_publish_plan(jsonb_build_object(
     'domain', '__test_pubdom__', 'plan_md', '# Plan v2'
   )) INTO v_result;
@@ -128,6 +135,11 @@ BEGIN
      OR (v_result->>'superseded_plan_id')::int IS DISTINCT FROM v_plan_v1 THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v2]: got %', v_result;
   END IF;
+  IF jsonb_array_length(v_facts->'changed') <> 1 OR v_result->'card_lines'->0->>'value' IS DISTINCT FROM v_facts->>'text'
+     OR (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v2) IS DISTINCT FROM v_facts->>'text' THEN
+    RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v2 Aenderungen]: changes %, card %', v_facts, v_result->'card_lines';
+  END IF;
+  v_facts := NULL;
   IF NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE id = v_plan_v1 AND status = 'superseded')
      OR NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE id = v_plan_v2 AND status = 'active') THEN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v2]: Supersede-Kette falsch';
@@ -349,7 +361,7 @@ BEGIN
   IF v->>'code' IS DISTINCT FROM 'invalid_date' OR NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = v_d AND status = 'draft') THEN RAISE EXCEPTION 'FAIL [sync ok:false] %', v; END IF;
   v := agent.fn_advisor_publish_plan(jsonb_build_object('domain', v_d, 'plan_md', '# p', 'check_findings', '[]', 'check_passes', 1, 'reminders', jsonb_build_array(jsonb_build_object('label', 'Rente', 'remind_on', v_due))));
   IF (v->>'ok')::boolean IS NOT TRUE OR jsonb_array_length(v->'sync'->'created') <> 1 OR (v->'sync'->>'changes')::int <> 1 THEN RAISE EXCEPTION 'FAIL [sync] %', v; END IF;
-  IF jsonb_array_length(v->'card_lines') <> 2 OR (v->'effective'->>'reminders_checked_on') IS NULL THEN RAISE EXCEPTION 'FAIL [card] %', v; END IF;
+  IF jsonb_array_length(v->'card_lines') <> 3 OR v->'card_lines'->0->>'label' IS DISTINCT FROM 'core.label.changes' OR (v->'effective'->>'reminders_checked_on') IS NULL THEN RAISE EXCEPTION 'FAIL [card] %', v; END IF;
   SELECT count(*) INTO v_cnt FROM agent.monitor_triggers WHERE domain = v_d AND label = 'Rente' AND due_date = v_due;
   IF v_cnt <> 1 OR (SELECT synced_at FROM agent.advisor_plans WHERE domain = v_d AND status = 'active') IS NULL THEN RAISE EXCEPTION 'FAIL [row] %', v_cnt; END IF;
 END $$;

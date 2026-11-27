@@ -28,8 +28,10 @@
 #   C8 (Laien-Regeln): final/final_router jedes Szenarios halten L1-L3, L9, L12 aus scripts/lib/lay_metrics.ps1; Ausnahme nur mit
 #      "lay": "off" und Begruendung in notes.
 #   C9 (Durchspiel-Ausnahmen): eine Runde in conversation_cases.json mit "lay": "off" traegt eine Begruendung in notes.
+#   C10 (Daten-Reife): ein Fall, dessen setup_sql einen Plan einer Domain mit readiness_fn (Manifest advisors) anlegt oder aendert, prueft diese fn im precondition_sql
+#      (sonst fragt der Berater nach fehlenden Pflichtdaten statt den Fall zu spielen); Ausnahme plan_readiness_reason am Fall.
 #
-# tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
+# tool_publish_plan pruefen die Szenarien ac31, ac33 und ac-pub-1 (nur der Werkzeug-Pfad).
 #
 # Usage:  .\scripts\mock_lint.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
@@ -298,6 +300,41 @@ foreach ($c in @(Read-Json 'tests\agent\cross\conversation_cases.json')) {
         if ("$($t.lay)" -ne 'off' -or -not ($t.PSObject.Properties['notes'] -and "$($t.notes)".Trim())) {
             Write-Host "  [FAIL] C9 $($c.id) Runde ${n}: erlaubt ist nur ""lay"": ""off"" zusammen mit einer Begruendung in notes." -ForegroundColor Red
             $failed++
+        }
+    }
+}
+
+# --- C10: Plan-Fall belegt die Daten-Reife (advisors.<domain>.readiness_fn im Paket-Manifest) ---
+# Meldet die Reife fehlende Pflichtdaten (beim Finanzplan Konto, Einnahme, Ausgabe), erfasst der Berater sie laut Prompt vor jeder
+# Plan-Arbeit: ein Fall ohne diese Daten im setup_sql fragt dann danach, statt das Gepruefte zu tun (roter Fall ohne Modellfehler).
+# Ein Fall, dessen setup_sql einen Plan einer Domain mit readiness_fn (Entwurf oder aktiv, auch die Test-Domain __e2e_<domain>__)
+# anlegt oder aendert, prueft die Reife darum im precondition_sql; ein Fall, der fehlende Plan-Daten selbst prueft, nennt den Grund
+# in plan_readiness_reason. Geprueft werden die Faelle im Ordner des Pakets der Domain und in tests/agent/cross; Router-Faelle
+# (expected_route) beruehrt die Reife nicht.
+$readiness = @{}   # domain -> @{ Fn; Pkg }
+foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object { Join-Path $_.FullName 'manifest.json' } | Where-Object { Test-Path $_ })) {
+    $man = [System.IO.File]::ReadAllText($mf, $Utf8NoBom) | ConvertFrom-Json
+    if (-not $man.PSObject.Properties['advisors']) { continue }
+    foreach ($ap in $man.advisors.PSObject.Properties) {
+        if ($ap.Name -like '_*' -or -not $ap.Value.PSObject.Properties['readiness_fn']) { continue }
+        $readiness[$ap.Name] = @{ Fn = [string]$ap.Value.readiness_fn; Pkg = [string]$man.name }
+    }
+}
+foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
+    foreach ($c in $f.Cases) {
+        if ($c.PSObject.Properties['expected_route']) { continue }
+        $setup = if ($c.PSObject.Properties['setup_sql']) { [string]$c.setup_sql } else { '' }
+        if ($setup -notmatch '(INSERT INTO|UPDATE) agent\.advisor_plans|fn_advisor_save_section') { continue }
+        if ($c.PSObject.Properties['plan_readiness_reason'] -and "$($c.plan_readiness_reason)".Trim()) { continue }
+        $pre = if ($c.PSObject.Properties['precondition_sql']) { [string]$c.precondition_sql } else { '' }
+        foreach ($dom in $readiness.Keys) {
+            $r = $readiness[$dom]
+            if ($f.Rel -notlike "tests/agent/$($r.Pkg)/*" -and $f.Rel -notlike 'tests/agent/cross/*') { continue }
+            if ($setup -notmatch ("'(__e2e_)?" + [regex]::Escape($dom) + "(__)?'")) { continue }
+            if ($pre -notmatch [regex]::Escape($r.Fn)) {
+                Write-Host "  [FAIL] C10 $($f.Rel)|$($c.id): setup_sql legt einen Plan der Domain $dom an oder aendert ihn, precondition_sql prueft die Daten-Reife nicht (AND ($($r.Fn)(NULL, NULL)->>'ready')::boolean, Pflichtdaten im setup_sql) oder plan_readiness_reason setzen." -ForegroundColor Red
+                $failed++
+            }
         }
     }
 }

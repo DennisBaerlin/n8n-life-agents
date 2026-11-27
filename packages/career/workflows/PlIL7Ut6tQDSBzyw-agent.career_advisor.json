@@ -873,7 +873,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_publish_plan",
-                                         "description":  "Publish the draft career plan: the previous active version is superseded, the draft becomes active, and the context document career_planning (your single living career plan) is updated for all agents - one atomic transaction behind a button confirmation. The database composes the plan document from the saved sections (never send a plan text). Call it exactly ONCE per publish, only when the final check has nothing open. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - sections are saved when the user taps their cards.",
+                                         "description":  "Publish the draft career plan: the previous active version is superseded, the draft becomes active, and the context document career_planning (your single living career plan) is updated for all agents - one atomic transaction behind a button confirmation. The database composes the plan document from the saved sections (never send a plan text). Call it exactly ONCE per publish, only when the final check has nothing open. The card lists the changed topics itself. Requires an existing draft - sections are saved when the user taps their cards.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "oKi2U6NFXkCONRQQ",
@@ -884,7 +884,6 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "change_summary":  "={{ $fromAI(\u0027change_summary\u0027, \u0027One short sentence for the confirmation card: what changed against the published version (which parts are new or changed), or that it is the first plan. Never list or copy the topics, the database composes the plan from them.\u0027, \u0027string\u0027) }}",
                                                                               "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Optional new plan display name\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "context_description":  "={{ $fromAI(\u0027context_description\u0027, \u0027Optional description for the published context document; omit for the default\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "domain":  "={{ String($(\u0027Start agent.career_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_career__\u0027 : \u0027career\u0027 }}",
@@ -894,16 +893,6 @@
 
                                                                                     ],
                                                                 "schema":  [
-                                                                               {
-                                                                                   "id":  "change_summary",
-                                                                                   "displayName":  "change_summary",
-                                                                                   "required":  false,
-                                                                                   "defaultMatch":  false,
-                                                                                   "display":  true,
-                                                                                   "canBeUsedToMatch":  true,
-                                                                                   "type":  "string",
-                                                                                   "removed":  false
-                                                                               },
                                                                                {
                                                                                    "id":  "plan_name",
                                                                                    "displayName":  "plan_name",

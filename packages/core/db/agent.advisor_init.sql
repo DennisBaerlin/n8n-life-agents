@@ -104,9 +104,9 @@ CREATE TRIGGER trg_advisor_plans_touch
     BEFORE UPDATE ON agent.advisor_plans
     FOR EACH ROW EXECUTE FUNCTION agent.touch_updated_at();
 
--- Plan teilen: Provenienz der Version (Ausnahme (c) "Provenienz/Snapshot", nicht ableitbar): die vom
--- Berater formulierte Aenderungs-Zusammenfassung beim Publish + die Sprache des veroeffentlichenden Owners (Text in
--- Originalsprache, nie uebersetzt; die Mitglieder-Nachricht zeigt ihn nur bei gleicher Sprache).
+-- Plan teilen: Provenienz der Version (Ausnahme (c) "Snapshot mit Stempel"): die Aenderungs-Zusammenfassung, die der Publish aus dem
+-- Themen-Unterschied zum Vorgaenger bildet (agent.fn_advisor_plan_changes, in der Owner-Sprache
+-- gerendert und so festgehalten) + ihre Sprache (nie uebersetzt; die Mitglieder-Nachricht zeigt sie nur bei gleicher Sprache).
 -- Gesetzt nur von agent.fn_advisor_publish_plan.
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary text;
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary_lang text;

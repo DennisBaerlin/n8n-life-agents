@@ -951,7 +951,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_publish_plan",
-                                         "description":  "Publish the draft plan: the database composes the plan document from the saved topics in catalog order plus the reminder list (never send a plan text), the previous active version is superseded, the draft becomes active, and the context document financial_planning (your single living finance plan) is updated for all agents - one atomic transaction behind a button confirmation that shows versions, section count and your change_summary. Call it exactly ONCE per publish, only when the final check has nothing open (progress phase publish). When the final check ran with check cards, the database takes the findings and passes from them: send check_findings [] and check_passes 1. Without check cards check_findings lists every finding with its outcome (resolved = changed or answered, deferred = left open on purpose, accepted = the user keeps it as it is); check_passes = the number of review passes. The DB rejects a publish without them (final_check_missing) or with an open finding (final_check_open) before any card. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - topics are saved when the user taps their cards.",
+                                         "description":  "Publish the draft plan: the database composes the plan document from the saved topics in catalog order plus the reminder list (never send a plan text), the previous active version is superseded, the draft becomes active, and the context document financial_planning (your single living finance plan) is updated for all agents - one atomic transaction behind a button confirmation that shows versions, section count and the changed topics (the database lists them). Call it exactly ONCE per publish, only when the final check has nothing open (progress phase publish). When the final check ran with check cards, the database takes the findings and passes from them: send check_findings [] and check_passes 1. Without check cards check_findings lists every finding with its outcome (resolved = changed or answered, deferred = left open on purpose, accepted = the user keeps it as it is); check_passes = the number of review passes. The DB rejects a publish without them (final_check_missing) or with an open finding (final_check_open) before any card. Requires an existing draft - topics are saved when the user taps their cards.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "oKi2U6NFXkCONRQQ",
@@ -962,7 +962,6 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
-                                                                              "change_summary":  "={{ $fromAI(\u0027change_summary\u0027, \u0027One short sentence for the confirmation card: what changed against the published version (which parts are new or changed), or that it is the first plan. Never list or copy the topics, the database composes the plan from them.\u0027, \u0027string\u0027) }}",
                                                                               "check_findings":  "={{ $fromAI(\u0027check_findings\u0027, \u0027JSON array string of all final-check findings, each {\"text\":\"one plain sentence, max 300 characters\",\"outcome\":\"resolved|deferred|accepted\"}; [] when there were none or the check ran with check cards\u0027, \u0027string\u0027) }}",
                                                                               "check_passes":  "={{ $fromAI(\u0027check_passes\u0027, \u0027Number of final-check passes over the draft, at least 1\u0027, \u0027number\u0027) }}",
                                                                               "reminders":  "={{ $fromAI(\u0027reminders\u0027, \u0027JSON array string of dated reminders from the plan topics, each {\"label\":\"short name up to 80 chars\",\"remind_on\":\"YYYY-MM-DD\",\"action_note\":\"what to do, may be left out\",\"deadline\":true when something must be DONE by that day, omit otherwise,\"force\":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases\u0027, \u0027string\u0027) }}",
@@ -978,16 +977,6 @@
 
                                                                                     ],
                                                                 "schema":  [
-                                                                               {
-                                                                                   "id":  "change_summary",
-                                                                                   "displayName":  "change_summary",
-                                                                                   "required":  false,
-                                                                                   "defaultMatch":  false,
-                                                                                   "display":  true,
-                                                                                   "canBeUsedToMatch":  true,
-                                                                                   "type":  "string",
-                                                                                   "removed":  false
-                                                                               },
                                                                                {
                                                                                    "id":  "check_findings",
                                                                                    "displayName":  "check_findings",

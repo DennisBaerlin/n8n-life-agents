@@ -16,7 +16,8 @@
 --   Eingabe jsonb: domain (Pflicht), chat_id (Identitaet), plan_md (wird ignoriert: die DB setzt den Text zusammen),
 --     plan_name (optional, Umbenennung beim Publish),
 --     context_description (optional; sonst generischer EN-Default mit Scope-Pointer),
---     change_summary (optional; Aenderungs-Zusammenfassung der Version, gespeichert mit der Owner-Sprache — Plan teilen),
+--     change_summary (wird ignoriert: die Aenderungs-Zusammenfassung der Version bildet die DB aus dem Themen-Unterschied,
+--       agent.fn_advisor_plan_changes, in der Owner-Sprache; gespeichert fuer Plan teilen, erste Kartenzeile core.label.changes),
 --     check_findings (Array ODER JSON-String, leerer String = nicht angegeben; '[]' = ausdruecklich keine Funde) je
 --       {text 1..300, outcome resolved|deferred|accepted} + check_passes (int >= 1, Pflicht mit check_findings): der
 --       Gesamtcheck vor dem Veroeffentlichen, gespeichert an der Version. Gibt es Prüfpunkte der Schlusspruefung am Entwurf
@@ -35,7 +36,8 @@
 --     unveraendert (angehaengt ans neue plan_md) und verwirft einen im plan_md mitgeschickten (auch im Versions-
 --     Audit advisor_plans.plan_md); sonst loeschte content = plan_md still jede Notiz.
 --   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, superseded_plan_id,
---     context_name, section_count, card_lines, sync?, effective?} (Post-State der Publish-Kette; sync = Listen aus core.fn_plan_sync; card_lines = mit Gesamtcheck die Zeile
+--     context_name, section_count, card_lines, sync?, effective?} (Post-State der Publish-Kette; sync = Listen aus core.fn_plan_sync; card_lines = zuerst
+--     {label core.label.changes, kind text, value Aenderungs-Text}, mit Gesamtcheck die Zeile
 --     core.label.final_check {n, passes, resolved, open} bzw. core.tpl.final_check_clean {passes} und je nicht geklaertem
 --     Fund (deferred, accepted) eine raw-Zeile mit seinem Text).
 --   Korrigierbar (fehlendes domain, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
@@ -80,6 +82,8 @@ DECLARE
     v_sync     JSONB;
     v_rows_plan INT;                    -- Entwurf, dessen Prüfpunkte (agent.chat_prompts) den Gesamtcheck stellen
     v_rows_pass INT;
+    v_lang     TEXT := agent.fn_person_lang(agent.fn_owner_person_id())->>'lang';   -- Plan-Writes sind owner_only
+    v_changes  JSONB;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -300,6 +304,9 @@ BEGIN
         END IF;
         v_lines := v_lines || COALESCE(v_sync->'card_lines', '[]'::jsonb);
     END IF;
+    -- Vor Schritt 1: der Vergleich braucht den noch aktiven Vorgaenger.
+    v_changes := agent.fn_advisor_plan_changes(v_plan_id, v_lang);
+    v_lines := jsonb_build_array(jsonb_build_object('label', 'core.label.changes', 'kind', 'text', 'value', v_changes->>'text')) || v_lines;
 
     -- 1. Vorgaenger abloesen (vor dem Aktivieren — Partial-UNIQUE erlaubt nur einen active je (domain, person_id))
     UPDATE agent.advisor_plans SET status = 'superseded'
@@ -311,10 +318,9 @@ BEGIN
     SET status    = 'active',
         plan_md   = v_plan_md,
         plan_name = COALESCE(NULLIF(trim(p->>'plan_name'), ''), plan_name),
-        -- Provenienz der Version: Aenderungs-Zusammenfassung (Originalsprache) + Sprache des
-        -- veroeffentlichenden Owners (Plan-Writes sind owner_only); die Mitglieder-Nachricht zeigt sie nur bei gleicher Sprache.
-        change_summary      = NULLIF(btrim(COALESCE(p->>'change_summary', '')), ''),
-        change_summary_lang = agent.fn_person_lang(agent.fn_owner_person_id())->>'lang',
+        -- Provenienz der Version: Aenderungs-Zusammenfassung + ihre Sprache; die Mitglieder-Nachricht zeigt sie nur bei gleicher Sprache.
+        change_summary      = v_changes->>'text',
+        change_summary_lang = v_lang,
         check_findings = v_findings,
         check_passes   = v_passes
     WHERE id = v_plan_id;

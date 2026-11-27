@@ -211,11 +211,11 @@ DECLARE r JSONB; v_id INT; v_k TEXT;
 BEGIN
   DELETE FROM core.notification_state WHERE source IN ('plan_verb', 'plan_verb_day');
   DELETE FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft';
-  UPDATE agent.advisor_plans SET interview_state = '{"s":{"content":"x"}}' WHERE domain = 'finance' AND status = 'active';
+  UPDATE agent.advisor_plans SET interview_state = '{"s":{"legacy_content":"alt","topics":[{"topic":"Rate","content":"Monatlich 60 Euro."},{"topic":"Puffer","content":"Zwei Monate."}]}}' WHERE domain = 'finance' AND status = 'active';
   r := core.fn_handle_plan_cb('{"data":"plan:check:finance","chat_id":"111","chat_type":"private"}');
   IF r->>'reason' IS DISTINCT FROM 'nothing_new' THEN RAISE EXCEPTION 'FAIL [check leer] %', r; END IF;
-  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, payload, text, status, closed_at)
-  VALUES ('finance', 'finance', 'erika', 's', 'recurring_payment', '{"amount":50}', 'Rate 50 ab Januar', 'done', now()) RETURNING id INTO v_id;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, payload, text, status, closed_at)
+  VALUES ('finance', 'finance', 'erika', 's', 'rate ', 'recurring_payment', '{"amount":50}', 'Rate 50 ab Januar', 'done', now()) RETURNING id INTO v_id;
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
   SELECT 'finance', 'finance', 'erika', 's', 'other', 'alt ' || g, 'done', now() FROM generate_series(1, 25) g;
   -- noch nicht angeboten: nichts
@@ -233,7 +233,10 @@ BEGIN
      OR jsonb_array_length(r->'data'->'entries') <> 20
      OR (r->'data'->'entries'->0->>'task_id')::int <> v_id OR r->'data'->'entries'->0->>'text' <> 'Rate 50 ab Januar'
      OR r->'data'->'entries'->0->>'kind' <> 'recurring_payment' OR r->'data'->'entries'->0->>'section_key' <> 's'
-     OR r->'data'->'entries'->0 ? 'wanted' OR r->'data'->'entries'->0 ? 'possible_now' THEN
+     OR r->'data'->'entries'->0 ? 'wanted' OR r->'data'->'entries'->0 ? 'possible_now'
+     -- was der gueltige Plan zum Thema sagt (woertlich, Thema ohne Gross-/Kleinschreibung), ohne passendes Thema alle Themen des Abschnitts
+     OR r->'data'->'entries'->0->>'plan_text' IS DISTINCT FROM 'Monatlich 60 Euro.'
+     OR r->'data'->'entries'->1->>'plan_text' IS DISTINCT FROM E'Rate: Monatlich 60 Euro.\nPuffer: Zwei Monate.' THEN
     RAISE EXCEPTION 'FAIL [check] %', r; END IF;
   IF core.fn_plan_rollout_latch('finance:household:checked:' || v_id) <> 'done' THEN RAISE EXCEPTION 'FAIL [check Merker]'; END IF;
   -- zweiter Tipp: nur die fuenf angebotenen, die noch nicht beim Berater waren (nicht alt 25, nicht die schon uebergebenen)

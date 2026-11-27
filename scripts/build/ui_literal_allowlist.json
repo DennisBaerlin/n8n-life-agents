@@ -1104,6 +1104,12 @@
                       "literal":  "Werte korrigieren (oder die Zeile loeschen), dann erneut migrieren.",
                       "count":  1,
                       "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V017__seed_monthly_check_section.sql",
+                      "literal":  "Monats-Check (Kontoauszug)",
+                      "count":  1,
+                      "reason":  "data:Bereichs-Bezeichnung einer eingefrorenen Migration, der Seeder zieht das Label nach"
                   }
               ]
 }

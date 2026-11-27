@@ -26,9 +26,9 @@
 #       JSON-Bodies (--data '{"text":...}') und Texte, die ueber eine Datei/Umgebung in einen anderen Prozess wandern.
 #       Ort = Pfad.
 #   (d) packages/*/db/*.sql (Grundlagen-Dateien) + migrations/V*.sql: jedes Literal, auch mehrzeilig und als Dollar-Quote
-#       (fn-Ruempfe nach AS/DO zaehlen als Code; COMMENT ON ... IS nicht). Zusaetzlich zur deutschen Signatur: jedes Wort in
-#       einer Nutzertext-Spalte ($userTextColumns) eines INSERT ... VALUES, auch ohne deutsche Signatur und in jeder Sprache
-#       (reine Kleinbuchstaben-Schluessel ausgenommen). Ort = Pfad.
+#       (fn-Ruempfe nach AS/DO zaehlen als Code; COMMENT ON ... IS nicht). Zusaetzlich zur deutschen Signatur: jedes Wort, das
+#       per INSERT (VALUES, SELECT oder SELECT aus VALUES) in einer Nutzertext-Spalte ($userTextColumns) landet, auch ohne
+#       deutsche Signatur und in jeder Sprache (reine Kleinbuchstaben-Schluessel ausgenommen). Ort = Pfad.
 # Treffer (a)/(b)/(d) = Literal mit deutscher Signatur (Umlaut/ß oder ein typisches deutsches Funktionswort) und mindestens
 # einem Wort aus >= 3 Buchstaben; Katalog-Keys, englische Gruende/Codes und Identifier fallen so heraus.
 # Selbst-Asserts laufen vor jedem Scan; stirbt die Erkennung still, bricht der Lint.
@@ -137,27 +137,82 @@ function Get-SqlMask([string]$Sql) {
     [void]$mask.Append($Sql.Substring($pos))
     return @{ mask = $mask.ToString(); lits = $lits }
 }
-# Index der Literale, die in INSERT ... (spalten) VALUES in einer Nutzertext-Spalte stehen.
+$selectStopRx = [regex]::new('\G(?i)(?:FROM|WHERE|GROUP|ORDER|UNION|EXCEPT|INTERSECT|RETURNING|ON\s+CONFLICT)\b')
+# Elemente ab $From auf gleicher Klammer-Ebene (Komma getrennt) bis zur schliessenden Klammer, ';' oder - in einer SELECT-Liste -
+# zum naechsten Klausel-Wort: je Element seine Literal-Indizes und der Masken-Text.
+function Get-SqlItems([string]$Mask, [int]$From, [switch]$SelectList) {
+    $items = New-Object System.Collections.Generic.List[object]
+    $lits = New-Object System.Collections.Generic.List[int]
+    $start = $From; $d = 0; $i = $From
+    for (; $i -lt $Mask.Length; $i++) {
+        $c = $Mask[$i]
+        if ($c -eq '(' -or $c -eq '[') { $d++ }
+        elseif ($c -eq ')' -or $c -eq ']') { if ($d -eq 0) { break }; $d-- }
+        elseif ($c -eq [char]1) { $e = $Mask.IndexOf([char]1, $i + 1); $lits.Add([int]$Mask.Substring($i + 1, $e - $i - 1)); $i = $e }
+        elseif ($d -ne 0) { continue }
+        elseif ($c -eq ';') { break }
+        elseif ($c -eq ',') { $items.Add(@{ lits = $lits; text = $Mask.Substring($start, $i - $start) }); $lits = New-Object System.Collections.Generic.List[int]; $start = $i + 1 }
+        elseif ($SelectList -and [char]::IsLetter($c) -and -not [char]::IsLetterOrDigit($Mask[$i - 1]) -and $Mask[$i - 1] -ne '_' -and $Mask[$i - 1] -ne '.' -and $selectStopRx.Match($Mask, $i).Success) { break }
+    }
+    $items.Add(@{ lits = $lits; text = $Mask.Substring($start, $i - $start) })
+    return @{ items = $items; end = $i }
+}
+# Tupel einer VALUES-Liste ab $From: Liste der Tupel (je Element wie oben) und das Ende.
+function Get-SqlTuples([string]$Mask, [int]$From) {
+    $tuples = New-Object System.Collections.Generic.List[object]
+    $i = $From
+    while ($i -lt $Mask.Length -and $Mask[$i] -eq '(') {
+        $r = Get-SqlItems $Mask ($i + 1)
+        $tuples.Add($r.items)
+        $i = $r.end + 1
+        while ($i -lt $Mask.Length -and ($Mask[$i] -eq ',' -or [char]::IsWhiteSpace($Mask[$i]))) { $i++ }
+    }
+    return @{ tuples = $tuples; end = $i }
+}
+# Klammer-Tiefe relativ zu $From an der Stelle $Pos.
+function Get-Depth([string]$Mask, [int]$From, [int]$Pos) {
+    $part = $Mask.Substring($From, $Pos - $From)
+    return ($part.Length - $part.Replace('(', '').Length) - ($part.Length - $part.Replace(')', '').Length)
+}
+# Index der Literale, die per INSERT ... (spalten) VALUES, ... SELECT oder ... SELECT FROM (VALUES) v(...) in einer
+# Nutzertext-Spalte landen.
 function Get-UserColumnLiterals([string]$Mask) {
     $hits = @{}
-    foreach ($ins in [regex]::Matches($Mask, '(?i)\bINSERT\s+INTO\s+[\w."]+(?:\s+AS\s+\w+)?\s*\(([^()]*)\)\s*(?:OVERRIDING\s+\w+\s+VALUE\s+)?VALUES\s*')) {
+    foreach ($ins in [regex]::Matches($Mask, '(?i)\bINSERT\s+INTO\s+[\w."]+(?:\s+AS\s+\w+)?\s*\(([^()]*)\)\s*(?:OVERRIDING\s+\w+\s+VALUE\s+)?')) {
         $cols = @($ins.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().Trim('"').ToLowerInvariant() })
-        $i = $ins.Index + $ins.Length
-        while ($i -lt $Mask.Length -and $Mask[$i] -eq '(') {
-            $depth = 0; $col = 0; $j = $i
-            for (; $j -lt $Mask.Length; $j++) {
-                $c = $Mask[$j]
-                if ($c -eq '(' -or $c -eq '[') { $depth++ }
-                elseif ($c -eq ')' -or $c -eq ']') { $depth--; if ($depth -eq 0) { break } }
-                elseif ($c -eq ',' -and $depth -eq 1) { $col++ }
-                elseif ($c -eq [char]1) {
-                    $e = $Mask.IndexOf([char]1, $j + 1)
-                    if ($col -lt $cols.Count -and $userTextColumns -contains $cols[$col]) { $hits[[int]$Mask.Substring($j + 1, $e - $j - 1)] = $cols[$col] }
-                    $j = $e
+        $from = $ins.Index + $ins.Length
+        if ([regex]::new('\G(?i)VALUES\s*').Match($Mask, $from).Success) {
+            $t = Get-SqlTuples $Mask ($Mask.IndexOf('(', $from))
+            foreach ($tuple in $t.tuples) {
+                for ($k = 0; $k -lt $tuple.Count -and $k -lt $cols.Count; $k++) {
+                    if ($userTextColumns -contains $cols[$k]) { foreach ($l in $tuple[$k].lits) { $hits[$l] = $cols[$k] } }
                 }
             }
-            $i = $j + 1
-            while ($i -lt $Mask.Length -and ($Mask[$i] -eq ',' -or [char]::IsWhiteSpace($Mask[$i]))) { $i++ }
+            continue
+        }
+        $end = $from; $d = 0
+        for (; $end -lt $Mask.Length; $end++) { $c = $Mask[$end]; if ($c -eq '(') { $d++ } elseif ($c -eq ')') { $d-- } elseif ($c -eq ';' -and $d -le 0) { break } }
+        $stmt = $Mask.Substring($from, $end - $from)
+        $refs = @{}   # Namen, die eine Nutzertext-Spalte fuellen (fuer die Spalten einer VALUES-Unterliste)
+        foreach ($s in [regex]::Matches($stmt, '(?i)\bSELECT\b(?:\s+DISTINCT\b)?')) {
+            if ((Get-Depth $Mask $from ($from + $s.Index)) -ne 0) { continue }
+            $r = Get-SqlItems $Mask ($from + $s.Index + $s.Length) -SelectList
+            for ($k = 0; $k -lt $r.items.Count -and $k -lt $cols.Count; $k++) {
+                if ($userTextColumns -notcontains $cols[$k]) { continue }
+                foreach ($l in $r.items[$k].lits) { $hits[$l] = $cols[$k] }
+                foreach ($w in [regex]::Matches($r.items[$k].text, '[A-Za-z_]\w*')) { $refs[$w.Value.ToLowerInvariant()] = $true }
+            }
+        }
+        foreach ($v in [regex]::Matches($stmt, '(?i)\(\s*VALUES\s*(?=\()')) {
+            $t = Get-SqlTuples $Mask ($from + $v.Index + $v.Length)
+            $alias = [regex]::new('\G\)\s*(?:(?i:AS)\s+)?\w+\s*\(([^()]*)\)').Match($Mask, $t.end)
+            if (-not $alias.Success) { continue }
+            $names = @($alias.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().Trim('"').ToLowerInvariant() })
+            foreach ($tuple in $t.tuples) {
+                for ($k = 0; $k -lt $tuple.Count -and $k -lt $names.Count; $k++) {
+                    if ($userTextColumns -contains $names[$k] -or $refs.ContainsKey($names[$k])) { foreach ($l in $tuple[$k].lits) { $hits[$l] = $names[$k] } }
+                }
+            }
         }
     }
     return $hits
@@ -482,9 +537,11 @@ $sqlSelf = @(
     "    ('b_key', 'death', 'Bitte prüfen, " + "`n" + "zweite Zeile');"
     "CREATE FUNCTION f() RETURNS text AS `$`$ BEGIN RAISE EXCEPTION 'nicht erlaubt'; END `$`$ LANGUAGE plpgsql;"
     "SELECT `$ctx`$Ein langer Text für alle`$ctx`$, E'it\'s fine';"
+    "INSERT INTO s (pkg, label) SELECT 'a', 'Monats-Check (Kontoauszug)' WHERE NOT EXISTS (SELECT 1 FROM s WHERE label = 'x y');"
+    "INSERT INTO s (key, label) SELECT v.k, v.n FROM (VALUES ('c', 'Ask the notary')) AS v(k, n);"
 ) -join "`n"
 $sqlGot = (@(Get-SqlFileFindings $sqlSelf) -join ' # ')
-$sqlWant = "Call the bank # Bitte prüfen, `nzweite Zeile # nicht erlaubt # Ein langer Text für alle"
+$sqlWant = "Call the bank # Bitte prüfen, `nzweite Zeile # nicht erlaubt # Ein langer Text für alle # Monats-Check (Kontoauszug) # Ask the notary"
 if ($sqlGot -cne $sqlWant) { Fail "Selbst-Assert (sql-Datei): erwartet [$sqlWant], gefunden [$sqlGot] -- Erkennung defekt" }
 if ($fails -gt 0) { Write-Host "ui_literal_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
 

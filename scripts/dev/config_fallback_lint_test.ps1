@@ -15,7 +15,7 @@ $manifest = @'
   "advisor": { "window": { "value": "60" }, "buffer": { "value": "0.10" } },
   "feature": { "gate": { "value": "true" } },
   "cron_enable": { "remind": { "value": "true" } },
-  "finance": { "fee_eur": { "value": "500" } } } }
+  "finance": { "fee_eur": { "value": "500" }, "days": { "value": "7,21" } } } }
 '@
 $goodSql = @'
 -- core.fn_config_get('finance','advisor','window') mit Rueckfall 99 steht hier nur im Kommentar
@@ -56,6 +56,10 @@ Run-Case 'Helfer-Rueckfall weicht ab' 1 -Sql ($goodSql -replace "'fee_eur', 500"
 Run-Case 'Rueckfall ueber Variable weicht ab' 1 -Sql ($goodSql + "`nv_w := core.fn_config_get('finance','advisor','window')::int;`nRETURN COALESCE(v_w, 12);") -Says "advisor.window Rueckfall '12'"
 Run-Case 'Workflow-SQL weicht ab' 1 -Query ($goodQuery -replace "'true'\) AS", "'false') AS") -Says "agent.finance.x / Read: feature.gate Rueckfall 'false'"
 Run-Case 'Ausdrucks-Rueckfall weicht ab' 1 -Expr ($goodExpr -replace '\|\| 60', "?? '90'") -Says "advisor.window Rueckfall '90'"
+Run-Case 'Rueckfall eines spaeteren Befehls zaehlt nicht' 1 -Sql ($goodSql + "`nIF core.fn_config_get('finance','advisor','window')::int > 5 THEN x := 1; END IF;`nSELECT 1 INTO v_cnt;`nRETURN COALESCE(v_cnt, 60);") -Says 'ohne erkannten Rueckfall'
+Run-Case 'SELECT mit Alias wird gelesen' 1 -Sql ($goodSql + "`nSELECT COALESCE((SELECT NULLIF(c.value,'')::int FROM core.config c WHERE c.category='advisor' AND c.key='window'), 12);") -Says "advisor.window Rueckfall '12'"
+Run-Case 'nicht lesbarer Schluessel wird gemeldet' 1 -Sql ($goodSql + "`nSELECT value INTO v FROM core.config WHERE category = v_cat;") -Says 'core.config.*.*'
+Run-Case 'Zahlenliste ist keine Zahl' 1 -Sql ($goodSql + "`nSELECT COALESCE(core.fn_config_get('finance','finance','days'), '72,1');") -Says "Rueckfall '72,1' != Manifest-Standard '7,21'"
 Run-Case 'Key ohne Manifest-Zeile' 1 -Sql ($goodSql + "`nSELECT COALESCE(core.fn_config_get('finance','advisor','windwo'), '60');") -Says 'steht in keinem Manifest'
 Run-Case 'falsches Paket' 1 -Sql ($goodSql + "`nSELECT COALESCE(core.fn_config_get('core','advisor','window'), '60');") -Says "liest Paket 'core'"
 $noFallback = $goodSql + "`nIF core.fn_config_get('finance','feature','gate') IS DISTINCT FROM 'true' THEN"

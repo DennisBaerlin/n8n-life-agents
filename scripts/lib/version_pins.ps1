@@ -66,7 +66,17 @@ function Get-VersionPinFiles([string]$Root) {
     # Pruefer mit eigenen Beispiel-Versionen (Selbst-Asserts, Fixtures); compose.yml/master.Dockerfile: contract_lint 33.
     $skip = @('scripts/contract_lint.ps1', 'scripts/lib/version_pins.ps1', 'scripts/dev/version_pin_lint_test.ps1',
               'scripts/dev/test_stack_test.ps1', 'provisioning/compose/compose.yml', 'provisioning/compose/master.Dockerfile')
-    return @{ prose = @($prose | Sort-Object -Unique); code = @($code | Where-Object { $skip -notcontains $_ } | Sort-Object -Unique) }
+    $code = @($code | Where-Object { $skip -notcontains $_ })
+    # In einem Repo zaehlt nur, was git kennt (auch frisch gestagt): eine ignorierte Notiz machte das Gate sonst nur lokal rot.
+    # Die Wegwerf-Baeume des Tests sind kein Repo.
+    if (Test-Path (Join-Path $Root '.git')) {
+        $tracked = New-Object 'System.Collections.Generic.HashSet[string]'
+        foreach ($f in @(git -C $Root -c core.quotepath=false ls-files)) { [void]$tracked.Add($f) }
+        if ($tracked.Count -eq 0) { throw "Versions-Pruefung: git ls-files liefert nichts fuer $Root." }
+        $prose = @($prose | Where-Object { $tracked.Contains($_) })
+        $code = @($code | Where-Object { $tracked.Contains($_) })
+    }
+    return @{ prose = @($prose | Sort-Object -Unique); code = @($code | Sort-Object -Unique) }
 }
 
 function Get-VersionPinIssues([string]$Root) {

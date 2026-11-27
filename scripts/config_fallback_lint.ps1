@@ -131,20 +131,20 @@ function Find-CoalesceFallback([string]$Code, [string]$Mask, [int]$Pos) {
         }
     }
 }
-function Find-VariableFallback([string]$Code, [int]$Pos) {
-    $head = $Code.Substring(0, $Pos)
-    $cut = $head.LastIndexOf(';')
-    $stmt = $head.Substring($cut + 1)
-    $m = [regex]::Match($stmt, '(?s)(?:^|[\s(])([a-z]_\w+)(?:\s+(?:constant\s+)?[a-z]+(?:\([\d, ]*\))?(?:\[\])?)?\s*:=')
-    if (-not $m.Success) { $m = [regex]::Match($Code.Substring($Pos), '\bINTO\s+([a-z]_\w+)\b[^;]*;') }
+function Find-VariableFallback([string]$Code, [string]$Mask, [int]$Pos) {
+    # Die Variable gehoert zum Befehl der Lese-Stelle: gesucht wird nur zwischen den ';' um sie herum (maskiert, ein ';' im Literal zaehlt nicht).
+    $cut = if ($Pos -gt 0) { $Mask.LastIndexOf(';', $Pos - 1) } else { -1 }
+    $end = $Mask.IndexOf(';', $Pos); if ($end -lt 0) { $end = $Mask.Length }
+    $m = [regex]::Match($Code.Substring($cut + 1, $Pos - $cut - 1), '(?is)(?:^|[\s(])([a-z]_\w+)(?:\s+(?:constant\s+)?[a-z]+(?:\([\d, ]*\))?(?:\[\])?)?\s*:=')
+    if (-not $m.Success) { $m = [regex]::Match($Mask.Substring($cut + 1, $end - $cut - 1), '(?i)(?<!INSERT\s+)\bINTO\s+(?:STRICT\s+)?([a-z]_\w+)\b') }
     if (-not $m.Success) { return $null }
     $var = [regex]::Escape($m.Groups[1].Value)
-    $rest = $Code.Substring($Pos)
-    $next = $rest.IndexOf('CREATE OR REPLACE', [System.StringComparison]::Ordinal)
+    $rest = $Code.Substring($end)
+    $next = $rest.IndexOf('CREATE OR REPLACE', [System.StringComparison]::OrdinalIgnoreCase)
     if ($next -ge 0) { $rest = $rest.Substring(0, $next) }
     $lit = "('(?:[^']|'')*'|-?\d+(?:\.\d+)?|true|false)"
     $best = $null
-    foreach ($rx in @("COALESCE\(\s*$var(?:\s*::\s*[a-z]+)?\s*,\s*$lit", "(?<![\w.])$var\s*:=\s*$lit\s*;", "CASE\s+WHEN\s+$var\b[^;]*?\bELSE\s+$lit\s+END")) {
+    foreach ($rx in @("(?i)COALESCE\(\s*$var(?:\s*::\s*[a-z]+)?\s*,\s*$lit", "(?i)(?<![\w.])$var\s*:=\s*$lit\s*;", "(?i)CASE\s+WHEN\s+$var\b[^;]*?\bELSE\s+$lit\s+END")) {
         $h = [regex]::Match($rest, $rx)
         if ($h.Success -and ($null -eq $best -or $h.Index -lt $best.Index)) { $best = $h }
     }
@@ -152,6 +152,21 @@ function Find-VariableFallback([string]$Code, [int]$Pos) {
     $v = Get-LiteralValue $best.Groups[1].Value
     if ($null -eq $v) { return $null }
     return @{ kind = 'literal'; value = $v }
+}
+
+# Das SELECT derselben Klammer-Ebene vor $Pos; -1, wenn dort keines steht (z. B. DELETE FROM).
+function Find-SelectBefore([string]$Mask, [int]$Pos) {
+    $tokens = [regex]::Matches($Mask.Substring(0, $Pos), '(?i)\bSELECT\b|\bDELETE\b|[();]')
+    $d = 0
+    for ($i = $tokens.Count - 1; $i -ge 0; $i--) {
+        $t = $tokens[$i].Value
+        if ($t -eq ')') { $d++ }
+        elseif ($t -eq '(') { if ($d -eq 0) { return -1 }; $d-- }
+        elseif ($d -ne 0) { continue }
+        elseif ($t -eq 'SELECT') { return $tokens[$i].Index }
+        else { return -1 }
+    }
+    return -1
 }
 
 # --- Scan eines SQL-Textes ---------------------------------------------------------------------------------------------
@@ -163,7 +178,7 @@ function Get-SqlReads([string]$Sql) {
     function Add-Read($Pkg, $Cat, $Key, $Fallback, $Label) { $out.Add(@{ pkg = $Pkg; cat = $Cat; key = $Key; fallback = $Fallback; label = $Label }) }
     function Add-Resolved($Pkg, $Cat, $KeyExpr, [int]$Pos) {
         $fb = Find-CoalesceFallback $code $mask $Pos
-        if ($null -eq $fb) { $fb = Find-VariableFallback $code $Pos }
+        if ($null -eq $fb) { $fb = Find-VariableFallback $code $mask $Pos }
         $key = $null
         $lk = [regex]::Match($KeyExpr, "^'([^']*)'$")
         if ($lk.Success) { $key = $lk.Groups[1].Value }
@@ -208,19 +223,25 @@ function Get-SqlReads([string]$Sql) {
         if ($fnAt.Count -and $helpers.ContainsKey($fnAt[$fnAt.Count - 1].Groups[1].Value) -and $a[2] -notmatch "^'") { continue }
         Add-Resolved $(if ($pm.Success) { $pm.Groups[1].Value } else { $null }) $cm.Groups[1].Value $a[2] $m.Index
     }
-    foreach ($m in [regex]::Matches($mask, '(?i)\bSELECT\s+(?:\w+\.)?value(?:\s*::\s*\w+)?(?:\s+INTO\s+\w+)?\s+FROM\s+core\.config\b')) {
+    # Jedes SELECT, das aus core.config die Spalte value liest; was sich nicht aufloesen laesst, wird gemeldet statt uebergangen.
+    foreach ($m in [regex]::Matches($mask, '(?i)\b(?:FROM|JOIN)\s+core\.config\b(?![\w.])')) {
+        $sel = Find-SelectBefore $mask $m.Index
+        if ($sel -lt 0) { continue }
+        if ($mask.Substring($sel, $m.Index - $sel) -notmatch '(?i)(?<![\w])(?:[a-z_]\w*\.)?value\b') { continue }
+        $fnAt = [regex]::Matches($code.Substring(0, $sel), '(?i)CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:\w+\.)?(\w+)')
+        if ($fnAt.Count -and $fnAt[$fnAt.Count - 1].Groups[1].Value -eq 'fn_config_get') { continue }   # das Lesefenster selbst
         $end = $m.Index + $m.Length; $d = 0
         while ($end -lt $mask.Length) {
             $c = $mask[$end]
             if ($c -eq '(') { $d++ } elseif ($c -eq ')') { if ($d -eq 0) { break }; $d-- } elseif ($c -eq ';' -and $d -eq 0) { break }
             $end++
         }
-        $where = $code.Substring($m.Index, $end - $m.Index)
+        $where = $code.Substring($sel, $end - $sel)
         $cm = [regex]::Match($where, "(?<![\w])(?:\w+\.)?category\s*=\s*'([^']*)'")
-        if (-not $cm.Success) { continue }
         $km = [regex]::Match($where, "(?<![\w.])(?:\w+\.)?key\s*=\s*('[^']*'|[\w.]+)")
-        if (-not $km.Success) { continue }
-        Add-Resolved $null $cm.Groups[1].Value $km.Groups[1].Value $m.Index
+        if ($cm.Success -and $km.Success) { Add-Resolved $null $cm.Groups[1].Value $km.Groups[1].Value $sel; continue }
+        $cat = if ($cm.Success) { $cm.Groups[1].Value } else { '*' }
+        Add-Read $null $cat $null $null "core.config.$cat.*"
     }
     foreach ($h in $helpers.Keys) {
         foreach ($m in [regex]::Matches($mask, "(?<![\w])(?:\w+\.)?$h\s*\(")) {
@@ -248,7 +269,7 @@ function Get-JsReads([string]$Text, $Manifest) {
 function Test-SameValue([string]$A, [string]$B) {
     $inv = [System.Globalization.CultureInfo]::InvariantCulture
     $x = [decimal]0; $y = [decimal]0
-    $style = [System.Globalization.NumberStyles]::Number
+    $style = [System.Globalization.NumberStyles]::Float   # ohne Tausender-Zeichen: die Liste '7,21' ist nicht die Zahl 721
     if ([decimal]::TryParse($A, $style, $inv, [ref]$x) -and [decimal]::TryParse($B, $style, $inv, [ref]$y)) { return $x -eq $y }
     return [string]::Equals($A, $B, [System.StringComparison]::Ordinal)
 }
@@ -264,6 +285,11 @@ $self = @(
     @{ sql = "-- core.fn_config_get('core','a','k')`nSELECT finance.fn_config_eur_in_currency('k', 500, c, d);"; want = 'finance.k=500' }
     @{ sql = "r := COALESCE(core.fn_config_get('f','a','r_' || b || '_x')::numeric, CASE b WHEN 'u' THEN 1.5 ELSE 2 END);"; want = 'a.r_*_x=2;a.r_u_x=1.5' }
     @{ sql = "v_def constant jsonb := '{`"s`":900}';`nFOR v_k IN SELECT jsonb_object_keys(v_def) LOOP v_t := core.fn_config_get('core','w', v_k);"; want = 'w.s=900' }
+    @{ sql = "IF core.fn_config_get('core','a','k')::int > 5 THEN x := 1; END IF;`nSELECT count(*) INTO v_cnt FROM t;`nRETURN COALESCE(v_cnt, 60);"; want = 'a.k=-' }
+    @{ sql = "v_w := core.fn_config_get('core','a','k')::int;`nx := coalesce(v_w, 99);";                      want = 'a.k=99' }
+    @{ sql = "SELECT value AS w FROM core.config WHERE category='a' AND key='k';";                             want = 'a.k=-' }
+    @{ sql = "x := COALESCE((SELECT NULLIF(c.value,'')::int FROM core.config c WHERE c.category='a' AND c.key='k'), 99);"; want = 'a.k=99' }
+    @{ sql = "SELECT value FROM core.config WHERE category = v_cat; DELETE FROM core.config WHERE value = 'x';"; want = 'core.config.*.*=-' }
 )
 foreach ($s in $self) {
     $got = (@(Get-SqlReads $s.sql | ForEach-Object { "$($_.label)=$(if ($null -ne $_.fallback) { $_.fallback } else { '-' })" }) | Sort-Object) -join ';'

@@ -1,6 +1,9 @@
 {
   "_comment": "Ausnahmen von scripts/config_fallback_lint.ps1 je (where, read, fallback). reason: none:<warum> (Lese-Stelle ohne Rueckfall) | differs:<warum> (Rueckfall bewusst anders als der Manifest-Standard). Nur schrumpfen; ein neuer Eintrag braucht den Grund.",
   "allow": [
+    { "where": "agent.guide.tool_invite_household_member / Load bot username", "read": "telegram.bot_username", "fallback": "-", "count": 1, "reason": "none: ohne Namen gibt es keinen Einladungs-Link" },
+    { "where": "core.sub_load_config / Load core.config", "read": "core.config.*.*", "fallback": "-", "count": 1, "reason": "none: laedt alle Zeilen fuer die Agenten, kein Wert je Schluessel" },
+    { "where": "packages/core/db/migrations/R__fn_config_import.sql", "read": "core.config.*.*", "fallback": "-", "count": 1, "reason": "none: Abgleich aller Zeilen beim Einspielen einer Sicherung" },
     { "where": "agent.paperless.tool_ask_documents / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },
     { "where": "agent.paperless.tool_get_document / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },
     { "where": "agent.paperless.tool_search_documents / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },

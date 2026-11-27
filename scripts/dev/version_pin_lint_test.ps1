@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\lib\version_pins.ps1')
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
+. (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
 $provision = "PG_VERSION=`"`${PG_VERSION:-17}`"`nN8N_VERSION=`"`${N8N_VERSION:-2.45.7}`"`nNODE_MAJOR=`"`${NODE_MAJOR:-24}`"`n"
 
 # Run-Case <name> <Anzahl Meldungen> <Datei -> Inhalt> <Allowlist-Eintraege> <Teil der Meldung>
@@ -47,6 +48,24 @@ Run-Case 'zweite Nennung neben der Ausnahme' 1 @{ 'docs/reference/x.md' = "gepru
 Run-Case 'veraltete Ausnahme' 1 @{} -Allow $entry -Says 'ORPHAN'
 Run-Case 'neuer Pin: jede Nennung des alten wird gemeldet' 2 @{} -Source ($provision -replace 'PG_VERSION:-17', 'PG_VERSION:-18') -Says "PostgreSQL-Version '17' != Pin '18'"
 Run-Case 'Quelle nicht lesbar' 1 @{} -Source "N8N_VERSION=2.45.7`n" -Says 'nicht lesbar'
+
+# Im Repo zaehlt nur, was git kennt: dieselbe Datei erst unbekannt (gruen), dann gestagt (rot).
+Clear-GitEnvironment
+$sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ('vpl_git_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $sandbox | Out-Null
+try {
+    Initialize-GitSandbox $sandbox
+    Write-SandboxFile 'provisioning/provision.sh' $provision
+    Write-SandboxFile 'README.md' "n8n 2.45.7`n"
+    Write-SandboxFile 'scripts/ok.ps1' "`$x = 1`n"   # lint-ignore: Fixture-Pfad
+    Write-SandboxFile 'NOTIZ.md' "frueher PostgreSQL 16`n"
+    Invoke-SandboxGit @('add', 'provisioning', 'README.md', 'scripts')
+    $before = @(Get-VersionPinIssues $sandbox).Count
+    Invoke-SandboxGit @('add', 'NOTIZ.md')
+    $after = @(Get-VersionPinIssues $sandbox).Count
+    if ($before -eq 0 -and $after -eq 1) { Write-Host '  [PASS] ungetrackte Datei zaehlt nicht, gestagte schon' }
+    else { Write-Host "  [FAIL] ungetrackte Datei zaehlt nicht, gestagte schon (vorher $before, nachher $after)" -ForegroundColor Red; $fails++ }
+} finally { Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue }
 
 if ($fails -eq 0) { Write-Host 'PASS version_pin_lint_test' -ForegroundColor Green } else { Write-Host "version_pin_lint_test: $fails rot" -ForegroundColor Red }
 exit $fails

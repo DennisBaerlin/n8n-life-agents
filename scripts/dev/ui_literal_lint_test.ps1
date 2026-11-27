@@ -86,6 +86,10 @@ INSERT INTO estate.t (template_key, phase, title, detail) VALUES
     ('a', 'immediate', 'Sterbefallanzeige beim Standesamt', NULL),
     ('b', 'later', 'Call the notary', 'death');
 '@ }
+    @{ id = 'insert-select'; want = 2; sql = @'
+INSERT INTO s (pkg, label) SELECT 'finance', 'Call the bank' WHERE NOT EXISTS (SELECT 1 FROM s WHERE label = 'other text');
+INSERT INTO s (key, title) SELECT v.k, v.n FROM (VALUES ('c', 'Ask the notary')) AS v(k, n);
+'@ }
     @{ id = 'schluessel-und-codes'; want = 0; sql = @'
 INSERT INTO estate.t (template_key, title) VALUES ('death_certificate', 'estate.task.death_certificate');
 SELECT 'unknown action', 'immediate';

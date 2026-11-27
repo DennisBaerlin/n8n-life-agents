@@ -388,7 +388,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/version_pin_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/version_pins|dev/version_pin_lint_test|doc_lint)\.ps1$
+        files: ^scripts/(lib/(version_pins|git_sandbox)|dev/version_pin_lint_test|doc_lint)\.ps1$
 
       - id: n8ntest-state-file-test
         name: n8ntest_state_file_test (the test substrate's URL and API key file belongs to the container and lives in the main checkout, read alike from every worktree; throwaway repo, no Docker)

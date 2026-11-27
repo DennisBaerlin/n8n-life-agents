@@ -20,8 +20,9 @@
     "text": "Buche 20 Euro fuer Kaffee mit dem Lindenbank Giro als Ausgabe",
     "gate_decision": "decline",
     "probe_card_open": "kein tagesgeld, nur girokonto",
+    "expect_probe_text": "core.orch.card_note_saved",
     "expect_task_verbatim": true,
-    "notes": "Fix C: waehrend die Karte offen ist, muss agent.hitl_pending eine Zeile fuer den Ursprungs-Chat tragen; eine zweite Nachricht (probe_card_open) bekommt den festen Hinweis (Reply card open) statt eines Agent-Laufs. Der Vermittler bekommt den task WOERTLICH = text (kein LLM-formulierter task). Nach dem Tipp ist die Zeile weg."
+    "notes": "Fix C: waehrend die Karte offen ist, muss agent.hitl_pending eine Zeile fuer den Ursprungs-Chat tragen; eine zweite Nachricht (probe_card_open) bekommt den festen Hinweis (Reply card open) statt eines Agent-Laufs, und zwar die Zusage, dass der Text gemerkt ist (core.orch.card_note_saved; agent.fn_stash_hitl_note liefert stored als Anzahl). Der Vermittler bekommt den task WOERTLICH = text (kein LLM-formulierter task). Nach dem Tipp ist die Zeile weg."
   },
   {
     "id": "ri02b",
@@ -32,6 +33,19 @@
     "text": "Buche 20 Euro fuer Kaffee mit dem Lindenbank Giro als Ausgabe",
     "gate_decision": "approve",
     "notes": "Install-UX-Phase 4 (hartes Gate): seit der Orchestrator Paket-Agenten nur ueber den Core-Verteiler (Ausdrucks-ID, waitForSubWorkflow) ruft, liegt das Send-and-Wait eine Ebene tiefer. ri02 (decline) + ri02b (approve) beweisen, dass das Resume durch Verteiler -> Agent -> Tool -> Gate durchpropagiert und der Orchestrator danach success endet. Substrat-DB ist ephemer (die Buchung darf entstehen)."
+  },
+  {
+    "id": "ri117",
+    "name": "Offene Karte im Eintrage-Modus: Text dazu bekommt den Hinweis, dass der Eintrag bleibt und die Aenderung ins Plan-Gespraech gehoert",
+    "kind": "hitl",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Buche 20 Euro fuer Kaffee mit dem Lindenbank Giro als Ausgabe",
+    "gate_decision": "decline",
+    "probe_entry_open": true,
+    "probe_card_open": "lieber am 15. statt am 1.",
+    "expect_probe_text": "core.orch.card_note_entry",
+    "notes": "Eigenschaft: waehrend die Karte offen ist, hat die Person einen frisch beanspruchten vereinbarten Eintrag (Eintrage-Modus). Der Orchestrator sagt nicht zu, dass eine Aenderung nach dem Abbrechen kommt, sondern dass der Eintrag bleibt und die Aenderung im Plan-Gespraech mit dem Berater geklaert wird (core.orch.card_note_entry, entry aus agent.fn_stash_hitl_note). Der Text wird trotzdem gemerkt; das Werkzeug-Ergebnis sagt dem Modell dasselbe (Build-ToolCancelled). Gleiche Nachricht wie ri02, damit dasselbe Mock-Szenario die Karte bringt. DB-Gesetz: test_fn_hitl_note Block 3."
   },
   {
     "id": "ri03",
@@ -704,8 +718,8 @@
     "hitl_pending": { "expired": false },
     "expected_node": "Reply card open",
     "expected_not_node": "Orchestrator agent",
-    "expect_texts": ["Da wartet noch eine Bestätigung"],
-    "notes": "Der Vorfall vom 2026-10-22: eine Korrektur per Text, waehrend die Karte offen ist, startete einen zweiten Lauf ohne die Kartenrunde. Jetzt: Card open check (agent.fn_get_hitl_pending_state) -> Card open? -> Reply card open (core.orch.card_open in Absender-Sprache)."
+    "expect_texts": ["Hab ich mir gemerkt"],
+    "notes": "Eigenschaft: Text zur eigenen offenen Karte startet keinen zweiten Lauf ohne die Kartenrunde. Card open check (agent.fn_get_hitl_pending_state) -> Card open? -> Stash card note merkt den Text (agent.fn_stash_hitl_note, stored = Anzahl Zeilen) -> Reply card open sagt in Absender-Sprache zu, dass er gemerkt ist (core.orch.card_note_saved); ohne gemerkten Text (Befehl, fremde Karte) kaeme core.orch.card_open."
   },
   {
     "id": "ri41",

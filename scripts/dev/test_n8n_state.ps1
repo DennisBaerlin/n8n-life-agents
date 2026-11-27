@@ -1076,17 +1076,23 @@ function Get-TestRouteAgent {
 # im Case. publish_plan(domain, plan_name, topics [{section_key, topic, content}]) veroeffentlicht einen Plan ueber die echten
 # Schreibwege (agent.fn_advisor_save_section + agent.fn_advisor_publish_plan, als durchgesehen gestempelt) und liefert die plan_id:
 # Plan-Zeile, Plan-Dokument und Plan-Kontext passen zusammen. Ein INSERT in agent.advisor_plans laesst den Plan-Kontext eines
-# frueheren Plans stehen, das Modell liest dann einen anderen Plan als die Datenbank. Nur einfache Hochkommas im SQL (doppelte verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
+# frueheren Plans stehen, das Modell liest dann einen anderen Plan als die Datenbank. restore_plan(domain, plan_name) ist der Gegenpart im
+# teardown_sql: loescht die Plan-Zeilen des Falls und veroeffentlicht, wenn danach kein Plan aktiv ist, den juengsten verdraengten Plan
+# (nicht __E2E__) ueber dieselben Schreibwege neu, damit Plan und Kontext eines Fixture-Plans zurueckkommen (Themen und Inhalt; Warum,
+# offene Punkte und Plan-Zahlen nicht). Der Vorspann gilt fuer setup_sql und teardown_sql. Nur einfache Hochkommas im SQL (doppelte
+# verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
 # __E2E__ im Namen; aufgeraeumt wird nur ueber agent.fn_clear_e2e_data().
 # Optional -Precondition (Case-Feld precondition_sql): ein boolescher SQL-Ausdruck, der nach dem setup_sql wahr sein muss. Er belegt
 # den Zustand, den die Erwartung des Falls voraussetzt (z. B. das Konto, ohne das der Agent nachfragen muss); ist er falsch, ist der
 # Fall rot, BEVOR ein bezahlter Aufruf losgeht (dann ist die Vorbereitung des Falls schuld, nicht der Agent).
-function Invoke-TestCaseSetup {
-    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql, [string]$Precondition = '')
-    $prelude = @'
+$script:CaseSqlPrelude = @'
 CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$ BEGIN IF COALESCE((p_res->>'ok')::boolean, TRUE) = FALSE THEN RAISE EXCEPTION 'e2e setup: % fehlgeschlagen: %', p_label, COALESCE(p_res->>'reason', p_res::text); END IF; RETURN p_res; END $f$;
 CREATE FUNCTION pg_temp.publish_plan(p_domain text, p_plan_name text, p_topics jsonb) RETURNS int LANGUAGE plpgsql AS $f$ DECLARE t jsonb; r jsonb; BEGIN FOR t IN SELECT e FROM jsonb_array_elements(p_topics) e LOOP PERFORM pg_temp.ok('Plan-Thema ' || (t->>'topic'), agent.fn_advisor_save_section(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'plan_name', p_plan_name, 'section_key', t->>'section_key', 'topic', t->>'topic', 'section_content', t->>'content'))); END LOOP; r := pg_temp.ok('Plan veroeffentlichen', agent.fn_advisor_publish_plan(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'reminders', '[]', 'check_findings', '[]', 'check_passes', 1))); UPDATE agent.advisor_plans SET synced_at = now() WHERE id = (r->>'plan_id')::int; RETURN (r->>'plan_id')::int; END $f$;
+CREATE FUNCTION pg_temp.restore_plan(p_domain text, p_plan_name text) RETURNS int LANGUAGE plpgsql AS $f$ DECLARE v agent.advisor_plans%ROWTYPE; s record; t jsonb; r jsonb; BEGIN DELETE FROM agent.advisor_plans WHERE domain = p_domain AND plan_name = p_plan_name; IF EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = p_domain AND person_id IS NULL AND status IN ('active', 'draft')) THEN RETURN NULL; END IF; SELECT * INTO v FROM agent.advisor_plans WHERE domain = p_domain AND person_id IS NULL AND status = 'superseded' AND left(plan_name, 7) <> '__E2E__' ORDER BY version DESC LIMIT 1; IF NOT FOUND THEN RETURN NULL; END IF; FOR s IN SELECT key, value FROM jsonb_each(v.interview_state) WHERE jsonb_typeof(value->'topics') = 'array' LOOP FOR t IN SELECT e FROM jsonb_array_elements(s.value->'topics') e LOOP PERFORM pg_temp.ok('Plan-Thema ' || (t->>'topic'), agent.fn_advisor_save_section(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'plan_name', v.plan_name, 'section_key', s.key, 'topic', t->>'topic', 'section_content', t->>'content'))); END LOOP; END LOOP; r := pg_temp.ok('Plan wiederherstellen', agent.fn_advisor_publish_plan(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'reminders', '[]', 'check_findings', '[]', 'check_passes', 1))); UPDATE agent.advisor_plans SET synced_at = now() WHERE id = (r->>'plan_id')::int; RETURN (r->>'plan_id')::int; END $f$;
 '@
+function Invoke-TestCaseSetup {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql, [string]$Precondition = '')
+    $prelude = $script:CaseSqlPrelude
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', ($prelude + $Sql))
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
     if ($Precondition) {
@@ -1105,7 +1111,7 @@ CREATE FUNCTION pg_temp.publish_plan(p_domain text, p_plan_name text, p_topics j
 $script:PendingTeardown = $null
 function Invoke-TestCaseTeardown {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql)
-    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', $Sql)
+    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', ($script:CaseSqlPrelude + $Sql))
     if ($res.Code -ne 0) { throw "teardown_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
 }
 function Register-TestCaseTeardown {
@@ -1488,4 +1494,13 @@ function Test-ToolArg([object]$InputObj, [object]$Expected) {
         }
     }
     return $errs
+}
+
+# Erwarteter fester Text aus dem Textkatalog (packages/<pkg>/locales/<lang>.json), damit ein Test nie eine Kopie des Wortlauts traegt.
+function Get-LocaleText([string]$Pkg, [string]$Lang, [string]$Key) {
+    $root = git -C $PSScriptRoot rev-parse --show-toplevel
+    $f = Join-Path $root "packages\$Pkg\locales\$Lang.json"
+    $v = ([System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json).$Key
+    if (-not $v) { throw "Locale-Text fehlt: $Pkg/$Lang $Key" }
+    [string]$v
 }

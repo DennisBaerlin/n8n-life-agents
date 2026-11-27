@@ -4,7 +4,10 @@
 --   Der Orchestrator merkt den Text hier an allen noch nicht freigegebenen eigenen Zeilen des Chats (agent.hitl_pending:
 --   own_card, released_at NULL, nicht abgelaufen); mehrere Texte werden mit Zeilenumbruch angehaengt, zusammen hoechstens
 --   1000 Zeichen (der Rest entfaellt). Nach dem Abbrechen gibt agent.fn_take_hitl_note ihn dem Agenten mit.
---   Eingabe p: {chat_id (Telegram-Zahl), text}. Rueckgabe {ok:true, stored: Anzahl Zeilen} | {ok:false, reason}. Nie RAISE.
+--   Eingabe p: {chat_id (Telegram-Zahl), text}. Rueckgabe {ok:true, stored: Anzahl Zeilen, entry} | {ok:false, reason}. Nie RAISE.
+--   entry = die Person des Chats (core.fn_handoff_person) hat einen frisch beanspruchten vereinbarten Eintrag (working, claimed_at
+--   juenger als advisor.handoff_claim_ttl_minutes): die offene Karte gehoert zum Eintragen, geaendert wird dort nichts (der
+--   Orchestrator verweist auf das Plan-Gespraech, Build-ToolCancelled sagt dem Modell dasselbe).
 --   Familie: agent.fn_take_hitl_note(p) {execution_id, approved} -> {note: text|null}: liest und leert den Text an den Zeilen
 --     der Execution; bei approved = true wird er nur geleert (die Karte galt, der Wunsch ist ueberholt). Nie RAISE (laeuft im
 --     Gate neben agent.fn_set_hitl_pending_declined).
@@ -20,6 +23,7 @@ DECLARE
     v_chat text := COALESCE(p->>'chat_id', '');
     v_text text := btrim(COALESCE(p->>'text', ''));
     v_n    int;
+    v_ttl  int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
 BEGIN
     IF v_chat !~ '^-?[0-9]{1,18}$' OR v_text = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'chat_id and text are required');
@@ -28,7 +32,10 @@ BEGIN
        SET note = left(concat_ws(E'\n', h.note, v_text), 1000)
      WHERE h.chat_id = v_chat::bigint AND h.own_card AND h.released_at IS NULL AND h.expires_at > now();
     GET DIAGNOSTICS v_n = ROW_COUNT;
-    RETURN jsonb_build_object('ok', true, 'stored', v_n);
+    RETURN jsonb_build_object('ok', true, 'stored', v_n, 'entry', EXISTS (
+        SELECT 1 FROM agent.handoff_tasks t
+         WHERE t.person_id = core.fn_handoff_person(v_chat) AND t.status = 'working'
+           AND t.claimed_at > now() - make_interval(mins => v_ttl)));
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'error');
 END;

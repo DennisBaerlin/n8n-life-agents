@@ -30,6 +30,10 @@
 #   C9 (Durchspiel-Ausnahmen): eine Runde in conversation_cases.json mit "lay": "off" traegt eine Begruendung in notes.
 #   C10 (Daten-Reife): ein Fall, dessen setup_sql einen Plan einer Domain mit readiness_fn (Manifest advisors) anlegt oder aendert, prueft diese fn im precondition_sql
 #      (sonst fragt der Berater nach fehlenden Pflichtdaten statt den Fall zu spielen); Ausnahme plan_readiness_reason am Fall.
+#   C11 (Plan mit Kontext): kein setup_sql legt einen aktiven Plan per INSERT INTO agent.advisor_plans an (sonst liest das Modell ein anderes
+#      Plan-Dokument als die DB), ausser als Rueckfall WHERE NOT EXISTS (nur ohne aktiven Plan); Plaene entstehen ueber pg_temp.publish_plan
+#      (scripts/dev/test_n8n_state.ps1). Ausserhalb tests/agent/cross (dort leert der Treiber die Plaene) raeumt teardown_sql mit
+#      pg_temp.restore_plan auf, damit der vorherige Plan samt Kontext zurueckkommt.
 #
 # tool_publish_plan pruefen die Szenarien ac31, ac33 und ac-pub-1 (nur der Werkzeug-Pfad).
 #
@@ -325,7 +329,7 @@ foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
     foreach ($c in $f.Cases) {
         if ($c.PSObject.Properties['expected_route']) { continue }
         $setup = if ($c.PSObject.Properties['setup_sql']) { [string]$c.setup_sql } else { '' }
-        if ($setup -notmatch '(INSERT INTO|UPDATE) agent\.advisor_plans|fn_advisor_save_section') { continue }
+        if ($setup -notmatch '(INSERT INTO|UPDATE) agent\.advisor_plans|fn_advisor_save_section|pg_temp\.publish_plan') { continue }
         if ($c.PSObject.Properties['plan_readiness_reason'] -and "$($c.plan_readiness_reason)".Trim()) { continue }
         $pre = if ($c.PSObject.Properties['precondition_sql']) { [string]$c.precondition_sql } else { '' }
         foreach ($dom in $readiness.Keys) {
@@ -340,6 +344,23 @@ foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
     }
 }
 
+# --- C11: Plan-Faelle setzen Plan und Plan-Kontext zusammen (pg_temp.publish_plan / pg_temp.restore_plan) ---
+foreach ($f in (Get-AgentCaseFile $RepoRoot)) {
+    foreach ($c in $f.Cases) {
+        $setup = if ($c.PSObject.Properties['setup_sql']) { [string]$c.setup_sql } else { '' }
+        $tear  = if ($c.PSObject.Properties['teardown_sql']) { [string]$c.teardown_sql } else { '' }
+        foreach ($stmt in ($setup -split ';')) {
+            if ($stmt -match 'INSERT INTO agent\.advisor_plans' -and $stmt -match "'active'" -and $stmt -notmatch 'WHERE NOT EXISTS') {
+                Write-Host "  [FAIL] C11 $($f.Rel)|$($c.id): setup_sql legt einen aktiven Plan per INSERT an; pg_temp.publish_plan nutzen (Plan-Zeile und Plan-Kontext zusammen)." -ForegroundColor Red
+                $failed++
+            }
+        }
+        if ($setup -match 'pg_temp\.publish_plan' -and $f.Rel -notlike 'tests/agent/cross/*' -and $tear -notmatch 'pg_temp\.restore_plan') {
+            Write-Host "  [FAIL] C11 $($f.Rel)|$($c.id): setup_sql veroeffentlicht einen Plan, teardown_sql stellt ihn nicht mit pg_temp.restore_plan zurueck." -ForegroundColor Red
+            $failed++
+        }
+    }
+}
 Write-Host ("-" * 64)
 $color =if ($failed -eq 0) { 'Green' } else { 'Red' }
 Write-Host "$failed Mock-Szenario-Check(s) fehlgeschlagen." -ForegroundColor $color

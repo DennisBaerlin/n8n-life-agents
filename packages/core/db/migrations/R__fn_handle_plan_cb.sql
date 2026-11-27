@@ -27,7 +27,8 @@
 --     check = [Jetzt pruefen] des Pruef-Schritts (ohne Version): data.entries = erledigter Altbestand ohne Provenienz aus
 --     core.fn_handoff_register (row_kind legacy, status done), den der Pruef-Schritt angeboten hat (Merker <domain>:<who>:check:<id>)
 --     und der noch nicht beim Berater war (Merker ...:checked:<id>, nach bestandener Sperre gesetzt: einmal je Aufgabe);
---     task_id, kind, text, section_key, topic; hoechstens 20; fuer den Auftrag "Eintrag pruefen".
+--     task_id, kind, text, section_key, topic, plan_text (Inhalt des Themas im aktiven Plan, ohne passendes Thema alle Themen des
+--     Abschnitts, ohne Themen der Abschnittstext; hoechstens 600 Zeichen, NULL nur ohne Abschnitt im Plan); hoechstens 20; fuer den Auftrag "Eintrag pruefen".
 --   Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang).
 --   SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers; die Plan-Status-fn ist DEFINER), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_handle_plan_cb.sql
@@ -126,14 +127,26 @@ BEGIN
               INTO v_cand USING v_domain;
             IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;
         ELSIF v_verb = 'check' AND v_active.id IS NOT NULL THEN
-            -- nur feste Felder des Registers, nie wanted/diff/call (Daten fuer den Auftrag an den Berater)
-            SELECT jsonb_agg(jsonb_build_object('task_id', e->'task_id', 'kind', e->'kind', 'text', e->'text', 'section_key', e->'section_key', 'topic', e->'topic') ORDER BY (e->>'task_id')::int)
+            -- nur feste Felder des Registers, nie wanted/diff/call (Daten fuer den Auftrag an den Berater); plan_text = was der
+            -- gueltige Plan zum Thema sagt (Thema wie fn_advisor_save_section ohne Gross-/Kleinschreibung; ohne passendes Thema alle
+            -- Themen des Abschnitts als "Thema: Text", ohne Themen der Abschnittstext): Altbestand hat kein Soll, ein Unterschied
+            -- laesst sich nicht ableiten, der Berater vergleicht diesen Wortlaut mit den Daten statt das Plan-Dokument zu durchsuchen.
+            SELECT jsonb_agg(jsonb_build_object('task_id', e->'task_id', 'kind', e->'kind', 'text', e->'text', 'section_key', e->'section_key', 'topic', e->'topic',
+                       'plan_text', left(COALESCE(
+                           (SELECT t->>'content' FROM jsonb_array_elements(sec.topics) t
+                             WHERE lower(btrim(t->>'topic')) = lower(btrim(e->>'topic')) LIMIT 1),
+                           (SELECT string_agg((t->>'topic') || ': ' || (t->>'content'), E'\n' ORDER BY i)
+                              FROM jsonb_array_elements(sec.topics) WITH ORDINALITY AS x(t, i) WHERE jsonb_typeof(t) = 'object'),
+                           sec.obj->>'content', sec.obj->>'legacy_content'), 600)) ORDER BY (e->>'task_id')::int)
               INTO v_cand
               FROM (SELECT e FROM jsonb_array_elements(core.fn_handoff_register(v_domain, v_chat)) e
                      WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
                        AND core.fn_plan_rollout_latch(v_domain || ':' || COALESCE(v_own_pid, 'household') || ':check:' || (e->>'task_id')) = 'done'
                        AND core.fn_plan_rollout_latch(v_domain || ':' || COALESCE(v_own_pid, 'household') || ':checked:' || (e->>'task_id')) <> 'done'
-                     ORDER BY (e->>'task_id')::int LIMIT 20) q;
+                     ORDER BY (e->>'task_id')::int LIMIT 20) q
+             CROSS JOIN LATERAL (SELECT z.o AS obj, CASE WHEN jsonb_typeof(z.o->'topics') = 'array' THEN z.o->'topics' ELSE '[]'::jsonb END AS topics
+                                   FROM (SELECT CASE WHEN jsonb_typeof(v_active.interview_state->(q.e->>'section_key')) = 'object'
+                                                     THEN v_active.interview_state->(q.e->>'section_key') ELSE '{}'::jsonb END AS o) z) sec;
             IF v_cand IS NOT NULL THEN v_out := jsonb_build_object('entries', v_cand); END IF;
         ELSIF v_verb = 'drift' AND to_regprocedure('core.fn_advisor_review_read(text,text,jsonb)') IS NOT NULL THEN
             EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''metric_key'', a->''metric_key'', ''kind'', a->''kind'', ''label'', a->''label'', ''value'', a->''value'', ''target'', a->''target'', ''drift'', a->''drift'')), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_advisor_review_read($1, $2)->''alerts'') a LIMIT 20) q'

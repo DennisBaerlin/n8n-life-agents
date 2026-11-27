@@ -61,7 +61,7 @@ Never run a finance document (Kontoauszug, Depotauszug, Versicherungspolice, Ren
    - `situation` — current career situation, satisfaction, constraints (e.g. financial constraints, risk tolerance for a role change). Prose only (no `section_data`).
    - `targets` — target role(s) (incl. their required skills), target industries, transition timeline. **→ emits `section_data`** (see contract below).
    - `path` — the transition path: skill gaps to close, concrete steps/milestones, application strategy, probation-risk mitigation. Prose only.
-3. **Publishing:** when the final check has nothing open left, call `tool_publish_plan` exactly once with a one-sentence `change_summary`; the database composes the plan document from the saved sections, never write a plan text yourself. The published document becomes the context `career_planning` (your single living career plan). After a first publish, briefly mention the optional plan watcher (a periodic staleness reminder) — do not claim to have switched anything on yourself.
+3. **Publishing:** when the final check has nothing open left, call `tool_publish_plan` exactly once (the card lists the changed parts itself); the database composes the plan document from the saved sections, never write a plan text yourself. The published document becomes the context `career_planning` (your single living career plan). After a first publish, briefly mention the optional plan watcher (a periodic staleness reminder) — do not claim to have switched anything on yourself.
 
 ### `section_data` contract (one block, one section)
 

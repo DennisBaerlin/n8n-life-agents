@@ -230,4 +230,23 @@ BEGIN
   IF (SELECT retired_by_plan_at FROM agent.monitor_triggers WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [retired] Statusaenderung loescht den Stempel nicht'; END IF;
 END $$;
 
+-- Absturz-Waechter: eine nachtraeglich gesetzte Sprung-Grenze wird mit verstaendlichem Grund abgelehnt (nicht als rohe
+-- Constraint-Meldung), weil sie den Alarm stumm schalten wuerde.
+DO $$
+DECLARE v jsonb; v_jump numeric;
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__',
+         'trigger_type','drawdown','acquisition_method','web_search','acquisition_prompt','Beispiel-Index Schlusskurs in EUR',
+         'drawdown_pct',20,'expected_unit','EUR','check_interval','1 day'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [dd+jump set] Fixture: %', v; END IF;
+  v := agent.fn_set_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__','max_jump_pct','5'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%max_jump_pct%drawdown%'
+     OR v->>'reason' ILIKE 'constraint violation%' THEN
+    RAISE EXCEPTION 'FAIL [dd+jump set] erwartet {ok:false} mit verstaendlichem Grund, got %', v;
+  END IF;
+  SELECT max_jump_pct INTO v_jump FROM agent.monitor_triggers WHERE label = '__t_mon_dd_set__';
+  IF v_jump IS NOT NULL THEN RAISE EXCEPTION 'FAIL [dd+jump set] max_jump_pct wurde trotzdem gesetzt (%)', v_jump; END IF;
+  RAISE NOTICE 'PASS [dd+jump set] Sprung-Grenze am Absturz-Waechter abgelehnt';
+END $$;
+
 ROLLBACK;

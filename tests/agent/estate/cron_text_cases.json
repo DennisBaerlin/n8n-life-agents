@@ -18,6 +18,23 @@
   },
   {
     "kind": "cron_text",
+    "id": "cte03",
+    "name": "Fristen-Erinnerung (ko) für eine Vorlagen-Aufgabe mit deutschem Bestands-Schnappschuss: Titel aus dem Katalog in Owner-Sprache, nicht der gespeicherte deutsche Text",
+    "workflow": "agent.estate.cron_remind_case_tasks",
+    "schedule_key": "remind_case_tasks",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'estate' AND key LIKE 'case_task:%';",
+      "DELETE FROM estate.cases WHERE subject_person_id = 'lisa' AND flags ? 'cron_text_test';"
+    ],
+    "seed_sql": [
+      "WITH c AS (INSERT INTO estate.cases (case_type, subject_person_id, event_date, knowledge_date, bundesland, flags) VALUES ('incapacity', 'lisa', CURRENT_DATE - 5, CURRENT_DATE - 5, 'berlin', '{\"cron_text_test\": true}'::jsonb) RETURNING id) INSERT INTO estate.case_tasks (case_id, template_key, phase, title, due_date, hardness) SELECT c.id, 'present_patient_directive', 'immediate', 'Patientenverfügung den behandelnden Ärzten vorlegen', CURRENT_DATE - 1, 'recommended' FROM c;"
+    ],
+    "expect_keys": ["estate.dialog.case_tasks_title", "estate.task.present_patient_directive.title"],
+    "notes": "Bestand vor estate:V003: case_tasks trägt den deutschen Vorlagen-Text als Schnappschuss; der Versand rendert Vorlagen-Aufgaben aus dem Katalog (estate.task.<key>.title) in der Empfänger-Sprache. expect_keys prüft auch, dass die deutschen Teilstücke fehlen."
+  },
+  {
+    "kind": "cron_text",
     "id": "cte02",
     "name": "Jährlicher Register-Check an den Owner (ko): Grundtext + Sprachangabe ans Umformulier-Modell",
     "workflow": "agent.estate.cron_review_register",

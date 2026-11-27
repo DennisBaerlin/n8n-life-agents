@@ -18,7 +18,7 @@
 # Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default) — liest agent.core_contexts + core.config +
 #   schreibt career.* (deterministische SQL, kein LLM-SELECT).
 # Privacy: career_profile/career_preferences (PII) gehen nur in den Scorer-Prompt -> bezahlte Anthropic-API
-#   (trainiert nicht). Die Aggregatoren bekommen nur die oeffentliche Query (Rolle+Ort), kein PII.
+#   (trainiert nicht). Die Aggregatoren bekommen nur die oeffentliche Query (Rolle+Ort+Arbeitszeit), kein PII.
 # Board je Quelle: jsearch -> board immer aus job_publisher; adzuna -> NULL by design (Adzuna legt kein Board
 #   offen); bundesagentur -> NULL. Dedup: (source, external_id, person_id) source-skopiert.
 function Build-CronScoreJobs {
@@ -48,6 +48,8 @@ function Build-CronScoreJobs {
   -- agent.fn_ui_texts_for; Empfaenger = die Person hinter ihrer chat_id, Kette Person -> Owner -> en)
   agent.fn_ui_texts_for(jsonb_build_object('chat_id', agent.fn_person_chat_id(p.person_id)))->>'language_label' AS language_label,
   (SELECT metadata->'facts' FROM agent.core_contexts WHERE name = 'career_planning__'    || p.person_id) AS planning,
+  -- Arbeitszeit-Filter je Quelle aus employment_types (eine Adresse fuer Wertevorrat und Uebersetzung)
+  career.fn_job_search_employment((SELECT metadata->'facts' FROM agent.core_contexts WHERE name = 'career_planning__' || p.person_id)) AS employment_filter,
   -- WP3: Profil + Praeferenzen GERENDERT (Berufsstart "vor ~N Jahren", Gehalt mit Einheit + Jahreswert): der Scorer
   -- rechnet keine Spannen und keine Monats-/Jahresgehaelter selbst um (das LLM rechnet nicht).
   career.fn_render_career_profile('career_profile__' || p.person_id) AS profile,
@@ -88,7 +90,7 @@ WHERE agent.fn_person_chat_id(p.person_id) IS NOT NULL
         '={{ $json.planning && Array.isArray($json.planning.target_roles) && $json.planning.target_roles.length > 0 }}' 'true' 'equals' 'boolean'
 
     # --- Eine gemeinsame Query aus den Kriterien der aktuellen Person (was/wo URL-encoded; umkreis default 50) ->
-    #     je Quelle eine URL. Nur erste Zielrolle + erster Ort. Kontext (profile/preferences/planning/known/
+    #     je Quelle eine URL. Nur erste Zielrolle + erster Ort; Arbeitszeit als fertiger Filter je Quelle (employment_filter). Kontext (profile/preferences/planning/known/
     #     sources_enabled/person_id/chat_id) wird mitgefuehrt. Die Aggregator-URLs tragen keine Keys (die kommen
     #     aus der gebundenen Credential: Adzuna app_id/app_key als httpCustomAuth-qs; JSearch x-rapidapi-key Header).
     $buildQueryJs = @'
@@ -99,22 +101,26 @@ const locs = Array.isArray(plan.target_locations) ? plan.target_locations : [];
 const wo = locs.length ? String(locs[0] || '').trim() : '';
 const umkreis = Number(plan.search_radius_km) > 0 ? Math.round(Number(plan.search_radius_km)) : 50;
 const enc = encodeURIComponent;
+const ef = $json.employment_filter || {};
 
 // Bundesagentur (keyless; X-API-Key oeffentliche Konstante am Node)
 const baP = ['size=25', 'page=1'];
 if (was) baP.push('was=' + enc(was));
 if (wo) { baP.push('wo=' + enc(wo)); baP.push('umkreis=' + umkreis); }
+if (ef.ba_arbeitszeit) baP.push('arbeitszeit=' + enc(ef.ba_arbeitszeit));
 const ba_url = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs?' + baP.join('&');
 
 // Adzuna DE (app_id/app_key aus der httpCustomAuth-Cred -> NICHT in der URL). distance = km.
 const adzP = ['results_per_page=50', 'max_days_old=14', 'sort_by=date', 'content-type=application/json'];
 if (was) adzP.push('what=' + enc(was));
 if (wo) { adzP.push('where=' + enc(wo)); adzP.push('distance=' + umkreis); }
+if (ef.adzuna_param) adzP.push(enc(ef.adzuna_param) + '=1');
 const adzuna_url = 'https://api.adzuna.com/v1/api/jobs/de/search/1?' + adzP.join('&');
 
 // JSearch (Google-for-Jobs; x-rapidapi-key aus der httpHeaderAuth-Cred, Host-Header am Node). Ort in die Query.
 const jsQuery = (was || 'Job') + (wo ? (' in ' + wo + ', Germany') : ', Germany');
 const jsP = ['query=' + enc(jsQuery), 'country=de', 'language=de', 'page=1', 'num_pages=1', 'date_posted=week'];
+if (ef.jsearch_employment_types) jsP.push('employment_types=' + enc(ef.jsearch_employment_types));
 const jsearch_url = 'https://jsearch.p.rapidapi.com/search?' + jsP.join('&');
 
 return [{ json: { ba_url, adzuna_url, jsearch_url,
@@ -378,7 +384,7 @@ return scored.map(p => ({ json: {
     # --- Stickies ---
     $stOverview = Build-Sticky 'Überblick' @(-1820, -420) `
         'Werktäglicher MULTI-SOURCE Job-Scan PRO PERSON (Bundesagentur + Adzuna + JSearch; Opt-in-Cron, Claude-Scorer)' `
-        ('F9-Gate (career aktiv UND cron_enable.score_jobs=true = Konsolen-Notschalter für alle; JE PERSON schaltet rem:on|off:score_jobs, Roter Faden Paket B) -> Load model config (model.job_scorer bei JEDEM Lauf aus core.config; Wechsel: lifeagents config set model job_scorer <key>) -> Enumerate persons (agent.fn_context_persons(career_planning), nur Personen mit core.fn_reminder_allowed(score_jobs, person); je Person Suffix-Kontexte career_planning__/career_profile__/career_preferences__<pid> + eigene chat_id via agent.fn_person_chat_id; per-Quelle Enable-Flags sources_enabled + SOURCE-PARTITIONIERTER known-Set {source:[external_id]}; threshold/max_per_run aus core.config) -> Loop persons (splitInBatches) -> Have criteria? -> Build query (EINE gemeinsame Query Rolle/Ort -> je Quelle eine URL; die Aggregator-Keys stehen NUR in der Cred, nicht in der URL) -> Fetch BA (keyless) / Fetch Adzuna (httpCustomAuth) / Fetch JSearch (httpHeaderAuth), linear, jeder onError=continue+retry (fehlender Key -> Cred-Fehler fällt in onError -> Quelle still übersprungen) -> Normalize postings: je Quelle EIGENER try/catch, parse -> normalisierte Form, url VERBATIM aus dem Quell-Link, board (jsearch=job_publisher, sonst NULL), Dedup gegen den EIGENEN known-Set der Quelle, disabled -> ignoriert, merge + ephemerer Index i -> Score postings: EIN gebatchter Claude-Call (model.job_scorer, Denk-Tiefe niedrig, Structured Output {scores:[{i,score,reasoning}]}) bewertet ALLE neuen Postings DIESER Person 1..4, echot den Index i -> Apply scores -> Record match je Posting (career.fn_record_job_match, source/board/external_id, person_id TRUSTED CRON) -> Surface? (Top max_per_run >= Schwelle GLOBAL über alle Quellen + 1 Serendipity) -> Send card an die EIGENE chat_id (via <board> nur bei jsearch). ROLLE: Haupt-RW-Cred. PRIVACY: Profil/Präferenzen (PII) NUR in den Scorer (bezahlte Anthropic-API, kein Training auf Inhalten); die Aggregatoren bekommen NUR Rolle+Ort, kein PII.') 420 1100
+        ('F9-Gate (career aktiv UND cron_enable.score_jobs=true = Konsolen-Notschalter für alle; JE PERSON schaltet rem:on|off:score_jobs, Roter Faden Paket B) -> Load model config (model.job_scorer bei JEDEM Lauf aus core.config; Wechsel: lifeagents config set model job_scorer <key>) -> Enumerate persons (agent.fn_context_persons(career_planning), nur Personen mit core.fn_reminder_allowed(score_jobs, person); je Person Suffix-Kontexte career_planning__/career_profile__/career_preferences__<pid> + eigene chat_id via agent.fn_person_chat_id; per-Quelle Enable-Flags sources_enabled + SOURCE-PARTITIONIERTER known-Set {source:[external_id]}; threshold/max_per_run aus core.config) -> Loop persons (splitInBatches) -> Have criteria? -> Build query (EINE gemeinsame Query Rolle/Ort/Arbeitszeit -> je Quelle eine URL; Arbeitszeit-Filter aus career.fn_job_search_employment; die Aggregator-Keys stehen NUR in der Cred, nicht in der URL) -> Fetch BA (keyless) / Fetch Adzuna (httpCustomAuth) / Fetch JSearch (httpHeaderAuth), linear, jeder onError=continue+retry (fehlender Key -> Cred-Fehler fällt in onError -> Quelle still übersprungen) -> Normalize postings: je Quelle EIGENER try/catch, parse -> normalisierte Form, url VERBATIM aus dem Quell-Link, board (jsearch=job_publisher, sonst NULL), Dedup gegen den EIGENEN known-Set der Quelle, disabled -> ignoriert, merge + ephemerer Index i -> Score postings: EIN gebatchter Claude-Call (model.job_scorer, Denk-Tiefe niedrig, Structured Output {scores:[{i,score,reasoning}]}) bewertet ALLE neuen Postings DIESER Person 1..4, echot den Index i -> Apply scores -> Record match je Posting (career.fn_record_job_match, source/board/external_id, person_id TRUSTED CRON) -> Surface? (Top max_per_run >= Schwelle GLOBAL über alle Quellen + 1 Serendipity) -> Send card an die EIGENE chat_id (via <board> nur bei jsearch). ROLLE: Haupt-RW-Cred. PRIVACY: Profil/Präferenzen (PII) NUR in den Scorer (bezahlte Anthropic-API, kein Training auf Inhalten); die Aggregatoren bekommen NUR Rolle+Ort+Arbeitszeit, kein PII.') 420 1100
 
     $stSources = Build-Sticky 'Multi-Source: 3 Quellen -> EIN Digest' @(-240, -320) `
         'Bundesagentur (keyless) + Adzuna (StepStone/DE) + JSearch (LinkedIn) -> Normalize merged + dedupt je Quelle' `

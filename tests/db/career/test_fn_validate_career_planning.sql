@@ -63,6 +63,10 @@ BEGIN
   IF career.fn_validate_career_planning(jsonb_build_object('employment_types','vollzeit')) IS NULL THEN
     RAISE EXCEPTION 'FAIL [employment type]'; END IF;
 
+  -- employment_types: bewusst offen (alte Plaene/Sicherungen bleiben gueltig); die Suche ignoriert Unbekanntes
+  v_err := career.fn_validate_career_planning(jsonb_build_object('employment_types', jsonb_build_array('vollzeit','minijob')));
+  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [employment unbekannter Wert muss gueltig bleiben]: %', v_err; END IF;
+
   -- required_skills: gueltig (min_level optional, is_blocker optional) -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object('target_roles', jsonb_build_array(
     jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(

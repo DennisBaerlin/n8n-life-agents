@@ -12,7 +12,8 @@
 --   career.fn_skill_gap, nie hier.
 --   Die Suchkriterien des Job-Scanners (target_locations/search_radius_km/employment_types) leben als
 --   Block der targets-Sektion in diesem Sidecar (Suchkriterien = career_planning-Fakten, kein Tabellen-Konstrukt);
---   der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert.
+--   der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert (employment_types: welche Werte die
+--   Suche filtert, steht in career.fn_job_search_employment).
 --   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_planning(p_facts jsonb)
@@ -122,7 +123,9 @@ BEGIN
         END IF;
     END IF;
 
-    -- employment_types: Array (z. B. ['vollzeit','teilzeit']; nur tolerant strukturiert)
+    -- employment_types: nur strukturiert (Array). Bewusst kein geschlossener Wertevorrat: gespeicherte Plaene und
+    -- Sicherungen mit anderen Werten muessen veroeffentlich- und wiederherstellbar bleiben (der Merge prueft den ganzen
+    -- Plan); career.fn_job_search_employment filtert nur vollzeit|teilzeit und ignoriert den Rest.
     IF p_facts ? 'employment_types' AND jsonb_typeof(p_facts->'employment_types') <> 'null'
        AND jsonb_typeof(p_facts->'employment_types') <> 'array' THEN
         RETURN 'career_planning.employment_types must be an array';

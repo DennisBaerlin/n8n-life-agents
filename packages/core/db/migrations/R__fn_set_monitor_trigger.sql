@@ -19,6 +19,7 @@
 --   Cadence-Aenderung re-anker next_check_at = now; Web-Rate-Limit (>= 12h) gespiegelt.
 --   due_date: YYYY-MM-DD oder relativ ("+6 months") -> core.fn_resolve_date; ein neu gesendetes Datum in der
 --     Vergangenheit -> {ok:false}.
+--   max_jump_pct an einem drawdown-Trigger -> {ok:false} (CHECK monitor_triggers_drawdown_no_jump).
 --   comparator nur gte|lte, Zahl-Felder als Text mit Punkt oder Komma (agent.fn_parse_decimal_or_null); sonst {ok:false}.
 --   Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (core.fn_sender_is_household_restricted) -> {ok:false, reason:'household_only: ...'}.
 --   Eingabe jsonb: label (Pflicht), domain (Default 'general'), new_label, status ('armed'|'disabled'), check_interval,
@@ -97,6 +98,10 @@ BEGIN
                 'reason', v_key || ' is not a readable number (e.g. 1.5 or 1,5), got "' || (p->>v_key) || '"');
         END IF;
     END LOOP;
+    IF v_t.trigger_type = 'drawdown' AND agent.fn_parse_decimal_or_null(p->>'max_jump_pct') IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', agent.fn_monitor_drawdown_jump_reason());
+    END IF;
 
     -- check_interval (optional)
     IF NULLIF(trim(COALESCE(p->>'check_interval', '')), '') IS NOT NULL THEN

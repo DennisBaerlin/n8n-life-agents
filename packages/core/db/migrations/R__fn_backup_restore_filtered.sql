@@ -13,6 +13,7 @@
 --     * agent.monitor_triggers (origin='user'): DELETE origin='user' (observations CASCADE) + Fresh-id-
 --       Insert (kein UNIQUE(domain,lower(label))-Bruch gegen bestehende user-Zeilen; nichts referenziert
 --       Trigger-ids ausser den ausgeschlossenen observations).
+--       Absturz-Waechter kommen ohne max_jump_pct zurueck (CHECK monitor_triggers_drawdown_no_jump, Bundles vor core:V041).
 --     * core.llm_usage (KI-Kostenverlauf): zusammenfuehren (INSERT ON CONFLICT (id) DO NOTHING) statt ersetzen -> die Kosten
 --       des Ziels seit seiner Installation bleiben; der Count-Verify der CLI prueft hier nur ">=".
 --     * core.notification_state ("schon gezeigt"-Merker): die Zeilen ausser denen dieser Installation
@@ -79,6 +80,10 @@ BEGIN
         -- nur user-Trigger (core-Seeds bleiben; observations CASCADE)
         DELETE FROM agent.monitor_triggers WHERE origin = 'user';
         IF jsonb_array_length(v_mt) > 0 THEN
+            -- Bundles von vor core:V041 koennen Absturz-Waechter mit Sprung-Grenze tragen; dieselbe Bereinigung wie V041,
+            -- sonst rollte die CHECK monitor_triggers_drawdown_no_jump den ganzen Restore zurueck.
+            SELECT jsonb_agg(CASE WHEN r->>'trigger_type' = 'drawdown' THEN r - 'max_jump_pct' ELSE r END)
+              INTO v_mt FROM jsonb_array_elements(v_mt) r;
             -- Spaltenliste aus dem Katalog (nur is_generated='NEVER', ohne id = frisch gemintet):
             -- schema-evolutionsfest, keine handgepflegte Spaltenliste.
             SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)

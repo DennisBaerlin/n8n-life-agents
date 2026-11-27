@@ -274,4 +274,26 @@ BEGIN
   RAISE NOTICE 'PASS fn_backup_restore_filtered [notification_state ohne Installations-Merker ersetzt]';
 END $$;
 
+-- Sicherung von vor core:V041: ein Absturz-Waechter mit Sprung-Grenze kommt ohne Grenze zurueck (Regel
+-- monitor_triggers_drawdown_no_jump), statt den ganzen Restore per check_violation zurueckzurollen.
+DO $$
+DECLARE v_result jsonb; v_row jsonb;
+BEGIN
+  -- Bundle-Zeile wie fn_backup_export sie schreibt (alle Spalten), dann mit der vor V041 moeglichen Sprung-Grenze
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, acquisition_spec, drawdown_pct,
+                                      expected_unit, check_interval, origin)
+  VALUES ('__rt', '__rt dd alt', 'drawdown', 'web_search', '{"prompt":"Beispiel-Index Schlusskurs in EUR"}'::jsonb, 20,
+          'EUR', interval '1 day', 'user');
+  SELECT to_jsonb(t) || jsonb_build_object('max_jump_pct', 5) INTO v_row FROM agent.monitor_triggers t WHERE t.label = '__rt dd alt';
+  BEGIN
+    v_result := core.fn_backup_restore_filtered(jsonb_build_object('agent.monitor_triggers', jsonb_build_array(v_row)));
+  EXCEPTION WHEN check_violation THEN
+    RAISE EXCEPTION 'FAIL fn_backup_restore_filtered [Alt-Bundle drawdown+max_jump_pct -> check_violation: %]', SQLERRM;
+  END;
+  IF (SELECT max_jump_pct FROM agent.monitor_triggers WHERE label = '__rt dd alt') IS NOT NULL
+     OR (SELECT count(*) FROM agent.monitor_triggers WHERE label = '__rt dd alt') <> 1 THEN
+    RAISE EXCEPTION 'FAIL fn_backup_restore_filtered [Alt-Bundle drawdown: Zeile fehlt oder traegt noch max_jump_pct]'; END IF;
+  RAISE NOTICE 'PASS fn_backup_restore_filtered [Alt-Bundle: Absturz-Waechter ohne Sprung-Grenze uebernommen]';
+END $$;
+
 ROLLBACK;

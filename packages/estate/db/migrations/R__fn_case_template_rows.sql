@@ -6,6 +6,7 @@
 --   ... SELECT ... ON CONFLICT) und fn_preview_case (Zaehlung je Phase vor dem Gate).
 --   Eingabe: p_case_type, p_subject (person_id), p_flags (explizite Fall-Angaben), p_event, p_know (Anker-Daten),
 --   p_bundesland; p_extra_assets optional (siehe unten).
+--   Titel/Erklaerung in der Haushalts-Sprache aus estate.v_task_templates (Render-Regel dort).
 --   Rueckgabe: Zeilen (template_key, subject_ref, phase, title, detail, due_date, hardness, legal_source,
 --   status 'open'|'not_applicable').
 --   Condition-Auswertung: NULL=immer; derived (adult_subject = Subjekt keine role='child';
@@ -21,7 +22,7 @@
 --   {asset_type, description}, bereits normalisiert/dedupliziert (fn_preview_case). Sie zaehlen wie Register-Stubs
 --   als offene fan_out-Aufgabe, tragen aber den Platzhalter-Ref 'new:<n>' (nie 'asset:'): der Create-Pfad legt die
 --   Stubs an und ruft diese fn ohne Extras, daher landet ein Platzhalter nie in case_tasks.
---   STABLE (liest task_templates + special_assets + DEFINER-Fenster; kein Write).
+--   STABLE (liest v_task_templates + special_assets + DEFINER-Fenster; kein Write).
 -- ============================================================
 DROP FUNCTION IF EXISTS estate.fn_case_template_rows(text, text, jsonb, date, date, text);   -- Signaturwechsel (7. Parameter), sonst zwei Ueberladungen
 CREATE OR REPLACE FUNCTION estate.fn_case_template_rows(
@@ -49,7 +50,7 @@ BEGIN
     v_flags := jsonb_strip_nulls(estate.fn_case_register_flags(p_subject)) || COALESCE(p_flags, '{}'::jsonb);
 
     FOR t IN
-        SELECT * FROM estate.task_templates
+        SELECT * FROM estate.v_task_templates
         WHERE case_type = p_case_type AND NOT retired
         ORDER BY ord
     LOOP

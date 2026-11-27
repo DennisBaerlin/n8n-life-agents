@@ -33,7 +33,7 @@ Keep it short and unambiguous; one metric per trigger (never two values in one p
 
 - `expected_unit` (REQUIRED for web): the unit echo from the model must match it — catches USD-vs-EUR and t-vs-kg confusions that bounds cannot.
 - `min_plausible` / `max_plausible`: a generous sanity corridor around the current value (order-of-magnitude guard). Set them for EVERY web trigger.
-- `max_jump_pct`: only for metrics where day-to-day jumps are implausible (policy rates, exchange rates). NEVER on crash/drawdown metrics — they must see legitimate jumps.
+- `max_jump_pct`: only for metrics where day-to-day jumps are implausible (policy rates, exchange rates). Leave it empty on crash watches: a crash IS a big jump (drawdown triggers reject it; for a threshold on a crash-prone price it would mute the alert too).
 
 ## 5. Cadence proportional to volatility
 

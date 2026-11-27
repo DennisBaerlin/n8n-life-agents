@@ -364,5 +364,25 @@
                                        ]
                     }
                 ]
+  },
+  {
+    "id": "s23",
+    "name": "S23 Globale Regeln vor dem Buchhalter-Prompt: Auswahl ohne interne Nummern, nach einem Eintrag nur ein Hinweis",
+    "sender": "owner",
+    "start": "onboarding_done",
+    "mock_fresh_memory": true,
+    "notes": "Mock-Beleg, dass der Buchhalter-Prompt den globalen Regeln folgt (Auswahl ohne ids, nach einem Eintrag nur die Geldfrage): der Mock folgt einer Zeile des ausgelieferten Buchhalter-System-Prompts (final_when_system). Steht dort wieder die Auswahl mit id oder der zweite Hinweis neben der Geldfrage, kommt die verbotene Antwort und forbid_texts wird rot. Prueft den Prompt, nicht das echte Modell (das prueft judge_eval mit expected_behavior im Owner-Fenster). Regeln: global_instructions.md Speak the user's terms / Replying after a write.",
+    "turns": [
+      {
+        "text": "welches meiner beiden Tagesgelder ist gemeint", "expect_agent": "finance",
+        "forbid_texts": ["Nummer 12"],
+        "expected_behavior": "Bei mehreren passenden Konten nennt der Buchhalter sie mit Merkmalen, die der Nutzer kennt (Name, Bank, Art, Betrag), und fragt, welches gemeint ist. Er zeigt keine Datenbank-Nummern oder ids."
+      },
+      {
+        "text": "woher kommt der Rest beim Sparplan", "expect_agent": "finance",
+        "forbid_texts": ["Sparraten sind jetzt höher"],
+        "expected_behavior": "Nach einem Eintrag mit Geldquellen-Hinweis (savings_funding mit ASK) stellt der Buchhalter genau eine Frage, woher der Rest kommt, und nennt einen gleichzeitigen savings_squeeze-Hinweis nicht zusätzlich."
+      }
+    ]
   }
 ]

@@ -10,8 +10,8 @@
 --       geaendert) -> open kippt auf n.a.; fan_out-Tasks ohne Stub mehr -> n.a. Vom Nutzer gesetzte Status
 --       (status_source='user': done, "trifft nicht zu", wieder offen) fasst der Reconcile nie an. Der Auto-Complete-
 --       Trigger kann den Fall dabei schliessen (letzte offene Task n.a.) -> fn_set_case meldet case_status.
---     * title/detail = Snapshot (beim ersten Insert eingefroren, nie ueberschrieben — der Katalog darf
---       sich aendern, die laufende Checkliste bleibt stabil).
+--     * title/detail = Snapshot in der Haushalts-Sprache (beim ersten Insert eingefroren, nie ueberschrieben — der
+--       Katalog darf sich aendern, die laufende Checkliste bleibt stabil; der Versand rendert Vorlagen-Aufgaben neu).
 --   Manuelle Tasks (template_key NULL) sind nicht im Soll-Satz -> vom Reconcile nie beruehrt.
 --   SECURITY INVOKER (laeuft unter estate_rw des Aufrufers; alle Refs schema-qualifiziert).
 -- ============================================================

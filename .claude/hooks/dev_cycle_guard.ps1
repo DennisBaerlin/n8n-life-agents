@@ -10,8 +10,8 @@
 # (2) echter 'git push'-Aufruf -> zuerst privacy_lint -Outgoing je Refspec gegen das genannte Remote (ausgehende Commits
 #     + neue annotierte Tags; deckt den reinen Tag-Push ab, den prek auslaesst), dann der Pruefstempel der Modell-Pruefung fuer genau
 #     dieses Ausgehende (scripts/privacy_outgoing.ps1 -Check, gilt nur auf der Owner-Maschine) -> fehlt etwas = 'deny' (fail-closed).
-#     Sonst Erinnerung an /code-review: 'ask' mit Hinweis-Charakter - die VS-Code-Erweiterung winkt ein Hook-'ask' unter
-#     bypassPermissions still durch (GH #77212); "Review gelaufen" ist kein deterministisch pruefbarer Zustand, die harten Gates sind die von prek.
+#     Sonst keine Entscheidung: ein Hook-'ask' waere in der Desktop-App eine Genehmigung des Owners, und "Review gelaufen"
+#     ist kein pruefbarer Zustand; /code-review ist Pflicht der Session vor "fertig" (Skill /feature), die harten Gates sind die von prek.
 #     Test: scripts/dev/privacy_review_hook_test.ps1. Grenze: wirkt nur auf Claude-Sessions; im Terminal greift prek pre-push.
 # (3) Release-Tags (v*.*.*): 'git tag v..' (Anlegen; git kennt keinen Hook dafuer) und jeder 'git push', der einen solchen Tag
 #     mitnimmt -> scripts/release_pin_guard.ps1 (Pin des master-Images passt zum Release-Baum, ohne Netz). Rot = 'deny'.
@@ -197,6 +197,5 @@ if ($push.Success) {
   if ($stampFails.Count -gt 0) {
     Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$remote'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."
   }
-  Out-Decision 'ask' '/code-review offen? Vor dem Push: /code-review (high) auf DIESEN Diff gelaufen und die Findings eingearbeitet? Die Gates (Lints beim Commit, db_test + privacy-outgoing beim Push) ersetzen den Review nicht.'
 }
 exit 0

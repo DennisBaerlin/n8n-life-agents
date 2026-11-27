@@ -48,7 +48,7 @@ $hook = Join-Path $sandbox '.claude\hooks\dev_cycle_guard.ps1'
 $outgoing = Join-Path $sandbox 'scripts\privacy_outgoing.ps1'
 $stampDir = Join-Path $sandbox '.local\privacy_review_stamps'
 
-function Test-Denied([string]$Command) {
+function Get-HookOutput([string]$Command) {
     $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command }; cwd = $sandbox } | ConvertTo-Json -Compress -Depth 5
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'powershell'
@@ -58,7 +58,10 @@ function Test-Denied([string]$Command) {
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.StandardInput.Write($payload); $p.StandardInput.Close()
     $out = $p.StandardOutput.ReadToEnd(); $p.WaitForExit()
-    return $out -match '"permissionDecision":"deny"'
+    return $out
+}
+function Test-Denied([string]$Command) {
+    return (Get-HookOutput $Command) -match '"permissionDecision":"deny"'
 }
 function Assert-Case([string]$Name, [bool]$ExpectDeny, [string]$Command) {
     $denied = Test-Denied $Command
@@ -117,6 +120,8 @@ Write-Host 'Stempel gilt genau fuer einen Stand:'
 Add-Stamp @('-Ref', 'main')
 Assert-Case 'Gestempelter Stand frei'        $false "$publish main"
 Assert-Case 'Ohne Refspec gleicher Stempel'  $false $publishBare
+# Ein Hook-'ask' wird in der Desktop-App zur Genehmigung des Owners; ein freier Push kommt ohne Rueckfrage durch.
+Assert-True 'Gestempelter Stand ohne Rueckfrage' ((Get-HookOutput "$publish main") -notmatch '"permissionDecision":"ask"')
 Assert-Case 'Anderer Zielname gesperrt'      $true  "$publish main:refs/heads/anders"
 New-SandboxCommit 'zwei'
 Assert-Case 'Neuer Commit gesperrt'          $true  "$publish main"

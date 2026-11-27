@@ -17,7 +17,8 @@
 --     3. fn_statement_match; Anreicherung: Sparplan -> Stueck = Betrag / Kurs (market_prices +-3 Tage, Depot-Waehrung;
 --        sonst pending = Rest), Kredit -> fn_get_loan_payment_split muss ok sein, Transfer -> Gegenkonto darf am
 --        Zeilendatum nicht abgeglichen sein (sonst blocked = Rest), Plan-Anpassung nur fuer einfache Dauerauftraege
---        (ohne Kredit/Sparplan/Sparziel/Versicherung/Vorsorge) beim 2. gleichen Ist-Betrag (eff_from = Faelligkeit+1).
+--        (ohne Kredit/Sparplan/Sparziel/Versicherung/Vorsorge, nicht aus Stufe C) beim 2. gleichen Ist-Betrag
+--        (eff_from = Faelligkeit+1); die Kartenzeile nennt bisher -> neu.
 --        Plan-Anpassung hoechstens einmal je Kette (spaeteste Faelligkeit; Vorgaenger auch aus diesem Auszug).
 --     4. missing = alle offenen Vorkommen mit Faelligkeit <= period_end-10 ohne Zeile = exakt das, was der Abgleich
 --        ueberspringt (auch vor dem Zeitraum oder aus einer Luecke; juengere bleiben offen — eine Abbuchung am 30. kann
@@ -805,6 +806,7 @@ BEGIN
                 END IF;
                 -- Plan-Anpassung: nur einfache Dauerauftraege (Quelle, kein Transfer, keine Besitzer-Entitaet)
                 IF v_kind = 'recurring' AND v_m->>'side' = 'source' AND v_other IS NULL
+                   AND v_m->>'stage' IS DISTINCT FROM 'C'
                    AND abs((v_m->>'amount')::numeric - (v_m->>'expected')::numeric) > 0.005
                    AND NOT EXISTS (SELECT 1 FROM finance.savings_goals g WHERE g.recurring_payment_id = v_head)
                    AND NOT EXISTS (SELECT 1 FROM finance.insurances i WHERE i.recurring_payment_id = v_head)
@@ -1198,6 +1200,7 @@ BEGIN
             || (SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value',
                     core.fn_ui_tpl('finance.tpl.statement_plan_adjust_row', jsonb_build_object('name', a->>'name',
                         'amount', core.fn_ui_money(abs((a->>'amount')::numeric), v_acct.currency),
+                        'planned', core.fn_ui_money(abs((a->>'planned')::numeric), v_acct.currency),
                         'date', core.fn_ui_date((a->>'eff_from')::date)))) ORDER BY a->>'name')
                 FROM jsonb_array_elements(v_adjust) a);
     END IF;

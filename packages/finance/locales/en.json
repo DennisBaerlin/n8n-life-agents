@@ -1012,7 +1012,7 @@
   "finance.label.statement_changed": "Different amount than planned",
   "finance.tpl.statement_changed_row": "{name}: {amount} instead of {planned}",
   "finance.label.statement_plan_adjust": "Plan will be updated",
-  "finance.tpl.statement_plan_adjust_row": "{name}: {amount} from {date}",
+  "finance.tpl.statement_plan_adjust_row": "{name}: {planned} → {amount} from {date}",
   "finance.label.statement_booked": "Already recorded",
   "finance.label.statement_missing": "Not on the statement (will be skipped)",
   "finance.tpl.statement_missing_row": "{name}: {amount}, due {date}",

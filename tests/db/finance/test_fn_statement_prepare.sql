@@ -138,3 +138,90 @@ BEGIN
     RAISE NOTICE 'PASS [MH3 Handbuchung ohne Zeile]';
 END $$;
 ROLLBACK;
+
+-- Einnahme mit Schluessel ueber 150 % des Solls (Gehalt plus Sonderzahlung in einer Ueberweisung): das Gehalt gilt nicht
+-- als fehlend, die Zeile wird mit dem Ist-Betrag gebucht, nichts davon steht im Rest.
+-- Plan-Anpassung (2. gleicher Ist-Betrag): die Kartenzeile nennt bisher und neu.
+BEGIN;
+DO $$
+DECLARE
+    ps DATE := date_trunc('month', CURRENT_DATE - 120)::date;
+    pe DATE := (date_trunc('month', CURRENT_DATE - 120) + interval '1 month - 1 day')::date;
+    a INT; r INT; v_stmt JSONB; v_prep JSONB; v_app JSONB; v_res JSONB;
+BEGIN
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_spx_giro__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 500, 'opening_balance_date', (ps - 1)::text))->>'account_id')::int;
+    r := finance.fn_add_recurring_payment(a, 2400, 'Lohn Beispielfirma', 1::smallint, 'month'::finance.schedule_unit, 25::smallint,
+             ps, ps, NULL, NULL, NULL);
+    INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+    VALUES (r, 'counterparty_iban', 'DE02120300000000202051', 'user');
+    v_stmt := jsonb_build_object('account_name', '__t_spx_giro__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+        'opening_balance', 500, 'closing_balance', 4700, 'lines', jsonb_build_array(
+            jsonb_build_object('date', (ps + 24)::text, 'amount', 4200, 'counterparty', 'Arbeitgeber Muster',
+                               'counterparty_iban', 'DE02 1203 0000 0000 2020 51', 'purpose', 'Bezuege')));
+    v_prep := finance.fn_statement_prepare(v_stmt);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'matched') m
+                      WHERE (m->>'recurring_payment_id')::int = r AND (m->>'amount')::numeric = 4200)
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'missing') x WHERE (x->>'recurring_payment_id')::int = r)
+       OR (v_prep->>'unmatched_in')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 0 THEN
+        RAISE EXCEPTION 'FAIL [SX1 Gehalt plus Sonderzahlung: zugeordnet, nicht fehlend, kein Rest]: %', v_prep;
+    END IF;
+    v_app := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'lump_amount')::numeric IS DISTINCT FROM 0
+       OR (SELECT amount FROM finance.transactions WHERE recurring_payment_id = r AND recurring_due_date = ps + 24) IS DISTINCT FROM 4200
+       OR EXISTS (SELECT 1 FROM finance.recurring_payment_skips WHERE recurring_payment_id = r AND due_date = ps + 24)
+       OR (SELECT balance FROM finance.account_balances WHERE account_id = a) <> 4700 THEN
+        RAISE EXCEPTION 'FAIL [SX2 apply bucht den Ist-Betrag aufs Vorkommen, kein Skip]: %', v_app;
+    END IF;
+    RAISE NOTICE 'PASS [SX1-SX2 Gehalt plus Sonderzahlung ueber 150 %% in einer Ueberweisung]';
+
+    -- Plan-Anpassung: Vormonat schon 2472, jetzt wieder 2472 -> Zeile "bisher 2400 -> neu 2472"
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_spx_giro2__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 500, 'opening_balance_date', (ps - 40)::text))->>'account_id')::int;
+    r := finance.fn_add_recurring_payment(a, 2400, 'Lohn Beispielfirma', 1::smallint, 'month'::finance.schedule_unit, 25::smallint,
+             (ps - interval '2 months')::date, (ps - interval '2 months')::date, NULL, NULL, NULL);
+    INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+    VALUES (r, 'counterparty_iban', 'DE02120300000000202051', 'user');
+    v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r,
+                 'due_date', (ps - interval '1 month' + interval '24 days')::date, 'amount', 2472));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP Vormonat: %', v_res; END IF;
+    v_stmt := jsonb_build_object('account_name', '__t_spx_giro2__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+        'opening_balance', 2972, 'closing_balance', 5444, 'lines', jsonb_build_array(
+            jsonb_build_object('date', (ps + 24)::text, 'amount', 2472, 'counterparty', 'Arbeitgeber Muster',
+                               'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+    v_prep := finance.fn_statement_prepare(v_stmt);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'plan_adjustments') <> 1 THEN
+        RAISE EXCEPTION 'SETUP Plan-Anpassung erwartet: %', v_prep;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
+                   WHERE c->'value'->>'value' = 'finance.tpl.statement_plan_adjust_row'
+                     AND (c->'value'->'params'->'planned'->>'value')::numeric = 2400
+                     AND (c->'value'->'params'->'amount'->>'value')::numeric = 2472) THEN
+        RAISE EXCEPTION 'FAIL [SX3 Kartenzeile Plan wird angepasst nennt bisher und neu]: %', v_prep->'card_lines';
+    END IF;
+    RAISE NOTICE 'PASS [SX3 Kartenzeile Plan-Anpassung bisher -> neu]';
+
+    -- Zweimal derselbe Betrag ueber 150 % (Stufe C, Soll plus Zusatz): keine Plan-Anpassung
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_spx_giro3__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 500, 'opening_balance_date', (ps - 40)::text))->>'account_id')::int;
+    r := finance.fn_add_recurring_payment(a, 2400, 'Lohn Beispielfirma', 1::smallint, 'month'::finance.schedule_unit, 25::smallint,
+             (ps - interval '2 months')::date, (ps - interval '2 months')::date, NULL, NULL, NULL);
+    INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+    VALUES (r, 'counterparty_iban', 'DE02120300000000202051', 'user');
+    v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r,
+                 'due_date', (ps - interval '1 month' + interval '24 days')::date, 'amount', 3700));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP Vormonat 3700: %', v_res; END IF;
+    v_prep := finance.fn_statement_prepare(v_stmt || jsonb_build_object('account_name', '__t_spx_giro3__',
+                  'opening_balance', 4200, 'closing_balance', 7900, 'lines', jsonb_build_array(
+                      jsonb_build_object('date', (ps + 24)::text, 'amount', 3700, 'counterparty', 'Arbeitgeber Muster',
+                                         'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege'))));
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'matched') m
+                      WHERE (m->>'recurring_payment_id')::int = r AND m->>'stage' = 'C')
+       OR jsonb_array_length(v_prep->'plan_adjustments') <> 0 THEN
+        RAISE EXCEPTION 'FAIL [SX4 Stufe C loest keine Plan-Anpassung aus]: %', v_prep;
+    END IF;
+    RAISE NOTICE 'PASS [SX4 Stufe C ohne Plan-Anpassung]';
+END $$;
+ROLLBACK;

@@ -1012,7 +1012,7 @@
   "finance.label.statement_changed": "계획과 다른 금액",
   "finance.tpl.statement_changed_row": "{name}: {planned} 대신 {amount}",
   "finance.label.statement_plan_adjust": "계획이 변경됩니다",
-  "finance.tpl.statement_plan_adjust_row": "{name}: {date}부터 {amount}",
+  "finance.tpl.statement_plan_adjust_row": "{name}: {date}부터 {planned} → {amount}",
   "finance.label.statement_booked": "이미 기록됨",
   "finance.label.statement_missing": "명세서에 없음 (건너뜀)",
   "finance.tpl.statement_missing_row": "{name}: {amount}, {date} 예정",

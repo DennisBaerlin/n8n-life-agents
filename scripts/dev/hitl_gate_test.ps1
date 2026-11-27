@@ -1358,7 +1358,7 @@ try {
     $toolBase = Get-MaxExecId -WfId $corrWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
     Send-HarnessPost 'handoff-correction-test' @{ chat_id = [string]$PairedUidOwner; handoff_task_id = '990093'; kind = 'other'; payload = ''; text = '__E2E__ hitlT8 Neuer Eintrag'; why = ''; option = '' }
     $probs += Complete-CardTaps 'hitlT8' @($false)
-    $probs += Get-CancelledMessageProblem (Wait-NewExec $corrWfId $toolBase -Finished) 'tapped the cancel button' 'ask what to change|ask whether'
+    $probs += Get-CancelledMessageProblem (Wait-NewExec $corrWfId $toolBase -Finished) 'tapped the cancel button.*exactly one short sentence' 'ask what to change|ask whether'
     if ((Get-CheckDone) -ne 'done') { $probs += "Pruef-Ergebnis nach Abbrechen nicht festgehalten ($(Get-CheckDone))" }
     # Ablauf: kein Merker (anderer Text, sonst sperrt die Wiederhol-Sperre die gerade abgelehnte Karte)
     Clear-MockTelegramRequests -Container $Container
@@ -1372,8 +1372,17 @@ try {
         $probs += Get-CancelledMessageProblem (Wait-NewExec $corrWfId $toolBase -Finished) 'ran out of time' 'tapped the cancel button'
         if ((Get-CheckDone) -eq 'done') { $probs += 'Pruef-Ergebnis nach Ablauf festgehalten (Ablauf ist keine Entscheidung)' }
     }
+    # Bestaetigt: die Korrektur steht, das Ergebnis ans Modell verlangt genau einen Satz fuer die ganze Antwort (auch Text vor der Karte zaehlt)
+    Clear-MockTelegramRequests -Container $Container
+    $probs += @(Initialize-ProbeCheck)
+    $toolBase = Get-MaxExecId -WfId $corrWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'handoff-correction-test' @{ chat_id = [string]$PairedUidOwner; handoff_task_id = '990093'; kind = 'other'; payload = ''; text = '__E2E__ hitlT8 Dritter Eintrag'; why = ''; option = '' }
+    $probs += Complete-CardTaps 'hitlT8' @($true)
+    $ok = $null; try { $ok = (Wait-NewExec $corrWfId $toolBase -Finished).data.resultData.runData.'Return'[0].data.main[0][0].json } catch { }
+    if (-not $ok -or $ok.ok -ne $true) { $probs += "Korrektur nicht bestaetigt zurueck: $($ok | ConvertTo-Json -Compress)" }
+    elseif ([string]$ok.note -notmatch 'exactly one short sentence') { $probs += "Ergebnis ohne Ein-Satz-Vorgabe: $([string]$ok.note)" }
     Remove-ProbeCheck
-    Write-RepeatCase 'hitlT8' 'Korrektur-Karte: Abbrechen haelt das Pruef-Ergebnis fest, Ablauf nicht' $probs
+    Write-RepeatCase 'hitlT8' 'Korrektur-Karte: Abbrechen haelt das Pruef-Ergebnis fest, Ablauf nicht; bestaetigt genau ein Satz' $probs
 } catch {
     Register-Abort $_ 'hitlT8' -Extra { Remove-ProbeCheck }
 }

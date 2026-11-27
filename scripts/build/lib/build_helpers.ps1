@@ -253,7 +253,7 @@ function Build-ToolCancelled {
     $unknown   = "The confirmation card for $Action was not confirmed. $stop Tell the user it was not confirmed and ask whether to try again or what to change."
     $cardFailed = "The confirmation card for $Action could not be delivered because of a technical problem. $stop Tell the user the confirmation could not be shown, nothing was changed, and to try again in a moment."
     $hoStop  = if ($HandoffMore) { 'Nothing was saved for this entry. Do NOT call this tool again for this entry.' } else { $stop }
-    $hoReply = if ($HandoffMore) { 'Other entries of the same check may still get their own card; after the last card your whole reply is at most one short sentence in the user language' } else { 'Your whole reply is exactly one short sentence in the user language' }
+    $hoReply = if ($HandoffMore) { 'Other entries of the same check may still get their own card; your whole written reply, counting any text before the cards, is exactly one short sentence in the user language' } else { 'Your whole reply is exactly one short sentence in the user language' }
     $hoOnly  = if ($HandoffMore) { 'No question, no other way to enter it.' } else { 'No question, no other way to enter it, nothing else.' }
     $hoDeclined = "The user tapped the cancel button on the confirmation card for $Action. $hoStop This was their decision, not an error. $hoReply that the entry stays as it was. $hoOnly"
     $hoExpired  = "The confirmation card for $Action expired: nobody tapped a button within the time limit, so nobody declined it. $hoStop $hoReply that the card ran out of time and the entry stays as it was. $hoOnly"

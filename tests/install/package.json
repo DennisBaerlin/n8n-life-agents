@@ -3,6 +3,6 @@
   "private": true,
   "description": "Playwright fuer tests/install/wizard_klick.cjs (CI linux-setup-debian.yml), nicht Teil des Releases",
   "devDependencies": {
-    "playwright": "1.49.1"
+    "playwright": "1.55.1"
   }
 }

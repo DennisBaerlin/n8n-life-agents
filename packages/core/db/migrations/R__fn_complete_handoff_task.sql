@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_complete_handoff_task(p) — schliesst eine vereinbarte Plan-Aufgabe nach dem erfolgreichen Write ab
---   p: { handoff_task_id, chat_id, entered_refs? [{type, id}] }. Prueft wie core.fn_handoff_task_check (working, Person des
---   Absenders) und setzt working -> done, closed_at = now(), close_reason entered, entered_refs = die angelegten oder
+--   p: { handoff_task_id, chat_id, entered_refs? [{type, id}] }. Prueft wie core.fn_handoff_task_check (working oder in dieser
+--   Runde wieder freigegeben, Person des Absenders) und setzt working|open -> done, closed_at = now(), close_reason entered, entered_refs = die angelegten oder
 --   geaenderten Sachen (Provenienz fuer das Ersatzweg-Register); ein weiterer Teil derselben Runde haengt seine an. Laeuft in derselben Transaktion wie der Write der Ziel-fn (finance.fn_with_handoff):
 --   die Buchung und das "erledigt" fallen zusammen oder gar nicht. Erfolg {ok:true, task_id, status:'done', part}; ein
 --   weiterer Teil derselben Runde (Pruef-fn part:true) aendert nichts. Sonst die Ablehnung der Pruef-fn.
@@ -30,7 +30,7 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'task_id', (v_chk->>'task_id')::int, 'status', 'done', 'part', true);
     END IF;
     UPDATE agent.handoff_tasks SET status = 'done', closed_at = now(), close_reason = 'entered', entered_refs = v_refs
-     WHERE id = (v_chk->>'task_id')::int AND status = 'working';
+     WHERE id = (v_chk->>'task_id')::int AND status IN ('working', 'open');
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
             'reason', 'Handoff task ' || (v_chk->>'task_id') || ' changed in the meantime.');

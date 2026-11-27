@@ -85,7 +85,7 @@ function Build-SetSavingsPlan {
 
     $ifApproved = Build-If 'Approved?' @(1540, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the set_savings_plan action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(1760, 240) -Action 'the set_savings_plan action'
 
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
@@ -115,7 +115,7 @@ function Build-SetSavingsPlan {
         'Ende an der Raten-Kette, Erinnerung kommt vom Bank-Ende-Cron' `
         'valid_to = letzter gültiger Tag (inklusiv). Die fn setzt das Ende am Kopf der Kette (Status unverändert; erinnert wird nur ein aktiver Plan) und lehnt ab: zusammen mit Betrag/Rhythmus/Tagen/Status (end_separately; der Agent bietet dann zwei Karten nacheinander an), Ende <= heute (end_not_future), Plan schon beendet (plan_ended, erst reaktivieren), keine offene Ausführung des Kopfs vor dem Ende, auch Ende vor einer geplanten Änderung (no_execution_before_end, frühestes Ende im reason). Monat ohne Jahr (1-12) oder YYYY-MM rechnet die fn auf das Monatsende. Kartenzeile Letzte Ausführung = last_execution aus dem Probelauf (fn_recurring_last_due, nie vom Modell); dazu die Spar-Deckung nur als Bericht. Viele Broker kennen kein Enddatum: Bank-Hinweis bank_stop_until sagt das, agent.finance.cron_remind_bank_end erinnert 3 Tage nach der letzten Ausführung (Zusatzzeile nur, wenn diese Erinnerung an ist und die letzte Ausführung noch kommt).' 300 300
 
-    $nodes = @($trig, $readCur, $found.If, $found.Err, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
+    $nodes = @($trig, $readCur, $found.If, $found.Err, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2],
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn, $stickyEnd)
 
     $conns = [ordered]@{
@@ -137,9 +137,10 @@ function Build-SetSavingsPlan {
         ) }
         'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'              = @{ main = @(
             @( E 'Set plan (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Set plan (atomic)'      = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(

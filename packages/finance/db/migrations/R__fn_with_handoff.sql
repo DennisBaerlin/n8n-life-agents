@@ -5,7 +5,8 @@
 --   (advisors.finance.handoff_tools); contract_lint prueft Werkzeug-Eingang und diesen Aufruf.
 --   Eingabe: p_fn regprocedure (die aufrufende fn), p jsonb (deren Payload inkl. handoff_task_id, chat_id).
 --   Ablauf in derselben Transaktion: (1) core.fn_handoff_task_check (Aufgabe working, oder in dieser Runde schon erledigt =
---   weiterer Teil derselben Vormerkung, nur fuer eine fn_create_*; Person des Absenders aus p.chat_id), sonst {ok:false,
+--   weiterer Teil derselben Vormerkung: eine fn_create_* oder die Aenderung einer Sache, die die Aufgabe noch nicht
+--   eingetragen hat; Person des Absenders aus p.chat_id), sonst {ok:false,
 --   code:'handoff_task_invalid', reason} ohne Write; (2) Stand der geaenderten Sache vor dem Write (nur fn_set_*,
 --   finance.fn_handoff_ref_state); (3) die Ziel-fn mit p ohne handoff_task_id, waehrend der transaktionslokale Wert
 --   finance.handoff_task_id gesetzt ist (finance.fn_bank_note_recorded haengt damit den Bank-Punkt an die Vormerkung und
@@ -49,11 +50,6 @@ BEGIN
     IF (v_chk->>'ok')::boolean IS NOT TRUE THEN
         RETURN v_chk;
     END IF;
-    -- Ein weiterer Teil legt etwas Neues an; eine zweite Aenderung derselben Sache waere eine Wiederholung.
-    IF (v_chk->>'part')::boolean AND v_name NOT LIKE 'fn\_create\_%' THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
-            'reason', 'Handoff task ' || (v_chk->>'task_id') || ' is already done; this change was booked for it. Do not book it again.');
-    END IF;
     v_tool := regexp_replace(v_name, '^fn_', '');
     v_type := finance.fn_handoff_tool_spec()->v_tool->>'type';
     -- geaenderte Sache vor dem Write: Eingabe-Kennung der set-fn (der Sparplan kommt als Name)
@@ -63,6 +59,21 @@ BEGIN
         WHEN 'pension'           THEN NULLIF(p->>'pension_id', '')::int
         WHEN 'savings_plan'      THEN (SELECT r.id FROM finance.fn_resolve_savings_plan(p->>'savings_plan_name', TRUE) r)
     END;
+    -- Ein weiterer Teil betrifft eine andere Sache: etwas Neues (create) oder die Aenderung einer Sache, die diese Aufgabe
+    -- noch nicht eingetragen hat (zwei vereinbarte Aenderungen); dieselbe Sache noch einmal waere eine Wiederholung.
+    -- Eine Raten-Kette ist eine Sache, gleich welches Glied genannt wird.
+    IF (v_chk->>'part')::boolean AND v_name NOT LIKE 'fn\_create\_%'
+       AND (v_id IS NULL OR EXISTS (
+                SELECT 1
+                  FROM jsonb_array_elements(COALESCE(NULLIF(core.fn_handoff_tasks_read(ARRAY[(v_chk->>'task_id')::int])->0->'entered_refs',
+                                                            'null'::jsonb), '[]'::jsonb)) e
+                 WHERE e->>'type' = v_type
+                   AND CASE WHEN v_type = 'recurring_payment'
+                            THEN finance.fn_handoff_rp_latest((e->>'id')::int) = finance.fn_handoff_rp_latest(v_id)
+                            ELSE (e->>'id')::int = v_id END)) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
+            'reason', 'Handoff task ' || (v_chk->>'task_id') || ' is already done; this change was booked for it. Do not book it again.');
+    END IF;
     IF v_name LIKE 'fn\_set\_%' AND v_id IS NOT NULL THEN
         v_before := finance.fn_handoff_ref_state(v_type, v_id);
     END IF;

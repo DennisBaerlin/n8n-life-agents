@@ -225,7 +225,7 @@ function New-RequiredRowGate {
 }
 
 # Ergebnis eines Write-Tools ohne Bestaetigung am HITL-Gate: {ok:false, cancelled:true, message}. Der Text nennt den Fall aus der
-# Gate-Ausgabe ($json, Approved? reicht sie durch): outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. Ein gleicher
+# Gate-Ausgabe (-Source, Default $json: Approved? reicht sie durch; steht ein Knoten dazwischen, den Gate-Knoten nennen): outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. Ein gleicher
 # Text fuer Abbrechen und Ablauf liesse das Modell raten (es vermutete einen Technikfehler). Unbekannter Ausgang ->
 # neutraler Satz, nie eine erfundene Ursache. Die Meldung liest nur das aufrufende LLM (Tool-Ergebnis = Modell-Schicht -> englisch laut
 # Sprachpolitik; die Antwort an den Nutzer formuliert der Agent in dessen Sprache). $Action = englische Nominalphrase ("the account creation").
@@ -234,7 +234,7 @@ function New-RequiredRowGate {
 # reicht nicht: das Gate sperrt die gleiche Karte selbst ({approved:false, repeat_blocked:true}), und der
 # Text sagt dem Modell dann, dass es jetzt antworten soll.
 function Build-ToolCancelled {
-    param([string]$Name, [int[]]$Pos, [Parameter(Mandatory)][string]$Action)
+    param([string]$Name, [int[]]$Pos, [Parameter(Mandatory)][string]$Action, [string]$Source = '$json')
     if ($Action -match "['""]" -or $Action -match '[^\x20-\x7E]') { throw "Build-ToolCancelled '$Name': -Action nur ASCII ohne Anfuehrungszeichen (englische Modell-Meldung)" }
     $stop = 'Nothing was saved. Do NOT call this tool again in this turn.'
     $repeat    = "The same confirmation card for $Action was already not confirmed in this turn, no new card was sent. $stop Answer the user now, based on the earlier result."
@@ -252,7 +252,7 @@ function Build-ToolCancelled {
     Build-Set $Name $Pos @(
         ,@('ok','false','boolean')
         ,@('cancelled','true','boolean')
-        ,@('message', "={{ (`$json.error ? '$cardFailed' : `$json.repeat_blocked === true ? '$repeat' :`$json.reason === 'owner_only' ? '$ownerOnly' : ({ declined: '$declined', expired: '$expired', owner_declined: '$ownerDeclined', owner_expired: '$ownerExpired' })[`$json.outcome] || '$unknown') + ((!`$json.error && `$json.note) ? '$noteLead' + JSON.stringify(String(`$json.note)) + '$noteTail' : '') }}", 'string')
+        ,@('message', "={{ ($Source.error ? '$cardFailed' : $Source.repeat_blocked === true ? '$repeat' :$Source.reason === 'owner_only' ? '$ownerOnly' : ({ declined: '$declined', expired: '$expired', owner_declined: '$ownerDeclined', owner_expired: '$ownerExpired' })[$Source.outcome] || '$unknown') + ((!$Source.error && $Source.note) ? '$noteLead' + JSON.stringify(String($Source.note)) + '$noteTail' : '') }}", 'string')
     )
 }
 

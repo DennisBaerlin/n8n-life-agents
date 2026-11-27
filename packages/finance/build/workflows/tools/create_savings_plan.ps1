@@ -79,7 +79,7 @@ function Build-CreateSavingsPlan {
 
     $ifApproved = Build-If 'Approved?' @(1320, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1540, 240) 'the create_savings_plan action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(1540, 240) -Action 'the create_savings_plan action'
 
     # Write (fn_create_savings_plan):
     # 1. Depot per Name aufloesen + Typ/Settlement pruefen (Depot-Typ vs. ISIN-Presence)
@@ -113,7 +113,7 @@ function Build-CreateSavingsPlan {
         'core.fn_dry_run (DB ist das Gesetz)' `
         'Dry run = fn_create_savings_plan mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (Depot nicht gefunden/ohne Verrechnungskonto, Typ-Mismatch (ISIN), Duplikat-Name, amount kleiner/gleich 0, Rhythmus passt nicht zum Depot-Kalender (code off_calendar / rhythm_not_offered) oder Kalender unbekannt (code needs_calendar)) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 540
 
-    $nodes = @($trig, $resPerson, $ifPersonBad, $errPerson, $readSettle) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
+    $nodes = @($trig, $resPerson, $ifPersonBad, $errPerson, $readSettle) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2],
                $ifWriteOk, $errWrite, $ret, $stickyFn, $stickyOk,
                $stickyDry)
 
@@ -132,9 +132,10 @@ function Build-CreateSavingsPlan {
         ) }
         'Build Approval Summary'         = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'               = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                      = @{ main = @(
             @( E 'Create savings plan (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Create savings plan (atomic)'   = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                      = @{ main = @(

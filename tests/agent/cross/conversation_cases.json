@@ -240,11 +240,11 @@
   },
   {
     "id": "s11",
-    "name": "S11 Karte abgebrochen: der Eintrag ist nicht verloren, nichts wird geaendert, keine Bank-Liste",
+    "name": "S11 Karte abgebrochen: der Eintrag ist sofort wieder offen und erneut eintragbar, nichts wird geaendert, keine Bank-Liste",
     "sender": "owner",
     "start": "onboarding_done",
     "hitl": "decline",
-    "notes": "Der Buchhalter (Mock) aendert den Dauerauftrag der Vormerkung (tool_set_recurring_payment), die Karte wird abgebrochen. Die Vormerkung darf danach weder erledigt noch gestrichen sein; der Dauerauftrag bleibt.",
+    "notes": "Der Buchhalter (Mock) aendert den Dauerauftrag der Vormerkung (tool_set_recurring_payment), die Karte wird abgebrochen. Die Vormerkung ist danach sofort wieder offen (nicht bis zum Ablauf der Claim-Frist gesperrt): Runde 2 tippt denselben Knopf noch einmal und bekommt die Karte erneut. Der Dauerauftrag bleibt. DB-Gesetze: test_fn_reopen_handoff_task (core und finance).",
     "setup_sql": "UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE domain = 'finance'; DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE 'finance:%'; INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__E2E__ FF Giro', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'), ('__E2E__ FF Tagesgeld', 'cash', 'EUR', 'active', '__E2E__ Testbank', 'owner'); SELECT pg_temp.ok('uebertrag', finance.fn_create_recurring_transfer(jsonb_build_object('name', '__E2E__ FF Uebertrag', 'from_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FF Giro'), 'to_account_id', (SELECT id FROM finance.accounts WHERE name = '__E2E__ FF Tagesgeld'), 'amount', 200, 'schedule_unit', 'month', 'schedule_day_of_month', 20, 'first_payment_date', (current_date + 40)::text))); INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, plan_md) VALUES ('finance', '__E2E__ FF Plan', 'active', 1, now(), 'x'); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text) VALUES (990055, 'finance', 'finance', 'owner', 'wealth_building', 'recurring_transfer', '__E2E__ FF Uebertrag kuenftig am 1.');",
     "precondition_sql": "(SELECT count(*) FROM agent.handoff_tasks WHERE id = 990055 AND status = 'open') = 1",
     "teardown_sql": "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key IN ('plan_rollout', 'remind_bank_todo'); DELETE FROM agent.handoff_tasks WHERE id = 990055; DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ FF Plan'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source = 'finance:bank_todo' AND key ~ ':r[0-9]+:');",
@@ -253,7 +253,15 @@
         "tap": "handoff:finance:990055", "timeout_s": 240, "expect_cards": 1,
         "forbid_texts": ["Tippe, wenn alles bei dieser Bank", "Dein Plan ist eingerichtet"],
         "expect_sql": [
-          { "sql": "SELECT (status NOT IN ('done', 'cancelled'))::text FROM agent.handoff_tasks WHERE id = 990055;", "equals": "true" },
+          { "sql": "SELECT status FROM agent.handoff_tasks WHERE id = 990055;", "equals": "open" },
+          { "sql": "SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ FF Uebertrag' AND schedule_day_of_month = 20 AND valid_to IS NULL;", "equals": "1" }
+        ]
+      },
+      {
+        "tap": "handoff:finance:990055", "timeout_s": 240, "expect_cards": 1,
+        "forbid_texts": ["Schon erledigt oder läuft gerade", "Dein Plan ist eingerichtet"],
+        "expect_sql": [
+          { "sql": "SELECT status FROM agent.handoff_tasks WHERE id = 990055;", "equals": "open" },
           { "sql": "SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ FF Uebertrag' AND schedule_day_of_month = 20 AND valid_to IS NULL;", "equals": "1" }
         ]
       }

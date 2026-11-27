@@ -216,6 +216,9 @@ BEGIN
     IF to_regprocedure('core.fn_defer_handoff_task(jsonb)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_defer_handoff_task(jsonb) TO %I', v_rw);
     END IF;
+    IF to_regprocedure('core.fn_reopen_handoff_task(jsonb)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_reopen_handoff_task(jsonb) TO %I', v_rw);
+    END IF;
     IF to_regprocedure('core.fn_handoff_position(integer)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_position(integer) TO %I', v_rw);
     END IF;

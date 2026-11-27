@@ -338,6 +338,7 @@ BEGIN
   ('finance_rw', 'finance.fn_recurring_current'),
   ('finance_rw', 'finance.fn_recurring_due_open'),
   ('finance_rw', 'finance.fn_recurring_lineage'),
+  ('finance_rw', 'finance.fn_reopen_handoff_task'),
   ('finance_rw', 'finance.fn_replace_holding_lots'),
   ('finance_rw', 'finance.fn_replace_takeover_with_lots'),
   ('finance_rw', 'finance.fn_resolve_account'),

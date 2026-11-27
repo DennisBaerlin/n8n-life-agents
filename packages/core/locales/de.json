@@ -1462,6 +1462,7 @@
   "core.prompt.topic_keep_many": "Das halten wir fest:",
   "core.prompt.topic_why": "Warum?",
   "core.prompt.topic_enter_later": "Tragen wir am Ende ein: {text}",
+  "core.prompt.topic_enter_deferred": "Vorgemerkt, das kann ich noch nicht eintragen: {text}",
   "core.prompt.topic_open_point": "Noch offen: {text}",
   "core.prompt.topic_hint": "Etwas anders? Schreib es mir einfach.",
   "core.prompt.accepted": "✓ Übernommen",

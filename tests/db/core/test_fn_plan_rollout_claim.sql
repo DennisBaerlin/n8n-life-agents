@@ -62,5 +62,29 @@ BEGIN
   UPDATE agent.advisor_plans SET status = 'superseded' WHERE domain = '__rollc__';
   v := core.fn_plan_rollout_lagging();
   IF (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging ohne Plan %', v; END IF;
+
+  -- Abfolge fertig (durchgesehen, Schluss festgeschrieben, nichts offen): kein Nachzuegler. Ein zurueckgestellter Eintrag
+  -- oder erledigter Altbestand ohne Provenienz macht den Haushalt wieder zum Kandidaten (Korrektur- und Pruef-Schritt
+  -- haengen nur am taeglichen Lauf); gestrichen mit Grund nicht.
+  UPDATE agent.advisor_plans SET status = 'active', synced_at = now() WHERE domain = '__rollc__';
+  INSERT INTO core.notification_state (source, key, state, last_fired_at, expires_at)
+  VALUES ('plan_rollout', '__rollc__:household:1:5', 'fired', now(), NULL)
+  ON CONFLICT (source, key) DO UPDATE SET state = 'fired', expires_at = NULL;
+  DELETE FROM agent.handoff_tasks WHERE domain = '__rollc__';
+  v := core.fn_plan_rollout_lagging();
+  IF (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging fertige Abfolge %', v; END IF;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at, close_reason)
+  VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'gestrichen', 'cancelled', now(), 'dropped');
+  v := core.fn_plan_rollout_lagging();
+  IF (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging nur gestrichen %', v; END IF;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
+  VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'zurueckgestellt', 'deferred', 'end_date_future');
+  v := core.fn_plan_rollout_lagging();
+  IF NOT (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging nur zurueckgestellt %', v; END IF;
+  DELETE FROM agent.handoff_tasks WHERE domain = '__rollc__' AND status = 'deferred';
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, closed_at)
+  VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'erledigter Altbestand', 'done', now(), now());
+  v := core.fn_plan_rollout_lagging();
+  IF NOT (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging Altbestand %', v; END IF;
 END $$;
 ROLLBACK;

@@ -10,8 +10,9 @@
 --   Verglichen werden nur Felder, die der Aufruf nennt und finance.fn_handoff_tool_spec unter state fuehrt; Betraege und
 --   Tage als Zahl, Daten ueber core.fn_resolve_date (nicht aufloesbar -> kein Vergleich), Namen und Status ohne Gross-/
 --   Kleinschreibung. Ohne wanted (Altbestand) -> [].
---   Rueckgabe: [{field, wanted, current, ref:{type, id}}], [] = wie vereinbart. Sache fehlt oder ist geloescht ->
---   {field:'exists', wanted:true, current:false}. Tests: tests/db/finance/test_fn_handoff_diff.sql
+--   Rueckgabe: [{field, wanted, current, ref:{type, id}}], [] = wie vereinbart. Ein vereinbarter Aufruf, zu dem noch keine
+--   Sache eingetragen ist -> {field:'exists', wanted:true, current:false, call:{tool, input}} (der Aufruf ist nachholbar);
+--   eingetragen und wieder geloescht -> {field:'exists', wanted:true, current:false, ref} ohne call. Tests: tests/db/finance/test_fn_handoff_diff.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_handoff_diff_of(p_wanted jsonb, p_entered_refs jsonb)
 RETURNS jsonb
@@ -53,7 +54,9 @@ BEGIN
         v_state := CASE WHEN v_ref IS NULL THEN NULL
                         ELSE finance.fn_handoff_ref_state(v_type, (v_ref->>'id')::int) END;
         IF v_state IS NULL THEN
-            v_out := v_out || jsonb_build_array(jsonb_build_object('field', 'exists', 'wanted', true, 'current', false));
+            -- nie eingetragen -> der vereinbarte Aufruf selbst (nachholbar); eingetragen und wieder geloescht -> die Sache
+            v_out := v_out || jsonb_build_array(jsonb_build_object('field', 'exists', 'wanted', true, 'current', false)
+                         || CASE WHEN v_ref IS NULL THEN jsonb_build_object('call', v_call) ELSE jsonb_build_object('ref', v_ref) END);
             CONTINUE;
         END IF;
         FOR v_in, v_fld IN SELECT key, value #>> '{}' FROM jsonb_each(v_s->'state') LOOP

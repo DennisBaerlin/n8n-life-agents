@@ -82,7 +82,7 @@ BEGIN
   -- 7) Ueberspringen-Tool-fn
   r := core.fn_dry_run('finance.fn_cancel_handoff_task(jsonb)'::regprocedure,
          jsonb_build_object('handoff_task_id', v_w2, 'chat_id', '111', 'reason', 'skipped'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Haftpflicht prüfen'
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_note') <> 'Haftpflicht prüfen'
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_w2) <> 'working' THEN RAISE EXCEPTION 'FAIL [7 Probelauf]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_w2, 'chat_id', '111', 'reason', 'skipped'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->>'status' <> 'open' THEN RAISE EXCEPTION 'FAIL [7 skipped bleibt offen]: %', r; END IF;
@@ -308,7 +308,7 @@ BEGIN
      OR (SELECT x->>'value' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'label' = 'finance.label.handoff_stays_open')
           <> 'Betrag, sobald der Anbieter sich meldet'
      OR r->>'card_title_key' <> 'finance.hitl.cancel_handoff_task_done_elsewhere'
-     OR r->'card_lines'->0->'params'->>'text' <> 'Betriebsrente eintragen' THEN RAISE EXCEPTION 'FAIL [14 Karte]: %', r; END IF;
+     OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_note') <> 'Betriebsrente eintragen' THEN RAISE EXCEPTION 'FAIL [14 Karte]: %', r; END IF;
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere',
          'ref_type', 'pension', 'ref_name', '__t_h14_brente'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status || '/' || close_reason FROM agent.handoff_tasks WHERE id = v_t) <> 'done/done_elsewhere'
@@ -322,7 +322,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [14 ohne Rest]: %', r; END IF;
   -- streichen: vereinbarter Satz auf der Karte
   r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t3, 'chat_id', '111', 'reason', 'dropped'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Sparbuch auflösen'
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_note') <> 'Sparbuch auflösen'
      OR r->>'card_title_key' <> 'finance.hitl.cancel_handoff_task_dropped'
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t3) <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [14 dropped]: %', r; END IF;
   RAISE NOTICE 'PASS [14 abhaken]';
@@ -345,7 +345,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [15 unbekannt]: %', r; END IF;
   r := core.fn_dry_run('finance.fn_defer_handoff_task(jsonb)'::regprocedure,
          jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'blocked_code', 'goal_irregular_payments'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->'params'->>'text' <> 'Ziel aus zwei Sonderzahlungen'
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT x->'params'->>'text' FROM jsonb_array_elements(r->'card_lines') x WHERE x->>'value' = 'core.hitl.handoff_note') <> 'Ziel aus zwei Sonderzahlungen'
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN RAISE EXCEPTION 'FAIL [15 Probelauf]: %', r; END IF;
   r := finance.fn_defer_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'blocked_code', 'goal_irregular_payments'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status || '/' || blocked_code FROM agent.handoff_tasks WHERE id = v_t)

@@ -53,7 +53,7 @@ function Build-CreateRecurringPayment {
 
     $ifApproved = Build-If 'Approved?' @(1760, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 240) 'the create_recurring_payment action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(1980, 240) -Action 'the create_recurring_payment action'
 
     # Write: Vorzeichen aus direction; INSERT via Helper.
 
@@ -84,7 +84,7 @@ function Build-CreateRecurringPayment {
         'Dry run = fn_create_recurring_payment mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (ungültige direction, amount kleiner/gleich 0) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
     $nodes = @($trig, $resAcct, $ifAcct, $errAcct) + $wg.Nodes + @($summary, $reqApproval,
-               $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyGen, $stickyOk,
+               $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyGen, $stickyOk,
                $stickyDry)
 
     $conns = [ordered]@{
@@ -101,9 +101,10 @@ function Build-CreateRecurringPayment {
         ) }
         'Build Approval Summary'             = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'                   = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                          = @{ main = @(
             @( E 'Create recurring payment (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Create recurring payment (atomic)'  = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                          = @{ main = @(

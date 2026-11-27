@@ -87,7 +87,7 @@ function Build-SetRecurringPayment {
 
     $ifApproved = Build-If 'Approved?' @(1980, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_recurring_payment action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(2200, 240) -Action 'the set_recurring_payment action'
 
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
@@ -112,7 +112,7 @@ function Build-SetRecurringPayment {
         'Betrags-Änderung = Validity-Split über fn_split_recurring_payment (alte Zeile valid_to=Stichtag, neue ab Stichtag; Vorzeichen, Ziel-Konto, Status, Ende, Rhythmus-Anker geerbt; Stichtag nach der letzten gebuchten Rate). Sonst In-Place (status/valid_to/name/tag/notes). Neuer Abbuchungstag: jeder Monat behält genau eine Rate (fn_recurring_day_shift; noch nichts erledigt/fällig -> Start zieht in place mit, sonst Split ab heute bzw. nach der letzten erledigten Rate); first_due (erste Rate mit den neuen Bedingungen) aus dem Probelauf auf der Karte (Gilt ab / Datum der Betragszeile) und in der Rückgabe. executed_by (nur Überträge; bank oder manual, vom Nutzer genannt) schreibt die fn auf alle noch laufenden Glieder der Kette, mit amount auch auf die neue Split-Zeile. until_free_money (nur freistehende Überträge, nicht mit amount/valid_to): fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); Ablehnung (funding_unknown, no_free_money, free_money_beyond_horizon) rollt per Savepoint zurück; die Karte zeigt die letzte Überweisung und das danach freie Geld aus dem Probelauf. valid_to-Eingabe = letzter gültiger Tag (inklusiv, so zeigt es die Karte); die fn speichert +1 Tag (halboffen). NUR standalone: entitäts-besessene Zeile (insurance/loan/savings_goal/pension) -> {ok:false} (über das set_<entity>-Tool ändern). monthly_equivalent ist GENERATED. Phase L WS-3 / Audit Paket 3: nach dem Write liest die fn monthly_free (frei nach Konsum + Kreditraten, Sparraten zählen nicht); frei<0 -> Note in cashflow_coverage (M3: zukünftig-datierter Split -> KEIN Sofort-Hinweis, der Cron fängt es; bei Stichtag heute schon). Bookkeeper relayed.' 240 470
 
     $nodes = @($trig, $resRp, $ifRp, $errRp, $readCur) + $wg.Nodes + @($summary, $reqApproval,
-               $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
+               $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Resolve Payment' ) ) }
@@ -129,9 +129,10 @@ function Build-SetRecurringPayment {
         ) }
         'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'              = @{ main = @(
             @( E 'Set payment (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Set payment (atomic)'   = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(

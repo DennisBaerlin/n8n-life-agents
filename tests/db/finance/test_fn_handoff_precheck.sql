@@ -187,6 +187,55 @@ BEGIN
     RAISE EXCEPTION 'FAIL [12 anlegen statt aendern]: %', r; END IF;
   RAISE NOTICE 'PASS [10-12 Datum, Rhythmus, genauer Name]';
 
+  -- 13) bestehendes, genau benanntes Ziel bekommt einen anderen Topf: Aenderung, kein zweites Ziel gleichen Namens
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','savings_goal','payload', jsonb_build_object(
+         'goal_name','urlaub italien','reserve_account_name','__t_hp_tagesgeld')));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'call'->>'tool' IS DISTINCT FROM 'set_savings_goal'
+     OR r->'call'->'input'->>'goal_name' <> 'Urlaub Italien' OR r->'call'->'input'->>'reserve_account_name' <> '__t_hp_tagesgeld' THEN
+    RAISE EXCEPTION 'FAIL [13 Topf-Wechsel ist eine Aenderung]: %', r; END IF;
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','savings_goal','payload', jsonb_build_object(
+         'goal_name','Urlaub Italien','target_amount',3500,'reserve_account_name','__t_hp_tagesgeld')));
+  IF r->'call'->>'tool' IS DISTINCT FROM 'set_savings_goal' THEN RAISE EXCEPTION 'FAIL [13 Betrag und Topf]: %', r; END IF;
+  -- ausdruecklich genanntes Werkzeug gilt weiter
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','savings_goal','payload', jsonb_build_object(
+         'tool','create_savings_goal','goal_name','Urlaub Italien','target_amount',3500,'reserve_account_name','__t_hp_tagesgeld')));
+  IF r->'call'->>'tool' IS DISTINCT FROM 'create_savings_goal' THEN RAISE EXCEPTION 'FAIL [13 genanntes Werkzeug]: %', r; END IF;
+  RAISE NOTICE 'PASS [13 Aenderung mit Topf]';
+
+  -- 14) "bis Betrag" und die Sache fehlt noch: Wahl und Aufteilung werden trotzdem beim Vereinbaren geklaert; das Soll
+  --     traegt fertige Aufrufe mit Ende (nie until_amount), und der recheck liefert sie, sobald die Sache existiert
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','recurring_transfer','payload', jsonb_build_object(
+         'name','Topf','from_account_name','__t_hp_giro','to_account_name','__t_hp_neuer_topf','amount',500,'until_amount',2200,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date','2027-04-01')));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_choice_needed' THEN RAISE EXCEPTION 'FAIL [14 Wahl vor dem Zurueckstellen]: %', r; END IF;
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','recurring_transfer','option','rest_once','payload', jsonb_build_object(
+         'name','Topf','from_account_name','__t_hp_giro','to_account_name','__t_hp_neuer_topf','amount',500,'until_amount',2200,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date','2027-04-01')));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'unsupported')::boolean IS NOT TRUE OR r->>'blocked_code' <> 'target_missing'
+     OR jsonb_array_length(r->'calls') IS DISTINCT FROM 2 OR r ? 'call'
+     OR (r->'calls'->0->'input'->>'valid_to')::date <> DATE '2027-07-01' OR (r->'calls'->1->'input'->>'amount')::numeric <> 200
+     OR r->'calls'->0->'input' ? 'until_amount' OR r->'calls'->1->'input' ? 'until_amount' THEN
+    RAISE EXCEPTION 'FAIL [14 Soll mit Ende]: %', r; END IF;
+  c := r->'calls';
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','kind','recurring_transfer','status','deferred','task_id',1,'wanted', c));
+  IF r->>'blocked_code' IS DISTINCT FROM 'target_missing' THEN RAISE EXCEPTION 'FAIL [14 recheck noch nicht]: %', r; END IF;
+  -- glattes Vielfaches: ein Aufruf mit Ende, ebenfalls ohne until_amount
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','recurring_transfer','payload', jsonb_build_object(
+         'name','Topf','from_account_name','__t_hp_giro','to_account_name','__t_hp_neuer_topf','amount',500,'until_amount',2000,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date','2027-04-01')));
+  IF r->>'blocked_code' IS DISTINCT FROM 'target_missing' OR (r->'call'->'input'->>'valid_to')::date IS DISTINCT FROM DATE '2027-07-01'
+     OR r->'call'->'input' ? 'until_amount' THEN RAISE EXCEPTION 'FAIL [14 glatt mit Ende]: %', r; END IF;
+  INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__t_hp_neuer_topf', 'cash', 'EUR');
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','kind','recurring_transfer','status','deferred','task_id',1,'wanted', c));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r ? 'unsupported' OR jsonb_array_length(r->'calls') IS DISTINCT FROM 2
+     OR (r->'calls'->0->'input'->>'valid_to')::date <> DATE '2027-07-01' THEN RAISE EXCEPTION 'FAIL [14 recheck jetzt]: %', r; END IF;
+  -- nicht monatlich bleibt "bis Betrag geht noch nicht", auch wenn die Sache fehlt (der Grund, der nach dem Anlegen bliebe)
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','recurring_transfer','payload', jsonb_build_object(
+         'name','Topf','from_account_name','__t_hp_giro','to_account_name','__t_hp_gibtsnicht','amount',500,'until_amount',2200,
+         'schedule_unit','year','first_payment_date','2027-04-01')));
+  IF r->>'blocked_code' IS DISTINCT FROM 'pay_until_amount' THEN RAISE EXCEPTION 'FAIL [14 jaehrlich und Sache fehlt]: %', r; END IF;
+  RAISE NOTICE 'PASS [14 bis Betrag ohne Sache]';
+
   -- 9) jeder Grund-Schluessel stammt aus der festen Liste (Katalog finance.handoff.blocked.<code>)
   IF EXISTS (SELECT 1 FROM regexp_matches(pg_get_functiondef('finance.fn_handoff_precheck(jsonb)'::regprocedure)
                 || pg_get_functiondef('finance.fn_handoff_check_call(text,jsonb,text)'::regprocedure),

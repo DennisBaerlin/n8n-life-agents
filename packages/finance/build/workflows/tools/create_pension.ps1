@@ -83,7 +83,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     $ifApproved = Build-If 'Approved?' @(1980, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the create_pension action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(2200, 240) -Action 'the create_pension action'
 
     # Write: optional Beitrag-recurring (via Helper) + FK, dann pension.
 
@@ -112,7 +112,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
         'Dry run = fn_create_pension mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (current_value oder Beitrag negativ, Beitrag ohne Abbuchungskonto) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
     $nodes = @($trig, $checkDup, $ifExists, $errExists, $resDebit, $ifDebit, $errDebit,
-               $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyFn, $stickyOk,
+               $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyFn, $stickyOk,
                $stickyDry)
 
     $conns = [ordered]@{
@@ -139,9 +139,10 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
         ) }
         'Build Approval Summary'   = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'         = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                = @{ main = @(
             @( E 'Create pension (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Create pension (atomic)'  = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                = @{ main = @(

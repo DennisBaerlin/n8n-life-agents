@@ -1,7 +1,9 @@
 -- ============================================================
 -- core.fn_handoff_task_check(p) — darf dieser Write die vereinbarte Plan-Aufgabe abschliessen?
 --   p: { handoff_task_id, chat_id }. Gueltig nur, wenn die Aufgabe existiert, der Person des Absenders gehoert
---   (core.fn_handoff_person) und working ist (per [Jetzt eintragen] beansprucht). Erfolg {ok:true, task_id, kind, text, part:false}.
+--   (core.fn_handoff_person) und working ist (per [Jetzt eintragen] beansprucht) oder in dieser Runde wieder freigegeben wurde
+--   (open mit Claim juenger als advisor.handoff_claim_ttl_minutes: Karte nicht bestaetigt oder "spaeter"; so traegt ein "doch
+--   eintragen" im selben Gespraech ohne neuen Tipp auf die Liste ein). Erfolg {ok:true, task_id, kind, text, part:false}.
 --   Weiterer Teil: eine Vormerkung kann mehrere Eintraege brauchen (zwei jaehrliche Uebertraege fuer eine Vereinbarung);
 --   eine in dieser Runde erledigte Aufgabe (done, Abschluss nach dem Claim und juenger als advisor.handoff_claim_ttl_minutes)
 --   gilt deshalb weiter -> {ok:true, …, part:true}. Sonst {ok:false, code:'handoff_task_invalid', reason} (korrigierbar,
@@ -33,6 +35,14 @@ BEGIN
     END IF;
     IF v_t.status = 'done' AND v_t.closed_at >= v_t.claimed_at AND v_t.closed_at > now() - make_interval(mins => v_ttl) THEN
         RETURN jsonb_build_object('ok', true, 'task_id', v_t.id, 'kind', v_t.kind, 'text', v_t.text, 'part', true);
+    END IF;
+    IF v_t.status = 'open' AND v_t.claimed_at > now() - make_interval(mins => v_ttl) THEN
+        RETURN jsonb_build_object('ok', true, 'task_id', v_t.id, 'kind', v_t.kind, 'text', v_t.text, 'part', false);
+    END IF;
+    IF v_t.status = 'open' THEN
+        -- ohne handoff_task_id eingetragen bliebe die Aufgabe offen und kaeme spaeter ein zweites Mal
+        RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
+            'reason', 'Handoff task ' || v_id || ' is open but not started: the user starts it with the button on the list of agreed entries. Do not enter it without that.');
     END IF;
     IF v_t.status <> 'working' THEN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',

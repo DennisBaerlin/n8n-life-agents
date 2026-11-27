@@ -164,6 +164,20 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: config-fallback-lint
+        name: config_fallback_lint (a fallback value for a setting in SQL or a workflow equals the manifest default; reasoned shrink-only allowlist)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_fallback_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: config-fallback-lint-test
+        name: config_fallback_lint_test (a differing fallback, an unknown key, a read without fallback and a stale entry turn config_fallback_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/config_fallback_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(config_fallback_lint|dev/config_fallback_lint_test)\.ps1$
+
       - id: mock-lint
         name: mock_lint (mock scenarios <-> *_cases.json drift)
         language: system

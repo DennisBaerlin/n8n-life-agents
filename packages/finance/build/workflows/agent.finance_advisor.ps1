@@ -79,7 +79,7 @@ function Build-AgentFinanceAdvisor {
          "s.blk AS open, COALESCE((s.st->>'viewer_is_member')::boolean, false) AS viewer_is_member, finance.fn_plan_readiness('finance', NULL) AS readiness, " +
          "(SELECT CASE WHEN bool_or(rp.status = 'active') THEN 'published' WHEN bool_or(rp.status = 'draft') THEN 'draft' ELSE 'none' END " +
          "FROM core.fn_advisor_read_plan(CASE WHEN (`$1::jsonb)->>'chat_id' LIKE 'test_e2e%' THEN '__e2e_finance__' ELSE 'finance' END, (`$1::jsonb)->>'chat_id') rp) AS plan_state, " +
-         "COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
+         "COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'true') AS gate_on, " +
          "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($gateKeys), " +
          "'doc', (SELECT jsonb_agg((o->>'source') || '.onboarding.' || (o->>'key')) FROM jsonb_array_elements(s.blk) o)))->'t' AS t " +
          "FROM (SELECT x.st, COALESCE((SELECT jsonb_agg(o.e ORDER BY o.n) FROM jsonb_array_elements(x.st->'open') WITH ORDINALITY o(e, n) " +
@@ -384,7 +384,7 @@ function Build-AgentFinanceAdvisor {
 
     $stickyCore = Build-Sticky 'Doc: Core-first-Gate' @(-1120, 660) `
         'Core-first Hard-Gate (WS-3) — immer-an, vor dem Flag-Gate' `
-        'Core onboarding read liest core.fn_onboarding_status(core) unter finance_ro (DEFINER-Fenster) plus den Hinweistext in der Sprache des Absenders; Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false, output} (relaybar, kein LLM-Cost; ein Mitglied bekommt den Warte-Hinweis), sonst weiter zu Load Config. ZWEI Onboarding-Gates: (1) dieses Core-first-Gate = IMMER-AN Boden (nur Core-Haushalt, vor Load Config) -> kein Paket vor Core-Onboarding; (2) das bestehende Onboarding gate NACH Load Config = strengere Opt-in-Stufe (feature.onboarding_gate, core+finance; finance-Sektionen mit gates_advisor:false in onboarding/sections.json, z. B. der Monats-Check, sperren nicht). Reihenfolge: Core-first blockt zuerst wenn der Haushalt fehlt; danach ggf. das Flag-Gate. onError=continue + === false => Lesefehler fällt fail-open durch. Generisch (jeder Paket-Agent erbt das Muster).' 540 320
+        'Core onboarding read liest core.fn_onboarding_status(core) unter finance_ro (DEFINER-Fenster) plus den Hinweistext in der Sprache des Absenders; Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false, output} (relaybar, kein LLM-Cost; ein Mitglied bekommt den Warte-Hinweis), sonst weiter zu Load Config. ZWEI Onboarding-Gates: (1) dieses Core-first-Gate = IMMER-AN Boden (nur Core-Haushalt, vor Load Config) -> kein Paket vor Core-Onboarding; (2) das bestehende Onboarding gate NACH Load Config = strengere Stufe (feature.onboarding_gate, Standard an, core+finance; finance-Sektionen mit gates_advisor:false in onboarding/sections.json, z. B. der Monats-Check, sperren nicht). Reihenfolge: Core-first blockt zuerst wenn der Haushalt fehlt; danach ggf. das Flag-Gate. onError=continue + === false => Lesefehler fällt fail-open durch. Generisch (jeder Paket-Agent erbt das Muster).' 540 320
 
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nConvRead, $nBuildInput, $nAgent,

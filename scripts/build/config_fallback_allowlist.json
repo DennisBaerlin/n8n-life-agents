@@ -1,0 +1,23 @@
+{
+  "_comment": "Ausnahmen von scripts/config_fallback_lint.ps1 je (where, read, fallback). reason: none:<warum> (Lese-Stelle ohne Rueckfall) | differs:<warum> (Rueckfall bewusst anders als der Manifest-Standard). Nur schrumpfen; ein neuer Eintrag braucht den Grund.",
+  "allow": [
+    { "where": "agent.paperless.tool_ask_documents / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },
+    { "where": "agent.paperless.tool_get_document / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },
+    { "where": "agent.paperless.tool_search_documents / Load config", "read": "general.paperless_url", "fallback": "-", "count": 1, "reason": "none: Adresse der eigenen Instanz, es gibt keinen Ersatzwert" },
+    { "where": "core.sub_share_plan / Load targets", "read": "cron_enable.plan_news", "fallback": "-", "count": 1, "reason": "none: nur Anzeige des Notschalters; die Entscheidung trifft core.fn_plan_share_targets" },
+    { "where": "packages/core/db/migrations/R__fn_advisor_progress.sql", "read": "advisor.plan_sync_required", "fallback": "false", "count": 1, "reason": "differs: Paket je Domaene; ein Paket ohne Zeile hat das Merkmal aus" },
+    { "where": "packages/core/db/migrations/R__fn_advisor_publish_plan.sql", "read": "advisor.final_check_required", "fallback": "false", "count": 1, "reason": "differs: Paket je Domaene; ein Paket ohne Zeile hat das Merkmal aus" },
+    { "where": "packages/core/db/migrations/R__fn_advisor_publish_plan.sql", "read": "advisor.plan_sync_required", "fallback": "false", "count": 1, "reason": "differs: Paket je Domaene; ein Paket ohne Zeile hat das Merkmal aus" },
+    { "where": "packages/core/db/migrations/R__fn_plan_rollout_next.sql", "read": "advisor.plan_sync_required", "fallback": "false", "count": 1, "reason": "differs: Paket je Domaene; ein Paket ohne Zeile hat das Merkmal aus" },
+    { "where": "packages/core/db/migrations/R__fn_advisor_save_section.sql", "read": "advisor.topic_max_chars", "fallback": "-", "count": 1, "reason": "none: ein Paket ohne Zeile hat keine Themen-Grenze" },
+    { "where": "packages/core/db/migrations/R__fn_app_bot_username.sql", "read": "telegram.bot_username", "fallback": "-", "count": 1, "reason": "none: ohne Namen gibt es keinen Einladungs-Link" },
+    { "where": "packages/core/db/migrations/R__fn_app_screen.sql", "read": "app.audience", "fallback": "-", "count": 1, "reason": "none: nur der Wert household oeffnet die App fuer alle, fehlende Zeile bleibt eng" },
+    { "where": "packages/core/db/migrations/R__fn_app_screen.sql", "read": "app.enabled", "fallback": "-", "count": 1, "reason": "none: fehlende Zeile = App aus (fail-closed, Manifest-Beschreibung)" },
+    { "where": "packages/core/db/migrations/R__fn_core_api_version.sql", "read": "api.core_version", "fallback": "-", "count": 1, "reason": "none: Versionsnummer aus dem Seed, ein Ersatzwert waere erfunden" },
+    { "where": "packages/core/db/migrations/R__fn_pkg_check_deps.sql", "read": "api.core_version", "fallback": "-", "count": 1, "reason": "none: Versionsnummer aus dem Seed, ein Ersatzwert waere erfunden" },
+    { "where": "packages/core/db/migrations/R__fn_release_card.sql", "read": "feature.update_check", "fallback": "false", "count": 1, "reason": "differs: Notschalter fail-closed, fehlende Zeile = aus (Manifest-Beschreibung)" },
+    { "where": "packages/core/db/migrations/R__fn_reminder_allowed.sql", "read": "cron_enable.l.cron_key", "fallback": "-", "count": 1, "reason": "none: Schluessel kommt aus core.cron_labels; fehlende Zeile = aus (fail-closed)" },
+    { "where": "packages/core/db/migrations/R__fn_reminders_overview.sql", "read": "schedule.l.cron_key", "fallback": "-", "count": 1, "reason": "none: Schluessel kommt aus core.cron_labels; ohne Zeitplan keine Uhrzeit in der Uebersicht" },
+    { "where": "packages/estate/db/migrations/R__fn_preview_case.sql", "read": "general.bundesland", "fallback": "-", "count": 1, "reason": "none: Pflichtangabe, Standard ist leer (fail-closed)" }
+  ]
+}

@@ -953,13 +953,7 @@ try {
 } catch { Register-Abort $_ 'hitlB1' }
 
 # --- Karten der Plan-Tools ueber die echten Tools (Harness): Plan- und Abschnittsname aus dem Textkatalog in der Sprache des
-# Empfaengers, keine internen Schluessel, kein alter Hinweis, der ganze Text. Erwartete Namen kommen aus den Locale-Dateien.
-function Get-LocaleText([string]$Pkg, [string]$Lang, [string]$Key) {
-    $f = Join-Path $RepoRoot "packages\$Pkg\locales\$Lang.json"
-    $v = ([System.IO.File]::ReadAllText($f, $Utf8NoBom) | ConvertFrom-Json).$Key
-    if (-not $v) { throw "Locale-Text fehlt: $Pkg/$Lang $Key" }
-    [string]$v
-}
+# Empfaengers, keine internen Schluessel, kein alter Hinweis, der ganze Text. Erwartete Namen kommen aus den Locale-Dateien (Get-LocaleText).
 # finance verlangt ein Thema je Save (advisor.topic_max_chars) -> Default-Thema; '' prueft die Ablehnung ohne Thema.
 function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [string]$ChatId = $OwnerUnpaired, [string]$Topic = 'Probe-Thema') {
     Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; topic = $Topic; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }

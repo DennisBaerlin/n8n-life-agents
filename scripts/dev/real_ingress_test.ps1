@@ -26,6 +26,8 @@
 # as_child = die Fixture-Person lisa (child) traegt nur fuer diesen Fall die Telegram-id 880055201; fail_tg {method, markup}
 # = Mock-Telegram lehnt diese Methode fuer die Dauer des Falls ab (markup = nur Aufrufe mit Knopf); expected_not_ran (Sub-
 # Zweig) = Knoten, die in der Sub-Execution nicht laufen duerfen. Die Vorschlags-Merker werden zu Beginn jedes Laufs geleert.
+# Felder bei offener Karte (kind hitl): probe_card_open = zweite Nachricht in denselben Chat; expect_probe_text = Katalog-Schluessel (core, de)
+# der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag.
 #
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen.
 # Usage:  .\scripts\dev\real_ingress_test.ps1 [-Id ri01,ri02] [-Timeout 90] [-Verbose]
@@ -662,6 +664,13 @@ foreach ($tc in $cases) {
             # owner_lang: der Knopf-Auftrag enthaelt nur die Sprache als Variable; so trifft das Karten-Szenario nicht ri12 (ohne Karte).
             # Szenario-match (mock_lint C2): Start or continue the household onboarding. Reply in the language with ISO code en
             if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code "$($tc.owner_lang)" }
+            # probe_entry_open: waehrend des Falls hat die Person des Chats einen frisch beanspruchten vereinbarten Eintrag (Eintrage-Modus,
+            # agent.fn_stash_hitl_note entry); Domaene = die erste aktive mit Eintrags-Pruefung. Weggeraeumt am Anfang jedes Falls und nach der Probe.
+            Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.handoff_tasks WHERE id = 990092;') | Out-Null
+            if ($tc.probe_entry_open) {
+                $pe = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT 990092, a.domain, a.package, core.fn_handoff_person('$chatId'), 'wealth_building', 'other', '__E2E__ $($tc.id) Probe in Arbeit', 'working', now() FROM core.advisors a JOIN core.package_registry r ON r.package = a.package WHERE r.status = 'active' AND a.handoff_check_fn IS NOT NULL ORDER BY a.domain LIMIT 1;")
+                if ($pe.Code -ne 0) { Write-Host "    [FAIL] Eintrag in Arbeit nicht angelegt: $($pe.Output -join ' ')" -ForegroundColor Red; $failed++; continue }
+            }
             if ("$($tc.update)" -eq 'callback') { Send-TelegramCallback $fromUid $chatId "$($tc.callback_data)" }
             else { Send-TelegramUpdate $chatId $fromUid $tc.text | Out-Null }
 
@@ -723,7 +732,14 @@ foreach ($tc in $cases) {
                 if (-not ($pNodes -contains 'Reply card open') -or ($pNodes -contains 'Orchestrator agent')) {
                     $extraOk = $false; $extraInfo += "Probe bei offener Karte: Reply card open=$($pNodes -contains 'Reply card open'), Orchestrator agent=$($pNodes -contains 'Orchestrator agent')"
                 }
+                # expect_probe_text: Katalog-Schluessel (core, de) der Antwort auf die Probe, z. B. core.orch.card_note_saved (Notiz gemerkt)
+                if ($tc.expect_probe_text) {
+                    $want = Get-LocaleText 'core' 'de' "$($tc.expect_probe_text)"
+                    $got = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and -not $_.body.reply_markup -and "$($_.body.chat_id)" -eq "$chatId" } | ForEach-Object { [string]$_.body.text })
+                    if (-not ($got | Where-Object { $_.Contains($want) })) { $extraOk = $false; $extraInfo += "Antwort auf die Probe ohne '$($tc.expect_probe_text)': $($got -join ' | ')" }
+                }
             }
+            Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.handoff_tasks WHERE id = 990092;') | Out-Null
 
             try { Invoke-HitlResume -Url $resumeUrl | Out-Null }
             catch { Write-Host "    [FAIL] HITL-Resume-GET fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue }

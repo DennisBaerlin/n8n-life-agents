@@ -42,6 +42,25 @@ BEGIN
   r := agent.fn_take_hitl_note(NULL);
   IF r IS NULL THEN RAISE EXCEPTION 'FAIL [2 NULL wirft nicht]'; END IF;
   RAISE NOTICE 'PASS [2 take]';
+
+  -- 3) Eintrage-Modus: ein frisch beanspruchter Eintrag (working, claimed_at innerhalb advisor.handoff_claim_ttl_minutes) der Person
+  --    des Chats -> entry true (der Orchestrator sagt dann, dass der Eintrag bleibt und die Aenderung ins Plan-Gespraech gehoert)
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family','t',NULL,'lazy','f', jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
+    jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner','birth_date','1980-05-20','telegram_user_id',111,'language','de')))))
+  ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
+  r := agent.fn_stash_hitl_note('{"chat_id":"111","text":"ohne Eintrag"}');
+  IF (r->>'entry')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [3 ohne Eintrag]: %', r; END IF;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance', 'finance', 'erika', 'wealth_building', 'other', 'Probe in Arbeit', 'working', now() - interval '3 hours');
+  r := agent.fn_stash_hitl_note('{"chat_id":"111","text":"alte Beanspruchung"}');
+  IF (r->>'entry')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [3 abgelaufene Beanspruchung]: %', r; END IF;
+  UPDATE agent.handoff_tasks SET claimed_at = now() WHERE text = 'Probe in Arbeit';
+  r := agent.fn_stash_hitl_note('{"chat_id":"111","text":"im Eintragen"}');
+  IF (r->>'entry')::boolean IS NOT TRUE OR (r->>'stored')::int <> 1 THEN RAISE EXCEPTION 'FAIL [3 Eintrag in Arbeit]: %', r; END IF;
+  r := agent.fn_stash_hitl_note('{"chat_id":"222","text":"anderer Chat"}');
+  IF (r->>'entry')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [3 anderer Chat]: %', r; END IF;
+  RAISE NOTICE 'PASS [3 entry]';
 END $$;
 
 ROLLBACK;

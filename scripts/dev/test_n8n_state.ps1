@@ -1073,7 +1073,10 @@ function Get-TestRouteAgent {
 # an (gleiche Write-Pfade wie die Tools, DB-Gesetze greifen), damit der Agent nur den einen geprueften Schritt macht. Grund:
 # 4-5 Writes in einer Nachricht sprengten die 8 Agent-Schritte, obwohl jeder Fall nur ein Werkzeug
 # prueft. Helfer (session-lokal, pg_temp, paketneutral): ok(label, res) macht {ok:false} zum harten Fehler; ids per Subselect
-# im Case. Nur einfache Hochkommas im SQL (doppelte verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
+# im Case. publish_plan(domain, plan_name, topics [{section_key, topic, content}]) veroeffentlicht einen Plan ueber die echten
+# Schreibwege (agent.fn_advisor_save_section + agent.fn_advisor_publish_plan, als durchgesehen gestempelt) und liefert die plan_id:
+# Plan-Zeile, Plan-Dokument und Plan-Kontext passen zusammen. Ein INSERT in agent.advisor_plans laesst den Plan-Kontext eines
+# frueheren Plans stehen, das Modell liest dann einen anderen Plan als die Datenbank. Nur einfache Hochkommas im SQL (doppelte verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
 # __E2E__ im Namen; aufgeraeumt wird nur ueber agent.fn_clear_e2e_data().
 # Optional -Precondition (Case-Feld precondition_sql): ein boolescher SQL-Ausdruck, der nach dem setup_sql wahr sein muss. Er belegt
 # den Zustand, den die Erwartung des Falls voraussetzt (z. B. das Konto, ohne das der Agent nachfragen muss); ist er falsch, ist der
@@ -1082,6 +1085,7 @@ function Invoke-TestCaseSetup {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Sql, [string]$Precondition = '')
     $prelude = @'
 CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$ BEGIN IF COALESCE((p_res->>'ok')::boolean, TRUE) = FALSE THEN RAISE EXCEPTION 'e2e setup: % fehlgeschlagen: %', p_label, COALESCE(p_res->>'reason', p_res::text); END IF; RETURN p_res; END $f$;
+CREATE FUNCTION pg_temp.publish_plan(p_domain text, p_plan_name text, p_topics jsonb) RETURNS int LANGUAGE plpgsql AS $f$ DECLARE t jsonb; r jsonb; BEGIN FOR t IN SELECT e FROM jsonb_array_elements(p_topics) e LOOP PERFORM pg_temp.ok('Plan-Thema ' || (t->>'topic'), agent.fn_advisor_save_section(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'plan_name', p_plan_name, 'section_key', t->>'section_key', 'topic', t->>'topic', 'section_content', t->>'content'))); END LOOP; r := pg_temp.ok('Plan veroeffentlichen', agent.fn_advisor_publish_plan(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'reminders', '[]', 'check_findings', '[]', 'check_passes', 1))); UPDATE agent.advisor_plans SET synced_at = now() WHERE id = (r->>'plan_id')::int; RETURN (r->>'plan_id')::int; END $f$;
 '@
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', ($prelude + $Sql))
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }

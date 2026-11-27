@@ -3,7 +3,7 @@
 -- state enter, handoffs_open, part/parts_total in core.fn_advisor_plan_status.
 --   * Teile und Etappen aus core.advisors.stages (CHECK auf die Form); ohne stages eine Etappe aus dem Katalog;
 --   * Phasen none -> talk -> check -> publish -> enter -> done; mode fresh/existing; open_points; check {pass,total,done};
---     handoffs {total,done};
+--     handoffs {total,done}; rollout_next check (erledigter Altbestand im gueltigen Plan, Pruef-Merker nicht festgeschrieben, kein Entwurf);
 --   * stage_boundary wahr genau am ersten Teil einer neuen Etappe nach fertiger voriger, ohne Etappen nie;
 --   * unaufgeloester Absender -> ok:false.
 -- Werte erfunden. BEGIN..ROLLBACK -> kein Residual-State.
@@ -114,12 +114,50 @@ BEGIN
   IF r->>'state' <> 'complete' OR (r->>'handoffs_open')::int <> 0 THEN RAISE EXCEPTION 'FAIL [4 plan_status complete]: %', r; END IF;
   RAISE NOTICE 'PASS [4 enter + done]';
 
+  -- ---------- 4b) naechster Schritt der Abfolge: erledigter Altbestand ohne Provenienz, Abschnitt im gueltigen Plan -> check,
+  --           bis der Pruef-Merker festgeschrieben ist (danach bietet core.fn_plan_rollout_next ihn nicht mehr an) ----------
+  UPDATE agent.advisor_plans SET synced_at = now() WHERE id = v_plan;
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r->>'rollout_next' IS DISTINCT FROM 'check' THEN RAISE EXCEPTION 'FAIL [4b check offen]: %', r->>'rollout_next'; END IF;
+  -- Vorher kommende Schritte der Abfolge: ein offener Eintrag der Person (auch einer von vor der Plan-Zeile) haelt den Pruef-Schritt auf
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, created_at)
+  VALUES ('__pg__', 'finance', 'erika', 'goals_triggers', 'other', 'Alt offen', now() - interval '30 days');
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [4b offener Eintrag zuerst]: %', r->>'rollout_next'; END IF;
+  DELETE FROM agent.handoff_tasks WHERE domain = '__pg__' AND text = 'Alt offen';
+  -- ... ebenso [Plan durchsehen] (Schritt 0), solange der Plan nicht durchgesehen ist und das Paket es verlangt
+  INSERT INTO core.config (category, key, value, package) VALUES ('advisor', 'plan_sync_required', 'true', 'finance')
+  ON CONFLICT (category, key) DO UPDATE SET value = 'true', package = 'finance';
+  UPDATE agent.advisor_plans SET synced_at = NULL WHERE id = v_plan;
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [4b Plan durchsehen zuerst]: %', r->>'rollout_next'; END IF;
+  UPDATE agent.advisor_plans SET synced_at = now() WHERE id = v_plan;
+  -- Haushaltsplan: Schritte bekommt nur der Owner
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (metadata->'facts'->'persons') || jsonb_build_array(
+    jsonb_build_object('person_id','max','first_name','Max','last_name','M','role','partner','birth_date','1982-02-02','telegram_user_id',222,'language','de')))
+   WHERE name = 'family';
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','222'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [4b Mitglied]: %', r; END IF;
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r->>'rollout_next' IS DISTINCT FROM 'check' THEN RAISE EXCEPTION 'FAIL [4b wieder check]: %', r->>'rollout_next'; END IF;
+  INSERT INTO core.notification_state (source, key, state, last_fired_at, expires_at)
+  VALUES ('plan_rollout', '__pg__:household:check:' || v_task, 'fired', now(), now() + interval '30 minutes');
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r->>'rollout_next' IS DISTINCT FROM 'check' THEN RAISE EXCEPTION 'FAIL [4b beansprucht zaehlt noch]: %', r->>'rollout_next'; END IF;
+  UPDATE core.notification_state SET expires_at = NULL WHERE source = 'plan_rollout' AND key = '__pg__:household:check:' || v_task;
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF r ? 'rollout_next' AND r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [4b festgeschrieben]: %', r->>'rollout_next'; END IF;
+  DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key = '__pg__:household:check:' || v_task;
+  RAISE NOTICE 'PASS [4b rollout_next check]';
+
   -- ---------- 5) Bestandsplan = mode existing ----------
   r := agent.fn_advisor_save_section(jsonb_build_object('domain','__pg__','chat_id','111','section_key','household_basics',
          'topic','Haushalt','section_content','Unverändert.'));
   r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
   IF r->>'mode' <> 'existing' OR r->>'phase' <> 'talk' OR (r->>'parts_done')::int <> 1 OR (r->'handoffs'->>'total')::int <> 0 THEN
     RAISE EXCEPTION 'FAIL [5 existing]: %', r; END IF;
+  -- offener Entwurf: die Abfolge wartet (core.fn_plan_rollout_next), also kein naechster Schritt, auch mit ungepruefem Altbestand
+  IF r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [5 Entwurf ohne rollout_next]: %', r->>'rollout_next'; END IF;
   RAISE NOTICE 'PASS [5 mode existing]';
 
   -- ---------- 6) ohne stages: eine Etappe aus dem Katalog ----------

@@ -1,0 +1,130 @@
+{
+    "id":  "CaYp7Wdn451C21Ma",
+    "name":  "agent.finance.tool_cancel_handoff_task.test_harness",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "cancel-handoff-test",
+                                         "authentication":  "headerAuth",
+                                         "responseMode":  "lastNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "8d2f7f07-5624-53a7-9b4f-61b210ffdf67",
+                      "name":  "Test Webhook",
+                      "webhookId":  "90e555d8-1185-5a55-a59d-244c1d9cb3b1",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_HARNESS__",
+                                                                 "name":  "lifeagents test harness auth"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "UjbM07yXlDjc1LlQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/UjbM07yXlDjc1LlQ",
+                                                            "cachedResultName":  "agent.finance.tool_cancel_handoff_task"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "handoff_task_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.handoff_task_id }}",
+                                                                              "reason":  "={{ $(\u0027Test Webhook\u0027).item.json.body.reason }}",
+                                                                              "ref_type":  "={{ $(\u0027Test Webhook\u0027).item.json.body.ref_type }}",
+                                                                              "ref_name":  "={{ $(\u0027Test Webhook\u0027).item.json.body.ref_name }}",
+                                                                              "chat_id":  "={{ $(\u0027Test Webhook\u0027).item.json.body.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       280,
+                                       0
+                                   ],
+                      "id":  "3f23d854-cb39-5be4-ab2a-557c7763999f",
+                      "name":  "Run agent.finance.tool_cancel_handoff_task",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return { json: { harness_execution_id: $execution.id } };",
+                                         "mode":  "runOnceForEachItem"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       560,
+                                       0
+                                   ],
+                      "id":  "55ef4a3b-1fe2-5b0b-9a9e-ad82a5052a13",
+                      "name":  "Run Info"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## agent.finance.tool_cancel_handoff_task.test_harness\n**Test-Eingang.** Kein Produktiv-Workflow.\n\nWebhook (POST, Header-Auth, responseMode=lastNode) -\u003e Execute Workflow ruft agent.finance.tool_cancel_handoff_task\nueber dessen executeWorkflowTrigger auf -\u003e Run Info antwortet mit der Harness-Execution-ID\n(Skripte korrelieren darueber deterministisch zur Sub-Execution). Body: handoff_task_id, reason, ref_type, ref_name, chat_id.\nBei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).",
+                                         "height":  250,
+                                         "width":  480,
+                                         "color":  7
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -40,
+                                       -260
+                                   ],
+                      "id":  "687f9b3d-be4b-5738-9f7a-c45592676d28",
+                      "name":  "Doc Overview"
+                  }
+              ],
+    "connections":  {
+                        "Test Webhook":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Run agent.finance.tool_cancel_handoff_task",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Run agent.finance.tool_cancel_handoff_task":  {
+                                                                           "main":  [
+                                                                                        [
+                                                                                            {
+                                                                                                "index":  0,
+                                                                                                "node":  "Run Info",
+                                                                                                "type":  "main"
+                                                                                            }
+                                                                                        ]
+                                                                                    ]
+                                                                       }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1"
+                 }
+}

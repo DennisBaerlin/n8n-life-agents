@@ -4,7 +4,8 @@
 # @{ rule; detail; excerpt }. Verbraucher: conversation_test (jede Runde), mock_lint (Antwort-Texte der Mock-Szenarien).
 # Per Dot-Sourcing laden; Selbsttest scripts/dev/lay_metrics_test.ps1.
 #   L1  hoechstens eine Frage je Nachricht (auch Karten).
-#   L2  Gespraechstext hoechstens 600 Zeichen; nach einer Karte hoechstens ein Satz.
+#   L2  Gespraechstext hoechstens 600 Zeichen; nach einer Karte hoechstens zwei Aussagesaetze (was gespeichert ist plus
+#       hoechstens ein Hinweis; die eine Frage zaehlt L1), Spiegel von global_instructions.md *Replying after a write*.
 #   L3  eine Wahl steht als Knoepfe da, nie als nummerierte Wege mit Frage.
 #   L9  nichts doppelt: keine Nachricht, keine Zeile an zwei Stellen, keine Liste und keine angenommene Karte zweimal.
 #   L12 keine Merkarbeit (Muster-Liste je Sprache).
@@ -201,8 +202,8 @@ function Measure-BotOutput {
         Get-LayMessageFindings -Text $text -Buttons @($o.buttons | Where-Object { $_ }).Count -Conversation:($isNew -and -not $o.card)
         if ($o.card) { $cardSeen = $true; continue }
         if ($cardSeen -and $isNew -and -not (Test-LayList $text @($o.buttons | Where-Object { $_ }).Count)) {
-            $n = Get-LaySentenceCount $text
-            if ($n -gt 1) { New-LayFinding 'L2' "$n Saetze nach einer Karte (hoechstens einer)" $text }
+            $n = (Get-LaySentenceCount $text) - (Get-LayQuestionCount $text)
+            if ($n -gt 2) { New-LayFinding 'L2' "$n Aussagesaetze nach einer Karte (hoechstens zwei: Gespeichertes plus ein Hinweis)" $text }
         }
     }
     Get-LayRoundDuplicates $sent

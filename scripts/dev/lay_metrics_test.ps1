@@ -38,7 +38,7 @@ Expect 'L1 Fragezeichen in einer Adresse zaehlt nicht' (Measure-BotOutput -Outpu
 Expect 'L1 auch auf Karten' (Measure-BotOutput -Outputs @((Msg 'Eintragen? Oder lieber nicht?' @('Ja', 'Nein') -Card))) @('L1')
 Expect 'L1 koreanisches Fragezeichen' (Measure-BotOutput -Outputs @((Msg '월급은 얼마예요？ 언제 들어와요？'))) @('L1')
 
-# --- L2: Gespraechstext hoechstens 600 Zeichen, nach einer Karte hoechstens ein Satz ---
+# --- L2: Gespraechstext hoechstens 600 Zeichen, nach einer Karte hoechstens zwei Aussagesaetze (Fragen zaehlt L1) ---
 $long = ('Das ist ein erfundener Satz. ' * 25).Trim()
 $ok600 = ('x' * 599) + '.'
 Expect 'L2 zu lang' (Measure-BotOutput -Outputs @((Msg $long))) @('L2')
@@ -46,7 +46,9 @@ Expect 'L2 genau 600 Zeichen' (Measure-BotOutput -Outputs @((Msg $ok600))) @()
 Expect 'L2 Datenzeilen zaehlen nicht mit' (Measure-BotOutput -Outputs @((Msg ("Deine Konten:`n" + (("• Konto Beispiel mit einem langen Namen: 100,00 EUR`n") * 20))))) @()
 Expect 'L2 lange Karte ist erlaubt' (Measure-BotOutput -Outputs @((Msg $long @('Ja', 'Nein') -Card))) @()
 $card = Msg 'Dauerauftrag ändern – bitte prüfen:' @('Bestätigen', 'Abbrechen') -Card
-Expect 'L2 zwei Saetze nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg 'Ist gebucht. Als Nächstes kommt der Notgroschen.'))) @('L2')
+Expect 'L2 drei Aussagesaetze nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg 'Ist gebucht. Vom Konto gehen 50 EUR im Monat ab. Das Geld reicht bis März.'))) @('L2')
+Expect 'L2 Gespeichertes, ein Hinweis und eine Frage nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg 'Ist gebucht. Vom Konto gehen 50 EUR im Monat ab, das Geld reicht bis März. Woher kommt der Rest?'))) @()
+Expect 'L2 Gespeichertes und eine Frage nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg 'Ist gebucht. Soll ich noch etwas eintragen?'))) @()
 Expect 'L2 ein Satz nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg 'Der Dauerauftrag steht jetzt auf dem 1. des Monats (ab 1.3.).'))) @()
 Expect 'L2 Abkuerzung trennt keinen Satz' (Measure-BotOutput -Outputs @($card, (Msg 'Das gilt z. B. auch für den Rest.'))) @()
 Expect 'L2 Liste nach einer Karte ist kein Gespraechstext' (Measure-BotOutput -Outputs @($card, (Msg "Das stellst du bei deiner Bank ein:`n• Rate A: 100 EUR`n• Rate B: 200 EUR`nDanach ist alles fertig."))) @()
@@ -58,10 +60,10 @@ Expect 'L2 System-Uebersicht mit Statuszeilen nach einer Karte' (Measure-BotOutp
 $oneItem = "Das stellst du bei deiner Beispielbank ein:`n`n1. Dauerauftrag Beispielmiete einrichten: 200,00 € monatlich.`n`nTippe, wenn alles eingerichtet ist."
 Expect 'L2 System-Liste mit einem Punkt und Knopf nach einer Karte' (Measure-BotOutput -Outputs @($card, (Msg $oneItem @('Erledigt')))) @()
 Expect 'L2 dieselbe Form ohne Knopf zaehlt als Gespraech' (Measure-BotOutput -Outputs @($card, (Msg $oneItem))) @('L2')
-Expect 'L2 Haken oder Zeigefinger am Anfang machen mit Knopf keine Liste' (Measure-BotOutput -Outputs @($card, (Msg '✅ Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
+Expect 'L2 Haken oder Zeigefinger am Anfang machen mit Knopf keine Liste' (Measure-BotOutput -Outputs @($card, (Msg '✅ Das ist gebucht. Der Rest bleibt frei. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
 Expect 'L2 Zwischenzeile mit Zeichen ist kein Listenpunkt' (Measure-BotOutput -Outputs @($card, (Msg "Das ist gebucht.`n👉 Weiter geht es mit dem Notgroschen. Tippe unten." @('Weiter')))) @('L2')
-Expect 'L2 Strich in der ersten Zeile ist keine Systemliste' (Measure-BotOutput -Outputs @($card, (Msg '- Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
-Expect 'L2 Saetze mit Knopf ohne Listenzeile bleiben Gespraech'(Measure-BotOutput -Outputs @($card, (Msg 'Das ist gebucht. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
+Expect 'L2 Strich in der ersten Zeile ist keine Systemliste' (Measure-BotOutput -Outputs @($card, (Msg '- Das ist gebucht. Der Rest bleibt frei. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
+Expect 'L2 Saetze mit Knopf ohne Listenzeile bleiben Gespraech'(Measure-BotOutput -Outputs @($card, (Msg 'Das ist gebucht. Der Rest bleibt frei. Weiter geht es mit dem Notgroschen.' @('Weiter')))) @('L2')
 Expect 'L2 ein Datum am Zeilenanfang ist keine Liste' (Measure-BotOutput -Outputs @($card, (Msg "1. März geht die erste Rate raus. Danach jeden Monat. Alles ist fertig."))) @('L2')
 Expect 'L2 eine einzelne Listenzeile macht aus Saetzen keine Liste' (Measure-BotOutput -Outputs @($card, (Msg "Das ist gebucht. Als Nächstes kommt das:`n• Notgroschen"))) @('L2')
 foreach ($t in @('3 % p. a. sind jetzt hinterlegt.', 'Konto, Karte usw. sind angelegt.', 'Die Rate ist mtl. eingetragen.',

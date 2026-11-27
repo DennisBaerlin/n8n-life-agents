@@ -370,18 +370,21 @@
     "name": "S23 Globale Regeln vor dem Buchhalter-Prompt: Auswahl ohne interne Nummern, nach einem Eintrag nur ein Hinweis",
     "sender": "owner",
     "start": "onboarding_done",
+    "hitl": "approve",
     "mock_fresh_memory": true,
-    "notes": "Mock-Beleg, dass der Buchhalter-Prompt den globalen Regeln folgt (Auswahl ohne ids, nach einem Eintrag nur die Geldfrage): der Mock folgt einer Zeile des ausgelieferten Buchhalter-System-Prompts (final_when_system). Steht dort wieder die Auswahl mit id oder der zweite Hinweis neben der Geldfrage, kommt die verbotene Antwort und forbid_texts wird rot. Prueft den Prompt, nicht das echte Modell (das prueft judge_eval mit expected_behavior im Owner-Fenster). Regeln: global_instructions.md Speak the user's terms / Replying after a write.",
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ S23 Tagesgeld', finance.fn_create_account(jsonb_build_object('name','__E2E__ S23 Tagesgeld','account_type','cash','bank','Eichenbank','account_holder','Erika','currency','EUR','opening_balance',3000))); SELECT pg_temp.ok('__E2E__ S23 Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ S23 Cash','account_type','cash','account_holder','Erika','currency','EUR','opening_balance',100))); SELECT pg_temp.ok('__E2E__ S23 Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ S23 Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ S23 Cash'))));",
+    "precondition_sql": "(SELECT count(*) FROM finance.accounts WHERE status = 'active' AND name ILIKE '%Tagesgeld%') = 2 AND (SELECT count(*) FROM finance.accounts d JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.name = '__E2E__ S23 Depot' AND s.name = '__E2E__ S23 Cash') = 1 AND (SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ S23 Cash') = 100",
+    "notes": "Buchhalter-Prompt folgt den globalen Regeln (Auswahl ohne ids, nach einem Eintrag nur die Geldfrage). Zwei Ebenen: (1) Mock: der Mock folgt einer Zeile des ausgelieferten Buchhalter-System-Prompts (final_when_system); steht dort wieder die Auswahl mit id oder der zweite Hinweis neben der Geldfrage, kommt die verbotene Antwort und forbid_texts wird rot. (2) -Real + judge_eval: der Fall bringt den Boden selbst mit, den die Regeln brauchen (Befund 2026-11-27: ohne ihn war der echte Lauf unfair rot, das Modell fand korrekt nur ein Tagesgeld und kannte keinen Eintrag vor Runde 2). setup_sql legt ein zweites Tagesgeld an (neben der Fixture Tagesgeld Plus) und ein Depot mit 100 EUR Verrechnungskonto ohne Zufluss (Muster e2e48); Runde 2 legt den Sparplan per bestaetigter Karte wirklich an, damit savings_funding mit ASK feuert. Regeln: global_instructions.md Speak the user's terms / Replying after a write.",
     "turns": [
       {
-        "text": "welches meiner beiden Tagesgelder ist gemeint", "expect_agent": "finance",
+        "text": "Wie viel liegt gerade auf meinem Tagesgeld?", "expect_agent": "finance",
         "forbid_texts": ["Nummer 12"],
-        "expected_behavior": "Bei mehreren passenden Konten nennt der Buchhalter sie mit Merkmalen, die der Nutzer kennt (Name, Bank, Art, Betrag), und fragt, welches gemeint ist. Er zeigt keine Datenbank-Nummern oder ids."
+        "expected_behavior": "Der Haushalt hat zwei Tagesgeld-Konten. Der Buchhalter nennt beide mit Merkmalen, die der Nutzer kennt (Name, Bank, Betrag): entweder mit beiden Beträgen oder mit der Rückfrage, welches gemeint ist. Er zeigt keine Datenbank-Nummern oder ids und keine nummerierte Auswahlliste."
       },
       {
-        "text": "woher kommt der Rest beim Sparplan", "expect_agent": "finance",
+        "text": "Lege einen Sparplan '__E2E__ S23 Plan' an: Depot __E2E__ S23 Depot, ISIN IE00BK5BQT80, Symbol VWCE, Wertpapier Vanguard FTSE All-World, 50 Euro monatlich, erste Ausführung am 2. des nächsten Monats.", "expect_agent": "finance",
         "forbid_texts": ["Sparraten sind jetzt höher"],
-        "expected_behavior": "Nach einem Eintrag mit Geldquellen-Hinweis (savings_funding mit ASK) stellt der Buchhalter genau eine Frage, woher der Rest kommt, und nennt einen gleichzeitigen savings_squeeze-Hinweis nicht zusätzlich."
+        "expected_behavior": "Die Karte wird bestätigt, der Sparplan ist angelegt. Das Verrechnungskonto hat 100 Euro und keinen Zufluss, darum kommt der Geldquellen-Hinweis mit Rückfrage. Die Karte zeigte schon, was im Monat abgeht und hereinkommt und bis wann das Guthaben reicht. Die Antwort sagt kurz, dass der Plan steht, und stellt genau EINE Frage, woher der Rest kommt (Wahlmöglichkeiten im selben Satz erlaubt; das Datum aus der Karte darf darin vorkommen). Sie wiederholt die Zahlen der Karte nicht als eigene Sätze. Kein zusätzlicher Hinweis, dass die Sparraten insgesamt zu hoch sind, keine zweite Frage, kein eigenmächtig angelegter Dauerauftrag."
       }
     ]
   }

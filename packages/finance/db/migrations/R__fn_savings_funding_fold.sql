@@ -165,7 +165,7 @@ BEGIN
                 v_note := CASE
                     WHEN p_state_only THEN format('Money check for the account "%s": with the new rate the balance lasts only until %s.%s',
                              v_name, to_char(v_date, 'DD.MM.YYYY'),
-                             CASE WHEN p_ask THEN ' ASK the user where the missing money comes from (core rule 9, savings_funding).' ELSE '' END)
+                             CASE WHEN p_ask THEN ' The card already showed these figures: reply with one short sentence that it is saved, then ASK the user where the missing money comes from (core rule 9, savings_funding) with the choices inside that one question; repeat no figure and add nothing else.' ELSE '' END)
                     WHEN v_gap = 0 AND v_fix THEN format('Money check for the account "%s": as much comes in as goes out (%s a month), '
                              || 'but the incoming money arrives after the debits, so the balance drops to %s%s on %s and runs short '
                              || 'from %s. Tell the user and suggest moving the incoming standing transfer to a day before the '
@@ -192,7 +192,7 @@ BEGIN
                                                                t_every) ELSE '' END,
                              t_in, t_gap,
                              t_bal, t_res, to_char(v_date, 'DD.MM.YYYY'),
-                             CASE WHEN p_ask THEN ' ASK the user where the missing money comes from (core rule 9, savings_funding).'
+                             CASE WHEN p_ask THEN ' The card already showed these figures: reply with one short sentence that it is saved, then ASK the user where the missing money comes from (core rule 9, savings_funding) with the choices inside that one question; repeat no figure and add nothing else.'
                                   ELSE '' END) END;
             END IF;
         END IF;

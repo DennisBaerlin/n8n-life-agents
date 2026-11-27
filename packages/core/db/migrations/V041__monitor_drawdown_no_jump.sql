@@ -1,9 +1,9 @@
 -- ============================================================
 -- V041 (core) — Gesetz "Absturz-Waechter ohne Sprung-Grenze" auf Bestands-DBs
 --   Ein Absturz IST ein grosser Sprung: fn_validate_observation (Stufe 4) verwirft jeden Wert, der mehr als max_jump_pct
---   vom letzten abweicht, und ein drawdown-Waechter mit Grenze kann deshalb nie feuern. Die Inline-CHECK aus
+--   vom letzten sauberen abweicht, und ein drawdown-Waechter mit Grenze schluckt deshalb jeden abrupten Absturz. Die Inline-CHECK aus
 --   agent.monitor_init.sql gilt nur fuer frische DBs; diese Migration nullt die Grenze an Bestands-Absturz-Waechtern
---   (sie hatte nie eine Wirkung ausser dem Stummschalten) und legt die benannte CHECK an. Andere Typen unveraendert.
+--   (sie konnte dort nur Alarme verschlucken) und legt die benannte CHECK an. Andere Typen unveraendert.
 --   Frische DB = no-op. Re-run-sicher. Test: tests/db/core/test_monitor_drawdown_no_jump_v041_migration.sql
 -- ============================================================
 UPDATE agent.monitor_triggers SET max_jump_pct = NULL

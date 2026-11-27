@@ -200,8 +200,8 @@ BEGIN
     END IF;
     IF v_jump IS NOT NULL AND v_type = 'drawdown' THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'max_jump_pct cannot be set on a drawdown trigger: a crash IS a big jump, so the jump guard would '
-                   || 'discard exactly the values that should fire the alert. Leave max_jump_pct empty - '
+            'reason', 'max_jump_pct cannot be set on a drawdown trigger: a crash IS a big jump, so the jump guard would discard a sudden crash, '
+                   || 'exactly the value that should fire the alert. Leave max_jump_pct empty - '
                    || 'min_plausible/max_plausible still catch wrong magnitudes.');
     END IF;
     IF v_warn < 0 THEN

@@ -7,7 +7,8 @@
 --     ba_arbeitszeit ('vz', 'tz' oder 'vz;tz' — Bundesagentur Jobsuche, Parameter arbeitszeit),
 --     adzuna_param ('full_time' | 'part_time' — Adzuna kennt nur je ein Flag =1; beide Arten -> kein Filter),
 --     jsearch_employment_types ('FULLTIME', 'PARTTIME' oder 'FULLTIME,PARTTIME').
---   Unbekannte Werte und Nicht-Arrays ergeben keinen Filter (der Validator lehnt sie beim Schreiben ab).
+--   Unbekannte Werte werden ignoriert (der Validator lehnt sie beim Schreiben ab); ohne bekannten Wert und bei
+--   Nicht-Arrays gilt kein Filter.
 --   Tests: tests/db/career/test_fn_job_search_employment.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_job_search_employment(p_planning jsonb)

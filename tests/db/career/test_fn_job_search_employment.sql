@@ -1,7 +1,7 @@
 -- tests/db/career/test_fn_job_search_employment.sql
 -- career.fn_job_search_employment: employment_types aus career_planning -> Filter je Job-Quelle (Bundesagentur
 --   arbeitszeit vz/tz mit ';', Adzuna nur bei genau einer Art, JSearch FULLTIME/PARTTIME mit ','). Leer/fehlend oder
---   beide Arten bei Adzuna -> NULL = kein Filter (die Suche bleibt so breit wie vorher).
+--   beide Arten bei Adzuna -> kein Key ({} = kein Filter) (die Suche bleibt so breit wie vorher).
 BEGIN;
 
 DO $$

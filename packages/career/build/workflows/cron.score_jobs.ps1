@@ -18,7 +18,7 @@
 # Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default) — liest agent.core_contexts + core.config +
 #   schreibt career.* (deterministische SQL, kein LLM-SELECT).
 # Privacy: career_profile/career_preferences (PII) gehen nur in den Scorer-Prompt -> bezahlte Anthropic-API
-#   (trainiert nicht). Die Aggregatoren bekommen nur die oeffentliche Query (Rolle+Ort), kein PII.
+#   (trainiert nicht). Die Aggregatoren bekommen nur die oeffentliche Query (Rolle+Ort+Arbeitszeit), kein PII.
 # Board je Quelle: jsearch -> board immer aus job_publisher; adzuna -> NULL by design (Adzuna legt kein Board
 #   offen); bundesagentur -> NULL. Dedup: (source, external_id, person_id) source-skopiert.
 function Build-CronScoreJobs {

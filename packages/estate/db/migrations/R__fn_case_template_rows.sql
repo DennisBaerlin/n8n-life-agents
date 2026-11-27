@@ -7,7 +7,8 @@
 --   Eingabe: p_case_type, p_subject (person_id), p_flags (explizite Fall-Angaben), p_event, p_know (Anker-Daten),
 --   p_bundesland; p_extra_assets optional (siehe unten).
 --   Titel/Erklaerung aus dem Textkatalog (estate.task.<template_key>.title|.detail) in der Haushalts-Sprache
---   (core.fn_ui_texts_for ohne chat_id = Owner); fehlt der .detail-Key, ist detail NULL.
+--   (core.fn_ui_texts_for ohne chat_id = Owner); fehlt der .detail-Key, ist detail NULL, fehlt der .title-Key, ist
+--   title der Key-String.
 --   Rueckgabe: Zeilen (template_key, subject_ref, phase, title, detail, due_date, hardness, legal_source,
 --   status 'open'|'not_applicable').
 --   Condition-Auswertung: NULL=immer; derived (adult_subject = Subjekt keine role='child';

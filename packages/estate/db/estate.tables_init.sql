@@ -338,8 +338,8 @@ CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON estate.onboarding_sta
 --     * retired: Soft-Delete (Muster active_*) — ein ueberholtes Template wird nie geloescht (bestehende
 --       case_tasks referenzieren es per FK), nur retired=true -> es instanziiert nicht mehr.
 --   Titel und Erklaerung je Vorlage stehen nur im Textkatalog (estate.task.<template_key>.title|.detail, ohne
---   .detail-Key keine Erklaerung); fn_case_template_rows rendert sie in der Haushalts-Sprache. Die frueheren Spalten
---   title/detail entfernt estate:V003. Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types):
+--   .detail-Key keine Erklaerung); fn_case_template_rows rendert sie in der Haushalts-Sprache.
+--   Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types):
 --   Fristen-Korrekturen erreichen Bestands-Substrate per Re-Apply.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.task_templates (

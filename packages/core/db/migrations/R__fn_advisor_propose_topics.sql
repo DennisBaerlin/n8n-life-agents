@@ -165,10 +165,15 @@ BEGIN
                 || CASE WHEN NULLIF(btrim(COALESCE(v_t->>'why', '')), '') IS NOT NULL
                         THEN jsonb_build_array(jsonb_build_object('kind', 'expand', 'title_key', 'core.prompt.topic_why', 'text', btrim(v_t->>'why')))
                         ELSE '[]'::jsonb END
-                -- was die Vorpruefung im Probelauf zurueckstellte, verspricht die Karte nicht als "tragen wir am Ende ein"
+                -- was die Vorpruefung im Probelauf zurueckstellte, verspricht die Karte nicht als "tragen wir am Ende ein".
+                -- Zuordnung ueber die Stelle: der Probelauf liefert je Aufgabe genau eine handoff_planned-Zeile in Aufgaben-Folge
                 || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'text',
-                                                  'key', CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(v_saved->i->'deferred', '[]'::jsonb)) d
-                                                                            WHERE d->>'text' = btrim(h->>'text'))
+                                                  'key', CASE WHEN (SELECT c.l->>'value'
+                                                                      FROM (SELECT l, row_number() OVER (ORDER BY ln) AS rn
+                                                                              FROM jsonb_array_elements(COALESCE(v_saved->i->'card_lines', '[]'::jsonb))
+                                                                                   WITH ORDINALITY AS cl(l, ln)
+                                                                             WHERE l->>'value' IN ('core.hitl.handoff_planned', 'core.hitl.handoff_planned_deferred')) c
+                                                                     WHERE c.rn = y.n) = 'core.hitl.handoff_planned_deferred'
                                                               THEN 'core.prompt.topic_enter_deferred' ELSE 'core.prompt.topic_enter_later' END,
                                                                  'params', jsonb_build_object('text', btrim(h->>'text'))) ORDER BY n)
                                FROM jsonb_array_elements(core.fn_jsonb_list(v_t->'handoff_tasks')) WITH ORDINALITY AS y(h, n)), '[]'::jsonb)

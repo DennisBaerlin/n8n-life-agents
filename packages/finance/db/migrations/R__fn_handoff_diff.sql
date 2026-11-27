@@ -6,7 +6,7 @@
 --   fn_handoff_diff(p_task_id int): liest wanted und entered_refs ueber core.fn_handoff_tasks_read (agent.* ist der
 --   Paketrolle verschlossen) und rechnet nur fuer status done; sonst [].
 --   fn_handoff_diff_of(p_wanted jsonb, p_entered_refs jsonb): die Rechnung selbst. wanted = {tool, input} oder Array davon
---   (finance.fn_handoff_precheck); je Aufruf die k-te Sache derselben Art aus entered_refs (Reihenfolge der Aufrufe).
+--   (finance.fn_handoff_precheck); je Aufruf seine Sache aus entered_refs (finance.fn_handoff_pairs).
 --   Verglichen werden nur Felder, die der Aufruf nennt und finance.fn_handoff_tool_spec unter state fuehrt; Betraege und
 --   Tage als Zahl, Daten ueber core.fn_resolve_date (nicht aufloesbar -> kein Vergleich), Namen und Status ohne Gross-/
 --   Kleinschreibung. Ohne wanted (Altbestand) -> [].
@@ -14,6 +14,46 @@
 --   Sache eingetragen ist -> {field:'exists', wanted:true, current:false, call:{tool, input}} (der Aufruf ist nachholbar);
 --   eingetragen und wieder geloescht -> {field:'exists', wanted:true, current:false, ref} ohne call. Tests: tests/db/finance/test_fn_handoff_diff.sql
 -- ============================================================
+-- fn_handoff_pairs: ordnet jedem vereinbarten Aufruf seine eingetragene Sache zu -> [{i, call, ref | null}] (i = Stelle im
+-- Soll, 0-basiert). Eine Sache mit call (von finance.fn_with_handoff beim Eintragen vermerkt) gehoert zu genau diesem
+-- Aufruf; Sachen ohne call (abgehakt, oder ohne Soll eingetragen) der Reihe nach zum naechsten freien Aufruf ihrer Art.
+-- ref null = zu diesem Aufruf ist noch nichts eingetragen.
+CREATE OR REPLACE FUNCTION finance.fn_handoff_pairs(p_wanted jsonb, p_entered_refs jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+    v_spec  jsonb := finance.fn_handoff_tool_spec();
+    v_calls jsonb := CASE jsonb_typeof(p_wanted) WHEN 'array' THEN p_wanted WHEN 'object' THEN jsonb_build_array(p_wanted)
+                                                 ELSE '[]'::jsonb END;
+    v_refs  jsonb := CASE WHEN jsonb_typeof(p_entered_refs) = 'array' THEN p_entered_refs ELSE '[]'::jsonb END;
+    v_used  int[] := '{}';
+    v_i     int;
+    v_type  text;
+    v_ref   jsonb;
+    v_n     int;
+    v_out   jsonb := '[]'::jsonb;
+BEGIN
+    FOR v_i IN 0 .. jsonb_array_length(v_calls) - 1 LOOP
+        v_type := v_spec->(v_calls->v_i->>'tool')->>'type';
+        v_ref := NULL;
+        v_n := NULL;
+        SELECT e, n INTO v_ref, v_n FROM jsonb_array_elements(v_refs) WITH ORDINALITY AS t(e, n)
+         WHERE e->>'call' = v_i::text ORDER BY n LIMIT 1;
+        IF v_ref IS NULL AND v_type IS NOT NULL THEN
+            SELECT e, n INTO v_ref, v_n FROM jsonb_array_elements(v_refs) WITH ORDINALITY AS t(e, n)
+             WHERE NOT e ? 'call' AND e->>'type' = v_type AND NOT (n = ANY (v_used)) ORDER BY n LIMIT 1;
+        END IF;
+        IF v_n IS NOT NULL THEN
+            v_used := v_used || v_n;
+        END IF;
+        v_out := v_out || jsonb_build_array(jsonb_build_object('i', v_i, 'call', v_calls->v_i, 'ref', v_ref));
+    END LOOP;
+    RETURN v_out;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION finance.fn_handoff_diff_of(p_wanted jsonb, p_entered_refs jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -21,12 +61,10 @@ STABLE
 AS $$
 DECLARE
     v_spec  jsonb := finance.fn_handoff_tool_spec();
-    v_calls jsonb;
+    v_pair  jsonb;
     v_call  jsonb;
     v_s     jsonb;
     v_type  text;
-    v_seen  jsonb := '{}'::jsonb;   -- je Art: wie viele Aufrufe dieser Art schon zugeordnet sind
-    v_k     int;
     v_ref   jsonb;
     v_state jsonb;
     v_in    text;
@@ -39,18 +77,12 @@ BEGIN
     IF p_wanted IS NULL OR jsonb_typeof(p_wanted) NOT IN ('object', 'array') THEN
         RETURN '[]'::jsonb;
     END IF;
-    v_calls := CASE WHEN jsonb_typeof(p_wanted) = 'array' THEN p_wanted ELSE jsonb_build_array(p_wanted) END;
-    FOR v_call IN SELECT x FROM jsonb_array_elements(v_calls) x LOOP
+    FOR v_pair IN SELECT x FROM jsonb_array_elements(finance.fn_handoff_pairs(p_wanted, p_entered_refs)) x LOOP
+        v_call := v_pair->'call';
         v_s := v_spec->(v_call->>'tool');
         CONTINUE WHEN v_s IS NULL;
         v_type := v_s->>'type';
-        v_k := COALESCE((v_seen->>v_type)::int, 0);
-        v_seen := v_seen || jsonb_build_object(v_type, v_k + 1);
-        SELECT e INTO v_ref
-          FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_entered_refs) = 'array' THEN p_entered_refs ELSE '[]'::jsonb END)
-               WITH ORDINALITY AS t(e, n)
-         WHERE e->>'type' = v_type
-         ORDER BY n OFFSET v_k LIMIT 1;
+        v_ref := NULLIF(v_pair->'ref', 'null'::jsonb);
         v_state := CASE WHEN v_ref IS NULL THEN NULL
                         ELSE finance.fn_handoff_ref_state(v_type, (v_ref->>'id')::int) END;
         IF v_state IS NULL THEN

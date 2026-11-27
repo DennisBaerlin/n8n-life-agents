@@ -4,7 +4,8 @@
 --   * die freigegebene Aufgabe bleibt in derselben Runde eintragbar (core.fn_handoff_task_check, core.fn_complete_handoff_task),
 --     eine nie beanspruchte offene und eine freigegebene nach der Frist nicht;
 --   * done mit missing (noch nicht eingetragene Teile) -> neue Aufgabe open mit follows_task_id und wanted = missing,
---     hoechstens eine; done ohne missing, deferred, cancelled bleiben unveraendert;
+--     hoechstens eine; die alte nimmt danach keinen weiteren Teil an, die neue ist in derselben Runde eintragbar;
+--     done ohne missing, deferred, cancelled bleiben unveraendert;
 --   * fremde Person, unbekannte oder nicht numerische id -> handoff_task_invalid.
 BEGIN;
 
@@ -100,6 +101,13 @@ BEGIN
      OR (SELECT wanted FROM agent.handoff_tasks WHERE id = v_new) IS DISTINCT FROM '{"tool":"create_x","input":{"n":2}}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [5 Folge-Aufgabe]: %', (SELECT to_jsonb(t) FROM agent.handoff_tasks t WHERE id = v_new); END IF;
   IF (SELECT status FROM agent.handoff_tasks WHERE id = v_done) <> 'done' THEN RAISE EXCEPTION 'FAIL [5 alte Aufgabe angefasst]'; END IF;
+  -- der Rest laeuft nur noch ueber die neue Aufgabe: die alte nimmt keinen weiteren Teil mehr an (sonst stuende er doppelt da),
+  -- die neue ist im selben Gespraech sofort eintragbar
+  r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_done, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_task_invalid' OR position(v_new::text IN r->>'reason') = 0 THEN
+    RAISE EXCEPTION 'FAIL [5 alte Aufgabe nimmt weiteren Teil an]: %', r; END IF;
+  r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_new, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'part')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5 neue Aufgabe sofort eintragbar]: %', r; END IF;
   -- zweite Karte desselben Teils abgebrochen: keine zweite Folge-Aufgabe
   r := core.fn_reopen_handoff_task(jsonb_build_object('handoff_task_id', v_done, 'chat_id', '111',
          'missing', '[{"tool":"create_x","input":{"n":2}}]'::jsonb));

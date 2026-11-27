@@ -77,6 +77,11 @@ BEGIN
   VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'gestrichen', 'cancelled', now(), 'dropped');
   v := core.fn_plan_rollout_lagging();
   IF (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging nur gestrichen %', v; END IF;
+  -- wie vereinbart eingetragen (mit Soll): kein Kandidat, sonst bliebe jeder fertige Haushalt fuer immer in der Vorauswahl
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, closed_at, close_reason, wanted, entered_refs)
+  VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'eingetragen', 'done', now(), now(), 'entered', '{"tool":"x","input":{}}', '[{"type":"x","id":1}]');
+  v := core.fn_plan_rollout_lagging();
+  IF (v->'chats') @> '[111]'::jsonb THEN RAISE EXCEPTION 'FAIL lagging nur eingetragen %', v; END IF;
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
   VALUES ('__rollc__', 'core', 'erika', 's', 'other', 'zurueckgestellt', 'deferred', 'end_date_future');
   v := core.fn_plan_rollout_lagging();

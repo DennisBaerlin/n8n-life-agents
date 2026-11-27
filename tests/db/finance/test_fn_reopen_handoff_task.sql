@@ -6,6 +6,8 @@
 --     als neue offene Vormerkung (follows_task_id) wieder; finance.fn_handoff_diff nennt ihn (call), die Vorpruefung im
 --     recheck liefert ihn als Aufruf; eine geloeschte Sache traegt keinen Aufruf;
 --   * zwei Aenderungen verschiedener Sachen unter einer Vormerkung gehen beide durch, dieselbe Sache zweimal nicht;
+--   * jede eingetragene Sache traegt den vereinbarten Aufruf, den sie erfuellt (nicht die Reihenfolge der Karten); ohne
+--     offenen vereinbarten Aufruf nimmt eine erledigte Vormerkung nichts mehr an;
 --   * die Karten "zurueckstellen", "nicht mehr eintragen" und "abhaken" zeigen die Stelle (core.hitl.handoff_pos) zuerst.
 BEGIN;
 
@@ -175,6 +177,60 @@ BEGIN
          jsonb_build_object('handoff_task_id', v_t1, 'chat_id', '111', 'reason', 'dropped'));
   IF r->'card_lines'->0->>'value' IS DISTINCT FROM 'core.hitl.handoff_note' THEN RAISE EXCEPTION 'FAIL [4 ohne Runde]: %', r->'card_lines'; END IF;
   RAISE NOTICE 'PASS [4 Stelle auf den Karten]';
+END $$;
+
+-- ---------- 5) Zuordnung Aufruf <-> Sache: nicht nach Reihenfolge, sondern danach, welchen vereinbarten Aufruf der Eintrag erfuellt ----------
+DO $$
+DECLARE
+  r    jsonb;
+  v_a  int; v_b int; v_t int; v_t2 int; v_other int; v_main jsonb; v_rest jsonb;
+BEGIN
+  SELECT id INTO v_a FROM finance.accounts WHERE name = '__t_ro_giro';
+  SELECT id INTO v_b FROM finance.accounts WHERE name = '__t_ro_tages';
+  v_main := jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('name','__t_ro_raten',
+              'from_account_name','__t_ro_giro','to_account_name','__t_ro_tages','amount',500,'schedule_unit','month',
+              'schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'valid_to',(core.fn_today() + 160)::text));
+  v_rest := jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('name','__t_ro_rest',
+              'from_account_name','__t_ro_giro','to_account_name','__t_ro_tages','amount',200,'schedule_unit','month',
+              'schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 190)::text,'valid_to',(core.fn_today() + 190)::text));
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, wanted)
+  VALUES ('finance','finance','erika','s','recurring_transfer','Raten und danach der Rest','working', now() - interval '7 minutes',
+          jsonb_build_array(v_main, v_rest)) RETURNING id INTO v_t;
+  -- Karte des ersten Aufrufs nicht bestaetigt, der zweite wird im selben Zug eingetragen
+  PERFORM finance.fn_reopen_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111'));
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_ro_rest','from_account_id',v_a,'to_account_id',v_b,'amount',200,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 190)::text,
+         'valid_to',(core.fn_today() + 190)::text,'chat_id','111','handoff_task_id',v_t::text));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'done' THEN RAISE EXCEPTION 'FAIL [5 Rest zuerst]: %', r; END IF;
+  IF (SELECT (entered_refs->0->>'call')::int FROM agent.handoff_tasks WHERE id = v_t) IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION 'FAIL [5 Sache traegt ihren Aufruf]: %', (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_t); END IF;
+  -- der Rest ist wie vereinbart; es fehlen genau die Raten (kein "Rest auf den Raten-Betrag aendern")
+  r := finance.fn_handoff_diff(v_t);
+  IF jsonb_array_length(r) <> 1 OR r->0->>'field' <> 'exists' OR r->0->'call' IS DISTINCT FROM v_main THEN
+    RAISE EXCEPTION 'FAIL [5 Unterschied nach Zuordnung]: %', r; END IF;
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','recheck','task_id',v_t,'status','done','kind','recurring_transfer'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'call'->>'tool' IS DISTINCT FROM 'create_recurring_transfer'
+     OR r->'call'->'input'->>'name' <> '__t_ro_raten' OR r ? 'calls' THEN RAISE EXCEPTION 'FAIL [5 Nachholen nur der Raten]: %', r; END IF;
+  RAISE NOTICE 'PASS [5 Zuordnung]';
+
+  -- 6) eine Aenderung unter einer Vormerkung, deren vereinbarte Aufrufe alle eingetragen sind: abgelehnt (falsche Kennung)
+  v_other := (finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_ro_fremd','from_account_id',v_a,'to_account_id',v_b,'amount',70,
+               'schedule_unit','month','schedule_day_of_month',20,'first_payment_date',(core.fn_today() + 40)::text))->>'recurring_payment_id')::int;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, wanted)
+  VALUES ('finance','finance','erika','s','recurring_transfer','Ein Übertrag, ein Aufruf','working', now() - interval '8 minutes',
+          jsonb_build_object('tool','create_recurring_transfer','input', jsonb_build_object('name','__t_ro_einzeln','amount',40)))
+  RETURNING id INTO v_t2;
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_ro_einzeln','from_account_id',v_a,'to_account_id',v_b,'amount',40,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'chat_id','111','handoff_task_id',v_t2::text));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'SETUP [6]: %', r; END IF;
+  r := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_other, 'schedule_day_of_month', 1, 'chat_id', '111', 'handoff_task_id', v_t2::text));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_task_invalid'
+     OR (SELECT schedule_day_of_month FROM finance.recurring_payments WHERE id = v_other) <> 20 THEN
+    RAISE EXCEPTION 'FAIL [6 Aenderung unter erledigter Vormerkung]: %', r; END IF;
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_ro_zuviel','from_account_id',v_a,'to_account_id',v_b,'amount',40,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',(core.fn_today() + 40)::text,'chat_id','111','handoff_task_id',v_t2::text));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_task_invalid' THEN RAISE EXCEPTION 'FAIL [6 weiterer Teil ohne offenen Aufruf]: %', r; END IF;
+  RAISE NOTICE 'PASS [6 kein offener Aufruf]';
 END $$;
 
 ROLLBACK;

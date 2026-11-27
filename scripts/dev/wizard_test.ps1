@@ -4,6 +4,7 @@
 # kein Substrat, kein n8n-Testplatz: ein Wegwerf-Container (--rm) aus dem schlanken Test-Bild tests/wizard/Dockerfile (Node 24 +
 # bash + jq + curl, einmalig lokal gebaut; -Image ueberschreibt), der
 # Repo-Baum schreibgeschuetzt eingehaengt. In CI laeuft dasselbe direkt (Job `wizard` in ci.yml).
+# gate: manual (lokaler Umschlag um node --test; dieselben Faelle faehrt der CI-Job wizard in ci.yml ohne dieses Skript)
 #   .\scripts\dev\wizard_test.ps1                      alle Faelle
 #   .\scripts\dev\wizard_test.ps1 -Filter durchlauf    nur Tests, deren Name passt (node --test-name-pattern)
 #   -Container di4-wizardtest                          eigener Containername je Session/Worktree (Standard: wizardtest-<pid>)

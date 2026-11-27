@@ -1012,7 +1012,7 @@
   "finance.label.statement_changed": "Anderer Betrag als geplant",
   "finance.tpl.statement_changed_row": "{name}: {amount} statt {planned}",
   "finance.label.statement_plan_adjust": "Plan wird angepasst",
-  "finance.tpl.statement_plan_adjust_row": "{name}: ab {date} {amount}",
+  "finance.tpl.statement_plan_adjust_row": "{name}: {planned} → {amount} ab {date}",
   "finance.label.statement_booked": "Schon erfasst",
   "finance.label.statement_missing": "Nicht im Auszug (wird übersprungen)",
   "finance.tpl.statement_missing_row": "{name}: {amount}, fällig am {date}",

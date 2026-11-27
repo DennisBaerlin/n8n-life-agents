@@ -24,6 +24,14 @@
 --     B = Betrag + Datum: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit; Betrag exakt (+-0,005) oder, wenn ein
 --         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00). Verspaetete Abbuchung: 11-14 Tage
 --         nur mit exaktem Betrag und Namens-Token, nur Rhythmus month/year ohne feste Monatstage (kuerzere Rhythmen schloessen sonst ein altes Vorkommen).
+--     C = Einnahme ueber 150 % des Solls mit Schluessel (Gehalt plus Sonderzahlung in einer Ueberweisung): Einnahme-
+--         Vorkommen ohne Transfer, Gegen-IBAN als Schluessel, Faelligkeit +-10 Tage und bis period_end, nur fuer die
+--         nach Monatswert groesste Einnahme-Kette dieses Kontos mit dieser Gegen-IBAN (je Kette das am Zeilendatum aktive
+--         Glied; gleich grosse: keine). Gebucht mit dem Ist-Betrag, keine Plan-Anpassung (fn_statement_prepare);
+--         nachrangig nach A/B und Handbuchung, verdraengt keine Handbuchung.
+--         Bekannte Grenzen: eine grosse Einzelzahlung desselben Absenders (Erstattung, Abfindung ohne Handbuchung) im
+--         Fenster eines offenen Gehalts-Vorkommens wird als dieses Gehalt gebucht; ein im selben Betrag steckendes
+--         Vorkommen einer kleineren Einnahme-Kette (Jahres-Sonderzahlung) bleibt fehlend.
 --   Zuordnung gierig in fester Ordnung (Stufe -> |Betragsabweichung| -> |Tage| -> Zeile -> Kandidat): jede Zeile und
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
 --   Bank-Export-Datei: Zeilen mit kind (fn_bank_export_normalize) treffen nur passende Kandidaten: buy nur einen
@@ -86,7 +94,8 @@ BEGIN
                CASE WHEN r.account_id = p_account_id THEN r.target_account_id ELSE r.account_id END AS other_acct,
                r.target_account_id,
                sp.id IS NOT NULL AS is_plan, upper(sp.isin) AS sp_isin, upper(sp.symbol) AS sp_symbol,
-               r.schedule_unit IN ('month', 'year') AND r.schedule_days_of_month IS NULL AS long_cycle
+               r.schedule_unit IN ('month', 'year') AND r.schedule_days_of_month IS NULL AS long_cycle,
+               r.monthly_equivalent AS mon
         FROM finance.fn_recurring_due_open(p_cut - 10, p_period_end + 5) o
         JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
         LEFT JOIN finance.savings_plans sp ON sp.recurring_payment_id = finance.fn_recurring_lineage_head(r.id)
@@ -134,18 +143,20 @@ BEGIN
         CROSS JOIN LATERAL (SELECT (l.d - o.due) BETWEEN -5 AND 14 AND EXISTS (
                                 SELECT 1 FROM regexp_split_to_table(lower(o.name), '[\s,.;:/()_+&-]+') tok
                                 WHERE length(tok) >= 4 AND position(tok IN l.txt) > 0) AS hit) nm
+        CROSS JOIN LATERAL (SELECT (l.mkey IS NOT NULL AND EXISTS (
+                                       SELECT 1 FROM finance.recurring_payment_keys k
+                                       WHERE k.key_type = 'sepa_mandate' AND k.key_value = l.mkey
+                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
+                                OR (l.iban IS NOT NULL AND EXISTS (
+                                       SELECT 1 FROM finance.recurring_payment_keys k
+                                       WHERE k.key_type = 'counterparty_iban' AND k.key_value = l.iban
+                                         AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
+                                AS hit) ky
         CROSS JOIN LATERAL (
             SELECT CASE
                 WHEN abs(l.d - o.due) <= 10
                      AND abs(l.amt) BETWEEN abs(o.expected) * 0.5 AND abs(o.expected) * 1.5
-                     AND ( (l.mkey IS NOT NULL AND EXISTS (
-                               SELECT 1 FROM finance.recurring_payment_keys k
-                               WHERE k.key_type = 'sepa_mandate' AND k.key_value = l.mkey
-                                 AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
-                        OR (l.iban IS NOT NULL AND EXISTS (
-                               SELECT 1 FROM finance.recurring_payment_keys k
-                               WHERE k.key_type = 'counterparty_iban' AND k.key_value = l.iban
-                                 AND k.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(o.rp_id))))
+                     AND ( ky.hit
                         OR (l.iban IS NOT NULL AND o.other_acct IS NOT NULL AND l.iban =
                                (SELECT a.account_number FROM finance.accounts a WHERE a.id = o.other_acct)) )
                 THEN 'A'
@@ -155,6 +166,23 @@ BEGIN
                 THEN 'B'
                 WHEN (l.d - o.due) BETWEEN 11 AND 14 AND o.long_cycle AND abs(l.amt - o.expected) <= 0.005 AND nm.hit
                 THEN 'B'
+                WHEN abs(l.d - o.due) <= 10 AND o.due <= p_period_end
+                     AND o.expected > 0 AND o.target_account_id IS NULL AND ky.hit AND l.iban IS NOT NULL
+                     AND l.amt > o.expected * 1.5
+                     -- Gegen-IBAN gilt je Kette (Gehalt und Zuschuss teilen sie): nur die groesste Einnahme-Kette des
+                     -- Kontos nach Monatswert, sonst naehme der Zuschuss ein frueh gezahltes Gehalt bzw. die Jahres-
+                     -- Sonderzahlung das Gehalt des Monats. Der Schluessel bleibt nach einem Split am alten Glied,
+                     -- darum zaehlt das am Zeilendatum aktive Glied seiner Kette.
+                     AND NOT EXISTS (
+                         SELECT 1 FROM finance.recurring_payment_keys k2
+                         CROSS JOIN LATERAL finance.fn_recurring_lineage(k2.recurring_payment_id) AS lid(id)
+                         JOIN finance.recurring_payments r2 ON r2.id = lid.id
+                         WHERE k2.key_type = 'counterparty_iban' AND k2.key_value = l.iban
+                           AND r2.account_id = p_account_id AND r2.target_account_id IS NULL AND r2.amount > 0
+                           AND r2.id NOT IN (SELECT finance.fn_recurring_lineage(o.rp_id))
+                           AND r2.monthly_equivalent >= o.mon
+                           AND r2.status = 'active' AND r2.valid_from <= l.d AND (r2.valid_to IS NULL OR r2.valid_to > l.d))
+                THEN 'C'
             END AS stage
         ) x
         WHERE x.stage IS NOT NULL AND sign(l.amt) = sign(o.expected)

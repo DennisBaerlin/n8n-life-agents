@@ -162,3 +162,174 @@ BEGIN
   RAISE NOTICE 'PASS [Stufe 0 Handbuchung: eindeutig, Fenster, Mehrdeutigkeit, ohne Zeile, Schluessel-Zeile, nach Auszugsende]';
 END $$;
 ROLLBACK;
+
+-- Stufe C (Einnahme ueber 150 % mit Schluessel): Gehalt und Sonderzahlung kommen in einer Ueberweisung vom bekannten Absender
+-- (Gegen-IBAN der Kette) und liegen ueber 150 % des Solls. Die Zeile gehoert zum Gehalts-Vorkommen, sonst gaelte das
+-- Gehalt als fehlend und die ganze Summe stuende im Rest. Untergrenze 50 % und Ausgaben (Obergrenze 150 %) bleiben.
+BEGIN;
+DO $$
+DECLARE
+  t date := CURRENT_DATE; v_acc int; v_sal int; v_exp int; v_m jsonb;
+BEGIN
+  v_acc := (finance.fn_create_account('{"name":"__smx_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_sal := finance.fn_add_recurring_payment(v_acc, 2400, '__smx Lohn Beispielfirma__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, t - 25, t - 25, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_sal, 'counterparty_iban', 'DE02120300000000202051', 'user');
+
+  -- (X1) 2400 + 1800 = 4200 (175 %) mit Schluessel -> Stufe C auf das Gehalts-Vorkommen, nichts im Rest
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 4200, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02 1203 0000 0000 2020 51', 'purpose', 'Bezuege')));
+  IF (v_m->'matched'->0->>'recurring_payment_id')::int IS DISTINCT FROM v_sal OR v_m->'matched'->0->>'stage' IS DISTINCT FROM 'C'
+     OR (v_m->'matched'->0->>'amount')::numeric IS DISTINCT FROM 4200 OR (v_m->>'unmatched_in')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [X1 Gehalt plus Sonderzahlung ueber 150 %% trifft das Gehalt]: %', v_m; END IF;
+
+  -- (X2) ohne Schluessel (fremde IBAN) bleibt die Obergrenze: kein Treffer
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 4200, 'counterparty', 'Jemand Anderes',
+                              'counterparty_iban', 'DE75512108001245126199', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [X2 ohne Schluessel]: %', v_m; END IF;
+
+  -- (X3) Untergrenze bleibt: 1000 (42 %) vom Schluessel trifft nicht
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 1000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [X3 Untergrenze]: %', v_m; END IF;
+
+  -- (X4) Gehalt und Sonderzahlung auf zwei Zeilen: das Gehalt nimmt die Zeile mit der kleineren Abweichung
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 5000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Praemie'),
+           jsonb_build_object('date', (t - 24)::text, 'amount', 2400, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 1 OR (v_m->'matched'->0->>'line_idx')::int IS DISTINCT FROM 2
+     OR (v_m->>'unmatched_in')::numeric IS DISTINCT FROM 5000 THEN
+    RAISE EXCEPTION 'FAIL [X4 zwei Zeilen: Gehalt = kleinere Abweichung]: %', v_m; END IF;
+
+  -- (X5) Ausgabe mit Mandat: doppelte Abbuchung (200 %) trifft weiter nicht
+  v_exp := finance.fn_add_recurring_payment(v_acc, -60, '__smx Verein Beispiel__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, t - 20, t - 20, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_exp, 'sepa_mandate', 'DE00ZZZ00000000001|SMX-1', 'user');
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 19)::text, 'amount', -120, 'counterparty', 'Verein Beispiel',
+                              'creditor_id', 'DE00ZZZ00000000001', 'mandate_ref', 'SMX-1', 'purpose', 'Beitrag')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [X5 Ausgabe behaelt Obergrenze]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Stufe C: Einnahme mit Schluessel ohne Obergrenze, Untergrenze und Ausgaben unveraendert]';
+
+  -- (X6) zweite, kleinere Einnahme-Kette mit demselben Absender (Zuschuss): sie bekommt keine Zeile ueber 150 %, auch wenn
+  --      das Gehalt ausserhalb seines Fensters liegt (frueh gezahltes Gehalt bleibt offen statt auf dem Zuschuss zu landen)
+  v_exp := finance.fn_add_recurring_payment(v_acc, 40, '__smx Zuschuss Beispiel__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, t - 8, t - 8, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_exp, 'counterparty_iban', 'DE02120300000000202051', 'user');
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 8)::text, 'amount', 2400, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_m->'matched') x WHERE (x->>'recurring_payment_id')::int = v_exp) THEN
+    RAISE EXCEPTION 'FAIL [X6 kleinere Kette mit gleichem Schluessel bleibt bei 150 %%]: %', v_m; END IF;
+  -- die groesste Kette des Absenders behaelt den Treffer ohne Obergrenze
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 4200, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF (v_m->'matched'->0->>'recurring_payment_id')::int IS DISTINCT FROM v_sal THEN
+    RAISE EXCEPTION 'FAIL [X6b groesste Kette behaelt den Treffer]: %', v_m; END IF;
+  DELETE FROM finance.recurring_payment_keys WHERE recurring_payment_id = v_exp;
+
+  -- (X7) von Hand gebuchte grosse Einnahme vom selben Absender (Abfindung): die Handbuchung erklaert ihre Zeile weiter,
+  --      das Gehalt nimmt die passende Zeile
+  PERFORM finance.fn_book_transaction(jsonb_build_object('account_id', v_acc, 'amount', 9000, 'direction', 'inflow',
+             'description', 'Abfindung Beispiel', 'transaction_date', (t - 24)::text));
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 2400, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege'),
+           jsonb_build_object('date', (t - 24)::text, 'amount', 9000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Abfindung')));
+  IF jsonb_array_length(v_m->'matched') <> 2 OR (v_m->>'unmatched_in')::numeric IS DISTINCT FROM 0
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_m->'matched') x WHERE (x->>'line_idx')::int = 2 AND x->>'kind' = 'booked')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_m->'matched') x WHERE (x->>'line_idx')::int = 1
+                    AND (x->>'recurring_payment_id')::int = v_sal) THEN
+    RAISE EXCEPTION 'FAIL [X7 Handbuchung ueber 150 %% bleibt erkannt]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Stufe C: nur groesste Einnahme-Kette des Schluessels, Handbuchung gewinnt]';
+
+  -- (X8) groessere Einnahme-Kette mit derselben IBAN auf einem anderen Konto (zwei Renten derselben Kasse) sperrt nicht
+  v_exp := (finance.fn_create_account('{"name":"__smx_giro_b__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_exp := finance.fn_add_recurring_payment(v_exp, 3000, '__smx Lohn Partner__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, t - 25, t - 25, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_exp, 'counterparty_iban', 'DE02120300000000202051', 'user');
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 4200, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF (v_m->'matched'->0->>'recurring_payment_id')::int IS DISTINCT FROM v_sal THEN
+    RAISE EXCEPTION 'FAIL [X8 Kette auf anderem Konto sperrt nicht]: %', v_m; END IF;
+
+  -- (X9) jaehrliche Sonderzahlungs-Kette mit hoeherem Einzelbetrag, aber kleinerem Monatswert: das Gehalt behaelt den
+  --      Treffer ueber 150 % (sonst ginge das Gehalt des Monats verloren)
+  v_exp := finance.fn_add_recurring_payment(v_acc, 3000, '__smx Weihnachtsgeld Beispiel__', 1::smallint, 'year'::finance.schedule_unit,
+             NULL::smallint, t - 23, t - 23, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_exp, 'counterparty_iban', 'DE02120300000000202051', 'user');
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 7000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF (v_m->'matched'->0->>'recurring_payment_id')::int IS DISTINCT FROM v_sal THEN
+    RAISE EXCEPTION 'FAIL [X9 Jahres-Kette nimmt das Gehalt nicht]: %', v_m; END IF;
+  DELETE FROM finance.recurring_payment_keys WHERE recurring_payment_id = v_exp;
+  UPDATE finance.recurring_payments SET status = 'paused' WHERE id = v_exp;
+
+  -- (X10) exakter Treffer ohne IBAN (Stufe B) geht vor: die Praemien-Zeile mit IBAN nimmt dem Gehalt die Zeile nicht
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 24)::text, 'amount', 5000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Praemie'),
+           jsonb_build_object('date', (t - 24)::text, 'amount', 2400, 'counterparty', 'Arbeitgeber Muster', 'purpose', 'Lohn')));
+  IF jsonb_array_length(v_m->'matched') <> 1 OR (v_m->'matched'->0->>'line_idx')::int IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'FAIL [X10 Stufe B vor Stufe C]: %', v_m; END IF;
+
+  -- (X11) Vorkommen nach dem Auszugsende bekommt keine Zeile ueber 150 % (das Gehalt kommt erst im naechsten Auszug)
+  v_m := finance.fn_statement_match(v_acc, t - 60, t - 27, jsonb_build_array(
+           jsonb_build_object('date', (t - 29)::text, 'amount', 5000, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Erstattung')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [X11 Faelligkeit nach period_end]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Stufe C: Monatswert, nur eigenes Konto, nach Stufe B, bis period_end]';
+END $$;
+ROLLBACK;
+
+-- Stufe C nach einer Gehaltserhoehung: der gelernte Schluessel bleibt am alten Glied, die groessere Kette zaehlt trotzdem
+-- (sonst naehme der kleine Zuschuss mit derselben IBAN ein frueh gezahltes Gehalt). Mandat ohne IBAN: keine Stufe C.
+BEGIN;
+DO $$
+DECLARE
+  v_acc int; v_sal int; v_new int; v_all int; v_m jsonb;
+BEGIN
+  v_acc := (finance.fn_create_account('{"name":"__smy_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_sal := finance.fn_add_recurring_payment(v_acc, 2400, '__smy Lohn Beispielfirma__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, DATE '2026-03-01', DATE '2026-03-01', NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_sal, 'counterparty_iban', 'DE02120300000000202051', 'user');
+  v_new := (finance.fn_split_recurring_payment(v_sal, DATE '2026-04-15', 2600, NULL, NULL, NULL, NULL, NULL, NULL)
+            ->>'recurring_payment_id')::int;
+  IF v_new IS NULL OR v_new = v_sal THEN RAISE EXCEPTION 'SETUP split: %', v_new; END IF;
+  v_all := finance.fn_add_recurring_payment(v_acc, 40, '__smy Zuschuss Beispiel__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, DATE '2026-05-15', DATE '2026-05-15', NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_all, 'counterparty_iban', 'DE02120300000000202051', 'user');
+
+  -- (Y1) 2600 am Zuschuss-Termin, Gehalt 14 Tage entfernt: kein Treffer
+  v_m := finance.fn_statement_match(v_acc, DATE '2026-04-30', DATE '2026-05-31', jsonb_build_array(
+           jsonb_build_object('date', '2026-05-15', 'amount', 2600, 'counterparty', 'Arbeitgeber Muster',
+                              'counterparty_iban', 'DE02120300000000202051', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN
+    RAISE EXCEPTION 'FAIL [Y1 Split-Kette mit Schluessel am alten Glied sperrt den Zuschuss]: %', v_m; END IF;
+
+  -- (Y2) Einnahme ueber 150 % nur mit Mandat (keine Gegen-IBAN): keine Stufe C
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_new, 'sepa_mandate', 'DE00ZZZ00000000002|SMY-1', 'user');
+  v_m := finance.fn_statement_match(v_acc, DATE '2026-04-30', DATE '2026-05-31', jsonb_build_array(
+           jsonb_build_object('date', '2026-05-01', 'amount', 9000, 'counterparty', 'Arbeitgeber Muster',
+                              'creditor_id', 'DE00ZZZ00000000002', 'mandate_ref', 'SMY-1', 'purpose', 'Bezuege')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [Y2 Mandat ohne IBAN]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Stufe C: Split-Kette zaehlt ueber ihr aktives Glied, nur mit Gegen-IBAN]';
+END $$;
+ROLLBACK;

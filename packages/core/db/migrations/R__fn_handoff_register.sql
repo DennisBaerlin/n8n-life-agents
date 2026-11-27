@@ -9,10 +9,13 @@
 --     legacy     -> vor der Spalte close_reason abgeschlossen sind (Altbestand ohne Provenienz) und deren Abschnitt (und
 --                   Thema, ohne Gross-/Kleinschreibung) im gueltigen Plan noch steht.
 --   Nie dabei: eine Aufgabe, der schon eine Korrektur folgt (follows_task_id).
---   possible_now/call: Vorpruefung core.advisors.handoff_check_fn im Modus recheck ({mode, domain, chat_id, task_id, status,
---   kind, payload, text, wanted}); wahr, wenn sie jetzt einen Aufruf liefert (call bzw. calls; bei deviation der Aufruf vom
---   Ersatz zum Soll). legacy done bleibt falsch: ohne Soll weiss nur der Berater, was gemeint war. Fehlt eine Registry-fn
---   oder wirft sie, gilt neutral: possible_now=false bzw. keine deviation.
+--   possible_now/call = jetzt nachholbar: Vorpruefung core.advisors.handoff_check_fn im Modus recheck ({mode, domain, chat_id,
+--   task_id, status, kind, payload, text, wanted}); wahr, wenn sie jetzt einen Aufruf liefert (call bzw. calls).
+--   deviation wird nur vorgeprueft, wenn ihr Unterschied einen vereinbarten Aufruf nennt, der nie eingetragen wurde (Element
+--   mit call); der Aufruf ist dann genau dieser Rest. Ein abweichendes Feld oder eine wieder geloeschte Sache ist eine
+--   spaetere Aenderung des Nutzers: die Zeile bleibt mit diff sichtbar, wird aber nie nachgeholt. legacy done bleibt
+--   falsch: ohne Soll weiss nur der Berater, was gemeint war. Fehlt eine Registry-fn oder wirft sie, gilt neutral:
+--   possible_now=false bzw. keine deviation.
 --   Rueckgabe jsonb-Array in id-Reihenfolge [{task_id, kind, text, why, section_key, topic, status, row_kind, blocked_code,
 --   wanted, entered_refs, diff, possible_now, call}]; unaufgeloester Absender -> [].
 --   Konsumenten: core.fn_plan_rollout_next (step fix), core.fn_handle_handoff_cb (Knopf ...:fix), Berater-Lesefenster.
@@ -78,7 +81,8 @@ BEGIN
         END IF;
 
         v_call := NULL;
-        IF v_chkfn IS NOT NULL AND NOT (v_kind = 'legacy' AND t.status = 'done') THEN
+        IF v_chkfn IS NOT NULL AND NOT (v_kind = 'legacy' AND t.status = 'done')
+           AND NOT (v_kind = 'deviation' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_diff) x WHERE x ? 'call')) THEN
             BEGIN
                 EXECUTE format('SELECT %s($1)', v_chkfn::regproc) INTO v_chk USING jsonb_build_object(
                     'mode', 'recheck', 'domain', p_domain, 'chat_id', p_chat_id, 'task_id', t.id, 'status', t.status,

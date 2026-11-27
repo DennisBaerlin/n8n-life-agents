@@ -218,18 +218,25 @@ BEGIN
 END $$;
 
 -- Korrektur-Schritt (step fix): nach dem Update angebotene Nachhol-Eintraege aus dem Register, einmal je Aufgabe,
--- nie bei offenen Eintraegen oder offenem Entwurf; ohne Vorpruefung, die jetzt durchlaeuft, kein Angebot.
+-- nie bei offenen Eintraegen oder offenem Entwurf; ohne Vorpruefung, die jetzt durchlaeuft, kein Angebot. Eine erledigte
+-- Aufgabe wird nur mit einem nie eingetragenen vereinbarten Aufruf angeboten, nie wegen eines abweichenden Felds.
 INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step) VALUES ('__rollf__', 'core', '__rollf___planning', 'core.fn_x', TRUE);
 CREATE FUNCTION core.fn_t_fix_check(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
   SELECT CASE WHEN COALESCE(current_setting('t.fix_mode', true), '') = 'now'
               THEN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', 'set_x', 'input', '{}'::jsonb))
               ELSE '{"ok":true,"unsupported":true,"blocked_code":"tool_missing"}'::jsonb END $f$;
+CREATE FUNCTION core.fn_t_fix_diff(p_task int) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT CASE (SELECT text FROM agent.handoff_tasks WHERE id = p_task)
+              WHEN 'geaendert' THEN '[{"field":"day","wanted":1,"current":15,"ref":{"type":"x","id":1}}]'::jsonb
+              WHEN 'teil fehlt' THEN '[{"field":"exists","wanted":true,"current":false,"call":{"tool":"set_x","input":{"name":"b"}}}]'::jsonb
+              ELSE '[]'::jsonb END $f$;
 DO $$
 DECLARE
   d CONSTANT TEXT := '__rollf__';
   v JSONB;
   v_def INT;
   v_open INT;
+  v_part INT;
 BEGIN
   UPDATE core.config SET value = 'false' WHERE category = 'advisor' AND key = 'plan_sync_required';
   INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, interview_state)
@@ -270,6 +277,24 @@ BEGIN
   IF v->>'step' IS DISTINCT FROM 'fix' OR v->'messages'->0->'msg'->0->>'value' <> 'core.rollout.fix_offer'
      OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 3 OR jsonb_array_length(v->'messages'->0->'latches') <> 2 THEN
     RAISE EXCEPTION 'FAIL fix zwei %', v; END IF;
+  PERFORM core.fn_notify_commit('plan_rollout', l->>'key') FROM jsonb_array_elements(v->'messages'->0->'latches') l;
+
+  -- wie vereinbart eingetragen, spaeter vom Nutzer geaendert (Unterschied nur in einem Feld): nie ein Nachhol-Angebot,
+  -- auch wenn die Vorpruefung einen Aufruf liefert
+  UPDATE core.advisors SET handoff_diff_fn = 'core.fn_t_fix_diff' WHERE domain = d;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, closed_at, close_reason, wanted, entered_refs)
+  VALUES (d, 'core', 'erika', 's', 'other', 'geaendert', 'done', now(), now(), 'entered', '{"tool":"set_x","input":{"day":1}}', '[{"type":"x","id":1}]');
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS NOT DISTINCT FROM 'fix' THEN RAISE EXCEPTION 'FAIL fix fuer eine eigene Aenderung %', v; END IF;
+  -- ein vereinbarter Aufruf, der nie eingetragen wurde (Unterschied mit call): Angebot, die Zahl nennt nur Nachholbares
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at, closed_at, close_reason, wanted, entered_refs)
+  VALUES (d, 'core', 'erika', 's', 'other', 'teil fehlt', 'done', now(), now(), 'entered',
+          '[{"tool":"set_x","input":{"name":"a"}},{"tool":"set_x","input":{"name":"b"}}]', '[{"type":"x","id":2,"call":0}]') RETURNING id INTO v_part;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'fix' OR (v->'messages'->0->'msg'->0->'params'->>'n')::int IS DISTINCT FROM 4
+     OR jsonb_array_length(v->'messages'->0->'latches') <> 1
+     OR v->'messages'->0->'latches'->0->>'key' <> d || ':household:1:fix:' || v_part
+     OR v->'messages'->0->'buttons'->0->>'data' <> 'handoff:' || d || ':' || v_part || ':fix' THEN RAISE EXCEPTION 'FAIL fix fehlender Teil %', v; END IF;
 END $$;
 
 -- Folge-Zeile der Liste (core.advisors.entry_effects_fn): nur mit Hinweisen der Klasse entry (accounts > 0), eigener Satz fuer 1;

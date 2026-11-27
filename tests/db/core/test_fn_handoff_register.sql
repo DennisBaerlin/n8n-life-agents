@@ -2,11 +2,14 @@
 -- core.fn_handoff_register (abgeleitet, wiederholbar) und der Knopf handoff:<domain>:<max>:fix (core.fn_handle_handoff_cb):
 --   * deferred -> Zeile; possible_now wechselt von falsch auf wahr, sobald die Vorpruefung (recheck) einen Aufruf liefert;
 --   * done mit wanted und nicht leerem Unterschied (handoff_diff_fn) -> deviation; gleicher Stand -> keine Zeile;
+--     nachholbar (possible_now) ist eine deviation nur mit einem vereinbarten Aufruf, der nie eingetragen wurde
+--     (Unterschied mit call); ein abweichendes Feld bleibt sichtbar, wird aber nie nachgeholt;
 --   * Altbestand (abgeschlossen ohne close_reason) mit Thema im gueltigen Plan -> legacy; ohne Thema im Plan -> keine Zeile;
 --     legacy done bleibt possible_now=false (Kandidat fuer den Berater);
 --   * eine Aufgabe, der schon eine Korrektur folgt, faellt heraus; fremde Person und andere Domain sehen nichts;
 --   * ohne Registry-fns: possible_now=false, keine deviation;
 --   * Knopf ...:fix: deferred -> working, abgeschlossen -> neue Aufgabe working mit follows_task_id und wanted = Aufruf;
+--     fuer ein abweichendes Feld keine neue Aufgabe;
 --     zweiter Tipp findet nichts; je abgeschlossener Aufgabe hoechstens eine Korrektur (UNIQUE).
 BEGIN;
 
@@ -19,12 +22,15 @@ BEGIN
 END $f$;
 CREATE FUNCTION core.fn_t_reg_diff(p_task int) RETURNS jsonb LANGUAGE sql AS $f$
   SELECT CASE WHEN (SELECT text FROM agent.handoff_tasks WHERE id = p_task) LIKE 'abweichend%'
-              THEN '[{"field":"target_amount","wanted":1200,"current":1000}]'::jsonb ELSE '[]'::jsonb END $f$;
+              THEN '[{"field":"target_amount","wanted":1200,"current":1000}]'::jsonb
+              WHEN (SELECT text FROM agent.handoff_tasks WHERE id = p_task) LIKE 'teil fehlt%'
+              THEN '[{"field":"exists","wanted":true,"current":false,"call":{"tool":"create_x","input":{"name":"rest"}}}]'::jsonb
+              ELSE '[]'::jsonb END $f$;
 
 DO $$
 DECLARE
   r      jsonb;
-  v_def  int; v_def2 int; v_dev int; v_same int; v_leg_c int; v_leg_d int; v_leg_x int; v_fol int; v_new int;
+  v_def  int; v_def2 int; v_dev int; v_part int; v_same int; v_leg_c int; v_leg_d int; v_leg_x int; v_fol int; v_new int;
   v_ok   boolean;
 BEGIN
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
@@ -69,6 +75,10 @@ BEGIN
   VALUES ('finance','finance','erika','wealth_building','other','alt korrigiert (neu)', v_fol);
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, blocked_code)
   VALUES ('finance','finance','lena','goals_triggers','other','fremd','deferred','end_date_future');
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, status, claimed_at, closed_at, close_reason, wanted, entered_refs)
+  VALUES ('finance','finance','erika','goals_triggers','Ziele','recurring_transfer','teil fehlt','done', now(), now(), 'entered',
+          '[{"tool":"create_x","input":{"name":"raten"}},{"tool":"create_x","input":{"name":"rest"}}]',
+          '[{"type":"recurring_payment","id":7,"call":0}]') RETURNING id INTO v_part;
 
   -- ---------- 1) ohne Registry-fns ----------
   r := core.fn_handoff_register('finance', '111');
@@ -81,7 +91,7 @@ BEGIN
   UPDATE core.advisors SET handoff_check_fn = 'core.fn_t_reg_check', handoff_diff_fn = 'core.fn_t_reg_diff' WHERE domain = 'finance';
   r := core.fn_handoff_register('finance', '111');
   IF (SELECT string_agg((e->>'task_id') || '=' || (e->>'row_kind'), ',' ORDER BY (e->>'task_id')::int) FROM jsonb_array_elements(r) e)
-     <> v_def || '=deferred,' || v_dev || '=deviation,' || v_leg_c || '=legacy,' || v_leg_d || '=legacy' THEN
+     <> v_def || '=deferred,' || v_dev || '=deviation,' || v_leg_c || '=legacy,' || v_leg_d || '=legacy,' || v_part || '=deviation' THEN
     RAISE EXCEPTION 'FAIL [2 Zeilen]: %', r; END IF;
   IF jsonb_path_exists(r, '$[*] ? (@.possible_now == true)') THEN RAISE EXCEPTION 'FAIL [2 geht noch nicht]: %', r; END IF;
   IF (SELECT e->'diff' FROM jsonb_array_elements(r) e WHERE (e->>'task_id')::int = v_dev) <> '[{"field":"target_amount","wanted":1200,"current":1000}]'::jsonb
@@ -91,7 +101,12 @@ BEGIN
   PERFORM set_config('t.reg_mode', 'now', true);
   r := core.fn_handoff_register('finance', '111');
   IF (SELECT string_agg((e->>'task_id') || '=' || (e->>'possible_now'), ',' ORDER BY (e->>'task_id')::int) FROM jsonb_array_elements(r) e)
-     <> v_def || '=true,' || v_dev || '=true,' || v_leg_c || '=true,' || v_leg_d || '=false' THEN RAISE EXCEPTION 'FAIL [2 jetzt moeglich]: %', r; END IF;
+     <> v_def || '=true,' || v_dev || '=false,' || v_leg_c || '=true,' || v_leg_d || '=false,' || v_part || '=true' THEN
+    RAISE EXCEPTION 'FAIL [2 jetzt moeglich]: %', r; END IF;
+  -- abweichendes Feld: sichtbar mit Unterschied, ohne Aufruf
+  IF (SELECT e->'call' FROM jsonb_array_elements(r) e WHERE (e->>'task_id')::int = v_dev) <> 'null'::jsonb
+     OR (SELECT jsonb_array_length(e->'diff') FROM jsonb_array_elements(r) e WHERE (e->>'task_id')::int = v_dev) <> 1 THEN
+    RAISE EXCEPTION 'FAIL [2 abweichendes Feld traegt einen Aufruf]: %', r; END IF;
   IF (SELECT e->'call'->>'tool' FROM jsonb_array_elements(r) e WHERE (e->>'task_id')::int = v_def) <> 'set_x'
      OR (SELECT e->'call'->'input'->>'mode' FROM jsonb_array_elements(r) e WHERE (e->>'task_id')::int = v_def) <> 'recheck' THEN
     RAISE EXCEPTION 'FAIL [2 call]: %', r; END IF;
@@ -115,9 +130,10 @@ BEGIN
   IF v_new IS NULL OR (SELECT status FROM agent.handoff_tasks WHERE id = v_new) <> 'working'
      OR (SELECT wanted->>'tool' FROM agent.handoff_tasks WHERE id = v_new) <> 'set_x'
      OR (SELECT text FROM agent.handoff_tasks WHERE id = v_new) <> 'alt gestrichen'
-     OR NOT EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id = v_dev AND status = 'working') THEN
+     OR NOT EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id = v_part AND status = 'working' AND wanted->>'tool' = 'set_x') THEN
     RAISE EXCEPTION 'FAIL [3 Korrektur als neue Aufgabe]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
   IF (SELECT status FROM agent.handoff_tasks WHERE id = v_leg_c) <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [3 alte Aufgabe angefasst]'; END IF;
+  IF EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id = v_dev) THEN RAISE EXCEPTION 'FAIL [3 abweichendes Feld nachgeholt]'; END IF;
   IF NOT jsonb_path_exists(r->'tasks', '$[*] ? (@.wanted.tool == "set_x")') THEN RAISE EXCEPTION 'FAIL [3 tasks ohne wanted]: %', r; END IF;
   IF (SELECT e->'wanted'->>'tool' FROM jsonb_array_elements(r->'tasks') e WHERE (e->>'id')::int = v_def2) IS DISTINCT FROM 'set_x'
      OR (SELECT e->'wanted'->'input' ? 'until_amount' FROM jsonb_array_elements(r->'tasks') e WHERE (e->>'id')::int = v_def2) THEN

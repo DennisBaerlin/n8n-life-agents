@@ -57,6 +57,13 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1 fehlender Teil sichtbar]: %', v_md; END IF;
   IF position('Sonderteil ohne Themen.' IN v_md) < position('DE:core.plan_md.part_open' IN v_md) OR v_md NOT LIKE '%DE:core.plan_md.footer%' THEN
     RAISE EXCEPTION 'FAIL [1 Abschnitt ausserhalb der Teile am Ende + Hinweis]: %', v_md; END IF;
+  -- Abschnitt ohne Themen: Warum und offene Punkte am Abschnitt stehen im Text wie bei einem Thema
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__cp__','chat_id','111','section_key','zz_extra',
+         'section_content','Sonderteil ohne Themen.','why','Grund am Abschnitt.','open_points','["Beleg nachreichen"]'));
+  v_md := agent.fn_advisor_compose_plan_md(v_plan);
+  IF position('DE:core.plan_md.why Grund am Abschnitt.' IN v_md) = 0 OR position('DE:core.plan_md.open_point Beleg nachreichen' IN v_md) = 0
+     OR position('Grund am Abschnitt.' IN v_md) < position('Sonderteil ohne Themen.' IN v_md) THEN
+    RAISE EXCEPTION 'FAIL [1 Abschnitt ohne Themen mit Warum und Offen]: %', v_md; END IF;
   -- Alt-Text ohne Themen
   UPDATE agent.advisor_plans SET interview_state = interview_state || '{"debts_loans":{"legacy_content":"Alter Kredit-Text."}}' WHERE id = v_plan;
   v_md := agent.fn_advisor_compose_plan_md(v_plan);
@@ -71,9 +78,18 @@ BEGIN
      OR position('kaputt' IN v_md) > 0 OR position('## DE:core.plan_md.dates_head' IN v_md) > position('DE:core.plan_md.footer' IN v_md) THEN
     RAISE EXCEPTION 'FAIL [1 Termine]: %', replace(v_md, E'\n', ' | '); END IF;
   IF position('dates_head' IN agent.fn_advisor_compose_plan_md(v_plan, '[]'::jsonb)) > 0 THEN RAISE EXCEPTION 'FAIL [1 ohne Termine kein Abschnitt]'; END IF;
+  -- Form stimmt, Kalendertag nicht (30. Februar): fehlt wie jeder unlesbare Eintrag, kein Cast-Fehler
+  v_md := agent.fn_advisor_compose_plan_md(v_plan, '[{"label":"Plan durchsehen","remind_on":"2031-11-01"},{"label":"Unmoeglich","remind_on":"2031-02-30"}]'::jsonb);
+  IF position('Unmoeglich' IN v_md) > 0 OR position('Plan durchsehen' IN v_md) = 0 THEN
+    RAISE EXCEPTION 'FAIL [1 Kalendertag]: %', replace(v_md, E'\n', ' | '); END IF;
   RAISE NOTICE 'PASS [1 Zusammensetzen]';
 
   -- ---------- 2) Publish nimmt kein plan_md vom Modell ----------
+  -- ein unmoeglicher Kalendertag ist korrigierbar (core.fn_plan_sync invalid_date), kein RAISE aus dem Zusammensetzen
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__cp__','chat_id','111',
+         'reminders','[{"label":"Unmoeglich","remind_on":"2031-02-30"}]'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'invalid_date' THEN
+    RAISE EXCEPTION 'FAIL [2 Kalendertag korrigierbar]: %', r; END IF;
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__cp__','chat_id','111','plan_md','# Vom Modell geschrieben',
          'reminders','[{"label":"Plan durchsehen","remind_on":"2031-11-01"}]'));
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [2 publish]: %', r; END IF;

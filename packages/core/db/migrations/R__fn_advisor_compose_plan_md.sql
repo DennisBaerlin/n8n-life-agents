@@ -5,7 +5,8 @@
 --   Aufbau: "# <plan_name>", je Teil in der Reihenfolge von core.fn_advisor_parts "## <Abschnitts-Name>" (Katalog
 --   <paket>.plan_section.<key> in der Sprache der Plan-Person, beim Haushalts-Plan des Owners), darunter je Thema
 --   "### <Thema>", Text, Zeile core.plan_md.why {text} und je offenem Punkt core.plan_md.open_point {text}; ein Abschnitt
---   ohne Themen mit content, sonst legacy_content; ein Teil ohne Inhalt mit core.plan_md.part_open (sichtbar statt Luecke).
+--   ohne Themen mit content, sonst legacy_content, dazu dieselben Zeilen fuer why und offene Punkte am Abschnitt; ein Teil
+--   ohne Inhalt mit core.plan_md.part_open (sichtbar statt Luecke).
 --   Abschnitte ausserhalb der Teile folgen alphabetisch. Danach, wenn p_reminders Eintraege hat (die reminders des Publish,
 --   [{label, remind_on ISO, deadline?}]), der Abschnitt core.plan_md.dates_head mit je Termin core.plan_md.date_line bzw. bei
 --   deadline core.plan_md.date_deadline {date, label} in Datums-Reihenfolge, nur aus der Liste. Am Ende der feste Satz core.plan_md.footer.
@@ -28,6 +29,7 @@ DECLARE
     v_keys  text[];
     v_k     text;
     v_sec   jsonb;
+    v_blocks jsonb;
     v_body  text;
     v_parts text[] := '{}';
     v_dates text;
@@ -45,20 +47,21 @@ BEGIN
                       ORDER BY s);
     FOREACH v_k IN ARRAY v_keys LOOP
         v_sec := CASE WHEN jsonb_typeof(v_state->v_k) = 'object' THEN v_state->v_k ELSE '{}'::jsonb END;
-        IF jsonb_typeof(v_sec->'topics') = 'array' AND jsonb_array_length(v_sec->'topics') > 0 THEN
-            SELECT string_agg(concat_ws(E'\n\n',
-                       '### ' || (t->>'topic'),
-                       t->>'content',
-                       CASE WHEN btrim(COALESCE(t->>'why', '')) <> '' THEN core.fn_ui_text('core.plan_md.why', v_lang, jsonb_build_object('text', t->>'why')) END,
-                       (SELECT string_agg('- ' || core.fn_ui_text('core.plan_md.open_point', v_lang, jsonb_build_object('text', o->>'text')), E'\n' ORDER BY (o->>'id')::int)
-                          FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t->'open_points') = 'array' THEN t->'open_points' ELSE '[]'::jsonb END) o
-                         WHERE NOT o ? 'resolved_at')), E'\n\n' ORDER BY i)
-              INTO v_body
-              FROM jsonb_array_elements(v_sec->'topics') WITH ORDINALITY AS x(t, i);
-        ELSE
-            v_body := COALESCE(NULLIF(btrim(COALESCE(v_sec->>'content', '')), ''), NULLIF(btrim(COALESCE(v_sec->>'legacy_content', '')), ''),
-                               core.fn_ui_text('core.plan_md.part_open', v_lang));
-        END IF;
+        -- ein Abschnitt ohne Themen ist ein Block ohne Ueberschrift (topic fehlt -> concat_ws laesst die Zeile weg)
+        v_blocks := CASE WHEN jsonb_typeof(v_sec->'topics') = 'array' AND jsonb_array_length(v_sec->'topics') > 0 THEN v_sec->'topics'
+                         ELSE jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                                  'content', COALESCE(NULLIF(btrim(COALESCE(v_sec->>'content', '')), ''), NULLIF(btrim(COALESCE(v_sec->>'legacy_content', '')), ''),
+                                                      core.fn_ui_text('core.plan_md.part_open', v_lang)),
+                                  'why', v_sec->'why', 'open_points', v_sec->'open_points'))) END;
+        SELECT string_agg(concat_ws(E'\n\n',
+                   '### ' || (t->>'topic'),
+                   t->>'content',
+                   CASE WHEN btrim(COALESCE(t->>'why', '')) <> '' THEN core.fn_ui_text('core.plan_md.why', v_lang, jsonb_build_object('text', t->>'why')) END,
+                   (SELECT string_agg('- ' || core.fn_ui_text('core.plan_md.open_point', v_lang, jsonb_build_object('text', o->>'text')), E'\n' ORDER BY (o->>'id')::int)
+                      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t->'open_points') = 'array' THEN t->'open_points' ELSE '[]'::jsonb END) o
+                     WHERE NOT o ? 'resolved_at')), E'\n\n' ORDER BY i)
+          INTO v_body
+          FROM jsonb_array_elements(v_blocks) WITH ORDINALITY AS x(t, i);
         v_parts := v_parts || ('## ' || core.fn_ui_text(v_pkg || '.plan_section.' || v_k, v_lang) || E'\n\n' || v_body);
     END LOOP;
     -- Termine nur aus der Liste (Rohwerte, geprueft von core.fn_plan_sync im selben Publish); unlesbare Eintraege fehlen hier,
@@ -68,7 +71,8 @@ BEGIN
                       E'\n' ORDER BY (r->>'remind_on')::date, btrim(r->>'label'))
       INTO v_dates
       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_reminders) = 'array' THEN p_reminders ELSE '[]'::jsonb END) r
-     WHERE jsonb_typeof(r) = 'object' AND COALESCE(r->>'remind_on', '') ~ '^\d{4}-\d{2}-\d{2}$' AND btrim(COALESCE(r->>'label', '')) <> '';
+     WHERE jsonb_typeof(r) = 'object' AND COALESCE(r->>'remind_on', '') ~ '^\d{4}-\d{2}-\d{2}$' AND btrim(COALESCE(r->>'label', '')) <> ''
+       AND pg_input_is_valid(r->>'remind_on', 'date');   -- die Form allein laesst den 30. Februar durch, der Cast wuerfe
     IF v_dates IS NOT NULL THEN
         v_parts := v_parts || ('## ' || core.fn_ui_text('core.plan_md.dates_head', v_lang) || E'\n\n' || v_dates);
     END IF;

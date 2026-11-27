@@ -160,6 +160,17 @@ BEGIN
   IF r->>'rollout_next' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [5 Entwurf ohne rollout_next]: %', r->>'rollout_next'; END IF;
   RAISE NOTICE 'PASS [5 mode existing]';
 
+  -- ---------- 5b) Teile nicht der Reihe nach fertig: part ist der naechste offene Teil ----------
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__pg__','chat_id','111','section_key','goals_triggers',
+         'topic','Ziele','section_content','Ein Ziel: Rente.'));
+  r := core.fn_advisor_progress(jsonb_build_object('domain','__pg__','chat_id','111'));
+  IF (r->>'parts_done')::int <> 2 OR (r->'current'->>'n')::int <> 2 THEN RAISE EXCEPTION 'FAIL [5b Vorbedingung]: %', r; END IF;
+  r := core.fn_advisor_plan_status('111');
+  SELECT e INTO r FROM jsonb_array_elements(r) e WHERE e->>'domain' = '__pg__';
+  IF r->>'state' <> 'draft' OR (r->>'part')::int <> 2 OR (r->>'parts_total')::int <> 3 THEN
+    RAISE EXCEPTION 'FAIL [5b plan_status Teil bei Luecke]: %', r; END IF;
+  RAISE NOTICE 'PASS [5b Teil-Nummer bei Luecke]';
+
   -- ---------- 6) ohne stages: eine Etappe aus dem Katalog ----------
   INSERT INTO core.ui_texts (key, lang, text, package)
   SELECT 'finance.plan_section.' || k, 'de', k, 'finance' FROM unnest(ARRAY['household_basics','goals_triggers']) k

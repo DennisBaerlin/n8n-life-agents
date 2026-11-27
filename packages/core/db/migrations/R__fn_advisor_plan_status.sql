@@ -121,7 +121,7 @@ BEGIN
             'package',   r.package,
             'state',     v_state,
             'open',      CASE WHEN v_state = 'gaps' THEN v_open ELSE 0 END,
-            'part',      CASE WHEN v_state = 'draft' AND v_prog->>'current_key' IS NOT NULL THEN (v_prog->>'parts_done')::int + 1 END,
+            'part',      CASE WHEN v_state = 'draft' AND v_prog->>'current_key' IS NOT NULL THEN (v_prog->'current'->>'n')::int END,
             'parts_total', CASE WHEN v_state = 'draft' THEN (v_prog->>'parts_total')::int END,
             'handoffs_open', CASE WHEN v_state = 'enter' THEN (v_prog->'handoffs'->>'total')::int - (v_prog->'handoffs'->>'done')::int ELSE 0 END,
             'handoffs_deferred', CASE WHEN v_state IN ('enter', 'gaps', 'complete') THEN COALESCE((v_prog->'handoffs'->>'deferred')::int, 0) ELSE 0 END,

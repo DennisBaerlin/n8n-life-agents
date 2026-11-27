@@ -8,6 +8,8 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 . (Join-Path $PSScriptRoot '..\lib\date_placeholder.ps1')
+. (Join-Path $PSScriptRoot '..\lib\version_pins.ps1')
+$nodeImage = "node:$((Get-RuntimePins $repo).Node)-alpine"
 $vec = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\util\date_placeholder_vectors.json'), $Utf8NoBom) | ConvertFrom-Json
 $failed = 0
 function Assert-That([bool]$Cond, [string]$Name) {
@@ -79,7 +81,7 @@ Write-Host "JS (tests/mock_llm/server.js)"
 $node = Get-Command node -ErrorAction SilentlyContinue
 $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 if ($node) { $out = & $node.Source (Join-Path $repo 'tests/mock_llm/date_placeholder_check.js') 2>&1; $code = $LASTEXITCODE }
-else { $out = & docker run --rm -v "${repo}:/repo" -w /repo node:20.18.0-alpine node tests/mock_llm/date_placeholder_check.js 2>&1; $code = $LASTEXITCODE }
+else { $out = & docker run --rm -v "${repo}:/repo" -w /repo $nodeImage node tests/mock_llm/date_placeholder_check.js 2>&1; $code = $LASTEXITCODE }
 $ErrorActionPreference = $prev
 $out | ForEach-Object { Write-Host "$_" }
 Assert-That ($code -eq 0) 'JS-Zwilling besteht dieselben Pruefwerte'

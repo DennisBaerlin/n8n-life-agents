@@ -1,0 +1,15 @@
+{
+  "_comment": "Nennungen eines frueheren oder fremden Stands, die nicht dem Pin folgen (scripts/lib/version_pins.ps1, doc_lint 11b). Je (file, kind, version) mit Anzahl und Grund. Nur schrumpfen; ein neuer Eintrag nur fuer eine datierte Beobachtung, nie fuer eine Angabe zum laufenden Stand.",
+  "allow": [
+    { "file": "docs/package-contract.md", "kind": "N8n", "version": "2.21.7", "count": 1, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/package-contract.md", "kind": "N8n", "version": "2.44.4", "count": 1, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/reference/build.md", "kind": "N8n", "version": "2.21.7", "count": 1, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/reference/build.md", "kind": "N8n", "version": "2.44.4", "count": 1, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/reference/packages.md", "kind": "N8n", "version": "2.44.4", "count": 1, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/reference/provisioning.md", "kind": "N8n", "version": "2.21.7", "count": 2, "reason": "Pruef-Stand und durchgespielter Rueckweg auf die alte Version" },
+    { "file": "docs/reference/provisioning.md", "kind": "N8n", "version": "2.44.4", "count": 5, "reason": "Pruef-Stand einer Beobachtung" },
+    { "file": "docs/reference/provisioning.md", "kind": "N8n", "version": "2.45.4", "count": 1, "reason": "Pruef-Stand einer Probe" },
+    { "file": "docs/reference/provisioning.md", "kind": "Node", "version": "22", "count": 1, "reason": "Aussage ueber npm je Node-Linie, nicht unser Stand" },
+    { "file": "docs/reference/provisioning.md", "kind": "Node", "version": "26", "count": 1, "reason": "Node-Linie des n8n-Abbilds, nicht unser Pin" }
+  ]
+}

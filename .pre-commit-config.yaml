@@ -164,6 +164,20 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: config-fallback-lint
+        name: config_fallback_lint (a fallback value for a setting in SQL or a workflow equals the manifest default; reasoned shrink-only allowlist)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_fallback_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: config-fallback-lint-test
+        name: config_fallback_lint_test (a differing fallback, an unknown key, a read without fallback and a stale entry turn config_fallback_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/config_fallback_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(config_fallback_lint|dev/config_fallback_lint_test)\.ps1$
+
       - id: mock-lint
         name: mock_lint (mock scenarios <-> *_cases.json drift)
         language: system
@@ -251,7 +265,7 @@ repos:
         stages: [pre-push]
 
       - id: ui-literal-lint
-        name: ui_literal_lint (no new fixed German user text in workflows/R__ fns, no fixed word in installer Telegram texts; ratchet allowlist)
+        name: ui_literal_lint (no new fixed German user text in workflows, R__ fns, init and V__ SQL, no fixed word in installer Telegram texts; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
         pass_filenames: false
@@ -367,7 +381,14 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/date_placeholder_test.ps1
         pass_filenames: false
-        files: ^(scripts/(dev/date_placeholder_test|dev/enable_mock_telegram|lib/date_placeholder)\.ps1|tests/mock_llm/date_placeholder_check\.js|tests/mock_[^/]+/server\.js|tests/util/date_placeholder_vectors\.json)$
+        files: ^(scripts/(dev/date_placeholder_test|dev/enable_mock_telegram|lib/date_placeholder|lib/version_pins)\.ps1|tests/mock_llm/date_placeholder_check\.js|tests/mock_[^/]+/server\.js|tests/util/date_placeholder_vectors\.json)$
+
+      - id: version-pin-lint-test
+        name: version_pin_lint_test (a version in docs, scripts, CI or a Dockerfile that differs from provision.sh turns doc_lint 11b red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/version_pin_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(version_pins|git_sandbox)|dev/version_pin_lint_test|doc_lint)\.ps1$
 
       - id: n8ntest-state-file-test
         name: n8ntest_state_file_test (the test substrate's URL and API key file belongs to the container and lives in the main checkout, read alike from every worktree; throwaway repo, no Docker)
@@ -717,11 +738,28 @@ repos:
         stages: [pre-push]
 
       - id: capabilities-catalog
-        name: build.ps1 -VerifyCatalog (capabilities catalog drift)
+        name: build.ps1 -VerifyCatalog -VerifyWorkflows (capabilities catalog drift; a generated workflow JSON that differs from a fresh build)
         language: system
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog -VerifyWorkflows
+        pass_filenames: false
+        # Commit: nur wenn eine Eingabe des Baus (oder ein generiertes JSON, Routing-Case) gestagt ist. Reine Loeschungen sieht der Filter
+        # nicht; sie faengt der volle Lauf (pre-push bzw. CI mit --all-files), ebenso Merge-Commits ohne Commit-Hooks.
+        files: ^(packages/|scripts/(build/|lib/(dotenv|next_step_marker|choices_marker)\.ps1)|tests/agent/)
+
+      - id: capabilities-catalog-full
+        name: build.ps1 -VerifyCatalog -VerifyWorkflows (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build/build.ps1 -VerifyCatalog -VerifyWorkflows
         pass_filenames: false
         always_run: true
+        stages: [pre-push]
+
+      - id: workflow-drift-test
+        name: workflow_drift_test (a hand-edited, orphaned, missing or id-less workflow JSON turns -VerifyWorkflows red; throwaway repo, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/workflow_drift_test.ps1
+        pass_filenames: false
+        files: ^scripts/(build/build\.ps1|build/lib/workflow_lifecycle\.ps1|dev/workflow_drift_test\.ps1|lib/git_sandbox\.ps1)$
 
       - id: fn-catalog
         name: gen_fn_catalog -Verify (fn catalog drift)
@@ -948,7 +986,7 @@ repos:
         files: ^scripts/(layout_lint|dev/layout_lint_test)\.ps1$
 
       - id: ui-literal-lint-test
-        name: ui_literal_lint_test (installer Telegram texts - fixed words in text=/caption=/helper args turn red, catalog lookups and log lines stay green; no Docker)
+        name: ui_literal_lint_test (installer Telegram texts and seed SQL - fixed words turn red, catalog keys, lookups, comments and log lines stay green; no Docker)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ui_literal_lint_test.ps1
         pass_filenames: false

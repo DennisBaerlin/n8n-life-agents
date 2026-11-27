@@ -761,7 +761,9 @@ fixed texts.
   (`cmd.*` per language), `cron_toggle_lint` (`cron.<key>.*`), `build.ps1 -VerifyCatalog` (`help.*`). **Ratchet**
   `ui_literal_lint`: no fixed German text in a Telegram/Code/Set node or an `R__` fn; the remaining spots are only
   model/admin/data texts (no user text: model input, console RAISE, stored content), listed with a reason in
-  `scripts/build/ui_literal_allowlist.json`, which may only shrink. Installer scripts (`provisioning/*.sh`,
+  `scripts/build/ui_literal_allowlist.json`, which may only shrink. Baseline SQL (`packages/*/db/*.sql`, `V*.sql`) is
+  scanned too, including every word in a user-text column of a seed `INSERT`; texts that still live there carry
+  `debt:`. Installer scripts (`provisioning/*.sh`,
   `provisioning/lib/**/*.sh`): a Telegram text (`text=`/`caption=`, or an argument of a helper that sends it such as
   `notify_owner_telegram`) holds no fixed word in any language, only variables and lookups like
   `$(pkg_text <pkg> <key>)` / `$(backup_text <suffix>)`; remaining spots carry `debt:`. Behaviour test `scripts/dev/cron_text_test.ps1`

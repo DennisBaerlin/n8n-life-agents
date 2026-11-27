@@ -359,13 +359,15 @@ function Add-LlmWorkflowTag {
 #   - bekannt   -> '<id>-<safe>.json' mit eingebackener id (import:workflow erhaelt sie); verwaiste bare-Datei weg.
 #   - unbekannt -> bare '<safe>.json'; der Autor vergibt selbst eine n8n-konforme id im Dateinamen.
 # OwnerChatId-Redaction (-> __OWNER_CHAT_ID__); die echte chat_id re-injiziert deploy_workflows.sh beim Deploy.
-# Liefert ein Status-Objekt (Name/Id/File/IsNew) fuer den Orchestrator-Report.
+# -Verify schreibt und loescht nichts: Drift = die getrackte Datei fehlt, hat keine id oder weicht vom Bau ab.
+# Liefert ein Status-Objekt (Name/Id/File/IsNew/Drift) fuer den Orchestrator-Report.
 function Save-WorkflowFile {
     param(
         [Parameter(Mandatory)]$Workflow,
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$WorkflowsDir,
-        [string]$OwnerChatId = ''
+        [string]$OwnerChatId = '',
+        [switch]$Verify
     )
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     $safe = Get-SafeName $Name
@@ -396,7 +398,7 @@ function Save-WorkflowFile {
         foreach ($k in $Workflow.Keys) { if ($k -like '_*') { continue }; $out[$k] = $Workflow[$k] }
         $file = Join-Path $WorkflowsDir "$id-$safe.json"
         $bare = Join-Path $WorkflowsDir "$safe.json"
-        if (Test-Path $bare) { Remove-Item $bare -Force }   # verwaiste id-lose Datei aufraeumen
+        if (-not $Verify -and (Test-Path $bare)) { Remove-Item $bare -Force }   # verwaiste id-lose Datei aufraeumen
     } else {
         $out  = [ordered]@{}
         foreach ($k in $Workflow.Keys) { if ($k -like '_*') { continue }; $out[$k] = $Workflow[$k] }
@@ -411,8 +413,10 @@ function Save-WorkflowFile {
         $json = $json -replace ('"' + [regex]::Escape($OwnerChatId) + '"'), '"__OWNER_CHAT_ID__"'
     }
     # Nur bei echter Aenderung schreiben: unveraenderte Dateien behalten ihr Aenderungsdatum (kein OneDrive-Sync).
-    $same = (Test-Path $file) -and ([System.IO.File]::ReadAllText($file, $utf8) -ceq $json)
-    if (-not $same) { [System.IO.File]::WriteAllText($file, $json, $utf8) }
+    # Ordinal, nicht -ceq: der Kulturvergleich uebergeht Zeichen ohne Gewicht (Null-Breite), ein solcher Hand-Eingriff bliebe unsichtbar.
+    $same = (Test-Path $file) -and [string]::Equals([System.IO.File]::ReadAllText($file, $utf8), $json, [System.StringComparison]::Ordinal)
+    if (-not $same -and -not $Verify) { [System.IO.File]::WriteAllText($file, $json, $utf8) }
 
-    return [pscustomobject]@{ Name = $Name; Id = $id; File = $file; IsNew = [string]::IsNullOrEmpty($id) }
+    $isNew = [string]::IsNullOrEmpty($id)
+    return [pscustomobject]@{ Name = $Name; Id = $id; File = $file; IsNew = $isNew; Drift = ($isNew -or -not $same) }
 }

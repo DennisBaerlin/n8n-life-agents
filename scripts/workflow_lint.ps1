@@ -35,8 +35,8 @@
 #       Ausgenommen nur Code-Nodes (eigenes jsCode).
 #
 # Usage:  .\scripts\workflow_lint.ps1 [-Verbose]
-# Voraussetzung: node lokal oder Docker (Image node:20.18.0-alpine, wird bei Bedarf gezogen) fuer (3) und die Ausdrucks-Syntax;
-#   fehlt beides, failt der jeweilige Check.
+# Voraussetzung: node lokal oder Docker (Node-Abbild in der Hauptversion NODE_MAJOR aus provision.sh, wird bei Bedarf gezogen)
+#   fuer (3) und die Ausdrucks-Syntax; fehlt beides, failt der jeweilige Check.
 # Exit-Code = Anzahl fehlgeschlagener Checks.
 param([switch]$Verbose)
 
@@ -46,10 +46,11 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
 # Node fuer die JS-Checks (Format-Message-Logik, Ausdrucks-Syntax): installiert (CI-Runner) -> direkt; sonst ueber
-# Docker (lokal ohnehin Pflicht fuer db_test) mit gepinntem Image, damit lokal derselbe Check wie in der CI laeuft
-# statt still uebersprungen zu werden (ein lokal uebersprungener Check war sonst nur in der CI rot).
+# Docker (lokal ohnehin Pflicht fuer db_test) in der Node-Hauptversion, unter der n8n laeuft, damit lokal ein Check statt
+# eines stillen Uebersprungs laeuft (ein lokal uebersprungener Check war sonst nur in der CI rot).
 # Beide Wege arbeiten nur mit Dateien unter .local/lint_tmp und Repo-relativen Pfaden (im Container = /repo).
-$LintNodeImage = 'node:20.18.0-alpine'
+. (Join-Path $PSScriptRoot 'lib\version_pins.ps1')
+$LintNodeImage = "node:$((Get-RuntimePins $RepoRoot).Node)-alpine"
 $LintTmpRel    = '.local/lint_tmp'
 $LintNode = if (Get-Command node -CommandType Application -ErrorAction SilentlyContinue) { 'local' } else {
     # Probe darf den Lint nie abbrechen (EAP=Stop + stderr / fehlende docker-CLI), sonst greift der Fehl-Check unten nicht.

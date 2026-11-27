@@ -34,7 +34,8 @@
 #      -- gitleaks/squawk gegen .github/workflows/ci.yml, Hugo gegen scripts/build_site.ps1
 #      ($PinnedHugoVersion), plus die Copy-paste-Versions-Literale in CONTRIBUTING.md *Setup*.
 #      dotenv-linter ist local-only (CI: SKIP), keine Zweitquelle, nicht geprueft.
-#  11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js) in Owner-/Contributor-Docs == Defaults in provisioning/provision.sh.
+#  11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js) in Doku, Skripten, Provisioning und CI == Defaults in
+#       provisioning/provision.sh (scripts/lib/version_pins.ps1).
 #
 # Aufruf: .\scripts\doc_lint.ps1
 # Suppression: Zeile mit 'lint-ignore' wird uebersprungen. Exit-Code = Anzahl Fails (CI-/Gate-faehig).
@@ -539,7 +540,7 @@ foreach ($sf in $skillFiles) {
     elseif ($dm.Groups[1].Value.Length -gt 300) { Fail $sfRel ("Check 9b: description {0} Zeichen (> 300) -- sie steht in jeder Session im Kontext." -f $dm.Groups[1].Value.Length) }
 }
 
-# Get-Pin <text> <regex> <was> -> erste Gruppe des Treffers; kein Treffer = Fail (Extraktion tot). Geteilt von Check 11 und 11b.
+# Get-Pin <text> <regex> <was> -> erste Gruppe des Treffers; kein Treffer = Fail (Extraktion tot).
 function Get-Pin([string]$Text, [string]$Rx, [string]$What) {
     $m = [regex]::Match($Text, $Rx)
     if (-not $m.Success) { Fail 'doc_lint.ps1' "Pin-Check: $What nicht extrahierbar (Regex traf nichts) -- Quelle umgeschrieben?"; return $null }
@@ -591,44 +592,12 @@ if ((Test-Path $devenvLib) -and (Test-Path $ciYml) -and (Test-Path $siteDrv)) {
 }
 
 # ---------------------------------------------------------------
-# 11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js): Quelle = die Defaults in provisioning/provision.sh. Jede
-#      Versions-Nennung in den Owner-/Contributor-Docs muss gleich sein.
-#      n8n: jedes 2.x.y-Token der Datei (die Dateien nennen keine anderen 2.x.y-Versionen); mind. 1 Treffer je
-#      Datei, sonst ist die Extraktion tot. PostgreSQL/Node.js: jede "PostgreSQL <n>"/"Node.js <n>"-Nennung.
+# 11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js): Quelle = die Defaults in provisioning/provision.sh; Umfang, Muster
+#      und Ausnahmen stehen im Kopf von scripts/lib/version_pins.ps1.
 # ---------------------------------------------------------------
-$provSh = Join-Path $RepoRoot 'provisioning\provision.sh'
-if (-not (Test-Path $provSh)) { Fail 'provisioning/provision.sh' 'provision.sh fehlt -- Laufzeit-Pins fuer Check 11b nicht extrahierbar.' }
-else {
-    $provText = [System.IO.File]::ReadAllText($provSh)
-    $pinN8n  = Get-Pin $provText '(?m)^N8N_VERSION="\$\{N8N_VERSION:-([0-9.]+)\}"' 'provision.sh N8N_VERSION'
-    $pinPg   = Get-Pin $provText '(?m)^PG_VERSION="\$\{PG_VERSION:-([0-9]+)\}"'    'provision.sh PG_VERSION'
-    $pinNode = Get-Pin $provText '(?m)^NODE_MAJOR="\$\{NODE_MAJOR:-([0-9]+)\}"'    'provision.sh NODE_MAJOR'
-    $verDocs = @('CLAUDE.md', 'AGENTS.md', 'README.md', 'SECURITY.md',
-                 'docs\site\layouts\partials\footer.html', 'docs\site\content\docs\installation.md', 'packages\CLAUDE.md')
-    foreach ($vd in $verDocs) {
-        $vdPath = Join-Path $RepoRoot $vd
-        $vdRel  = $vd -replace '\\', '/'
-        if (-not (Test-Path $vdPath)) { Fail $vdRel 'Check 11b: Datei fehlt (bewegt?) -- Liste in doc_lint.ps1 nachziehen.'; continue }
-        $vdText = [System.IO.File]::ReadAllText($vdPath)
-        if ($pinN8n) {
-            $ms = [regex]::Matches($vdText, '(?<![\d.v])(2\.\d{1,2}\.\d{1,2})(?![\d.])')
-            if ($ms.Count -eq 0) { Fail $vdRel "Check 11b: keine n8n-Versionsnennung gefunden -- Datei aus der Liste nehmen oder Nennung wiederherstellen." }
-            foreach ($mm in $ms) { if ($mm.Groups[1].Value -ne $pinN8n) { Fail $vdRel "n8n-Version '$($mm.Groups[1].Value)' != Pin '$pinN8n' (provisioning/provision.sh)." } }
-        }
-        if ($pinPg) {
-            foreach ($mm in [regex]::Matches($vdText, 'PostgreSQL\s+(?:to\s+)?\*{0,2}(\d{2})\b')) {
-                if ($mm.Groups[1].Value -ne $pinPg) { Fail $vdRel "PostgreSQL-Version '$($mm.Groups[1].Value)' != Pin '$pinPg' (provisioning/provision.sh)." }
-            }
-            $mPg = [regex]::Match($vdText, '(?s)id:\s*pg-version.*?value:\s*"?(\d+)"?')
-            if ($mPg.Success -and $mPg.Groups[1].Value -ne $pinPg) { Fail $vdRel "PostgreSQL-Vorgabe '$($mPg.Groups[1].Value)' != Pin '$pinPg' (provisioning/provision.sh)." }
-        }
-        if ($pinNode) {
-            foreach ($mm in [regex]::Matches($vdText, 'Node\.js\s+\*{0,2}(\d{2})\b')) {
-                if ($mm.Groups[1].Value -ne $pinNode) { Fail $vdRel "Node.js-Version '$($mm.Groups[1].Value)' != Pin '$pinNode' (provisioning/provision.sh)." }
-            }
-        }
-    }
-}
+. (Join-Path $RepoRoot 'scripts\lib\version_pins.ps1')
+try { foreach ($issue in (Get-VersionPinIssues $RepoRoot)) { Fail 'Check 11b' $issue } }
+catch { Fail 'Check 11b' $_.Exception.Message }
 
 # ---------------------------------------------------------------
 Write-Host ""

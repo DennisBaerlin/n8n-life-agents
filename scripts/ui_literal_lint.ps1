@@ -6,7 +6,7 @@
 # steht in scripts/build/ui_literal_allowlist.json mit Begruendung. Erlaubte Gruende (reason, ein Nutzertext gehoert in den Katalog):
 # model:<warum> = Text fuers Sprachmodell, kein Nutzertext;
 # admin:<warum> = RAISE/Konsolen-Meldung fuer den Betreiber; data:<warum> = gespeicherter Inhalt, Originalsprache nach
-# Sprachpolitik. Exakt je (Ort, Literal):
+# Sprachpolitik; debt:<warum> = offener Bestand an Nutzertexten, nur in Scan (c) und (d). Exakt je (Ort, Literal):
 #   - Found > Allowlist  -> neuer deutscher Text (FAIL: Katalog-Key nutzen oder mit Begruendung allowlisten);
 #   - Found < Allowlist  -> eine Stelle wurde umgestellt (FAIL: Allowlist schrumpfen);
 #   - Allowlist-Eintrag ohne Fund -> Orphan (FAIL: entfernen).
@@ -25,14 +25,19 @@
 #       Sprache des Empfaengers). log/warn/ok/die gehen nur ins Installer-Log und sind keine Senke. Nicht erkannt:
 #       JSON-Bodies (--data '{"text":...}') und Texte, die ueber eine Datei/Umgebung in einen anderen Prozess wandern.
 #       Ort = Pfad.
-# Treffer (a)/(b) = Literal mit deutscher Signatur (Umlaut/ß oder ein typisches deutsches Funktionswort) und mindestens
+#   (d) packages/*/db/*.sql (Grundlagen-Dateien) + migrations/V*.sql: jedes Literal, auch mehrzeilig und als Dollar-Quote
+#       (fn-Ruempfe nach AS/DO zaehlen als Code; COMMENT ON ... IS nicht). Zusaetzlich zur deutschen Signatur: jedes Wort, das
+#       per INSERT (VALUES, SELECT oder SELECT aus VALUES) in einer Nutzertext-Spalte ($userTextColumns) landet, auch ohne
+#       deutsche Signatur und in jeder Sprache (reine Kleinbuchstaben-Schluessel ausgenommen). Ort = Pfad.
+# Treffer (a)/(b)/(d) = Literal mit deutscher Signatur (Umlaut/ß oder ein typisches deutsches Funktionswort) und mindestens
 # einem Wort aus >= 3 Buchstaben; Katalog-Keys, englische Gruende/Codes und Identifier fallen so heraus.
 # Selbst-Asserts laufen vor jedem Scan; stirbt die Erkennung still, bricht der Lint.
 # Aufruf: .\scripts\ui_literal_lint.ps1 [-Verbose] [-Baseline]
 #         .\scripts\ui_literal_lint.ps1 -ShellFile a.sh,b.sh   (nur Scan (c) dieser Dateien, ohne Allowlist; Test-Einstieg)
+#         .\scripts\ui_literal_lint.ps1 -SqlFile a.sql,b.sql   (nur Scan (d), ebenso)
 # -Baseline: druckt die gefundenen (where,literal,count) als JSON-Geruest (reason:'TODO').
-# Exit-Code = Anzahl Fehler (-ShellFile: Anzahl Treffer). Kein LLM, kein Netz, kein Substrat.
-param([switch]$Baseline, [switch]$Verbose, [string[]]$ShellFile)
+# Exit-Code = Anzahl Fehler (-ShellFile/-SqlFile: Anzahl Treffer). Kein LLM, kein Netz, kein Substrat.
+param([switch]$Baseline, [switch]$Verbose, [string[]]$ShellFile, [string[]]$SqlFile)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -96,6 +101,135 @@ function Get-StringLeaves($Obj, [string]$Key = '') {
     if ($Obj -is [string]) { $Obj; return }
     if ($Obj -is [System.Collections.IEnumerable] -and -not ($Obj -is [string])) { foreach ($x in $Obj) { Get-StringLeaves $x $Key }; return }
     if ($Obj -is [psobject]) { foreach ($p in $Obj.PSObject.Properties) { Get-StringLeaves $p.Value $p.Name } }
+}
+
+# --- Scan (d): ganze SQL-Datei (mehrzeilige Literale) -------------------------------------------------------------
+$userTextColumns = @('title', 'detail', 'label', 'text', 'hint', 'message', 'question', 'prompt')
+# Maske = Code ohne Kommentare, jedes Literal durch <Zeichen 1><Index><Zeichen 1> ersetzt. Dollar-Quotes nach AS/DO sind Code (fn-Rumpf),
+# jede andere Dollar-Quote ist ein Text.
+$sqlTokenRx = [regex]::new('--[^\n]*|/\*[\s\S]*?\*/|"[^"]*"|(?<![\w])[Ee]''(?:\\[\s\S]|''''|[^''\\])*''|''(?:''''|[^''])*''|\$(?:[A-Za-z_]\w*)?\$')
+function Get-SqlMask([string]$Sql) {
+    $mask = New-Object System.Text.StringBuilder
+    $lits = New-Object System.Collections.Generic.List[string]
+    $mark = [string][char]1
+    $codeTags = New-Object System.Collections.Generic.Stack[string]
+    $pos = 0
+    while ($true) {
+        $m = $sqlTokenRx.Match($Sql, $pos)
+        if (-not $m.Success) { break }
+        [void]$mask.Append($Sql, $pos, $m.Index - $pos)
+        $t = $m.Value; $pos = $m.Index + $m.Length
+        $lit = $null
+        if ($t[0] -eq '-' -or $t[0] -eq '/') { [void]$mask.Append(' ') }
+        elseif ($t[0] -eq '"') { [void]$mask.Append($t) }
+        elseif ($t[0] -eq '$') {
+            if ($codeTags.Count -and $codeTags.Peek() -ceq $t) { [void]$codeTags.Pop(); [void]$mask.Append(' ') }
+            elseif ($mask.ToString([Math]::Max(0, $mask.Length - 40), [Math]::Min(40, $mask.Length)) -match '(?i)\b(AS|DO)\s*$') { $codeTags.Push($t); [void]$mask.Append(' ') }
+            else {
+                $e = $Sql.IndexOf($t, $pos, [System.StringComparison]::Ordinal); if ($e -lt 0) { $e = $Sql.Length }
+                $lit = $Sql.Substring($pos, $e - $pos); $pos = [Math]::Min($Sql.Length, $e + $t.Length)
+            }
+        }
+        elseif ($t[0] -eq "'") { $lit = $t.Substring(1, $t.Length - 2).Replace("''", "'") }
+        else { $lit = $t.Substring(2, $t.Length - 3).Replace("''", "'") }
+        if ($null -ne $lit) { [void]$mask.Append("$mark$($lits.Count)$mark"); $lits.Add($lit) }
+    }
+    [void]$mask.Append($Sql.Substring($pos))
+    return @{ mask = $mask.ToString(); lits = $lits }
+}
+$selectStopRx = [regex]::new('\G(?i)(?:FROM|WHERE|GROUP|ORDER|UNION|EXCEPT|INTERSECT|RETURNING|ON\s+CONFLICT)\b')
+# Elemente ab $From auf gleicher Klammer-Ebene (Komma getrennt) bis zur schliessenden Klammer, ';' oder - in einer SELECT-Liste -
+# zum naechsten Klausel-Wort: je Element seine Literal-Indizes und der Masken-Text.
+function Get-SqlItems([string]$Mask, [int]$From, [switch]$SelectList) {
+    $items = New-Object System.Collections.Generic.List[object]
+    $lits = New-Object System.Collections.Generic.List[int]
+    $start = $From; $d = 0; $i = $From
+    for (; $i -lt $Mask.Length; $i++) {
+        $c = $Mask[$i]
+        if ($c -eq '(' -or $c -eq '[') { $d++ }
+        elseif ($c -eq ')' -or $c -eq ']') { if ($d -eq 0) { break }; $d-- }
+        elseif ($c -eq [char]1) { $e = $Mask.IndexOf([char]1, $i + 1); $lits.Add([int]$Mask.Substring($i + 1, $e - $i - 1)); $i = $e }
+        elseif ($d -ne 0) { continue }
+        elseif ($c -eq ';') { break }
+        elseif ($c -eq ',') { $items.Add(@{ lits = $lits; text = $Mask.Substring($start, $i - $start) }); $lits = New-Object System.Collections.Generic.List[int]; $start = $i + 1 }
+        elseif ($SelectList -and [char]::IsLetter($c) -and -not [char]::IsLetterOrDigit($Mask[$i - 1]) -and $Mask[$i - 1] -ne '_' -and $Mask[$i - 1] -ne '.' -and $selectStopRx.Match($Mask, $i).Success) { break }
+    }
+    $items.Add(@{ lits = $lits; text = $Mask.Substring($start, $i - $start) })
+    return @{ items = $items; end = $i }
+}
+# Tupel einer VALUES-Liste ab $From: Liste der Tupel (je Element wie oben) und das Ende.
+function Get-SqlTuples([string]$Mask, [int]$From) {
+    $tuples = New-Object System.Collections.Generic.List[object]
+    $i = $From
+    while ($i -lt $Mask.Length -and $Mask[$i] -eq '(') {
+        $r = Get-SqlItems $Mask ($i + 1)
+        $tuples.Add($r.items)
+        $i = $r.end + 1
+        while ($i -lt $Mask.Length -and ($Mask[$i] -eq ',' -or [char]::IsWhiteSpace($Mask[$i]))) { $i++ }
+    }
+    return @{ tuples = $tuples; end = $i }
+}
+# Klammer-Tiefe relativ zu $From an der Stelle $Pos.
+function Get-Depth([string]$Mask, [int]$From, [int]$Pos) {
+    $part = $Mask.Substring($From, $Pos - $From)
+    return ($part.Length - $part.Replace('(', '').Length) - ($part.Length - $part.Replace(')', '').Length)
+}
+# Index der Literale, die per INSERT ... (spalten) VALUES, ... SELECT oder ... SELECT FROM (VALUES) v(...) in einer
+# Nutzertext-Spalte landen.
+function Get-UserColumnLiterals([string]$Mask) {
+    $hits = @{}
+    foreach ($ins in [regex]::Matches($Mask, '(?i)\bINSERT\s+INTO\s+[\w."]+(?:\s+AS\s+\w+)?\s*\(([^()]*)\)\s*(?:OVERRIDING\s+\w+\s+VALUE\s+)?')) {
+        $cols = @($ins.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().Trim('"').ToLowerInvariant() })
+        $from = $ins.Index + $ins.Length
+        if ([regex]::new('\G(?i)VALUES\s*').Match($Mask, $from).Success) {
+            $t = Get-SqlTuples $Mask ($Mask.IndexOf('(', $from))
+            foreach ($tuple in $t.tuples) {
+                for ($k = 0; $k -lt $tuple.Count -and $k -lt $cols.Count; $k++) {
+                    if ($userTextColumns -contains $cols[$k]) { foreach ($l in $tuple[$k].lits) { $hits[$l] = $cols[$k] } }
+                }
+            }
+            continue
+        }
+        $end = $from; $d = 0
+        for (; $end -lt $Mask.Length; $end++) { $c = $Mask[$end]; if ($c -eq '(') { $d++ } elseif ($c -eq ')') { $d-- } elseif ($c -eq ';' -and $d -le 0) { break } }
+        $stmt = $Mask.Substring($from, $end - $from)
+        $refs = @{}   # Namen, die eine Nutzertext-Spalte fuellen (fuer die Spalten einer VALUES-Unterliste)
+        foreach ($s in [regex]::Matches($stmt, '(?i)\bSELECT\b(?:\s+DISTINCT\b)?')) {
+            if ((Get-Depth $Mask $from ($from + $s.Index)) -ne 0) { continue }
+            $r = Get-SqlItems $Mask ($from + $s.Index + $s.Length) -SelectList
+            for ($k = 0; $k -lt $r.items.Count -and $k -lt $cols.Count; $k++) {
+                if ($userTextColumns -notcontains $cols[$k]) { continue }
+                foreach ($l in $r.items[$k].lits) { $hits[$l] = $cols[$k] }
+                foreach ($w in [regex]::Matches($r.items[$k].text, '[A-Za-z_]\w*')) { $refs[$w.Value.ToLowerInvariant()] = $true }
+            }
+        }
+        foreach ($v in [regex]::Matches($stmt, '(?i)\(\s*VALUES\s*(?=\()')) {
+            $t = Get-SqlTuples $Mask ($from + $v.Index + $v.Length)
+            $alias = [regex]::new('\G\)\s*(?:(?i:AS)\s+)?\w+\s*\(([^()]*)\)').Match($Mask, $t.end)
+            if (-not $alias.Success) { continue }
+            $names = @($alias.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().Trim('"').ToLowerInvariant() })
+            foreach ($tuple in $t.tuples) {
+                for ($k = 0; $k -lt $tuple.Count -and $k -lt $names.Count; $k++) {
+                    if ($userTextColumns -contains $names[$k] -or $refs.ContainsKey($names[$k])) { foreach ($l in $tuple[$k].lits) { $hits[$l] = $names[$k] } }
+                }
+            }
+        }
+    }
+    return $hits
+}
+# Funde einer SQL-Datei: deutsches Literal, oder (egal in welcher Sprache) ein Wort in einer Nutzertext-Spalte.
+# COMMENT ON ... IS '...' ist Entwickler-Doku und zaehlt nicht.
+function Get-SqlFileFindings([string]$Sql) {
+    $m = Get-SqlMask $Sql
+    $inColumn = Get-UserColumnLiterals $m.mask
+    $mark = [string][char]1
+    foreach ($ref in [regex]::Matches($m.mask, "$mark(\d+)$mark")) {
+        $ix = [int]$ref.Groups[1].Value
+        $val = $m.lits[$ix] -replace "`r`n", "`n"
+        $head = $m.mask.Substring([Math]::Max(0, $ref.Index - 200), [Math]::Min(200, $ref.Index))
+        if ($head -match '(?is)\bCOMMENT\s+ON\s+[^;]*\bIS\s*$') { continue }
+        if ((Test-GermanText $val) -or ($inColumn.ContainsKey($ix) -and $val -match '[A-Za-zÄÖÜäöüß]{3,}' -and $val -cnotmatch '^[a-z0-9_.:-]+$')) { $val }
+    }
 }
 
 # --- Scan (c): bash ---------------------------------------------------------------------------------------------
@@ -396,7 +530,28 @@ $shGot = (@($shSelfRes.found.Keys) | Sort-Object) -join ' # '
 $shWant = 'selftest.sh|12|Hallo {} {} # selftest.sh|5|Backup vom {} # selftest.sh|9|Rückweg fertig: {}'
 if ($shGot -ne $shWant) { Fail "Selbst-Assert (sh): erwartet [$shWant], gefunden [$shGot] -- Erkennung defekt" }
 if (-not $shSelfRes.helpers.ContainsKey('notify_owner_telegram')) { Fail 'Selbst-Assert (sh): Helfer-Senke notify_owner_telegram nicht erkannt' }
+$sqlSelf = @(
+    "-- ein Kommentar mit Umlaut ü"
+    "COMMENT ON TABLE t IS 'die Tabelle der Aufgaben';"
+    "INSERT INTO t (template_key, title, detail) VALUES ('a_key', 'Call the bank', NULL),"
+    "    ('b_key', 'death', 'Bitte prüfen, " + "`n" + "zweite Zeile');"
+    "CREATE FUNCTION f() RETURNS text AS `$`$ BEGIN RAISE EXCEPTION 'nicht erlaubt'; END `$`$ LANGUAGE plpgsql;"
+    "SELECT `$ctx`$Ein langer Text für alle`$ctx`$, E'it\'s fine';"
+    "INSERT INTO s (pkg, label) SELECT 'a', 'Monats-Check (Kontoauszug)' WHERE NOT EXISTS (SELECT 1 FROM s WHERE label = 'x y');"
+    "INSERT INTO s (key, label) SELECT v.k, v.n FROM (VALUES ('c', 'Ask the notary')) AS v(k, n);"
+) -join "`n"
+$sqlGot = (@(Get-SqlFileFindings $sqlSelf) -join ' # ')
+$sqlWant = "Call the bank # Bitte prüfen, `nzweite Zeile # nicht erlaubt # Ein langer Text für alle # Monats-Check (Kontoauszug) # Ask the notary"
+if ($sqlGot -cne $sqlWant) { Fail "Selbst-Assert (sql-Datei): erwartet [$sqlWant], gefunden [$sqlGot] -- Erkennung defekt" }
 if ($fails -gt 0) { Write-Host "ui_literal_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
+
+if ($SqlFile) {
+    $hits = 0
+    foreach ($p in $SqlFile) {
+        foreach ($t in (Get-SqlFileFindings ([System.IO.File]::ReadAllText((Resolve-Path $p).Path, $u8)))) { Write-Host "  ${p}: $t"; $hits++ }
+    }
+    exit $hits
+}
 
 if ($ShellFile) {
     $res = Invoke-ShScan @(Read-ShFiles $ShellFile)
@@ -450,6 +605,12 @@ foreach ($f in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__
     }
 }
 if ($sqlCount -eq 0) { Fail 'Scope-Selbst-Assert: keine R__-Dateien gefunden -- Scan tot (Pfad?)' }
+$baseFiles = @(Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\*.sql')) + @(Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\V*.sql'))
+foreach ($f in $baseFiles) {
+    $rel = $f.FullName.Substring($RepoRoot.Length).TrimStart('\', '/').Replace('\', '/')
+    foreach ($t in (Get-SqlFileFindings ([System.IO.File]::ReadAllText($f.FullName, $u8)))) { Add-Found $rel $t }
+}
+if ($baseFiles.Count -eq 0) { Fail 'Scope-Selbst-Assert: keine Init-/V__-Dateien gefunden -- Scan tot (Pfad?)' }
 $prov = Join-Path $RepoRoot 'provisioning'
 $shPaths = @(Get-ChildItem $prov -Filter '*.sh' -File) + @(Get-ChildItem (Join-Path $prov 'lib') -Filter '*.sh' -File -Recurse)
 $shRes = Invoke-ShScan @(Read-ShFiles ($shPaths | ForEach-Object { $_.FullName }))
@@ -479,8 +640,8 @@ $allow = @{}
 foreach ($e in $al.allow) {
     $key = "$([string]$e.where)|$([string]$e.literal)"
     $r = [string]$e.reason
-    if ($r -match '^debt:\S' -and ([string]$e.where).StartsWith('provisioning/')) { }
-    elseif ($r -notmatch '^(model|admin|data):\S') { Fail "allowlist: Eintrag '$key' -- reason muss 'model:<warum>', 'admin:<warum>' oder 'data:<warum>' sein (ist '$r'); ein Nutzertext gehoert in den Katalog (seit Phase C keine phase-c-Ausnahme mehr)" }
+    if ($r -match '^debt:\S' -and [string]$e.where -match '^provisioning/|^packages/[^/]+/db/([^/]+\.sql|migrations/V\d+__[^/]+\.sql)$') { }
+    elseif ($r -notmatch '^(model|admin|data):\S') { Fail "allowlist: Eintrag '$key' -- reason muss 'model:<warum>', 'admin:<warum>' oder 'data:<warum>' sein (ist '$r'); ein Nutzertext gehoert in den Katalog" }
     if ($allow.ContainsKey($key)) { Fail "allowlist: doppelter Eintrag '$key'"; continue }
     $allow[$key] = [int]$e.count
 }
@@ -503,6 +664,6 @@ foreach ($key in ($allow.Keys | Sort-Object)) {
     }
 }
 if ($Verbose) { foreach ($k in ($found.Keys | Sort-Object)) { Write-Host "  $k = $($found[$k])" -ForegroundColor DarkGray } }
-if ($fails -eq 0) { Write-Host "ui_literal_lint: OK ($($found.Count) allowlistete Stelle(n) aus $wfCount Workflows + $sqlCount R__-Dateien, kein neuer deutscher Text)" -ForegroundColor Green }
+if ($fails -eq 0) { Write-Host "ui_literal_lint: OK ($($found.Count) allowlistete Stelle(n) aus $wfCount Workflows + $sqlCount R__- + $($baseFiles.Count) Init-/V__-Dateien, kein neuer deutscher Text)" -ForegroundColor Green }
 else { Write-Host "ui_literal_lint: $fails Fehler" -ForegroundColor Red }
 exit $fails

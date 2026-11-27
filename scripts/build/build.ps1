@@ -11,9 +11,9 @@
 # __OWNER_CHAT_ID__), die der Deploy (inject_credentials/deploy_workflows) gegen die frisch geminteten
 # ids tauscht.
 #
-# Voraussetzungen: git im PATH; .env im Repo-Root mit OWNER_CHAT_ID (sonst throw).
-# Exit-Code: 0 = OK; 1 = -VerifyCatalog findet Drift bzw. ein Katalog-Text fehlt; jeder throw (Vertragsbruch
-# in Manifest/Build-Def) bricht den Lauf mit ungleich 0 ab.
+# Voraussetzungen: git im PATH; .env im Repo-Root mit OWNER_CHAT_ID (sonst throw; -VerifyWorkflows liest keine .env).
+# Exit-Code: 0 = OK; 1 = -VerifyCatalog/-VerifyWorkflows findet Drift bzw. ein Katalog-Text fehlt; jeder throw
+# (Vertragsbruch in Manifest/Build-Def) bricht den Lauf mit ungleich 0 ab.
 #
 # Usage:
 #   .\scripts\build\build.ps1                       # alle Workflows bauen
@@ -23,7 +23,10 @@
 #                                                       # (kein File-Write; Exit 1 bei Drift/Example-ohne-Case)
 #   .\scripts\build\build.ps1 -CatalogOnly            # nur den /help-Katalog neu schreiben (packages/core/seed/capabilities_catalog/<lang>.md + Paket-Fragmente)
 #                                                       # (keine Workflow-JSONs anfassen)
-param([string]$Only = '*', [switch]$VerifyCatalog, [switch]$CatalogOnly)
+#   .\scripts\build\build.ps1 -VerifyWorkflows        # Drift-Check: getrackte packages/*/workflows/*.json == frischer Bau (byte-genau),
+#                                                       # keine Datei ohne Bau-Quelle (kein File-Write; mit -VerifyCatalog kombinierbar).
+#                                                       # Test: scripts/dev/workflow_drift_test.ps1
+param([string]$Only = '*', [switch]$VerifyCatalog, [switch]$CatalogOnly, [switch]$VerifyWorkflows)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -32,10 +35,17 @@ $Utf8NoBom    = New-Object System.Text.UTF8Encoding($false)
 # $WorkflowsDir wird erst nach dem Dot-Sourcen gesetzt (Get-WorkflowDirs lebt in workflow_lifecycle.ps1).
 
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
+if ($VerifyWorkflows) {
+    # Kunstwert statt .env: die Redaktion in Save-WorkflowFile macht daraus __OWNER_CHAT_ID__, der Vergleich haengt so an keiner
+    # lokalen Datei (ein Wert wie 0 aus einem CI-Stummel wuerde jedes Literal "0" mit-redigieren).
+    $OWNER_CHAT_ID = '909000000000001'
+} else {
+    Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
+        if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
+    }
 }
 if ([string]::IsNullOrEmpty($OWNER_CHAT_ID))      { throw "OWNER_CHAT_ID nicht in .env" }
+$NoWrite = $VerifyCatalog -or $CatalogOnly -or $VerifyWorkflows
 
 # --- Credentials: lesbare Platzhalter-Tokens (__CRED_*__), keine echten ids/Secrets.
 #     inject_credentials.sh legt die Credential beim Deploy frisch an, deploy_workflows.sh tauscht den
@@ -291,6 +301,8 @@ Write-Host "Build-Orchestrator -> $WorkflowsDir   (Filter: $Only)"
 Write-Host ("-" * 64)
 
 $built = 0; $new = 0
+$script:driftFiles    = New-Object System.Collections.Generic.List[string]   # -VerifyWorkflows: abweichende bzw. fehlende Dateien
+$script:expectedFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 $script:catalog   = [ordered]@{}   # name -> _manifest @{Category;Examples}, nur user-facing (Build-Zeit, nie serialisiert)
 $script:wfPackage = @{}            # Workflow-Name -> Paket des erzeugenden Build-Defs (Katalog-Segmentierung)
 $script:toolDefs  = [ordered]@{}   # Tool-Workflow-Name -> @{Def; Manifest} (Vollstaendigkeits-Check im Katalog-Teil)
@@ -305,11 +317,17 @@ function Save-AndReport([object]$Wf, [object]$Def = $null) {
     # Katalog immer sammeln (auch bei -Only/-Verify/-CatalogOnly) — interne Werkzeuge (_manifest.Internal) filtert
     # die Sammelstelle heraus, sie erreichen nie Kategorie-/Example-Check oder Fragment-Renderer.
     if ($Wf._manifest -and -not $Wf._manifest.Internal) { $script:catalog[$Wf.name] = $Wf._manifest }
-    if ($VerifyCatalog -or $CatalogOnly) { return }                    # In-Memory-only: keine Workflow-File-Writes
+    if ($NoWrite -and -not $VerifyWorkflows) { return }                # Katalog-Lauf: In-Memory-only
     if ($Wf.name -notlike $Only) { return }
     Set-ApprovalTier $Wf $Def                           # approval_tier aus dem approval_matrix-Block in jeden Gate-Aufruf injizieren (fail-closed)
     $wfHome = Get-WorkflowHomeDir $Wf.name $RepoRoot    # Ziel-Dir des Pakets ($home ist PS-Automatik-Var -> nicht shadowen)
-    $res = Save-WorkflowFile $Wf $Wf.name $wfHome $OWNER_CHAT_ID
+    $res = Save-WorkflowFile $Wf $Wf.name $wfHome $OWNER_CHAT_ID -Verify:$VerifyWorkflows
+    if ($VerifyWorkflows) {
+        $full = [System.IO.Path]::GetFullPath($res.File)
+        [void]$script:expectedFiles.Add($full)
+        if ($res.Drift) { $script:driftFiles.Add($full) }
+        return
+    }
     $tag = if ($res.IsNew) { '[NEU id-los -> ID selbst im Dateinamen vergeben]' } else { "[id=$($res.Id)]" }
     Write-Host ("  {0,-44} {1}" -f $res.Name, $tag) -ForegroundColor $(if ($res.IsNew) { 'Yellow' } else { 'Green' })
     $script:built++; if ($res.IsNew) { $script:new++ }
@@ -317,6 +335,35 @@ function Save-AndReport([object]$Wf, [object]$Def = $null) {
 
 foreach ($d in $Discovery.Builders) { Save-AndReport (& $d.Function) $d }
 foreach ($wf in (Get-HarnessWorkflow)) { Save-AndReport $wf }
+
+# --- Workflow-Drift (-VerifyWorkflows) --------------------------------------------
+$workflowFail = $false
+if ($VerifyWorkflows) {
+    $rootFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
+    $toRel = { param($p) $p.Substring($rootFull.Length + 1) -replace '\\', '/' }
+    foreach ($f in $script:driftFiles) {
+        Write-Host "Workflow weicht vom Bau ab: $(& $toRel $f)" -ForegroundColor Red
+        $workflowFail = $true
+    }
+    # Datei ohne Bau-Quelle (Def entfernt oder umbenannt, JSON liegengeblieben) -- nur beim vollen Lauf aussagekraeftig.
+    if ($Only -eq '*') {
+        foreach ($dir in (Get-WorkflowDirs $RepoRoot)) {
+            foreach ($f in (Get-ChildItem -LiteralPath $dir -Filter '*.json' -File)) {
+                $full = [System.IO.Path]::GetFullPath($f.FullName)
+                if ($script:expectedFiles.Contains($full)) { continue }
+                Write-Host "Workflow ohne Bau-Quelle: $(& $toRel $full)" -ForegroundColor Red
+                $workflowFail = $true
+            }
+        }
+    }
+    if ($script:expectedFiles.Count -eq 0) { Write-Host "Workflow-Verify: kein Workflow passt zu '$Only'." -ForegroundColor Red; $workflowFail = $true }
+    if ($workflowFail) {
+        Write-Host "Workflow-Verify FEHLGESCHLAGEN: generierte JSON nie von Hand aendern -- Bauquelle aendern, '.\scripts\build\build.ps1' unter Windows PowerShell ausfuehren und beides committen." -ForegroundColor Red
+    } else {
+        Write-Host "Workflow-Verify OK ($($script:expectedFiles.Count) Workflows gleich dem Bau)." -ForegroundColor Green
+    }
+    if (-not $VerifyCatalog) { exit ([int]$workflowFail) }
+}
 
 # --- Capabilities-Katalog je Sprache (Fragmente je Paket) ------------------------
 # Generierung nur bei vollem Build (-Only '*') oder -Verify/-CatalogOnly (sonst fehlen Manifeste -> falscher
@@ -429,7 +476,7 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
         }
         if ($fail) { Write-Host "Catalog-Verify FEHLGESCHLAGEN." -ForegroundColor Red; exit 1 }
         Write-Host "Catalog-Verify OK ($($composed.Count) Sprachen, $($fragments.Count) Fragmente, Compose stimmt, jedes deutsche Beispiel hat einen Case)." -ForegroundColor Green
-        exit 0
+        exit ([int]$workflowFail)
     } else {
         if ($missing.Count -gt 0) {
             Write-Host ("-" * 64)

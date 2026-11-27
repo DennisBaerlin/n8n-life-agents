@@ -245,7 +245,7 @@
     "start": "onboarding_done",
     "hitl": "approve",
     "mock_fresh_memory": true,
-    "notes": "Vorzustand wie s20 nach Runde 1: eine vor der Provenienz erledigte Vormerkung, deren Abschnitt im gueltigen Plan steht; der Pruef-Schritt ist schon angeboten (Merker ...:check:<id> im Setup festgeschrieben). Runde 1: [Jetzt pruefen] -> der Berater (Mock) fragt zurueck, statt eine Korrektur festzuhalten. Am Laufende darf weder der Werte-Schritt noch der Schluss kommen: die Pruefung ist offen. DB-Gesetz: test_fn_plan_rollout_next (Block Pruefung offen).",
+    "notes": "Vorzustand wie s20 nach Runde 1: eine erledigte Vormerkung mit leerem close_reason, deren Abschnitt im gueltigen Plan steht; der Pruef-Schritt ist schon angeboten (Merker ...:check:<id> im Setup festgeschrieben). [Jetzt pruefen] -> der Berater (Mock) fragt zurueck, statt eine Korrektur festzuhalten. Am Laufende kommt der Schluss nicht: die Abfolge meldet step check mit wait (letzte DB-Pruefung; sie belegt, dass die Abfolge den Chat erreicht und wartet). DB-Gesetz samt Werte-Schritt: test_fn_plan_rollout_next (Block Pruefung offen).",
     "setup_sql": "UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key = 'plan_rollout'; DELETE FROM agent.handoff_tasks WHERE domain = 'finance'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source IN ('plan_verb', 'plan_verb_day')); SELECT pg_temp.publish_plan('finance', '__E2E__ EQ Plan', jsonb_build_array(jsonb_build_object('section_key', 'wealth_building', 'topic', 'Sparrate', 'content', 'Jeden Monat geht ein fester Betrag vom Gehaltskonto auf das Tagesgeld.'))); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, closed_at) VALUES (990062, 'finance', 'finance', 'owner', 'wealth_building', 'other', '__E2E__ EQ Alter Eintrag Sparrate 100', 'done', now()); SELECT core.fn_should_notify('plan_rollout', 'finance:household:check:990062', interval '30 minutes'); SELECT core.fn_notify_commit('plan_rollout', 'finance:household:check:990062'); SELECT finance.fn_create_account(jsonb_build_object('name','__E2E__ RF Gehaltskonto','account_type','cash','currency','EUR','opening_balance',2000)); SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__E2E__ RF Gehalt','account_id',(SELECT id FROM finance.accounts WHERE name = '__E2E__ RF Gehaltskonto'),'direction','income','amount',4000,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text));",
     "precondition_sql": "(SELECT count(*) FROM agent.handoff_tasks WHERE id = 990062 AND status = 'done' AND close_reason IS NULL) = 1 AND (SELECT count(*) FROM agent.advisor_plans WHERE plan_name = '__E2E__ EQ Plan' AND status = 'active' AND interview_state ? 'wealth_building') = 1 AND core.fn_plan_rollout_latch('finance:household:check:990062') = 'done' AND (finance.fn_plan_readiness(NULL, NULL)->>'ready')::boolean",
     "teardown_sql": "UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key = 'plan_rollout'; DELETE FROM agent.handoff_tasks WHERE id = 990062 OR follows_task_id = 990062; DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ EQ Plan'; DELETE FROM core.notification_state WHERE (source = 'plan_rollout' AND key LIKE 'finance:%') OR (source IN ('plan_verb', 'plan_verb_day'));",
@@ -253,11 +253,12 @@
       {
         "tap": "plan:check:finance", "timeout_s": 240,
         "expect_texts": ["Ab welchem Tag soll sie laufen"],
-        "forbid_texts": ["eingerichtet", "Einschalten"],
+        "forbid_texts": ["eingerichtet", "Einschalten", "Vorschläge ansehen"],
         "expect_sql": [
           { "sql": "SELECT core.fn_plan_rollout_latch('finance:household:checked:990062');", "equals": "done" },
           { "sql": "SELECT count(*) FROM agent.handoff_tasks WHERE follows_task_id = 990062;", "equals": "0" },
-          { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'plan_rollout' AND state = 'fired' AND key ~ '^finance:household:[0-9]+:5$';", "equals": "0" }
+          { "sql": "SELECT count(*) FROM core.notification_state WHERE source = 'plan_rollout' AND state = 'fired' AND key ~ '^finance:household:[0-9]+:[45]$';", "equals": "0" },
+          { "sql": "SELECT (r->>'step') || '/' || (r->>'wait') FROM core.fn_plan_rollout_next('finance', 'owner') AS r;", "equals": "check/true" }
         ]
       }
     ]

@@ -17,8 +17,9 @@
 --   '<domain>:<who>:check:<task_id>' ohne Version (einmal je Aufgabe), hoechstens 20 je Angebot.
 --   Pruefung offen ({step:'check', wait:true}): haelt 4 und 5 zurueck. Angeboten und noch nicht uebergeben (kein Merker
 --   ...:checked:<task_id> aus core.fn_handle_plan_cb): advisor.rollout_wait_days ab dem Angebot. Uebergeben:
---   advisor.rollout_gap_hours ab der Uebergabe (das Ergebnis der Pruefung speichert niemand; eine Korrektur ist danach ein
---   offener Eintrag und haelt ueber 1 und 2).
+--   advisor.rollout_gap_hours ab der Uebergabe (ein Befund ohne Korrektur wird nicht gespeichert, das Ende der Pruefung ist
+--   deshalb nur ueber die Zeit bekannt; eine Korrektur ist danach ein offener Eintrag und haelt ueber 1 und 2). Ein
+--   beanspruchtes, noch nicht festgeschriebenes Angebot: {step:'check', loser:true}.
 --   Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen, 1 wartet (step 1, wait).
 --   Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share.
 --   Beansprucht ueber core.fn_should_notify('plan_rollout', key, '30 minutes'); festschreiben macht der Sender (core.fn_notify_commit).
@@ -225,18 +226,23 @@ BEGIN
             'latch', v_fix->0, 'latches', v_fix)));
     END IF;
 
+    -- Ein anderer Lauf sendet das Pruef-Angebot gerade: nichts daneben
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_reg) e
+                WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
+                  AND core.fn_plan_rollout_latch(p_domain || ':' || v_who || ':check:' || (e->>'task_id')) = 'pending') THEN
+        RETURN jsonb_build_object('step', 'check', 'loser', true, 'messages', '[]'::jsonb);
+    END IF;
     -- Pruefung offen: kein "eingerichtet", solange niemand weiss, ob der angebotene Altbestand zum Plan passt. Fristen wie
     -- bei den anderen Angeboten, damit ein nie getippter Knopf die Abfolge nicht fuer immer anhaelt.
     IF EXISTS (
         SELECT 1 FROM jsonb_array_elements(v_reg) e
-          JOIN core.notification_state o ON o.source = 'plan_rollout' AND o.state = 'fired'
+          JOIN core.notification_state o ON o.source = 'plan_rollout' AND o.state = 'fired' AND o.expires_at IS NULL
                                         AND o.key = p_domain || ':' || v_who || ':check:' || (e->>'task_id')
           LEFT JOIN core.notification_state c ON c.source = 'plan_rollout' AND c.state = 'fired' AND c.expires_at IS NULL
                                              AND c.key = p_domain || ':' || v_who || ':checked:' || (e->>'task_id')
          WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
            AND CASE WHEN c.key IS NOT NULL THEN c.last_fired_at > now() - make_interval(hours => v_gap)
-                    WHEN o.expires_at IS NULL THEN o.last_fired_at > now() - make_interval(days => v_wait)
-                    ELSE o.expires_at > now() END) THEN
+                    ELSE o.last_fired_at > now() - make_interval(days => v_wait) END) THEN
         RETURN jsonb_build_object('step', 'check', 'wait', true, 'messages', '[]'::jsonb);
     END IF;
 

@@ -26,7 +26,8 @@
 --     data nur aus festen Feldlisten (Art, Wert, Einheit, Datum, Domain), nie reason, action_note oder URL; event/alert/drift lesen nur, wenn die fn existiert.
 --     check = [Jetzt pruefen] des Pruef-Schritts (ohne Version): data.entries = erledigter Altbestand ohne Provenienz aus
 --     core.fn_handoff_register (row_kind legacy, status done), den der Pruef-Schritt angeboten hat (Merker <domain>:<who>:check:<id>)
---     und der noch nicht beim Berater war (Merker ...:checked:<id>, nach bestandener Sperre gesetzt: einmal je Aufgabe);
+--     und der noch nicht beim Berater war (Merker ...:checked:<id>, nach bestandener Sperre gesetzt: einmal je Aufgabe; sein
+--     last_fired_at ist der Beginn der Ruhezeit advisor.rollout_gap_hours in core.fn_plan_rollout_next);
 --     task_id, kind, text, section_key, topic, plan_text (Inhalt des Themas im aktiven Plan, ohne passendes Thema alle Themen des
 --     Abschnitts, ohne Themen der Abschnittstext; hoechstens 600 Zeichen, NULL nur ohne Abschnitt im Plan); hoechstens 20; fuer den Auftrag "Eintrag pruefen".
 --   Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang).

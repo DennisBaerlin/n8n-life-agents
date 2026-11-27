@@ -817,6 +817,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     }
     $stripChoicesJs = Get-StripChoicesJs
     $choiceSendNames = [System.Collections.ArrayList]@()   # Knopf-Wege, die eine Antwort mit Knoepfen selbst senden (Run plan rollout ueberspringt dann)
+    $choiceTextNames = [System.Collections.ArrayList]@()   # Antworttext je Knopf-Weg ('<Name> choices'): endet er mit einer Frage, ueberspringt Run plan rollout ebenso
     function New-AdvisorReplyChain([string]$Name, [int[]]$Pos, [string]$RunNode, [string]$Agent, [string]$DoneTo) {
         $code = [ordered]@{
             parameters = [ordered]@{ jsCode = "const r = ($stripChoicesJs)(String(`$('$RunNode').first().json.output || ''));`n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).`nreturn [{ json: { text: r.text, options: (r.text && r.text.length <= 3800) ? r.options : [] } }];" }
@@ -838,6 +839,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         })
         $send['onError'] = 'continueRegularOutput'
         [void]$choiceSendNames.Add("$Name send choice")
+        [void]$choiceTextNames.Add("$Name choices")
         $chain = New-TelegramRelayChain $Name @(($Pos[0] + 330), $Pos[1]) "`$('$Name choices').first().json.text" `
             -ChatIdExpr "={{ String(`$('Trigger normalize').first().json.callback_query.message.chat.id) }}" -DoneTo $DoneTo
         $conns = [ordered]@{
@@ -849,7 +851,8 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         foreach ($k in $chain.Conns.Keys) { $conns[$k] = $chain.Conns[$k] }
         @{ Nodes = @($code, $pg, $made, $send) + $chain.Nodes; Conns = $conns; Entry = "$Name choices"; Loop = $chain.Loop }
     }
-    # Genau ein Knoten am Laufende: alles Weitere (Abfolge, spaetere Pakete) haengt am Sub. skip: Nachrichten-Pfad mit reiner Reaktion oder Rueckfrage.
+    # Genau ein Knoten am Laufende: alles Weitere (Abfolge, spaetere Pakete) haengt am Sub. skip: Nachrichten-Pfad mit reiner Reaktion oder Rueckfrage,
+    # Knopf-Weg mit Antwort-Knoepfen oder Rueckfrage (ergaenzt bei den Knopf-Wegen unten).
     $nRollout = Build-CallWorkflow 'Run plan rollout' @(2020, -40) (Resolve-Id 'core.sub_plan_rollout_next') 'core.sub_plan_rollout_next' ([ordered]@{
         chat_id    = "={{ String(((`$('Trigger normalize').first().json.message || (`$('Trigger normalize').first().json.callback_query || {}).message || {}).chat || {}).id || '') }}"
         footer_key = ''
@@ -898,7 +901,7 @@ return [{ json: { body: made ? '' : (rc.body || ''), has_text: made ? false : rc
         position = @(1480, -720); id = (New-Id); name = 'Relay final'
     }
     $planNodes += @($nSendDue, $nPromptMissing, $nPromptMissingReply, $nChoicePrompt, $nRelayFinal)
-    $nRolloutSticky = Build-Sticky 'Doc Laufende' @(1980, -240) 'Laufende: eine Nachricht zur Zeit' 'Nach jeder Antwort sendet zuerst Send due prompt (core.sub_send_chat_prompt) die offene Frage: eine wartende Karte, sonst nach einer Antwort die schon offene Karte erneut (die offene Frage steht immer unten). Lieferte der Berater leer, weil er eine Karte vorschlug, und kam keine, sendet Reply prompt missing den festen Hinweis (nie Stille). Ging eine Karte raus, überspringt die Geführte Abfolge diesen Lauf. Danach ruft Run plan rollout core.sub_plan_rollout_next. Er entscheidet, ob etwas ansteht, und sendet höchstens eine Nachricht. Alle Prüfungen liegen im Sub, Fehler dort erreichen den Nutzer nie (onError continue). skip verhindert im Nachrichten-Pfad eine Nachricht nach reiner Reaktion oder nach einer Rückfrage; die nächste Antwort holt es nach.' 300 200
+    $nRolloutSticky = Build-Sticky 'Doc Laufende' @(1980, -240) 'Laufende: eine Nachricht zur Zeit' 'Nach jeder Antwort sendet zuerst Send due prompt (core.sub_send_chat_prompt) die offene Frage: eine wartende Karte, sonst nach einer Antwort die schon offene Karte erneut (die offene Frage steht immer unten). Lieferte der Berater leer, weil er eine Karte vorschlug, und kam keine, sendet Reply prompt missing den festen Hinweis (nie Stille). Ging eine Karte raus, überspringt die Geführte Abfolge diesen Lauf. Danach ruft Run plan rollout core.sub_plan_rollout_next. Er entscheidet, ob etwas ansteht, und sendet höchstens eine Nachricht. Alle Prüfungen liegen im Sub, Fehler dort erreichen den Nutzer nie (onError continue). skip verhindert eine Nachricht nach reiner Reaktion oder nach einer Rückfrage, im Nachrichten-Pfad wie auf den Knopf-Wegen der Berater; die nächste Antwort holt es nach.' 300 200
     $planNodes += @($nRollout, $nRolloutSticky)
     $planY = $onbY + 400
     # general: ein Waechter-Treffer ohne Plan fuehrt zum Monitor-Agenten (plan:alert:general).
@@ -1095,9 +1098,10 @@ return [{ json: { body: made ? '' : (rc.body || ''), has_text: made ? false : rc
     } else {
         $promptConns['Prompt continues?'] = @{ main = @( @(), @() ) }
     }
-    # Eine Antwort mit Knoepfen auf einem Knopf-Weg ist die eine Nachricht dieses Laufs: die Geführte Abfolge wartet.
+    # Eine Antwort mit Knoepfen oder eine Rueckfrage auf einem Knopf-Weg ist die eine Nachricht dieses Laufs: die Geführte Abfolge wartet,
+    # die naechste Antwort holt sie nach (wie skip im Nachrichten-Pfad).
     if ($choiceSendNames.Count -gt 0) {
-        $sentChoice = (@($choiceSendNames | ForEach-Object { "`$('$_').isExecuted" }) -join ' || ')
+        $sentChoice = (@($choiceSendNames | ForEach-Object { "`$('$_').isExecuted" }) + @($choiceTextNames | ForEach-Object { "(`$('$_').isExecuted && /[?？]\s*`$/.test(String(`$('$_').first().json.text || '')))" }) -join ' || ')
         $nRollout.parameters.workflowInputs.value['skip'] = $nRollout.parameters.workflowInputs.value['skip'].Replace('={{ String(', "={{ String(($sentChoice) || ")
     }
     $promptNodes += Build-Sticky 'Doc Offene Frage' @(-200, 2200) 'Offene Frage: Tipp auf q:<id>:<key>' `

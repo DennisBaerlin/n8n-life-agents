@@ -27,6 +27,8 @@ $script:Harnesses += @(
     # Plan-Durchlauf ohne Aenderung: Zweig ohne Karte (hitl_gate_test hitlS1).
     [ordered]@{ name='agent.tool_sync_plan.test_harness'; targetName='agent.tool_sync_plan'; path='plan-sync-test'; inputMap=[ordered]@{ domain='body.domain'; reminders='body.reminders'; declined='body.declined'; retire='body.retire'; watch_candidates='body.watch_candidates'; chat_id='body.chat_id' } }
     # Text ans Modell im Vier-Augen-Weg (hitl_gate_test hitlT4/T5): ein Tool der Stufe owner_approval ohne LLM-Agent davor.
+    # Abbruch der Korrektur-Karte (hitl_gate_test hitlT8): Text ans Modell und Pruef-Ergebnis kept nur beim Tipp.
+    [ordered]@{ name='agent.tool_record_handoff_correction.test_harness'; targetName='agent.tool_record_handoff_correction'; path='handoff-correction-test'; inputMap=[ordered]@{ handoff_task_id='body.handoff_task_id'; kind='body.kind'; payload='body.payload'; text='body.text'; why='body.why'; option='body.option'; chat_id='body.chat_id' } }
     [ordered]@{ name='agent.tool_delete_monitor_trigger.test_harness'; targetName='agent.tool_delete_monitor_trigger'; path='monitor-delete-test'; inputMap=[ordered]@{ domain='body.domain'; label='body.label'; chat_id='body.chat_id' } }
     # Sprachnachricht: Erfolgs- und Fehlerwege des Transkriptions-Tools (infra_cases, target agent.tool_transcribe_telegram_voice).
     [ordered]@{ name='agent.tool_transcribe_telegram_voice.test_harness'; targetName='agent.tool_transcribe_telegram_voice'; path='voice-test'; inputMap=[ordered]@{ file_id='body.file_id' } }

@@ -1,0 +1,212 @@
+{
+    "id":  "iEo6qwvdpsKvPWlm",
+    "name":  "agent.tool_record_handoff_check",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "handoff_task_ids"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "f152d59e-e597-594e-a323-e5a5b3938980",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_record_handoff_check($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), handoff_task_ids: String($(\u0027Start\u0027).item.json.handoff_task_ids || \u0027\u0027), outcome: \u0027matches\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "4c4dc4e5-616f-5807-a725-c98b3fcda4ed",
+                      "name":  "Record check",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "fff54c5e-e233-57f4-8de7-8b68bfa66ade",
+                                                                                   "leftValue":  "={{ ($json.r || {}).ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "3ec3c78e-dda9-5621-8aaf-30af0b7d7169",
+                      "name":  "Recorded?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "23a77023-71e9-5943-bee2-c911e73562e4",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "47b3efde-77a4-5024-af6b-42de4d8ca0b4",
+                                                                                     "name":  "recorded",
+                                                                                     "value":  "={{ $json.r.recorded }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "60e04013-b51e-5efe-8095-53c2d3b4fbc0",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "aa1cd4ae-def7-5fb8-84ea-48a1141b2021",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0cf477c7-f3d6-5eda-b076-69d82c10f6f3",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ \u0027Not recorded (\u0027 + String(($json.r || {}).code || \u0027error\u0027) + \u0027): \u0027 + String(($json.r || {}).reason || \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       100
+                                   ],
+                      "id":  "07832b43-cfc2-5632-a038-fecc26bdae54",
+                      "name":  "Check rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Eintrag pruefen: passt zum Plan (ohne Gate)**\n\nRecord check ruft agent.fn_record_handoff_check mit outcome matches: je Eintrag des Auftrags \"Eintrag prüfen\", der zum Plan passt, ein Merker \u003cdomain\u003e:\u003cwho\u003e:check_done:\u003cid\u003e. Alles oder nichts; nur Altbestand der Person, der beim Berater war und keine Korrektur hat. Danach hält core.fn_plan_rollout_next den Schluss für diese Einträge nicht mehr zurück. Abgebrochene Korrektur-Karten hält agent.tool_record_handoff_correction selbst fest (outcome kept). Kein HITL-Gate: weder Plan noch Daten ändern sich.",
+                                         "height":  340,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -360
+                                   ],
+                      "id":  "f09da7cf-95cb-58b1-b6fa-52aebe961bc7",
+                      "name":  "Doc Pruef-Ergebnis"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Record check",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Record check":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Recorded?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Recorded?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Check rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

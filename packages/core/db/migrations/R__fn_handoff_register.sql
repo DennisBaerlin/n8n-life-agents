@@ -99,7 +99,7 @@ BEGIN
                 v_chk := NULL;
             END;
             IF v_chk->'ok' = 'true'::jsonb AND v_chk->'unsupported' IS DISTINCT FROM 'true'::jsonb THEN
-                v_call := CASE WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN v_chk->'calls'
+                v_call := CASE WHEN jsonb_typeof(v_chk->'calls') = 'array' THEN NULLIF(v_chk->'calls', '[]'::jsonb)
                                WHEN jsonb_typeof(v_chk->'call') = 'object' THEN v_chk->'call' END;
             END IF;
         END IF;

@@ -19,9 +19,6 @@
 #       sonst kein cron_on/cron_off-Knopf;
 #   (d) kein Dangling: jede cron_on:/cron_off:-callback_data verweist auf einen deklarierten cron_enable-Key, und
 #       keine cron-callback_data ist ein dynamischer/unparsbarer Ausdruck (entzoege sich dem statischen Gate);
-#   (e) fn-Akzeptanz (Legacy-Whitelist): traegt core.fn_set_cron_enable eine harte NOT-IN-Whitelist, muss sie genau die
-#       Opt-in-Keys akzeptieren. Ohne Whitelist-Literal (Togglability = Registry-Membership in core.cron_labels) wird (e)
-#       mit Hinweis uebersprungen; die fn-Akzeptanz sichern dann (f) statisch + db_test (always-on/unbekannt -> ok:false).
 #   (f) cron_labels<->cron_enable-Paritaet: jeder Opt-in-Key steht in einer Manifest-cron_labels.list
 #       (= die Registry-Membership, die die fn als Togglability liest) und hat seine vier Katalog-Texte,
 #       kein Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
@@ -153,33 +150,6 @@ foreach ($key in (@($onKeys.Keys) + @($offKeys.Keys) | Sort-Object -Unique)) {
     if (-not $declared.ContainsKey($key)) {
         $where = if ($onKeys.ContainsKey($key)) { $onKeys[$key] } else { $offKeys[$key] }
         Fail "Dangling: cron-Toggle auf '$key' ($where), aber kein Manifest deklariert .config.cron_enable.$key (umbenannter/entfernter Key?)"
-    }
-}
-
-# --- (e) fn-Akzeptanz: core.fn_set_cron_enable (Chat-Pfad) akzeptiert genau die Opt-in-Keys ---
-$fnFiles = @()
-$fnFiles += Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_set_cron_enable.sql') -ErrorAction SilentlyContinue
-if ($fnFiles.Count -eq 0) {
-    Fail 'R__fn_set_cron_enable.sql nicht gefunden (fn-Akzeptanz nicht pruefbar -- verschoben/umbenannt?)'
-} else {
-    $fnSql = [System.IO.File]::ReadAllText($fnFiles[0].FullName, $u8)
-    $wl = [regex]::Match($fnSql, "v_key\s+NOT\s+IN\s*\(([^)]*)\)", 'IgnoreCase')
-    if (-not $wl.Success) {
-        # Kein Whitelist-Literal: UPDATE nur auf Existenz. Akzeptanz = geseedete Zeile + db_test.
-        if ($Verbose) { Write-Host "  [info] fn_set_cron_enable ohne NOT-IN-Whitelist -> Existenz-basiert; (e) uebersprungen (Akzeptanz via Seed + db_test)" -ForegroundColor DarkGray }
-    } else {
-        $whitelist = @{}
-        foreach ($wm in [regex]::Matches($wl.Groups[1].Value, "'([a-z][a-z0-9_]*)'")) { $whitelist[$wm.Groups[1].Value] = $true }
-        $chatSet = @{}; foreach ($k in $chatKeys) { $chatSet[$k] = $true }
-        foreach ($key in ($chatKeys | Sort-Object)) {
-            if (-not $whitelist.ContainsKey($key)) { Fail "core.fn_set_cron_enable akzeptiert den Opt-in-Key '$key' NICHT (fehlt in der NOT-IN-Whitelist -> Chat-Toggle schlaegt fehl)" }
-        }
-        foreach ($wk in ($whitelist.Keys | Sort-Object)) {
-            if (-not $chatSet.ContainsKey($wk)) {
-                if ($consoleKeys -contains $wk) { Fail "core.fn_set_cron_enable whitelistet '$wk', aber der Key ist always-on (Default AN, nur Konsole) -- gehoert nicht in den Chat-Pfad" }
-                else { Fail "core.fn_set_cron_enable whitelistet '$wk', aber kein Manifest deklariert .config.cron_enable.$wk (tote Whitelist-Eintrag)" }
-            }
-        }
     }
 }
 

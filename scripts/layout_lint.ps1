@@ -206,14 +206,14 @@ $st7 = Get-LeadingCommentTokens @('-- packages/finance/db/migrations/R__fn_x.sql
                                   '--   Tests: tests/db/finance/test_fn_x.sql',
                                   '-- siehe packages/<pkg>/db/migrations/R__x.sql (Platzhalter)',
                                   'CREATE FUNCTION finance.fn_x() ...')
-if ($st7.Count -ne 2) { $st++ }
+if ($st7.Count -ne 2) { $st++ }   # 2 echte Pfade trotz Leerzeile; Platzhalter (<pkg>) verworfen; Break erst an CREATE
 # L8 (Proben per [char], damit die Datei selbst kein Mojibake enthaelt)
 if (-not $L8Rx.IsMatch('d' + [char]0xC3 + [char]0xBC + 'rfen'))       { $st++ }   # ue als Ã+¼
 if (-not $L8Rx.IsMatch('x' + [char]0xC3 + [char]0x201E))              { $st++ }   # Ae, 1252-Abbild von 0x84
 if (-not $L8Rx.IsMatch([string][char]0xE2 + [char]0x20AC + [char]0x201C)) { $st++ }   # typografisches Anfuehrungszeichen
 if (-not $L8Rx.IsMatch('1' + [char]0xC2 + [char]0xB0 + 'C'))         { $st++ }   # Grad-Zeichen mit Â davor
 if ($L8Rx.IsMatch('d' + [char]0xFC + 'rfen, Gr' + [char]0xF6 + [char]0xDF + 'e, 5 ' + [char]0x20AC)) { $st++ }   # echte Umlaute, Euro
-if ($L8Rx.IsMatch('S' + [char]0xC3 + 'O Paulo, ' + [char]0xC2 + '-Taste'))  { $st++ }   # Ã/Â vor normalen Zeichen   # 2 echte Pfade trotz Leerzeile; Platzhalter (<pkg>) verworfen; Break erst an CREATE
+if ($L8Rx.IsMatch('S' + [char]0xC3 + 'O Paulo, ' + [char]0xC2 + '-Taste'))  { $st++ }   # Ã/Â vor normalen Zeichen
 if ($st -gt 0) {
     Fail "Selbst-Assert fehlgeschlagen ($st) -- Praedikat-/Extraktions-Logik defekt, Scan abgebrochen."
     Write-Host "layout_lint: $fails Fehler (Selbst-Assert)." -ForegroundColor Red

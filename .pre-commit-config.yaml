@@ -214,9 +214,10 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/contract_lint.ps1
         pass_filenames: false
-        # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer, Bau-Engine samt Allowlists, Release-Image-Helfer, View-Test); sonst entfaellt er.
+        # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer, Bau-Engine samt Allowlists, Release-Image-Helfer, View-Test,
+        # Agent-Faelle der Werkzeug-Abdeckung, Workflows der CI-Test-Zugaenge); sonst entfaellt er.
         # Voller Lauf: pre-push (contract-lint-full) und CI (--all-files).
-        files: ^(packages/|provisioning/|scripts/(build/|lib/release_images\.ps1|contract_lint\.ps1)|tests/db/finance/test_view_column_hints\.sql)
+        files: ^(packages/|provisioning/|scripts/(build/|lib/release_images\.ps1|contract_lint\.ps1)|tests/db/finance/test_view_column_hints\.sql|tests/agent/|\.github/workflows/)
 
       - id: contract-lint-full
         name: contract_lint (full run before push)
@@ -665,7 +666,8 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/docker_volume_cleanup_test.ps1
         pass_filenames: false
-        files: ^(scripts/(bootstrap_test_db|dev/bootstrap_test_n8n|dev/docker_volume_cleanup_test|lib/git_sandbox)|\.claude/hooks/stop_own_substrate)\.ps1$
+        # Der statische Teil liest jede Abbau-Stelle in scripts/, .claude/hooks/ und den Workflows: der Filter deckt denselben Umfang.
+        files: ^(scripts/.*\.ps1|\.claude/hooks/.*\.ps1|\.github/workflows/.*\.ya?ml)$
 
       - id: substrate-reservation-test
         name: substrate_reservation_test (substrate slot reservation, stack count + cleanup, SessionEnd hook, CLI; Docker part skips without Docker/busybox)

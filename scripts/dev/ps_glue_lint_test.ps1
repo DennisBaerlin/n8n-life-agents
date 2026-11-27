@@ -28,6 +28,7 @@ Test-Case 'Befehl mit Leerzeichen im Kommentar ist gruen' "`$a = 1   # danach Wr
 Test-Case 'zusammengesetztes Wort ist kein Befehl' "# SessionStart-Hook und Wait-Dialog`n`$a = 1   # der Wait-Gate`n" $false
 Test-Case 'Raute im String ist kein Kommentar' "`$a = 'frei#freiWrite-Host x'`n" $false
 Test-Case 'Ausnahme mit Grund ist gruen' "`$a = 1   # ps-glue-lint: ok Beispieltext freiWrite-Host`n" $false
+Test-Case 'Ausnahme ohne Grund ist rot' "`$a = 1   # freiWrite-Host ps-glue-lint: ok`n" $true
 
 # Aufruf wie pre-commit: mehrere Dateien als Argumente, die verklebte zuletzt. Jede Datei zaehlt, keine wird als -Root gelesen.
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('pgl_' + [guid]::NewGuid().ToString('N'))

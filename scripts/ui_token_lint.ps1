@@ -68,7 +68,8 @@ $markCases = @(
 foreach ($mc in $markCases) {
     $got = @(Get-UiMarkProblems $mc.c $mk).Count
     if ($got -ne $mc.want) { Fail "Selbst-Assert Zeichen: '$($mc.n)' -> erwartet $($mc.want) Fund(e), gefunden $got -- Zeichen-Erkennung defekt" }
-}if ($fails -gt 0) { Write-Host "ui_token_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
+}
+if ($fails -gt 0) { Write-Host "ui_token_lint: $fails Fehler (Selbst-Asserts)" -ForegroundColor Red; exit $fails }
 
 # --- (1) Farbdatei ----------------------------------------------------------------------------------------------
 $tokens = Read-UiTokens $RepoRoot

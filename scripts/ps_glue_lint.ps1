@@ -43,7 +43,7 @@ function Test-Command([string]$Name) { return $known.Contains($Name) -or [bool](
 
 foreach ($f in $parsed) {
     foreach ($t in $f.Tokens) {
-        if ($t.Kind -ne 'Comment' -or $t.Text -match 'ps-glue-lint:\s*ok') { continue }
+        if ($t.Kind -ne 'Comment' -or $t.Text -match 'ps-glue-lint:\s*ok\s+\S') { continue }
         foreach ($m in $glue.Matches($t.Text)) {
             $cmd = $m.Value.Substring(1)
             if (-not (Test-Command $cmd)) { continue }

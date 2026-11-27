@@ -463,6 +463,13 @@ BEGIN
   PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
   DELETE FROM agent.handoff_tasks WHERE id = v_new;
 
+  -- Ergebnis festgehalten (passt zum Plan oder Korrektur-Karte abgebrochen, agent.fn_record_handoff_check): sofort weiter, ohne Frist
+  PERFORM core.fn_should_notify('plan_rollout', d || ':household:check_done:' || v_old, NULL);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM '4' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL weiter nach festgehaltenem Ergebnis %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key = d || ':household:check_done:' || v_old;
+
   -- Abstand nach der Uebergabe vorbei, keine Korrektur: die Abfolge geht weiter, erst der Werte-Schritt, dann der Schluss
   UPDATE core.notification_state SET last_fired_at = now() - interval '21 hours' WHERE source = 'plan_rollout' AND key = v_checked;
   v := core.fn_plan_rollout_next(d, 'erika');

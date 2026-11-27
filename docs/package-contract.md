@@ -188,7 +188,9 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   deleted thing stays listed with its difference and is never offered.
   Legacy entries closed before the agreed call was kept go once to the advisor (step `check`, button `plan:check:<domain>`,
   task "Entry check"); one that no longer matches the plan gets a new entry via `tool_record_handoff_correction`
-  (`follows_task_id`, the old one stays).
+  (`follows_task_id`, the old one stays), one that matches is recorded via `tool_record_handoff_check`, and a cancelled
+  correction card records that the old one stays (`agent.fn_record_handoff_check`); the final rollout step waits until each
+  entry handed over has one of these results or its time limit passed.
   The handoff agent defers such an entry with `tool_defer_handoff_task` instead of a workaround; skipping leaves an entry open,
   `dropped` ends it for good.
 - **Button follow-up (2026-10-28):** every button arm that starts an agent records it after the relay

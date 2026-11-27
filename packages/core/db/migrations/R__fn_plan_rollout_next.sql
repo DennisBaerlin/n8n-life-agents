@@ -17,8 +17,9 @@
 --   '<domain>:<who>:check:<task_id>' ohne Version (einmal je Aufgabe), hoechstens 20 je Angebot.
 --   Pruefung offen ({step:'check', wait:true}): haelt 4 und 5 zurueck. Angeboten und noch nicht uebergeben (kein Merker
 --   ...:checked:<task_id> aus core.fn_handle_plan_cb): advisor.rollout_wait_days ab dem Angebot. Uebergeben:
---   advisor.rollout_gap_hours ab der Uebergabe (ein Befund ohne Korrektur wird nicht gespeichert, das Ende der Pruefung ist
---   deshalb nur ueber die Zeit bekannt; eine Korrektur ist danach ein offener Eintrag und haelt ueber 1 und 2). Ein
+--   advisor.rollout_gap_hours ab der Uebergabe, bis das Ergebnis feststeht: Merker ...:check_done:<task_id> (agent.fn_record_handoff_check:
+--   passt zum Plan oder Korrektur-Karte abgebrochen) gibt den Eintrag sofort frei, eine Korrektur ist ein offener Eintrag und haelt
+--   ueber 1 und 2; die Frist faengt eine offene Rueckfrage und ein nie festgehaltenes Ergebnis. Ein
 --   beanspruchtes, noch nicht festgeschriebenes Angebot: {step:'check', loser:true}.
 --   Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen, 1 wartet (step 1, wait).
 --   Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share.
@@ -241,6 +242,7 @@ BEGIN
           LEFT JOIN core.notification_state c ON c.source = 'plan_rollout' AND c.state = 'fired' AND c.expires_at IS NULL
                                              AND c.key = p_domain || ':' || v_who || ':checked:' || (e->>'task_id')
          WHERE e->>'row_kind' = 'legacy' AND e->>'status' = 'done'
+           AND core.fn_plan_rollout_latch(p_domain || ':' || v_who || ':check_done:' || (e->>'task_id')) <> 'done'
            AND CASE WHEN c.key IS NOT NULL THEN c.last_fired_at > now() - make_interval(hours => v_gap)
                     ELSE o.last_fired_at > now() - make_interval(days => v_wait) END) THEN
         RETURN jsonb_build_object('step', 'check', 'wait', true, 'messages', '[]'::jsonb);

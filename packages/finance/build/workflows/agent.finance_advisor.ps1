@@ -242,6 +242,7 @@ function Build-AgentFinanceAdvisor {
     # Abfolge sie selbst). domain fix wie die Plan-Tools.
     $nToolHandoffOverview = $null
     $nToolHandoffCorrection = $null
+    $nToolHandoffCheck = $null
     if ($hasHandoff) {
         $nToolHandoffOverview = New-AdvisorToolNode 'tool_send_handoff_overview' (Resolve-CoreServiceAlias 'core:send_handoff_overview' $CoreServiceMap) `
             'Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
@@ -257,6 +258,12 @@ function Build-AgentFinanceAdvisor {
                 ,@('why', 'One sentence why this entry is needed for the plan, at most 160 characters', 'string', '')
                 ,@('option', 'Key of the option the user chose after an ok:false with options, else empty', 'string', '')
             ) ([ordered]@{}) @(1280, 208) -StartNode $START_NODE
+        # Eintrag pruefen: Eintraege, die zum Plan passen, als geprueft festhalten (ohne Karte); die Abfolge wartet sonst bis zur Frist.
+        $nToolHandoffCheck = New-AdvisorToolNode 'tool_record_handoff_check' (Resolve-CoreServiceAlias 'core:record_handoff_check' $CoreServiceMap) `
+            'Entry check only: record that entries from the entry-check task match the published plan - all matching ones in one call, in the same reply as any corrections. It changes neither the plan nor the data and shows no card; it only marks those entries as checked, so the next step can follow. Never for an entry you correct with tool_record_handoff_correction.' `
+            @(
+                ,@('handoff_task_ids', 'Comma separated ids of the matching old entries from the entry-check task data', 'string')
+            ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(1440, 208) -StartNode $START_NODE
     }
 
     $nToolPlanWish = New-AdvisorToolNode 'tool_record_plan_wish' (Resolve-CoreServiceAlias 'core:record_plan_wish' $CoreServiceMap) `
@@ -388,6 +395,7 @@ function Build-AgentFinanceAdvisor {
     ) + $mb.Nodes
     if ($nToolHandoffOverview) { $nodes += $nToolHandoffOverview }
     if ($nToolHandoffCorrection) { $nodes += $nToolHandoffCorrection }
+    if ($nToolHandoffCheck) { $nodes += $nToolHandoffCheck }
     # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler; optional.
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
     $nodes += $svc.Nodes
@@ -420,6 +428,7 @@ function Build-AgentFinanceAdvisor {
     $conns['tool_defer_hint']            = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     if ($nToolHandoffCorrection) { $conns['tool_record_handoff_correction'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
+    if ($nToolHandoffCheck) { $conns['tool_record_handoff_check'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_sync_plan']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

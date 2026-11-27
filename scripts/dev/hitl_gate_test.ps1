@@ -1339,6 +1339,45 @@ try {
     Register-Abort $_ 'hitlT7' -Extra { Remove-ProbeHandoff }
 }
 
+# hitlT8: Korrektur-Karte (Eintrag pruefen) abgebrochen -> das Pruef-Ergebnis "bleibt so" steht fest (Merker ...:check_done:<id>,
+# agent.fn_record_handoff_check outcome kept), die Abfolge wartet nicht bis zur Frist; abgelaufen ist keine Entscheidung -> kein Merker.
+$corrWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_record_handoff_correction' } | Select-Object -First 1).id
+$probeDomSql = "(SELECT p.domain FROM core.advisors p JOIN core.package_registry r ON r.package = p.package WHERE r.status = 'active' AND p.handoff_check_fn IS NOT NULL ORDER BY p.domain LIMIT 1)"
+function Remove-ProbeCheck { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "DELETE FROM agent.handoff_tasks WHERE id = 990093 OR follows_task_id = 990093; DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE '%:990093';") | Out-Null }
+function Get-CheckDone { "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT core.fn_plan_rollout_latch($probeDomSql || ':household:check_done:990093');")).Output | Select-Object -First 1)".Trim() }
+function Initialize-ProbeCheck {
+    Remove-ProbeCheck
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, closed_at) SELECT 990093, a.domain, a.package, 'owner', 'wealth_building', 'other', '__E2E__ hitlT8 Alter Eintrag', 'done', now() FROM core.advisors a WHERE a.domain = $probeDomSql; INSERT INTO core.notification_state (source, key, state, last_fired_at) SELECT 'plan_rollout', $probeDomSql || ':household:checked:990093', 'fired', now();")
+    if ($r.Code -ne 0) { return "Probe anlegen: $($r.Output -join ' ')" }
+    $null
+}
+try {
+    Test-ForceAbort 'hitlT8' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $probs = @(Initialize-ProbeCheck)
+    $toolBase = Get-MaxExecId -WfId $corrWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'handoff-correction-test' @{ chat_id = [string]$PairedUidOwner; handoff_task_id = '990093'; kind = 'other'; payload = ''; text = '__E2E__ hitlT8 Neuer Eintrag'; why = ''; option = '' }
+    $probs += Complete-CardTaps 'hitlT8' @($false)
+    $probs += Get-CancelledMessageProblem (Wait-NewExec $corrWfId $toolBase -Finished) 'tapped the cancel button' 'ask what to change|ask whether'
+    if ((Get-CheckDone) -ne 'done') { $probs += "Pruef-Ergebnis nach Abbrechen nicht festgehalten ($(Get-CheckDone))" }
+    # Ablauf: kein Merker (anderer Text, sonst sperrt die Wiederhol-Sperre die gerade abgelehnte Karte)
+    Clear-MockTelegramRequests -Container $Container
+    $probs += @(Initialize-ProbeCheck)
+    $toolBase = Get-MaxExecId -WfId $corrWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'handoff-correction-test' @{ chat_id = [string]$PairedUidOwner; handoff_task_id = '990093'; kind = 'other'; payload = ''; text = '__E2E__ hitlT8 Zweiter Eintrag'; why = ''; option = '' }
+    $m = Wait-ButtonSend 'hitlT8' ''
+    if (-not $m) { $probs += 'Karte (Ablauf) nicht abgefangen' }
+    else {
+        $probs += Set-CardsExpired @([long](Get-HitlExecId -Url (Get-HitlResumeUrl -Request $m -Approved $false -BridgeUrl $N8nUrl)))
+        $probs += Get-CancelledMessageProblem (Wait-NewExec $corrWfId $toolBase -Finished) 'ran out of time' 'tapped the cancel button'
+        if ((Get-CheckDone) -eq 'done') { $probs += 'Pruef-Ergebnis nach Ablauf festgehalten (Ablauf ist keine Entscheidung)' }
+    }
+    Remove-ProbeCheck
+    Write-RepeatCase 'hitlT8' 'Korrektur-Karte: Abbrechen haelt das Pruef-Ergebnis fest, Ablauf nicht' $probs
+} catch {
+    Register-Abort $_ 'hitlT8' -Extra { Remove-ProbeCheck }
+}
+
 try {
     Test-ForceAbort 'hitlC0' $ForceAbortId
     Clear-MockTelegramRequests -Container $Container

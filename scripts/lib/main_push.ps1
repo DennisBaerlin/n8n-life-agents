@@ -1,6 +1,6 @@
 ﻿# main_push.ps1 -- Urteil der main-Push-Sperre (scripts/main_push_guard.ps1), getrennt von git und Netz, damit
 # scripts/dev/main_push_guard_test.ps1 es an erfundenen Workflow-Texten und Lauf-Listen pruefen kann. Dot-sourcen;
-# braucht Get-CiWaitVerdict aus ci_wait.ps1.
+# braucht Get-CiWaitVerdict und Test-CiPartialRun aus ci_wait.ps1.
 
 # Pfad-Filter eines Ausloesers (Standard push; auch pull_request) aus dem Text einer Workflow-Datei: @{ Paths; Ignore }. Die Filter stehen nur in der
 # Workflow-Datei; hier wird gelesen, nicht gespiegelt. Liest die Block-Form (push: / paths: / - 'muster'), die alle
@@ -50,7 +50,7 @@ function Get-PinParentProblems([string[]]$Required, [object[]]$Runs, [string]$Sh
     $problems = @()
     foreach ($wf in $Required) {
         $done = @($Runs | Where-Object {
-                $_ -and ("$($_.name)" -eq $wf -or "$($_.path)" -like "*/$wf.yml") -and "$($_.head_sha)".StartsWith($Sha, [StringComparison]::OrdinalIgnoreCase) -and "$($_.status)" -eq 'completed'
+                $_ -and ("$($_.name)" -eq $wf -or "$($_.path)" -like "*/$wf.yml") -and "$($_.head_sha)".StartsWith($Sha, [StringComparison]::OrdinalIgnoreCase) -and "$($_.status)" -eq 'completed' -and -not (Test-CiPartialRun $_)
             } | Sort-Object { [datetime]$_.created_at } -Descending)
         if ($done.Count -eq 0) { $problems += "${wf}: kein abgeschlossener Lauf" }
         elseif ("$($done[0].conclusion)" -ne 'success') { $problems += "${wf}: rot ($($done[0].conclusion))" }

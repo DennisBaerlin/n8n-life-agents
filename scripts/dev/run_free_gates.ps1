@@ -23,9 +23,13 @@
 # Exit-Code = Anzahl roter Suiten (0 = alles gruen). Logs: $env:TEMP\free_gate_<N8NTEST_CONTAINER>_<suite>.log
 # (je Container benannt: den TEMP-Ordner teilen alle Sessions desselben Windows-Nutzers).
 #   .\scripts\dev\run_free_gates.ps1 -Suites mr_estate,hitl_gate   # nur diese Substrat-Suiten, ohne db_test (mit -Reset frisches Substrat)
-# -Child / -ResultFile sind intern (Kind-Prozess eines -Parallel-Laufs, je Suite ein Job in .github/workflows/free-gates.yml).
+#   .\scripts\dev\run_free_gates.ps1 -Suites backup              # ein Name ohne _<n> faehrt alle Teile backup_<n>
+# -Child / -ResultFile sind intern (Kind-Prozess eines -Parallel-Laufs, je Stueck ein Job in .github/workflows/free-gates.yml).
 # -ListPlan gibt die Suiten aus, die dieser Aufruf fahren wuerde (Selbsttest: scripts/dev/run_free_gates_filter_test.ps1).
-# -ListSuites gibt die Substrat-Suiten als JSON aus: daraus baut free-gates.yml seine Matrix, eine neue Suite fehlt dort nie still.
+# -ListSuites gibt die Substrat-Suiten als JSON aus: jede Suite einmal (Selbsttest-Grundlage).
+# -ListJobs gibt die CI-Jobs als JSON aus (Stuecke der Gruppen, Trennmarke `|`): daraus baut free-gates.yml seine Matrix; eine neue
+#   Suite muss in einer Gruppe stehen und fehlt dort darum nie still.
+#   Mit -Suites nur die Jobs, die eine dieser Suiten tragen, gekuerzt auf sie (Handstart mit Auswahl).
 # =====================================================================================================
 param(
     [switch]$Reset,
@@ -35,6 +39,7 @@ param(
     [string[]]$Suites,
     [string]$ResultFile,
     [switch]$ListSuites,
+    [switch]$ListJobs,
     [switch]$ListPlan
 )
 
@@ -49,14 +54,19 @@ $Suites = @($Suites | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 # Defaults und risse fremde Substrate ab.
 $missing = @('N8NTEST_CONTAINER', 'N8NTEST_PORT', 'DBTEST_CONTAINER', 'DBTEST_PG_PORT') |
     Where-Object { [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_)) }
-if ($missing -and -not $ListSuites) { throw "Eigene Test-Container setzen, fehlt: $($missing -join ', ') (siehe Usage im Skript-Kopf)." }
+if ($missing -and -not ($ListSuites -or $ListJobs)) { throw "Eigene Test-Container setzen, fehlt: $($missing -join ', ') (siehe Usage im Skript-Kopf)." }
 
 # --- Die Substrat-Suiten (Reihenfolge = Laufreihenfolge je Gruppe) ------------------------------------------------
 $Gates = [ordered]@{
     release_fetch = @{ Script = 'scripts\dev\release_fetch_test.ps1' }   # Release-Download gegen Mock-GitHub (nur Container)
     reachability  = @{ Script = 'scripts\dev\reachability_test.ps1' }   # Geraete-Erreichbarkeit IPv4/IPv6 gegen Mock (nur Container)
     runtime       = @{ Script = 'scripts\dev\runtime_test.ps1' }   # Betriebsart-Naht systemd/compose, Antwort-Datei, Telegram-Pruefung (nur Container)
-    backup        = @{ Script = 'scripts\dev\backup_test.ps1' }   # Notfallblatt + Schluessel-Uebernahme gegen das echte PostgreSQL (nur Container)
+    # Suiten mit Endung _<n> sind Teile einer Suite (je ein CI-Job auf eigenem Substrat, lokal nacheinander); zusammen jeder Fall
+    # eines Laufs ohne Teil (Faelle, die die Ausgaben pruefen, je Teil). -Suites <name> faehrt alle Teile.
+    backup_1      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '1' } }   # Notfallblatt + Schluessel-Uebernahme gegen das echte PostgreSQL (nur Container)
+    backup_2      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '2' } }
+    backup_3      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '3' } }
+    backup_4      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '4' } }
     n8n_patch     = @{ Script = 'scripts\dev\n8n_patch_test.ps1' }   # n8n-Korrektur Bestaetigungs-Karten gegen das installierte n8n (nur Container)
     retire        = @{ Script = 'scripts\dev\retire_test.ps1' }   # Umzug: `lifeagents retire` im klassischen Substrat (haelt n8n voruebergehend an; Mock-Telegram)
     move          = @{ Script = 'scripts\dev\move_test.ps1' }   # Umzug: `lifeagents move`/`config import` im klassischen Substrat (wie retire)
@@ -82,15 +92,44 @@ $Gates = [ordered]@{
     monitor_probe = @{ Script = 'scripts\dev\monitor_probe_test.ps1' }   # Waechter-Heartbeat Ende-zu-Ende gegen die Mocks
     conversation  = @{ Script = 'scripts\conversation_test.ps1' }   # Ablauf-Faelle ueber den echten Eingang samt Laien-Messung (Mock-Modell)
 }
-# Gruppen fuer -Parallel, nach gemessener Dauer balanciert (gemessen: A 10,4 / B 7,4 min -> hitl_gate + mr_estate
-# nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
-$GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
+# Gruppen fuer -Parallel: je ein Substrat, grob nach Dauer verteilt (vor dem naechsten Umbau neu messen).
+# '|' schneidet die Gruppen in die CI-Jobs (free-gates.yml, -ListJobs): je Stueck ein Runner mit eigenem Substrat. Stuecke statt
+# freier Buendel, weil jedes Stueck dann ein Ausschnitt einer Reihenfolge ist, die lokal schon auf einem Substrat laeuft. Schnitt
+# nach der reinen Suite-Zeit auf GitHub: je Stueck bis etwa so lang wie real_ingress allein, denn jeder Job zahlt rund 5 Min
+# Ruestzeit (Abbild, Substrat) und die Runner-Plaetze teilt free-gates mit den anderen Workflows; wenige gleich lange Stuecke
+# schlagen viele kurze.
+$GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', '|', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
-$GroupB = @('release_fetch', 'reachability', 'runtime', 'backup', 'n8n_patch', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint', 'monitor_probe', 'plan_rollout', 'conversation', 'retire', 'move')
+$GroupB = @('release_fetch', 'reachability', 'backup_1', '|', 'backup_2', '|', 'runtime', 'backup_3', '|', 'backup_4', 'n8n_patch',
+            'bot_profile_photo', '|', 'hitl_gate', 'mr_estate', '|', 'mr_orch', '|', 'real_ingress', '|', 'app_endpoint', 'monitor_probe',
+            'plan_rollout', 'conversation', '|', 'retire', 'move')
+function Split-GateJobs([string[]]$Group) {
+    $job = @()
+    foreach ($s in $Group) { if ($s -eq '|') { if ($job) { , $job }; $job = @() } else { $job += $s } }
+    if ($job) { , $job }
+}
+$Jobs = @(Split-GateJobs $GroupA) + @(Split-GateJobs $GroupB)
+$GroupA = @($GroupA | Where-Object { $_ -ne '|' }); $GroupB = @($GroupB | Where-Object { $_ -ne '|' })
+# -Suites <name> ohne eigene Suite, aber mit Teilen <name>_<n>: alle Teile in Reihenfolge.
+$Suites = @(foreach ($s in $Suites) {
+    $parts = @($Gates.Keys | Where-Object { $_ -match ('^' + [regex]::Escape($s) + '_[0-9]+$') })
+    if ($Gates.Contains($s) -or -not $parts) { $s } else { $parts }
+})
 $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($_) })
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
-if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }
+$twice = @($GroupA + $GroupB | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+$absent = @($Gates.Keys | Where-Object { $_ -notin ($GroupA + $GroupB) })
+if ($twice -or $absent) { throw "run_free_gates: jede Suite muss in genau einer Gruppe stehen (`$GroupA/`$GroupB). Doppelt: $($twice -join ', '); fehlt: $($absent -join ', ')" }
 if ($ListSuites) { ConvertTo-Json -InputObject @($Gates.Keys) -Compress; exit 0 }
+# Je CI-Job ein Eintrag "suite,suite,..." (Reihenfolge = Laufreihenfolge); free-gates.yml reicht ihn an -Suites weiter. Mit -Suites
+# (Handstart mit Auswahl) nur die Jobs, die eine gewaehlte Suite tragen, gekuerzt auf diese; die Stuecke bleiben Ausschnitte.
+if ($ListJobs) {
+    $out = foreach ($j in $Jobs) {
+        $keep = @(if ($Suites.Count) { $j | Where-Object { $_ -in $Suites } } else { $j })
+        if ($keep.Count) { $keep -join ',' }
+    }
+    ConvertTo-Json -InputObject @($out) -Compress; exit 0
+}
 # Ein -Suites-Filter im normalen Lauf (ohne -Child/-Parallel) faehrt nur diese Suiten und kein db_test; -Parallel verteilt
 # immer alle Suiten, ein Filter dazu waere still wirkungslos -> Fehler statt Ignorieren.
 if ($Parallel -and $Suites.Count -gt 0 -and -not $Child) { throw '-Suites und -Parallel schliessen sich aus (Parallel verteilt immer alle Suiten).' }

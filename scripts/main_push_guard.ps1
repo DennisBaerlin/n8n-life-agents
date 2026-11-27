@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # main_push_guard.ps1 -- Sperre fuer den Push auf main: Der Stand braucht einen gruenen GitHub-Lauf jedes Workflows
 # (ci, free-gates, genericity), den dieser Push auf main ausloesen wuerde (Pfad-Filter aus .github/workflows/<name>.yml).
-# Gruen wird ein Stand ueber den Integrations-Branch: pushen, 'gh workflow run <name>.yml --ref <branch>', warten mit
-# scripts/check_ci_status.ps1 -Wait. Regel: Skill /coordinate Abschnitt 3 *Push-Regeln*.
+# Gruen wird ein Stand ueber den Integrations-Branch: pushen, 'gh workflow run <name>.yml --ref <branch>' (ohne -f suites: ein
+# Handstart mit Suiten-Auswahl zaehlt nie), warten mit scripts/check_ci_status.ps1 -Wait. Regel: Skill /coordinate Abschnitt 3 *Push-Regeln*.
 # Ausnahme Pin-Commit: aendert der Stand gegenueber seinem einen Elternteil nur provisioning/compose/compose.yml, zaehlen
 # die Laeufe des Elternteils (der Pin entsteht erst aus dem gruenen Stand, docs/reference/provisioning.md *Docker-Verbund*);
 # dort entscheidet je Workflow der juengste abgeschlossene Lauf (nur success), Laeufe des main-Push, die noch laufen, zaehlen nicht.

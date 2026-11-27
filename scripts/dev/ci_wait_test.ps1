@@ -37,6 +37,17 @@ Check 'Lauf-Nummer bleibt ganzzahlig im Text' ((Format-CiWaitLine $v) -match '19
 $v = Get-CiWaitVerdict -Runs @() -Workflow 'ci' -Sha $sha
 Check 'leere Liste = none' ($v.verdict -eq 'none') $v.verdict
 Check 'Exit-Code: green 0, red 1, alles andere 2' ((Get-CiWaitExitCode 'green') -eq 0 -and (Get-CiWaitExitCode 'red') -eq 1 -and (Get-CiWaitExitCode 'pending') -eq 2 -and (Get-CiWaitExitCode 'none') -eq 2) ''
+# Handstart mit Suiten-Auswahl (run-name traegt den Merker): prueft nicht den ganzen Stand, zaehlt nie.
+$part = Run 'free-gates' $sha 'completed' 'success' '2026-01-01T12:00:00Z' 7
+$part | Add-Member display_title 'free-gates [Auswahl] backup'; $part | Add-Member event 'workflow_dispatch'
+$v = Get-CiWaitVerdict -Runs @($part) -Workflow 'free-gates' -Sha $sha
+Check 'nur ein gruener Auswahl-Lauf = none' ($v.verdict -eq 'none') $v.verdict
+$v = Get-CiWaitVerdict -Runs @((Run 'free-gates' $sha 'completed' 'failure' '2026-01-01T10:00:00Z' 3), $part) -Workflow 'free-gates' -Sha $sha
+Check 'juengerer Auswahl-Lauf ueberdeckt den vollen roten nicht' ($v.verdict -eq 'red' -and $v.run.id -eq 3) "$($v.verdict) $($v.run.id)"
+$pr = Run 'free-gates' $sha 'completed' 'success' '2026-01-01T12:00:00Z' 8
+$pr | Add-Member display_title 'free-gates [Auswahl] im Titel eines PR'; $pr | Add-Member event 'pull_request'
+$v = Get-CiWaitVerdict -Runs @($pr) -Workflow 'free-gates' -Sha $sha
+Check 'Merker im Titel eines PR-Laufs: voller Lauf' ($v.verdict -eq 'green') $v.verdict
 
 if ($fails -eq 0) { Write-Host 'PASS ci_wait_test' -ForegroundColor Green } else { Write-Host "ci_wait_test: $fails Fehler" -ForegroundColor Red }
 exit $fails

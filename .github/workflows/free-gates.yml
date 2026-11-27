@@ -1,6 +1,7 @@
 # Freie Gates auf GitHub: faehrt die Suiten aus scripts/dev/run_free_gates.ps1 unter PowerShell 7 auf Linux-Runnern, mit
-# demselben Substrat wie genericity.yml (privilegierter systemd-Container, gleiches Image). Ein Runner je Suite, das
-# Basis-Image wird einmal gebaut und per Cache verteilt; die Matrix kommt aus dem Skript (-ListSuites). Kein Required Check.
+# demselben Substrat wie genericity.yml (privilegierter systemd-Container, gleiches Image). Ein Runner je Stueck
+# (kurze Suiten nacheinander auf einem Substrat, lange in Teilen; Schnitt in run_free_gates.ps1), das Basis-Image wird einmal
+# gebaut und per Cache verteilt; die Matrix kommt aus dem Skript (-ListJobs). Kein Required Check.
 #
 # SICHERHEIT: Der Workflow laeuft bei PRs, auch von Forks, und startet privilegierte Container mit fremdem Code.
 #  - Nur `pull_request`, nie `pull_request_target`: Fork-Laeufe bekommen ein Nur-Lese-Token und keine Secrets.
@@ -12,11 +13,20 @@
 #  - Basis-Image im Cache: ein PR-Lauf schreibt nur in den Cache seines eigenen PR-Refs und liest sonst den des Ziel-Branch.
 #    Der Lauf auf main befuellt den Cache, den alle PRs und Branch-Laeufe nutzen.
 name: free-gates
+# Ein Handstart mit Auswahl traegt den Merker [Auswahl] im Titel: Push-Sperre und Warte-Modus (scripts/lib/ci_wait.ps1,
+# Test-CiPartialRun) werten ihn nie als Lauf des ganzen Stands. Sonst der Titel, den GitHub ohne run-name zeigt.
+run-name: ${{ inputs.suites && format('free-gates [Auswahl] {0}', inputs.suites) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 # paths-ignore nur fuer Dateien, die keine Suite liest. Nie `**.md`: packages/*/contexts/*.md und der capabilities_catalog
 # werden in die DB geseedet, eine Aenderung dort ist eine Verhaltens-Aenderung.
 on:
+  # Handstart mit Auswahl: gh workflow run free-gates.yml --ref <branch> -f suites=mr_estate,backup (backup = alle Teile backup_<n>).
   workflow_dispatch:
+    inputs:
+      suites:
+        description: "Komma-getrennte Suiten (run_free_gates.ps1 -ListSuites; Name ohne _<n> = alle Teile); leer = alle"
+        required: false
+        default: ""
   push:
     branches: [main]
     paths-ignore:
@@ -35,7 +45,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: free-gates-${{ github.workflow }}-${{ github.ref }}
+  group: free-gates-${{ github.workflow }}-${{ github.ref }}-${{ inputs.suites }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -57,10 +67,12 @@ jobs:
         with:
           persist-credentials: false   # der Lauf pusht nie
 
-      - name: Suite-Liste aus run_free_gates.ps1
+      - name: Job-Liste aus run_free_gates.ps1
         id: suites
         shell: pwsh
-        run: '"list=$(./scripts/dev/run_free_gates.ps1 -ListSuites)" >> $env:GITHUB_OUTPUT'
+        env:
+          SUITES: ${{ inputs.suites }}   # leer bei push/pull_request; ueber env statt im Skript-Text (keine Einschleusung)
+        run: '"list=$(./scripts/dev/run_free_gates.ps1 -ListJobs -Suites $env:SUITES)" >> $env:GITHUB_OUTPUT'
 
       # Dieselben Eingaben wie Get-SubstrateBaseSpec im Bootstrap: aendert sich dort der Image-Tag, aendert sich auch der Schluessel.
       - name: Cache-Schluessel

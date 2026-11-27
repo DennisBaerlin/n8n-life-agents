@@ -1,12 +1,19 @@
 ﻿# ci_wait.ps1 -- Urteil des Warte-Modus von scripts/check_ci_status.ps1 (-Wait), getrennt vom Netz-Abruf, damit
 # scripts/dev/ci_wait_test.ps1 es an erfundenen Lauf-Listen pruefen kann. Dot-sourcen.
 
+# Teil-Lauf: ein Handstart mit Suiten-Auswahl (free-gates.yml setzt den run-name "free-gates [Auswahl] ...") prueft nicht den
+# ganzen Stand und zaehlt darum nie als Lauf des Workflows, weder gruen noch rot. Nur workflow_dispatch und Titel-Anfang: ein
+# PR-Titel oder eine Commit-Message mit demselben Wort bleibt ein voller Lauf.
+function Test-CiPartialRun($Run) {
+    "$($Run.event)" -eq 'workflow_dispatch' -and "$($Run.display_title)".StartsWith('free-gates [Auswahl]', [StringComparison]::Ordinal)
+}
+
 # Juengster Lauf des Workflows auf dem Stand entscheidet: ein neuer Anlauf nach Rot gilt, der alte rote Lauf nicht.
 # verdict: green | red | pending | none (kein Lauf dieses Workflows auf diesem Stand).
 function Get-CiWaitVerdict {
     param([object[]]$Runs, [Parameter(Mandatory)][string]$Workflow, [Parameter(Mandatory)][string]$Sha)
     $mine = @($Runs | Where-Object {
-            $_ -and ("$($_.name)" -eq $Workflow -or "$($_.path)" -like "*/$Workflow.yml") -and "$($_.head_sha)".StartsWith($Sha, [StringComparison]::OrdinalIgnoreCase)
+            $_ -and ("$($_.name)" -eq $Workflow -or "$($_.path)" -like "*/$Workflow.yml") -and "$($_.head_sha)".StartsWith($Sha, [StringComparison]::OrdinalIgnoreCase) -and -not (Test-CiPartialRun $_)
         } | Sort-Object { [datetime]$_.created_at } -Descending)
     if ($mine.Count -eq 0) { return [pscustomobject]@{ verdict = 'none'; run = $null } }
     $run = $mine[0]

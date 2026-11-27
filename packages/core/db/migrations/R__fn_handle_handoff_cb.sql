@@ -102,7 +102,7 @@ BEGIN
             'tasks', v_tasks);
     END IF;
 
-    v_ttl := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
+    v_ttl := core.fn_handoff_claim_ttl();
     WITH c AS (
         UPDATE agent.handoff_tasks t
            SET status = 'working', claimed_at = now()

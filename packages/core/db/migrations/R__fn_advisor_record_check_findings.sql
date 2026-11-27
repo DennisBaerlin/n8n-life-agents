@@ -131,7 +131,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    v_max := COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2);
+    v_max := core.fn_advisor_check_max_passes();
     SELECT COALESCE(max((c.payload->>'pass')::int), 0) + 1 INTO v_pass FROM agent.chat_prompts c
      WHERE c.plan_id = v_plan.id AND c.kind = 'finding' AND c.status <> 'superseded';
     IF v_pass > v_max THEN
@@ -321,7 +321,7 @@ BEGIN
                   AND (c.payload->>'pass')::int = v_pass) THEN
         RETURN v_out || jsonb_build_object('then', 'next');
     END IF;
-    v_max := COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2);
+    v_max := core.fn_advisor_check_max_passes();
     SELECT bool_or(COALESCE((c.payload->>'changed')::boolean, false)) INTO v_changed FROM agent.chat_prompts c
      WHERE c.plan_id = v_plan AND c.kind = 'finding' AND (c.payload->>'pass')::int = v_pass AND c.status <> 'superseded';
     IF COALESCE(v_changed, false) AND v_pass < v_max THEN

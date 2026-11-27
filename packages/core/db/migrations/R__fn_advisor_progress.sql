@@ -122,7 +122,7 @@ BEGIN
         v_openchk := COALESCE(v_openchk, false) OR EXISTS (SELECT 1 FROM agent.chat_prompts c
                       WHERE c.plan_id = v_draft.id AND c.kind = 'finding' AND c.status IN ('queued', 'open'));
     END IF;
-    v_max := COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2);
+    v_max := core.fn_advisor_check_max_passes();
 
     SELECT count(*) FILTER (WHERE t.status NOT IN ('cancelled', 'deferred')), count(*) FILTER (WHERE t.status = 'done'),
            count(*) FILTER (WHERE t.status = 'deferred')

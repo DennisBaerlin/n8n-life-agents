@@ -82,7 +82,7 @@ DECLARE
     v_efn   regprocedure;
     v_eff   jsonb;
     v_acc   int;
-    v_ttl   int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
+    v_ttl   int := core.fn_handoff_claim_ttl();
 BEGIN
     SELECT jsonb_build_object('count', count(*), 'max_task_id', max(t.id),
                               'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb))

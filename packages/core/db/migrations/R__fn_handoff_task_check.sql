@@ -25,7 +25,7 @@ DECLARE
     v_pid text := core.fn_handoff_person(p->>'chat_id');
     v_t   record;
     v_follow int;
-    v_ttl int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
+    v_ttl int := core.fn_handoff_claim_ttl();
 BEGIN
     IF v_id !~ '^[0-9]{1,9}$' THEN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',

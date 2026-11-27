@@ -23,7 +23,7 @@ DECLARE
     v_chat text := COALESCE(p->>'chat_id', '');
     v_text text := btrim(COALESCE(p->>'text', ''));
     v_n    int;
-    v_ttl  int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
+    v_ttl  int := core.fn_handoff_claim_ttl();
 BEGIN
     IF v_chat !~ '^-?[0-9]{1,18}$' OR v_text = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'chat_id and text are required');

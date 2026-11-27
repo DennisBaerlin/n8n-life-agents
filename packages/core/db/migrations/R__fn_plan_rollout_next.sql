@@ -65,7 +65,7 @@ DECLARE
     v_live    boolean;
     v_fix     jsonb;
     v_reg     jsonb;
-    v_ttl     int := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'handoff_claim_ttl_minutes'), '')::int, 120);
+    v_ttl     int := core.fn_handoff_claim_ttl();
 BEGIN
     SELECT * INTO v_adv FROM core.advisors a WHERE a.domain = p_domain;
     IF NOT FOUND THEN RETURN jsonb_build_object('step', NULL, 'messages', '[]'::jsonb); END IF;

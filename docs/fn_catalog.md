@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 641 fn-Dateien.
+Umfang: 643 fn-Dateien.
 
 ## finance.fn_account_confirmed_until (READ, STABLE) -- bis zu welchem Tag der Stand eines Kontos bestaetigt ist
 - `finance.fn_account_confirmed_until(p_account_id int) -> date`
@@ -103,6 +103,11 @@ Umfang: 641 fn-Dateien.
 - `core.fn_advisor_alerts_cap(p_alerts jsonb, p_first_run boolean DEFAULT FALSE) -> jsonb`
 - jsonb-Keys: _latched, key, priority, source
 - core.fn_advisor_alerts_cap (Punkte-Grenze je Waechter-Nachricht) Sortiert die Alarme einer Nachricht ueber alle Domains und Personen (priority DESC, fehlend = 50, dann Eingang) und behaelt 3 Punkte, wenn ein Lauf der Nachricht first_run ist, sonst 5. Gekuerzte Punkte verlieren ihre in diesem Lauf frisch gesetzten Merker (_latched aus core.fn_advisor_review_evaluate) und gelten am naechsten Lauf wieder als neu. Eingaben: p_alerts (jsonb-Array), p_first_run. Rueckgabe: {alerts:[ohne _latched], more_count, more_line} mit more_line = fertiges tpl der Hinweiszeile (Einzahl/Mehrzahl waehlt die DB), NULL ohne Rest. Seiteneffekt: core.fn_notify_resolve je gekuerztem Merker. SECURITY INVOKER wie der Evaluate-Aufrufer (Haupt-RW-Cron).
+
+## core.fn_advisor_check_max_passes
+- `core.fn_advisor_check_max_passes() -> int`
+- jsonb-Keys: --
+- core.fn_advisor_check_max_passes() — Obergrenze der Lese-Durchgaenge der Schlusspruefung (READ) Die eine Lese-Adresse fuer core.config advisor.check_max_passes (fehlend oder unlesbar -> 2). Aufrufer: core.fn_advisor_progress (Phase check/publish), agent.fn_advisor_publish_plan (final_check_open), agent.fn_advisor_record_check_findings (naechster Durchgang, Auftrag fuer den zweiten Durchgang). Rueckgabe int. STABLE, INVOKER, search_path gepinnt; plpgsql (late-bound: core.fn_config_get folgt alphabetisch). Tests: tests/db/core/test_fn_advisor_check_max_passes.sql
 
 ## agent.fn_advisor_compose_plan_md
 - `agent.fn_advisor_compose_plan_md(p_plan_id int, p_reminders jsonb DEFAULT '[]'::jsonb) -> text`
@@ -1283,6 +1288,11 @@ Umfang: 641 fn-Dateien.
 - `core.fn_handoff_check_hint(p_chk jsonb, p_chat_id text) -> text`
 - jsonb-Keys: candidates, code, key, label, label_key, lang, options, params, reason_key, recommended
 - core.fn_handoff_check_hint(p_chk, p_chat_id) — Kandidaten bzw. Optionen einer abgelehnten Vorpruefung als Satz fuer reason Die Berater-Werkzeuge reichen bei einer Ablehnung nur code + reason an das Modell durch; ohne diesen Zusatz kennt der Berater die Antwort-Knoepfe der Rueckfrage nicht. p_chk = Rueckgabe der Paket-Vorpruefung (core.advisors.handoff_check_fn). handoff_ref_ambiguous -> ' Candidates: <label> | <label>.' (Reihenfolge der Paket-fn) handoff_choice_needed -> ' Options: option=<key> (recommended): <Text> (<Grund>); option=<key>: <Text>. …' (empfohlene zuerst; Text/Grund aus label_key/reason_key mit params, gerendert in der Sprache der Person des Absenders) sonst ''. Konsumenten: agent.fn_advisor_save_section, agent.fn_record_handoff_correction. STABLE, INVOKER. Tests: tests/db/core/test_fn_advisor_save_section_handoffs.sql, tests/db/core/test_fn_record_handoff_correction.sql
+
+## core.fn_handoff_claim_ttl
+- `core.fn_handoff_claim_ttl() -> int`
+- jsonb-Keys: --
+- core.fn_handoff_claim_ttl() — wie lange ein Claim einer vereinbarten Plan-Aufgabe als "diese Runde" gilt (READ) Die eine Lese-Adresse fuer core.config advisor.handoff_claim_ttl_minutes (fehlend -> 120), in Minuten. Aufrufer: core.fn_handoff_task_check, core.fn_handle_handoff_cb, core.fn_handoff_overview, core.fn_plan_rollout_next, core.fn_stash_hitl_note. Rueckgabe int. STABLE, INVOKER, search_path gepinnt; plpgsql (late-bound). Tests: tests/db/core/test_fn_handoff_claim_ttl.sql
 
 ## finance.fn_handoff_diff (READ, STABLE) -- Unterschied zwischen dem vereinbarten Soll einer Plan-Aufgabe und dem heutigen Stand
 - `finance.fn_handoff_pairs(p_wanted jsonb, p_entered_refs jsonb) -> jsonb`

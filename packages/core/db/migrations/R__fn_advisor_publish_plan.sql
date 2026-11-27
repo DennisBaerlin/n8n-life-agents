@@ -145,7 +145,7 @@ BEGIN
         SELECT max((c.payload->>'pass')::int) INTO v_rows_pass FROM agent.chat_prompts c
          WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status <> 'superseded';
         IF EXISTS (SELECT 1 FROM agent.chat_prompts c WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status IN ('queued', 'open'))
-           OR (v_rows_pass < COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2)
+           OR (v_rows_pass < core.fn_advisor_check_max_passes()
                AND EXISTS (SELECT 1 FROM agent.chat_prompts c WHERE c.plan_id = v_rows_plan AND c.kind = 'finding' AND c.status = 'answered'
                               AND (c.payload->>'pass')::int = v_rows_pass AND COALESCE((c.payload->>'changed')::boolean, false))) THEN
             RETURN jsonb_build_object('ok', false, 'code', 'final_check_open',

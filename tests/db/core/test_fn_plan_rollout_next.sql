@@ -383,11 +383,11 @@ BEGIN
      OR jsonb_array_length(v->'messages'->0->'latches') <> 1 THEN RAISE EXCEPTION 'FAIL check Angebot %', v; END IF;
   PERFORM core.fn_notify_commit('plan_rollout', v->'messages'->0->'latches'->0->>'key');
   v := core.fn_plan_rollout_next(d, 'erika');
-  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check zweimal %', v; END IF;
+  IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL check zweimal %', v; END IF;
   -- neue Version: dieselbe Aufgabe nicht wieder
   UPDATE agent.advisor_plans SET version = 2 WHERE id = v_plan;
   v := core.fn_plan_rollout_next(d, 'erika');
-  IF v->>'step' = 'check' THEN RAISE EXCEPTION 'FAIL check neue Version %', v; END IF;
+  IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL check neue Version %', v; END IF;
 
   -- zwei weitere: eine Nachricht, n = 2, je Aufgabe ein Merker; eine mit Folge-Aufgabe zaehlt nicht
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
@@ -411,5 +411,75 @@ BEGIN
   FOR v IN SELECT x FROM jsonb_array_elements(v->'messages'->0->'latches') x LOOP PERFORM core.fn_notify_commit('plan_rollout', v->>'key'); END LOOP;
   v := core.fn_plan_rollout_next(d, 'erika');
   IF v->>'step' IS DISTINCT FROM 'check' OR (v->'messages'->0->'msg'->0->'params'->>'n')::int <> 2 THEN RAISE EXCEPTION 'FAIL check Rest %', v; END IF;
+END $$;
+
+-- Pruefung offen haelt Werte-Schritt und Schluss zurueck (nie "eingerichtet", solange niemand weiss, ob der Altbestand zum
+-- Plan passt): Angebot beansprucht -> loser; angeboten und noch nicht an den Berater uebergeben -> wartet advisor.rollout_wait_days; uebergeben (Merker
+-- ...:checked:<id>, core.fn_handle_plan_cb) -> wartet advisor.rollout_gap_hours ab der Uebergabe. Eine Korrektur (Folge-
+-- Aufgabe) nimmt die alte Aufgabe aus dem Register; die offene Folge-Aufgabe haelt dann ueber die Liste (Schritt 1 und 2).
+INSERT INTO core.advisors (domain, package, plan_context, review_fn, plan_step, advisor_agent)
+VALUES ('__rollw__', 'core', '__rollw___planning', 'core.fn_x', TRUE, 'agent.x_advisor');
+DO $$
+DECLARE
+  d CONSTANT TEXT := '__rollw__';
+  v JSONB;
+  v_old INT;
+  v_new INT;
+  v_offer TEXT;
+  v_checked TEXT;
+BEGIN
+  -- mit Wert-Kandidaten: nach dem Warten ist der Werte-Schritt (4) dran, davor nicht
+  UPDATE core.config SET value = 'true' WHERE category = 'advisor' AND key = 'plan_sync_required';
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version, synced_at, interview_state, watch_candidates)
+  VALUES (d, 'p', 'active', 1, now(), '{"s":{"content":"x"}}', '["Oelpreis"]');
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, closed_at)
+  VALUES (d, 'core', 'erika', 's', 'other', 'alt erledigt', 'done', now()) RETURNING id INTO v_old;
+  v_offer := d || ':household:check:' || v_old;
+  v_checked := d || ':household:checked:' || v_old;
+
+  -- Angebot beansprucht, noch nicht festgeschrieben (der Sender laeuft): kein Schluss daneben
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'SETUP wait Angebot %', v; END IF;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->>'loser')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN
+    RAISE EXCEPTION 'FAIL Schritt neben beanspruchtem Pruef-Angebot %', v; END IF;
+  -- angeboten, nicht getippt: still warten
+  PERFORM core.fn_notify_commit('plan_rollout', v_offer);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN
+    RAISE EXCEPTION 'FAIL Schluss trotz unbeantwortetem Pruef-Angebot %', v; END IF;
+  -- getippt, der Berater prueft (noch keine Korrektur): still warten
+  PERFORM core.fn_should_notify('plan_rollout', v_checked, interval '30 minutes');
+  PERFORM core.fn_notify_commit('plan_rollout', v_checked);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN
+    RAISE EXCEPTION 'FAIL Schluss direkt nach der Uebergabe an den Berater %', v; END IF;
+  -- Korrektur festgehalten: die alte Aufgabe ist geprueft, die neue offene kommt auf die Liste (kein Warten davor)
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, follows_task_id)
+  VALUES (d, 'core', 'erika', 's', 'other', 'Korrektur', v_old) RETURNING id INTO v_new;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM '1' OR v->'messages'->0->'buttons'->0->>'data' <> 'handoff:' || d || ':' || v_new THEN
+    RAISE EXCEPTION 'FAIL Liste nach der Korrektur %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  DELETE FROM agent.handoff_tasks WHERE id = v_new;
+
+  -- Abstand nach der Uebergabe vorbei, keine Korrektur: die Abfolge geht weiter, erst der Werte-Schritt, dann der Schluss
+  UPDATE core.notification_state SET last_fired_at = now() - interval '21 hours' WHERE source = 'plan_rollout' AND key = v_checked;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM '4' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL Werte-Schritt nach dem Abstand %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  UPDATE agent.advisor_plans SET watch_candidates = '[]' WHERE domain = d;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM '5' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL Schluss nach dem Abstand %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  PERFORM core.fn_notify_resolve('plan_rollout', l->>'key') FROM jsonb_array_elements(v->'messages'->0->'latches') l;
+
+  -- nie getippt: nach der Wartezeit geht die Abfolge weiter
+  DELETE FROM core.notification_state WHERE source = 'plan_rollout' AND key = v_checked;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM 'check' OR (v->>'wait')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL wartet wieder ohne Uebergabe %', v; END IF;
+  UPDATE core.notification_state SET last_fired_at = now() - interval '8 days' WHERE source = 'plan_rollout' AND key = v_offer;
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->>'step' IS DISTINCT FROM '5' OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL Schluss nach der Wartezeit %', v; END IF;
 END $$;
 ROLLBACK;

@@ -54,10 +54,10 @@ BEGIN
 
   -- 4) nie eingetragen / geloescht -> exists
   r := finance.fn_handoff_diff_of(w, '[]'::jsonb);
-  IF r IS DISTINCT FROM jsonb_build_array(jsonb_build_object('field','exists','wanted',true,'current',false)) THEN
+  IF r IS DISTINCT FROM jsonb_build_array(jsonb_build_object('field','exists','wanted',true,'current',false,'call',w)) THEN
     RAISE EXCEPTION 'FAIL [4 nie eingetragen]: %', r; END IF;
   r := finance.fn_handoff_diff_of(w, jsonb_build_array(jsonb_build_object('type','savings_goal','id',-5)));
-  IF r->0->>'field' <> 'exists' THEN RAISE EXCEPTION 'FAIL [4 geloescht]: %', r; END IF;
+  IF r->0->>'field' <> 'exists' OR r->0 ? 'call' OR (r->0->'ref'->>'id')::int <> -5 THEN RAISE EXCEPTION 'FAIL [4 geloescht]: %', r; END IF;
   -- kein Soll (Altbestand) -> []
   IF finance.fn_handoff_diff_of(NULL, jsonb_build_array(jsonb_build_object('type','savings_goal','id',v_goal))) IS DISTINCT FROM '[]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [4 ohne Soll]'; END IF;

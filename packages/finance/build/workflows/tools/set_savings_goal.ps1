@@ -121,7 +121,7 @@ function Build-SetSavingsGoal {
 
     $ifApproved = Build-If 'Approved?' @(2860, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(3080, 240) 'the set_savings_goal action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(3080, 240) -Action 'the set_savings_goal action'
 
     $ifWriteOk = Build-If 'Write ok?' @(3300, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
@@ -157,7 +157,7 @@ function Build-SetSavingsGoal {
 
     $nodes = @($trig, $resGoal, $ifGoal, $errGoal, $readCur, $resPerson, $ifPersonBad, $errPerson,
                $resReserve, $ifReserveBad, $errReserve, $resFund, $ifFundBad, $errFund) + $wg.Nodes + @($summary, $reqApproval,
-               $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
+               $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Resolve Goal' ) ) }
@@ -189,9 +189,10 @@ function Build-SetSavingsGoal {
         ) }
         'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'              = @{ main = @(
             @( E 'Set goal (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Set goal (atomic)'      = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(

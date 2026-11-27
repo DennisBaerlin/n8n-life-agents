@@ -149,6 +149,20 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT TRUE
      OR r->'deferred_entries' IS DISTINCT FROM '[{"text":"Rad aus Einzahlungen","reason":"Dafuer gibt es noch keinen Weg."}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [6 deferred_entries]: %', r; END IF;
+  -- die Karte verspricht nur fuer eintragbare Eintraege "tragen wir am Ende ein"; der zurueckgestellte bekommt seine eigene Zeile
+  IF (SELECT string_agg(l->>'key', ',' ORDER BY n) FROM agent.chat_prompts cp, jsonb_array_elements(cp.card->'lines') WITH ORDINALITY x(l, n)
+       WHERE cp.id = (r->'prompt_ids'->>0)::bigint AND l->>'key' LIKE 'core.prompt.topic_enter%')
+       IS DISTINCT FROM 'core.prompt.topic_enter_later,core.prompt.topic_enter_deferred' THEN
+    RAISE EXCEPTION 'FAIL [6 Kartenzeile des zurueckgestellten Eintrags]: %', (SELECT card->'lines' FROM agent.chat_prompts WHERE id = (r->'prompt_ids'->>0)::bigint); END IF;
+  -- zwei Eintraege mit demselben Satz, nur der zweite zurueckgestellt: die Zeile folgt der Stelle, nicht dem Wortlaut
+  r := agent.fn_advisor_propose_topics(jsonb_build_object('domain','__pt__','chat_id','111','section_key','goals_triggers',
+         'topics', jsonb_build_array(jsonb_build_object('topic','Rad','content','Ein Rad ansparen.',
+            'handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Uebertrag aufs Tagesgeld'),
+                                               jsonb_build_object('kind','other','payload',jsonb_build_object('t','later'),'text','Uebertrag aufs Tagesgeld'))))));
+  IF (SELECT string_agg(l->>'key', ',' ORDER BY n) FROM agent.chat_prompts cp, jsonb_array_elements(cp.card->'lines') WITH ORDINALITY x(l, n)
+       WHERE cp.id = (r->'prompt_ids'->>0)::bigint AND l->>'key' LIKE 'core.prompt.topic_enter%')
+       IS DISTINCT FROM 'core.prompt.topic_enter_later,core.prompt.topic_enter_deferred' THEN
+    RAISE EXCEPTION 'FAIL [6 gleicher Satz, nur einer zurueckgestellt]: %', (SELECT card->'lines' FROM agent.chat_prompts WHERE id = (r->'prompt_ids'->>0)::bigint); END IF;
   r := agent.fn_advisor_propose_topics(jsonb_build_object('domain','__pt__','chat_id','111','section_key','goals_triggers',
          'topics', '[{"topic":"Rad","content":"Ein Rad ansparen."}]'));
   IF r->'deferred_entries' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [6 ohne]: %', r; END IF;

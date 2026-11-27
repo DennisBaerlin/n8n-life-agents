@@ -8,12 +8,14 @@
 --   gebraucht). payload = Werkzeug-Eingabe in der Form von finance.fn_handoff_tool_spec (Namen, nie Kennungen), dazu
 --   optional tool (Werkzeug-Schluessel; sonst aus kind und Ziel-Feld abgeleitet) und die Plan-Felder until_amount (Raten bis
 --   zu diesem Gesamtbetrag) und, nur bei kind savings_goal, schedule_unit/schedule_interval (Rhythmus der Quelle).
---   recheck: status done -> finance.fn_handoff_repair (Aenderung vom heutigen Stand zum Soll); sonst wird wanted (falls
---   gesetzt, auch eine Liste) bzw. payload erneut geprueft.
+--   recheck: status done -> finance.fn_handoff_repair (Aenderung vom heutigen Stand zum Soll; ein vereinbarter Aufruf, zu dem
+--   noch nichts eingetragen ist, kommt erneut geprueft als Aufruf zurueck; eine eingetragene und wieder geloeschte Sache als
+--   handoff_not_enterable missing 'exists'); sonst wird wanted (falls gesetzt, auch eine Liste) bzw. payload erneut geprueft.
 --   Rueckgabe:
 --     {ok:true, call:{tool, input}} | {ok:true, calls:[…]} (Namen der eindeutig gefundenen Sachen; relative Daten beim
 --       Vereinbaren zu ISO aufgeloest, damit das Soll fest bleibt) | {ok:true} (kind other ohne Werkzeug-Felder).
---     {ok:true, unsupported:true, blocked_code, call?, reason} "geht noch nicht": target_missing (Sache gibt es nicht),
+--     {ok:true, unsupported:true, blocked_code, call? | calls?, reason} "geht noch nicht": target_missing (Sache gibt es nicht;
+--       Wahl und Aufteilung eines "bis Betrag" sind dann trotzdem schon geklaert, das Soll traegt nie until_amount),
 --       tool_missing (Werkzeug passt nicht zur Art), goal_irregular_payments (Sparziel aus nicht monatlicher Quelle),
 --       pay_until_amount (bis Betrag ohne monatlichen Rhythmus), end_date_future (Ende beim Anlegen eines Sparplans).
 --       call = das Soll, soweit baubar (wird als wanted gespeichert und im recheck erneut geprueft; bei
@@ -126,6 +128,7 @@ DECLARE
     v_opts   jsonb;
     v_chosen jsonb;
     v_cur    text;
+    v_gone   jsonb := '{}'::jsonb;   -- "geht noch nicht", solange eine genannte Sache fehlt; haengt am fertigen Ergebnis
 BEGIN
     -- Werkzeug: genannt (muss zur Art passen) oder abgeleitet
     IF v_tool IS NOT NULL THEN
@@ -143,9 +146,10 @@ BEGIN
         END IF;
     ELSE
         v_tool := CASE p_kind
-            -- nur ein genau benanntes Ziel wird geaendert; ein Teil-Name traefe sonst ein anderes Ziel
+            -- nur ein genau benanntes Ziel wird geaendert; ein Teil-Name traefe sonst ein anderes Ziel. Auch mit neuem Topf
+            -- (reserve_account_name) bleibt es eine Aenderung: ein zweites Ziel gleichen Namens lehnte das Anlegen ab
             WHEN 'savings_goal' THEN CASE WHEN (SELECT r.hit_count FROM finance.fn_resolve_savings_goal(v_pl->>'goal_name', TRUE) r) > 0
-                                          AND NOT (v_pl ? 'reserve_account_name') THEN 'set_savings_goal' ELSE 'create_savings_goal' END
+                                          THEN 'set_savings_goal' ELSE 'create_savings_goal' END
             WHEN 'savings_plan' THEN CASE WHEN v_pl ? 'savings_plan_name' THEN 'set_savings_plan' ELSE 'create_savings_plan' END
             WHEN 'recurring_payment' THEN CASE WHEN v_pl ? 'payment_name' THEN 'set_recurring_payment' ELSE 'create_recurring_payment' END
             WHEN 'recurring_transfer' THEN CASE WHEN v_pl ? 'payment_name' THEN 'set_recurring_payment' ELSE 'create_recurring_transfer' END
@@ -227,10 +231,13 @@ BEGIN
                 'reason', format('"%s" (%s) matches %s entries. Ask the user which one, with the candidates as buttons.',
                                  v_in->>v_f, v_f, v_res->>'hits'));
         ELSIF (v_res->>'hits')::int = 0 THEN
-            RETURN jsonb_build_object('ok', true, 'unsupported', true, 'blocked_code', 'target_missing',
-                'call', jsonb_build_object('tool', v_tool, 'input', v_in || CASE WHEN v_until IS NOT NULL
-                                           THEN jsonb_build_object('until_amount', v_until) ELSE '{}'::jsonb END),
-                'reason', format('"%s" (%s) does not exist yet; the entry waits until it does.', v_in->>v_f, v_f));
+            -- nicht sofort zurueck: Wahl und Aufteilung ("bis Betrag") werden trotzdem jetzt geklaert, damit das Soll fertige
+            -- Aufrufe traegt und der recheck sie liefert, sobald die Sache existiert (der genannte Name bleibt stehen)
+            IF v_gone = '{}'::jsonb THEN
+                v_gone := jsonb_build_object('unsupported', true, 'blocked_code', 'target_missing',
+                    'reason', format('"%s" (%s) does not exist yet; the entry waits until it does.', v_in->>v_f, v_f));
+            END IF;
+            CONTINUE;
         END IF;
         v_in := v_in || jsonb_build_object(v_f, v_res->>'name');
     END LOOP;
@@ -240,7 +247,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'code', 'handoff_not_enterable', 'missing', jsonb_build_array('until_amount'),
                 'reason', 'until_amount must be a positive number.');
         END IF;
-        RETURN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', v_tool, 'input', v_in));
+        RETURN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', v_tool, 'input', v_in)) || v_gone;
     END IF;
 
     -- Raten bis zu einem Gesamtbetrag: die DB rechnet Anzahl, Ende und Rest
@@ -265,11 +272,11 @@ BEGIN
      WHERE a.name = COALESCE(v_in->>'from_account_name', v_in->>'account_name') AND a.status = 'active' ORDER BY a.id LIMIT 1;
     IF v_n = 0 THEN
         RETURN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', v_tool,
-            'input', v_in || jsonb_build_object('amount', v_until, 'valid_to', v_first::text)));
+            'input', v_in || jsonb_build_object('amount', v_until, 'valid_to', v_first::text))) || v_gone;
     END IF;
     v_main := jsonb_build_object('tool', v_tool, 'input', v_in || jsonb_build_object('valid_to', v_dates[v_n]::text));
     IF v_rest = 0 THEN
-        RETURN jsonb_build_object('ok', true, 'call', v_main);
+        RETURN jsonb_build_object('ok', true, 'call', v_main) || v_gone;
     END IF;
     v_opts := jsonb_build_array(
         jsonb_build_object('key', 'rest_once', 'recommended', true,
@@ -286,7 +293,7 @@ BEGIN
                 'input', v_in || jsonb_build_object('valid_to', v_dates[v_n + 1]::text)))));
     SELECT o INTO v_chosen FROM jsonb_array_elements(v_opts) o WHERE o->>'key' = p_option;
     IF v_chosen IS NOT NULL THEN
-        RETURN jsonb_build_object('ok', true, 'calls', v_chosen->'calls');
+        RETURN jsonb_build_object('ok', true, 'calls', v_chosen->'calls') || v_gone;
     END IF;
     RETURN jsonb_build_object('ok', false, 'code', 'handoff_choice_needed', 'options', v_opts,
         'reason', 'The total is not a multiple of the rate. Ask the user with the options as buttons, the recommended one first, '
@@ -294,8 +301,10 @@ BEGIN
 END;
 $$;
 
--- fn_handoff_repair: recheck einer erledigten Aufgabe -> Aenderungs-Aufruf vom heutigen Stand zum Soll (finance.fn_handoff_diff).
--- Ausdrueckbar nur ueber die Felder, die das set_*-Werkzeug der Sache aendert; Konto-Wechsel und fehlende Sachen nicht.
+-- fn_handoff_repair: recheck einer erledigten Aufgabe -> Aufruf(e) vom heutigen Stand zum Soll (finance.fn_handoff_diff).
+-- Ein abweichendes Feld: Aenderung ueber das set_*-Werkzeug der Sache (nur die Felder, die es aendert; Konto-Wechsel nicht).
+-- Ein vereinbarter Aufruf, der noch nicht eingetragen ist (Unterschied mit call): der Aufruf selbst, erneut geprueft.
+-- Eine eingetragene und wieder geloeschte Sache ist nicht ausdrueckbar.
 CREATE OR REPLACE FUNCTION finance.fn_handoff_repair(p_task_id int)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -303,11 +312,13 @@ STABLE
 AS $$
 DECLARE
     v_diff  jsonb := finance.fn_handoff_diff(p_task_id);
+    v_kind  text;
     v_d     jsonb;
     v_type  text;
     v_id    int;
     v_calls jsonb := '[]'::jsonb;
     v_call  jsonb;
+    v_chk   jsonb;
     v_name  text;
     v_tool  text;
     v_key   text;
@@ -316,12 +327,14 @@ BEGIN
     IF jsonb_array_length(v_diff) = 0 THEN
         RETURN jsonb_build_object('ok', true);
     END IF;
-    FOR v_type, v_id IN SELECT DISTINCT d->'ref'->>'type', (d->'ref'->>'id')::int FROM jsonb_array_elements(v_diff) d WHERE d ? 'ref' LOOP
+    FOR v_type, v_id IN SELECT DISTINCT d->'ref'->>'type', (d->'ref'->>'id')::int FROM jsonb_array_elements(v_diff) d
+                         WHERE d ? 'ref' AND d->>'field' <> 'exists' LOOP
         v_name := finance.fn_handoff_ref_state(v_type, v_id)->>'name';
         v_tool := CASE v_type WHEN 'savings_goal' THEN 'set_savings_goal' WHEN 'savings_plan' THEN 'set_savings_plan'
                               WHEN 'recurring_payment' THEN 'set_recurring_payment' WHEN 'pension' THEN 'set_pension' END;
         v_call := jsonb_build_object((finance.fn_handoff_tool_spec()->v_tool)->>'target', v_name);
-        FOR v_d IN SELECT d FROM jsonb_array_elements(v_diff) d WHERE d->'ref'->>'type' = v_type AND (d->'ref'->>'id')::int = v_id LOOP
+        FOR v_d IN SELECT d FROM jsonb_array_elements(v_diff) d
+                    WHERE d->'ref'->>'type' = v_type AND (d->'ref'->>'id')::int = v_id AND d->>'field' <> 'exists' LOOP
             -- Feld im set-Werkzeug, das diesen Stand-Wert aendert (Umkehrung von state)
             SELECT key INTO v_key FROM jsonb_each_text(finance.fn_handoff_tool_spec()->v_tool->'state') WHERE value = v_d->>'field';
             IF v_key IS NULL THEN
@@ -332,9 +345,19 @@ BEGIN
         END LOOP;
         v_calls := v_calls || jsonb_build_array(jsonb_build_object('tool', v_tool, 'input', v_call));
     END LOOP;
-    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_diff) d WHERE NOT d ? 'ref') THEN
-        v_bad := v_bad || 'exists'::text;
-    END IF;
+    FOR v_d IN SELECT d FROM jsonb_array_elements(v_diff) d WHERE d->>'field' = 'exists' LOOP
+        IF NOT v_d ? 'call' THEN
+            v_bad := v_bad || 'exists'::text;
+            CONTINUE;
+        END IF;
+        v_kind := COALESCE(v_kind, core.fn_handoff_tasks_read(ARRAY[p_task_id])->0->>'kind');
+        v_chk := finance.fn_handoff_check_call(v_kind, COALESCE(v_d->'call'->'input', '{}'::jsonb)
+                                                       || jsonb_build_object('tool', v_d->'call'->>'tool'), NULL);
+        IF (v_chk->>'ok')::boolean IS NOT TRUE OR (v_chk->>'unsupported')::boolean IS TRUE OR NOT v_chk ? 'call' THEN
+            RETURN v_chk;
+        END IF;
+        v_calls := v_calls || jsonb_build_array(v_chk->'call');
+    END LOOP;
     IF cardinality(v_bad) > 0 THEN
         RETURN jsonb_build_object('ok', false, 'code', 'handoff_not_enterable', 'missing', to_jsonb(v_bad),
             'reason', 'The difference to the agreed entry cannot be expressed as one change: ' || array_to_string(v_bad, ', ') || '.');

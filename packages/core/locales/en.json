@@ -1462,6 +1462,7 @@
   "core.prompt.topic_keep_many": "What we agree:",
   "core.prompt.topic_why": "Why?",
   "core.prompt.topic_enter_later": "We will enter this at the end: {text}",
+  "core.prompt.topic_enter_deferred": "Noted – I cannot enter this yet: {text}",
   "core.prompt.topic_open_point": "Still open: {text}",
   "core.prompt.topic_hint": "Something different? Just write it to me.",
   "core.prompt.accepted": "✓ Accepted",

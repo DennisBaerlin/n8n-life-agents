@@ -24,7 +24,7 @@ CREATE FUNCTION core.fn_t_reg_diff(p_task int) RETURNS jsonb LANGUAGE sql AS $f$
 DO $$
 DECLARE
   r      jsonb;
-  v_def  int; v_dev int; v_same int; v_leg_c int; v_leg_d int; v_leg_x int; v_fol int; v_new int;
+  v_def  int; v_def2 int; v_dev int; v_same int; v_leg_c int; v_leg_d int; v_leg_x int; v_fol int; v_new int;
   v_ok   boolean;
 BEGIN
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
@@ -101,8 +101,13 @@ BEGIN
   RAISE NOTICE 'PASS [2 Register mit Vorpruefung und Unterschied]';
 
   -- ---------- 3) Knopf ...:fix ----------
-  r := core.fn_handle_handoff_cb(jsonb_build_object('data','handoff:finance:' || v_leg_c || ':fix','chat_id','111','chat_type','private'));
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'handoff' OR jsonb_array_length(r->'task_ids') <> 3 THEN RAISE EXCEPTION 'FAIL [3 Claim]: %', r; END IF;
+  -- zurueckgestellt mit einem Soll, das so kein Werkzeug-Aufruf ist (Plan-Feld statt Ende): der Knopf reicht dem Buchhalter
+  -- den jetzt geprueften Aufruf, das gespeicherte Soll bleibt
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, status, blocked_code, wanted)
+  VALUES ('finance','finance','erika','goals_triggers','Ziele','recurring_transfer','zurueckgestellt mit Soll','deferred','end_date_future',
+          '{"tool":"create_x","input":{"until_amount":1000}}') RETURNING id INTO v_def2;
+  r := core.fn_handle_handoff_cb(jsonb_build_object('data','handoff:finance:' || v_def2 || ':fix','chat_id','111','chat_type','private'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'handoff' OR jsonb_array_length(r->'task_ids') <> 4 THEN RAISE EXCEPTION 'FAIL [3 Claim]: %', r; END IF;
   IF (SELECT status || '/' || COALESCE(blocked_code, '-') FROM agent.handoff_tasks WHERE id = v_def) <> 'working/-' THEN RAISE EXCEPTION 'FAIL [3 deferred -> working]'; END IF;
   -- beim Vereinbaren zurueckgestellt (ohne Soll): der Aufruf der Vorpruefung wird beim Nachholen zum wanted
   IF (SELECT wanted->>'tool' FROM agent.handoff_tasks WHERE id = v_def) IS DISTINCT FROM 'set_x' THEN RAISE EXCEPTION 'FAIL [3 deferred ohne wanted]'; END IF;
@@ -114,6 +119,10 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 Korrektur als neue Aufgabe]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
   IF (SELECT status FROM agent.handoff_tasks WHERE id = v_leg_c) <> 'cancelled' THEN RAISE EXCEPTION 'FAIL [3 alte Aufgabe angefasst]'; END IF;
   IF NOT jsonb_path_exists(r->'tasks', '$[*] ? (@.wanted.tool == "set_x")') THEN RAISE EXCEPTION 'FAIL [3 tasks ohne wanted]: %', r; END IF;
+  IF (SELECT e->'wanted'->>'tool' FROM jsonb_array_elements(r->'tasks') e WHERE (e->>'id')::int = v_def2) IS DISTINCT FROM 'set_x'
+     OR (SELECT e->'wanted'->'input' ? 'until_amount' FROM jsonb_array_elements(r->'tasks') e WHERE (e->>'id')::int = v_def2) THEN
+    RAISE EXCEPTION 'FAIL [3 Nachholen reicht das alte Soll statt des geprueften Aufrufs]: %', r->'tasks'; END IF;
+  IF (SELECT wanted->>'tool' FROM agent.handoff_tasks WHERE id = v_def2) <> 'create_x' THEN RAISE EXCEPTION 'FAIL [3 Soll ueberschrieben]'; END IF;
   r := core.fn_handle_handoff_cb(jsonb_build_object('data','handoff:finance:' || v_leg_c || ':fix','chat_id','111','chat_type','private'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'nothing_open' THEN RAISE EXCEPTION 'FAIL [3 Doppeltipp]: %', r; END IF;
   r := core.fn_handle_handoff_cb(jsonb_build_object('data','handoff:finance:' || v_leg_c || ':fax','chat_id','111','chat_type','private'));

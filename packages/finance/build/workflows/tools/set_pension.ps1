@@ -106,7 +106,7 @@ function Build-SetPension {
 
     $ifApproved = Build-If 'Approved?' @(1980, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_pension action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(2200, 240) -Action 'the set_pension action'
 
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
@@ -132,7 +132,7 @@ function Build-SetPension {
         'Wert/Status/Stammdaten. current_value ohne Datum -> heute. BEITRAG steht nur an der Beitrags-Kette: neuer Beitrag -> fn_change_owned_recurring (Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from, Default nächster offener Termin; der alte Beitrag bleibt Historie). Vorsorge ohne Beitrag: der erste Beitrag legt die Kette an (effective_from = erste Abbuchung, Konto aus Resolve Debit Account). Beitrag 0 gibt es nicht (beitragsfrei = status paused). STATUS-KASKADE über alle Glieder: paused/paid_out -> paused; active -> wieder active bzw. Folge-Zeile ab heute, wenn der Beitrag beendet war.' 220 480
 
     $nodes = @($trig, $resPen, $ifPen, $errPen, $readCur, $resPerson, $ifPersonBad, $errPerson, $resAcc, $ifAcc, $errAcc) + $wg.Nodes + @($summary, $reqApproval,
-               $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
+               $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Resolve Pension' ) ) }
@@ -159,9 +159,10 @@ function Build-SetPension {
         ) }
         'Build Approval Summary' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'       = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'              = @{ main = @(
             @( E 'Set pension (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Set pension (atomic)'   = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(

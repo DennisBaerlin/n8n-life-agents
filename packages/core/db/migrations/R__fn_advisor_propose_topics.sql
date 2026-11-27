@@ -12,7 +12,8 @@
 --     im selben Teil folgen weitere Themen; der Auftrag nach dem letzten Tipp lautet dann "weitere Themen dieses Teils")}.
 --   Karten: ohne one_card je Thema eine Zeile (ein Stapel, ord), sonst eine; Spezifikation Kopf core.prompt.topic_head {k, m,
 --     section} (Teil k von m aus core.fn_advisor_parts), auf der ersten Karte "Stand heute" (facts), Text, aufklappbar Warum,
---     je Aufgabe core.prompt.topic_enter_later, je neuem offenen Punkt core.prompt.topic_open_point, Hinweis
+--     je Aufgabe core.prompt.topic_enter_later (im Probelauf zurueckgestellt: core.prompt.topic_enter_deferred), je neuem
+--     offenen Punkt core.prompt.topic_open_point, Hinweis
 --     core.prompt.topic_hint; Knoepfe accept/note. Eine Karte ueber 3500 Zeichen Inhalt -> code too_long (Telegram 4096).
 --   Ersetzt: die offene Frage desselben Agenten (Art topic oder choice) samt wartendem Rest ihres Stapels, dazu alle
 --     wartenden Themen-Karten des Agenten im Chat (superseded).
@@ -164,7 +165,16 @@ BEGIN
                 || CASE WHEN NULLIF(btrim(COALESCE(v_t->>'why', '')), '') IS NOT NULL
                         THEN jsonb_build_array(jsonb_build_object('kind', 'expand', 'title_key', 'core.prompt.topic_why', 'text', btrim(v_t->>'why')))
                         ELSE '[]'::jsonb END
-                || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'text', 'key', 'core.prompt.topic_enter_later',
+                -- was die Vorpruefung im Probelauf zurueckstellte, verspricht die Karte nicht als "tragen wir am Ende ein".
+                -- Zuordnung ueber die Stelle: der Probelauf liefert je Aufgabe genau eine handoff_planned-Zeile in Aufgaben-Folge
+                || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'text',
+                                                  'key', CASE WHEN (SELECT c.l->>'value'
+                                                                      FROM (SELECT l, row_number() OVER (ORDER BY ln) AS rn
+                                                                              FROM jsonb_array_elements(COALESCE(v_saved->i->'card_lines', '[]'::jsonb))
+                                                                                   WITH ORDINALITY AS cl(l, ln)
+                                                                             WHERE l->>'value' IN ('core.hitl.handoff_planned', 'core.hitl.handoff_planned_deferred')) c
+                                                                     WHERE c.rn = y.n) = 'core.hitl.handoff_planned_deferred'
+                                                              THEN 'core.prompt.topic_enter_deferred' ELSE 'core.prompt.topic_enter_later' END,
                                                                  'params', jsonb_build_object('text', btrim(h->>'text'))) ORDER BY n)
                                FROM jsonb_array_elements(core.fn_jsonb_list(v_t->'handoff_tasks')) WITH ORDINALITY AS y(h, n)), '[]'::jsonb)
                 || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'text', 'key', 'core.prompt.topic_open_point',

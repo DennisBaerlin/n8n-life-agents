@@ -90,7 +90,7 @@ function Build-CreateRecurringTransfer {
 
     $ifApproved = Build-If 'Approved?' @(2200, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the create_recurring_transfer action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(2420, 240) -Action 'the create_recurring_transfer action'
 
     # Write: INSERT via Helper + target via Folge-UPDATE (eine Transaktion). amount Quell-seitig negativ;
     # No-Self-Transfer-CHECK ist der Backstop.
@@ -120,7 +120,7 @@ function Build-CreateRecurringTransfer {
         'core.fn_dry_run (DB ist das Gesetz)' `
         'Dry run = fn_create_recurring_transfer mit denselben Werten wie der echte Write, immer zurückgerollt. Ablehnung ok:false (amount kleiner/gleich 0, Quelle gleich Ziel, Ablehnungen von until_free_money) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. until_free_money: fn_transfer_free_end setzt das Ende auf den letzten Termin, bevor Ziel-Geld der Quelle angefasst wird (Rechnung = fn_account_funding mit dieser Zahlung); die Karte zeigt effective.last_execution + free_after aus diesem Probelauf statt der Zeile Gültig bis. Den Schlusssatz darunter wählt r.execution (fn_transfer_executed_by: gespeicherte Nutzerangabe, sonst Kontoart der Quelle): bank = beim Bank-Dauerauftrag das Enddatum eintragen, manual = nach dem Datum nicht mehr überweisen, unknown = vorsichtig (falls ein Dauerauftrag besteht). execution steht bewusst NICHT unter effective, weil das Gate effective in den echten Write mischt. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 220 440
 
-    $nodes = @($trig, $resFrom, $ifFrom, $errFrom, $resTo, $ifTo, $errTo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyFlow, $stickyOk,
+    $nodes = @($trig, $resFrom, $ifFrom, $errFrom, $resTo, $ifTo, $errTo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $stickyFlow, $stickyOk,
                $stickyDry)
 
     $conns = [ordered]@{
@@ -142,9 +142,10 @@ function Build-CreateRecurringTransfer {
         ) }
         'Build Approval Summary'   = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'         = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                = @{ main = @(
             @( E 'Create recurring transfer (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Create recurring transfer (atomic)' = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                = @{ main = @(

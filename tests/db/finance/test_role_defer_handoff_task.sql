@@ -26,7 +26,8 @@ BEGIN
   r := core.fn_dry_run('finance.fn_defer_handoff_task(jsonb)'::regprocedure,
          jsonb_build_object('handoff_task_id', v_t::text, 'chat_id', '111', 'blocked_code', 'pay_until_amount'));
   RESET ROLE;
-  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->>'value' IS DISTINCT FROM 'core.hitl.handoff_note'
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->'card_lines'->0->>'value' IS DISTINCT FROM 'core.hitl.handoff_pos'
+     OR r->'card_lines'->1->>'value' IS DISTINCT FROM 'core.hitl.handoff_note'
      OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN RAISE EXCEPTION 'FAIL [1 Probelauf finance_rw]: %', r; END IF;
 
   SET LOCAL ROLE finance_rw;

@@ -1826,7 +1826,7 @@ DECLARE
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
                                  'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_package_installed_at', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_handoff_done_ids', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task',
-                                 'fn_defer_handoff_task', 'fn_handoff_position'];
+                                 'fn_defer_handoff_task', 'fn_handoff_position', 'fn_reopen_handoff_task'];
   v_n int := 0;
 BEGIN
   FOR v_pkg IN
@@ -2010,10 +2010,12 @@ BEGIN
     IF (v->>'n')::int IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'position %', v; END IF;
     v := core.fn_defer_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777', 'blocked_code', 'x_unknown'));
     IF v->>'code' IS DISTINCT FROM 'unknown_blocked_code' THEN RAISE EXCEPTION 'defer %', v; END IF;
+    v := core.fn_reopen_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
+    IF (v->>'ok')::boolean IS NOT TRUE OR v->>'status' <> 'done' THEN RAISE EXCEPTION 'reopen %', v; END IF;
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
-    RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_handoff_task_check/complete/cancel/position/defer]: %', SQLERRM;
+    RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_handoff_task_check/complete/cancel/position/defer/reopen]: %', SQLERRM;
   END;
   BEGIN
     SET LOCAL ROLE finance_rw;

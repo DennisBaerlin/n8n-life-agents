@@ -4,24 +4,26 @@
 --   RETURN finance.fn_with_handoff('<eigene Signatur>'::regprocedure, p). Welche das sind, steht im Manifest
 --   (advisors.finance.handoff_tools); contract_lint prueft Werkzeug-Eingang und diesen Aufruf.
 --   Eingabe: p_fn regprocedure (die aufrufende fn), p jsonb (deren Payload inkl. handoff_task_id, chat_id).
---   Ablauf in derselben Transaktion: (1) core.fn_handoff_task_check (Aufgabe working, oder in dieser Runde schon erledigt =
---   weiterer Teil derselben Vormerkung, nur fuer eine fn_create_*; Person des Absenders aus p.chat_id), sonst {ok:false,
---   code:'handoff_task_invalid', reason} ohne Write; (2) Stand der geaenderten Sache vor dem Write (nur fn_set_*,
---   finance.fn_handoff_ref_state); (3) die Ziel-fn mit p ohne handoff_task_id, waehrend der transaktionslokale Wert
+--   Ablauf in derselben Transaktion: (1) core.fn_handoff_task_check (Aufgabe working oder in dieser Runde freigegeben, oder
+--   in dieser Runde schon erledigt = weiterer Teil derselben Vormerkung: mit Soll nur ein vereinbarter Aufruf dieses
+--   Werkzeugs, zu dem noch keine Sache eingetragen ist, ohne Soll nur eine fn_create_*; dieselbe Sache nie zweimal; Person
+--   des Absenders aus p.chat_id), sonst {ok:false, code:'handoff_task_invalid', reason} ohne Write; (2) Stand der geaenderten
+--   Sache vor dem Write (nur fn_set_*, finance.fn_handoff_ref_state); (3) die Ziel-fn mit p ohne handoff_task_id, waehrend der transaktionslokale Wert
 --   finance.handoff_task_id gesetzt ist (finance.fn_bank_note_recorded haengt damit den Bank-Punkt an die Vormerkung und
 --   gibt die Kurz-Zeile statt des Bank-Absatzes); (4) nur bei ok:true core.fn_complete_handoff_task -> done mit
---   entered_refs [{type, id}] = die angelegte bzw. geaenderte Sache (ein weiterer Teil haengt seine an).
+--   entered_refs [{type, id, call?}] = die angelegte bzw. geaenderte Sache (ein weiterer Teil haengt seine an); call = Stelle
+--   des vereinbarten Aufrufs im Soll, den sie erfuellt (0-basiert, nur mit Soll; Zuordnung finance.fn_handoff_pairs).
 --   Rueckgabe: Ergebnis der Ziel-fn + handoff_task_id + handoff_diff (finance.fn_handoff_diff_of gegen wanted nach dem
 --   Write, [] = wie vereinbart, fehlt ohne wanted); bei mehrteiligem Soll zaehlt ein noch nicht eingetragener Teil nicht als
 --   exists-Abweichung + Kartenzeilen am Ende von card_lines in dieser Reihenfolge:
 --   core.hitl.handoff_pos {k, n} (Stelle in der Runde, core.fn_handoff_position; fehlt ohne Claim), core.hitl.handoff_note
 --   {text}, core.hitl.handoff_why {why} (nur mit why), je geaendertem Feld core.hitl.value_before_after {field, before,
 --   after} (field = Katalog-Key finance.handoff.field.<feld>, Werte typisiert; der Probelauf zeigt so "bisher -> neu"),
---   core.hitl.handoff_rest {text} (nur mit offenem Rest). ok:false der Ziel-fn -> unveraendert zurueck, die Aufgabe bleibt
---   working. Status-Wechsel stehen nicht in den Aenderungs-Zeilen (die Karte des Werkzeugs zeigt sie).
+--   core.hitl.handoff_rest {text} (nur mit offenem Rest). ok:false der Ziel-fn -> unveraendert zurueck, der Zustand der
+--   Aufgabe aendert sich nicht. Status-Wechsel stehen nicht in den Aenderungs-Zeilen (die Karte des Werkzeugs zeigt sie).
 --   p_fn ist eine Build-/Code-Konstante der aufrufenden fn, nie Nutzer-Input (dynamischer EXECUTE nur darauf).
 --   SECURITY INVOKER (laeuft unter finance_rw wie die Ziel-fn; agent.* liest sie nur ueber core.fn_handoff_tasks_read und
---   core.fn_handoff_position). Tests: tests/db/finance/test_fn_with_handoff.sql
+--   core.fn_handoff_position). Tests: tests/db/finance/test_fn_with_handoff.sql, tests/db/finance/test_fn_reopen_handoff_task.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_with_handoff(p_fn regprocedure, p jsonb)
 RETURNS jsonb
@@ -44,15 +46,13 @@ DECLARE
     v_fld    text;
     v_cur    text;
     v_diff   jsonb;
+    v_has_wanted boolean;
+    v_open   jsonb := '[]'::jsonb;
+    v_call_i int;
 BEGIN
     v_chk := core.fn_handoff_task_check(p);
     IF (v_chk->>'ok')::boolean IS NOT TRUE THEN
         RETURN v_chk;
-    END IF;
-    -- Ein weiterer Teil legt etwas Neues an; eine zweite Aenderung derselben Sache waere eine Wiederholung.
-    IF (v_chk->>'part')::boolean AND v_name NOT LIKE 'fn\_create\_%' THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
-            'reason', 'Handoff task ' || (v_chk->>'task_id') || ' is already done; this change was booked for it. Do not book it again.');
     END IF;
     v_tool := regexp_replace(v_name, '^fn_', '');
     v_type := finance.fn_handoff_tool_spec()->v_tool->>'type';
@@ -63,6 +63,29 @@ BEGIN
         WHEN 'pension'           THEN NULLIF(p->>'pension_id', '')::int
         WHEN 'savings_plan'      THEN (SELECT r.id FROM finance.fn_resolve_savings_plan(p->>'savings_plan_name', TRUE) r)
     END;
+    v_task := core.fn_handoff_tasks_read(ARRAY[(v_chk->>'task_id')::int])->0;
+    v_has_wanted := jsonb_typeof(v_task->'wanted') IN ('object', 'array');
+    -- vereinbarte Aufrufe dieses Werkzeugs, zu denen noch keine Sache eingetragen ist
+    IF v_has_wanted THEN
+        SELECT COALESCE(jsonb_agg(x ORDER BY (x->>'i')::int), '[]'::jsonb) INTO v_open
+          FROM jsonb_array_elements(finance.fn_handoff_pairs(v_task->'wanted', v_task->'entered_refs')) x
+         WHERE x->'ref' = 'null'::jsonb AND x->'call'->>'tool' = v_tool;
+    END IF;
+    -- Ein weiterer Teil einer erledigten Aufgabe: mit Soll nur ein noch offener vereinbarter Aufruf (eine Buchung unter der
+    -- falschen Kennung haengt sich sonst an eine fertige Aufgabe), ohne Soll nur etwas Neues (create). Dieselbe Sache noch
+    -- einmal zu aendern waere eine Wiederholung; eine Raten-Kette ist eine Sache, gleich welches Glied genannt wird.
+    IF (v_chk->>'part')::boolean
+       AND (CASE WHEN v_has_wanted THEN jsonb_array_length(v_open) = 0 ELSE v_name NOT LIKE 'fn\_create\_%' END
+            OR (v_name NOT LIKE 'fn\_create\_%' AND (v_id IS NULL OR EXISTS (
+                SELECT 1
+                  FROM jsonb_array_elements(COALESCE(NULLIF(v_task->'entered_refs', 'null'::jsonb), '[]'::jsonb)) e
+                 WHERE e->>'type' = v_type
+                   AND CASE WHEN v_type = 'recurring_payment'
+                            THEN finance.fn_handoff_rp_latest((e->>'id')::int) = finance.fn_handoff_rp_latest(v_id)
+                            ELSE (e->>'id')::int = v_id END)))) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'handoff_task_invalid',
+            'reason', 'Handoff task ' || (v_chk->>'task_id') || ' is already done and has no agreed call left for this tool. Do not book under it again.');
+    END IF;
     IF v_name LIKE 'fn\_set\_%' AND v_id IS NOT NULL THEN
         v_before := finance.fn_handoff_ref_state(v_type, v_id);
     END IF;
@@ -77,14 +100,32 @@ BEGIN
     END IF;
 
     v_id := COALESCE(NULLIF(v_r->>CASE v_type WHEN 'savings_goal' THEN 'goal_id' ELSE v_type || '_id' END, '')::int, v_id);
+    -- Welchen vereinbarten Aufruf erfuellt die Sache? Unter den offenen dieses Werkzeugs der mit dem kleinsten Unterschied
+    -- zum neuen Stand, bei Gleichstand der mit ihrem Namen, dann der erste. Die Stelle (call) geht mit in entered_refs, damit
+    -- finance.fn_handoff_pairs nicht nach der Reihenfolge der Karten zuordnet (ein nicht bestaetigter frueher Teil
+    -- verschoebe sonst alle folgenden).
+    IF v_has_wanted AND v_type IS NOT NULL AND v_id IS NOT NULL THEN
+        SELECT (x->>'i')::int INTO v_call_i
+          FROM jsonb_array_elements(v_open) x
+         ORDER BY jsonb_array_length(finance.fn_handoff_diff_of(x->'call', jsonb_build_array(jsonb_build_object('type', v_type, 'id', v_id)))),
+                  (lower(COALESCE(x->'call'->'input'->>COALESCE(finance.fn_handoff_tool_spec()->v_tool->>'target',
+                            CASE WHEN x->'call'->'input' ? 'name' THEN 'name' WHEN x->'call'->'input' ? 'goal_name' THEN 'goal_name'
+                                 ELSE 'plan_name' END), ''))
+                     IS DISTINCT FROM lower(finance.fn_handoff_ref_state(v_type, v_id)->>'name')),
+                  (x->>'i')::int
+         LIMIT 1;
+    END IF;
     v_done := core.fn_complete_handoff_task(p || jsonb_build_object('entered_refs',
                   CASE WHEN v_type IS NOT NULL AND v_id IS NOT NULL
-                       THEN jsonb_build_array(jsonb_build_object('type', v_type, 'id', v_id)) ELSE '[]'::jsonb END));
+                       THEN jsonb_build_array(jsonb_build_object('type', v_type, 'id', v_id)
+                                || CASE WHEN v_call_i IS NOT NULL THEN jsonb_build_object('call', v_call_i) ELSE '{}'::jsonb END)
+                       ELSE '[]'::jsonb END));
     IF (v_done->>'ok')::boolean IS NOT TRUE THEN
         -- zwischen Pruefung und Abschluss geaendert (paralleler Lauf): den Write nicht ohne "erledigt" stehen lassen
         RAISE EXCEPTION 'finance.fn_with_handoff: handoff task % could not be completed: %', p->>'handoff_task_id', v_done->>'reason';
     END IF;
 
+    -- nach dem Abschluss neu gelesen (entered_refs, Rest)
     v_task := core.fn_handoff_tasks_read(ARRAY[(v_chk->>'task_id')::int])->0;
     v_pos  := core.fn_handoff_position((v_chk->>'task_id')::int);
     IF v_pos IS NOT NULL THEN

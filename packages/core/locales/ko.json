@@ -1462,6 +1462,7 @@
   "core.prompt.topic_keep_many": "정해 둘 내용:",
   "core.prompt.topic_why": "왜 그런가요?",
   "core.prompt.topic_enter_later": "마지막에 등록할 것: {text}",
+  "core.prompt.topic_enter_deferred": "메모해 두었어요. 아직 입력할 수 없어요: {text}",
   "core.prompt.topic_open_point": "아직 정하지 않은 것: {text}",
   "core.prompt.topic_hint": "다르게 하고 싶나요? 그냥 적어 주세요.",
   "core.prompt.accepted": "✓ 적용됨",

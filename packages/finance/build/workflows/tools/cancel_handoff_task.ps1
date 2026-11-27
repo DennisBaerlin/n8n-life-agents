@@ -37,14 +37,14 @@ function Build-CancelHandoffTask {
         -Params $params
 
     # Zwei Fassungen der Karte nach card_title_key des Probelaufs (dieselbe Lesart des Grunds wie der Write): "Schon eingetragen – abhaken?" (done_elsewhere) und "Nicht mehr eintragen" (dropped);
-    # die Zeilen (Satz des Eintrags, was im System steht, was offen bleibt) liefert der Probelauf (card_lines).
+    # die Zeilen (Stelle in der Runde, Satz des Eintrags, was im System steht, was offen bleibt) liefert der Probelauf (card_lines).
     $ifElsewhere = Build-If 'Done elsewhere?' @(880, 0) "={{ String(`$('Dry run').item.json.r.card_title_key || '') === 'finance.hitl.cancel_handoff_task_done_elsewhere' }}" 'true' 'equals' 'boolean'
     $sumElsewhere = New-HitlSummary -Pos @(1100, -100) -Title 'finance.hitl.cancel_handoff_task_done_elsewhere' -LinesExpr $wg.CardLinesExpr
     $sumDropped = New-HitlSummary -Name 'Build Approval Summary dropped' -Pos @(1100, 100) -Title 'finance.hitl.cancel_handoff_task_dropped' -LinesExpr $wg.CardLinesExpr
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1320, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
     $ifApproved = Build-If 'Approved?' @(1540, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 200) 'the cancel_handoff_task action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(1760, 200) -Action 'the cancel_handoff_task action'
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Close rejected' @(2200, 200) "={{ `$('Close handoff task (atomic)').item.json.reason }}"
     $ret = Build-Return @(2200, 0) @(
@@ -55,9 +55,9 @@ function Build-CancelHandoffTask {
 
     $sticky = Build-Sticky 'Doc Plan-Eintrag abhaken' @(120, -760) `
         'HITL + finance.fn_cancel_handoff_task (Übergabe Berater -> Buchhalter)' `
-        'Im Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -> done (Karte „Schon eingetragen – abhaken?“), dropped -> cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_cancel_handoff_task lässt claimed_at stehen). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache (ref_type + ref_name, sonst nothing_to_tick) -> Dry run rejected, keine Karte. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.' 380 560
+        'Im Eintrage-Modus schließt der Buchhalter einen vereinbarten Eintrag ohne Buchung. reason done_elsewhere -> done (Karte „Schon eingetragen – abhaken?“), dropped -> cancelled (Karte „Nicht mehr eintragen“). reason skipped streicht nichts: der Eintrag geht zurück auf open, ohne Karte, weil nichts Dauerhaftes geschieht (die Stelle „Eintrag k von n“ bleibt, core.fn_cancel_handoff_task lässt claimed_at stehen). Dry run = dieselbe fn VOR der Karte (zurückgerollt): fremder, unbekannter oder schon geschlossener Eintrag, unbekannter Grund oder abhaken ohne gefundene Sache (ref_type + ref_name, sonst nothing_to_tick) -> Dry run rejected, keine Karte. Wird die Karte nicht bestätigt, gibt „Reopen handoff task“ den Eintrag sofort wieder frei. Ein gebuchter Eintrag braucht dieses Tool nicht: die Ziel-fn schließt ihn über handoff_task_id im selben Write (finance.fn_with_handoff). finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster core.fn_cancel_handoff_task.' 380 560
 
-    $nodes = @($trig, $ifSkip, $skip, $ifSkipOk, $errSkip, $retSkip) + $wg.Nodes + @($ifElsewhere, $sumElsewhere, $sumDropped, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $sticky)
+    $nodes = @($trig, $ifSkip, $skip, $ifSkipOk, $errSkip, $retSkip) + $wg.Nodes + @($ifElsewhere, $sumElsewhere, $sumDropped, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{
         'Start'                          = @{ main = @( ,@( E 'Skip only?' ) ) }
         'Skip only?'                     = @{ main = @(
@@ -81,9 +81,10 @@ function Build-CancelHandoffTask {
         'Build Approval Summary'         = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Build Approval Summary dropped' = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'               = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                      = @{ main = @(
             @( E 'Close handoff task (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Close handoff task (atomic)'    = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                      = @{ main = @(

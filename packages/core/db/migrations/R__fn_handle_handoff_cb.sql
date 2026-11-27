@@ -11,8 +11,11 @@
 --       claimed_at = now(). Ein Doppeltipp findet nichts mehr -> Toast "nichts mehr offen".
 --     * handoff:<domain>:<max_task_id>:fix = Knopf des Korrektur-Schritts (core.fn_plan_rollout_next, step fix): beansprucht
 --       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now und task_id <= max: deferred -> working
---       (blocked_code weg; ohne Soll wird der Aufruf der Vorpruefung zum wanted); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern bekommt eine neue Aufgabe working
---       mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf follows_task_id: hoechstens eine Korrektur).
+--       (blocked_code weg; ohne Soll wird der Aufruf der Vorpruefung zum wanted; mit Soll bleibt es gespeichert, der Auftrag
+--       traegt als wanted aber den jetzt geprueften Aufruf); eine abgeschlossene Aufgabe wird nie wieder geoeffnet, sondern
+--       bekommt eine neue Aufgabe working mit follows_task_id und wanted = der Aufruf der Vorpruefung (UNIQUE auf
+--       follows_task_id: hoechstens eine Folge-Aufgabe; hat core.fn_reopen_handoff_task sie schon offen angelegt, faellt die
+--       alte aus dem Register und der Knopf legt keine zweite an).
 --   Erfolg {ok:true, route:'handoff', domain, task_ids:[...], tasks:[{id, kind, payload, text, why, wanted, rest}]} -> der Orchestrator
 --   ('Handoff route?') startet den handoff_agent der Domain mit festem Auftrag; Dispatch-Fehler -> der Orchestrator gibt
 --   die Claims mit core.fn_release_handoff_tasks frei. Sonst {ok:false, reason, toast}. Nie RAISE (Dispatcher-Vertrag).
@@ -36,6 +39,7 @@ DECLARE
     v_row    jsonb;
     v_ttl    int;
     v_tasks  jsonb;
+    v_reg    jsonb;
 BEGIN
     v_pid  := core.fn_handoff_person(CASE WHEN v_chat ~ '^[0-9]{1,18}$' THEN v_chat END);
     v_lang := agent.fn_person_lang(v_pid)->>'lang';
@@ -60,9 +64,10 @@ BEGIN
     END IF;
 
     IF v_fix THEN
+        v_reg := core.fn_handoff_register(v_domain, v_chat);
         WITH reg AS (
             SELECT (e->>'task_id')::int AS id, e->'call' AS call, e->>'status' AS status
-              FROM jsonb_array_elements(core.fn_handoff_register(v_domain, v_chat)) e
+              FROM jsonb_array_elements(v_reg) e
              WHERE (e->>'possible_now')::boolean AND (e->>'task_id')::int <= v_max::int
         ), redo AS (
             UPDATE agent.handoff_tasks t SET status = 'working', blocked_code = NULL, claimed_at = now(),
@@ -80,9 +85,13 @@ BEGIN
             RETURNING id, kind, payload, text, why, wanted
         )
         SELECT array_agg(x.id) INTO v_ids FROM (SELECT id FROM redo UNION ALL SELECT id FROM follow) x;
-        -- eigene Anweisung: die eben angelegten Korrekturen sind erst danach sichtbar (fn_handoff_rest liest die Zeile)
+        -- eigene Anweisung: die eben angelegten Korrekturen sind erst danach sichtbar (fn_handoff_rest liest die Zeile).
+        -- wanted im Auftrag = der jetzt gepruefte Aufruf: das gespeicherte Soll einer zurueckgestellten Aufgabe ist
+        -- unveraenderlich und kann Namen ohne Sache oder Plan-Felder tragen, die kein Werkzeug kennt
         SELECT jsonb_agg(jsonb_build_object('id', t.id, 'kind', t.kind, 'payload', t.payload, 'text', t.text, 'why', t.why,
-                                            'wanted', t.wanted, 'rest', core.fn_handoff_rest(t.id)) ORDER BY t.id)
+                                            'wanted', COALESCE((SELECT e->'call' FROM jsonb_array_elements(v_reg) e
+                                                                 WHERE (e->>'task_id')::int = t.id), t.wanted),
+                                            'rest', core.fn_handoff_rest(t.id)) ORDER BY t.id)
           INTO v_tasks FROM agent.handoff_tasks t WHERE t.id = ANY (v_ids);
         IF v_tasks IS NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open',

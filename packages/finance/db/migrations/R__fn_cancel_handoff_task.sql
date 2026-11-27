@@ -7,7 +7,8 @@
 --   (account | savings_goal | savings_plan | recurring_payment | pension | insurance | loan) + ref_name, aufgeloest ueber
 --   finance.fn_handoff_resolve_ref; sie wird als entered_refs vermerkt. Abhaken ohne Sache gibt es nicht, weil die Karte
 --   sagen muss, was im System steht.
---   Erfolg {ok:true, task_id, status, text, card_title_key, card_lines}: Zeile core.hitl.handoff_note {text}, bei done_elsewhere
+--   Erfolg {ok:true, task_id, status, text, card_title_key, card_lines}: Kopf finance.fn_handoff_card_head (Stelle in der
+--   Runde core.hitl.handoff_pos {k, n}, dann core.hitl.handoff_note {text}), bei done_elsewhere
 --   dazu finance.label.handoff_in_system (Name der Sache aus den Daten) und finance.label.handoff_stays_open (offener Rest
 --   der Aufgabe, sonst leer). card_title_key = Titel-Key der Karte je Grund (finance.hitl.cancel_handoff_task_done_elsewhere |
 --   _dropped; fehlt bei skipped, das ohne Karte laeuft), das Werkzeug liest ihn aus dem Probelauf. Korrigierbar: {ok:false, code:'nothing_to_tick', reason} (keine Sache genannt oder
@@ -25,6 +26,7 @@ DECLARE
     v_why  text := lower(btrim(COALESCE(p->>'reason', '')));
     v_refs jsonb;
     v_r    jsonb;
+    v_head jsonb;
 BEGIN
     IF v_why = 'done_elsewhere' THEN
         IF v_type NOT IN ('account', 'savings_goal', 'savings_plan', 'recurring_payment', 'pension', 'insurance', 'loan')
@@ -49,16 +51,35 @@ BEGIN
     IF (v_r->>'ok')::boolean IS NOT TRUE THEN
         RETURN v_r;
     END IF;
+    v_head := finance.fn_handoff_card_head((v_r->>'task_id')::int, v_r->>'text');
     IF v_refs IS NOT NULL THEN
-        RETURN v_r || jsonb_build_object('card_title_key', 'finance.hitl.cancel_handoff_task_done_elsewhere', 'card_lines', jsonb_build_array(
-            jsonb_build_object('kind', 'note', 'value', 'core.hitl.handoff_note', 'params', jsonb_build_object('text', v_r->>'text')),
+        RETURN v_r || jsonb_build_object('card_title_key', 'finance.hitl.cancel_handoff_task_done_elsewhere', 'card_lines', v_head || jsonb_build_array(
             jsonb_build_object('label', 'finance.label.handoff_in_system', 'kind', 'text', 'value', v_ref->>'name'),
             jsonb_build_object('label', 'finance.label.handoff_stays_open', 'kind', 'text',
                                'value', core.fn_handoff_tasks_read(ARRAY[(v_r->>'task_id')::int])->0->'rest')));
     END IF;
     RETURN v_r || CASE WHEN v_why = 'dropped'
                        THEN jsonb_build_object('card_title_key', 'finance.hitl.cancel_handoff_task_dropped') ELSE '{}'::jsonb END
-        || jsonb_build_object('card_lines', jsonb_build_array(jsonb_build_object(
-            'kind', 'note', 'value', 'core.hitl.handoff_note', 'params', jsonb_build_object('text', v_r->>'text'))));
+        || jsonb_build_object('card_lines', v_head);
+END;
+$$;
+
+-- fn_handoff_card_head: die ersten Zeilen jeder Karte zu einer vereinbarten Plan-Aufgabe ohne Buchung (zurueckstellen, nicht
+-- mehr eintragen, abhaken): Stelle in der Runde (core.fn_handoff_position; fehlt ohne Claim), dann der vereinbarte Satz.
+-- Dieselbe Reihenfolge wie auf der Eintrags-Karte (finance.fn_with_handoff), damit die Zaehlung ueber alle Karten einer
+-- Runde lueckenlos ist.
+CREATE OR REPLACE FUNCTION finance.fn_handoff_card_head(p_task_id int, p_text text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+    v_pos jsonb := core.fn_handoff_position(p_task_id);
+BEGIN
+    RETURN CASE WHEN v_pos IS NOT NULL
+                THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'core.hitl.handoff_pos', 'params', v_pos))
+                ELSE '[]'::jsonb END
+        || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'core.hitl.handoff_note',
+                                                'params', jsonb_build_object('text', p_text)));
 END;
 $$;

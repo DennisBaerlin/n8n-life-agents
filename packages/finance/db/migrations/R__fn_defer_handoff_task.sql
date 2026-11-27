@@ -5,8 +5,8 @@
 --   Core-Fenster core.fn_defer_handoff_task (agent.handoff_tasks ist finance_rw verschlossen; dort die Pruefung des Codes gegen
 --   die Katalog-Keys finance.handoff.blocked.<code>).
 --   Eingabe p: { handoff_task_id, chat_id, blocked_code }.
---   Erfolg {ok:true, task_id, status:'deferred', blocked_code, text, card_lines:[core.hitl.handoff_note {text}]} (der Probelauf
---   zeigt damit den vereinbarten Satz auf der Karte); korrigierbar unveraendert aus dem Core-Fenster
+--   Erfolg {ok:true, task_id, status:'deferred', blocked_code, text, card_lines} (finance.fn_handoff_card_head: Stelle in der
+--   Runde und der vereinbarte Satz; der Probelauf zeigt sie auf der Karte); korrigierbar unveraendert aus dem Core-Fenster
 --   ({ok:false, code: unknown_blocked_code (+ valid_codes) | handoff_task_invalid | handoff_task_closed, reason}).
 --   Tests: tests/db/finance/test_fn_with_handoff.sql
 -- ============================================================
@@ -21,7 +21,6 @@ BEGIN
     IF (v_r->>'ok')::boolean IS NOT TRUE THEN
         RETURN v_r;
     END IF;
-    RETURN v_r || jsonb_build_object('card_lines', jsonb_build_array(jsonb_build_object(
-        'kind', 'note', 'value', 'core.hitl.handoff_note', 'params', jsonb_build_object('text', v_r->>'text'))));
+    RETURN v_r || jsonb_build_object('card_lines', finance.fn_handoff_card_head((v_r->>'task_id')::int, v_r->>'text'));
 END;
 $$;

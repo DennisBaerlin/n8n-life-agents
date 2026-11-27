@@ -26,7 +26,7 @@ function Build-DeferHandoffTask {
     $reqApproval = Build-CallWorkflow 'Request Approval' @(880, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
     $ifApproved = Build-If 'Approved?' @(1100, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1320, 200) 'the defer_handoff_task action'
+    $cancelBranch = New-HandoffCancelBranch -Pos @(1320, 200) -Action 'the defer_handoff_task action'
     $ifWriteOk = Build-If 'Write ok?' @(1540, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Defer rejected' @(1760, 200) "={{ `$('Defer handoff task (atomic)').item.json.reason }}"
     $ret = Build-Return @(1760, 0) @(
@@ -38,9 +38,9 @@ function Build-DeferHandoffTask {
 
     $sticky = Build-Sticky 'Doc Plan-Eintrag zurückstellen' @(120, -340) `
         'HITL + core.fn_defer_handoff_task (Übergabe Berater -> Buchhalter)' `
-        'Im Eintrage-Modus stellt der Buchhalter einen vereinbarten Eintrag zurück, den das System so noch nicht kann (Ende in der Zukunft, Zahlung bis Betrag, Sparziel aus nicht monatlichen Einzahlungen, fehlende Sache oder fehlendes Werkzeug): Status deferred mit festem blocked_code statt eines Ersatzwegs in Notizen. Gültige Codes = Katalog-Keys finance.handoff.blocked.<code>; ein unbekannter Code scheitert im Probelauf (code unknown_blocked_code, keine Karte); die gültige Liste kennt der Agent aus der Tool-Beschreibung, die der Build aus denselben Keys schreibt (Dry run rejected reicht valid_codes nicht durch). Die Karte zeigt den Grund aus dem Katalog und den Satz des Eintrags (card_lines des Probelaufs). Ein zurückgestellter Eintrag zählt nirgends als offen; der Korrektur-Schritt der Abfolge (core.fn_plan_rollout_next, step fix) bietet ihn nach einem Update wieder an. finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster.' 340 520
+        'Im Eintrage-Modus stellt der Buchhalter einen vereinbarten Eintrag zurück, den das System so noch nicht kann (Ende in der Zukunft, Zahlung bis Betrag, Sparziel aus nicht monatlichen Einzahlungen, fehlende Sache oder fehlendes Werkzeug): Status deferred mit festem blocked_code statt eines Ersatzwegs in Notizen. Gültige Codes = Katalog-Keys finance.handoff.blocked.<code>; ein unbekannter Code scheitert im Probelauf (code unknown_blocked_code, keine Karte); die gültige Liste kennt der Agent aus der Tool-Beschreibung, die der Build aus denselben Keys schreibt (Dry run rejected reicht valid_codes nicht durch). Die Karte zeigt den Grund aus dem Katalog, die Stelle in der Runde und den Satz des Eintrags (card_lines des Probelaufs). Wird sie nicht bestätigt, gibt „Reopen handoff task“ den Eintrag sofort wieder frei. Ein zurückgestellter Eintrag zählt nirgends als offen; der Korrektur-Schritt der Abfolge (core.fn_plan_rollout_next, step fix) bietet ihn nach einem Update wieder an. finance_rw erreicht agent.handoff_tasks nur über das DEFINER-Fenster.' 340 520
 
-    $nodes = @($trig) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $sticky)
+    $nodes = @($trig) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $cancelBranch.Nodes[0], $cancelBranch.Nodes[1], $cancelBranch.Nodes[2], $ifWriteOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{
         'Start'                       = @{ main = @( ,@( E 'Dry run' ) ) }
         'Dry run'                     = @{ main = @( ,@( E 'Dry run ok?' ) ) }
@@ -50,9 +50,10 @@ function Build-DeferHandoffTask {
         ) }
         'Build Approval Summary'      = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'            = @{ main = @( ,@( E 'Approved?' ) ) }
+        'Reopen handoff task' = @{ main = @( ,@( E 'Return cancelled' ) ) }
         'Approved?'                   = @{ main = @(
             @( E 'Defer handoff task (atomic)' ),
-            @( E 'Return cancelled' )
+            @( E 'Reopen handoff task' )
         ) }
         'Defer handoff task (atomic)' = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'                   = @{ main = @(

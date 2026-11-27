@@ -23,7 +23,7 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 3. **Ort:** Die Leitung arbeitet im Haupt-Checkout. Läuft die Session in einem Worktree, das dem Owner sagen; die Stand-Datei liegt trotzdem im Haupt-Checkout.
 4. **Sichtbar machen:** Session anpinnen (`set_pinned`, „self“) und `[Leitung] <Thema>` nennen (`set_session_title`), auch wer erst unterwegs Leitung wird; bei Übergabe die Marke entfernen. Sie ist das Erkennungszeichen (`/coordinate` §2). Eigene Session-ID per `get_session` mit `self` ermitteln (nicht die Transkript-ID) und in die Stand-Datei schreiben, dann `register_sub_session.ps1 -Lead`.
 5. **Stand lesen:** `.claude/plans/leitung-stand.md`, die eine Datei für alle Sessions; Themen-Dateien gibt es nicht. Fehlt sie, aus der Vorlage in §5 anlegen. Schreiben darf nur die Leitung; jede andere Session liest und hält sich an Sperren und Merge-Reihenfolge. Ist `Nachschau fällig:` abgelaufen, jetzt ausführen (§4.1).
-6. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `.\scripts\dev\session_stall_check.ps1` (auch vor jedem „arbeitet noch“), `git status`, `.\scripts\check_ci_status.ps1`.
+6. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `.\scripts\dev\session_stall_check.ps1` (auch vor jedem „arbeitet noch“), `git status`, `.\scripts\check_ci_status.ps1`, `befund-eingang.md` der Befund-Zentrale (`neu` → „Wartet auf dich“, auch täglich).
 7. **Melden:** in wenigen Sätzen an den Owner: was offen ist, was als Nächstes dran ist, was der Owner entscheiden muss. Nichts aus dem Stand ohne Auftrag beginnen.
 
 ## 2. Während der Arbeit
@@ -37,9 +37,9 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 - **Modell sparsam:** Mechanische Pakete (Doku, Tests, Werkzeug) laufen als Unter-Session auf Sonnet (`model` im `start_session`), Opus nur für Design und Architektur; wenige parallele Opus-Sessions. Je Sprint Qualität (Nacharbeit, rote Gates) und Tempo der Sonnet-Pakete in der Stand-Datei notieren.
 - **Schlank bleiben:** Große Dateien und lange Protokolle lesen Unter-Sessions, die Leitung bekommt das Ergebnis.
 - **Plan-Freigabe:** Planende Unter-Sessions melden die Plan-Datei statt einer Plan-Karte (`/feature` §2); die Leitung prüft sie und legt den Plan selbst vor (`docs/reference/sessions.md` *Plan-Freigabe*).
-- **Warten auf GitHub-Läufe** → `/coordinate` §5 *Offene Läufe*; der Owner soll nicht nachfragen müssen.
-- **Über Remote Control:** keine Seitenfenster, also Bilder und Diffs als Datei in den Chat.
-- **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was aus dem Bericht einer Session oder eines Unteragenten stammt, erreicht den Owner als Tatsache nur, wenn die Leitung es selbst in Code oder Ausgabe gelesen hat; sonst mit dem Zusatz „laut Bericht, nicht gegengelesen“ (Funde, Zahlen, Streichungen). Eine Richtigstellung kommt als Zeile unter `## Verbesserungen` (Urteil, kein Wächter; die Prozess-Session zählt sie).
+- **Warten auf GitHub-Läufe** → `/coordinate` §5 *Offene Läufe*.
+- **Über Remote Control:** Bilder und Diffs als Datei in den Chat.
+- **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was aus dem Bericht einer Session oder eines Unteragenten stammt, erreicht den Owner als Tatsache nur, wenn die Leitung es selbst in Code oder Ausgabe gelesen hat; sonst mit dem Zusatz „laut Bericht, nicht gegengelesen“. Eine Richtigstellung kommt als Zeile unter `## Verbesserungen` (Urteil, kein Wächter; die Prozess-Session zählt sie).
 
 ## 3. Arbeitsweise weiterentwickeln
 

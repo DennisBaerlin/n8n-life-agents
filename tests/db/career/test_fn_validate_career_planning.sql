@@ -63,13 +63,9 @@ BEGIN
   IF career.fn_validate_career_planning(jsonb_build_object('employment_types','vollzeit')) IS NULL THEN
     RAISE EXCEPTION 'FAIL [employment type]'; END IF;
 
-  -- employment_types: geschlossener Wertevorrat (die Suche kennt nur diese beiden Filter)
-  IF COALESCE(career.fn_validate_career_planning(jsonb_build_object('employment_types', jsonb_build_array('vollzeit','minijob'))), '') NOT ILIKE '%employment_types%vollzeit%teilzeit%' THEN
-    RAISE EXCEPTION 'FAIL [employment Wertevorrat: unbekannter Wert angenommen]'; END IF;
-  IF career.fn_validate_career_planning(jsonb_build_object('employment_types', jsonb_build_array(42))) IS NULL THEN
-    RAISE EXCEPTION 'FAIL [employment Wertevorrat: Zahl angenommen]'; END IF;
-  v_err := career.fn_validate_career_planning(jsonb_build_object('employment_types', jsonb_build_array(' Teilzeit ','vollzeit')));
-  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [employment Wertevorrat: Gross-/Kleinschreibung]: %', v_err; END IF;
+  -- employment_types: bewusst offen (alte Plaene/Sicherungen bleiben gueltig); die Suche ignoriert Unbekanntes
+  v_err := career.fn_validate_career_planning(jsonb_build_object('employment_types', jsonb_build_array('vollzeit','minijob')));
+  IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [employment unbekannter Wert muss gueltig bleiben]: %', v_err; END IF;
 
   -- required_skills: gueltig (min_level optional, is_blocker optional) -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object('target_roles', jsonb_build_array(

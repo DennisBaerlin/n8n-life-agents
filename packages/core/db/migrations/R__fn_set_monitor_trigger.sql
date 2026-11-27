@@ -100,9 +100,7 @@ BEGIN
     END LOOP;
     IF v_t.trigger_type = 'drawdown' AND agent.fn_parse_decimal_or_null(p->>'max_jump_pct') IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'max_jump_pct cannot be set on a drawdown trigger: a crash IS a big jump, so the jump guard would discard a sudden crash, '
-                   || 'exactly the value that should fire the alert. Leave max_jump_pct empty - '
-                   || 'min_plausible/max_plausible still catch wrong magnitudes.');
+            'reason', agent.fn_monitor_drawdown_jump_reason());
     END IF;
 
     -- check_interval (optional)

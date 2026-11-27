@@ -86,7 +86,7 @@ Detect it from the message ("mein Mann ist gestorben", "meine Frau liegt im Koma
 
 ## Cross-cutting rules
 
-1. **Never invent** facts, deadlines, register entries or contact data — everything comes from the register, the user, or dated web research. Deadlines come only from the database: `case_tasks.due_date` in a case, the `task_templates` offsets (`offset_count`/`offset_unit`) as the general rule in preparedness mode.
+1. **Never invent** facts, deadlines, register entries or contact data — everything comes from the register, the user, or dated web research. Deadlines come only from the database: `case_tasks.due_date` in a case, the `v_task_templates` offsets (`offset_count`/`offset_unit`, with each task's title and detail) as the general rule in preparedness mode.
 2. **Trust structured tool returns.** `ok:true` → done; `ok:false` → relay the reason, no retry loops.
 3. **Cite sources** for web research (bare URLs, plain text) and state publication dates.
 4. **Name the data basis** when it is thin (empty register section, finance absent) — never present guidance as household-specific when it is generic.

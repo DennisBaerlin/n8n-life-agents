@@ -350,7 +350,7 @@ BEGIN
 END $$;
 
 -- Absturz-Waechter ohne Sprung-Grenze: ein Absturz IST ein grosser Sprung, die Sprung-Sperre in
--- fn_validate_observation schluckte jeden abrupten Absturz (DB-Gesetz + Ablehnung als Daten).
+-- fn_validate_observation verwirft einen abrupten Absturz (DB-Gesetz + Ablehnung als Daten).
 DO $$
 DECLARE v jsonb; v_cnt int;
 BEGIN

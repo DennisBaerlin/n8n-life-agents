@@ -6,9 +6,7 @@
 --   ... SELECT ... ON CONFLICT) und fn_preview_case (Zaehlung je Phase vor dem Gate).
 --   Eingabe: p_case_type, p_subject (person_id), p_flags (explizite Fall-Angaben), p_event, p_know (Anker-Daten),
 --   p_bundesland; p_extra_assets optional (siehe unten).
---   Titel/Erklaerung aus dem Textkatalog (estate.task.<template_key>.title|.detail) in der Haushalts-Sprache
---   (core.fn_ui_texts_for ohne chat_id = Owner); fehlt der .detail-Key, ist detail NULL, fehlt der .title-Key, ist
---   title der Key-String.
+--   Titel/Erklaerung in der Haushalts-Sprache aus estate.v_task_templates (Render-Regel dort).
 --   Rueckgabe: Zeilen (template_key, subject_ref, phase, title, detail, due_date, hardness, legal_source,
 --   status 'open'|'not_applicable').
 --   Condition-Auswertung: NULL=immer; derived (adult_subject = Subjekt keine role='child';
@@ -24,7 +22,7 @@
 --   {asset_type, description}, bereits normalisiert/dedupliziert (fn_preview_case). Sie zaehlen wie Register-Stubs
 --   als offene fan_out-Aufgabe, tragen aber den Platzhalter-Ref 'new:<n>' (nie 'asset:'): der Create-Pfad legt die
 --   Stubs an und ruft diese fn ohne Extras, daher landet ein Platzhalter nie in case_tasks.
---   STABLE (liest task_templates + special_assets + DEFINER-Fenster; kein Write).
+--   STABLE (liest v_task_templates + special_assets + DEFINER-Fenster; kein Write).
 -- ============================================================
 DROP FUNCTION IF EXISTS estate.fn_case_template_rows(text, text, jsonb, date, date, text);   -- Signaturwechsel (7. Parameter), sonst zwei Ueberladungen
 CREATE OR REPLACE FUNCTION estate.fn_case_template_rows(
@@ -44,17 +42,7 @@ DECLARE
     v_anchor       DATE;
     v_due          DATE;
     v_flags        JSONB;
-    v_t            JSONB;
-    v_title        TEXT;
-    v_detail       TEXT;
 BEGIN
-    -- Ein Katalog-Aufruf je Fall: alle Text-Keys des Falltyps in der Haushalts-Sprache
-    v_t := core.fn_ui_texts_for(jsonb_build_object('keys', (
-               SELECT COALESCE(jsonb_agg(k), '[]'::jsonb)
-                 FROM estate.task_templates tt,
-                      LATERAL (VALUES ('estate.task.' || tt.template_key || '.title'),
-                                      ('estate.task.' || tt.template_key || '.detail')) v(k)
-                WHERE tt.case_type = p_case_type)))->'t';
     SELECT role INTO v_subject_role FROM core.fn_household_persons() WHERE person_id = p_subject;
     SELECT EXISTS (SELECT 1 FROM core.fn_household_persons() WHERE role = 'child') INTO v_has_minor;
     -- Wirksame Merkmale = Register-Ableitung (estate.fn_case_register_flags), ueberstimmt von der expliziten
@@ -62,15 +50,12 @@ BEGIN
     v_flags := jsonb_strip_nulls(estate.fn_case_register_flags(p_subject)) || COALESCE(p_flags, '{}'::jsonb);
 
     FOR t IN
-        SELECT * FROM estate.task_templates
+        SELECT * FROM estate.v_task_templates
         WHERE case_type = p_case_type AND NOT retired
         ORDER BY ord
     LOOP
         v_anchor := CASE t.deadline_anchor WHEN 'knowledge' THEN p_know ELSE p_event END;
         v_due    := estate.fn_compute_due_date(v_anchor, t.offset_count, t.offset_unit, p_bundesland);
-        -- Fallback-Kette des Katalogs endet beim Key selbst: ein Key als Text heisst "kein Text".
-        v_title  := COALESCE(v_t->>('estate.task.' || t.template_key || '.title'), 'estate.task.' || t.template_key || '.title');
-        v_detail := NULLIF(v_t->>('estate.task.' || t.template_key || '.detail'), 'estate.task.' || t.template_key || '.detail');
 
         v_applicable := CASE
             WHEN t.condition_key IS NULL            THEN TRUE
@@ -81,7 +66,7 @@ BEGIN
         END;
 
         IF t.fan_out IS NULL THEN
-            RETURN QUERY SELECT t.template_key, ''::text, t.phase, v_title, v_detail, v_due,
+            RETURN QUERY SELECT t.template_key, ''::text, t.phase, t.title, t.detail, v_due,
                                 t.hardness, t.legal_source,
                                 CASE WHEN v_applicable THEN 'open' ELSE 'not_applicable' END::text;
         ELSIF v_applicable THEN
@@ -92,7 +77,7 @@ BEGIN
                 ORDER BY id
             LOOP
                 RETURN QUERY SELECT t.template_key, ('asset:' || a.id)::text, t.phase,
-                                    (v_title || ' — ' || a.description)::text, v_detail, v_due,
+                                    (t.title || ' — ' || a.description)::text, t.detail, v_due,
                                     t.hardness, t.legal_source, 'open'::text;
             END LOOP;
             IF jsonb_typeof(p_extra_assets) = 'array' THEN
@@ -103,7 +88,7 @@ BEGIN
                      ORDER BY x.ord
                 LOOP
                     RETURN QUERY SELECT t.template_key, ('new:' || a.ord)::text, t.phase,
-                                        (v_title || ' — ' || a.description)::text, v_detail, v_due,
+                                        (t.title || ' — ' || a.description)::text, t.detail, v_due,
                                         t.hardness, t.legal_source, 'open'::text;
                 END LOOP;
             END IF;

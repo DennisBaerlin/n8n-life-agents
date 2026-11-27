@@ -1793,11 +1793,12 @@ BEGIN
     SET LOCAL ROLE estate_ro;
     PERFORM 1 FROM estate.v_directive_gaps LIMIT 1;
     PERFORM 1 FROM estate.v_register_gaps LIMIT 1;
+    PERFORM 1 FROM estate.v_task_templates WHERE title IS NOT NULL LIMIT 1;   -- Katalog-Texte (core.fn_ui_texts_for)
     SELECT (estate.fn_gap_report()->'finance'->>'status') INTO v_out;
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
-    RAISE EXCEPTION 'FAIL [estate_ro -> Gap-Views/fn_gap_report]: bricht unter estate_ro -- %', SQLERRM;
+    RAISE EXCEPTION 'FAIL [estate_ro -> Gap-Views/v_task_templates/fn_gap_report]: bricht unter estate_ro -- %', SQLERRM;
   END;
   IF v_out IS DISTINCT FROM 'not_readable_on_this_path' THEN
     RAISE EXCEPTION 'FAIL [estate_ro -> fn_gap_report]: erwartet finance.status=not_readable_on_this_path (ehrliche Degradation), got %', COALESCE(v_out, '<null>'); END IF;

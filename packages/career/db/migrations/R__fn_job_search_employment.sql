@@ -1,14 +1,14 @@
 -- ============================================================
 -- career.fn_job_search_employment (READ-ONLY, IMMUTABLE — Arbeitszeit-Filter je Job-Quelle)
---   Uebersetzt career_planning.employment_types (vollzeit|teilzeit, Schreibweise egal; Wertevorrat im Validator
---   career.fn_validate_career_planning) in die Such-Parameter des werktaeglichen Scans cron.score_jobs.
+--   Uebersetzt career_planning.employment_types (vollzeit|teilzeit, Schreibweise egal) in die Such-Parameter des
+--   werktaeglichen Scans cron.score_jobs.
 --   Eingabe: p_planning (career_planning-Fakten, NULL erlaubt).
 --   Rueckgabe jsonb, jeder Key nur wenn ein Filter gilt (sonst {} = so breit wie ohne Angabe):
 --     ba_arbeitszeit ('vz', 'tz' oder 'vz;tz' — Bundesagentur Jobsuche, Parameter arbeitszeit),
 --     adzuna_param ('full_time' | 'part_time' — Adzuna kennt nur je ein Flag =1; beide Arten -> kein Filter),
 --     jsearch_employment_types ('FULLTIME', 'PARTTIME' oder 'FULLTIME,PARTTIME').
---   Unbekannte Werte werden ignoriert (der Validator lehnt sie beim Schreiben ab); ohne bekannten Wert und bei
---   Nicht-Arrays gilt kein Filter.
+--   Unbekannte Werte werden ignoriert (der Validator laesst sie bewusst zu, alte Plaene bleiben gueltig); ohne
+--   bekannten Wert und bei Nicht-Arrays gilt kein Filter.
 --   Tests: tests/db/career/test_fn_job_search_employment.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_job_search_employment(p_planning jsonb)

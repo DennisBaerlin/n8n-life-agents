@@ -63,7 +63,12 @@ function Invoke-Git { & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { throw
 
 $gpg = Get-GpgExe
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'gh (GitHub CLI) fehlt: winget install GitHub.cli' }
-if (-not $env:GH_TOKEN) {
+# Erst gh's eigene Anmeldung: aus einem Host ohne Konsole (Claude startet das Skript) bricht 'git credential fill'
+# mit "credential missing protocol field" ab.
+$prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+gh auth status *> $null; $ghLoggedIn = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEap
+if (-not $env:GH_TOKEN -and -not $ghLoggedIn) {
     $cred = "protocol=https`nhost=github.com`n`n" | git credential fill 2>$null
     $tok = ($cred | Where-Object { $_ -like 'password=*' } | Select-Object -First 1)
     if ($tok) { $env:GH_TOKEN = $tok.Substring(9) } else { throw 'Kein GitHub-Zugang (GH_TOKEN oder Git-Credential-Manager) gefunden.' }
@@ -168,7 +173,8 @@ try {
     # 3) unterschreiben + gegenpruefen
     $sig = Join-Path $work 'SHA256SUMS.sig'
     if ($NoPassphrase) {
-        & $gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
+        # Leeres Passwort ueber stdin: ein leeres '' als Argument laesst PS 5.1 beim Aufruf nativer Programme weg.
+        '' | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
     } else {
         $sec = Read-Host -AsSecureString "Passwort des Signierschluessels ($fpr)"
         $pass = [System.Net.NetworkCredential]::new('', $sec).Password

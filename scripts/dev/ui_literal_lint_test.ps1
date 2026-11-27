@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
-# Test von Scan (c) in scripts/ui_literal_lint.ps1 (feste Telegram-Texte im Installer): je Fall eine Wegwerf-.sh, Aufruf mit
-# -ShellFile, erwartete Trefferzahl. Rot muessen feste Woerter in text=/caption= und in Helfer-Argumenten werden (auch
-# englisch, auch ueber Variable, printf oder ${x:-Text}); gruen bleiben Katalog-Lookups, Protokoll-Zeilen, Kommentare, Here-Docs.
+# Test von Scan (c) und (d) in scripts/ui_literal_lint.ps1: je Fall eine Wegwerf-Datei, Aufruf mit -ShellFile bzw. -SqlFile,
+# erwartete Trefferzahl. (c) Rot muessen feste Woerter in text=/caption= und in Helfer-Argumenten werden (auch englisch,
+# auch ueber Variable, printf oder ${x:-Text}); gruen bleiben Katalog-Lookups, Protokoll-Zeilen, Kommentare, Here-Docs.
+# (d) Rot: neue deutsche Literale und Nutzertext-Spalten in Init-/V__-SQL; gruen: Schluessel, Codes, Kommentare, COMMENT ON.
 # Aufruf: .\scripts\dev\ui_literal_lint_test.ps1     Exit-Code = Anzahl roter Faelle. Kein Docker, kein Netz.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -75,6 +76,39 @@ EOF
 }
 '@ }
 )
+# Scan (d), ganze SQL-Datei (-SqlFile): neue feste Texte in Init-/V__-Dateien.
+$sqlCases = @(
+    @{ id = 'seed-deutsch'; want = 1; sql = @'
+INSERT INTO estate.t (template_key, title) VALUES ('a', 'Bestatter beauftragen und Wünsche klären');
+'@ }
+    @{ id = 'seed-spalte-ohne-signatur'; want = 2; sql = @'
+INSERT INTO estate.t (template_key, phase, title, detail) VALUES
+    ('a', 'immediate', 'Sterbefallanzeige beim Standesamt', NULL),
+    ('b', 'later', 'Call the notary', 'death');
+'@ }
+    @{ id = 'schluessel-und-codes'; want = 0; sql = @'
+INSERT INTO estate.t (template_key, title) VALUES ('death_certificate', 'estate.task.death_certificate');
+SELECT 'unknown action', 'immediate';
+'@ }
+    @{ id = 'mehrzeilig'; want = 1; sql = @'
+UPDATE t SET note = 'Please check:
+bitte prüfen';
+'@ }
+    @{ id = 'kommentare'; want = 0; sql = @'
+-- Hinweis: die Tabelle der Aufgaben
+/* und noch ein Block für später */
+COMMENT ON COLUMN t.a IS 'Die Frist, gerechnet für den Fall';
+'@ }
+    @{ id = 'fn-rumpf-und-dollar-text'; want = 2; sql = @'
+CREATE FUNCTION f() RETURNS void AS $$
+BEGIN
+    -- der Kommentar im Rumpf
+    RAISE EXCEPTION 'nicht erlaubt';
+END
+$$ LANGUAGE plpgsql;
+INSERT INTO c (content) VALUES ($ctx$Ein Text für alle Personen$ctx$);
+'@ }
+)
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('ull_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $dir | Out-Null
 try {
@@ -84,8 +118,14 @@ try {
         $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -ShellFile $f
         if ($LASTEXITCODE -ne $c.want) { Fail "$($c.id): erwartet $($c.want) Treffer, war $LASTEXITCODE ($($out -join ' | '))" }
     }
+    foreach ($c in $sqlCases) {
+        $f = Join-Path $dir "$($c.id).sql"
+        [System.IO.File]::WriteAllText($f, ($c.sql -replace "`r`n", "`n") + "`n", $u8)
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -SqlFile $f
+        if ($LASTEXITCODE -ne $c.want) { Fail "$($c.id): erwartet $($c.want) Treffer, war $LASTEXITCODE ($($out -join ' | '))" }
+    }
 } finally { Remove-Item -Recurse -Force $dir }
 
-if ($fails -eq 0) { Write-Host "PASS ui_literal_lint_test ($($cases.Count) Shell-Faelle)" -ForegroundColor Green }
+if ($fails -eq 0) { Write-Host "PASS ui_literal_lint_test ($($cases.Count) Shell-Faelle, $($sqlCases.Count) SQL-Faelle)" -ForegroundColor Green }
 else { Write-Host "ui_literal_lint_test: $fails rot" -ForegroundColor Red }
 exit $fails

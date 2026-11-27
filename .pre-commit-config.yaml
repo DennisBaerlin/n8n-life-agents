@@ -265,7 +265,7 @@ repos:
         stages: [pre-push]
 
       - id: ui-literal-lint
-        name: ui_literal_lint (no new fixed German user text in workflows/R__ fns, no fixed word in installer Telegram texts; ratchet allowlist)
+        name: ui_literal_lint (no new fixed German user text in workflows, R__ fns, init and V__ SQL, no fixed word in installer Telegram texts; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
         pass_filenames: false
@@ -986,7 +986,7 @@ repos:
         files: ^scripts/(layout_lint|dev/layout_lint_test)\.ps1$
 
       - id: ui-literal-lint-test
-        name: ui_literal_lint_test (installer Telegram texts - fixed words in text=/caption=/helper args turn red, catalog lookups and log lines stay green; no Docker)
+        name: ui_literal_lint_test (installer Telegram texts and seed SQL - fixed words turn red, catalog keys, lookups, comments and log lines stay green; no Docker)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ui_literal_lint_test.ps1
         pass_filenames: false

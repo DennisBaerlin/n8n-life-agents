@@ -1,5 +1,5 @@
 {
-    "_comment":  "Ratchet-Allowlist von scripts/ui_literal_lint.ps1 (Textkatalog, docs/package-contract.md §3.11): jede verbliebene fest deutsche Text-Stelle mit Begruendung. Seit Phase C gibt es keine Nutzertexte mehr ausserhalb des Katalogs; erlaubt sind nur model:/admin:/data: (kein fester Nutzertext: Modell-Eingabe/-Kontext, Konsolen-RAISE, gespeicherte Inhalte). Einzige Schuld-Klasse: debt: fuer Telegram-Texte des Installers (provisioning/), die noch fest im Skript stehen. Nur schrumpfen; neue Nutzertexte kommen in den Katalog.",
+    "_comment":  "Ratchet-Allowlist von scripts/ui_literal_lint.ps1 (Textkatalog, docs/package-contract.md §3.11): jede verbliebene fest deutsche Text-Stelle mit Begruendung. Seit Phase C gibt es keine Nutzertexte mehr ausserhalb des Katalogs; erlaubt sind nur model:/admin:/data: (kein fester Nutzertext: Modell-Eingabe/-Kontext, Konsolen-RAISE, gespeicherte Inhalte). Einzige Schuld-Klasse: debt: fuer Telegram-Texte des Installers (provisioning/) und fuer den Bestand fester Texte in den Grundlagen-SQL-Dateien (packages/*/db/*.sql, migrations/V*.sql), die noch nicht aus dem Katalog kommen. Nur schrumpfen; neue Nutzertexte kommen in den Katalog.",
     "allow":  [
                   {
                       "where":  "packages/finance/db/migrations/R__fn_setup_reanchor.sql",
@@ -432,6 +432,678 @@
                       "literal":  "Rückweg fertig: dein System läuft wieder auf {}, mit den Daten vom {}.",
                       "count":  2,
                       "reason":  "debt:Meldung nach Rueckweg (LXC und Compose), fest deutsch statt pkg_text in der Owner-Sprache"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V001__migrate_career_pii_per_user.sql",
+                      "literal":  "V001(career): kein Owner in family -> skip (Bootstrap/fresh DB)",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V002__migrate_career_planning_per_user.sql",
+                      "literal":  "V002(career): kein Owner in family -> skip (Bootstrap/fresh DB)",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V003__career_job_matches_person_scoping.sql",
+                      "literal":  "career:V003: career.job_matches hat NULL-person_id-Zeilen, aber kein Owner in family -> Backfill unmoeglich",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V004__career_onboarding_state_person_scoping.sql",
+                      "literal":  "career:V004: career.onboarding_state hat NULL-person_id-Zeilen, aber kein Owner in family -> Backfill unmoeglich",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V007__career_facts_raw_dates.sql",
+                      "literal":  "Migriert (nicht umrechenbar, bitte als Startjahr/Zieldatum neu erfassen): ",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V007__career_facts_raw_dates.sql",
+                      "literal":  "V007: % auf Roh-Daten umgerechnet (Anker %)",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/career/db/migrations/V007__career_facts_raw_dates.sql",
+                      "literal":  "V007: Draft-Plan % auf Roh-Daten umgerechnet",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/core/db/agent.guide_init.sql",
+                      "literal":  "Haushalt & Personen",
+                      "count":  1,
+                      "reason":  "debt:Bereichs-Bezeichnung als Rueckfall ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/core/db/agent.monitor_init.sql",
+                      "literal":  "Stammdaten pruefen: einige Haushalts-Angaben sind ueber 12 Monate alt. Frag den Guide (\"Stammdaten pruefen\") — er listet die veralteten Angaben.",
+                      "count":  1,
+                      "reason":  "debt:Meldungstext der mitgelieferten Beobachtung, fest deutsch"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  " von ",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "core.config: Standard \"%\" (category=model, key=%) ist kein bekannter model_key in agent.ai_models",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "core.config: value \"%\" (category=model, key=%) ist kein bekannter model_key in agent.ai_models",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "ein Text",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "ein Zeitplan im Cron-Format: Minute Stunde Tag Monat Wochentag, z. B. \"0 7 * * 1-5\" = werktags 7:00 Uhr",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "eine ganze Zahl",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "eine Zahl (Dezimalpunkt, z. B. 0.10)",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "Modell \"%\" passt nicht zu model/% — erwartet: ein Modell derselben Art wie der Standard \"%\".",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "true oder false",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.config_init.sql",
+                      "literal":  "Ungültiger Wert \"%\" für %/% — erwartet: %.",
+                      "count":  1,
+                      "reason":  "admin:Ablehnung eines Einstellungs-Werts an den Betreiber (lifeagents config set)"
+                  },
+                  {
+                      "where":  "packages/core/db/core.schema_version_init.sql",
+                      "literal":  "(gespeichert=%, jetzt=%). Migrationen sind unveraenderlich — neue V-Datei anlegen, nie editieren.",
+                      "count":  1,
+                      "reason":  "admin:Abbruch beim Anwenden des Datenbank-Stands"
+                  },
+                  {
+                      "where":  "packages/core/db/core.schema_version_init.sql",
+                      "literal":  "core.schema_version: Migration % (%) wurde bereits mit anderem Inhalt angewandt ",
+                      "count":  1,
+                      "reason":  "admin:Abbruch beim Anwenden des Datenbank-Stands"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V018__family_placeholder_text.sql",
+                      "literal":  "(Inhaber bei der Installation angelegt; weitere Personen folgen im Onboarding)",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V018__family_placeholder_text.sql",
+                      "literal":  "(noch keine Haushaltsdaten erfasst - Onboarding ausstehend)",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V019__consolidate_context_facts.sql",
+                      "literal":  "core:V019: facts-Sidecar(s) verletzen die reservierten Core-Form-Keys persons/household: % — bitte vor dem Update bereinigen",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V024__retire_gemini_chat_models.sql",
+                      "literal":  "core:V024 model/%: eigener Wert \"%\" (Gemini) wird auf Claude umgestellt",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V026__backfill_pre_default_config.sql",
+                      "literal":  "core:V026 %/%: nie geaendert (\"%\") -> folgt ab jetzt dem ausgelieferten Standard",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/core/db/migrations/V032__derived_keys_cleanup_onboarding_skipped_at.sql",
+                      "literal":  "Migriert (abgeleiteter Wert entfernt, bitte als Rohfakt neu erfassen): ",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Anzeigepflicht binnen drei Monaten ab Kenntnis des Erwerbs.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Arbeitgeber informieren (Lohn, betriebliche Vorsorge)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Arbeitgeber und Krankenkasse informieren (Entgeltfortzahlung/Krankengeld)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ärztliche Todesbescheinigung (Totenschein) ausstellen lassen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Bankvollmachten und laufende Verpflichtungen MANUELL prüfen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Bei einem Arbeitsunfall zusätzlich die Berufsgenossenschaft.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Bestatter beauftragen (Bestattungsart/Wünsche, ggf. Vorsorgevertrag)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Bestattungsverfügung",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Betreuung/Sorge für minderjährige Kinder organisieren",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Betreuungsverfügung",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Bezugsberechtigungen (Lebensversicherung) prüfen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ca. 5–10 Sterbeurkunden beim Standesamt bestellen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Das E-Mail-Konto und das 2FA-Gerät gaten die Zurücksetzung aller anderen Konten — zuerst sichern, nichts vorschnell löschen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Daueraufträge, Miete und Versicherungen laufen weiter — die Handlungsfähigkeit muss gesichert sein.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Der Bestatter übernimmt meist auch die Sterbefallanzeige beim Standesamt.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Der Gesellschaftsvertrag geht dem Erbrecht vor — Notar/Anwalt einschalten.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Der Witwen-/Witwerrenten-Vorschuss (Sterbevierteljahr) läuft über den Renten Service, Antrag binnen ~30 Tagen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Die gesetzliche Krankenversicherung endet am Todestag.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Digitalen Nachlass regeln (Konten memorialisieren/löschen)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ein Arzt stellt den Totenschein aus — Voraussetzung für alles Weitere.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ein Bezugsrecht wird außerhalb des Testaments ausgezahlt — auf überholte Begünstigte (Ex-Partner-Falle) achten.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ein notarielles Testament macht den Erbschein oft überflüssig; eine transmortale Vollmacht beschleunigt.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Eintritt/Fortsetzung oder Sonderkündigung des Mietverhältnisses.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erbe prüfen: Ausschlagung nur binnen 6 Wochen ab Kenntnis",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erben müssen den Besitz binnen eines Monats anzeigen und die Waffe sichern lassen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erbschaft dem Finanzamt anzeigen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erbschein/Nachlassabwicklung klären",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erbvertrag",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Erfordert eine gültige Vollmacht.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Es sind keine Finanzdaten im System erfasst (finance-Paket nicht installiert) — prüfe Policen und Konten des Verstorbenen selbst, viele Ansprüche haben sehr kurze Fristen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Es sind keine Finanzdaten im System erfasst (finance-Paket nicht installiert) — prüfe Vollmachten und Verträge selbst.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Facebook-Gedenkzustand ist irreversibel; Inaktivitätslöschung läuft (Google ~2 J., GMX ~6 Mon.).",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Fahrzeug ummelden, versichern oder verkaufen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Konto des Verstorbenen NICHT auflösen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Krankenkasse informieren",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Laufende Verträge (Strom/Telefon/Abos) prüfen, kündigen oder umschreiben",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Laufende Verträge und Abos sichten (weiterführen/kündigen)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Lebens-/Unfallversicherung: Meldefrist prüfen und Anspruch anmelden",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Leistungen gibt es frühestens ab dem Antragsmonat — früh beantragen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Letzte Einkommensteuererklärung des Verstorbenen (Steuerberater)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ohne Vorsorgevollmacht bestellt das Gericht einen Betreuer; § 1358 BGB deckt nur enge Gesundheitsfragen zwischen Ehegatten.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Ohne Vorsorgevollmacht: Betreuung beim Betreuungsgericht anregen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Organspendeausweis",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Patientenverfügung",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Patientenverfügung den behandelnden Ärzten vorlegen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Pflegegrad bei der Pflegekasse beantragen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Prüfe eine Sorgerechtsverfügung; sonst entscheidet das Familiengericht.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Renten Service / DRV informieren; Sterbevierteljahr beantragen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Renten-Rückbuchungen brauchen das Konto; ein Oder-Konto oder eine transmortale Vollmacht hält den Partner liquide.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Schlüsselkonto (E-Mail) und SIM/2FA-Gerät des Verstorbenen sichern",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Sonderkündigungsrechte nutzen; Kundennummern stehen im Register.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Sorgerecht für minderjährige Kinder klären",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Sorgerechtsverfügung",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Spätestens am dritten auf den Tod folgenden Werktag — der Bestatter erledigt das üblicherweise.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Sterbefallanzeige beim Standesamt",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Testament",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Testament beim Nachlassgericht abliefern",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Todesfall im Ausland / Arbeitsunfall: Konsulat bzw. Berufsgenossenschaft einschalten",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Transmortale Bankvollmacht",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Unfalltod muss oft binnen 48 Stunden gemeldet werden (GDV-AUB), Lebensversicherungen 24–72 Stunden je Vertrag. Bezugsrecht prüfen.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Unternehmensbeteiligung: Gesellschaftsvertrag prüfen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Unternehmensbeteiligung: Handlungsfähigkeit sichern (Prokura/Vollmacht)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Vermieter informieren; Mietverhältnis regeln",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Versicherungen und Bank-Ansprüche MANUELL prüfen (Meldefristen 24–48 h!)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Versorgung des Haustiers sicherstellen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Viele Stellen (Banken, Versicherer, Grundbuch) verlangen Originale.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Vorsorgevollmacht",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Vorsorgevollmacht/Betreuungsverfügung im Register prüfen",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Waffe der zuständigen Behörde melden und sichern",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Wer ein Testament besitzt, muss es unverzüglich beim Nachlassgericht abliefern.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Wer sich wie ein Erbe verhält, kann das Recht zur Ausschlagung verwirken — bei Schuldenverdacht schnell Notar/Anwalt.",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/estate/db/estate.tables_init.sql",
+                      "literal":  "Zugriff auf laufende Zahlungen sichern (Bankvollmacht prüfen)",
+                      "count":  1,
+                      "reason":  "debt:Vorlage fuer Aufgaben bzw. Dokumentarten, Nutzertext ohne Katalog-Key"
+                  },
+                  {
+                      "where":  "packages/finance/db/finance.tables_init.sql",
+                      "literal":  "finance: % Konto/Konten mit doppelter Kontonummer geleert (aeltestes behaelt sie).",
+                      "count":  1,
+                      "reason":  "admin:Hinweis beim Anwenden des Datenbank-Stands"
+                  },
+                  {
+                      "where":  "packages/finance/db/finance.tables_init.sql",
+                      "literal":  "Verkaufserlös ",
+                      "count":  1,
+                      "reason":  "data:Vergleich mit einer gespeicherten Buchungs-Beschreibung"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V012__schedule_day_of_month_domain.sql",
+                      "literal":  "V012 pre-flight: schedule_day_of_month ausserhalb der Domaene (1-28 | -1 | NULL) in %. Diese Zeilen auf einen gueltigen Tag (1-28) oder -1 (Monatsletzter) korrigieren, dann erneut migrieren.",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V018__check_order_fee_and_posting_day.sql",
+                      "literal":  "V018 pre-flight: Werte ausserhalb der Domaene in %. order_fee auf >= 0 bzw. den Gutschrift-Tag auf 1-28 (oder leer = Gutschrift am Periodenende) korrigieren, dann erneut migrieren.",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V020__fixed_deposit_maturity_check.sql",
+                      "literal":  "V020 pre-flight: aktive Festgeld-Konten ohne Faelligkeitsdatum: %. Das Datum per set_account nachtragen, dann erneut migrieren.",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V021__iban_check_digits.sql",
+                      "literal":  "V021: IBAN mit falscher Pruefziffer geleert (der naechste Kontoauszug lernt sie neu): %",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V026__loan_rate_single_source.sql",
+                      "literal":  "per set_loan auf den abgebuchten Betrag setzen (oder die Raten-Zeile korrigieren), dann erneut migrieren.",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V026__loan_rate_single_source.sql",
+                      "literal":  "V026 pre-flight: Kreditrate und Raten-Zeile weichen ab bei Kredit-id %. Rate am Kredit ",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V027__insurance_premium_single_source.sql",
+                      "literal":  "V027 pre-flight: Versicherung und Beitrags-Zeile weichen ab bei Versicherungs-id %. Beitrag/Rhythmus ",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V030__pension_statement_law.sql",
+                      "literal":  "bitte zusammenfuehren oder loeschen.",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V030__pension_statement_law.sql",
+                      "literal":  "Pausiert (V030): eine weitere aktive gesetzliche Rente derselben Person - ",
+                      "count":  1,
+                      "reason":  "data:von einer eingefrorenen Migration gespeicherter Inhalt, Originalsprache"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V030__pension_statement_law.sql",
+                      "literal":  "V030 pre-flight: Renteninformation(en) mit negativem Betrag oder fallenden Szenarien, id %. ",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
+                  },
+                  {
+                      "where":  "packages/finance/db/migrations/V030__pension_statement_law.sql",
+                      "literal":  "Werte korrigieren (oder die Zeile loeschen), dann erneut migrieren.",
+                      "count":  1,
+                      "reason":  "admin:Meldung einer eingefrorenen Migration an den Betreiber"
                   }
               ]
 }

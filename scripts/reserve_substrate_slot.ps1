@@ -53,15 +53,13 @@ if ($PSBoundParameters.ContainsKey('By') -and $modes -and @('Container', 'DbPort
 
 if ($FreeDbPort -or $DbPort) {
     if (-not $By) { $By = if ($env:DBTEST_CONTAINER) { $env:DBTEST_CONTAINER } else { $env:USERNAME } }
-    $res = @(Read-SlotReservations -File $ListFile)
     $used = @(Get-DockerHostPorts)
     if ($FreeDbPort) {
-        $DbPort = Find-FreeDbPort -Reservations $res -InUse $used -Own $By
+        $DbPort = Add-DbPortReservation -File $ListFile -By $By -InUse $used
         if (-not $DbPort) { throw 'Kein freier DB-Port in 55432..55471.' }
-    } elseif (-not (Test-DbPortFree -Port $DbPort -Reservations $res -InUse $used -Own $By)) {
+    } elseif (-not (Add-DbPortReservation -File $ListFile -By $By -Port $DbPort -InUse $used)) {
         throw "DB-Port $DbPort ist belegt oder von einer anderen Session reserviert (-FreeDbPort nennt einen freien)."
     }
-    Add-SlotReservation -File $ListFile -Container (Get-DbPortEntryName $DbPort) -By $By
     Write-Host ("DB-Port {0} reserviert (von {1}): `$env:DBTEST_PG_PORT='{0}'; verfaellt nach {2} Min." -f $DbPort, $By, $SlotReservationTtlMin) -ForegroundColor Green
     exit 0
 }

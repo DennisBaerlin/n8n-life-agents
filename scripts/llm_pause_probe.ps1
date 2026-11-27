@@ -15,7 +15,6 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = $Utf8NoBom
 [Console]::InputEncoding = $Utf8NoBom
-$RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\dotenv.ps1"
 . "$PSScriptRoot\lib\test_common.ps1"
@@ -26,8 +25,7 @@ $Unit = 'n8ntest-gwt-probe'
 $Port = 8106
 $GwJs = '/usr/local/lib/lifeagents-llm-gateway/server.js'
 
-$line = Read-DotEnvLines (Join-Path $RepoRoot '.env') | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
-$key = if ($line) { ($line -split '=', 2)[1].Trim() } else { '' }
+$key = Get-TestEnvValue 'TEST_ANTHROPIC_API_KEY'
 if (-not $key -or $key -eq 'ci-dummy-key') { Write-Host 'TEST_ANTHROPIC_API_KEY fehlt in der .env.' -ForegroundColor Red; exit 1 }
 
 function Invoke-InC([string[]]$CmdArgs) { Invoke-Native docker (@('exec', $Container) + $CmdArgs) }

@@ -27,6 +27,8 @@ if (-not $PSBoundParameters.ContainsKey('WorktreeNames')) {
     $WorktreeNames = @(git -C $PSScriptRoot worktree list --porcelain | Where-Object { $_ -like 'worktree *' } |
         ForEach-Object { Split-Path -Leaf ($_.Substring(9)) })
 }
+# Der Projektordner traegt den Worktree-Namen in derselben Schreibweise wie den Repo-Pfad (Sonderzeichen als '-'): gleich vergleichen.
+$WorktreeNames = @($WorktreeNames | ForEach-Object { $_ -replace '[^A-Za-z0-9]', '-' })
 
 # Liest nur das Dateiende (Transkripte werden zweistellige MB gross); die erste, angeschnittene Zeile faellt weg.
 function Get-TailLines([string]$path, [long]$bytes) {

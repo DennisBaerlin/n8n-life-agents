@@ -335,5 +335,29 @@ if ($bkBlock.Length -gt 0) {
     Assert-That ($mutated -ne $bkBlock -and $mm.Code -eq 0 -and ($mm.Output -join "`n") -match 'FA=\s*$') 'backup/cases.sh: Gegenprobe - ohne den Guard laeuft der Block still mit leerem Namen weiter (der Test sieht den Unterschied)'
 }
 
+# --- Docker-Pruefung des Bootstraps: nur Erfolg plus "linux" gilt ------------------------------------------------------------
+Assert-That (Test-TestStackDockerLinux 0 @('linux')) 'Docker-Pruefung: Erfolg und linux = bereit'
+Assert-That (-not (Test-TestStackDockerLinux 1 @('error during connect: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.'))) 'Docker-Pruefung: Fehlermeldung mit dem Wort Linux gilt nicht als bereit'
+Assert-That (-not (Test-TestStackDockerLinux 0 @('windows'))) 'Docker-Pruefung: Windows-Container gelten nicht'
+
+# --- Schnappschuss: bricht die Kopie ab, bleibt kein Volume mit gueltigem Schluessel zurueck -------------------------------
+# Docker als Attrappe (ueberschreibt Invoke-Native, darum am Dateiende): die Kopie (`docker run`) scheitert, alles andere gelingt.
+$script:snapVols = @{}
+function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+    switch ("$($Arguments[0]) $($Arguments[1])") {
+        'volume create' { $script:snapVols[$Arguments[-1]] = $true; return [pscustomobject]@{ Code = 0; Output = @() } }
+        'volume rm' { $script:snapVols.Remove($Arguments[-1]); return [pscustomobject]@{ Code = 0; Output = @() } }
+        'volume inspect' {
+            if ($script:snapVols.ContainsKey($Arguments[-1])) { return [pscustomobject]@{ Code = 0; Output = @('{"lifeagents.snapshot-of":"s4t0","lifeagents.snapshot-key":"k1"}') } }
+            return [pscustomobject]@{ Code = 1; Output = @('Error response from daemon: get x: no such volume') }
+        }
+        default { return [pscustomobject]@{ Code = 1; Output = @('cp: write error: No space left on device') } }
+    }
+}
+$snapNames = Get-TestStackNames 's4t0'
+Assert-That (Test-Throws { New-TestStackSnapshot $snapNames @('pgdata', 'var_la') 'k1' 'C:/x' }) 'Schnappschuss: abgebrochene Kopie wirft'
+Assert-That ($script:snapVols.Count -eq 0) 'Schnappschuss: nach abgebrochener Kopie bleibt kein Volume mit Schluessel zurueck'
+Assert-That ($null -eq (Get-TestStackSnapshotKeyStored $snapNames @('pgdata', 'var_la'))) 'Schnappschuss: der naechste -Reset findet keinen passenden Schluessel'
+
 Write-Host "test_stack_test: $failed Fehler."
 exit $failed

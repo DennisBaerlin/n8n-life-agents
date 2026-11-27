@@ -319,8 +319,16 @@ function Wait-TestStackReady([string]$Url, [int]$TimeoutSec = 180) {
     throw "n8n unter $Url wurde nicht bereit ($TimeoutSec s, /healthz/readiness)."
 }
 
+# Test-TestStackDockerLinux <Exit-Code> <Ausgabe> von `docker version --format '{{.Server.Os}}'` -> $true nur bei Erfolg und "linux".
+# Der Exit-Code zaehlt mit: die Fehlermeldung eines nicht laufenden Docker Desktop nennt die Pipe dockerDesktopLinuxEngine und
+# enthielte das Wort ebenfalls.
+function Test-TestStackDockerLinux([int]$Code, [string[]]$Output) {
+    return ($Code -eq 0 -and (@($Output | ForEach-Object { "$_".Trim() }) -contains 'linux'))
+}
+
 function Get-TestStackApiKey($Names) {
     $r = Invoke-Native docker @('exec', $Names.Master, 'sh', '-c', "grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
+    if ($r.Code -ne 0) { return '' }   # Docker-Fehler: in Output stuende dessen Meldung, nicht der Schluessel
     return (($r.Output -join '').Trim())
 }
 
@@ -405,13 +413,24 @@ function Invoke-TestStackVolumeCopy($Names, [string[]]$Volumes, [switch]$Restore
 }
 function New-TestStackSnapshot($Names, [string[]]$Volumes, [string]$Key, [string]$RepoRoot) {
     Remove-TestStackSnapshot $Names $Volumes
-    foreach ($s in $Volumes) {
-        $r = Invoke-Native docker @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
-            '--label', "lifeagents.snapshot-of=$($Names.Project)", '--label', "lifeagents.snapshot-key=$Key",
-            '--label', "lifeagents.worktree=$RepoRoot", (& $Names.Snapshot $s))
-        if ($r.Code -ne 0) { throw "Schnappschuss-Volume $(& $Names.Snapshot $s) liess sich nicht anlegen: $($r.Output -join "`n")" }
+    # Das Schluessel-Etikett steht ab dem Anlegen am Volume (Docker setzt Etiketten nicht nachtraeglich). Bricht die Kopie ab (Fehler,
+    # Strg+C), muessen die Volumes wieder weg: sonst hielte der naechste -Reset den halben Schnappschuss fuer passend.
+    $done = $false
+    try {
+        foreach ($s in $Volumes) {
+            $r = Invoke-Native docker @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
+                '--label', "lifeagents.snapshot-of=$($Names.Project)", '--label', "lifeagents.snapshot-key=$Key",
+                '--label', "lifeagents.worktree=$RepoRoot", (& $Names.Snapshot $s))
+            if ($r.Code -ne 0) { throw "Schnappschuss-Volume $(& $Names.Snapshot $s) liess sich nicht anlegen: $($r.Output -join "`n")" }
+        }
+        Invoke-TestStackVolumeCopy $Names $Volumes -RepoRoot $RepoRoot
+        $done = $true
+    } finally {
+        if (-not $done) {
+            try { Remove-TestStackSnapshot $Names $Volumes }
+            catch { Write-Warning "Unvollstaendiger Schnappschuss von $($Names.Project) liess sich nicht entfernen ($($_.Exception.Message)); von Hand: docker volume rm <projekt>snap_<volume>." }
+        }
     }
-    Invoke-TestStackVolumeCopy $Names $Volumes -RepoRoot $RepoRoot
 }
 function Restore-TestStackSnapshot($Names, [string[]]$Volumes, [string]$RepoRoot) {
     Invoke-TestStackVolumeCopy $Names $Volumes -Restore -RepoRoot $RepoRoot

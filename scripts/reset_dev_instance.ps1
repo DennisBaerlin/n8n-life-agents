@@ -51,11 +51,7 @@ $SecretPathRegex = '(?i)((^|/)(\.env|\.local/|\.claude/|\.git/)|\.(key|pem)$|(^|
 
 # --- .env laden ---------
 . "$PSScriptRoot\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
-        Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
-    }
-}
+Import-DotEnvVariables "$RepoRoot\.env"
 function Get-EnvValue([string]$name) {
     $v = Get-Variable $name -ValueOnly -Scope Script -ErrorAction SilentlyContinue
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }

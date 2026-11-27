@@ -49,11 +49,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
-        Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
-    }
-}
+Import-DotEnvVariables "$RepoRoot\.env"
 
 # Der Key geht immer als Header, nie im URI -> er landet nie in URL-basierten Fehlermeldungen.
 if ([string]::IsNullOrEmpty((Get-Variable 'ANTHROPIC_API_KEY' -ValueOnly -ErrorAction SilentlyContinue))) {

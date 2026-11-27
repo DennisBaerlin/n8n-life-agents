@@ -349,6 +349,21 @@ function Find-FreeDbPort {
     return $null
 }
 
+# Add-DbPortReservation -By <halter> [-Port <n>] [-InUse <ports>] -> der reservierte Port, $null wenn -Port nicht frei bzw. keiner frei ist.
+# Lesen, Waehlen und Eintragen unter einer Sperre: getrennt bekaemen zwei Sessions denselben freien Port genannt, und der zweite
+# Eintrag ersetzte den ersten ohne Meldung.
+function Add-DbPortReservation {
+    param([string]$File = (Get-SlotReservationFile), [Parameter(Mandatory)][string]$By, [int]$Port, [int[]]$InUse = @(), [datetime]$Now = [datetime]::UtcNow)
+    $got = Use-SlotReservationLock {
+        $res = @(Read-SlotReservations -File $File -Now $Now)
+        $p = if (-not $Port) { Find-FreeDbPort -Reservations $res -InUse $InUse -Own $By }
+             elseif (Test-DbPortFree -Port $Port -Reservations $res -InUse $InUse -Own $By) { $Port }
+        if ($p) { Add-SlotReservation -File $File -Container (Get-DbPortEntryName $p) -By $By -Now $Now }
+        $p
+    }
+    return $got
+}
+
 # Host-Ports laufender Container (`docker ps`, nur lesend); Docker aus = leere Liste.
 function Get-DockerHostPorts {
     $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

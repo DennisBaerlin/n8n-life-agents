@@ -53,7 +53,8 @@ $clock = [System.Diagnostics.Stopwatch]::StartNew()
 function Write-Step([string]$Text) { Write-Host ("[{0,5:n0} s] {1}" -f $clock.Elapsed.TotalSeconds, $Text) -ForegroundColor Cyan }
 function Show-CoreLog($Result) { if ($Verbose -and $Result.err_file -and (Test-Path $Result.err_file)) { Write-Host (Get-TestStackErrTail $Result.err_file 400) } }
 
-if ((Invoke-Native docker @('version', '--format', '{{.Server.Os}}')).Output -join '' -notmatch 'linux') {
+$dockerOs = Invoke-Native docker @('version', '--format', '{{.Server.Os}}')
+if (-not (Test-TestStackDockerLinux $dockerOs.Code $dockerOs.Output)) {
     throw 'Docker antwortet nicht oder laeuft nicht mit Linux-Containern.'
 }
 function Test-StackInstalled { return ((Get-TestStackVolumeLabel (& $Names.Volume 'var_la') 'io.lifeagents.install') -eq $Names.Project) }
@@ -106,10 +107,10 @@ Write-Step "master-Abbild $($Names.Image) aus dem Arbeitsstand ..."
 $img = New-TestStackImage -RepoRoot $RepoRoot -Names $Names -LogDir $LogDir
 Write-Step "Abbild $($img.ImageId.Substring(7, 12)) (Baum $($img.Tree.Substring(0, 12)))"
 
+# Dieselbe Lesart wie der klassische Bootstrap (Read-DotEnvValues: umschliessende Anfuehrungszeichen fallen ab), nur die TEST_*-Schluessel.
 $envValues = @{}
-Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
-    if ($_ -match '^\s*(TEST_[A-Z0-9_]+)=(.*)$') { $envValues[$Matches[1]] = $Matches[2].Trim() }
-}
+$dotEnv = Read-DotEnvValues (Join-Path $RepoRoot '.env')
+foreach ($k in @($dotEnv.Keys | Where-Object { $_ -match '^TEST_[A-Z0-9_]+$' })) { $envValues[$k] = $dotEnv[$k] }
 if (-not $envValues['TEST_HARNESS_SECRET']) { Write-Warning 'TEST_HARNESS_SECRET fehlt in .env - Harness-Webhooks antworten dann 403.' }
 $extra = ConvertTo-TestStackExtra -Map (Get-TestInstallEnvMap $RepoRoot) -Values $envValues -HitlChatApproval:$HitlChatApproval -FullDeploy:$FullDeploy -SerialTools ([string]$env:LLM_GATEWAY_SERIAL_TOOLS) -Override $script:TestStackMockAnswers
 Assert-TestStackSwitches -Names @($script:TestStackMockSwitches.Keys) -Allowed (Get-TestStackSwitchNames ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'provisioning\lib\stack_core.sh'), $Utf8NoBom)))

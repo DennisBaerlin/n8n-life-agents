@@ -66,9 +66,7 @@ $WriteTools = @($WriteTools | ForEach-Object { $_ -split ',' } | ForEach-Object 
 $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ebenso -Id "a,b"
 
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables "$RepoRoot\.env"
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn        = Get-TestN8nConnection
 $N8N_URL     = $conn.Url

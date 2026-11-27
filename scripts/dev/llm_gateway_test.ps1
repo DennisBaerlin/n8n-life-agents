@@ -515,12 +515,7 @@ try {
 
     # (h) echter Upstream, gratis (count_tokens)
     Write-Host '  (h) echter Upstream: /v1/messages/count_tokens (kostenlos)'
-    $envFile = Join-Path $RepoRoot '.env'
-    $realKey = $null
-    if (Test-Path $envFile) {
-        $line = Read-DotEnvLines $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
-        if ($line) { $realKey = ($line -split '=', 2)[1].Trim() }
-    }
+    $realKey = Get-TestEnvValue 'TEST_ANTHROPIC_API_KEY'
     if (-not $realKey) { Skip 'TEST_ANTHROPIC_API_KEY fehlt in .env' }
     elseif ($realKey -eq 'ci-dummy-key') { Skip 'erfundener Schluessel (CI free-gates.yml), kein Fall gegen die echte API' }
     else {

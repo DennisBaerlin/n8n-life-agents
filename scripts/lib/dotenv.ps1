@@ -25,3 +25,11 @@ function Read-DotEnvValues([string]$Path) {
     foreach ($l in (Read-DotEnvLines $Path)) { $e = ConvertFrom-DotEnvLine $l; if ($e) { $map[$e.Name] = $e.Value } }
     return $map
 }
+
+# Import-DotEnvVariables <pfad> -> legt jeden Schluessel als Variable des aufrufenden Skripts an ($TEST_HARNESS_SECRET, $OWNER_CHAT_ID ...).
+# -Scope Script trifft das Skript, das diese Datei dot-sourct, nicht dessen Aufrufer; Variablennamen unterscheiden keine
+# Gross-/Kleinschreibung, ein .env-Schluessel ueberschreibt darum eine gleichnamige Skript-Variable, die vorher gesetzt wurde.
+function Import-DotEnvVariables([string]$Path) {
+    $vals = Read-DotEnvValues $Path
+    foreach ($k in $vals.Keys) { Set-Variable -Name $k -Value $vals[$k] -Scope Script }
+}

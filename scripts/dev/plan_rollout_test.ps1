@@ -10,9 +10,7 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables (Join-Path $RepoRoot '.env')
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection; $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Container = $conn.Container
 $state = Get-TestN8nState
@@ -161,6 +159,10 @@ $Cases = @(
 )
 $failed = 0; $ran = 0
 try {
+    # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf (wie scripts/infra_test.ps1).
+    $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ueber powershell -File kommt "a,b" als ein Wert an
+    $missing = @($Id | Where-Object { $_ -notin @($Cases | ForEach-Object { $_.id }) })
+    if ($missing.Count) { throw "Testfall nicht gefunden: $($missing -join ', ')." }
     foreach ($c in $Cases) {
         if ($Id.Count -and $Id -notcontains $c.id) { continue }
         $ran++

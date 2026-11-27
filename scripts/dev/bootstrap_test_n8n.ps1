@@ -103,27 +103,14 @@ $EnvFileInC = '/root/.n8ntest_install.env'
 
 # --- .env laden (gleiche Mechanik wie die uebrigen scripts/-Treiber) ---------
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-$dotEnv = Read-DotEnvValues "$RepoRoot\.env"
-foreach ($k in $dotEnv.Keys) { Set-Variable -Name $k -Value $dotEnv[$k] -Scope Script }
+Import-DotEnvVariables "$RepoRoot\.env"
 function Get-EnvValue([string]$name) {
     $v = Get-Variable $name -ValueOnly -Scope Script -ErrorAction SilentlyContinue
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }
     return $v.Trim()
 }
 
-# Invoke-Native — natives Tool aufrufen, stdout+stderr + Exit-Code einsammeln (wie bootstrap_test_db.ps1).
-# EAP lokal auf 'Continue' (PS-5.1-Quirk: native stderr unter 'Stop' + 2>&1 wuerde als terminierender
-# NativeCommandError werfen).
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
-
+# Native Aufrufe laufen ueber Invoke-Native (scripts/lib/test_common.ps1, geladen mit test_n8n_state.ps1).
 function Assert-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker nicht im PATH. Vorbedingung: Docker Desktop installieren + starten (die Test-Instanz laeuft als $Image-Container)."
@@ -348,11 +335,13 @@ if ($Down) {
         if ($mk.Code -eq 0) {
             $realTok = Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN'   # real-token: nur zum Freigeben des Webhooks beim Abbau eines Echt-Bot-Substrats
             if ($realTok) {
-                $rw = $realTok | & docker exec -i $Container sh -c 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook' 2>&1
-                if ($LASTEXITCODE -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw -join ' | ')" }
+                # Ueber Invoke-Native: ein roher Aufruf mit 2>&1 braeche unter 'Stop' an der ersten stderr-Zeile ab, noch vor dem Abbau.
+                $rw = Invoke-Native docker @('exec', '-i', $Container, 'sh', '-c', 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook') -StdIn $realTok
+                if ($rw.Code -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw.Output -join ' | ')" }
                 else { Write-Host "Webhook des echten Test-Bots freigegeben." }
             } else { Write-Warning 'Echt-Bot-Substrat, aber kein TEST_TELEGRAM_BOT_TOKEN in .env: Webhook nicht freigegeben.' }
-        }        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
+        }
+        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
         # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
         Invoke-Native docker @('rm','-fv',$Container) | Out-Null
         Write-Host "Container $Container entfernt."
@@ -564,7 +553,7 @@ if ($r.Code -ne 0) {
 
 # --- N8N_API_KEY aus dem Container extrahieren (Owner-Bootstrap mintet ihn -> /etc/lifeagents/core.env) ---
 $r = Invoke-Native docker @('exec',$Container,'sh','-c',"grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
-$apiKey = (($r.Output -join '').Trim())
+$apiKey = if ($r.Code -eq 0) { ($r.Output -join '').Trim() } else { '' }   # bei einem Docker-Fehler stuende dessen Meldung in Output
 if (-not $apiKey) {
     Write-Warning "Kein N8N_API_KEY in /etc/lifeagents/core.env gefunden — der Owner-Bootstrap hat den Mint ggf. uebersprungen. Workflows/Credentials evtl. nicht deployt; die Tiers koennen die REST-API nicht authentifizieren."
 }

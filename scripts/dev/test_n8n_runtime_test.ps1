@@ -29,8 +29,14 @@ Assert-That ($null -eq (ConvertFrom-DotEnvLine '# KEY=x') -and $null -eq (Conver
 $tmpEnv = Join-Path ([System.IO.Path]::GetTempPath()) ("dotenv_probe_" + [guid]::NewGuid().ToString('N') + '.env')
 [System.IO.File]::WriteAllText($tmpEnv, "A=1`nA=`"zwei`"`nB='x'`n", $utf8)
 $vals = Read-DotEnvValues $tmpEnv
+Import-DotEnvVariables $tmpEnv
 Remove-Item $tmpEnv -Force
 Assert-That ($vals['A'] -eq 'zwei' -and $vals['B'] -eq 'x') 'Read-DotEnvValues: letzte Zeile gewinnt, Anfuehrungszeichen ab'
+Assert-That ($A -eq 'zwei' -and $B -eq 'x') 'Import-DotEnvVariables: jeder Schluessel als Skript-Variable, dieselbe Lesart'
+# Kein Treiber liest die .env mehr mit einer eigenen Schleife (die liess die Anfuehrungszeichen am Wert).
+$own = @(Get-ChildItem (Join-Path $PSScriptRoot '..') -Recurse -Filter '*.ps1' | Where-Object { $_.FullName -ne $PSCommandPath -and $_.Name -ne 'dotenv.ps1' } |
+    Where-Object { [System.IO.File]::ReadAllText($_.FullName, $utf8) -match 'Read-DotEnvLines\b' } | ForEach-Object { $_.Name })
+Assert-That ($own.Count -eq 0) "kein Skript liest .env-Zeilen selbst (Read-DotEnvValues, Import-DotEnvVariables, Get-TestEnvValue): $($own -join ', ')"
 
 $classic = [pscustomobject]@{ url = 'http://127.0.0.1:5800'; container = 'probe-n8n'; api_key = 'k' }
 $compose = [pscustomobject]@{ url = 'http://127.0.0.1:57800'; container = 'probe-master'; api_key = 'k'; runtime = 'compose'; project = 'probe' }

@@ -21,9 +21,13 @@ try {
     $common = "$(git -C $cwd rev-parse --path-format=absolute --git-common-dir 2>$null)".Trim()
     if (-not $gitDir -or $gitDir -eq $common) { exit 0 }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { exit 0 }
+    # 'Continue' um die Docker-Aufrufe: unter 'Stop' macht PowerShell 5.1 aus einer stderr-Zeile trotz 2>$null einen Abbruch, und das
+    # aeussere catch uebersprange die uebrigen Container, die Zustandsdateien und den Verbund-Abbau.
+    $ErrorActionPreference = 'Continue'
     $names = @(docker ps -a --format '{{.Names}}' --filter 'label=lifeagents.substrate=n8n' --filter "label=lifeagents.worktree=$repo" 2>$null | Where-Object { $_ })
     # -v: das Image deklariert VOLUME; ohne -v bliebe je Container ein namenloses Volume verwaist liegen.
     foreach ($n in $names) { docker rm -fv $n 2>$null | Out-Null }
+    $ErrorActionPreference = 'Stop'
     # Zustandsdatei je Container liegt im Haupt-Checkout (scripts/lib/n8ntest_state_file.ps1) und wird von allen Worktrees
     # geteilt: nur die der eben abgebauten Container loeschen, nie per Muster.
     $mainLocal = Join-Path (Split-Path $common -Parent) '.local'

@@ -40,9 +40,7 @@ if ($VerifyWorkflows) {
     # lokalen Datei (ein Wert wie 0 aus einem CI-Stummel wuerde jedes Literal "0" mit-redigieren).
     $OWNER_CHAT_ID = '909000000000001'
 } else {
-    Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-        if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-    }
+    Import-DotEnvVariables "$RepoRoot\.env"
 }
 if ([string]::IsNullOrEmpty($OWNER_CHAT_ID))      { throw "OWNER_CHAT_ID nicht in .env" }
 $NoWrite = $VerifyCatalog -or $CatalogOnly -or $VerifyWorkflows

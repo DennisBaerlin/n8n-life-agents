@@ -57,16 +57,7 @@ if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
     else { throw "psql.exe nicht gefunden ($pgBin)." }
 }
 
-# EAP lokal 'Continue': PS 5.1 wirft native stderr unter 'Stop' + 2>&1 als terminierenden NativeCommandError.
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
+. (Join-Path $PSScriptRoot 'lib\test_common.ps1')   # Invoke-Native
 
 function Assert-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -113,10 +104,9 @@ if ($Reset -and (Get-ContainerId)) {
 if (-not (Get-ContainerId)) {
     # Port-Reservierung (scripts/lib/substrate_reservations.ps1): ein anderer Halter mit demselben Port scheitert sonst erst im docker run
     . (Join-Path $PSScriptRoot 'lib\substrate_reservations.ps1')
-    if (-not (Test-DbPortFree -Port ([int]$DbPort) -Reservations @(Read-SlotReservations) -InUse @(Get-DockerHostPorts) -Own $Container)) {
+    if (-not (Add-DbPortReservation -By $Container -Port ([int]$DbPort) -InUse @(Get-DockerHostPorts))) {
         throw "DB-Port $DbPort ist belegt oder reserviert -> freien Port holen: .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By $Container (setzt danach `$env:DBTEST_PG_PORT)."
     }
-    Add-SlotReservation -Container (Get-DbPortEntryName ([int]$DbPort)) -By $Container
     Write-Host "Starte $Image als $Container (127.0.0.1:$DbPort, trust-Auth) ..."
     $r = Invoke-Native docker @('run','-d','--name',$Container,
         '-e','POSTGRES_HOST_AUTH_METHOD=trust',

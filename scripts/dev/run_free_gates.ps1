@@ -4,7 +4,9 @@
 #
 # Die eine Adresse fuer "freie Gates auf dem Gesamtstand" (/coordinate): richtige Reihenfolge ([Substrat] -> Mocks llm, telegram, paperless -> Suiten aus $Gates; db_test im Eltern-Prozess), alle Mocks,
 # jede Suite einzeln geloggt, Zusammenfassung am Ende. Bezahlte Suiten laufen hier nie (Owner-Fenster).
-# retire/move laufen nur klassisch (N8NTEST_RUNTIME ungesetzt) und halten n8n im Substrat voruebergehend an (seriell innerhalb ihrer Gruppe, nie gleichzeitig mit anderen Suiten desselben Substrats).
+# retire/move halten n8n im Substrat voruebergehend an (seriell innerhalb ihrer Gruppe, nie gleichzeitig mit anderen Suiten desselben Substrats).
+# -Reset baut immer das klassische Substrat (bootstrap_test_n8n.ps1); den Docker-Verbund (N8NTEST_RUNTIME=compose) baut dieses Skript nicht.
+# Voraussetzung: .env im Checkout (TEST_HARNESS_SECRET u. a.; ein frischer Worktree hat keine, CI legt sie mit new_ci_env.ps1 an).
 # Fallen bei Handarbeit: fehlende Mock-Vorbedingung (infra_test braucht mock_paperless), ein aus Bash
 # uebergebenes -WriteTools kommt als EIN String an, und eine psql-NOTICE bricht unter *>-Umleitung ab.
 #
@@ -68,8 +70,8 @@ $Gates = [ordered]@{
     backup_3      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '3' } }
     backup_4      = @{ Script = 'scripts\dev\backup_test.ps1'; Params = @{ Part = '4' } }
     n8n_patch     = @{ Script = 'scripts\dev\n8n_patch_test.ps1' }   # n8n-Korrektur Bestaetigungs-Karten gegen das installierte n8n (nur Container)
-    retire        = @{ Script = 'scripts\dev\retire_test.ps1' }   # Umzug: `lifeagents retire` im klassischen Substrat (haelt n8n voruebergehend an; Mock-Telegram)
-    move          = @{ Script = 'scripts\dev\move_test.ps1' }   # Umzug: `lifeagents move`/`config import` im klassischen Substrat (wie retire)
+    retire        = @{ Script = 'scripts\dev\retire_test.ps1' }   # Umzug: `lifeagents retire` (haelt n8n voruebergehend an; Mock-Telegram)
+    move          = @{ Script = 'scripts\dev\move_test.ps1' }   # Umzug: `lifeagents move`/`config import` (wie retire)
     infra        = @{ Script = 'scripts\infra_test.ps1' }
     hitl_gate     = @{ Script = 'scripts\dev\hitl_gate_test.ps1' }
     cron_text     = @{ Script = 'scripts\dev\cron_text_test.ps1' }
@@ -167,7 +169,8 @@ function Invoke-Gate {
     $start = Get-Date
     $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'   # native stderr der Suiten nicht als Abbruch werten
     try { & (Join-Path $RepoRoot $Script) @Params *> $log; $code = $LASTEXITCODE }
-    catch { $_ | Out-File -FilePath $log -Append -Encoding utf8; $code = 99 }
+    # Ohne -Encoding: der Anhang nimmt dieselbe Standard-Kodierung wie `*>` (5.1 UTF-16, pwsh UTF-8); gemischt waere der Grund unlesbar.
+    catch { $_ | Out-File -FilePath $log -Append; $code = 99 }
     finally { $ErrorActionPreference = $prevEAP }
     if ($null -eq $code) { $code = 0 }
     $summary = (Select-String -Path $log -Pattern 'bestanden|FAIL' -ErrorAction SilentlyContinue | Select-Object -Last 1).Line
@@ -206,8 +209,12 @@ if ($Child) {
 if ($Parallel) {
     # Zweites Substrat: eigenes Container-Paar aus dem Namen/Port des ersten (nie geteilte Defaults).
     $b = "$($env:N8NTEST_CONTAINER)-b"; $bPort = [string]([int]$env:N8NTEST_PORT + 1)
-    $others = @(docker ps --filter 'label=lifeagents.substrate=n8n' --format '{{.Names}}' 2>$null |
-                Where-Object { $_ -and $_ -ne $env:N8NTEST_CONTAINER -and $_ -ne $b })
+    # 'Continue' um den Docker-Aufruf: unter 'Stop' braeche PowerShell 5.1 an einer stderr-Zeile trotz 2>$null ab, die Sperrdatei bliebe liegen.
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+        $others = @(docker ps --filter 'label=lifeagents.substrate=n8n' --format '{{.Names}}' 2>$null |
+                    Where-Object { $_ -and $_ -ne $env:N8NTEST_CONTAINER -and $_ -ne $b })
+    } finally { $ErrorActionPreference = $prevEAP }
     if ($others.Count -gt 0) {
         Remove-Item $lock -Force -ErrorAction SilentlyContinue
         throw "-Parallel braucht beide Substrat-Plaetze, belegt: $($others -join ', ') -- seriell laufen lassen (ohne -Parallel) oder abwarten."

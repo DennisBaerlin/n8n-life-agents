@@ -43,6 +43,7 @@ function Build-RecordHandoffCorrection {
         ,@('handoff_task_id', "={{ `$('Record correction (atomic)').item.json.task_id }}", 'number')
         ,@('status', "={{ `$('Record correction (atomic)').item.json.status }}", 'string')
         ,@('blocked_code', "={{ `$('Record correction (atomic)').item.json.blocked_code || '' }}", 'string')
+        ,@('note', 'Recorded: the entry comes on the list to enter. Your whole written reply, counting any text before the cards, is exactly one short sentence in the user language that it is noted; do not repeat the comparison or what the card shows.', 'string')
     )
     $sticky = Build-Sticky 'Doc Eintrag nachholen' @(120, -340) `
         'HITL + agent.fn_record_handoff_correction (Eintrag prüfen)' `

@@ -18,8 +18,11 @@
 #
 # Braucht: gpg (Git for Windows), gh (winget GitHub.cli), git; GH_TOKEN wird bei Bedarf aus dem Git-Credential-Manager
 #   geholt (nur fuer diesen Prozess). Usage: .\scripts\sign_release.ps1 v0.14.0  (Vorab: ... v0.51.0-rc.1)
+# -NoPassphrase: Schluessel ohne Passwort; Claude startet das Skript nach einem Owner-Knopf je Release, ohne Terminal-Eingabe.
+#   Dann fragt das Skript nicht nach dem Passwort; ist der Schluessel doch geschuetzt, scheitert gpg im Batch-Modus und es
+#   wird nichts hochgeladen.
 # Exit 0 = unterschrieben und veroeffentlicht; jede fehlgeschlagene Pruefung bricht mit throw ab (nichts wird hochgeladen).
-param([Parameter(Mandatory = $true)][string]$Tag)
+param([Parameter(Mandatory = $true)][string]$Tag, [switch]$NoPassphrase)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # stdin an gpg (Passwort) als UTF-8, nicht ASCII (PS 5.1)
@@ -163,11 +166,15 @@ try {
     Write-Host '  DMG und EXE: Herkunftsnachweis aus release.yml fuer dieses Tag geprueft.' -ForegroundColor DarkGray
 
     # 3) unterschreiben + gegenpruefen
-    $sec = Read-Host -AsSecureString "Passwort des Signierschluessels ($fpr)"
-    $pass = [System.Net.NetworkCredential]::new('', $sec).Password
     $sig = Join-Path $work 'SHA256SUMS.sig'
-    $pass | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
-    $pass = $null
+    if ($NoPassphrase) {
+        & $gpg --batch --yes --pinentry-mode loopback --passphrase '' --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
+    } else {
+        $sec = Read-Host -AsSecureString "Passwort des Signierschluessels ($fpr)"
+        $pass = [System.Net.NetworkCredential]::new('', $sec).Password
+        $pass | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
+        $pass = $null
+    }
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sig)) { throw 'Unterschreiben fehlgeschlagen (falsches Passwort?).' }
     if ((Invoke-GpgQuiet --batch --no-default-keyring --keyring (ConvertTo-GpgPath $keyFile) --verify $sig (Join-Path $work 'SHA256SUMS')) -ne 0) { throw 'Die neue Unterschrift passt nicht zum Schluesselbund im Repo — nicht hochgeladen.' }
 

@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_propose_plan_topics (CROSS-AGENT, ohne Gate) --------------------------------------------------------
-# Themen eines Plan-Teils als Karte der offenen Frage vorschlagen (Plan s4-berater-ux §5.2, Art topic). Ersetzt im Berater
+# Themen eines Plan-Teils als Karte der offenen Frage vorschlagen (Art topic). Ersetzt im Berater
 # Vorlesen + "Ok" + Bestaetigungskarte: agent.fn_advisor_propose_topics prueft jedes Thema per Probelauf mit allen Gesetzen des
 # Speicherns und legt die Karte(n) an (more_in_part: weitere Themen desselben Teils folgen); gespeichert wird erst beim Tipp [Übernehmen] (Karte und Wirkung aus derselben Zeile).
 # Darum kein HITL-Gate: das Werkzeug aendert den Plan nicht. domain ist beim Aufrufer fixer Binding-Input (nie $fromAI),

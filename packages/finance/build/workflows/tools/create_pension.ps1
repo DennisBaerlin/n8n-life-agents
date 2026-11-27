@@ -70,7 +70,6 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     # --- HITL approval gate ---
     # Betraege in EUR-Konvention (entity-Werte in EUR erfasst).
-    $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1): Beitrag -> Abbuchungskonto/erste Abbuchung/Tag
     # als vollstaendige Folgegruppe.

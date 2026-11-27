@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_defer_hint (CROSS-AGENT, ohne Gate) -----------------------------------------------------------------
-# "Bitte nicht mehr danach fragen" (Plan s4-berater-ux §5.6): der Berater legt einen Kontohinweis still, statt ihn im Gespraech
+# "Bitte nicht mehr danach fragen": der Berater legt einen Kontohinweis still, statt ihn im Gespraech
 # zu wiederholen. agent.fn_advisor_defer_hint setzt den Merker "spaeter" (core.notification_state, 30 Tage bzw. bis sich der
 # Hinweis in den Daten erledigt); stillgelegte Hinweise liefert der Snapshot nicht mehr. Kein Gate: es aendert keine Daten des
 # Nutzers, nur ob ein Hinweis noch angesprochen wird. domain ist fixer Binding-Input, key kommt aus warnings[].key.

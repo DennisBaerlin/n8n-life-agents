@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
 # --- core.sub_send_chat_prompt (offene Frage: Karte senden, getippte Karte aendern) ----------------------------------
-# Die eine Stelle, die Karten der offenen Frage (agent.chat_prompts, Plan s4-berater-ux §5.2) an Telegram gibt. Gerufen
+# Die eine Stelle, die Karten der offenen Frage (agent.chat_prompts) an Telegram gibt. Gerufen
 # vom Orchestrator am Ende jedes Laufs (send_next, replied, run_started_at; bei Antwort-Knoepfen choice_json) und im
 # Knopf-Arm q: (edit_* = getippte Karte aendern, note_text = Rueckfrage mit Eingabefeld, send_next = naechste Zeile des
 # Stapels ohne Modell-Lauf). Ausgang: { sent } (eine Karte oder Antwort mit Knoepfen ist rausgegangen).

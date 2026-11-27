@@ -90,8 +90,6 @@ function Build-CreateSavingsGoal {
         })
 
     # --- HITL approval gate (Rate, Zieldatum, erste Rate aus dem Probelauf, nicht aus dem Prompt) ---
-    # Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR'.
-    $S  = "`$('Start').item.json"
     # Probelauf: Begünstigte(r) (genannt, sonst Inhaber des Spartopfs), Rate, Datum, Monate, erste Rate -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).

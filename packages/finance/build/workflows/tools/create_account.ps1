@@ -101,7 +101,6 @@ function Build-CreateAccount {
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die
     # Import-Karte): Saldo + Zins nur bei Nicht-Depots, Verrechnungskonto nur bei Depots, Zins-Details vollstaendig,
     # sobald ein Zins genannt ist, Festgeld-Felder nur bei Festgeld. Saldo in der Kontowaehrung aus dem Probelauf (genannt, sonst die des Verrechnungskontos, sonst EUR).
-    $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     $D = "`$('Resolve interest defaults').item.json"
     $summary = New-HitlSummary -Pos @(1560, 0) -Title 'finance.hitl.create_account' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity account -S (Get-WritePayloadExpr) -D @{

@@ -100,9 +100,19 @@ Reihenfolge nach dem Tag, erst danach startet die nächste Leitung:
 3. Container: `.\scripts\dev\docker_cleanup.ps1` (Liste), dann `-Apply`; `db_test`-Container bleiben nach dem Session-Ende stehen und sind mit dabei.
 4. `.\scripts\register_sub_session.ps1 -Clear` (trägt auch die Leitung aus; wer danach weiterleitet, fährt `-Lead` neu).
 5. Prozess-Session zur Arbeitsweise vorschlagen (`/leitung` §4); Verbesserungs-Zeilen bleiben stehen, bis sie dort erledigt sind.
-6. Stand-Datei archivieren: nach `.local/leitung-stand-archiv/<Datum ISO>.md` im Haupt-Checkout verschieben und aus der Vorlage (`/leitung` §5) neu anlegen. Mit wandert nur Offenes: fällige Nachschau, Sperren, nicht erledigte Verbesserungs-Zeilen. Nur Kürzen reichte nicht, die Datei wuchs über Sprints, bis sie sich nicht mehr in einem Zug lesen ließ. Danach Memory aktualisieren.
+6. Befund-Eingang: `erledigt`-Zeilen löschen und den Wächter laufen lassen (*Geplante Aufgaben*).
+7. Stand-Datei archivieren: nach `.local/leitung-stand-archiv/<Datum ISO>.md` im Haupt-Checkout verschieben und aus der Vorlage (`/leitung` §5) neu anlegen. Mit wandert nur Offenes: fällige Nachschau, Sperren, nicht erledigte Verbesserungs-Zeilen. Nur Kürzen reichte nicht, die Datei wuchs über Sprints, bis sie sich nicht mehr in einem Zug lesen ließ. Danach Memory aktualisieren.
 
 Weitere Routinen übernehmen den Rest: `/retro-bundle` (Freitag) bündelt die Verbesserungs-Zeilen, `/session-hygiene` (Sonntag) räumt idle Sessions, Branches, Worktrees und Docker, `/paid-run` (monatlich) bereitet den bezahlten Sammel-Lauf vor.
+
+## Geplante Aufgaben
+
+Routinen laufen als geplante Aufgaben der Desktop-App: Der Wrapper `~/.claude/scheduled-tasks/<taskId>/SKILL.md` liegt außerhalb des Repos und ruft meist einen Routine-Skill von hier auf. Jeder Lauf ist eine eigene Session im Haupt-Checkout, arbeitet nur lesend (einzige Ausnahme: seine Zeile im Befund-Eingang) und legt seinen Bericht als privates Artefakt ab.
+
+- **Ein Schlussschritt für alle:** Jeder Wrapper nennt, was bei ihm ein Befund ist, und endet mit `## Zum Schluss: gemeinsamer Schlussschritt`, einem Verweis auf `~/.claude/scheduled-tasks/_gemeinsam/schlussschritt.md`. Dieser Schritt hängt bei Befund oder gescheitertem Lauf eine Zeile `neu` an `.local/befund-eingang.md` (gitignored; Format und Status-Regeln stehen nur im Dateikopf), zeigt einen Windows-Hinweis und markiert den Session-Titel mit 🔔; ohne Befund passiert nichts. Er liegt lokal, weil er sofort für jeden Lauf gilt (ohne Merge in den Haupt-Checkout) und lokale Pfade enthält. Eigene Meldeblöcke im Wrapper gibt es nicht: Remote Control, PushNotification und „ungelesen“ scheiterten in unbeaufsichtigten Läufen, Hinweise kamen über Tage nicht an.
+- **Neue Aufgabe anlegen:** Befund-Satz plus Schlussschritt-Abschnitt aus einem bestehenden Wrapper übernehmen, danach den Wächter laufen lassen.
+- **Leitung:** Beim Start, im Tagesbündel und am Sprint-Ende liest sie den Eingang (`/leitung`). Eine Zeile `neu` übernimmt sie: selbst prüfen, als Paket einplanen oder gebündelt dem Owner vorlegen, und trägt den Status nach den Regeln im Dateikopf nach. Am Sprint-Ende löscht sie die `erledigt`-Zeilen.
+- **Wächter:** `.\scripts\dev\scheduled_task_check.ps1 -TaskId <alle taskIds aus list_scheduled_tasks>` meldet jede Aufgabe dieses Repos ohne Verweis oder mit altem Meldeblock; die Leitung zieht sie beim Start und am Sprint-Ende per `update_scheduled_task` nach. Einmal-Aufgaben ohne Zeitplan stehen nicht in der Liste und bleiben, wie sie sind.
 
 ## Fallgeschichten
 

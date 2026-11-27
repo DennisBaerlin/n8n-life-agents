@@ -933,6 +933,13 @@ repos:
         pass_filenames: false
         files: ^scripts/dev/session_stall_check(_test)?\.ps1$
 
+      - id: scheduled-task-check-test
+        name: scheduled_task_check_test (a repo task without the shared final-step reference or with an old notification block is reported; foreign tasks are skipped; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/scheduled_task_check_test.ps1
+        pass_filenames: false
+        files: ^scripts/dev/scheduled_task_check(_test)?\.ps1$
+
       - id: layout-lint-test
         name: layout_lint_test (rule L8 - mojibake in a text file turns red, real umlauts/euro/Korean stay green; no Docker)
         language: system

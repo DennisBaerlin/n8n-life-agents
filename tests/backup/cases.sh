@@ -81,6 +81,8 @@ cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N
   pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS finance.bk_neu, finance.bk_ziel; ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_ziel, DROP COLUMN IF EXISTS bk_pflicht, DROP COLUMN IF EXISTS bk_alt, DROP COLUMN IF EXISTS bk_dev, DROP COLUMN IF EXISTS bk_ber; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_std; DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'; DELETE FROM finance.accounts WHERE name = 'bk Testkonto'" >/dev/null 2>&1
   [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"
   [ ! -s "$W/career.manifest" ] || cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
+  [ ! -s "$W/estate.manifest" ] || cp "$W/estate.manifest" "$ROOT/packages/estate/manifest.json"
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE estate.task_templates DROP COLUMN IF EXISTS bk_titel" >/dev/null 2>&1
   [ ! -s "$W/career.sections" ] || cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
   rm -rf "$W"; }
 trap cleanup EXIT
@@ -431,6 +433,20 @@ q "ALTER TABLE agent.monitor_triggers DROP COLUMN bk_std"
 setver v0.1.0; q "ALTER TABLE finance.accounts ADD COLUMN bk_alt text"
 V6="$(vexp entfernt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_alt"; setver v0.2.0
 vblock V.aelter-entfernt "$V6" version_older v0.1.0
+# Seed-Katalog, den eine aeltere Version samt einer seither entfernten Spalte noch sicherte (estate:V003 entfernte
+# task_templates.title/detail): diese Version sichert ihn nicht mehr (exclude_tables) -> der Restore laesst ihn weg und spielt
+# den Rest ein.
+# hand-injected: das Manifest der aelteren Version (Katalog nicht ausgeschlossen) und ihr Spaltenaufbau stehen nur so im Substrat.
+cp "$ROOT/packages/estate/manifest.json" "$W/estate.manifest"
+jq '.backup.exclude_tables -= ["task_templates", "directive_types"]' "$W/estate.manifest" > "$ROOT/packages/estate/manifest.json"
+setver v0.1.0; q "ALTER TABLE estate.task_templates ADD COLUMN bk_titel text"
+v0="$(fin)"; tt0="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM estate.task_templates")"
+V11="$(vexp katalog-alt)"; cp "$W/estate.manifest" "$ROOT/packages/estate/manifest.json"
+q "ALTER TABLE estate.task_templates DROP COLUMN bk_titel"; setver v0.2.0
+vplan "$V11"; c1="$(js .ok)/$(js .code)"; vyes "$V11"; rc=$?
+tt1="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM estate.task_templates")"
+ok_if V.aelter-katalog-entfernt '[ "$c1" = true/null ] && [ "$rc" -eq 0 ] && [ "$(fin)" = "$v0" ] && [ "$tt1" = "$tt0" ]' \
+  "Probelauf=$c1 echt rc=$rc/$(js .code) / Konten $(fin) vs $v0 / Vorlagen $tt1 vs $tt0 / $(tail -n2 "$W/err.$n" 2>/dev/null)"
 # Release unbekannt (dev): Code version_newer, der Satz nennt beide Wege.
 setver dev; q "ALTER TABLE finance.accounts ADD COLUMN bk_dev text"
 V7="$(vexp unbekannt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_dev"
@@ -472,7 +488,8 @@ S_RO="$(cro)"; S_LAB="$(dlab)"; S_ST="$(cst)"
 ok_if S.vorbereitet '[ "${S_RO%%:*}" -gt 0 ] && [ "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM career.onboarding_state WHERE for_roles IS NULL")" = 0 ] && [ -n "$S_LAB" ] && [ -n "$S_ST" ]' \
   "Abschnitte=$S_RO Bezeichnung=$S_LAB Status=$S_ST"
 # hand-injected: kein Export eines frueheren Release im Substrat; den aelteren Stand stellt ein UPDATE vor dem Export nach
-# (Rollen leer wie vor ihrer Einfuehrung, alte Katalog-Bezeichnung), dazu ein Nutzer-Status (skipped). Danach geht der Status
+# (Rollen leer wie vor ihrer Einfuehrung; alte Katalog-Bezeichnung: der Katalog reist nicht mit, der Abgleich muss sie auf dem
+# Ziel korrigieren), dazu ein Nutzer-Status (skipped). Danach geht der Status
 # im Ziel auf unknown, damit nur die Sicherung skipped zurueckbringen kann.
 q "UPDATE career.onboarding_state SET for_roles = NULL; UPDATE career.onboarding_state SET status = 'skipped' WHERE section_key = 'profile_basics'; UPDATE estate.directive_types SET label = 'bk alt' WHERE doc_type = 'testament'"
 S1="$(vexp abgleich)"

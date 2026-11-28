@@ -18,4 +18,4 @@ Nachlass-/Vorsorge-Agent (`agent.estate_advisor`): Vorsorge-Modus (geführtes Re
 - `system_profile` hat einen Singleton-CHECK als Pflicht-Backstop, weil ein Agent-Tool schreibt. Gap-Report degradiert unter `estate_ro` ehrlich (`not_readable_on_this_path`), nie Crash.
 - Jahres-Review: NULL `last_reviewed_at` feuert nicht (die Register-Lücke deckt Unvollständigkeit); `advisor.estate_review_days` aus `core.config`; eigener always-on Cron `cron_review_register` (estate hat kein Publish, das die geteilten Advisor-Crons einschalten könnte), selbst-still über den Latch; Haushalts-Erinnerung in `cron_labels.list` (schaltbar in `/reminders`).
 - `/notfall` ist ein Code-Pfad-Command (Manifest `dispatch`, visibility=all); Register-Rendering nur über `fn_render_register_body` (Overview = Wrapper, Binder = DEFINER mit Maskierung).
-- Backup `schema_dump: true`; `directive_types` konvergiert nach Restore per Re-Seed.
+- Backup `schema_dump: true` ohne die Code-Kataloge `directive_types`/`task_templates` (`exclude_tables`; der Restore lässt sie auch aus älteren Sicherungen weg).

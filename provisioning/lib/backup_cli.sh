@@ -121,6 +121,40 @@ _bkp_bulk_tables() {
   printf '%s' "$out" | grep -v '^$' | sort -u
 }
 
+# _bkp_skip_tables [weitere-pakete] -> qualifizierte Tabellen, die diese Version ausdruecklich nicht sichert (exclude_tables der
+#   schema_dump-Pakete), eine je Zeile. Eine aeltere Sicherung kann sie noch tragen, auch mit inzwischen entfernten Spalten:
+#   _bkp_schema_check prueft sie nicht, _bkp_rs_apply spielt sie nicht ein (der Stand dieser Version bleibt).
+_bkp_skip_tables() {
+  local active mf pkg schema t
+  active="$(_bkp_active_names) ${1:-}"
+  for mf in "$(_pkg_dir)"/*/manifest.json; do
+    [ -r "$mf" ] || continue
+    pkg="$(jq -r '.name // empty' "$mf" 2>/dev/null)" || continue
+    [ -n "$pkg" ] || continue
+    _bkp_is_active "$pkg" "$active" || continue
+    [ "$(jq -r '.backup.schema_dump // false' "$mf" 2>/dev/null)" = "true" ] || continue
+    schema="$(jq -r '.schema // empty' "$mf" 2>/dev/null)"
+    [[ $schema =~ ^[a-z][a-z0-9_]*$ ]] || continue
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      printf '%s.%s\n' "$schema" "$t"
+    done < <(jq -r '.backup.exclude_tables[]?' "$mf" 2>/dev/null)
+  done
+  return 0
+}
+
+# _bkp_drop_copies <tabellen> (stdin: SQL von pg_restore -f -) -> dasselbe SQL ohne die COPY-Bloecke dieser Tabellen (eine je
+#   Zeile). Block-Grenzen wie in _bkp_schema_check: Kopf "COPY … FROM stdin;" ausserhalb eines Blocks, Ende "\.".
+_bkp_drop_copies() {
+  awk -v skip="$1" '
+    BEGIN { n = split(skip, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") s[a[i]] = 1 }
+    drop { if ($0 == "\\.") drop = 0; next }
+    inb  { if ($0 == "\\.") inb = 0; print; next }
+    /^COPY .* FROM stdin;$/ { t = $2; gsub(/"/, "", t); if (t in s) { drop = 1; next } inb = 1 }
+    { print }
+  '
+}
+
 # _bkp_filtered [weitere-pakete] -> "qualified<TAB>condition"-Zeilen aller aktiven Pakete (filtered_tables).
 _bkp_filtered() {
   local active mf pkg
@@ -1301,11 +1335,12 @@ _bkp_schema_check() {
   #   Rest per COALESCE bzw. INSERT-Standard (nur Pflicht ohne Standard). Unbekannte kuenftige Tabellen: streng.
   local diff_new='' diff_old='' tt
   local tabs; tabs="$(cut -f1 "$bside" | sort -u)"
-  local q_in=''
+  local q_in='' skip; skip=$'\n'"$(_bkp_skip_tables "$extra")"$'\n'
   while IFS= read -r tt; do
     [ -n "$tt" ] || continue
     _bkp_qual_ok "$tt" || _bkp_rdie format "Ungueltiger Tabellenname in der Sicherung: $tt"
     if printf '%s\n' "$deferred" | grep -qxF -e "$tt" -e "${tt%%.*}."; then continue; fi
+    [[ "$skip" == *$'\n'"$tt"$'\n'* ]] && continue
     if [[ "$target" != *$'\n'"$tt"$'\n'* ]]; then diff_new+="Tabelle ${tt}; "; continue; fi
     q_in+="${q_in:+,}'${tt}'"
   done <<<"$tabs"
@@ -1865,7 +1900,12 @@ _bkp_rs_apply() {
   # (b) pg_restore -> SQL-Text (kein eigener DB-Connect; laeuft so in unserer einen TX).
   # pg_restore (postgres via runuser) liest die Archiv-Datei nicht direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
-  if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" >> "$restore_sql"; then
+  #     Tabellen, die diese Version nicht mehr sichert (_bkp_skip_tables), fallen aus dem Strom: ihr Stand hier bleibt.
+  local skip; skip="$(_bkp_skip_tables)"
+  while IFS= read -r t; do
+    if [ -n "$t" ] && grep -qxF -- "$t" < <(cut -f1 "$tmp/sc.bundle"); then log "$t wird nicht mehr gesichert — der Stand dieser Version bleibt."; fi
+  done <<< "$skip"
+  if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" | _bkp_drop_copies "$skip" >> "$restore_sql"; then
     _bkp_rdie corrupt "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
   fi
   # (c) gefilterte Tabellen regel-bewusst (shared.json als base64 -> kein Quoting-Risiko).

@@ -16,7 +16,7 @@ $conn = Get-TestN8nConnection; $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Con
 $state = Get-TestN8nState
 if (-not $state.mock_llm -or -not $state.mock_telegram) { throw 'Mock-LLM und Mock-Telegram aktivieren.' }
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
-$Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 function Invoke-Sql([string]$Sql) { Invoke-SqlViaTempFile -Container $Container -Sql $Sql }
@@ -160,7 +160,6 @@ $Cases = @(
 $failed = 0; $ran = 0
 try {
     # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf (wie scripts/infra_test.ps1).
-    $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ueber powershell -File kommt "a,b" als ein Wert an
     $missing = @($Id | Where-Object { $_ -notin @($Cases | ForEach-Object { $_.id }) })
     if ($missing.Count) { throw "Testfall nicht gefunden: $($missing -join ', ')." }
     foreach ($c in $Cases) {

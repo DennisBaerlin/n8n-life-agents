@@ -229,9 +229,9 @@ try {
     Assert-Hook 'Branch-Push: keine main-Sperre'      $false "$publish code"
     Assert-Hook 'zwei Pushes in einem Befehl (;): der zweite nach main wird geprueft'  $true "$publish code; $publish code:main"
     Assert-Hook 'zwei Pushes in einem Befehl (&&): der zweite nach main wird geprueft' $true "$publish code && $publish code:main"
-    foreach ($sw in '--all', '--mirror', '--branches') {
+    foreach ($sw in '--all', '--mirror', '--branches', '--al', '--mirr') {   # git nimmt auch den eindeutigen Anfang einer langen Option
         $o = Get-HookOutput "$publish $sw"
-        Assert-True "$sw nennt die Ziele nicht: gesperrt mit Hinweis" ($o -match '"permissionDecision":"deny"' -and $o -match 'einzeln') $o
+        Assert-True "$sw nennt die Ziele nicht: gesperrt mit eigenem Hinweis" ($o -match '"permissionDecision":"deny"' -and $o -match 'Ziele nicht genannt' -and $o -notmatch 'Commit-Message') $o
     }
     Set-Runs (New-Runs $code $all)
     Assert-Hook 'main-Push mit gruenen Laeufen: keine main-Sperre' $false "$publish code:main"

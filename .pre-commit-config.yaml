@@ -403,7 +403,8 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_n8n_runtime_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/(n8ntest_state_file|test_stack|test_common|test_install_env|dotenv)|dev/(test_n8n_state|test_n8n_runtime_test|bootstrap_test_n8n))\.ps1$
+        # Jedes Skript: der Test prueft auch, dass keines die .env mit einer eigenen Schleife liest.
+        files: ^scripts/.*\.ps1$
 
       - id: precondition-lint-test
         name: precondition_lint_test (a case with setup_sql but without precondition_sql turns mock_lint rule C7 red; no Docker)
@@ -666,7 +667,15 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/docker_volume_cleanup_test.ps1
         pass_filenames: false
-        # Der statische Teil liest jede Abbau-Stelle in scripts/, .claude/hooks/ und den Workflows: der Filter deckt denselben Umfang.
+        files: ^(scripts/(bootstrap_test_db|dev/bootstrap_test_n8n|dev/docker_volume_cleanup_test|lib/git_sandbox|lib/test_common)|\.claude/hooks/stop_own_substrate)\.ps1$
+
+      # Nur der statische Teil, dafuer bei jeder Datei, die er liest (jede Abbau-Stelle in scripts/, .claude/hooks/ und den Workflows).
+      # Der Docker-Teil oben nutzt feste Container-Namen und bleibt darum an den wenigen Abbau-Skripten.
+      - id: docker-volume-static
+        name: docker_volume_cleanup_test -StaticOnly (every docker rm in scripts, hooks and workflows carries -v)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/docker_volume_cleanup_test.ps1 -StaticOnly
+        pass_filenames: false
         files: ^(scripts/.*\.ps1|\.claude/hooks/.*\.ps1|\.github/workflows/.*\.ya?ml)$
 
       - id: substrate-reservation-test
@@ -761,7 +770,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/workflow_drift_test.ps1
         pass_filenames: false
-        files: ^scripts/(build/build\.ps1|build/lib/workflow_lifecycle\.ps1|dev/workflow_drift_test\.ps1|lib/git_sandbox\.ps1)$
+        files: ^scripts/(build/build\.ps1|build/lib/workflow_lifecycle\.ps1|dev/workflow_drift_test\.ps1|lib/git_sandbox\.ps1|gen_fn_catalog\.ps1)$
 
       - id: fn-catalog
         name: gen_fn_catalog -Verify (fn catalog drift)

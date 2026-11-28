@@ -11,8 +11,11 @@
 #      Pfade: bootstrap_test_db.ps1 -Down, bootstrap_test_n8n.ps1 -Down, Hook stop_own_substrate.ps1 (in einem Wegwerf-Worktree, damit
 #      er kein echtes Substrat trifft). Ein benanntes Volume am Container muss den Abbau ueberleben.
 # Fremde Container und fremde Volumes bleiben unangetastet; aufgeraeumt wird nur, was dieser Test selbst angelegt hat.
-# Usage:  .\scripts\dev\docker_volume_cleanup_test.ps1
+# Usage:  .\scripts\dev\docker_volume_cleanup_test.ps1 [-StaticOnly]
+#   -StaticOnly: nur Teil 1. Der Commit-Hook mit dem breiten Filter (jede Abbau-Stelle in scripts/, Hooks, Workflows) laeuft so: Teil 2
+#   nutzt feste Container-Namen und die .env des Checkouts und liefe sonst bei fast jedem Skript-Commit paralleler Sessions gegeneinander.
 # Exit-Code = Anzahl Fehler.
+param([switch]$StaticOnly)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
@@ -54,6 +57,11 @@ foreach ($f in $sites) {
 }
 Assert-That "es gibt Abbau-Stellen (sonst prueft das Muster nichts)" ($count -ge 5) "(gefunden: $count)"
 Assert-That "jedes docker rm entfernt anonyme Volumes mit (-v)" ($bad.Count -eq 0) "ohne -v: $($bad -join ', ')"
+
+if ($StaticOnly) {
+    if ($failed -eq 0) { Write-Host "docker_volume_cleanup_test: statischer Teil bestanden." -ForegroundColor Green }
+    exit $failed
+}
 
 # --- 2) dynamisch ---------------------------------------------------------------------------------------------------------------
 $image = 'pgvector/pgvector:pg17'

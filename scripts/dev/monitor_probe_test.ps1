@@ -24,7 +24,7 @@ if ([string]::IsNullOrWhiteSpace($TEST_HARNESS_SECRET)) { throw 'TEST_HARNESS_SE
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
 $MockTgPort = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { '8089' }
 $Domain = '__e2e_monitor__'
-$Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 . "$PSScriptRoot\..\lib\probe_window.ps1"
@@ -276,7 +276,6 @@ function Reset-Case {
 }
 try {
     # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf (wie scripts/infra_test.ps1).
-    $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ueber powershell -File kommt "a,b" als ein Wert an
     $missing = @($Id | Where-Object { $_ -notin @($Cases | ForEach-Object { $_.id }) })
     if ($missing.Count) { throw "Testfall nicht gefunden: $($missing -join ', ')." }
     foreach ($c in $Cases) {

@@ -151,7 +151,15 @@ $fails = @()
 $stampFails = @()
 $pinFails = @()
 $mainFails = @()
-$remote = 'origin'
+$bulkFails = @()
+$remotes = @()
+# git nimmt jeden eindeutigen Anfang einer langen Option an (--al = --all, --tag = --tags): ein Schalter zaehlt darum schon als
+# Anfang eines der Namen, nicht erst ausgeschrieben.
+function Test-LongOpt([string]$Arg, [string[]]$Names) {
+  $a = ($Arg -split '=', 2)[0]
+  if ($a.Length -lt 3 -or -not $a.StartsWith('--', [StringComparison]::Ordinal)) { return $false }
+  return [bool]($Names | Where-Object { $_.StartsWith($a, [StringComparison]::Ordinal) })
+}
 foreach ($push in $pushes) {
   $gitDir = [regex]::Match($push.Groups[1].Value, '-C\s+("[^"]+"|''[^'']+''|\S+)')
   $gitC = if ($gitDir.Success) { @('-C', $gitDir.Groups[1].Value.Trim('"', "'")) } else { @() }
@@ -160,16 +168,17 @@ foreach ($push in $pushes) {
   $pRest = [regex]::Replace($push.Groups[2].Value, '(?:\d|\*)?>>?(?:&\d|\s*(?:"[^"]*"|''[^'']*''|[^\s;&|]+))?', ' ')
   $pArgs = @($pRest.Trim() -split '\s+' | Where-Object { $_ })
   $pos = @($pArgs | Where-Object { $_ -notmatch '^-' } | ForEach-Object { $_.Trim('"', "'") })
-  $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags)$' })
+  $allTags = [bool]($pArgs | Where-Object { Test-LongOpt $_ @('--tags', '--follow-tags') })
   $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }
+  $remotes += $remote
   $specs = if ($pos.Count -ge 2) { @($pos[1..($pos.Count - 1)]) } else { @('HEAD') }
   # --all/--branches/--mirror nennen die Ziele nicht: der Befehl truege jeden lokalen Branch hinaus (auch main), geprueft wuerde
   # nur HEAD. Darum gesperrt; die Ziele einzeln nennen.
-  $bulk = @($pArgs | Where-Object { $_ -match '^--(all|branches|mirror)$' })
-  if ($bulk.Count -gt 0) { $fails += "[FAIL] $($bulk[0]) nennt die Ziele nicht -> Branches und Tags einzeln pushen (git push <remote> <branch>)"; continue }
+  $bulk = @($pArgs | Where-Object { Test-LongOpt $_ @('--all', '--branches', '--mirror') })
+  if ($bulk.Count -gt 0) { $bulkFails += "[FAIL] $($bulk[0]) (Ziel '$remote') nennt die Ziele nicht"; continue }
   # 'git push origin --delete <ref>' (bzw. -d) loescht nur, veroeffentlicht nichts -- wie ':ziel' unten (sonst galt
   # der Ref-Name als zu pruefender Refspec -> "nicht aufloesbar" -> deny).
-  if ($pArgs | Where-Object { $_ -match '^(--delete|-d)$' }) { $specs = @() }
+  if ($pArgs | Where-Object { $_ -ceq '-d' -or (Test-LongOpt $_ @('--delete')) }) { $specs = @() }
   try {
     foreach ($spec in $specs) {
       $src = ($spec -split ':')[0].TrimStart('+')
@@ -192,15 +201,19 @@ foreach ($push in $pushes) {
     }
   } catch { $fails += "[FAIL] Hook-Fehler: $($_.Exception.Message)" }
 }
+$target = (@($remotes | Sort-Object -Unique) -join ', ')
+if ($bulkFails.Count -gt 0) {
+  Out-Decision 'deny' "PUSH GESPERRT (Ziele nicht genannt): $(@($bulkFails | Sort-Object -Unique) -join '; '). Branches und Tags einzeln pushen (git push <remote> <branch>), dann prueft der Hook jedes Ziel."
+}
 if ($pinFails.Count -gt 0) { Out-Decision 'deny' ($pinDeny -f (@($pinFails | Sort-Object -Unique) -join '; ')) }
 if ($fails.Count -gt 0) {
   $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
-  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
+  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$target'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
 }
 if ($mainFails.Count -gt 0) {
   Out-Decision 'deny' "MAIN-PUSH GESPERRT (Skill /coordinate Abschnitt 3 *Push-Regeln*): $(@($mainFails | Sort-Object -Unique) -join '; '). Nicht umgehen; ist GitHub nicht abrufbar, pusht nur der Owner im Terminal."
 }
 if ($stampFails.Count -gt 0) {
-  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$remote'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."
+  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$target'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."
 }
 exit 0

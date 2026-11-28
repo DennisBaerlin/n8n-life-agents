@@ -49,11 +49,14 @@ if ($Wait) {
 try {
     # Gezielt statt "die juengsten Laeufe aller Branches": in einer gemischten Liste verdraengen Branch- und PR-Laeufe den letzten
     # main-Lauf eines Workflows, und ein roter Stand fiele still aus der Ampel. Release-Laeufe haengen am Tag, darum eigens.
-    $runs = @(Get-WorkflowRuns 'per_page=100&branch=main') + @(Get-WorkflowRuns 'per_page=20' -Workflow 'release.yml')
+    $runs = @(Get-WorkflowRuns 'per_page=100&branch=main')
 } catch {
     if (-not $Hook) { Write-Host "CI-Status nicht abrufbar: $($_.Exception.Message)" -ForegroundColor Yellow }
     exit 0
 }
+# Eigener Versuch: scheitert nur der Release-Abruf (Zeitgrenze, Datei umbenannt), bleibt das Ergebnis fuer main stehen.
+try { $runs += @(Get-WorkflowRuns 'per_page=20' -Workflow 'release.yml') }
+catch { if (-not $Hook) { Write-Host "Release-Laeufe nicht abrufbar: $($_.Exception.Message)" -ForegroundColor Yellow } }
 
 # Je Workflow-Datei der juengste abgeschlossene Lauf (Get-CiLatestMainRuns; ohne Dependabot-Hintergrundlaeufe, die keine Datei haben).
 $red = @()

@@ -26,11 +26,13 @@ function Get-CiWaitVerdict {
 # Get-CiLatestMainRuns <Laeufe> -> je Workflow-Datei @{ Workflow; Run; Ok }: der juengste abgeschlossene Lauf auf main (release: auf
 # einem Tag v*), ohne Teil-Laeufe. Gruppiert nach der Datei (path), nicht nach name: mit run-name im Workflow traegt name den Titel
 # des Laufs, und der Lauf fiele aus seiner Gruppe. Ok auch bei skipped/neutral: die Ampel meldet Rot, nicht "nicht geprueft".
+# PR-Laeufe zaehlen nie: der PR eines Forks aus dessen eigenem main traegt ebenfalls head_branch = main.
 function Get-CiLatestMainRuns([object[]]$Runs) {
     foreach ($g in (@($Runs) | Where-Object { $_ -and "$($_.path)" -like '.github/workflows/*' } | Group-Object path)) {
         $wf = [System.IO.Path]::GetFileNameWithoutExtension($g.Name)
         $latest = $g.Group | Where-Object {
-                "$($_.status)" -eq 'completed' -and -not (Test-CiPartialRun $_) -and ("$($_.head_branch)" -eq 'main' -or ($wf -eq 'release' -and "$($_.head_branch)" -like 'v*'))
+                "$($_.status)" -eq 'completed' -and -not (Test-CiPartialRun $_) -and "$($_.event)" -notlike 'pull_request*' -and
+                ("$($_.head_branch)" -eq 'main' -or ($wf -eq 'release' -and "$($_.head_branch)" -like 'v*'))
             } | Sort-Object { [datetime]$_.created_at } -Descending | Select-Object -First 1
         if ($latest) { [pscustomobject]@{ Workflow = $wf; Run = $latest; Ok = ("$($latest.conclusion)" -in @('success', 'skipped', 'neutral')) } }
     }

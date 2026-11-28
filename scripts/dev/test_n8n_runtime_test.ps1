@@ -33,7 +33,7 @@ Import-DotEnvVariables $tmpEnv
 Remove-Item $tmpEnv -Force
 Assert-That ($vals['A'] -eq 'zwei' -and $vals['B'] -eq 'x') 'Read-DotEnvValues: letzte Zeile gewinnt, Anfuehrungszeichen ab'
 Assert-That ($A -eq 'zwei' -and $B -eq 'x') 'Import-DotEnvVariables: jeder Schluessel als Skript-Variable, dieselbe Lesart'
-# Kein Treiber liest die .env mehr mit einer eigenen Schleife (die liess die Anfuehrungszeichen am Wert).
+# Kein Skript liest die .env mit einer eigenen Schleife: nur die Lesart der Bibliothek entfernt umschliessende Anfuehrungszeichen.
 $own = @(Get-ChildItem (Join-Path $PSScriptRoot '..') -Recurse -Filter '*.ps1' | Where-Object { $_.FullName -ne $PSCommandPath -and $_.Name -ne 'dotenv.ps1' } |
     Where-Object { [System.IO.File]::ReadAllText($_.FullName, $utf8) -match 'Read-DotEnvLines\b' } | ForEach-Object { $_.Name })
 Assert-That ($own.Count -eq 0) "kein Skript liest .env-Zeilen selbst (Read-DotEnvValues, Import-DotEnvVariables, Get-TestEnvValue): $($own -join ', ')"

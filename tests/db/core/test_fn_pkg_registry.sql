@@ -53,9 +53,9 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL: status-CHECK nicht durchgesetzt'; END IF;
 
-  -- (4) set_status: installing -> installed -> active (activated_at wird gesetzt).
+  -- (4) set_status: installing -> active (activated_at wird gesetzt); den toten Status installed gibt es nicht.
   v_res := core.fn_pkg_set_status(jsonb_build_object('package', '__test_pkg__', 'status', 'installed'));
-  IF NOT (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL set_status installed (%)', v_res; END IF;
+  IF (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL set_status installed angenommen (%)', v_res; END IF;
   v_res := core.fn_pkg_set_status(jsonb_build_object('package', '__test_pkg__', 'status', 'active'));
   IF NOT (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL set_status active (%)', v_res; END IF;
   IF (SELECT activated_at FROM core.package_registry WHERE package = '__test_pkg__') IS NULL

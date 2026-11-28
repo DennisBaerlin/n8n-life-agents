@@ -8,9 +8,9 @@ DECLARE
   v_cash INT; v_settle INT; v_depot INT; v_holding INT; v_blocked BOOLEAN;
 BEGIN
   -- Setup: Cash-Konto + Depot + Holding (fuer holding_id-abhaengige Faelle)
-  SELECT (finance.fn_create_account('{"name":"__cc_cash__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_cash;
-  SELECT (finance.fn_create_account('{"name":"__cc_settle__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_settle;
-  SELECT (finance.fn_create_account(jsonb_build_object('name','__cc_depot__','account_type','stocks_depot','account_holder','T','currency','EUR','settlement_id',v_settle))->>'account_id')::int INTO v_depot;
+  SELECT (finance.fn_create_account('{"name":"__cc_cash__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_cash;
+  SELECT (finance.fn_create_account('{"name":"__cc_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_settle;
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__cc_depot__','account_type','stocks_depot','currency','EUR','settlement_id',v_settle))->>'account_id')::int INTO v_depot;
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
     VALUES (v_depot, 'CCISIN', 'CC', 'CC ETF', 0, NULL, 'EUR') RETURNING id INTO v_holding;
 

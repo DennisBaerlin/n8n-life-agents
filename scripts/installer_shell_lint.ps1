@@ -1,5 +1,6 @@
 ﻿#Requires -Version 5.1
-# timer_lock_lint.ps1 -- Zeitgeber und die gemeinsame Update-Sperre (hartes Gate; Regel im Kopf der Sperre, provisioning/lib/common.sh).
+# installer_shell_lint.ps1 -- Textregeln fuer die Shell-Skripte des Installers (hartes Gate): Zeitgeber und die gemeinsame Update-Sperre (A bis C,
+# Regel im Kopf der Sperre, provisioning/lib/common.sh), `exec`-Umleitungen (D) und Locale (E).
 # Der Minuten-Runner (lifeagents-update-run) haelt die Update-Sperre zu jeder vollen Minute kurz. Wer sie zur selben
 # Sekunde ohne Warten probt oder nimmt, faellt still aus. Der Lint haelt fuenf Regeln:
 #   (A) `update_lock_free` ohne Wartezeit steht nur in provisioning/doctor.sh (Anzeige, kein Zeitgeber);
@@ -11,8 +12,7 @@
 #       Fehlermeldung verschwindet. Gewollte Stellen stehen in $ExecStdAllowed.
 #   (E) jedes ausfuehrbare Skript unter provisioning/ (Shebang in Zeile 1, ohne desktop/) exportiert selbst LANG=C.UTF-8 und
 #       LC_ALL=C.UTF-8; gesourcte Bibliotheken erben beides vom Aufrufer.
-# (D) und (E) sind Shell-Regeln des Installers ohne eigenen Lint; sie stehen hier, weil dieser Lint dieselben Dateien liest.
-# Aufruf: .\scripts\timer_lock_lint.ps1 [-Root <Baum>]   (-Root nur fuer scripts/dev/timer_lock_lint_test.ps1)
+# Aufruf: .\scripts\installer_shell_lint.ps1 [-Root <Baum>]   (-Root nur fuer scripts/dev/installer_shell_lint_test.ps1)
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
 param([string]$Root)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -97,10 +97,10 @@ if (Test-Path $tplDir) { $timers = @(Get-ChildItem $tplDir -File -Filter '*.time
 foreach ($t in $timers) {
     $name = $t.Name -replace '\.timer\.tpl$', ''
     if (-not $KnownTimers.ContainsKey($name)) {
-        Fail "$(Rel $t.FullName): neuer Zeitgeber '$name' fehlt in `$KnownTimers (scripts/timer_lock_lint.ps1). Eintragen, wie sein Dienst mit der Update-Sperre umgeht (braucht sie nicht / wartet N Sekunden)."
+        Fail "$(Rel $t.FullName): neuer Zeitgeber '$name' fehlt in `$KnownTimers (scripts/installer_shell_lint.ps1). Eintragen, wie sein Dienst mit der Update-Sperre umgeht (braucht sie nicht / wartet N Sekunden)."
     }
 }
 
-if ($fails -eq 0) { Write-Host "timer_lock_lint: OK ($calls Sperr-Aufruf(e), $($timers.Count) Zeitgeber)" -ForegroundColor Green }
-else { Write-Host "timer_lock_lint: $fails Fehler" -ForegroundColor Red }
+if ($fails -eq 0) { Write-Host "installer_shell_lint: OK ($calls Sperr-Aufruf(e), $($timers.Count) Zeitgeber)" -ForegroundColor Green }
+else { Write-Host "installer_shell_lint: $fails Fehler" -ForegroundColor Red }
 exit $fails

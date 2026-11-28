@@ -135,6 +135,8 @@ repos:
 
   # --- Project domain gates (no standard equivalent) — same commands as CI --------
   # commit-stage: deterministic, no LAN/live dependency. Exit code = fail count.
+  # Ein Lint, der nur Teile des Baums liest, laeuft beim Commit nur bei passenden Dateien (`files:`) und vor dem Push voll im Zwilling
+  # `<id>-full`. Dass der Filter alles Gelesene trifft, prueft scripts/hook_autoload_lint.ps1; dessen Kopf nennt die Ausnahme-Zeilen.
   - repo: local
     hooks:
       - id: doc-lint
@@ -166,14 +168,30 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_test.ps1
         pass_filenames: false
+        files: ^(packages/|tests/util/util_cron_cases\.sql$|scripts/(build/|config_test\.ps1$))
+
+      - id: config-test-full
+        name: config_test (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_test.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: config-fallback-lint
         name: config_fallback_lint (a fallback value for a setting in SQL or a workflow equals the manifest default; reasoned shrink-only allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_fallback_lint.ps1
         pass_filenames: false
+        files: ^(packages/|scripts/(config_fallback_lint\.ps1|build/config_fallback_allowlist\.json)$)
+
+      - id: config-fallback-lint-full
+        name: config_fallback_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/config_fallback_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: config-fallback-lint-test
         name: config_fallback_lint_test (a differing fallback, an unknown key, a read without fallback and a stale entry turn config_fallback_lint red; no Docker)
@@ -183,18 +201,36 @@ repos:
         files: ^scripts/(config_fallback_lint|dev/config_fallback_lint_test)\.ps1$
 
       - id: mock-lint
+        # skip-lib: scripts/lib/test_stack.ps1 -- kommt nur mit test_n8n_state mit; mock_lint startet keinen Verbund und ruft die lesenden Funktionen nicht.
         name: mock_lint (mock scenarios <-> *_cases.json drift)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mock_lint.ps1
         pass_filenames: false
+        files: ^(packages|scripts|tests)/
+
+      - id: mock-lint-full
+        name: mock_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/mock_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: workflow-lint
+        # skip-lib: scripts/lib/version_pins.ps1 -- nur Get-RuntimePins (provision.sh, steht im Filter); der Baum-Abgleich gehoert doc_lint.
         name: workflow_lint (error-notify + cross-cutting workflow laws + expression syntax)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow_lint.ps1
         pass_filenames: false
+        files: ^(packages/|scripts/(build/|workflow_lint\.ps1$|lib/version_pins\.ps1$)|provisioning/provision\.sh$)
+
+      - id: workflow-lint-full
+        name: workflow_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/workflow_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: locale-lint
         name: locale_lint (text catalog per language - completeness, placeholders, real umlauts)
@@ -203,7 +239,7 @@ repos:
         pass_filenames: false
         # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer-Texte, Umlaut-Helfer, Fixture, Lint selbst); sonst entfaellt er.
         # Voller Lauf: pre-push (locale-lint-full) und CI (--all-files).
-        files: ^(packages/|provisioning/|scripts/(build/lib/|locale_lint\.ps1|dev/render_app_intro\.ps1)|tests/fixtures/app_view_model_v1\.json)
+        files: ^(packages/|provisioning/|scripts/(build/lib/|build/umlaut_allowlist\.json|locale_lint\.ps1|dev/render_app_intro\.ps1)|tests/fixtures/app_view_model_v1\.json)
 
       - id: locale-lint-full
         name: locale_lint (full run before push)
@@ -214,6 +250,9 @@ repos:
         stages: [pre-push]
 
       - id: contract-lint
+        # read-ok: scripts -- liest dort nur *.sh/sql/tpl/conf/ps1 und scripts/build/.
+        # read-ok: config -- Schluesselname 'config' im Manifest, kein Ordner.
+        # ls-files-ok: listet *.sh/sql/tpl/conf/ps1 unter packages, provisioning und scripts; alle drei Orte samt Endungen trifft der Filter.
         name: contract_lint (cross-layer fn/tool/agent contract drift)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/contract_lint.ps1
@@ -221,7 +260,7 @@ repos:
         # Commit: nur wenn eine Eingabe des Lints gestagt ist (Pakete, Installer, Bau-Engine samt Allowlists, Release-Image-Helfer, View-Test,
         # Agent-Faelle der Werkzeug-Abdeckung, Workflows der CI-Test-Zugaenge); sonst entfaellt er.
         # Voller Lauf: pre-push (contract-lint-full) und CI (--all-files).
-        files: ^(packages/|provisioning/|scripts/(build/|lib/release_images\.ps1|contract_lint\.ps1)|tests/db/finance/test_view_column_hints\.sql|tests/agent/|\.github/workflows/)
+        files: ^(packages/|provisioning/|scripts/(build/|.*\.(sh|sql|tpl|conf|ps1)$)|tests/db/finance/test_view_column_hints\.sql|tests/agent/|\.github/workflows/|\.gitattributes$)
 
       - id: contract-lint-full
         name: contract_lint (full run before push)
@@ -236,23 +275,48 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/approval_lint.ps1
         pass_filenames: false
+        files: ^(packages/|scripts/(build/|approval_lint\.ps1$))
+
+      - id: approval-lint-full
+        name: approval_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/approval_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: command-lint
         name: command_lint (manifest commands registry vs Command router + /help catalog, fail-closed)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/command_lint.ps1
         pass_filenames: false
+        files: ^(packages/|scripts/command_lint\.ps1$)
+
+      - id: command-lint-full
+        name: command_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/command_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: cron-toggle-lint
         name: cron_toggle_lint (cron-toggle UX parity; opt-in chat buttons / always-on console)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cron_toggle_lint.ps1
         pass_filenames: false
+        files: ^(packages/|provisioning/lib/|scripts/cron_toggle_lint\.ps1$)
+
+      - id: cron-toggle-lint-full
+        name: cron_toggle_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cron_toggle_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: core-literal-lint
+        # read-ok: packages, scripts, scripts/dev -- liest nur core-Bau/-DB/-Kontexte, Manifeste, *.ps1 unter scripts/, scripts/build/ und scripts/dev/.
         name: core_literal_lint (no new core package-literal; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/core_literal_lint.ps1
@@ -274,21 +338,46 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
         pass_filenames: false
+        files: ^(packages/|provisioning/|scripts/(ui_literal_lint\.ps1|build/ui_literal_allowlist\.json)$)
+
+      - id: ui-literal-lint-full
+        name: ui_literal_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_literal_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: ui-token-lint
+        # ls-files-ok: listet den Baum nur nach UI-Endungen (css, html, vue, svelte, tsx, jsx) und den Ordnern aus Get-UiScanRoots; beides steht im Filter.
         name: ui_token_lint (one colour source for all UI surfaces - fixed colours, contrast, token blocks, unregistered UI files; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_token_lint.ps1
         pass_filenames: false
+        files: (\.(css|html?|vue|svelte|tsx|jsx)$|^(config/ui\.|docs/site/(static|layouts)/|packages/core/(build/(app|stickers|bot_profile)/|locales/)|provisioning/(wizard/ui|desktop/(ui|preview))/|scripts/(ui_token_lint\.ps1|lib/(ui_tokens|ui_art)\.ps1|build/ui_token_allowlist\.json)))
+
+      - id: ui-token-lint-full
+        name: ui_token_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui_token_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: role-test-lint
         name: role_test_lint (published DEFINER read-bridge fn with a _ro EXECUTE grant needs a SET-LOCAL-ROLE perspective test; every fn a workflow calls under a narrow role has one or sits on the shrink-only gap list; fail-closed)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/role_test_lint.ps1
         pass_filenames: false
+        files: ^(packages/|tests/db/|scripts/(role_test_lint\.ps1|lib/role_call_pairs\.ps1|build/role_test_[a-z_]+\.json)$)
+
+      - id: role-test-lint-full
+        name: role_test_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/role_test_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: role-gap-lint-test
         name: role_gap_lint_test (workflow call pairs, role-test segments and the shrink-only gap list; a stale or unexplained entry turns role_test_lint red; no Docker)
@@ -302,7 +391,15 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prop_test_lint.ps1
         pass_filenames: false
+        files: ^(packages/|tests/db/|tests/util/prop_test_allowlist\.json$|scripts/(prop_test_lint|lib/prop_test_coverage)\.ps1$)
+
+      - id: prop-test-lint-full
+        name: prop_test_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prop_test_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: prop-test-lint-test
         name: prop_test_lint_test (changing fn, call in a property test and the shrink-only list; a missing test or a stale entry turns prop_test_lint red; no Docker)
@@ -488,18 +585,35 @@ repos:
         files: ^scripts/(lib/http_json|judge_eval|monitor_probe|dev/http_json_test)\.ps1$
 
       - id: standin-lint
+        # read-ok: docs -- docs/site/public/ ist erzeugt, der Lint ueberspringt public/.
         name: standin_lint (every fake_* fixture names the test of its real counterpart; hand-injected values carry a reason; no invented value in a real provider key shape)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/standin_lint.ps1
         pass_filenames: false
         files: ^(tests/|scripts/|provisioning/|packages/|docs/(?!site/public/)|config/|\.github/|\.env\.example$)
 
+      - id: standin-lint-full
+        name: standin_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/standin_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: derived-input-lint
         name: derived_input_lint (no write tool takes a derived quantity as a model input - peak, alert level, balance, EUR conversion, age - or tells the model to compute one; reasoned allowlist, shrink-only)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/derived_input_lint.ps1
         pass_filenames: false
-        files: ^(packages/[^/]+/workflows/.*\.json|scripts/(derived_input_lint\.ps1|build/derived_input_allowlist\.json|build/lib/approval_matrix\.ps1))$
+        files: ^(packages/[^/]+/(workflows/.*\.json|manifest\.json)|scripts/(derived_input_lint\.ps1|build/derived_input_allowlist\.json|build/lib/approval_matrix\.ps1))$
+
+      - id: derived-input-lint-full
+        name: derived_input_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/derived_input_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: derived-input-lint-test
         name: derived_input_lint_test (derived field, compute instruction and stale or unexplained allowlist entry turn derived_input_lint red; no Docker)
@@ -529,26 +643,44 @@ repos:
         pass_filenames: false
         files: ^scripts/(size_lint|dev/size_lint_test|lib/(test_common|ordinal))\.ps1$
 
-      - id: timer-lock-lint
-        name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered; exec without a program redirects only descriptors from 3 up; every executable installer script exports LANG and LC_ALL)
+      - id: installer-shell-lint
+        # read-ok: provisioning, provisioning/desktop/* -- liest nur *.sh und *.tpl; das Muster nimmt desktop/ bei Regel (E) aus.
+        name: installer_shell_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered; exec without a program redirects only descriptors from 3 up; every executable installer script exports LANG and LC_ALL)
         language: system
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/timer_lock_lint.ps1
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/installer_shell_lint.ps1
         pass_filenames: false
-        files: ^(provisioning/.*\.(sh|tpl)|scripts/timer_lock_lint\.ps1)$
+        files: ^(provisioning/.*\.(sh|tpl)|scripts/installer_shell_lint\.ps1)$
 
-      - id: timer-lock-lint-test
-        name: timer_lock_lint_test (lock probe or take without a wait outside the allowed file and an unregistered timer turn timer_lock_lint red; no Docker)
+      - id: installer-shell-lint-full
+        name: installer_shell_lint (full run before push)
         language: system
-        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/timer_lock_lint_test.ps1
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/installer_shell_lint.ps1
         pass_filenames: false
-        files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test|lib/test_common)\.ps1$
+        always_run: true
+        stages: [pre-push]
+
+      - id: installer-shell-lint-test
+        name: installer_shell_lint_test (lock probe or take without a wait outside the allowed file and an unregistered timer turn installer_shell_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/installer_shell_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(installer_shell_lint|dev/installer_shell_lint_test|lib/test_common)\.ps1$
 
       - id: backup-migration-lint
+        # read-ok: packages -- liest nur Manifeste und die SQL-Dateien der Pakete.
         name: backup_migration_lint (a migration that drops or renames a column or table of a backed-up table needs a manifest backup entry, else older backups stop restoring; shrink-only allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup_migration_lint.ps1
         pass_filenames: false
         files: ^(packages/[^/]+/(manifest\.json|db.*\.sql)|scripts/backup_migration_lint\.ps1|scripts/build/backup_migration_allowlist\.json)$
+
+      - id: backup-migration-lint-full
+        name: backup_migration_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup_migration_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: backup-migration-lint-test
         name: backup_migration_lint_test (undeclared drop or rename in a backed-up table and a stale allowlist entry turn backup_migration_lint red; no Docker)
@@ -558,11 +690,20 @@ repos:
         files: ^scripts/(backup_migration_lint|dev/backup_migration_lint_test)\.ps1$
 
       - id: gate-wiring-lint
+        # read-ok: scripts/dev -- liest nur *_test.ps1 und run_free_gates.ps1.
         name: gate_wiring_lint (every test in scripts/dev hangs on a gate - commit hook, free suites, workflow - or carries a manual-gate marker with a reason)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate_wiring_lint.ps1
         pass_filenames: false
         files: ^(scripts/dev/[^/]+_test\.ps1|scripts/dev/run_free_gates\.ps1|scripts/gate_wiring_lint\.ps1|\.pre-commit-config\.yaml|\.github/workflows/.*\.ya?ml)$
+
+      - id: gate-wiring-lint-full
+        name: gate_wiring_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gate_wiring_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: gate-wiring-lint-test
         name: gate_wiring_lint_test (an unwired test, a marker without reason and a marker next to a gate turn gate_wiring_lint red; no Docker)
@@ -572,10 +713,19 @@ repos:
         files: ^scripts/(gate_wiring_lint|dev/gate_wiring_lint_test|lib/test_common)\.ps1$
 
       - id: ps-glue-lint
+        # ls-files-ok: listet *.ps1, der Filter trifft dieselben Dateien.
         name: ps_glue_lint (a command glued behind a comment - a lost line break - never runs; PowerShell parser tokens)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_glue_lint.ps1
         files: \.ps1$
+
+      - id: ps-glue-lint-full
+        name: ps_glue_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_glue_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: ps-glue-lint-test
         name: ps_glue_lint_test (a glued command turns ps_glue_lint red, compound words and strings stay green; no Docker)
@@ -591,6 +741,14 @@ repos:
         pass_filenames: false
         files: ^(provisioning/lib/seed_data\.sh|tests/db/core/test_seed_reconcile_registry_unreferenced\.sql|scripts/seed_reconcile_lint\.ps1)$
 
+      - id: seed-reconcile-lint-full
+        name: seed_reconcile_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/seed_reconcile_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
       - id: seed-reconcile-lint-test
         name: seed_reconcile_lint_test (a table missing on either side turns seed_reconcile_lint red; no Docker)
         language: system
@@ -604,12 +762,51 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/native_process_test.ps1
         pass_filenames: false
         files: ^scripts/(lib/native_process|dev/native_process_test)\.ps1$
+
+      - id: secret-stdin-lint
+        name: secret_stdin_lint (no password or token goes to a program through a PowerShell pipe - it appends a newline and, in 5.1, a BOM; PowerShell parser)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/secret_stdin_lint.ps1
+        # ls-files-ok: das Skript prueft alle getrackten .ps1; der Filter \.ps1$ loest bei jeder geaenderten .ps1 aus, Loeschungen deckt der Zwilling
+        files: \.ps1$
+
+      - id: secret-stdin-lint-full
+        name: secret_stdin_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/secret_stdin_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: secret-stdin-lint-test
+        name: secret_stdin_lint_test (a piped secret turns secret_stdin_lint red, harmless pipes and the helper stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/secret_stdin_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(secret_stdin_lint|dev/secret_stdin_lint_test|lib/test_common)\.ps1$
+
+      - id: secret-stdin-test
+        name: secret_stdin_test (passwords and tokens reach gpg, git and the bootstrap teardown byte-exact; throwaway gpg keys, docker stand-in, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/secret_stdin_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(native_process|git_sandbox)|new_release_key|sign_release|dev/(secret_stdin_test|bootstrap_test_n8n))\.ps1$
       - id: hook-autoload-lint
+        # read-ok: scripts -- liest dort nur die *.ps1 des Hook-Umfelds.
+        # ls-files-ok: die Dateiliste dient dem Abgleich mit den Filtern; neu hinzugekommene Dateien anderer Ordner faengt der -full-Zwilling.
         name: hook_autoload_lint (hook scripts use no command that Windows PowerShell 5.1 autoloads from a module - Get-FileHash, Expand-Archive ... - it is missing under pwsh 7 in CI)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hook_autoload_lint.ps1
         pass_filenames: false
         files: ^(scripts/.*\.ps1|\.pre-commit-config\.yaml)$
+
+      - id: hook-autoload-lint-full
+        name: hook_autoload_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hook_autoload_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: hook-autoload-lint-test
         name: hook_autoload_lint_test (an autoloaded command in a hook script or a script it loads turns hook_autoload_lint red; no Docker)
@@ -617,6 +814,13 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_autoload_lint_test.ps1
         pass_filenames: false
         files: ^scripts/(hook_autoload_lint|dev/hook_autoload_lint_test|lib/test_common)\.ps1$
+
+      - id: pre-push-check-test
+        name: pre_push_check_test (the commit-stage run skips exactly the hooks with a -full twin, the push-stage run skips nothing extra, a red stage fails the script; prek stand-in, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/pre_push_check_test.ps1
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|scripts/(pre_push_check|dev/pre_push_check_test|lib/test_common)\.ps1)$
 
       - id: release-notes-check-test
         name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
@@ -630,13 +834,29 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_stack_test.ps1
         pass_filenames: false
+        files: ^((packages|provisioning|scripts|tests)/|\.gitattributes$)
+
+      - id: test-stack-test-full
+        name: test_stack_test (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/test_stack_test.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
       - id: desktop-paths-lint
         name: desktop_paths_lint (every file outside provisioning/desktop that the start app reads or its build reads is in both paths lists of desktop.yml, and both lists are equal)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop_paths_lint.ps1
         pass_filenames: false
+        files: ^(provisioning/desktop/|\.github/workflows/desktop|scripts/(desktop_paths_lint|lib/main_push)\.ps1$|config/ui\.tokens\.json$)
+
+      - id: desktop-paths-lint-full
+        name: desktop_paths_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop_paths_lint.ps1
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       - id: desktop-paths-lint-test
         name: desktop_paths_lint_test (a read file missing from one paths list, unequal lists and a dangling include turn desktop_paths_lint red; no Docker)
@@ -794,7 +1014,7 @@ repos:
         pass_filenames: false
         # Commit: nur wenn eine Eingabe des Baus (oder ein generiertes JSON, Routing-Case) gestagt ist. Reine Loeschungen sieht der Filter
         # nicht; sie faengt der volle Lauf (pre-push bzw. CI mit --all-files), ebenso Merge-Commits ohne Commit-Hooks.
-        files: ^(packages/|scripts/(build/|lib/(dotenv|next_step_marker|choices_marker)\.ps1)|tests/agent/)
+        files: ^(packages/|scripts/(build/|lib/(dotenv|next_step_marker|choices_marker|ordinal)\.ps1)|tests/agent/)
 
       - id: capabilities-catalog-full
         name: build.ps1 -VerifyCatalog -VerifyWorkflows (full run before push)
@@ -816,7 +1036,15 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen_fn_catalog.ps1 -Verify
         pass_filenames: false
+        files: ^(packages/[^/]+/db/migrations/R__fn_[^/]+\.sql|docs/fn_catalog\.md|scripts/(gen_fn_catalog|lib/ordinal)\.ps1)$
+
+      - id: fn-catalog-full
+        name: gen_fn_catalog -Verify (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gen_fn_catalog.ps1 -Verify
+        pass_filenames: false
         always_run: true
+        stages: [pre-push]
 
       # PowerShell static analysis (PSScriptAnalyzer) over scripts/**/*.ps1 and packages/*/build/**/*.ps1.
       # language:system because PSScriptAnalyzer is a module, not a binary: preinstalled on windows-latest CI, locally in
@@ -824,6 +1052,8 @@ repos:
       # SKIP, unlike dotenv-linter). Curated rules in config/PSScriptAnalyzerSettings.psd1. Fires when
       # any *.ps1 is staged and then scans the whole tree (cross-file dot-source awareness).
       - id: ps-lint
+        # read-ok: packages, scripts -- liest nur *.ps1.
+        # read-ok: config/PSScriptAnalyzerSettings.psd1 -- -Staged prueft nur gestagte *.ps1; eine geaenderte Regel faengt ps-lint-full (ganzer Baum).
         name: ps_lint (PSScriptAnalyzer on scripts/ and packages/*/build/)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1 -Staged
@@ -1000,6 +1230,8 @@ repos:
       # stumm. Im CI laeuft dieselbe Pruefung als eigener Job mit voller Historie (ci.yml `comment-lint`, -Base), weil
       # `prek run --all-files` keinen gestagten Diff hat.
       - id: comment-lint
+        # ls-files-ok: listet nur zum Nachschlagen von Skriptnamen bzw. mit -All; der Commit-Haken prueft den gestagten Diff.
+        # no-full: prueft nur neue Zeilen; den PR-/Push-Bereich faengt der CI-Job comment-lint.
         name: comment_lint (new comment lines - no provenance/history, commented-out code, TODO without trigger, caps emphasis, required heads)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/comment_lint.ps1 -Staged

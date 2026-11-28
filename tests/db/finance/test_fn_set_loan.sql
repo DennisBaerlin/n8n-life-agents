@@ -12,11 +12,11 @@ DECLARE
   v_lstatus TEXT;
   v_loan2 INT; v_run INT; v_run_acc INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_sl_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_sl_giro__","account_type":"cash"}'::jsonb) INTO v_res;
   v_debit := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sl_loan__','lender','Buchenbank','borrower','Erika','original_amount',100000,
+    'name','__test_sl_loan__','lender','Buchenbank','original_amount',100000,
     'disbursement_date','2026-01-01','interest_rate',3.0,
     'monthly_annuity',1200,'schedule_day_of_month',1,'first_payment_date','2026-02-01','debit_account_id',v_debit
   )) INTO v_res;
@@ -103,7 +103,7 @@ BEGIN
 
   -- TEST 7: Kredit ohne Rate -> active ohne Rate ok:false; Rate ohne ersten Termin ok:false; mit Termin -> neue Kette, aktiv
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sl_paused__','lender','Family','borrower','Erika','original_amount',5000,
+    'name','__test_sl_paused__','lender','Family','original_amount',5000,
     'disbursement_date','2026-01-01','interest_rate',0.0,'debit_account_id',v_debit
   )) INTO v_res;
   v_loan2 := (v_res->>'loan_id')::int;
@@ -194,8 +194,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_slg_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_slg_kredit__','lender','B','borrower','T',
-    'current_balance',2400,'interest_rate',2,'monthly_annuity',100,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_slg_kredit__','lender','B','current_balance',2400,'interest_rate',2,'monthly_annuity',100,
     'first_payment_date',(CURRENT_DATE + 15)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
 
   v_res := finance.fn_set_loan(jsonb_build_object('loan_id',v_loan,'interest_rate',0));

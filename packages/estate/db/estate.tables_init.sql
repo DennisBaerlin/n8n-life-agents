@@ -336,9 +336,7 @@ CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON estate.onboarding_sta
 --     * fan_out: NULL = eine Task; sonst ein special_assets.asset_type — je passendem Sonderfall-Stub
 --       (Fahrzeug/Waffe/Firma/Haustier des Subjekts oder Haushalts) eine eigene Task (subject_ref='asset:<id>').
 --     * hardness: critical (zeitkritisch/rechtlich hart) / recommended / optional — Sortier-/Render-Prio.
---     * retired: Soft-Delete (Muster active_*) — ein ueberholtes Template wird nie geloescht (bestehende
---       case_tasks referenzieren es per FK); retired=true -> es instanziiert nicht mehr. Der Seed-INSERT unten fuehrt
---       retired nicht in der Spaltenliste, sein ON CONFLICT setzt retired daher bei jedem Apply auf false zurueck.
+--     * Ein ueberholtes Template wird nie geloescht (bestehende case_tasks referenzieren es per FK).
 --   Titel und Erklaerung je Vorlage stehen nur im Textkatalog (estate.task.<template_key>.title|.detail, ohne
 --   .detail-Key keine Erklaerung); fn_case_template_rows rendert sie in der Haushalts-Sprache.
 --   Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types):
@@ -356,7 +354,6 @@ CREATE TABLE IF NOT EXISTS estate.task_templates (
     fan_out         text CHECK (fan_out IN ('vehicle', 'business_interest', 'firearm', 'pet')),  -- NULL = 1 Task
     legal_source    text,                                       -- Rechtsgrundlage (Beleg im Report)
     hardness        text NOT NULL DEFAULT 'recommended' CHECK (hardness IN ('critical', 'recommended', 'optional')),
-    retired         boolean NOT NULL DEFAULT FALSE,
     -- offset_count und offset_unit sind gemeinsam gesetzt oder gemeinsam NULL (NULL/NULL = unverzueglich).
     CONSTRAINT task_templates_offset_pairing CHECK ((offset_count IS NULL) = (offset_unit IS NULL))
 );
@@ -414,7 +411,7 @@ ON CONFLICT (template_key) DO UPDATE SET
     case_type = excluded.case_type, phase = excluded.phase, ord = excluded.ord,
     deadline_anchor = excluded.deadline_anchor, offset_count = excluded.offset_count,
     offset_unit = excluded.offset_unit, condition_key = excluded.condition_key, fan_out = excluded.fan_out,
-    legal_source = excluded.legal_source, hardness = excluded.hardness, retired = excluded.retired;
+    legal_source = excluded.legal_source, hardness = excluded.hardness;
 
 -- ============================================================
 -- CASES — ein Ereignisfall (Tod/Vorsorgefall) je Zeile.
@@ -465,7 +462,7 @@ CREATE TRIGGER trg_cases_touch BEFORE UPDATE ON estate.cases
 -- ============================================================
 -- CASE_TASKS — die instanziierte Checkliste eines Falls (template-Snapshot + manuelle Tasks).
 --   * template_key FK RESTRICT auf task_templates (Snapshot-Herkunft; NULL = manuelle Task via
---     create_case_task). Templates werden nie geloescht (retired=Soft-Delete) -> FK bleibt intakt.
+--     create_case_task). Templates werden nie geloescht -> FK bleibt intakt.
 --   * subject_ref text NOT NULL DEFAULT '' = fan-out-Diskriminator ('' = 1 Task; 'asset:<id>' je
 --     Sonderfall-Stub). NOT NULL DEFAULT '' loest die NULL-UNIQUE-Falle:
 --     UNIQUE(case_id, template_key, subject_ref) macht die Instanziierung idempotent (ON CONFLICT) —

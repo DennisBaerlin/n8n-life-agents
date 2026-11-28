@@ -19,9 +19,9 @@ BEGIN
   RETURNING id INTO v_pension_id;
 
   -- ---------- TEST 1: Statements als datierte Zeitreihe (Child, nie Parent-Rows) ----------
-  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, projection, em_monthly, is_nominal)
-  VALUES (v_pension_id, DATE '2025-06-01', 700.00, 1500.00, 1000.00, TRUE),
-         (v_pension_id, DATE '2026-06-01', 750.00, 1550.00, 1050.00, TRUE);
+  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, projection, em_monthly)
+  VALUES (v_pension_id, DATE '2025-06-01', 700.00, 1500.00, 1000.00),
+         (v_pension_id, DATE '2026-06-01', 750.00, 1550.00, 1050.00);
   SELECT COUNT(*) INTO v_stmt_count FROM finance.pension_statements WHERE pension_id = v_pension_id;
   IF v_stmt_count IS DISTINCT FROM 2 THEN
     RAISE EXCEPTION 'FAIL finance_pension_statements [insert]: erwartet 2 Zeilen, got %', v_stmt_count;

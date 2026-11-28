@@ -27,7 +27,7 @@ _proxy_compose_show() {
   dns="$(printf '%s' "$js" | jq -r '.dns_name')"; days="$(printf '%s' "$js" | jq -r '.key_days_left // "" | if type == "number" and . < 0 then "" else . end')"
   wh="$(printf '%s' "$js" | jq -r '.webhook')"
   ui_box 'Weg nach außen (Docker-Verbund)' <<EOF
-Weg:              $(case "$(reach_mode)" in tunnel) printf 'Tunnel (Tailscale Funnel)' ;; fritzbox) printf 'FritzBox' ;; *) printf '— noch keiner gewählt' ;; esac)
+Weg:              $(case "$(reach_mode)" in tunnel) printf 'Tunnel (Tailscale Funnel)' ;; fritzbox) printf 'FritzBox' ;; proxy) printf 'eigener Reverse Proxy' ;; *) printf '— noch keiner gewählt' ;; esac)
 Stand:            $(_proxy_reach_state_text "$state")${url:+
 Link:             ${url}}
 Internet-Adresse: ${dns:-—}

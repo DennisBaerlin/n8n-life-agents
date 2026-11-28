@@ -13,7 +13,7 @@ DECLARE
 BEGIN
 
   -- Setup: Konto ohne Zinszeile
-  SELECT finance.fn_create_account('{"name":"__test_int_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_int_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- TEST 1: erste Zinszeile (keine offene vorhanden -> closed_previous=false)
@@ -84,7 +84,7 @@ BEGIN
   DECLARE
     v_acct2 INT;
   BEGIN
-    SELECT finance.fn_create_account('{"name":"__test_int_hist__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+    SELECT finance.fn_create_account('{"name":"__test_int_hist__","account_type":"cash"}'::jsonb) INTO v_res;
     v_acct2 := (v_res->>'account_id')::int;
     -- Geschlossene historische Zinszeile [2026-01-01, 2026-07-01); keine offene Zeile.
     INSERT INTO finance.account_interest_rates
@@ -243,6 +243,27 @@ BEGIN
   IF (v_p->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL preview [Start am Ende der verzinsten Periode]: erwartet ok=true, got %', v_p; END IF;
   RAISE NOTICE 'PASS preview [Satz 0 gueltig, gleicher Starttag abgelehnt, Start am Verzinst-bis-Tag gueltig]';
+END $$;
+
+-- Tippfehler in Zahl-Feldern (Satz, Intervall, Tage) -> Ablehnung mit Grund statt Cast-Abbruch (ein Abbruch weckte den Owner-Alert)
+DO $$
+DECLARE r jsonb; v_acc int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_irp_cast__', 'cash', 'EUR', 'active') RETURNING id INTO v_acc;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 'zwei', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%annual_rate%' THEN RAISE EXCEPTION 'FAIL [Satz kein Zahl]: %', r; END IF;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 2, 'schedule_unit', 'month', 'schedule_interval', 'x'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_interval%' THEN RAISE EXCEPTION 'FAIL [Intervall keine Zahl]: %', r; END IF;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 2, 'schedule_unit', 'month', 'schedule_day_of_month', 'letzter'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_day_of_month%' THEN RAISE EXCEPTION 'FAIL [Tag keine Zahl]: %', r; END IF;
+  -- derselbe Weg im Write: Tippfehler -> ok:false, "2,5" wird als 2.5 gespeichert (Karte = Buchung)
+  r := finance.fn_set_account_interest(jsonb_build_object('account_id', v_acc, 'annual_rate', 'zwei', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [Write Satz keine Zahl]: %', r; END IF;
+  r := finance.fn_set_account_interest(jsonb_build_object('account_id', v_acc, 'annual_rate', '2,5', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR (SELECT annual_rate FROM finance.account_interest_rates WHERE account_id = v_acc AND valid_to IS NULL) IS DISTINCT FROM 2.5 THEN
+    RAISE EXCEPTION 'FAIL [Write Satz mit Komma]: %', r; END IF;
+  RAISE NOTICE 'PASS preview [Tippfehler in Zahl-Feldern -> ok:false]';
 END $$;
 
 ROLLBACK;

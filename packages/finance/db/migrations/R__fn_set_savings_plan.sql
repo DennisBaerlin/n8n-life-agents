@@ -33,7 +33,7 @@
 --   je Monat sind dort gewollt); die Karte nennt die entfallende Ausfuehrung nicht, nur das neue Datum.
 --   Eingabe jsonb: savings_plan_name, new_amount (opt, pos), schedule_unit (opt, day|week|month|year),
 --   schedule_interval (opt, pos), depot_execution_days (opt), status (opt, paused|active; zusammen mit Betrag/Rhythmus/
---   depot_execution_days still ignoriert, der Split erbt den alten Status),
+--   depot_execution_days -> {ok:false, code:'status_separately'}, sonst erbte der Split den alten Status still),
 --   valid_from (opt, Stichtag des Splits; default heute), notes (opt),
 --   beneficiary_person_id (opt, Slug; leer=unveraendert),
 --   asset_class (opt -- Anlageklasse korrigieren; leer=unveraendert; Format-Verstoss -> {ok:false}),
@@ -84,7 +84,7 @@ DECLARE
     v_amount    NUMERIC           := NULLIF(p->>'new_amount', '')::numeric;
     v_unit_new  finance.schedule_unit := NULLIF(p->>'schedule_unit', '')::finance.schedule_unit;
     v_interval_new SMALLINT       := NULLIF(p->>'schedule_interval', '')::smallint;
-    v_status    finance.payment_status := NULLIF(p->>'status', '')::finance.payment_status;
+    v_status    finance.payment_status;   -- Cast erst nach der Pruefung (unbekannter Status -> ok:false)
     v_from      DATE;
     v_asset_cls TEXT              := NULLIF(p->>'asset_class', '');   -- Anlageklasse korrigierbar (leer=unveraendert)
     v_plan      finance.savings_plans%ROWTYPE;
@@ -117,6 +117,12 @@ BEGIN
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
         RETURN finance.fn_with_handoff('finance.fn_set_savings_plan(jsonb)'::regprocedure, p);
     END IF;
+    v_status := CASE WHEN btrim(COALESCE(p->>'status', '')) IN ('paused', 'active') THEN btrim(p->>'status')::finance.payment_status END;
+    IF v_status IS NULL AND btrim(COALESCE(p->>'status', '')) <> '' THEN RETURN jsonb_build_object('ok', false, 'reason', 'status must be paused or active, got: ' || (p->>'status')); END IF;
+    -- Status mit Betrag/Rhythmus/Tagen: der Split erbte den alten Status, die Pause fiele still weg
+    IF v_status IS NOT NULL AND COALESCE(NULLIF(p->>'new_amount', ''), NULLIF(p->>'schedule_unit', ''), NULLIF(p->>'schedule_interval', ''), NULLIF(p->>'depot_execution_days', '')) IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'status_separately', 'reason', 'Change the status in a separate step: first amount, rhythm or execution days, then only status.');
+    END IF;
     -- Ende als Monat ("nach Maerz") -> letzter Tag dieses Monats; ohne Jahr (MM) das naechste Vorkommen ab dem laufenden
     -- Monat. Das Modell rechnet weder Monatsende noch Jahr. Ein Monat ausserhalb 1..12 faellt durch und wird invalid_date.
     IF COALESCE(p->>'valid_to', '') ~ '^(0?[1-9]|1[0-2])$' THEN
@@ -139,13 +145,11 @@ BEGIN
     FROM finance.fn_resolve_savings_plan(v_name, FALSE) r;
 
     IF v_resolve.hit_count = 0 THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'No savings plan found matching "' || v_name || '".');
+        RETURN jsonb_build_object('ok', false, 'reason', 'No savings plan found matching "' || v_name || '".');
     END IF;
     IF v_resolve.hit_count > 1 THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'Multiple savings plans match "' || v_name || '". Please be more specific.',
-            'hit_count', v_resolve.hit_count);
+        RETURN jsonb_build_object('ok', false, 'hit_count', v_resolve.hit_count,
+            'reason', 'Multiple savings plans match "' || v_name || '". Please be more specific.');
     END IF;
 
     SELECT * INTO v_plan FROM finance.savings_plans WHERE id = v_resolve.id;
@@ -153,17 +157,14 @@ BEGIN
 
     -- Anlageklasse-Format vor jedem Write pruefen (mirror create) -> {ok:false} ohne Write
     IF v_asset_cls IS NOT NULL AND v_asset_cls !~ '^[a-z0-9_]+$' THEN
-        RETURN jsonb_build_object('ok', false,
-            'reason', 'asset_class tag must be lowercase letters/digits/underscore (e.g. sp500), got: ' || v_asset_cls);
+        RETURN jsonb_build_object('ok', false, 'reason', 'asset_class tag must be lowercase letters/digits/underscore (e.g. sp500), got: ' || v_asset_cls);
     END IF;
 
     -- Kuenftiges Ende: alle Ablehnungen vor jedem Write (der Write folgt nach den orthogonalen UPDATEs)
     IF v_to IS NOT NULL THEN
-        IF v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL OR v_cal_in IS NOT NULL
-           OR v_status IS NOT NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'end_separately',
-                'reason', 'Set the end of the savings plan in a separate step: first change amount, rhythm or status, '
-                       || 'then call the tool again with only valid_to.');
+        IF v_amount IS NOT NULL OR v_unit_new IS NOT NULL OR v_interval_new IS NOT NULL OR v_cal_in IS NOT NULL OR v_status IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'end_separately', 'reason',
+                'Set the end of the savings plan in a separate step: first change amount, rhythm or status, then call the tool again with only valid_to.');
         END IF;
         IF v_to <= core.fn_today() THEN
             RETURN jsonb_build_object('ok', false, 'code', 'end_not_future',
@@ -255,8 +256,7 @@ BEGIN
     -- Teil-Mutation. Erst ablehnen, dann mutieren.
     IF v_split THEN
         IF v_amount IS NOT NULL AND v_amount <= 0 THEN
-            RETURN jsonb_build_object('ok', false,
-                'reason', 'New amount must be a positive number, got ' || v_amount || '.');
+            RETURN jsonb_build_object('ok', false, 'reason', 'New amount must be a positive number, got ' || v_amount || '.');
         END IF;
         IF v_from <= v_rp.valid_from THEN
             RETURN jsonb_build_object('ok', false,

@@ -333,13 +333,14 @@ if ($Down) {
     if (Get-ContainerId) {
         # Echter Test-Bot (Marker aus dem Echt-Lauf): vor dem Abbau den Webhook freigeben, sonst zeigt der Bot auf eine tote Adresse.
         # Massgeblich ist der Marker im Container, nicht die Umgebungsvariable dieses Aufrufs. Der Dev-Install behaelt das Token nicht in
-        # core.env, darum geht es per stdin an `lifeagents telegram release-webhook` (nie im argv). Best effort.
+        # core.env, darum geht es per stdin an `lifeagents telegram release-webhook` (nie im argv), ohne Zeilenende: `read -r` setzt die
+        # Variable auch am Eingabe-Ende, behielte aber ein CR im Wert. Best effort.
         $mk = Invoke-Native docker @('exec', $Container, 'test', '-e', '/root/.n8ntest_real_telegram')
         if ($mk.Code -eq 0) {
             $realTok = Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN'   # real-token: nur zum Freigeben des Webhooks beim Abbau eines Echt-Bot-Substrats
             if ($realTok) {
-                # Ueber Invoke-Native: ein roher Aufruf mit 2>&1 braeche unter 'Stop' an der ersten stderr-Zeile ab, noch vor dem Abbau.
-                $rw = Invoke-Native docker @('exec', '-i', $Container, 'sh', '-c', 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook') -StdIn $realTok
+                . "$PSScriptRoot\..\lib\native_process.ps1"
+                $rw = Invoke-NativeStdinBytes -FilePath docker -ArgumentList @('exec', '-i', $Container, 'sh', '-c', 'read -r TELEGRAM_BOT_TOKEN; export TELEGRAM_BOT_TOKEN; lifeagents telegram release-webhook') -InputText $realTok -CaptureOutput
                 if ($rw.Code -ne 0) { Write-Warning "Webhook des echten Test-Bots nicht freigegeben: $($rw.Output -join ' | ')" }
                 else { Write-Host "Webhook des echten Test-Bots freigegeben." }
             } else { Write-Warning 'Echt-Bot-Substrat, aber kein TEST_TELEGRAM_BOT_TOKEN in .env: Webhook nicht freigegeben.' }

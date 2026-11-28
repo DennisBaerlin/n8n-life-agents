@@ -150,7 +150,7 @@ BEGIN
             END IF;
             -- Typ ohne Checklisten-Vorlage im Falltyp: genannt => Aufgabe bleibt ehrlich, sonst ok:false
             IF NOT EXISTS (SELECT 1 FROM estate.task_templates t
-                            WHERE t.case_type = v_type AND t.fan_out = v_at AND NOT t.retired) THEN
+                            WHERE t.case_type = v_type AND t.fan_out = v_at) THEN
                 RETURN jsonb_build_object('ok', false, 'reason',
                     'asset type ' || v_at || ' has no checklist step in a ' || v_type || ' case - leave it out here; '
                     || 'register it with tool_create_special_asset if it should be kept.');
@@ -179,7 +179,7 @@ BEGIN
            COALESCE(jsonb_agg(k ORDER BY k) FILTER (WHERE NOT v_eff ? k), '[]'::jsonb)
       INTO v_known, v_unknown
       FROM (SELECT DISTINCT t.condition_key AS k FROM estate.task_templates t
-             WHERE t.case_type = v_type AND NOT t.retired AND t.condition_key IS NOT NULL
+             WHERE t.case_type = v_type AND t.condition_key IS NOT NULL
                AND t.condition_key NOT IN ('adult_subject', 'finance_absent', 'minor_children')) s;
 
     RETURN jsonb_build_object(

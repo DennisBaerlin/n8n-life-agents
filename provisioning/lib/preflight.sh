@@ -44,28 +44,16 @@ _preflight_disk_need() {
   # Sicherung der ganzen DB an. Obergrenze = DB-Groesse (der komprimierte Dump ist kleiner); die schon liegenden
   # Sicherungen stecken bereits im belegten Platz. Frische Hosts haben noch kein PG -> 0.
   if [ -n "$(_upg_changes)" ]; then
-    need=$((need + $(_preflight_db_mb)))
+    need=$((need + $(rt_app_db_mb)))
   fi
   dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1 || need=$((need + PREFLIGHT_PG_MB))
   printf '%s' "$need"
 }
 
-# _preflight_db_mb -> Groesse der App-DB in MB (0, wenn PG/DB noch fehlen oder nicht erreichbar).
-_preflight_db_mb() {
-  local mb='' have=0
-  if rt_is_compose; then svc_is_active postgresql && have=1
-  elif need_cmd psql && dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1; then have=1; fi
-  if [ "$have" -eq 1 ]; then
-    mb="$(pg_su_psql -X -tAc \
-            "SELECT pg_database_size(datname) / 1048576 FROM pg_database WHERE datname = '${N8N_DB_NAME:-n8n}'" 2>/dev/null || true)"
-  fi
-  case "$mb" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$mb" ;; esac
-}
-
 # _preflight_backup_need_mb -> MB fuer die Sicherung vor einem Tausch (0 ohne anstehenden Tausch). Nur im Verbund: dort
 # liegt sie auf dem Volume var_la, nicht auf / des master; im systemd-Betrieb steckt sie in _preflight_disk_need.
 _preflight_backup_need_mb() {
-  if [ -n "$(_upg_changes)" ]; then _preflight_db_mb; else printf '0'; fi
+  if [ -n "$(_upg_changes)" ]; then rt_app_db_mb; else printf '0'; fi
 }
 
 preflight() {

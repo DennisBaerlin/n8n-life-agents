@@ -13,7 +13,7 @@ BEGIN
 
   -- Setup: Konto anlegen
   SELECT finance.fn_create_account(
-    '{"name":"__test_close_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_close_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
 
@@ -89,12 +89,11 @@ BEGIN
 
   -- TEST 5: Verrechnungskonto eines aktiven Depots -> {ok:false} (korrigierbar, kein RAISE)
   SELECT finance.fn_create_account(
-    '{"name":"__test_close_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_close_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle_id2 := (v_result->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object(
-    'name', '__test_close_depot__', 'account_type', 'stocks_depot', 'account_holder', 'Test',
-    'currency', 'EUR', 'settlement_id', v_settle_id2
+    'name', '__test_close_depot__', 'account_type', 'stocks_depot', 'currency', 'EUR', 'settlement_id', v_settle_id2
   )) INTO v_result;
   v_depot_id2 := (v_result->>'account_id')::int;
 
@@ -112,7 +111,7 @@ BEGIN
   -- TEST 6: Konto mit Guthaben -> {ok:false} + blockers, Konto bleibt aktiv (sonst verschwaenden 3.000 EUR
   --   still aus dem Vermoegen). Details der Blocker-Arten -> test_fn_get_account_close_blockers.sql.
   DECLARE v_money INT; BEGIN
-    SELECT (finance.fn_create_account('{"name":"__test_close_money__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_money;
+    SELECT (finance.fn_create_account('{"name":"__test_close_money__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_money;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_money, 3000, CURRENT_DATE, 'other');
     SELECT finance.fn_close_account(jsonb_build_object('account_id', v_money, 'closure_date', CURRENT_DATE::text, 'notes', '')) INTO v_result;
     SELECT status::text INTO v_status FROM finance.accounts WHERE id = v_money;

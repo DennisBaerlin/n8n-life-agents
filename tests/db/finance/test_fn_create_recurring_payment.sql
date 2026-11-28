@@ -11,7 +11,7 @@ DECLARE
 BEGIN
 
   SELECT finance.fn_create_account(
-    '{"name":"__test_recpay_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_recpay_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
 
@@ -77,7 +77,7 @@ DO $$
 DECLARE
   v_res jsonb; v_acct int;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__crp_fold_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__crp_fold_acct__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- (5a) Einkommen +2000 (nur diese rp aktiv) -> net +2000 -> keine Note

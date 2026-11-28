@@ -27,7 +27,7 @@ const status = new Map((Array.isArray(rows) ? rows : []).map((t) => [Number(t.id
 const looped = `$('Run next').isExecuted;
 const prev = looped ? (`$('Handoff next').first().json.tasks || []) : parse($S.tasks, []);
 // Frage-Test auf dem Text ohne Markerzeilen (wie Reply text), sonst versteckte eine angehaengte Markerzeile die Frage.
-const out = String((looped ? `$('Run next').first().json.output : $S.last_output) || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l) && !/^\s*HANDOVER\s*`$/i.test(l)).join('\n').trim();
+const out = String((looped ? `$('Run next').first(0).json.output : $S.last_output) || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l) && !/^\s*HANDOVER\s*`$/i.test(l)).join('\n').trim();
 const question = /[?？]\s*`$/.test(out);
 const list = Array.isArray(prev) ? prev : [];
 const tasks = list.slice(1).filter((t) => status.get(Number(t && t.id)) === 'working');
@@ -53,18 +53,21 @@ return [{ json: { more: tasks.length > 0 && out !== '' && !question, tasks, rele
     $run['onError'] = 'continueErrorOutput'   # main[1] = Fehler -> Claims freigeben
     # Ein eigener Sende-Knoten statt New-TelegramRelayChain: deren splitInBatches startet im Kreis nicht neu. Die Regeln halten
     # die Antworten in diesem Modus kurz (eine Nachricht); Markerzeilen werden wie in der Relay-Kette entfernt.
-    $text = [ordered]@{ parameters = [ordered]@{ jsCode = "return [{ json: { text: String(`$('Run next').first().json.output || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l) && !/^\s*HANDOVER\s*`$/i.test(l)).join('\n').trim() } }];" }
+    $text = [ordered]@{ parameters = [ordered]@{ jsCode = "return [{ json: { text: String(`$('Run next').first(0).json.output || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l) && !/^\s*HANDOVER\s*`$/i.test(l)).join('\n').trim() } }];" }
                         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(0, -160); id = (New-Id); name = 'Reply text' }
     $send = New-TelegramSendNode 'Send reply' @(220, -160) "={{ `$json.text }}" -ChatIdExpr "={{ String($S.chat_id || '') }}" -OnError 'continueRegularOutput'
 
     # Ende: was noch working ist (abgebrochene Karte), wird wieder offen und steht auf der Liste; niemand arbeitet mehr daran.
     # Nach einer Frage bleibt nur der fragende Eintrag beansprucht (die Antwort geht ueber die Folge-Bindung an den Buchhalter).
-    # Lauf-Fehler (Fehler-Ausgang von Run next) -> alle beanspruchten frei.
+    # Lauf-Fehler (Fehler-Ausgang von Run next: letzter Lauf ohne Item auf Ausgang 0) -> alle beanspruchten frei.
+    # Falle n8n: $('X').first() ohne Ausgang liest den Ausgang, ueber den der lesende Knoten mit X verbunden ist. Release open
+    # und Result haengen (auch) am Fehler-Ausgang 1 von Run next; ohne first(0)/all(0) ist der Wert leer, .json wirft, und
+    # continueRegularOutput reicht nur die Eingabe durch (fn nie gerufen, Eintraege bleiben working; Result.output null).
     $release = Build-Pg 'Release open' @(0, 160) 'SELECT core.fn_release_handoff_tasks($1::jsonb) AS r;' `
-        ([ordered]@{ task_ids = "((`$('Run next').isExecuted && (`$('Run next').first().json || {}).error) ? (() => { try { return JSON.parse($S.task_ids || '[]'); } catch (e) { return []; } })() : (`$('Handoff next').first().json.release_ids || []))" }) -ContinueOnError
+        ([ordered]@{ task_ids = "((`$('Run next').isExecuted && (() => { try { return `$('Run next').all(0).length === 0; } catch (e) { return true; } })()) ? (() => { try { return JSON.parse($S.task_ids || '[]'); } catch (e) { return []; } })() : (`$('Handoff next').first(0).json.release_ids || []))" }) -ContinueOnError
     $release['executeOnce'] = $true
     # output wie ein Agent-Lauf: der Orchestrator bindet die Folge-Antwort an die zuletzt gesehene Antwort (Add-FollowupSet).
-    $result = Build-Set 'Result' @(440, 160) @( ,@('output', "={{ `$('Run next').isExecuted ? String(`$('Run next').first().json.output || '') : String($S.last_output || '') }}", 'string') )
+    $result = Build-Set 'Result' @(440, 160) @( ,@('output', "={{ `$('Run next').isExecuted ? String(((`$('Run next').first(0) || {}).json || {}).output || '') : String($S.last_output || '') }}", 'string') )
     $result['executeOnce'] = $true
 
     $sticky = Build-Sticky 'Überblick' @(-1140, -440) -Header 'Ablauf' 'Vereinbarte Einträge: der nächste kommt von selbst' `

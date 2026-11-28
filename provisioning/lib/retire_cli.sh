@@ -10,7 +10,8 @@
 # Ein neuer Lauf setzt nach der letzten erledigten Stufe fort; `--undo` geht aus jeder Stufe zurueck. PostgreSQL bleibt immer an.
 #
 # Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc; traegt auch Gespraeche, geaenderte Einstellungen und Paket-Zugaenge),
-#   move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
+#   move.env.gpg (Antworten fuer setup.sh --answers, verschluesselt mit dem Sicherungs-Schluessel wie die Sicherung: sie tragen den
+#   Bot-Schluessel, der Ordner liegt im Verbund oft in iCloud o. ae.), vorher.txt (move_snapshot),
 #   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. move_snapshot nutzt auch
 #   `lifeagents move`; es fuehrt auf backup_cli.sh backup_fingerprint.
 #
@@ -100,6 +101,22 @@ retire_checks() {
     || printf 'backup\tDie letzte gelungene Sicherung ist älter als 26 Stunden — erst lifeagents backup auto.\n'
   local key; key="$(_bkp_key 2>/dev/null || true)"
   [ "${#key}" -ge 16 ] || printf 'key\tSicherungs-Schlüssel fehlt — ohne ihn lässt sich die Sicherung nicht öffnen.\n'
+  _ret_check_proxy
+  return 0
+}
+
+# _ret_check_proxy — Proxy-Weg: zieht nur mit, wenn der Reverse Proxy auf einem anderen Rechner laeuft und eine Adresse hat (ein Proxy
+#   auf dieser Maschine oder nur 127.0.0.1 gaebe es nach dem Umzug nicht mehr). Gibt eine rote Zeile aus oder nichts.
+_ret_check_proxy() {
+  local core d tp t far=0
+  [ "$(_ret_reach_mode)" = proxy ] || return 0
+  core="$(lifeagents_env_file core)"
+  d="$(read_env_value "$core" DOMAIN 2>/dev/null || true)"
+  tp="$(read_env_value "$core" TRUSTED_PROXIES 2>/dev/null || true)"
+  for t in ${tp//,/ }; do case "$t" in 127.*|::1|localhost) ;; *) far=1 ;; esac; done
+  if [ -z "$d" ] || [ "$far" = 0 ]; then
+    printf 'proxy\tDer Reverse Proxy läuft auf dieser Maschine (oder ohne Internet-Adresse) und zieht nicht mit — vorher den Weg ins Internet umstellen: lifeagents reconfigure\n'
+  fi
   return 0
 }
 
@@ -146,12 +163,26 @@ _ret_verify_drained() {
 # _ret_q <wert> -> 'wert' fuer eine .env-Antwort-Datei (install_answers_load liest '…' woertlich, ' als '\'').
 _ret_q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) ohne Proxy-Werte und die
-#   Haushalts-Zeitzone. Die Zugaenge der Pakete reisen in der Sicherung (access.json, backup_cli.sh), nicht hier.
+# _ret_reach_mode -> Weg nach aussen fuer die neue Maschine: proxy (eigener Reverse Proxy zieht mit, im Verbund die Hintertuer
+#   `lan`, lib/reach.sh) oder tunnel (alles andere: FritzBox der CLI-Installation braucht ebenfalls einen eigenen Proxy, der Tunnel
+#   ist der Weg ohne Router-Einstellung). Ohne REACH_MODE, aber mit DOMAIN = proxy (dieselbe Ableitung wie reach_cli_mode).
+_ret_reach_mode() {
+  local core m d; core="$(lifeagents_env_file core)"
+  m="$(read_env_value "$core" REACH_MODE 2>/dev/null || true)"
+  d="$(read_env_value "$core" DOMAIN 2>/dev/null || true)"
+  if [ "$m" = proxy ] || { [ -z "$m" ] && [ -n "$d" ]; }; then printf proxy; else printf tunnel; fi
+}
+
+# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) und die Haushalts-Zeitzone;
+#   Adresse und Proxy-Rechner nur beim Proxy-Weg (beim Tunnel kommt die Adresse von Tailscale). Die Zugaenge der Pakete reisen in
+#   der Sicherung (access.json, backup_cli.sh), nicht hier.
 _ret_answer_keys() {
-  local k core; core="$(lifeagents_env_file core)"
+  local k core reach; core="$(lifeagents_env_file core)"; reach="$(_ret_reach_mode)"
   for k in $_INSTALL_ENV_KEYS HOUSEHOLD_TIMEZONE; do
-    case "$k" in REACH_MODE|DOMAIN|TRUSTED_PROXIES) continue ;; esac
+    case "$k" in
+      REACH_MODE) continue ;;
+      DOMAIN|TRUSTED_PROXIES) [ "$reach" = proxy ] || continue ;;
+    esac
     printf '%s\t%s\n' "$core" "$k"
   done
 }
@@ -161,7 +192,7 @@ _ret_write_answers() {
   local out="$1" f k v
   {
     printf '# lifeagents-move %s %s — Antworten für setup.sh --answers. Enthält Schlüssel: nur direkt alt -> neu kopieren.\n' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'REACH_MODE=%s\n' "$(_ret_q tunnel)"
+    printf 'REACH_MODE=%s\n' "$(_ret_q "$(_ret_reach_mode)")"
     [ -z "${3:-}" ] || printf 'BACKUP_PARENT_DIR=%s\n' "$(_ret_q "$3")"
     while IFS=$'\t' read -r f k; do
       [ -n "$k" ] || continue
@@ -194,8 +225,9 @@ TXT
   cat <<TXT
 1. Diesen Ordner direkt auf die neue Maschine kopieren (enthält Schlüssel — nie über Laptop oder Chat):
      scp -r ${dir} root@<neue-maschine>:/root/
-2. Auf der neuen Maschine einrichten (die Antworten kommen aus der Datei):
-     bash setup.sh --answers /root/${base}/move.env -- --packages ${pk}
+2. Auf der neuen Maschine einrichten (die Antworten kommen aus der Datei; sie ist mit dem Schlüssel vom Notfallblatt
+   verschlüsselt, setup.sh fragt ihn einmal, das Einspielen danach nicht noch einmal):
+     bash setup.sh --answers /root/${base}/move.env.gpg -- --packages ${pk}
 3. Auf der neuen Maschine die Daten einspielen:
      lifeagents move apply /root/${base}
 
@@ -206,9 +238,10 @@ TXT
 
 # _ret_publish <staging> <ziel> — Dateien in den Umzugs-Ordner: klassisch ein Ordner hier (0700, Dateien 0600, je Datei .part ->
 #   umbenannt), im Verbund ein Ordner auf dem Rechner (rt_host_put prueft je Datei die Pruefsumme).
-#   Reste eines frueheren Laufs (seine Sicherung, ein alter Gedaechtnis-Abzug) wuerden sonst mit eingespielt: geloescht werden genau
-#   die Sicherung, die das alte move.manifest nennt, und memory.dump — nie andere Sicherungen im Ordner (--out kann der normale
-#   Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit Sicherungen (Verbund) ohne move.manifest bricht ab.
+#   Die Sicherung eines frueheren Laufs wuerde sonst mit eingespielt: geloescht wird genau die, die das alte move.manifest nennt,
+#   dazu Klartext-Reste aelterer Staende (move.env vor der Verschluesselung, memory.dump eines Vorab-Release mit allen Gespraechen) —
+#   nie andere Sicherungen im Ordner (--out kann der normale Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit
+#   Sicherungen (Verbund) ohne move.manifest bricht ab.
 _ret_publish() {
   local st="$1" out="$2" f hd old=''
   if rt_is_compose; then
@@ -217,7 +250,7 @@ _ret_publish() {
       old="$(read_env_value "$st/.alt.manifest" BACKUP_FILE 2>/dev/null || true)"
       case "$old" in */*|*\\*) old='' ;; esac
       # shellcheck disable=SC2086  # $old ist leer oder genau ein Dateiname ohne Leerzeichen (Namensmuster der Sicherung)
-      rt_host_rm "$hd" memory.dump $old || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
+      rt_host_rm "$hd" move.env memory.dump $old || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
     elif [ -n "$(rt_host_ls "$hd" 2>/dev/null)" ]; then
       die "Im Ordner '${out}' liegen Sicherungen, er ist aber kein Umzugs-Ordner — einen eigenen wählen: lifeagents retire --out <ordner>"
     fi
@@ -229,7 +262,7 @@ _ret_publish() {
     [ -e "$out/move.manifest" ] || die "Ordner ${out} ist nicht leer und kein Umzugs-Ordner — einen anderen wählen: lifeagents retire --out <ordner>"
     old="$(read_env_value "$out/move.manifest" BACKUP_FILE 2>/dev/null || true)"
     case "$old" in ''|*/*) ;; *) rm -f -- "${out:?}/${old}" ;; esac
-    rm -f -- "$out/memory.dump"
+    rm -f -- "$out/move.env" "$out/memory.dump"
   fi
   ( umask 077; mkdir -p "$out" ) || die "Umzugs-Ordner ${out} ließ sich nicht anlegen."
   chmod 0700 "$out"
@@ -264,7 +297,9 @@ _ret_export() {
   name="$(_bkp_file_name "$(date -u +%Y%m%d%H%M%S)" "$(printf '%s' "$key" | backup_key_id)" "$rel")"
   # Eigene Subshell: backup_cmd_export setzt seinen EXIT-Trap und beendet sich per die.
   ( backup_cmd_export "$st/$name" ) || die "Sicherung ließ sich nicht schreiben — nichts verloren, erneut: lifeagents retire"
-  _ret_write_answers "$st/move.env" "$rel" "$bdir"
+  _ret_write_answers "$st/move.ans" "$rel" "$bdir"
+  ( umask 077; gpg_sym_encrypt "$key" "$st/move.env.gpg" "$st/move.ans" ) || die "Die Antwort-Datei ließ sich nicht verschlüsseln — nichts verloren, erneut: lifeagents retire"
+  rm -f -- "$st/move.ans"
   move_snapshot > "$st/vorher.txt" || die "Vergleichswerte ließen sich nicht lesen."
   pk="$(for p in $(_bkp_active_names); do [ "$p" = core ] || printf '%s\n' "$p"; done | paste -sd, -)"
   {

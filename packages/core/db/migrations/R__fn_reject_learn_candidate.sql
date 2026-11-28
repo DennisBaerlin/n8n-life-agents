@@ -6,14 +6,14 @@
 --   vorzuschlagen -> "einmal abgelehnt, nicht wieder nerven". owner_only-Backstop.
 --   Gelesene p-Keys: { candidate_id (Pflicht), chat_id (owner_only-Backstop ueber agent.fn_sender_is_member; fehlend
 --   oder nicht-numerisch -> nicht gesperrt) }. INVOKER, search_path-Pin + REVOKE.
---   Rueckgabe: {ok:true, candidate_id} | {ok:false, reason: owner_only | 'candidate_id required' | 'candidate not found or not pending'}.
+--   Rueckgabe: {ok:true, candidate_id} | {ok:false, reason: owner_only | 'candidate_id required' (fehlt oder keine Zahl) | 'candidate not found or not pending'}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_reject_learn_candidate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql
 SET search_path = pg_catalog, agent, core
 AS $$
 DECLARE
-    v_cid bigint := NULLIF(p->>'candidate_id', '')::bigint;
+    v_cid bigint := CASE WHEN p->>'candidate_id' ~ '^[0-9]{1,18}$' THEN (p->>'candidate_id')::bigint END;
     v_n   int;
 BEGIN
     IF agent.fn_sender_is_member(p->>'chat_id') THEN

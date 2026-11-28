@@ -15,7 +15,7 @@ DECLARE
   v_new     INT;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_spo_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb) INTO v_result;
+    '{"name":"__test_spo_settle__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_settle := (v_result->>'account_id')::int;
   INSERT INTO finance.accounts (name, account_type, bank, currency, status, settlement_account_id)
     VALUES ('__test_spo_depot__', 'stocks_depot', 'Trade Republic Bank GmbH', 'EUR', 'active', v_settle)

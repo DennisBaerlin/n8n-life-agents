@@ -19,8 +19,7 @@ BEGIN
     'currency','EUR'))->>'account_id')::int INTO v_cash;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_gat_depot__','account_type','stocks_depot',
     'currency','EUR','settlement_id', v_cash))->>'account_id')::int INTO v_depot;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_gat_kredit__','lender','B','borrower','T',
-    'original_amount',200000,'current_balance',198000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',3,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_gat_kredit__','lender','B','original_amount',200000,'current_balance',198000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',3,
     'monthly_annuity',1500,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_cash)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;

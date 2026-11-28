@@ -2,7 +2,7 @@
 -- fn_plan_rollout_claim (ATOMIC WRITE) — Eingang der gefuehrten Abfolge je Chat (Laufende, Nachzuegler)
 --   Eingabe p: {chat_id (Pflicht, numerisch), budget ('true' nur vom taeglichen Nachzuegler: Slot 'plan_rollout' normal, erst wenn eine Nachricht feststeht; ohne Platz werden ihre Merker freigegeben)}.
 --   Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine
---   offene Karte (released_at IS NULL, expires_at in der Zukunft), kein Entwurf der letzten 2 Stunden (Bedingung wie der Interview-Pin des Orchestrators).
+--   offene Karte (released_at IS NULL, expires_at in der Zukunft), kein frischer Entwurf (core.fn_advisor_hot_since, wie der Interview-Pin des Orchestrators).
 --   Dann je Domain mit plan_step die erste nicht leere Antwort von core.fn_plan_rollout_next; ein Verlierer des Claims stoppt.
 --   Nie core.fn_advisor_plan_status (ruft teure gaps_fn). Nie RAISE: jeder Fehler und jede Absage -> {messages:[]}.
 --   Rueckgabe {messages:[...mit chat_id], step, domain}. INVOKER, search_path gepinnt. Tests: tests/db/core/test_fn_plan_rollout_claim.sql
@@ -26,7 +26,7 @@ BEGIN
     IF v_pid IS NULL THEN RETURN v_empty; END IF;
     IF NOT core.fn_reminder_allowed('plan_rollout', v_pid) THEN RETURN v_empty; END IF;
     IF EXISTS (SELECT 1 FROM agent.hitl_pending h WHERE h.chat_id = v_chat::bigint AND h.released_at IS NULL AND h.expires_at > now()) THEN RETURN v_empty; END IF;
-    IF EXISTS (SELECT 1 FROM agent.advisor_plans d WHERE d.status = 'draft' AND d.updated_at > now() - interval '2 hours') THEN RETURN v_empty; END IF;
+    IF EXISTS (SELECT 1 FROM agent.advisor_plans d WHERE d.status = 'draft' AND d.updated_at > core.fn_advisor_hot_since()) THEN RETURN v_empty; END IF;
 
     FOR v_dom IN SELECT a.domain FROM core.advisors a
                   WHERE a.plan_step AND core.fn_package_active(a.package)

@@ -50,8 +50,8 @@ DECLARE
   v_n_split INT := 0; v_n_read INT := 0; v_n_book INT := 0; v_n_pause INT := 0; v_n_start INT := 0; v_n_shift INT := 0;
   r RECORD; o RECORD; v_tx INT; v_cnt INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_cvp_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__prop_cvp_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__prop_cvp_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_cvp_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
 
   -- P1: Betrags-Wechsel an jedem 3. Tag zweier Monate, je Monatstag-Variante, offen und befristet
   FOREACH v_dom IN ARRAY v_doms LOOP

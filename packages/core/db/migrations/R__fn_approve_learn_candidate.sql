@@ -8,7 +8,7 @@
 --   Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate.
 --   Eingabe p: { candidate_id, chat_id }, candidate_id Pflicht.
 --   Rueckgabe: {ok:true, target_kind, context_name, write} | {ok:false, reason}; reason = owner_only,
---   "candidate_id required", "candidate not found", "candidate already <status>" (approved|rejected), "candidate expired"
+--   "candidate_id required" (fehlt oder keine Zahl), "candidate not found", "candidate already <status>" (approved|rejected), "candidate expired"
 --   (Status expired oder pending nach expires_at, bevor der Lern-Cron ihn umstellt; eigener Wortlaut, weil nichts
 --   gespeichert wurde) oder der durchgereichte Ziel-Write.
 --   Seiteneffekt: Ziel-Write (Fakten bzw. Notiz) und guide_learn_candidates.status = 'approved'.
@@ -19,7 +19,7 @@ RETURNS jsonb LANGUAGE plpgsql
 SET search_path = pg_catalog, agent, core
 AS $$
 DECLARE
-    v_cid  bigint := NULLIF(p->>'candidate_id', '')::bigint;
+    v_cid  bigint := CASE WHEN p->>'candidate_id' ~ '^[0-9]{1,18}$' THEN (p->>'candidate_id')::bigint END;
     v_chat text   := p->>'chat_id';
     c      record;
     v_res  jsonb;

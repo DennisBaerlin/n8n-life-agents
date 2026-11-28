@@ -40,7 +40,7 @@ x-images:
   # Das eigene Image. Zwei erlaubte Formen (scripts/lib/release_images.ps1, contract_lint 33): neutral im Bau-Kontext und auf
   # Branches, `${LA_MASTER_IMAGE:-<register>/master@sha256:…}` als Release-Pin (scripts/build_master_image.ps1 traegt ihn ein).
   # Das Image selbst enthaelt immer die neutrale Form, sonst aenderte das Eintragen seinen eigenen Digest.
-  master: &img_master ${LA_MASTER_IMAGE:-ghcr.io/dennisbaerlin/n8n-life-agents/master@sha256:068d04e1c903578d81c0764b9be545116af8d6404f6c9eee54e22d7d4d29dbb3}
+  master: &img_master ${LA_MASTER_IMAGE:-ghcr.io/dennisbaerlin/n8n-life-agents/master@sha256:3ef190ae1adc64cd3ea6fafd81b162a4c5440c496707efcd92845679e3187479}
 
 x-labels: &labels
   io.lifeagents.install: ${LA_PROJECT:-lifeagents}
@@ -356,6 +356,37 @@ services:
     volumes:
       - caddy_data:/data
       - reach_conf:/reach:ro
+
+  lan:
+    # Nur beim eigenen Reverse Proxy im Heimnetz (Profil proxy, nicht beworbene Hintertuer; der master startet ihn gezielt,
+    # nachdem der Port frei ist, lib/reach.sh REACH_LAN_PORT). Veroeffentlicht die Pfad-Liste des Rands (edge:8088) als
+    # schlichtes HTTP im Heimnetz; TLS und Zertifikat macht der Proxy des Nutzers. Port 5678 wie n8n der CLI-Installation:
+    # ein bestehender Proxy aendert beim Umzug nur die Adresse seines Ziels. Vertraut keinem Vorgaenger (wie wan).
+    profiles: [proxy]
+    image: *img_caddy
+    container_name: ${LA_PROJECT:-lifeagents}-lan
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 128m
+    depends_on: [edge]
+    networks: [edge_public]
+    ports:
+      - "5678:5678"
+    environment:
+      LA_CADDYFILE: |
+        {
+          admin off
+          auto_https off
+        }
+        :5678 {
+          reverse_proxy edge:8088
+        }
+    command:
+      - sh
+      - -c
+      - |
+        printf '%s' "$$LA_CADDYFILE" > /tmp/Caddyfile
+        exec caddy run --config /tmp/Caddyfile --adapter caddyfile
 
 networks:
   internal:

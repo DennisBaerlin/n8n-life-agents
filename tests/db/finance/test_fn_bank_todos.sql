@@ -128,8 +128,8 @@ BEGIN
      OR EXISTS (SELECT 1 FROM finance.bank_todos WHERE head_id = v_rp) THEN RAISE EXCEPTION 'FAIL [Split folgt]'; END IF;
 
   -- until_free_money anlegen + aendern, jeweils ohne Kartenzeile
-  v_src := (finance.fn_create_account('{"name":"__bt_src__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_pot := (finance.fn_create_account('{"name":"__bt_pot__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_src := (finance.fn_create_account('{"name":"__bt_src__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot := (finance.fn_create_account('{"name":"__bt_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_src, 20000, current_date - 5, 'other');
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__bt_free__', 8000, (current_date + interval '1 year')::date, 'active') RETURNING id INTO v_g;
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g, 'account_id', v_src, 'amount', 8000));

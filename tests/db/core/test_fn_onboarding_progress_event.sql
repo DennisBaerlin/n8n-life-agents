@@ -50,6 +50,9 @@ BEGIN
   r := core.fn_onboarding_progress_event('{"chat_id":"7101","package":"core","area_completed_now":true}');
   IF jsonb_array_length(r->'member_chats') <> 0 THEN
     RAISE EXCEPTION 'FAIL [2 zweites Haushalt-Ereignis -> keine Mitglieder-Nachricht]: %', r; END IF;
+  -- kein boolean-Text -> wie false, kein Abbruch
+  r := core.fn_onboarding_progress_event('{"chat_id":"7101","package":"core","area_completed_now":"kaputt"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'send_all_done')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2b kein boolean]: %', r; END IF;
 
   -- ---------- 3) Haushalt zuruecksetzen + wieder fertig -> trotzdem nicht nochmal (kein Re-Arm) ----------
   UPDATE agent.guide_onboarding_state SET status = 'unknown' WHERE section_key = 'household';

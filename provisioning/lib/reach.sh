@@ -18,19 +18,25 @@
 #   fritzbox Dienst `wan` (Caddy, Profil fritzbox) veroeffentlicht 80/443 am Rechner, holt das Zertifikat fuer DOMAIN
 #            (MyFRITZ!-Adresse) selbst und reicht an edge:8088 weiter. Vorher muessen 80 und 443 frei sein
 #            (reach_ports_free); sonst startet nichts und der Status raet zum Tunnel — nie etwas ueberschreiben.
-# Den Weg waehlt der Wizard (REACH_MODE in der Antwort-Datei); gespeichert in core.env, damit ein Update ihn behaelt.
+#   proxy    nicht beworbene Hintertuer fuer einen eigenen Reverse Proxy im Heimnetz: Dienst `lan` (Profil proxy) gibt die
+#            Pfad-Liste als HTTP auf Port REACH_LAN_PORT am Rechner frei, TLS und Zertifikat macht der Proxy; DOMAIN = seine
+#            Adresse. Port belegt -> nichts starten (wie fritzbox). TRUSTED_PROXIES nutzt der Verbund nur fuer den /etc/hosts-Pin
+#            der Knopf-Probe (common.sh hitl_chat_reachable), keine Firewall.
+# Den Weg waehlt der Wizard (REACH_MODE in der Antwort-Datei; proxy bietet er nicht an, den setzt nur eine Antwort-Datei, z. B.
+# die des Umzugs, retire_cli.sh); gespeichert in core.env, damit ein Update ihn behaelt.
 
 REACH_CORE_ENV="${LIFEAGENTS_DIR:-/etc/lifeagents}/core.env"
 REACH_CONF_DIR="${REACH_CONF_DIR:-/var/lib/lifeagents-reach}"   # Volume reach_conf (master rw, wan ro): Adresse fuer wan
 REACH_RUN_DIR="${REACH_RUN_DIR:-/run/lifeagents-reach}"          # fluechtig: zuletzt gesehener Freigabe-Link (Zwischenspeicher)
 REACH_PUBLIC_TARGET='http://127.0.0.1:8088'                      # Funnel-Ziel im Namensraum des Rands (= edge :8088)
 REACH_LOGIN_RE='^https://login\.tailscale\.com/[A-Za-z0-9/?=&._~%+-]*$'
+REACH_LAN_PORT=5678                                              # = compose.yml lan.ports (Fall C_lan_port)
 
-# reach_mode -> tunnel | fritzbox | none. REACH_MODE aus der Umgebung (Antwort-Datei) vor dem gespeicherten Wert.
+# reach_mode -> tunnel | fritzbox | proxy | none. REACH_MODE aus der Umgebung (Antwort-Datei) vor dem gespeicherten Wert.
 reach_mode() {
   local m="${REACH_MODE:-}"
   [ -n "$m" ] || m="$(read_env_value "$REACH_CORE_ENV" REACH_MODE 2>/dev/null || true)"
-  case "$m" in tunnel|fritzbox) printf '%s' "$m" ;; *) printf 'none' ;; esac
+  case "$m" in tunnel|fritzbox|proxy) printf '%s' "$m" ;; *) printf 'none' ;; esac
 }
 
 # --- Tunnel (Tailscale) ---------------------------------------------------------------------------------------------
@@ -522,6 +528,14 @@ reach_status_json() {
         if [ "$REACH_WH_STATE" = ours ]; then state=ready; else state=pending_activation; fi
       elif [ -e "$REACH_CONF_DIR/ports-busy" ]; then state=ports_busy   # Ergebnis der letzten Pruefung (reach_converge)
       else state=starting; reason='not_started'; fi ;;
+    proxy)
+      dns="$dom"
+      if [ -z "$dom" ]; then reason='no_domain'
+      elif rt_edge_active lan; then
+        reach_webhook_eval "$dom"
+        if [ "$REACH_WH_STATE" = ours ]; then state=ready; else state=pending_activation; fi
+      elif [ -e "$REACH_CONF_DIR/ports-busy" ]; then state=ports_busy
+      else state=starting; reason='not_started'; fi ;;
     *) reason='no_mode'; reach_ipv4_cached ;;   # vor der Wahl: hilft dem Wizard bei der Empfehlung
   esac
   jq -nc --arg mode "$mode" --arg state "$state" --arg url "$url" --arg dns "$dns" --arg kexp "$kexp" \
@@ -543,7 +557,7 @@ reach_status_json() {
 reach_prepare() {
   local m
   if [ -n "${REACH_MODE:-}" ]; then
-    case "$REACH_MODE" in tunnel|fritzbox) : ;; *) die "REACH_MODE ungültig: erwartet tunnel oder fritzbox." ;; esac
+    case "$REACH_MODE" in tunnel|fritzbox|proxy) : ;; *) die "REACH_MODE ungültig: erwartet tunnel, fritzbox oder proxy." ;; esac
     if [ "$(read_env_value "$REACH_CORE_ENV" REACH_MODE 2>/dev/null || true)" != "$REACH_MODE" ]; then
       ensure_lifeagents_dir
       env_upsert "$REACH_CORE_ENV" REACH_MODE "$REACH_MODE"
@@ -573,20 +587,22 @@ reach_prepare() {
   fi
 }
 
-# reach_stop_other <weg> — den Rand-Dienst des anderen Wegs anhalten, falls er laeuft: beim FritzBox-Weg tailscale (sein Funnel
-#   nimmt sonst weiter oeffentlich an), beim Tunnel wan (80/443). Aufrufer erst, wenn der neue Weg steht (sonst waere der Bot
-#   dazwischen nicht erreichbar): nach dem Deploy in reach_converge (Tunnel: DOMAIN ist der Tailscale-Name; FritzBox: wan
-#   laeuft). Nie reset/logout, die
-#   Anmeldung bleibt im Volume; wer zurueckwechselt, bekommt den Dienst per rt_stack_up wieder.
+# reach_stop_other <weg> — die Rand-Dienste der anderen Wege anhalten, falls sie laufen (tailscale: sein Funnel nimmt sonst
+#   weiter oeffentlich an; wan: 80/443; lan: Heimnetz-Port). Aufrufer erst, wenn der neue Weg steht (sonst waere der Bot
+#   dazwischen nicht erreichbar): nach dem Deploy in reach_converge (Tunnel: DOMAIN ist der Tailscale-Name; FritzBox/Proxy: wan
+#   bzw. lan laeuft). Nie reset/logout, die Anmeldung bleibt im Volume; wer zurueckwechselt, bekommt den Dienst per rt_stack_up wieder.
 reach_stop_other() {
-  local other
-  case "$1" in fritzbox) other=tailscale ;; tunnel) other=wan ;; *) return 0 ;; esac
-  rt_edge_active "$other" || return 0
-  if rt_edge_stop "$other"; then log "Weg nach außen: ${1} — ${other} angehalten."
-  else warn "Weg nach außen: ${other} ließ sich nicht anhalten ($(rt_edge_logs_hint "$other"))."; fi
+  local own other
+  case "$1" in fritzbox) own=wan ;; tunnel) own=tailscale ;; proxy) own=lan ;; *) return 0 ;; esac
+  for other in tailscale wan lan; do
+    [ "$other" != "$own" ] || continue
+    rt_edge_active "$other" || continue
+    if rt_edge_stop "$other"; then log "Weg nach außen: ${1} — ${other} angehalten."
+    else warn "Weg nach außen: ${other} ließ sich nicht anhalten ($(rt_edge_logs_hint "$other"))."; fi
+  done
 }
 
-# reach_converge — spaet im Lauf (nach dem Deploy): Rand und Gateway erneuern, FritzBox-Weg anwerfen. Adresse fuer wan schreiben; laeuft wan noch
+# reach_converge — spaet im Lauf (nach dem Deploy): Rand und Gateway erneuern, FritzBox- bzw. Proxy-Weg anwerfen. Adresse fuer wan schreiben; laeuft wan noch
 #   nicht, vorher 80/443 pruefen (belegt -> nichts starten, Hinweis auf den Tunnel); geaenderte Adresse -> wan neu starten.
 reach_converge() {
   # Jeder Installer-Lauf (Einrichtung, Update mit und ohne master-Wechsel, reconfigure, Rueckweg) bringt Rand, Gateway und
@@ -597,7 +613,7 @@ reach_converge() {
   if declare -F _wait_llm_gateway_health >/dev/null && ! _wait_llm_gateway_health; then
     warn "KI-Gateway antwortet nach der Erneuerung nicht — kein Agent erreicht Claude. Diagnose: $(svc_logs_hint lifeagents-llm-gateway 50)"
   fi
-  # Beide Wege enden auf edge:8088: die Liste der oeffentlichen Pfade erst jetzt freigeben (n8n ist eingerichtet).
+  # Alle Wege enden auf edge:8088: die Liste der oeffentlichen Pfade erst jetzt freigeben (n8n ist eingerichtet).
   if reach_edge_public_write; then log "Rand: Liste der öffentlichen Pfade aktualisiert (edge lädt sie binnen 5 s)."; fi
   if [ "$(reach_mode)" = tunnel ]; then
     # Nach dem Deploy zeigt Telegram auf die Tunnel-Adresse: erst jetzt wan (80/443) anhalten, und nur, wenn DOMAIN der
@@ -606,6 +622,7 @@ reach_converge() {
     if [ "$REACH_TS_STATE" = running ] && [ -n "$REACH_TS_DNS" ] && [ "${DOMAIN:-}" = "$REACH_TS_DNS" ]; then reach_stop_other tunnel; fi
     return 0
   fi
+  if [ "$(reach_mode)" = proxy ]; then _reach_converge_lan; return 0; fi
   [ "$(reach_mode)" = fritzbox ] || return 0
   [ -n "${DOMAIN:-}" ] || { warn "FritzBox-Weg ohne Internet-Adresse (DOMAIN) — nichts gestartet."; return 0; }
   local changed=1
@@ -625,16 +642,39 @@ reach_converge() {
   reach_stop_other fritzbox   # wan laeuft: erst jetzt Tailscale samt Funnel anhalten
 }
 
-# reach_lan_doctor — doctor im Verbund, nur FritzBox-Weg: antwortet wan (TCP 443) ueber die Adresse des Rechners?
+# _reach_converge_lan — eigener Proxy: lan starten (nur bei freiem REACH_LAN_PORT, sonst Marke ports-busy wie beim FritzBox-Weg),
+#   danach die Dienste der anderen Wege anhalten. Keine Adresse fuer lan: er kennt keine Domain, der Proxy des Nutzers schon.
+_reach_converge_lan() {
+  [ -n "${DOMAIN:-}" ] || { warn "Proxy-Weg ohne Internet-Adresse (DOMAIN) — nichts gestartet."; return 0; }
+  if rt_edge_active lan; then reach_stop_other proxy; return 0; fi
+  mkdir -p "$REACH_CONF_DIR"
+  if ! rt_host_port_free "$REACH_LAN_PORT"; then
+    : > "$REACH_CONF_DIR/ports-busy"
+    warn "Proxy-Weg: Port ${REACH_LAN_PORT} ist auf diesem Rechner schon belegt — nichts gestartet, nichts überschrieben."
+    return 0
+  fi
+  rm -f "$REACH_CONF_DIR/ports-busy"
+  rt_stack_up --no-deps lan >/dev/null 2>&1 || { warn "Proxy-Weg: lan ließ sich nicht starten ($(rt_edge_logs_hint lan))."; return 0; }
+  reach_stop_other proxy
+}
+
+# reach_lan_doctor — doctor im Verbund, FritzBox- und Proxy-Weg: antwortet wan (TCP 443) ueber die Adresse des Rechners?
 #   Ausgabe: Zeilen "<pass|warn|red>\t<text>". Adresse: LA_HOST_IP aus den Hinweisen der Start-App (echte LAN-Adresse),
 #   sonst das Gateway von edge_public (Docker-Zugang des Rechners; auf Docker Desktop kennt der Container die LAN-Adresse
 #   nicht). Bleibt die Antwort aus: einmal `rt_edge_restart wan`, dann bis REACH_LAN_TRIES mal messen. Einzige Stelle,
 #   an der doctor etwas veraendert, denn nach einem Docker-Neustart blieb 127.0.0.1 erreichbar,
-#   LAN und Internet nicht. Tunnel-Weg hat keinen veroeffentlichten Port: nichts zu messen.
+#   LAN und Internet nicht. Tunnel-Weg hat keinen veroeffentlichten Port: nichts zu messen. Proxy-Weg: nur, ob lan laeuft
+#   (den Weg vom Proxy des Nutzers misst der Ingress-Check ueber DOMAIN).
 REACH_LAN_TRIES="${REACH_LAN_TRIES:-10}"
 REACH_LAN_SLEEP="${REACH_LAN_SLEEP:-1}"
 reach_lan_doctor() {
   local addr via i rc
+  if [ "$(reach_mode)" = proxy ]; then
+    if rt_edge_active lan; then printf 'pass\tProxy-Weg: Eingang für den eigenen Reverse Proxy läuft (Port %s dieses Rechners)\n' "$REACH_LAN_PORT"
+    elif [ -e "$REACH_CONF_DIR/ports-busy" ]; then printf 'warn\tProxy-Weg: Port %s ist auf diesem Rechner belegt, lan wurde nicht gestartet\n' "$REACH_LAN_PORT"
+    else printf 'red\tProxy-Weg: der Container lan läuft nicht — der eigene Reverse Proxy erreicht den Bot nicht (%s)\n' "$(rt_edge_logs_hint lan)"; fi
+    return 0
+  fi
   [ "$(reach_mode)" = fritzbox ] && [ -s "$REACH_CONF_DIR/domain" ] || return 0
   if ! rt_edge_active wan; then
     if [ -e "$REACH_CONF_DIR/ports-busy" ]; then
@@ -688,6 +728,12 @@ Telegram erreicht deinen Rechner über https://${DOMAIN:-<MyFRITZ!-Adresse>}/ �
 80 und 443 an diesen Rechner frei (MyFRITZ!-Freigabe „HTTPS-Server“ plus Port 80). Das Zertifikat holt der Rand
 selbst. Öffentlich sind nur die Telegram- und Bestätigungs-Pfade; der n8n-Editor bleibt auf diesem Rechner.
 Schritt für Schritt: Doku-Seite „FritzBox einrichten“. Klappt es nicht (z. B. DS-Lite), nimm den Tunnel.
+EOF
+      ;;
+    proxy) ui_box 'Erreichbarkeit: eigener Reverse Proxy' <<EOF
+Telegram erreicht deinen Rechner über https://${DOMAIN:-<deine Adresse>}/ — dein Reverse Proxy leitet die Pfade
+${LA_PUBLIC_PATHS} per HTTP an Port ${REACH_LAN_PORT} dieses Rechners weiter (TLS macht der Proxy).
+Nur diese Pfade antworten dort; der n8n-Editor bleibt auf diesem Rechner.
 EOF
       ;;
     *) ui_box 'Erreichbarkeit' <<EOF

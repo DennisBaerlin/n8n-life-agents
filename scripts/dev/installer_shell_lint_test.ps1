@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
-# Fehl- und Gutfaelle von scripts/timer_lock_lint.ps1 in einem Wegwerf-Baum (-Root): Sperr-Probe und Sperr-Nahme ohne
+# Fehl- und Gutfaelle von scripts/installer_shell_lint.ps1 in einem Wegwerf-Baum (-Root): Sperr-Probe und Sperr-Nahme ohne
 # Wartezeit ausserhalb der erlaubten Datei, ein nicht eingetragener Zeitgeber, ein exec ohne Programm, das stdin, stdout oder
 # stderr der Shell umleitet, und ein ausfuehrbares Skript ohne LANG/LC_ALL muessen rot werden; die Gegenstuecke gruen. Kein Docker, kein git.
-# Usage: .\scripts\dev\timer_lock_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
+# Usage: .\scripts\dev\installer_shell_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$lint = Join-Path $PSScriptRoot '..\timer_lock_lint.ps1'
+$lint = Join-Path $PSScriptRoot '..\installer_shell_lint.ps1'
 $fails = 0
 
 . (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
@@ -92,5 +92,5 @@ Test-Case 'gesourcte Bibliothek und Start-App brauchen keinen Export' @{
     "$P/desktop/run.sh" = "#!/usr/bin/env bash`necho x`n"
 } $false ''
 
-if ($fails -eq 0) { Write-Host 'PASS timer_lock_lint_test' -ForegroundColor Green } else { Write-Host "FAIL timer_lock_lint_test ($fails)" -ForegroundColor Red }
+if ($fails -eq 0) { Write-Host 'PASS installer_shell_lint_test' -ForegroundColor Green } else { Write-Host "FAIL installer_shell_lint_test ($fails)" -ForegroundColor Red }
 exit $fails

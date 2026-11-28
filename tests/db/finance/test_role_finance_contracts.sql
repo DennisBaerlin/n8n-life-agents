@@ -17,7 +17,7 @@ DECLARE
   v_id   int;
   v_rp   int;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers1","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers1","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   p := jsonb_build_object('name', 'Haftpflicht Erika', 'insurance_company', 'Beispiel Versicherung', 'policy_number', 'HP-1',
          'annual_premium', '120', 'schedule_unit', 'month', 'valid_from', core.fn_today()::text,
          'first_payment_date', core.fn_today()::text, 'debit_account_id', v_acct);
@@ -56,7 +56,7 @@ DECLARE
   v_new  int;
   v_to   date := core.fn_today() + 90;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers2","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers2","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_insurance(jsonb_build_object('name', 'Hausrat Erika', 'annual_premium', '120', 'schedule_unit', 'month',
          'valid_from', core.fn_today()::text, 'first_payment_date', core.fn_today()::text, 'debit_account_id', v_acct));
   v_id := (r->>'insurance_id')::int;
@@ -104,7 +104,7 @@ DECLARE
   v_b    int;
   v_rp_b int;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers3","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers3","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_insurance(jsonb_build_object('name', 'Rechtsschutz Erika', 'annual_premium', '600', 'schedule_unit', 'month',
          'valid_from', core.fn_today()::text, 'first_payment_date', core.fn_today()::text, 'debit_account_id', v_acct));
   v_a := (r->>'insurance_id')::int; v_rp_a := (r->>'recurring_payment_id')::int;
@@ -150,7 +150,7 @@ DECLARE
   v_found int;
   v_cand  jsonb;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers4","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Vers4","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_insurance(jsonb_build_object('name', 'Kfz Max', 'annual_premium', '360', 'schedule_unit', 'month',
          'valid_from', core.fn_today()::text, 'first_payment_date', core.fn_today()::text, 'debit_account_id', v_acct));
   v_id := (r->>'insurance_id')::int;
@@ -188,7 +188,7 @@ DECLARE
   v_id   int;
   v_rp   int;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Rente1","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Rente1","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_pension(jsonb_build_object('name', 'Ruerup Erika', 'pension_type', 'ruerup', 'current_value', 10000,
          'contribution_amount', 150, 'debit_account_id', v_acct, 'first_payment_date', core.fn_today()::text));
   v_id := (r->>'pension_id')::int;
@@ -236,7 +236,7 @@ DECLARE
   v_b    int;
   v_rp_b int;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Rente2","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Rente2","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_pension(jsonb_build_object('name', 'Privatrente Erika', 'pension_type', 'private',
          'contribution_amount', 150, 'debit_account_id', v_acct, 'first_payment_date', core.fn_today()::text));
   v_a := (r->>'pension_id')::int; v_rp_a := (r->>'recurring_payment_id')::int;
@@ -412,7 +412,7 @@ DECLARE
   v_acct int;
   v_id   int;
 BEGIN
-  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Immo","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_acct := (finance.fn_create_account('{"name":"Girokonto Erika Immo","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   v_id := (finance.fn_create_real_estate('{"name":"Apartment Erika","current_value":300000}'::jsonb)->>'real_estate_id')::int;
   p := jsonb_build_object('real_estate_name', 'Apartment Erika', 'proceeds_account_id', v_acct,
          'sale_date', core.fn_today()::text, 'sale_price', '320000');

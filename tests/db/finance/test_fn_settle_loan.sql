@@ -19,11 +19,11 @@ DECLARE
   v_rpvalid DATE;
   v_grp     UUID;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_sl_debit__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
+  SELECT (finance.fn_create_account('{"name":"__test_sl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
 
   -- Kredit 1: Restschuld 10000
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sl_full__','lender','TB','borrower','T','original_amount','10000','current_balance','10000',
+    'name','__test_sl_full__','lender','TB','original_amount','10000','current_balance','10000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','500',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int; v_loanacc := (v_res->>'loan_account_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
@@ -52,7 +52,7 @@ BEGIN
 
   -- TEST 2: Abloesung mit Zinsanteil (Betrag > Restschuld)
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sl_interest__','lender','TB','borrower','T','original_amount','10000','current_balance','10000',
+    'name','__test_sl_interest__','lender','TB','original_amount','10000','current_balance','10000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','500',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit)) INTO v_res;
   v_loan2 := (v_res->>'loan_id')::int; v_lacc2 := (v_res->>'loan_account_id')::int;
@@ -66,7 +66,7 @@ BEGIN
 
   -- TEST 3: Betrag < Restschuld -> {ok:false}
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sl_under__','lender','TB','borrower','T','original_amount','10000','current_balance','10000',
+    'name','__test_sl_under__','lender','TB','original_amount','10000','current_balance','10000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','500',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit)) INTO v_res;
   v_loan3 := (v_res->>'loan_id')::int; v_lacc3 := (v_res->>'loan_account_id')::int;

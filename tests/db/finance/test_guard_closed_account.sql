@@ -7,7 +7,7 @@ DO $$
 DECLARE v_acct INT; v_blocked BOOLEAN := FALSE; v_cnt INT;
 BEGIN
   SELECT (finance.fn_create_account(
-    '{"name":"__closed__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb
+    '{"name":"__closed__","account_type":"cash","currency":"EUR"}'::jsonb
   )->>'account_id')::int INTO v_acct;
 
   UPDATE finance.accounts SET status = 'closed' WHERE id = v_acct;

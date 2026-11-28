@@ -496,6 +496,9 @@ _upg_carry_backup_keys() {
 # _rb_resume — nach einem Abbruch des Rueckwegs n8n und die Update-Timer wieder an (sonst kaeme keine Release-Karte mehr
 #   und Chat-Auftraege blieben liegen, bis zum naechsten vollen Provision).
 _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check.timer 2>/dev/null || true; }
+# _rb_profile_args -> "--profile <p>" mit derselben Aufloesung wie provision.sh (gespeichert, sonst dev): dev wird nie gespeichert,
+#   und install.sh haengt ohne --profile selbst release an (fragte eine dev-Installation beim Rueckweg wie neu).
+_rb_profile_args() { local p; p="$(_install_profile)"; case "$p" in release) ;; *) p=dev ;; esac; printf -- '--profile %s' "$p"; }
 
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
@@ -520,7 +523,7 @@ upgrade_rollback() {
   upgrade_move_guard --any
   require_root
   lifeagents_db_name >/dev/null
-  local src backup from_rel ktab key choice when work url kr profile rc=0 keep="${N8N_DB_NAME}_before_rollback" from_img="" from_compose=""
+  local src backup from_rel ktab key choice when work url kr rc=0 keep="${N8N_DB_NAME}_before_rollback" from_img="" from_compose=""
   if [ -f "$UPGRADE_MARKER" ]; then
     src="$UPGRADE_MARKER"; backup="$(read_env_value "$src" BACKUP || true)"
   else
@@ -612,13 +615,13 @@ upgrade_rollback() {
     _rb_compose_switch "$from_rel" "$from_img" "$from_compose" "$keep" "$when"
     return 0
   fi
-  profile="$(read_env_value "$(lifeagents_env_file core)" INSTALL_PROFILE 2>/dev/null || true)"
   log "Vorherigen Stand ${from_rel} einspielen ..."
-  LIFEAGENTS_ALLOW_DOWNGRADE=1 bash "$work/install.sh" --version "$from_rel" --profile "${profile:-release}" || rc=$?
+  # shellcheck disable=SC2046  # bewusst geteilt: genau "--profile dev|release"
+  LIFEAGENTS_ALLOW_DOWNGRADE=1 bash "$work/install.sh" --version "$from_rel" $(_rb_profile_args) || rc=$?
   rm -rf -- "$work"
   if [ "$rc" -ne 0 ]; then
     _rb_resume
-    warn "Die Daten sind zurückgesetzt, das Einspielen von ${from_rel} ist aber gescheitert (Exit ${rc}). Die vorige Datenbank liegt noch als ${keep}. Nur das Einspielen erneut starten (die Daten NICHT noch einmal zurücksetzen): curl -fsSL '${url}' -o /root/install.sh && bash /root/install.sh --version ${from_rel}"
+    warn "Die Daten sind zurückgesetzt, das Einspielen von ${from_rel} ist aber gescheitert (Exit ${rc}). Die vorige Datenbank liegt noch als ${keep}. Nur das Einspielen erneut starten (die Daten NICHT noch einmal zurücksetzen): curl -fsSL '${url}' -o /root/install.sh && bash /root/install.sh --version ${from_rel} $(_rb_profile_args)"
     return 1
   fi
   pg_su_exec dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true

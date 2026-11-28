@@ -19,8 +19,8 @@ DECLARE
   v_ccy  text;
   v_lbl  text;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Girokonto Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
-  v_b := (finance.fn_create_account('{"name":"Rolle Sparkonto Max","account_type":"cash","account_holder":"Max","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Girokonto Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"Rolle Sparkonto Max","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES (v_b, 50, DATE '2026-01-05', 'other', 'Rolle Einlage');
 
@@ -76,7 +76,7 @@ DECLARE
   r   jsonb;
   v_a int;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Fehlanlage Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Fehlanlage Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
 
   SET LOCAL ROLE finance_rw;
   r := core.fn_dry_run('finance.fn_delete_account(jsonb)'::regprocedure, jsonb_build_object('account_name', 'Rolle Fehlanlage Erika'));
@@ -102,7 +102,7 @@ DECLARE
   r   jsonb;
   v_a int;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Zinskonto Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Zinskonto Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
 
   -- fn_account_interest_defaults: Kadenz Monatsende, erste Gutschrift aus dem Raster (Karte zeigt sie)
   SET LOCAL ROLE finance_rw;
@@ -163,7 +163,7 @@ DECLARE
   r   jsonb;
   v_a int;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Zins-Skip Max","account_type":"cash","account_holder":"Max","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Zins-Skip Max","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
 
   SET LOCAL ROLE finance_rw;
   r := finance.fn_skip_interest_occurrence(jsonb_build_object('account_id', v_a, 'period_end', '2026-02-01'));
@@ -187,7 +187,7 @@ DECLARE
   v_a   int;
   v_bal numeric;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Stichtag Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Stichtag Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description) VALUES
     (v_a, 1000, DATE '2026-01-10', 'other', 'Rolle Einlage'),
     (v_a,  300, DATE '2026-02-10', 'other', 'Rolle spaetere Buchung');
@@ -213,7 +213,7 @@ DECLARE
   v_today date := core.fn_today();
   v_txt   text;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Abgleich Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Abgleich Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES (v_a, 1000, DATE '2026-01-10', 'other', 'Rolle Einlage');
 
@@ -260,8 +260,8 @@ DECLARE
   v_m     int;
   v_today date := core.fn_today();
 BEGIN
-  v_e := (finance.fn_create_account('{"name":"Rolle Batch Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
-  v_m := (finance.fn_create_account('{"name":"Rolle Batch Max","account_type":"cash","account_holder":"Max","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_e := (finance.fn_create_account('{"name":"Rolle Batch Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_m := (finance.fn_create_account('{"name":"Rolle Batch Max","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description) VALUES
     (v_e, 500, DATE '2026-01-10', 'other', 'Rolle Einlage'),
     (v_m, 200, DATE '2026-01-10', 'other', 'Rolle Einlage');
@@ -309,7 +309,7 @@ DECLARE
   v_rp int;
   v_n  int;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"Rolle Offen Erika","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"Rolle Offen Erika","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, day_count_convention, valid_from)
   VALUES (v_a, 4, 1, 'month', 'ACT/365', DATE '2026-01-01');
   v_rp := (finance.fn_create_recurring_payment(jsonb_build_object('name', 'Rolle Abo', 'direction', 'expense', 'amount', 10,

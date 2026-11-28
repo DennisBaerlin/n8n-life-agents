@@ -27,7 +27,7 @@ RUN printf '#!/bin/sh\nexec bash /opt/lifeagents/provisioning/compose/stack.sh "
  && chmod 0755 /usr/local/bin/stack
 # io.lifeagents.core = Fassung des Kern-Vertrags ("v" der JSON-Zeilen). Ein Kern gibt nur an Abbilder mit diesem Etikett
 # weiter (lib/stack_core.sh sc_delegate); Abbilder ohne kennen `stack` nicht.
-LABEL io.lifeagents.install.image="master" io.lifeagents.core="1"
+LABEL io.lifeagents.core="1"
 # Release-Tag dieses Images (build_master_image.ps1 -Version). provision.sh schreibt ihn in VERSION; ein Lauf ohne Nummer liest
 # ihn ueber docker inspect nach (common.sh release_tag_resolve). Ohne -Version gebaut (dev) bricht ein Release-Lauf darum ab:
 # lokale Baue mit --build-arg RELEASE_TAG=dev-<rev>. Explizite Setzer (update_runner, upgrade_guard-Rueckweg) gehen vor.

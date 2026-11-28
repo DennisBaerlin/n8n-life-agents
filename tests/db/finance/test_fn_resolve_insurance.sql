@@ -12,7 +12,7 @@ DECLARE
 BEGIN
 
   -- Setup: Abbuchungskonto + Versicherungen
-  SELECT finance.fn_create_account('{"name":"__test_ins_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_ins_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_insurance(jsonb_build_object(

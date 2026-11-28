@@ -11,8 +11,8 @@ DECLARE
   v_giro INT; v_pot INT; v_res JSONB; v_goal INT; v_rp INT; v_td DATE; v_first DATE; v_cnt INT; v_months INT; v_rate NUMERIC;
   v_r1 NUMERIC; v_new NUMERIC; v_n INT := 0; r RECORD; v_bad TEXT := '';
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__lrd_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__lrd_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__lrd_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__lrd_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
   FOR r IN SELECT * FROM (VALUES (1200, 100, 1), (1000, 300, 15), (1200, 100, -1), (2500, 125, -1), (900, 100, 15), (50000, 200, 1)) x(target, rate, dom) LOOP
     v_n := v_n + 1;
     v_res := finance.fn_create_savings_goal(jsonb_build_object('name','__lrd_goal_'||v_n||'__','goal_type','other','target_amount',r.target,

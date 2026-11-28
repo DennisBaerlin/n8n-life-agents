@@ -11,7 +11,7 @@ DECLARE
   v_rp_tx INT;
   v_cnt   INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_drp_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__test_drp_acct__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_acct;
 
   -- Standalone rp -> loeschbar
   SELECT (finance.fn_create_recurring_payment(jsonb_build_object(
@@ -70,10 +70,10 @@ DECLARE
   v_giro   INT; v_kid INT; v_pot INT; v_other INT;
   v_next1  DATE := (date_trunc('month', current_date) + interval '1 month')::date;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__drf_giro__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__drf_kid_cash__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_kid;
-  SELECT (finance.fn_create_account('{"name":"__drf_pot__","account_type":"cash","account_holder":"Test","currency":"EUR","opening_balance":800}'::jsonb)->>'account_id')::int INTO v_pot;
-  SELECT (finance.fn_create_account('{"name":"__drf_other__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_other;
+  SELECT (finance.fn_create_account('{"name":"__drf_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__drf_kid_cash__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_kid;
+  SELECT (finance.fn_create_account('{"name":"__drf_pot__","account_type":"cash","currency":"EUR","opening_balance":800}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__drf_other__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_other;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__drf_depot__', 'stocks_depot', 'EUR', 'active', v_kid);
   PERFORM finance.fn_create_savings_plan(jsonb_build_object('name','__drf_plan__','depot_name','__drf_depot__',

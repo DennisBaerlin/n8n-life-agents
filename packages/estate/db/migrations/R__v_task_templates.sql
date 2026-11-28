@@ -18,6 +18,6 @@ WITH tx AS (
 SELECT t.template_key, t.case_type, t.phase, t.ord,
        coalesce(x.t->>('estate.task.' || t.template_key || '.title'), 'estate.task.' || t.template_key || '.title') AS title,
        nullif(x.t->>('estate.task.' || t.template_key || '.detail'), 'estate.task.' || t.template_key || '.detail') AS detail,
-       t.deadline_anchor, t.offset_count, t.offset_unit, t.condition_key, t.fan_out, t.legal_source, t.hardness, t.retired
+       t.deadline_anchor, t.offset_count, t.offset_unit, t.condition_key, t.fan_out, t.legal_source, t.hardness
 FROM estate.task_templates t
 JOIN tx x ON x.template_key = t.template_key;

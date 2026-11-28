@@ -21,11 +21,11 @@ BEGIN
 
   -- Setup: Abbuchungskonto
   SELECT finance.fn_create_account(
-    '{"name":"__test_saving_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_saving_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
   SELECT finance.fn_create_account(
-    '{"name":"__test_saving_pot__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_saving_pot__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_pot_id := (v_result->>'account_id')::int;
 
@@ -265,9 +265,9 @@ DO $$
 DECLARE
   v_result jsonb; v_fund int; v_res int; v_rp8a int;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__pl_fund__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__pl_fund__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_fund := (v_result->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__pl_resv__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__pl_resv__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_res := (v_result->>'account_id')::int;
   -- kleines Einkommen +1000/Monat (aktiv, non-transfer)
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
@@ -447,13 +447,13 @@ DECLARE
   v_p1 INT; v_p2 INT; v_p3 INT; v_p4 INT; v_pk INT;
   v_due    DATE;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__sgr_from__","account_type":"cash","account_holder":"Test","currency":"EUR","opening_balance":5000}'::jsonb)->>'account_id')::int INTO v_from;
-  SELECT (finance.fn_create_account('{"name":"__sgr_from2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from2;
-  SELECT (finance.fn_create_account('{"name":"__sgr_pot1__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot1;
-  SELECT (finance.fn_create_account('{"name":"__sgr_pot2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot2;
-  SELECT (finance.fn_create_account('{"name":"__sgr_pot3__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot3;
-  SELECT (finance.fn_create_account('{"name":"__sgr_pot4__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot4;
-  SELECT (finance.fn_create_account('{"name":"__sgr_pot5__","account_type":"p2p","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot5;
+  SELECT (finance.fn_create_account('{"name":"__sgr_from__","account_type":"cash","currency":"EUR","opening_balance":5000}'::jsonb)->>'account_id')::int INTO v_from;
+  SELECT (finance.fn_create_account('{"name":"__sgr_from2__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from2;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot1__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot1;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot2__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot2;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot3__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot3;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot4__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot4;
+  SELECT (finance.fn_create_account('{"name":"__sgr_pot5__","account_type":"p2p","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot5;
 
   -- (R1) freistehender Dauerauftrag (Start kuenftig) in pot1 -> Ziel mit Rate: existing_transfer vor dem Konto-Check
   v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_uebertrag1__','from_account_id',v_from,

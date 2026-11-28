@@ -3,7 +3,8 @@
 --   Owner (Mitglied -> Toast), guide setzt raise + liefert die Anleitung mit [Erledigt], wait nur mit Datum, check -> route
 --   llm_probe + Nachschau sofort faellig, beendeter Vorfall -> Toast; replay liefert route replay + ein zusammengefuehrtes
 --   Update aus den eigenen gemerkten Texten/Dateien (Sprachnachricht nicht) und loescht sie, drop loescht; fremde
---   Nachrichten nie. Ausserdem der Weg ueber den Dispatcher (member_permeable). Alle Werte erfunden.
+--   Nachrichten nie. replay/drop wirken nur auf die Nachrichten des Vorfalls auf dem Knopf; replay, solange ein Vorfall offen
+--   ist -> Toast, nichts geloescht. Ausserdem der Weg ueber den Dispatcher (member_permeable). Alle Werte erfunden.
 BEGIN;
 
 SET LOCAL TimeZone = 'Europe/Berlin';
@@ -61,7 +62,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [4 wait ohne Datum]: %', r; END IF;
 
   -- (5) replay: eigene Texte + Datei zusammengefuehrt (Datei primaer, Texte als Bildunterschrift), Sprachnachricht nicht;
-  --     fremde Nachricht bleibt; die eigenen sind danach weg
+  --     fremde Nachricht bleibt; die eigenen sind danach weg. Nachgespielt wird erst nach dem Ende des Vorfalls.
+  UPDATE core.llm_incidents SET closed_at = now(), close_reason = 'recovered' WHERE id = inc;
   INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at) VALUES
     (9300001, inc, 7902, 7902, 11, 'text', '{"update_id":9300001,"message":{"message_id":11,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"text":"erste"}}', now()),
     (9300002, inc, 7902, 7902, 12, 'file', '{"update_id":9300002,"message":{"message_id":12,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"document":{"file_id":"d1","file_name":"a.pdf"}}}', now()),
@@ -103,6 +105,28 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 unbekannt]: %', r; END IF;
   r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7902', 'chat_type', 'group'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 Gruppe]: %', r; END IF;
+
+  -- (8) Knopf eines beendeten Vorfalls A, waehrend Vorfall B laeuft: replay -> Toast, nichts nachgespielt oder geloescht;
+  --     drop loescht nur die Nachrichten von A; nach dem Ende von B spielt der Knopf von A die von B nicht nach.
+  DELETE FROM agent.llm_held_messages;
+  INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at) VALUES
+    (9300021, inc, 7902, 7902, 31, 'text', '{"update_id":9300021,"message":{"message_id":31,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"text":"alt"}}', now());
+  r := core.fn_llm_incident_note(jsonb_build_object('code','overloaded','source','error_notify'));
+  IF (r->>'incident_id')::bigint = inc THEN RAISE EXCEPTION 'FAIL [8 Fixture: neuer Vorfall erwartet]: %', r; END IF;
+  INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at) VALUES
+    (9300022, (r->>'incident_id')::bigint, 7902, 7902, 32, 'text', '{"update_id":9300022,"message":{"message_id":32,"chat":{"id":7902,"type":"private"},"from":{"id":7902},"text":"neu"}}', now());
+  r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'route' IS NOT NULL OR COALESCE(r->>'toast', '') = ''
+     OR (SELECT count(*) FROM agent.llm_held_messages WHERE from_id = 7902) <> 2 THEN
+    RAISE EXCEPTION 'FAIL [8 replay waehrend neuer Pause]: %', r; END IF;
+  r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:drop:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
+  IF (r->>'ok')::boolean IS NOT TRUE OR EXISTS (SELECT 1 FROM agent.llm_held_messages WHERE update_id = 9300021)
+     OR NOT EXISTS (SELECT 1 FROM agent.llm_held_messages WHERE update_id = 9300022) THEN
+    RAISE EXCEPTION 'FAIL [8 drop nur Vorfall A]: %', r; END IF;
+  UPDATE core.llm_incidents SET closed_at = now(), close_reason = 'recovered' WHERE closed_at IS NULL;
+  r := core.fn_handle_llm_cb(jsonb_build_object('data', 'llm:replay:' || inc, 'chat_id', '7902', 'chat_type', 'private'));
+  IF r->>'route' IS NOT NULL OR NOT EXISTS (SELECT 1 FROM agent.llm_held_messages WHERE update_id = 9300022) THEN
+    RAISE EXCEPTION 'FAIL [8 alter Knopf spielt neue Nachricht nach]: %', r; END IF;
 END $$;
 
 ROLLBACK;

@@ -62,6 +62,8 @@ case "${1:-}" in
     # reach_ctl.sh status (Tunnel-Stand): eine JSON-Zeile; STUB_REACH_RC = Abfrage scheitert.
     r='{"mode":"none","state":"unavailable","url":"","dns_name":""}'
     case "$a" in *'reach_ctl.sh|status|'*) [ -z "${STUB_REACH_RC:-}" ] || exit "$STUB_REACH_RC"; printf '%s\n' "${STUB_REACH_JSON:-$r}"; exit 0 ;; esac
+    # move_unlock.sh (verschluesselte Umzugs-Antworten, setup.sh --answers *.gpg): STUB_UNLOCK_RC; danach liest setup.sh den Klartext.
+    case "$a" in *'move_unlock.sh|open'*) exit "${STUB_UNLOCK_RC:-0}" ;; *'move_unlock.sh|take|'*) printf "# lifeagents-move v9\nTELEGRAM_BOT_TOKEN='y'\n"; exit 0 ;; esac
     exit 0 ;;
 esac
 exit 0
@@ -362,6 +364,36 @@ su_root debian 12 bookworm
 sux --yes --image "$IMG" --answers "$SUD/answers.env" -- --profile dev --packages finance
 su_has SU.answers-eigene-optionen "$(grep '|stack|install|' "$SUL")" '|--|--profile|dev|--packages|finance'
 su_not SU.answers-profil-nicht-doppelt "$(grep '|stack|install|' "$SUL")" '--profile|release'
+# Verschluesselte Umzugs-Antworten (move.env.gpg): ohne Terminal Abbruch vor jeder Einrichtung; mit Terminal im master entsperren
+# (move_unlock.sh, docker exec -it), der Klartext geht per Pipe an den Kern, danach beide Dateien im master weg.
+su_root debian 12 bookworm
+printf 'binaer' > "$SUD/move.env.gpg"
+sux --yes --image "$IMG" --answers "$SUD/move.env.gpg"
+eq SU.umzug-verschluesselt-ohne-terminal-rc 1 "$SU_RC"
+su_has SU.umzug-verschluesselt-ohne-terminal-satz "$(cat "$SUD/err")" 'Terminal'
+su_not SU.umzug-verschluesselt-ohne-terminal-vor-dem-start "$(su_log)" '|stack|'
+if command -v script >/dev/null 2>&1; then
+  su_tty() {   # su_tty [env…] — setup.sh mit Pseudo-Terminal (script), sonst wie su_run
+    SU_RC=0
+    script -qec "env -u LA_PROJECT -u LA_CORE_PORTS PATH='$SUB:$PATH' STUB_LOG='$SUL' LA_SETUP_ROOT='$SUR' LA_SETUP_WAIT=0 SUDO_USER=alice $* bash '$SUS' --yes --image '$IMG' --answers '$SUD/move.env.gpg'" /dev/null >"$SUD/out" 2>&1 || SU_RC=$?
+  }
+  su_root debian 12 bookworm; rm -f "$SUL.put"; su_tty
+  eq SU.umzug-verschluesselt-rc 0 "$SU_RC"
+  su_has SU.umzug-entsperrt-im-master "$(su_log)" '|exec|-it|lifeagents-master|bash|/opt/lifeagents/provisioning/compose/move_unlock.sh|open'
+  su_has SU.umzug-klartext-an-kern "$(cat "$SUL.put" 2>/dev/null)" "TELEGRAM_BOT_TOKEN='y'"
+  su_has SU.umzug-antworten-weg "$(su_log)" 'move_unlock.sh|drop'
+  su_not SU.umzug-schluessel-bleibt-fuer-apply "$(su_log)" 'move_unlock.sh|drop|all'
+  su_root debian 12 bookworm; su_tty STUB_UNLOCK_RC=1
+  eq SU.umzug-schluessel-falsch-rc 1 "$SU_RC"
+  su_not SU.umzug-schluessel-falsch-nichts "$(su_log)" '|stack|install|'
+  su_has SU.umzug-schluessel-falsch-raeumt-alles "$(su_log)" 'move_unlock.sh|drop|all'
+  printf '%s\n' '{"v":1,"type":"result","verb":"install","ok":false,"reason":"install_failed","detail":"x"}' > "$SUD/install_fail.json"
+  su_root debian 12 bookworm; su_tty STUB_RC_install=1 STUB_OUT_install="$SUD/install_fail.json"
+  eq SU.umzug-einrichtung-scheitert-rc 1 "$SU_RC"
+  su_has SU.umzug-einrichtung-scheitert-raeumt-alles "$(su_log)" 'move_unlock.sh|drop|all'
+else
+  printf 'SKIP SU.umzug-verschluesselt: kein script(1) fuer ein Pseudo-Terminal\n'
+fi
 # Jeder Fortschritts-Schritt des Kerns (sc_step) hat in setup.sh einen Text, sonst stuende er roh in der Ausgabe.
 _steps="$(sed -n "s/^STEPS='\(.*\)'$/\1/p" "$SUS")"
 _miss=''

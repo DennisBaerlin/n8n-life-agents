@@ -16,12 +16,12 @@ BEGIN
 
   -- Voraussetzungen: zwei Cash-Konten
   SELECT finance.fn_create_account(
-    '{"name":"__test_tf_from__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_tf_from__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_from_id := (v_result->>'account_id')::int;
 
   SELECT finance.fn_create_account(
-    '{"name":"__test_tf_to__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_tf_to__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_to_id := (v_result->>'account_id')::int;
 
@@ -172,8 +172,8 @@ DO $$
 DECLARE
   v_result JSONB; v_from INT; v_to INT; v_goal INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__tf_rb_from__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result; v_from := (v_result->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__tf_rb_to__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result; v_to := (v_result->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__tf_rb_from__","account_type":"cash"}'::jsonb) INTO v_result; v_from := (v_result->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__tf_rb_to__","account_type":"cash"}'::jsonb) INTO v_result; v_to := (v_result->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__tf_rb_goal__', 9000, current_date + 365, 'active') RETURNING id INTO v_goal;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
     VALUES (v_from, 600, current_date - 10, 'transfer', v_goal, gen_random_uuid());   -- Reserve auf dem Quell-Konto: Saldo 600, reserviert 600

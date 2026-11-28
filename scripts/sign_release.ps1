@@ -25,9 +25,9 @@
 param([Parameter(Mandatory = $true)][string]$Tag, [switch]$NoPassphrase)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # stdin an gpg (Passwort) als UTF-8, nicht ASCII (PS 5.1)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\release_images.ps1')
+. (Join-Path $PSScriptRoot 'lib\native_process.ps1')   # stdin an gpg und git byte-genau, nie per Pipe
 
 . (Join-Path $PSScriptRoot 'lib\release_tag.ps1')
 
@@ -63,13 +63,13 @@ function Invoke-Git { & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { throw
 
 $gpg = Get-GpgExe
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'gh (GitHub CLI) fehlt: winget install GitHub.cli' }
-# Erst gh's eigene Anmeldung: aus einem Host ohne Konsole (Claude startet das Skript) bricht 'git credential fill'
-# mit "credential missing protocol field" ab.
+# Erst gh's eigene Anmeldung, sonst der Git-Credential-Manager. Nicht per Pipe: ein BOM vor 'protocol=' macht daraus
+# "credential missing protocol field".
 $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 gh auth status *> $null; $ghLoggedIn = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = $prevEap
 if (-not $env:GH_TOKEN -and -not $ghLoggedIn) {
-    $cred = "protocol=https`nhost=github.com`n`n" | git credential fill 2>$null
+    $cred = (Invoke-NativeStdinBytes -FilePath git -ArgumentList @('credential', 'fill') -InputText "protocol=https`nhost=github.com`n`n" -CaptureOutput).Output
     $tok = ($cred | Where-Object { $_ -like 'password=*' } | Select-Object -First 1)
     if ($tok) { $env:GH_TOKEN = $tok.Substring(9) } else { throw 'Kein GitHub-Zugang (GH_TOKEN oder Git-Credential-Manager) gefunden.' }
 }
@@ -172,16 +172,14 @@ try {
 
     # 3) unterschreiben + gegenpruefen
     $sig = Join-Path $work 'SHA256SUMS.sig'
-    if ($NoPassphrase) {
-        # Leeres Passwort ueber stdin: ein leeres '' als Argument laesst PS 5.1 beim Aufruf nativer Programme weg.
-        '' | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
-    } else {
+    $pass = ''   # -NoPassphrase: 0 Bytes ueber stdin (ein leeres '' als Argument laesst PS 5.1 bei nativen Programmen weg)
+    if (-not $NoPassphrase) {
         $sec = Read-Host -AsSecureString "Passwort des Signierschluessels ($fpr)"
         $pass = [System.Net.NetworkCredential]::new('', $sec).Password
-        $pass | & $gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user $fpr --detach-sign --output $sig (Join-Path $work 'SHA256SUMS')
-        $pass = $null
     }
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sig)) { throw 'Unterschreiben fehlgeschlagen (falsches Passwort?).' }
+    $signRc = Invoke-GpgPassphrase -Gpg $gpg -Passphrase $pass -Arguments @('--yes', '--local-user', $fpr, '--detach-sign', '--output', $sig, (Join-Path $work 'SHA256SUMS'))
+    $pass = $null
+    if ($signRc -ne 0 -or -not (Test-Path $sig)) { throw 'Unterschreiben fehlgeschlagen (falsches Passwort?).' }
     if ((Invoke-GpgQuiet --batch --no-default-keyring --keyring (ConvertTo-GpgPath $keyFile) --verify $sig (Join-Path $work 'SHA256SUMS')) -ne 0) { throw 'Die neue Unterschrift passt nicht zum Schluesselbund im Repo — nicht hochgeladen.' }
 
     # 4) hochladen + veroeffentlichen

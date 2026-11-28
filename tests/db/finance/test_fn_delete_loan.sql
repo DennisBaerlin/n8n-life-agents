@@ -16,11 +16,11 @@ DECLARE
   v_wacc    INT;
   v_cnt     INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_dl_debit__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
+  SELECT (finance.fn_create_account('{"name":"__test_dl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
 
   -- Kredit A: aktiv, mit Annuitaet (=> rp), keine Raten gebucht -> loeschbar
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_dl_active__','lender','TB','borrower','T','original_amount','10000','current_balance','10000',
+    'name','__test_dl_active__','lender','TB','original_amount','10000','current_balance','10000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','500',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit)) INTO v_res;
   v_loan    := (v_res->>'loan_id')::int;
@@ -29,14 +29,14 @@ BEGIN
 
   -- Kredit B: paused (keine Annuitaet) -> Resolution mit p_active_only=FALSE muss greifen
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_dl_paused__','lender','TB','borrower','T','original_amount','5000','current_balance','5000',
+    'name','__test_dl_paused__','lender','TB','original_amount','5000','current_balance','5000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','debit_account_id',v_debit)) INTO v_res;
   v_paused := (v_res->>'loan_id')::int;
   v_paccc  := (v_res->>'loan_account_id')::int;
 
   -- Kredit C: aktiv + gebuchte Rate -> Guard
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_dl_with__','lender','TB','borrower','T','original_amount','10000','current_balance','10000',
+    'name','__test_dl_with__','lender','TB','original_amount','10000','current_balance','10000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','500',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit)) INTO v_res;
   v_with := (v_res->>'loan_id')::int;

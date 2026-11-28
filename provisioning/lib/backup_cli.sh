@@ -1008,8 +1008,7 @@ backup_cmd_auto() {
 backup_cmd_export() {
   require_cmd jq; _bkp_require_pg pg_dump; require_cmd gpg
   _bkp_resolve_db
-  # Arg-Parse wie backup_cmd_restore (reihenfolge-robust): optionaler Positional-Pfad + --notify-telegram.
-  # Mehrfacher Positional = letzter gewinnt (konsistent mit restore). Default-Pfad nach der Schleife.
+  # Arg-Parse wie backup_cmd_restore: optionaler Positional-Pfad (mehrfach = letzter gewinnt) + --notify-telegram.
   # --to-host <ordner> (Docker-Verbund): das fertige Chiffrat in einen Ordner auf dem Rechner; ohne Pfad und
   # ohne --to-host nimmt der Verbund den gemerkten Ordner (BACKUP_HOST_DIR), nie die Docker-Platte.
   local out="" notify=0 a host="" want_host=0 prev=""
@@ -1044,15 +1043,15 @@ backup_cmd_export() {
   local kid; kid="$(printf '%s' "$key" | backup_key_id)"
   local name; name="$(_bkp_file_name "$(date -u +%Y%m%d%H%M%S)" "$kid" "$(_bkp_release_tag)")"
   if [ -z "$out" ]; then out="$(pwd)/${name}"; fi
+  # Ziel = Ordner (vorhanden oder mit /): Standard-Name hinein. Fehlt er, Abbruch vor dem Sichern statt roher gpg-Meldung am Ende.
+  if [ -d "$out" ] || [ "${out%/}" != "$out" ]; then out="${out%/}/${name}"; fi
+  [ -d "$(dirname -- "$out")" ] || die "Den Ordner '$(dirname -- "$out")' gibt es nicht — es wurde nichts gesichert. Ordner anlegen oder einen anderen Pfad nennen."
 
   local bulk; bulk="$(_bkp_bulk_tables)"
   [ -n "$bulk" ] || _bkp_fail dump "Keine zu sichernden Tabellen gefunden (aktive Pakete + backup-Block pruefen)."
 
   local tmp; tmp="$(_bkp_tmpdir)" || die "Konnte Arbeitsverzeichnis nicht anlegen."
-  # Klartext-Reste immer aufraeumen (auch bei `die`->exit; RETURN feuert bei exit nicht). Die CLI
-  # beendet sich direkt nach backup_cli -> EXIT-Trap deckt Normal-Rueckkehr und Fehler-exit. Pfad jetzt
-  # in den Trap-String expandieren (Doppel-Quotes): $tmp ist function-local -> bei der global feuernden
-  # EXIT-Trap waere es unter `set -u` "unbound variable".
+  # Klartext-Reste immer aufraeumen: die CLI endet direkt nach backup_cli, EXIT deckt Rueckkehr und `die` (RETURN feuert bei exit nicht).
   # shellcheck disable=SC2064  # bewusst JETZT expandieren: $tmp ist local -> bei der global feuernden EXIT-Trap unter `set -u` unbound
   trap "rm -rf -- '$tmp'" EXIT
   # Rechner-Ordner: das Chiffrat entsteht im tmpfs und geht danach in genau einem Kurzlauf-Container hinaus.
@@ -2211,7 +2210,8 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
 
   export [pfad] [--notify-telegram]
                            Verschluesseltes Backup der Nutzerdaten schreiben (Default:
-                           ./lifeagents-backup-<ts>-k<schlüssel-id>-v<version>.nla.enc).
+                           ./lifeagents-backup-<ts>-k<schlüssel-id>-v<version>.nla.enc; ist [pfad] ein
+                           Ordner, kommt die Datei mit diesem Namen hinein).
                            Sichert NUR echte Nutzerdaten (Finanzen/Profil/Trigger/Plaene/Onboarding) via pg_dump —
                            NICHT Code/Workflows/Geheimnisse (die stellt der Installer wieder her).
                            --notify-telegram legt die fertige .nla.enc zusätzlich in die angeheftete Kopie-Nachricht

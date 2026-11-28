@@ -13,7 +13,7 @@ DECLARE
   v_g_c    INT; v_rp_c INT;
   v_cnt    INT; v_status TEXT; v_valid_to DATE; v_rp_status TEXT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_csg_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_csg_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- Goal A: RP + Depot-Reserve-Journal-Zeile, keine getaggte Buchung -> Hard-DELETE (Journal muss CASCADE mitgehen)
@@ -96,7 +96,7 @@ DECLARE
   v_g_g INT; v_tx_g INT;
   v_status TEXT; v_cnt INT; v_goal_id_after INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_csg2_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_csg2_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
   VALUES ('__test_csg2_depot__','stocks_depot','EUR','active', v_acct) RETURNING id INTO v_depot;

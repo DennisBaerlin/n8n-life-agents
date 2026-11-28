@@ -14,12 +14,11 @@ DECLARE
   v_res JSONB; v_debit INT; v_loan INT; v_rp INT; c1 INT; v_txt TEXT; v_from DATE;
   m0 DATE := date_trunc('month', core.fn_today())::date;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_cod_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_cod_giro__","account_type":"cash"}'::jsonb) INTO v_res;
   v_debit := (v_res->>'account_id')::int;
 
   -- TEST 1: Kredit, erste Rate 2031-01-25 (noch nichts faellig), Tag -> 20. in place: Januar bleibt, 12 Raten 2031
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_cod_loan_a__','lender','Buchenbank','borrower','Test',
-    'original_amount',50000,'disbursement_date',(m0 - interval '1 month')::date,'interest_rate',3.0,'monthly_annuity',600,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_cod_loan_a__','lender','Buchenbank','original_amount',50000,'disbursement_date',(m0 - interval '1 month')::date,'interest_rate',3.0,'monthly_annuity',600,
     'schedule_day_of_month',25,'first_payment_date','2031-01-25','debit_account_id',v_debit)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL change_owned [Setup a]: %', v_res; END IF;
   v_loan := (v_res->>'loan_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
@@ -33,8 +32,7 @@ BEGIN
 
   -- TEST 2: Kredit mit ueberfaelligen Raten (seit m-2 am 25.), Tag -> 20.: Split; kein Monat faellt aus oder kommt doppelt,
   --         effective_from = gespeicherter Start der neuen Zeile (ein 20.)
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_cod_loan_b__','lender','Buchenbank','borrower','Test',
-    'original_amount',50000,'disbursement_date',(m0 - interval '3 months')::date,'interest_rate',3.0,'monthly_annuity',600,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_cod_loan_b__','lender','Buchenbank','original_amount',50000,'disbursement_date',(m0 - interval '3 months')::date,'interest_rate',3.0,'monthly_annuity',600,
     'schedule_day_of_month',25,'first_payment_date',(m0 - interval '2 months' + interval '24 days')::date,
     'debit_account_id',v_debit)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL change_owned [Setup b]: %', v_res; END IF;

@@ -23,7 +23,7 @@ BEGIN
     jsonb_build_object('person_id','lena','first_name','Lena','last_name','B','role','partner','birth_date','1985-06-21','telegram_user_id',222,'language','en'),
     jsonb_build_object('person_id','lisa','first_name','Lisa','last_name','B','role','child','birth_date','2014-03-02','telegram_user_id',333,'language','de')))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
-  INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active'), ('career','0.1.0','active'), ('estate','0.1.0','installed')
+  INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active'), ('career','0.1.0','active'), ('estate','0.1.0','installing')
   ON CONFLICT (package) DO UPDATE SET status = EXCLUDED.status;
   DELETE FROM core.context_scopes WHERE package IN ('career', 'finance');
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)

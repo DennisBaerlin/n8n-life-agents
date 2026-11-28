@@ -154,4 +154,24 @@ BEGIN
   END;
 END $$;
 
+-- (11) Verbrauch unter 1 USD entfaellt, auch wenn er auf 1 aufrunden wuerde (0,60 USD); 1,40 USD zeigt gerundet 1.
+DO $$
+DECLARE
+  v_inc core.llm_incidents%ROWTYPE;
+  t     text;
+BEGIN
+  DELETE FROM core.llm_usage;
+  INSERT INTO core.llm_usage (id, ts, wf, model, keepalive, input_tokens, status, err_code) VALUES
+    ('1000000000111-bbbbbb-000011', date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 hour',
+     'agent.finance', 'zz-li-model', false, 600000, 200, NULL);
+  SELECT * INTO v_inc FROM core.llm_incidents ORDER BY id DESC LIMIT 1;
+  v_inc.kind := 'spend_limit';
+  t := core.fn_llm_owner_card(v_inc, 'de', NULL)->>'text';
+  IF position('S=' in t) > 0 THEN RAISE EXCEPTION 'FAIL [11 0,60 USD als Verbrauch gezeigt]: %', t; END IF;
+  UPDATE core.llm_usage SET input_tokens = 1400000;
+  t := core.fn_llm_owner_card(v_inc, 'de', NULL)->>'text';
+  IF position('S=1' in t) = 0 THEN RAISE EXCEPTION 'FAIL [11 1,40 USD]: %', t; END IF;
+  RAISE NOTICE 'PASS [11 Verbrauch unter 1 USD entfaellt]';
+END $$;
+
 ROLLBACK;

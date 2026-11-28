@@ -16,8 +16,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lps2_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lps2_kredit__','lender','B','borrower','T',
-    'original_amount',1000,'current_balance',1000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',12,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lps2_kredit__','lender','B','original_amount',1000,'current_balance',1000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',12,
     'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -59,10 +58,9 @@ DECLARE
   v_cnt0  INT;
   v_cnt1  INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_lps_giro__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_lps_giro__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_giro := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lps_kredit__','lender','B','borrower','T',
-    'original_amount',10000,'current_balance',10000,'disbursement_date',(v_due - 30)::text,'interest_rate',3,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lps_kredit__','lender','B','original_amount',10000,'current_balance',10000,'disbursement_date',(v_due - 30)::text,'interest_rate',3,
     'monthly_annuity',500,'first_payment_date',v_due::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -115,8 +113,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lps0_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lps0_kredit__','lender','B','borrower','T',
-    'original_amount',1200,'current_balance',1200,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',0,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lps0_kredit__','lender','B','original_amount',1200,'current_balance',1200,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',0,
     'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro))->>'loan_id')::int
     INTO v_loan;
   v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',0,
@@ -136,8 +133,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lpsc_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsc_kredit__','lender','B','borrower','T',
-    'original_amount',6000,'current_balance',6000,'disbursement_date',(v_due - 30)::text,'interest_rate',2,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsc_kredit__','lender','B','original_amount',6000,'current_balance',6000,'disbursement_date',(v_due - 30)::text,'interest_rate',2,
     'monthly_annuity',300,'first_payment_date',v_due::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
   v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',300.004,
     'payment_date',CURRENT_DATE::text));
@@ -156,8 +152,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lpsn_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsn_kredit__','lender','B','borrower','T',
-    'original_amount',6000,'current_balance',6000,'disbursement_date',(v_first - 15)::text,'interest_rate',2,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsn_kredit__','lender','B','original_amount',6000,'current_balance',6000,'disbursement_date',(v_first - 15)::text,'interest_rate',2,
     'monthly_annuity',300,'first_payment_date',v_first::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
   v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',300,
     'payment_date',CURRENT_DATE::text));

@@ -68,8 +68,8 @@ REVOKE ALL ON FUNCTION core.fn_handoff_list_shown_at(text) FROM public;
 --   Eine Adresse fuer beide Sender: agent.tool_send_handoff_overview und Schritt 1 von
 --   core.fn_plan_rollout_next. Der Knopf traegt
 --   handoff:<domain>:<max_task_id> -> core.fn_handle_handoff_cb beansprucht nur bis dahin (eine spaeter vereinbarte
---   Aufgabe kommt in die naechste Uebersicht). Es zaehlen open und working mit abgelaufenem Claim (advisor.handoff_claim_
---   ttl_minutes, dieselbe Regel wie der Claim in core.fn_handle_handoff_cb: ein abgebrochener Lauf darf nichts verstecken).
+--   Aufgabe kommt in die naechste Uebersicht). Es zaehlen die Aufgaben, die core.fn_handoff_status_now als open
+--   sieht (auch working mit abgelaufenem Claim: ein abgebrochener Lauf darf nichts verstecken).
 --   Nur lesend, Host-Cred. Tests: tests/db/core/test_fn_handoff_tasks.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_handoff_overview(p jsonb)
@@ -83,14 +83,13 @@ DECLARE
     v_efn   regprocedure;
     v_eff   jsonb;
     v_acc   int;
-    v_ttl   int := core.fn_handoff_claim_ttl();
 BEGIN
     SELECT jsonb_build_object('count', count(*), 'max_task_id', max(t.id),
                               'items', COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb))
       INTO v_out
       FROM agent.handoff_tasks t
      WHERE t.domain = COALESCE(p->>'domain', '') AND t.person_id = v_pid
-       AND (t.status = 'open' OR (t.status = 'working' AND t.claimed_at < now() - make_interval(mins => v_ttl)));
+       AND core.fn_handoff_status_now(t.status, t.claimed_at) = 'open';
     IF (v_out->>'count')::int > 0 THEN
         v_efn := to_regprocedure((SELECT a.entry_effects_fn FROM core.advisors a WHERE a.domain = p->>'domain') || '(text)');
         IF v_efn IS NOT NULL THEN

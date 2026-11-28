@@ -87,7 +87,7 @@ BEGIN
   IF c->>'state' <> 'complete' THEN RAISE EXCEPTION 'FAIL [5 Owner career]: %', c; END IF;
 
   -- ---------- (6) inaktives Paket faellt raus; unaufgeloester Betrachter -> [] ----------
-  UPDATE core.package_registry SET status = 'installed' WHERE package = 'career';
+  UPDATE core.package_registry SET status = 'installing' WHERE package = 'career';
   v := core.fn_advisor_plan_status('111');
   IF jsonb_array_length(v) <> 1 OR v->0->>'domain' <> 'finance' THEN RAISE EXCEPTION 'FAIL [6 inaktiv]: %', v; END IF;
   UPDATE core.package_registry SET status = 'active' WHERE package = 'career';

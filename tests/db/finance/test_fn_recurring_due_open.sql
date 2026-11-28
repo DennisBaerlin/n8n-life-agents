@@ -13,7 +13,7 @@ DECLARE
   c INT;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_due_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_due_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 

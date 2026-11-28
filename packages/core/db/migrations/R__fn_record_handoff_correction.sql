@@ -141,3 +141,4 @@ BEGIN
                               'value', 'core.hitl.handoff_why', 'params', jsonb_build_object('why', v_why))) ELSE '[]'::jsonb END);
 END;
 $$;
+REVOKE ALL ON FUNCTION agent.fn_record_handoff_correction(jsonb) FROM public;

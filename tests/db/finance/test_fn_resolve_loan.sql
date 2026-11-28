@@ -6,11 +6,11 @@ DO $$
 DECLARE v_debit INT; v_loan_id INT; v_hits INT;
 BEGIN
   SELECT (finance.fn_create_account(
-    '{"name":"__rl_debit__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb
+    '{"name":"__rl_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   )->>'account_id')::int INTO v_debit;
 
   PERFORM finance.fn_create_loan(jsonb_build_object(
-    'name','__rl_loan__','lender','TestBank','borrower','T','original_amount','100000',
+    'name','__rl_loan__','lender','TestBank','original_amount','100000',
     'disbursement_date','2024-01-01','interest_rate','3','interest_rate_fixed_until','2034-01-01','monthly_annuity','500','schedule_day_of_month','1',
     'first_payment_date','2024-02-01','debit_account_id', v_debit));   -- Rate => erstes Ratendatum Pflicht
 
@@ -25,7 +25,7 @@ BEGIN
   -- paused-Kredit (keine Annuitaet -> status='paused'): per Default (active_only) nicht gefunden,
   -- mit p_active_only=FALSE gefunden (delete_loan/settle_loan/sell brauchen das).
   PERFORM finance.fn_create_loan(jsonb_build_object(
-    'name','__rl_paused__','lender','TestBank','borrower','T','original_amount','5000',
+    'name','__rl_paused__','lender','TestBank','original_amount','5000',
     'disbursement_date','2024-01-01','interest_rate','3','debit_account_id', v_debit));
   SELECT hit_count INTO v_hits FROM finance.fn_resolve_loan('__rl_paused__');               -- default TRUE
   IF v_hits IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL resolve_loan [paused active-only]: hits=%', v_hits; END IF;

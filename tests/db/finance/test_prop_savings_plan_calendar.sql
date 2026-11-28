@@ -16,7 +16,7 @@ DECLARE
   v_cals TEXT[] := ARRAY['2,9,16,23', '1,8,15,22', '5,12,19,26'];
   v_d1 INT; v_d2 INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_spc_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_spc_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
 
   FOREACH v_cal IN ARRAY v_cals LOOP
     BEGIN

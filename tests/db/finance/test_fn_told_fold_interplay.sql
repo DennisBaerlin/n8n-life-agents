@@ -88,8 +88,8 @@ END $$;
 DO $$
 DECLARE v_res jsonb; v_a int; v_b int; v_g int; r jsonb; v_cov jsonb;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"__tfr_a__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_b := (finance.fn_create_account('{"name":"__tfr_b__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"__tfr_a__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__tfr_b__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__tfr_g__', 9000, current_date + 365, 'active') RETURNING id INTO v_g;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_a, 600, current_date - 10, 'transfer', v_g, gen_random_uuid()),
@@ -122,8 +122,8 @@ END $$;
 DO $$
 DECLARE v_res jsonb; v_giro int; v_topf int; v_goal int; v_p2p int; v_goal2 int;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__tfg_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_topf := (finance.fn_create_account('{"name":"__tfg_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__tfg_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_topf := (finance.fn_create_account('{"name":"__tfg_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__tfg_g__', 100, current_date + 365, 'active') RETURNING id INTO v_goal;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_giro, 5000, current_date - 1, 'other');
 
@@ -143,7 +143,7 @@ BEGIN
   IF NOT (v_res ? 'savings_goal_reached') THEN RAISE EXCEPTION 'FAIL [sg Note jedes Mal]: %', v_res; END IF;
 
   -- Reservierung
-  v_p2p := (finance.fn_create_account('{"name":"__tfg_cash2__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_p2p := (finance.fn_create_account('{"name":"__tfg_cash2__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_p2p, 500, current_date - 1, 'other');
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__tfg_g2__', 100, current_date + 365, 'active') RETURNING id INTO v_goal2;
   v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id',v_goal2,'account_id',v_p2p,'amount',100,'chat_id','111'));

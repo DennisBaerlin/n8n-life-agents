@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cases.sh — Fall-Runner von scripts/dev/backup_test.ps1, laeuft IM Substrat-Container (root, echtes PostgreSQL, die CLI
 # DIESES Baums unter <root>/lifeagents). Prueft Notfallblatt und Schluessel-Uebernahme Ende zu Ende:
-#   E  Export: Dateiname mit Schluessel-ID + Version, backup.state.
+#   E  Export: Dateiname mit Schluessel-ID + Version, Ziel-Ordner, backup.state.
 #   R  Restore auf "neuem Rechner" (anderer aktiver Schluessel): ohne Eingabe Abbruch, falscher Schluessel, Tippfehler,
 #      beschaedigte Datei, gescheiterte TX -> jeweils nichts geaendert; mit Notfallblatt -> Daten da, Blatt-Schluessel aktiv,
 #      bisheriger als prev; prev-Sicherung ohne Eingabe; zweimal hintereinander.
@@ -187,6 +187,16 @@ ok_if E.export-ohne-ring-warnung '! grep -q "circular foreign-key" "$W/out.e2" &
 ok_if E.name-mit-id-und-version '[[ "$fa" =~ ^lifeagents-backup-[0-9]{14}-${kidA}-v[0-9A-Za-z.-]+\.nla\.enc$ ]]' "Name: $fa"
 ok_if E.state-last-ok 'grep -qE "^LAST_OK=[0-9]+$" "$BACKUP_STATE_FILE"' "backup.state ohne LAST_OK"
 ok_if E.schluessel-unveraendert 'active_is "$KA" && [ "$(prev_n)" = 0 ]'
+# Ziel ist ein Ordner (mit und ohne Schraegstrich): die Datei kommt mit dem Standard-Namen hinein. Ein fehlender Ordner bricht vor
+# dem Sichern ab, mit einem Satz statt der rohen gpg-Meldung.
+mkdir -p "$W/eo1" "$W/eo2"
+cli backup export "$W/eo1/"; rc=$?; o1="$W/out.$n"
+cli backup export "$W/eo2"; rc2=$?
+ok_if E.export-in-ordner '[ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && ls "$W"/eo1/lifeagents-backup-*-"${kidA}"-v*.nla.enc >/dev/null 2>&1 && ls "$W"/eo2/lifeagents-backup-*.nla.enc >/dev/null 2>&1' \
+  "rc=$rc/$rc2 $(tail -n2 "$o1" | tr '\n' ' ')"
+cli backup export "$W/fehlt/"; rc=$?
+ok_if E.export-ordner-fehlt '[ "$rc" -ne 0 ] && grep -q "Ordner" "$W/out.$n" && ! grep -qi "is a directory\|gpg" "$W/out.$n" && ! grep -q "Backup geschrieben" "$W/out.$n"' \
+  "rc=$rc $(tail -n2 "$W/out.$n" | tr '\n' ' ')"
 A="$W/$fa"; if rt_is_compose; then cp "$W/x.nla.enc" "$A"; fi   # Verbund: der Export mit Pfad unter dem Standard-Namen (die Datei ohne Pfad liegt auf dem Rechner)
 
 # Vollstaendigkeit: Der Export traegt jedes aktive Paket mit backup-Block. Soll = Manifest + information_schema (nicht

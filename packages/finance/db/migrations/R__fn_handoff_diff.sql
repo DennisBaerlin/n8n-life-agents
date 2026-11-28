@@ -9,7 +9,8 @@
 --   (finance.fn_handoff_precheck); je Aufruf seine Sache aus entered_refs (finance.fn_handoff_pairs).
 --   Verglichen werden nur Felder, die der Aufruf nennt und finance.fn_handoff_tool_spec unter state fuehrt; Betraege und
 --   Tage als Zahl, Daten ueber core.fn_resolve_date (nicht aufloesbar -> kein Vergleich), Namen und Status ohne Gross-/
---   Kleinschreibung. Ohne wanted (Altbestand) -> [].
+--   Kleinschreibung; Namen einer Sache (spec refs) zuvor ueber finance.fn_handoff_resolve_ref wie beim Eintragen (fehlte die
+--   Sache beim Vereinbaren, steht im Soll der getippte Name). Ohne wanted (Altbestand) -> [].
 --   Rueckgabe: [{field, wanted, current, ref:{type, id}}], [] = wie vereinbart. Ein vereinbarter Aufruf, zu dem noch keine
 --   Sache eingetragen ist -> {field:'exists', wanted:true, current:false, call:{tool, input}} (was davon nachgeholt wird, legt core.fn_handoff_register fest);
 --   eingetragen und wieder geloescht -> {field:'exists', wanted:true, current:false, ref} ohne call. Tests: tests/db/finance/test_fn_handoff_diff.sql
@@ -72,6 +73,7 @@ DECLARE
     v_want  jsonb;
     v_cur   jsonb;
     v_d     date;
+    v_res   jsonb;
     v_out   jsonb := '[]'::jsonb;
 BEGIN
     IF p_wanted IS NULL OR jsonb_typeof(p_wanted) NOT IN ('object', 'array') THEN
@@ -105,6 +107,13 @@ BEGIN
                 CONTINUE WHEN (v_cur #>> '{}')::date IS NOT DISTINCT FROM v_d;
             ELSE
                 v_want := to_jsonb(btrim(v_call->'input'->>v_in));
+                -- ein Name im Soll ist der beim Vereinbaren getippte, wenn die Sache da noch fehlte: aufgeloest wie beim Eintragen
+                IF v_s->'refs' ? v_in THEN
+                    v_res := finance.fn_handoff_resolve_ref(v_s->'refs'->v_in->>'type', v_want #>> '{}',
+                                 CASE WHEN v_s->'refs'->v_in ? 'account_types'
+                                      THEN ARRAY(SELECT jsonb_array_elements_text(v_s->'refs'->v_in->'account_types')) END);
+                    IF (v_res->>'hits')::int = 1 THEN v_want := to_jsonb(v_res->>'name'); END IF;
+                END IF;
                 CONTINUE WHEN lower(btrim(COALESCE(v_cur #>> '{}', ''))) = lower(v_want #>> '{}');
             END IF;
             v_out := v_out || jsonb_build_array(jsonb_build_object('field', v_fld, 'wanted', v_want,

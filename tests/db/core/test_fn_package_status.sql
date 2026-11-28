@@ -16,7 +16,7 @@ BEGIN
   INSERT INTO core.package_registry (package, version, status) VALUES (v_pkg, '1.0.0', 'installing');
   r := core.fn_package_status(jsonb_build_object('package', v_pkg));
   IF (r->>'ok')::boolean OR r->>'reason' <> 'incomplete' THEN RAISE EXCEPTION 'FAIL [installing -> incomplete] %', r; END IF;
-  UPDATE core.package_registry SET status = 'installed' WHERE package = v_pkg;
+  UPDATE core.package_registry SET status = 'installing' WHERE package = v_pkg;
   r := core.fn_package_status(jsonb_build_object('package', v_pkg));
   IF (r->>'ok')::boolean OR r->>'reason' <> 'incomplete' THEN RAISE EXCEPTION 'FAIL [installed -> incomplete] %', r; END IF;
   UPDATE core.package_registry SET status = 'inactive' WHERE package = v_pkg;

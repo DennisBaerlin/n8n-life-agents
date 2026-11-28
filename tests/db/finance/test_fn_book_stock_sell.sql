@@ -23,14 +23,13 @@ BEGIN
 
   -- Setup: Settlement-Konto + Depot
   SELECT finance.fn_create_account(
-    '{"name":"__test_sell_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_sell_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle_id := (v_result->>'account_id')::int;
 
   SELECT finance.fn_create_account(jsonb_build_object(
     'name',           '__test_sell_depot__',
     'account_type',   'stocks_depot',
-    'account_holder', 'Test',
     'currency',       'EUR',
     'settlement_id',  v_settle_id
   )) INTO v_result;
@@ -167,11 +166,11 @@ DECLARE
   v_avg     NUMERIC;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_avg_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_avg_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle := (v_result->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object('name','__test_avg_depot__','account_type','stocks_depot',
-    'account_holder','Test','currency','EUR','settlement_id',v_settle)) INTO v_result;
+    'currency','EUR','settlement_id',v_settle)) INTO v_result;
   v_depot := (v_result->>'account_id')::int;
 
   -- TEST 5: 10 @ 100, Verkauf 5, Nachkauf 5 @ 200 -> (5*100 + 5*200) / 10 = 150

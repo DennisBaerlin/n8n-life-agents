@@ -14,7 +14,7 @@ BEGIN
 
   -- Hilfskonto
   SELECT finance.fn_create_account(
-    '{"name":"__test_lstatus_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_lstatus_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
@@ -23,7 +23,6 @@ BEGIN
     jsonb_build_object(
       'name',             '__test_loan_active__',
       'lender',           'TestBank',
-      'borrower',         'Test',
       'original_amount',  100000,
       'disbursement_date','2024-01-15',
       'interest_rate',    '3.0',
@@ -53,7 +52,6 @@ BEGIN
     jsonb_build_object(
       'name',             '__test_loan_paused__',
       'lender',           'Familia',
-      'borrower',         'Test',
       'original_amount',  5000,
       'disbursement_date','2023-06-01',
       'interest_rate',    '0.0',

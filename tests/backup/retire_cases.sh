@@ -94,10 +94,14 @@ eq L.sicherung-release "$(cat "$ROOT/VERSION")" "$(tail -n1 "$W/out.$n" | jq -r 
 grep -q "^memory-md5 ${MEM} " "$OUT/vorher.txt" && pass L.vorher-gedaechtnis-md5 || fail L.vorher-gedaechtnis-md5 "$(grep memory "$OUT/vorher.txt")"
 grep -qx "memory ${MEM} 5" "$OUT/vorher.txt" && pass L.vorher-gedaechtnis || fail L.vorher-gedaechtnis "$(grep memory "$OUT/vorher.txt")"
 grep -q '^md5 ' "$OUT/vorher.txt" && pass L.vorher-fingerabdruck || fail L.vorher-fingerabdruck "kein md5"
-_back="$( ( . "$ROOT/provisioning/lib/release_inputs.sh"; install_answers_load "$OUT/move.env" 2>"$W/load.err"; printf '%s' "$REACH_MODE" ) )"
+# Antworten nur verschluesselt mit dem aktiven Sicherungs-Schluessel (= Notfallblatt), kein Bot-Schluessel im Klartext im Ordner.
+TOK="$(read_env_value "$(lifeagents_env_file core)" TELEGRAM_BOT_TOKEN 2>/dev/null || true)"
+{ [ ! -e "$OUT/move.env" ] && ! grep -rq TELEGRAM_BOT_TOKEN "$OUT" && { [ -z "$TOK" ] || ! grep -rqF -- "$TOK" "$OUT"; }; } && pass L.ordner-ohne-klartext-schluessel || fail L.ordner-ohne-klartext-schluessel "Klartext im Ordner"
+gpg_sym_decrypt "$(backup_key_candidates | head -n1)" "$OUT/move.env.gpg" > "$W/move.ans" || : > "$W/move.ans"
+_back="$( ( . "$ROOT/provisioning/lib/release_inputs.sh"; install_answers_load "$W/move.ans" 2>"$W/load.err"; printf '%s' "$REACH_MODE" ) )"
 eq L.antworten-tunnel tunnel "$_back"
 eq L.antworten-ohne-warnung '' "$(cat "$W/load.err")"
-if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES)=' "$OUT/move.env"; then fail L.antworten-nie "$(grep -oE '^[A-Z_]+=' "$OUT/move.env" | tr '\n' ' ')"; else pass L.antworten-nie; fi
+if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES)=' "$W/move.ans"; then fail L.antworten-nie "$(grep -oE '^[A-Z_]+=' "$W/move.ans" | tr '\n' ' ')"; else pass L.antworten-nie; fi
 cli retire; eq L.zweiter-lauf-nichts 2 "$(tgcalls deleteWebhook)"
 cli retire --status; eq L.status-fertig 11 "$?"
 

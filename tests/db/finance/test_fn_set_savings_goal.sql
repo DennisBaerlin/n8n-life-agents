@@ -10,9 +10,9 @@ DECLARE
   v_res JSONB; v_acct INT; v_reserve INT; v_goal INT; v_rp INT;
   v_rpamt NUMERIC; v_expected NUMERIC; v_months INT; v_rpstatus TEXT; v_target INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_ssg_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_ssg_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__test_ssg_reserve__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_ssg_reserve__","account_type":"cash"}'::jsonb) INTO v_res;
   v_reserve := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
@@ -244,8 +244,8 @@ DECLARE
   v_next1 DATE := (date_trunc('month', current_date) + interval '1 month')::date;
   v_rp    finance.recurring_payments%ROWTYPE;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__ssgr_from__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from;
-  SELECT (finance.fn_create_account('{"name":"__ssgr_pot__","account_type":"cash","account_holder":"Test","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__ssgr_from__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from;
+  SELECT (finance.fn_create_account('{"name":"__ssgr_pot__","account_type":"cash","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int INTO v_pot;
   v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__ssgr_uebertrag__','from_account_id',v_from,
            'to_account_id',v_pot,'amount',120,'schedule_unit','month','schedule_day_of_month',3,'first_payment_date',v_next1 + 2));
   v_old := (v_r->>'recurring_payment_id')::int;

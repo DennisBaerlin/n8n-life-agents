@@ -1466,7 +1466,7 @@ BEGIN
   -- Latch re-armen, wenn das Konto nicht (mehr) breached. Beweist die Cross-Schema-Callability aus dem Trigger-Body.
   DECLARE v_acct INT;
   BEGIN
-    v_acct := (finance.fn_create_account('{"name":"__rp_trig__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+    v_acct := (finance.fn_create_account('{"name":"__rp_trig__","account_type":"cash"}'::jsonb)->>'account_id')::int;
     PERFORM core.fn_should_notify('finance', 'reserve_breach:' || v_acct);   -- Latch vorab setzen (als waere gemeldet)
     SET LOCAL ROLE finance_rw;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)

@@ -10,8 +10,8 @@ DO $$
 DECLARE
   r jsonb; v_giro int; v_pot int; v_goal int; v_rp int;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__rl_csg_giro__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
-  v_pot  := (finance.fn_create_account('{"name":"__rl_csg_pot__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__rl_csg_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__rl_csg_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
 
   SET LOCAL ROLE finance_rw;
   r := core.fn_dry_run('finance.fn_create_savings_goal(jsonb)'::regprocedure, jsonb_build_object(
@@ -42,8 +42,8 @@ DO $$
 DECLARE
   r jsonb; v_giro int; v_pot int; v_goal int; v_rp int; v_new_rp int; v_rate numeric;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__rl_ssg_giro__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
-  v_pot  := (finance.fn_create_account('{"name":"__rl_ssg_pot__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__rl_ssg_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__rl_ssg_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_savings_goal(jsonb_build_object(
          'name','__rl_ssg_goal__','target_amount',5000,'target_date','2028-12-31','monthly_savings_rate',200,
          'account_id',v_giro,'reserve_account_id',v_pot,'schedule_day_of_month',1,'first_payment_date','2027-01-01'));
@@ -73,8 +73,8 @@ DO $$
 DECLARE
   r jsonb; v_giro int; v_pot int; v_goal int; v_rp int;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__rl_clg_giro__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
-  v_pot  := (finance.fn_create_account('{"name":"__rl_clg_pot__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__rl_clg_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__rl_clg_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_savings_goal(jsonb_build_object(
          'name','__rl_clg_goal__','target_amount',5000,'target_date',(CURRENT_DATE + 365)::text,'monthly_savings_rate',100,
          'account_id',v_giro,'reserve_account_id',v_pot,'first_payment_date',CURRENT_DATE::text));
@@ -124,8 +124,8 @@ DO $$
 DECLARE
   r jsonb; v_giro int; v_pot int; v_goal int; v_cur numeric;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__rl_bgt_giro__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
-  v_pot  := (finance.fn_create_account('{"name":"__rl_bgt_pot__","account_type":"cash","account_holder":"Erika"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__rl_bgt_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__rl_bgt_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_savings_goal(jsonb_build_object(
          'name','__rl_bgt_goal__','target_amount',5000,'target_date',(CURRENT_DATE + 365)::text,'monthly_savings_rate',100,
          'account_id',v_giro,'reserve_account_id',v_pot,'schedule_day_of_month',1,'first_payment_date',CURRENT_DATE::text));
@@ -205,11 +205,11 @@ DO $$
 DECLARE
   r jsonb; v_debit int; v_loan int; v_lacc int; v_rp int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_cl_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_cl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
 
   SET LOCAL ROLE finance_rw;
   r := core.fn_dry_run('finance.fn_create_loan(jsonb)'::regprocedure, jsonb_build_object(
-         'name','__rl_cl_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_cl_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
   RESET ROLE;
@@ -218,7 +218,7 @@ BEGIN
 
   SET LOCAL ROLE finance_rw;
   r := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_cl_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_cl_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
   RESET ROLE;
@@ -236,9 +236,9 @@ DO $$
 DECLARE
   r jsonb; v_debit int; v_loan int; v_rp int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_sl_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_sl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_sl_loan__','lender','Buchenbank','borrower','Erika','original_amount',100000,
+         'name','__rl_sl_loan__','lender','Buchenbank','original_amount',100000,
          'disbursement_date','2026-01-01','interest_rate',3.0,'monthly_annuity',1200,'schedule_day_of_month',1,
          'first_payment_date','2026-02-01','debit_account_id',v_debit));
   v_loan := (r->>'loan_id')::int; v_rp := (r->>'recurring_payment_id')::int;
@@ -273,9 +273,9 @@ DO $$
 DECLARE
   r jsonb; v_debit int; v_loan int; v_lacc int; v_rp int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_dl_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_dl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_dl_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_dl_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
   v_loan := (r->>'loan_id')::int; v_lacc := (r->>'loan_account_id')::int; v_rp := (r->>'recurring_payment_id')::int;
@@ -304,9 +304,9 @@ DO $$
 DECLARE
   v_debit int; v_res jsonb; v_loan int; v_lacc int; v_deb int; v_rate numeric; v_hits int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_rl_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_rl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   v_res := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_rl_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_rl_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
 
@@ -330,9 +330,9 @@ DO $$
 DECLARE
   r jsonb; v_debit int; v_loan int; v_lacc int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_stl_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_stl_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_stl_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_stl_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
   v_loan := (r->>'loan_id')::int; v_lacc := (r->>'loan_account_id')::int;
@@ -360,9 +360,9 @@ DO $$
 DECLARE
   r jsonb; v_debit int; v_loan int; v_lacc int;
 BEGIN
-  v_debit := (finance.fn_create_account('{"name":"__rl_blp_debit__","account_type":"cash","account_holder":"Erika","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_debit := (finance.fn_create_account('{"name":"__rl_blp_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   r := finance.fn_create_loan(jsonb_build_object(
-         'name','__rl_blp_loan__','lender','Buchenbank','borrower','Erika','original_amount',10000,'current_balance',10000,
+         'name','__rl_blp_loan__','lender','Buchenbank','original_amount',10000,'current_balance',10000,
          'disbursement_date',CURRENT_DATE::text,'interest_rate',3,'monthly_annuity',500,'schedule_day_of_month',1,
          'first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit));
   v_loan := (r->>'loan_id')::int; v_lacc := (r->>'loan_account_id')::int;

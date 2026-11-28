@@ -4,7 +4,8 @@
 --   * core.fn_create_choice_prompt: 2-3 Optionen je <= 24 Zeichen, keine Links/Dubletten, sonst invalid_choices; ersetzt eine
 --     offene choice, eine offene andere Frage geht zurueck in die Schlange;
 --   * core.fn_next_chat_prompt: Stapel in Reihenfolge, Zwischenantwort -> Frage neu senden (resend, alte message_id in
---     stale_message_ids), choice nach Textantwort -> superseded, Sweep erledigter Zeilen nach 30 Tagen;
+--     stale_message_ids), choice nach Textantwort -> superseded, Sweep erledigter Zeilen nach 30 Tagen, Pause eines Stapels
+--     haelt bis zum naechsten Lauf desselben Beraters;
 --   * core.fn_chat_prompt_sent, core.fn_open_chat_prompt, core.fn_advisor_pins.open_prompt_agent;
 --   * core.fn_answer_chat_prompt (ueber core.fn_dispatch_callback): Privatchat, fremder Chat, veraltet, unbekannte Option,
 --     note -> force_reply (Zeile bleibt offen), choice -> continue als Nachricht.
@@ -208,6 +209,53 @@ BEGIN
      OR (r->>'send')::boolean IS NOT TRUE OR (r->>'prompt_id')::bigint IS DISTINCT FROM v_t2 THEN
     RAISE EXCEPTION 'FAIL [8 spaeterer Lauf]: %', r; END IF;
   RAISE NOTICE 'PASS [8 nie gesendete choice]';
+END $$;
+
+-- 9) Pause in der Schlussprüfung haelt: ein Stapel, dessen Uebersicht mit pause beantwortet wurde, kommt nicht beim Lauf
+--    eines anderen Agenten (oder ohne Angabe), erst nach einem spaeteren Lauf desselben Beraters (agent); ein neuer
+--    Pruef-Durchgang (neuer Stapel) geht vor.
+DO $$
+DECLARE
+  r jsonb; v_b uuid := gen_random_uuid(); v_b2 uuid := gen_random_uuid(); v_ov bigint; v_p1 bigint; v_ov2 bigint;
+BEGIN
+  DELETE FROM agent.chat_prompts WHERE chat_id = '111';
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, batch_id, ord, status, answer_key, decided_at, sent_at, card, options, payload)
+  VALUES ('111', 'erika', 'agent.finance_advisor', 'finding', v_b, 0, 'answered', 'pause', clock_timestamp() - interval '5 minutes',
+          clock_timestamp() - interval '6 minutes', '{"lines":[{"kind":"text","text":"Uebersicht"}]}',
+          '[{"key":"go","label":"Los"},{"key":"pause","label":"Pause"}]', '{"role":"overview","points":1,"label":"check"}')
+  RETURNING id INTO v_ov;
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, batch_id, ord, status, card, options, payload)
+  VALUES ('111', 'erika', 'agent.finance_advisor', 'finding', v_b, 1, 'queued', '{"lines":[{"kind":"text","text":"Punkt 1"}]}',
+          '[{"key":"keep","label":"Passt"}]', '{"label":"punkt 1"}')
+  RETURNING id INTO v_p1;
+
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','run_started_at', clock_timestamp(),'replied', true));
+  IF (r->>'send')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [9 ohne agent gesendet]: %', r; END IF;
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','run_started_at', clock_timestamp(),'replied', true,
+         'agent', 'agent.finance'));
+  IF (r->>'send')::boolean IS NOT FALSE OR (SELECT status FROM agent.chat_prompts WHERE id = v_p1) <> 'queued' THEN
+    RAISE EXCEPTION 'FAIL [9 anderer Agent gesendet]: %', r; END IF;
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','run_started_at', clock_timestamp(),'replied', true,
+         'agent', 'agent.finance_advisor'));
+  IF (r->>'send')::boolean IS NOT TRUE OR (r->>'prompt_id')::bigint IS DISTINCT FROM v_p1 THEN
+    RAISE EXCEPTION 'FAIL [9 Berater-Lauf gibt nicht frei]: %', r; END IF;
+
+  -- neuer Durchgang waehrend einer Pause: sein Stapel kommt, der pausierte bleibt liegen
+  DELETE FROM agent.chat_prompts WHERE chat_id = '111';
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, batch_id, ord, status, answer_key, decided_at, sent_at, card, options, payload)
+  VALUES ('111', 'erika', 'agent.finance_advisor', 'finding', v_b, 0, 'answered', 'pause', clock_timestamp() - interval '5 minutes',
+          clock_timestamp() - interval '6 minutes', '{"lines":[{"kind":"text","text":"Uebersicht"}]}',
+          '[{"key":"go","label":"Los"}]', '{"role":"overview","points":1,"label":"check"}');
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, batch_id, ord, status, card, options, payload)
+  VALUES ('111', 'erika', 'agent.finance_advisor', 'finding', v_b, 1, 'queued', '{"lines":[{"kind":"text","text":"Punkt 1"}]}',
+          '[{"key":"keep","label":"Passt"}]', '{"label":"punkt 1"}');
+  INSERT INTO agent.chat_prompts (chat_id, person_id, agent, kind, batch_id, ord, status, card, options, payload)
+  VALUES ('111', 'erika', 'agent.finance_advisor', 'finding', v_b2, 0, 'queued', '{"lines":[{"kind":"text","text":"Neue Uebersicht"}]}',
+          '[{"key":"go","label":"Los"}]', '{"role":"overview","points":0,"label":"check 2"}')
+  RETURNING id INTO v_ov2;
+  r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','run_started_at', clock_timestamp(),'replied', true));
+  IF (r->>'prompt_id')::bigint IS DISTINCT FROM v_ov2 THEN RAISE EXCEPTION 'FAIL [9 neuer Durchgang]: %', r; END IF;
+  RAISE NOTICE 'PASS [9 Pause haelt bis zum naechsten Lauf des Beraters]';
 END $$;
 
 ROLLBACK;

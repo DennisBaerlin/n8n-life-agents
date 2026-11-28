@@ -45,8 +45,7 @@ BEGIN
   RAISE NOTICE 'PASS [2] Uebertrag Quelle -> Ziel, Betrag signiert';
 
   -- ===== 3) Kreditrate: Rest 300 < Rate 500 -> Abloesebetrag =====
-  v_loan := finance.fn_create_loan(jsonb_build_object('name', '__t_up_kredit__', 'lender', 'B', 'borrower', 'T',
-    'original_amount', 5000, 'current_balance', 300, 'disbursement_date', (t - 60)::text, 'interest_rate', 3,
+  v_loan := finance.fn_create_loan(jsonb_build_object('name', '__t_up_kredit__', 'lender', 'B', 'original_amount', 5000, 'current_balance', 300, 'disbursement_date', (t - 60)::text, 'interest_rate', 3,
     'monthly_annuity', 500, 'first_payment_date', (t + 3)::text, 'debit_account_id', v_a));
   SELECT recurring_payment_id INTO v_rp_loan FROM finance.loans WHERE id = (v_loan->>'loan_id')::int;
   SELECT u.amount, u.planned_amount INTO v_amt, v_plan FROM finance.fn_upcoming_payments(t, t + 10) u

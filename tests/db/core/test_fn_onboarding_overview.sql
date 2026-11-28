@@ -99,8 +99,8 @@ BEGIN
   IF (SELECT (e->>'status') FROM jsonb_array_elements(r->'sections') e WHERE e->>'package'='finance' AND e->>'key'='accounts') <> 'completed' THEN
     RAISE EXCEPTION 'FAIL [(5) accounts-Status nicht completed]: %', r; END IF;
 
-  -- ---------- (6) Inaktives Paket ausgeschlossen (finance 'installed') ----------
-  UPDATE core.package_registry SET status='installed' WHERE package='finance';
+  -- ---------- (6) Inaktives Paket ausgeschlossen (finance 'installing') ----------
+  UPDATE core.package_registry SET status='installing' WHERE package='finance';
   r := core.fn_onboarding_overview();
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'sections') e WHERE e->>'package'='finance') THEN
     RAISE EXCEPTION 'FAIL [(6) inaktives finance in Liste]: %', r; END IF;

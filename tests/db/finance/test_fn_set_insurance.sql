@@ -18,7 +18,7 @@ DECLARE
 BEGIN
 
   -- Setup: Konto + Versicherung (monatlich 10 -> Jahrespraemie 120)
-  SELECT finance.fn_create_account('{"name":"__test_setins_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_setins_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_insurance(jsonb_build_object(

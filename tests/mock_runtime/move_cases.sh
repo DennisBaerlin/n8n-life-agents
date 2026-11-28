@@ -112,7 +112,7 @@ eq MV-U.update-gesperrt-rc 1 "$_rc"
 eq MV-U.update-kein-download 0 "$(_mv_log | grep -c '^fetch')"
 case "$_out" in *'move done'*) pass MV-U.satz-nennt-abnahme ;; *) fail MV-U.satz-nennt-abnahme "$_out" ;; esac
 _uu update_cli >/dev/null 2>&1; eq MV-U.update-ohne-tag-gesperrt 0 "$(_mv_log | grep -c '^fetch')"
-: > "$STUB_LOG"; _uu update_cli --check >/dev/null 2>&1; _uu update_cli --tick >/dev/null 2>&1; _uu update_cli --run-requested >/dev/null 2>&1
+: > "$STUB_LOG"; _uu update_cli --check >/dev/null 2>&1; LA_TICK_INNER=1 _uu update_cli --tick >/dev/null 2>&1; _uu update_cli --run-requested >/dev/null 2>&1
 eq MV-U.check-tick-runner-frei 3 "$(_mv_log | grep -cE '^(check|tick|run_requested)')"
 _uu update_cli --help >/dev/null 2>&1; eq MV-U.hilfe-frei 0 "$?"
 # Sperre im Applier (provision.sh -> upgrade_move_guard): dieselbe Vorab-Version erneut anwenden frei, jede andere gesperrt.

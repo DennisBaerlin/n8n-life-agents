@@ -343,7 +343,7 @@ rt_stack_up() {
 # hat einen Healthcheck). Ein Versuch: der Kern laedt die Abbilder vorher (rt_stack_pull), eine abgelaufene Wartezeit ist
 # ein kranker Dienst, kein Netz-Aussetzer. Nur fuer die Start-Dienste des Kerns: tailscale/wan (reach.sh) enden ohne
 # Anmeldung bzw. Adresse von selbst, ein --wait schluege dort fehl.
-rt_stack_up_wait() { _rt_compose up -d --wait --wait-timeout "${RT_UP_WAIT_SECS:-180}" "$@"; }
+rt_stack_up_wait() { _rt_compose up -d --wait --wait-timeout 180 "$@"; }
 # rt_stack_ps — Zustand der laufenden eigenen Container (nur dieses Projekt; Name, Dienst, Status).
 rt_stack_ps() { _rt_compose ps --format '{{.Name}}\t{{.Service}}\t{{.State}}\t{{.Health}}'; }
 # rt_master_container -> Name des master-Containers (Host-Seite: Start-App bzw. CI).
@@ -737,6 +737,15 @@ rt_stack_refresh() {
     fi
   fi
   return "$rc"
+}
+
+# rt_app_db_mb -> Groesse der App-DB in MB (0, wenn PG/DB noch fehlen oder nicht erreichbar); Obergrenze einer Update-Sicherung.
+rt_app_db_mb() {
+  local mb=''
+  if { rt_is_compose && svc_is_active postgresql; } || { ! rt_is_compose && need_cmd psql && dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1; }; then
+    mb="$(pg_su_psql -X -tAc "SELECT pg_database_size(datname) / 1048576 FROM pg_database WHERE datname = '${N8N_DB_NAME:-n8n}'" 2>/dev/null || true)"
+  fi
+  case "$mb" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$mb" ;; esac
 }
 
 # rt_target_precheck <compose-datei> <master-image> — was ein Update abbrechen kann, gegen die Datei des Ziel-Stands pruefen,

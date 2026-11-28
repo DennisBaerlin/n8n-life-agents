@@ -531,6 +531,18 @@ if ( STUB_IMAGE_PRESENT=0 STUB_FAIL='|pull|' master_swap_begin v9.1.0 "$W/compos
 if [ -e "$SWAP_STATE" ]; then fail S.pull-fehler-kein-zustand "state angelegt"; else pass S.pull-fehler-kein-zustand; fi
 if ( STUB_FAIL='|run|--rm|-d|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.helfer-startfehler "kein Abbruch"; else pass S.helfer-startfehler; fi
 if [ -e "$SWAP_STATE" ] || [ -e "$SWAP_DIR/stack.env" ]; then fail S.helfer-startfehler-raeumt "Reste"; else pass S.helfer-startfehler-raeumt; fi
+# Zu wenig Platz fuer die Sicherung vor dem Update: Abbruch vor dem Laden und vor dem Helfer, nicht erst im neuen master (preflight).
+# Der Rueckweg sichert nicht und prueft darum nicht.
+: > "$STUB_LOG"
+sp_run() { ( rt_app_db_mb() { printf 500; }; df() { printf 'Filesystem 1M-blocks Used Available Use%% Mounted\nx 1000 900 100 90%% /\n'; }
+             master_swap_begin "$@" ) 2>&1; }
+sp_out="$(sp_run v9.1.0 "$W/compose.new.src" "$NEW")"; sp_rc=$?
+if [ "$sp_rc" -ne 0 ] && printf '%s' "$sp_out" | grep -q '100 MB frei, 500 MB' && ! grep -q '|pull|\|lifeagents-swap' "$STUB_LOG" && [ ! -e "$SWAP_STATE" ]; then
+  pass S.platz-fuer-sicherung-vor-dem-tausch; else fail S.platz-fuer-sicherung-vor-dem-tausch "rc=$sp_rc $(printf '%s' "$sp_out" | tail -n1)"; fi
+if ( rt_app_db_mb() { printf 500; }; df() { printf 'F\nx 1000 900 100 90%% /\n'; }; SWAP_DROP_DB_AFTER=x \
+     master_swap_begin v9.0.0 "$W/compose.old.src" "$NEW" rollback ) >/dev/null 2>&1; then pass S.rueckweg-ohne-platzpruefung
+else fail S.rueckweg-ohne-platzpruefung "Abbruch"; fi
+master_swap_close 2>/dev/null; rm -rf "$SWAP_DIR"
 # Rueckweg: Zusatz-Angaben stehen schon VOR dem Helfer-Start in der Datei (kein zweiter Schreiber neben dem Helfer).
 ( SWAP_DROP_DB_AFTER=n8n_before_rollback SWAP_NOTIFY='Fertig, mit Komma' master_swap_begin v9.0.0 "$W/compose.old.src" "$NEW" rollback ) >/dev/null 2>&1
 eq S.rueckweg-angaben-vor-helfer 'n8n_before_rollback|Fertig, mit Komma|rollback' "$(sget DROP_DB_AFTER)|$(sget NOTIFY)|$(sget MODE)"
@@ -1691,6 +1703,54 @@ eq G.versionswechsel-aendert-den-fingerabdruck 1 "$([ "$(gx - "$gx_img")" != "$(
 eq G.ohne-container-gilt-der-pin 'n8n=2.45.7' "$(gx 2.45.7 - | cut -d'|' -f1)"
 mkdir -p "$W/gxb/bin"; printf '#!/bin/sh\n' > "$W/gxb/bin/n8n"; chmod +x "$W/gxb/bin/n8n"; printf '{"version":"9.9.9"}' > "$W/gxb/package.json"
 eq G.verbund-ignoriert-ein-lokales-n8n-binary 'n8n=2.45.7' "$( PATH="$W/gxb/bin:$PATH"; gx - "$gx_img" | cut -d'|' -f1 )"
+# Arbeitsordner der Einspielung: die je Installation geheimen Eingangs-ids und der App-Pfad stehen in den Dateien, also root:n8n
+# 0750/0640, und nie in einer Befehlszeile (jq-Attrappe protokolliert argv). Der Import (Attrappe) liest die Rechte und scheitert.
+# real-path-test: none (Rechte im echten Lauf: bootstrap_test_n8n.ps1 -Reset -Cold faehrt denselben Weg bis zum Import)
+gs_case() (   # -> "<ordner>|<import-ordner>|<datei>|<geheimnis-in-argv?>"
+  local _gs="$W/gs" realjq; realjq="$(command -v jq)"; rm -rf "$_gs"; mkdir -p "$_gs/bin" "$_gs/in" "$_gs/repo/packages/core/workflows"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> %q\nexec %q "$@"\n' "$_gs/argv" "$realjq" > "$_gs/bin/jq"; chmod +x "$_gs/bin/jq"
+  printf '{"id":"wfA","name":"core.main_x","nodes":[{"id":"n1","type":"n8n-nodes-base.telegramTrigger","webhookId":"w1"},{"id":"n2","parameters":{"p":"__APP_PATH__"}}]}' \
+    > "$_gs/repo/packages/core/workflows/wfA-core.main_x.json"
+  printf 'INGRESS_ID_KEY=test-fake-ingress-key\n' > "$_gs/core.env"
+  # hand-injected: die Umgebung des Deploy-Schritts ist die Eingabe des Falls; geprueft wird nur der Arbeitsordner, nicht die Werte
+  export PATH="$_gs/bin:$PATH" N8N_API_KEY=x REPO_ROOT="$_gs/repo" N8N_OWNER_ENV_FILE="$_gs/core.env" LIFEAGENTS_DEPLOY_FULL=1 N8N_USER=n8n N8N_ENV_FILE=/dev/null
+  require_cmd() { :; }; require_su_tools() { :; }; n8n_bin_path() { printf /bin/true; }; _wf_noncore_agents() { :; }
+  _list_existing_creds() { printf '[]'; }; _build_cred_remap() { printf '{}'; }; _resolve_owner_chat_id() { printf 0; }
+  _schedule_placeholder_map() { printf '{}'; }; _hitl_chat_approval() { _HITL_CHAT_APPROVAL_VAL=false; }
+  _app_path() { printf 'test-fake-app-path-77'; }; _deactivate_live_triggers() { _DEPLOY_DEACTIVATED=(); }
+  _wf_deploy_context() { printf ctx; }; n8n_input_dir() { printf '%s' "$_gs/in"; }
+  n8n_cli_env() {   # Rechte des Ordners, des Import-Ordners und einer Datei, wie n8n sie saehe
+    local s; s="$(ls -d "$_gs"/in/n8n_wf_deploy.*)"
+    stat -c '%a:%U:%G' "$s" "$s/import" "$s"/import/*.json | paste -sd'|' > "$_gs/perm"; return 1
+  }
+  ( deploy_workflows core ) >/dev/null 2>&1
+  local leak=nein
+  if grep -q 'test-fake-app-path-77\|test-fake-ingress-key' "$_gs/argv" 2>/dev/null; then leak=ja; fi
+  # die abgeleiteten ids: im Ordner ja, in der Befehlszeile nein
+  if grep -qF "$(_ingress_uuid test-fake-ingress-key n1)" "$_gs/argv" 2>/dev/null; then leak=ja; fi
+  printf '%s|%s' "$(cat "$_gs/perm" 2>/dev/null)" "$leak"
+)
+eq G.einspielung-ordner-privat-ohne-argv '750:root:n8n|750:root:n8n|640:root:n8n|nein' "$(gs_case)"
+# Abbruch (TERM) mitten im Superuser-SQL bzw. im Zugangsdaten-Import laesst keine Datei mit Geheimnissen liegen.
+# real-path-test: none (ein Abbruch laesst sich im echten Installer nicht planbar ausloesen; die Attrappe haelt genau dort an)
+gk_case() (   # gk_case driver|creds -> Anzahl Dateien, die der Abbruch liegen liess (Treiber: neue /tmp/la_drv.*, Import: Eingabe-Ordner)
+  local d="$W/gk" lib="$ROOT/provisioning/lib" before p i stubs
+  rm -rf "$d"; mkdir -p "$d/in"; before="$(find /tmp -maxdepth 1 -name 'la_drv.*' | wc -l)"
+  stubs="pg_su_psql() { cat >/dev/null; sleep 30; }; n8n_cli_env() { sleep 30; }; n8n_input_dir() { printf '%s' '$d/in'; }"
+  # Eigene Prozessgruppe (setsid) und TERM an die ganze Gruppe: so trifft Strg-C bzw. docker stop den Installer samt Kindern.
+  if [ "$1" = driver ]; then
+    setsid bash -c ". '$lib/common.sh'; . '$lib/runtime.sh'; $stubs; printf 'SELECT 1;\n' | psql_superuser_driver" >/dev/null 2>&1 &
+  else
+    setsid bash -c ". '$lib/common.sh'; . '$lib/runtime.sh'; . '$lib/inject_credentials.sh'; $stubs; N8N_USER=n8n N8N_ENV_FILE=/dev/null
+      _CRED_ITEMS='[{\"id\":\"c1\",\"name\":\"x\",\"type\":\"t\",\"data\":{\"k\":\"test-fake-secret\"}}]'; _cred_import_and_test" >/dev/null 2>&1 &
+  fi
+  p=$!; sleep 1; kill -TERM -- "-$p" 2>/dev/null
+  for i in $(seq 1 50); do kill -0 "$p" 2>/dev/null || break; sleep 0.1; done
+  kill -9 -- "-$p" 2>/dev/null; wait "$p" 2>/dev/null
+  if [ "$1" = driver ]; then printf '%s' "$(( $(find /tmp -maxdepth 1 -name 'la_drv.*' | wc -l) - before ))"; else find "$d/in" -mindepth 1 | wc -l | tr -d ' '; fi
+)
+eq G.abbruch-sql-ohne-treiber-datei 0 "$(gk_case driver)"
+eq G.abbruch-import-ohne-zugangs-datei 0 "$(gk_case creds)"
 # Review-Funde: Funnel-Eintrag weg = Tunnel steht nicht; leerer Sicherungs-Zustand vor BACKUP_AUTO_AT ist noch kein Fehlalarm.
 eq D.tunnel-funnel-fehlt-rot '  [FAIL] Tunnel: Funnel-Einträge fehlen oder weichen ab — Telegram erreicht den Bot nicht (docker exec -i t-master lifeagents reconfigure core → „Unverändert neu anwenden“)
 fail=1' "$(dd_ts tunnel 0 "$dd_ok" '{}')"
@@ -1790,6 +1850,42 @@ kz_case() (   # kz_case <haengender-schritt> -> "<sekunden>|<log>|<kind-lebt?>"
 eq KZ.auftrag-haengt-tick-geht-weiter '1|check backup|nein' "$(kz_case run)"
 eq KZ.check-haengt-tick-geht-weiter '1|run backup|nein' "$(kz_case check)"
 eq KZ.sicherung-haengt-tick-endet '1|run check|nein' "$(kz_case backup)"
+# Nach einer Sicherung, die an ihrer Grenze endete, wartet der Tick BACKUP_RETRY_AFTER_TIMEOUT_S statt einer Stunde; danach und
+# nach einem normalen Ende gilt wieder der Stunden-Abstand.
+kz_pause() (   # -> "<marker nach haenger>|<sicherung nach 1 h?>|<nach 5 h?>|<marker danach>"
+  local KZ_DIR="$W/kz" KZ_HANG=backup; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
+  rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"; printf backup > "$KZ_DIR/hang"
+  update_run_requested() { :; }; update_check() { :; }; require_root() { :; }; _ur_alert() { :; }; heartbeat_record() { :; }
+  lifeagents_version_marker() { printf '%s' "$KZ_DIR/V"; }; echo v9.0.0 > "$KZ_DIR/V"
+  lifeagents_env_file() { printf '%s' "$KZ_DIR/core.env"; }; printf 'HOUSEHOLD_TIMEZONE=UTC\n' > "$KZ_DIR/core.env"
+  UPDATE_TICK_STATE="$KZ_DIR/tick.state"; BACKUP_STATE_FILE="$KZ_DIR/b.state"; BACKUP_AUTO_AT=0000
+  BACKUP_TIMEOUT_S=2 UPDATE_STEP_KILL_S=1 UPDATE_CHECK_EVERY_S=999999999
+  local m1 a b m2
+  update_tick >/dev/null 2>&1
+  m1="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TIMEOUT 2>/dev/null || true)"
+  rm -f "$KZ_DIR/hang" "$KZ_DIR/log"
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"; update_tick >/dev/null 2>&1
+  if grep -q backup "$KZ_DIR/log" 2>/dev/null; then a=ja; else a=nein; fi
+  env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 18000 ))"; update_tick >/dev/null 2>&1
+  if grep -q backup "$KZ_DIR/log" 2>/dev/null; then b=ja; else b=nein; fi
+  m2="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TIMEOUT 2>/dev/null || true)"
+  printf '%s|%s|%s|%s' "$m1" "$a" "$b" "$m2"
+)
+eq KZ.sicherung-zeitgrenze-laengere-pause '1|nein|ja|0' "$(kz_pause)"
+# Aeussere Grenze um den ganzen Tick: haengt etwas ausserhalb der Schritte (hier lifeagents_version_heal, im echten Verbund ein
+# docker-Aufruf bei haengendem Daemon), endet `update --tick` nach UPDATE_TICK_TIMEOUT_S samt Kindprozess.
+kz_outer() (   # -> "<sekunden-ok>|<kind-lebt?>"
+  local KZ_DIR="$W/kz"; rm -rf "$KZ_DIR"; mkdir -p "$KZ_DIR"
+  printf '#!/usr/bin/env bash\nsleep 30 & echo $! > %q; wait\n' "$KZ_DIR/child.pid" > "$KZ_DIR/hangcli"; chmod +x "$KZ_DIR/hangcli"
+  _ur_cli() { printf "%s" "$KZ_DIR/hangcli"; }; _ur_alert() { :; }
+  lifeagents_version_heal() { sleep 30 & echo $! > "$KZ_DIR/child.pid"; wait; }
+  unset LA_TICK_INNER; UPDATE_TICK_TIMEOUT_S=2 UPDATE_STEP_KILL_S=1
+  local t0 alive=nein; t0="$(date +%s)"
+  update_cli --tick >/dev/null 2>&1
+  if [ -s "$KZ_DIR/child.pid" ] && kill -0 "$(cat "$KZ_DIR/child.pid")" 2>/dev/null; then alive=ja; kill "$(cat "$KZ_DIR/child.pid")"; fi
+  printf '%s|%s' "$(( $(date +%s) - t0 < 15 ))" "$alive"
+)
+eq KZ.ganzer-tick-hat-zeitgrenze '1|nein' "$(kz_outer)"
 # SIGTERM (docker stop, Neuanlage durch den Helfer) erreicht den laufenden Schritt, nicht erst SIGKILL nach 10 s.
 kz_term() (
   local KZ_DIR="$W/kz"; rt_is_compose() { return 0; }; _ur_cli() { printf "%s" "$W/kzbin/lifeagents"; }
@@ -2079,7 +2175,8 @@ vh_cli() (   # vh_cli <args...> -> "<VERSION danach>|<aufgerufen>"
   printf '%s|%s' "$(vh_ver)" "$(tr '\n' ' ' < "$W/vh/called" 2>/dev/null)"
 )
 eq VH.cli-release-check-heilt-vorher 'v9.0.0|check ' "$(vh_cli --check --scheduled)"
-eq VH.cli-tick-heilt-vorher 'v9.0.0|tick ' "$(vh_cli --tick)"
+# Innerer Tick-Prozess (LA_TICK_INNER): die aeussere Zeitgrenze startet ihn als eigenen Prozess (KZ.ganzer-tick-hat-zeitgrenze).
+eq VH.cli-tick-heilt-vorher 'v9.0.0|tick ' "$(LA_TICK_INNER=1 vh_cli --tick)"
 eq VH.cli-auftrag-heilt-vorher 'v9.0.0|run ' "$(vh_cli --run-requested)"
 eq VH.cli-hilfe-aendert-nichts 'dev|' "$(vh_cli --help)"
 

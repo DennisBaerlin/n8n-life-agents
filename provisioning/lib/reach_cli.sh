@@ -117,7 +117,7 @@ reach_cli_ts_status() {
 #   sonst die Einstellungen des Nutzers ueberschreiben bzw. ablehnen).
 reach_cli_ts_login_start() {
   need_cmd tailscale || return 1
-  ( setsid timeout 900 tailscale up --hostname="$(reach_cli_ts_host)" --accept-dns=false </dev/null >/dev/null 2>&1 & ) 2>/dev/null || true
+  ( setsid timeout 900 tailscale up --hostname="$(reach_cli_ts_host)" --accept-dns=false </dev/null >/dev/null 2>&1 9>&- & ) 2>/dev/null || true
   return 0
 }
 
@@ -344,7 +344,7 @@ reach_cli_doctor() {
     foreign) printf 'red\tTunnel: %s\n' "$(reach_cli_state_text busy)" ;;
     *)       printf 'red\tTunnel: Funnel-Einträge fehlen oder weichen ab — lifeagents reconfigure core → „Unverändert neu anwenden“\n' ;;
   esac
-  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
+  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -ge 0 ] 2>/dev/null && [ "$REACH_TS_KEY_DAYS" -le 14 ]; then
     printf 'warn\tTailscale-Anmeldung läuft in %s Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → „Disable key expiry“\n' "$REACH_TS_KEY_DAYS"
   fi
   return 0

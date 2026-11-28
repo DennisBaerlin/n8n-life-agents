@@ -8,11 +8,12 @@
 # Alle 127.0.0.1-Annahmen (5432, 5678, 8090) bleiben wahr.
 #
 # Docker-Positivliste (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
-#   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
+#   docker exec · docker inspect · docker restart · docker logs · docker image inspect · docker version ·
+#   docker volume inspect · docker volume create ·
 #   docker info --format '{{.MemTotal}}' (nur rt_docker_mem) · docker stop "${LA_PROJECT}-swap" (nur rt_swap_helper_stop) ·
 #   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
 #   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
-# Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
+# Dazu fuer den Deinstaller (nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
 # rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` nur in rt_stack_down (ohne
 # -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts) und `docker image rm "$1"`
 # nur in rt_image_rm_own (ohne -f: nutzt ein Container das Abbild, lehnt Docker ab; welche Abbilder, waehlt der Kern
@@ -152,6 +153,17 @@ la_is_retired() { [ -e "$(la_retired_file)" ] && [ "${LIFEAGENTS_RETIRE_UNDO:-0}
 LA_MOVE_NAME=move-open
 la_move_file() { printf '%s/%s' "${LIFEAGENTS_STATE_DIR:-/var/lib/lifeagents}" "$LA_MOVE_NAME"; }
 la_move_open() { [ -e "$(la_move_file)" ]; }
+# la_stage_reached <stufen> <stand> <stufe> — 0, wenn <stand> in der Reihenfolge <stufen> bei <stufe> oder dahinter liegt
+#   (Stufen-Merker von retire_cli.sh und move_cli.sh; leerer Stand = nichts erreicht).
+la_stage_reached() {
+  local s seen=0
+  [ -n "$2" ] || return 1
+  for s in $1; do
+    [ "$s" = "$3" ] && seen=1
+    if [ "$s" = "$2" ]; then [ "$seen" = 1 ]; return; fi
+  done
+  return 1
+}
 # la_move_text -> der eine Satz dieser Sperre (alle drei Wege).
 la_move_text() { printf 'Updates sind gesperrt, solange der Umzug nicht abgenommen ist (der Rückweg auf die alte Maschine braucht dieselbe Version). Nach der Abnahme: lifeagents move done'; }
 # _rt_n8n_blocked <unit…> — rc 0 (= blockiert, mit Meldung), wenn eine der Units n8n ist und die Installation stillgelegt.
@@ -176,7 +188,7 @@ _svc_container() {
 svc_is_active() {
   if rt_is_compose; then
     local c; c="$(_svc_container "$1")" || return 1
-    [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ]
+    rt_container_running "$c"
   else systemctl is-active --quiet "$1"; fi
 }
 # svc_up <unit> — compose: Container anlegen/starten (`up -d --no-deps`; aendert einen laufenden Container mit
@@ -258,7 +270,7 @@ rt_docker_ok() { docker version --format '{{.Server.Version}}' >/dev/null 2>&1; 
 rt_wait_healthy() {
   local c="$1" n="${2:-120}" st='' _
   for _ in $(seq 1 "$n"); do
-    st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$c" 2>/dev/null || true)"
+    st="$(rt_container_health "$c" || true)"
     [ "$st" = healthy ] && return 0
     sleep 1
   done
@@ -273,13 +285,13 @@ rt_volumes_ensure() {
     rc=0; lbl="$(rt_volume_label "$name")" || rc=$?
     case "$rc" in
       0) [ "$lbl" = "$LA_PROJECT" ] || die "Volume ${name} existiert, gehört aber nicht zu dieser Installation (Label ${LA_LABEL} fehlt) — nichts geändert." ;;
-      1) docker volume create --label "${LA_LABEL}=${LA_PROJECT}" "$name" >/dev/null || die "Volume ${name} ließ sich nicht anlegen." ;;
+      1) rt_volume_create_own "$name" || die "Volume ${name} ließ sich nicht anlegen." ;;
       # `volume create` auf einen vorhandenen Namen gaebe dieses Volume ungeprueft zurueck (auch ein fremdes).
       *) die "Volume ${name} ließ sich nicht prüfen (Docker-Fehler) — nichts angelegt." ;;
     esac
   done
 }
-# rt_stack_config_check — Prueft die Compose-Datei samt Interpolation (Pruefliste Nr. 13), ohne sie auszugeben: die
+# rt_stack_config_check — Prueft die Compose-Datei samt Interpolation, ohne sie auszugeben: die
 # aufgeloeste Fassung enthaelt das Superuser-Passwort (`config --quiet` = nur Fehlermeldungen).
 rt_stack_config_check() { _rt_compose config --quiet; }
 # rt_stack_pull <dienste…> — fehlende Images dieser Dienste vorab laden (per Digest festgelegt: ein lokaler Treffer
@@ -505,7 +517,7 @@ rt_master_image_of() {
 # rt_image_ensure <compose-datei> <master-image> — das Image liegt lokal vor (sonst per Compose laden; nie `docker pull`
 #   mit freiem Namen). Ein per Digest festgelegtes Image ist mit dem Inhalt identisch, der lokale Treffer genuegt.
 rt_image_ensure() {
-  docker image inspect "$2" >/dev/null 2>&1 && return 0
+  rt_image_present "$2" && return 0
   # shellcheck disable=SC2030  # bewusst nur in der Teilschale: Ziel-Image fuer genau diesen Compose-Aufruf
   ( export LA_MASTER_IMAGE="$2"; LA_COMPOSE_FILE="$1"; _rt_compose pull master ) >&2
 }
@@ -630,7 +642,7 @@ _rt_edge_container() { case "$1" in edge|tailscale|wan) printf '%s-%s' "$LA_PROJ
 # rt_edge_active <dienst> — 0 = Container laeuft.
 rt_edge_active() {
   local c; c="$(_rt_edge_container "$1")" || return 2
-  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ]
+  rt_container_running "$c"
 }
 # rt_edge_restart <dienst> — Container neu starten (wan liest seine Adresse beim Start; Tailscale verwirft einen wartenden Anmelde-Link, neu anstossen: reach_login_start).
 #   `docker restart` statt `compose restart`: tailscale/wan haengen an Profilen, die der Aufruf sonst erst aktivieren muesste.
@@ -735,7 +747,7 @@ rt_stack_refresh() {
 rt_target_precheck() {
   local cf="$1" img="$2" pin data svcs=(postgres n8n gateway edge)
   pin="$( ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; _rt_compose config --format json postgres 2>/dev/null ) \
-          | jq -r '.services.postgres.image // empty' 2>/dev/null | sed -nE 's#^.*/##; s/^[^:@]+:([0-9]+).*/\1/p')"
+          | jq -r '.services.postgres.image // empty' 2>/dev/null | sed -nE 's#^.*/##; s/^[^:@]+:([0-9]+).*/\1/p' || true)"
   data="$(pg_su_exec cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
   if [ -n "$pin" ] && [ -n "$data" ] && [ "$pin" != "$data" ]; then
     die_because pg_major "Die Datenbank ist PostgreSQL ${data}, dieser Stand erwartet ${pin} — ein Wechsel der Hauptversion braucht eine Umwandlung der Daten; Update abgebrochen, es wurde nichts geändert."

@@ -19,6 +19,8 @@
 #   MV Annahme auf der neuen Maschine (lib/move_cli.sh: move apply/check/status/done, config import, Update-Sperre); eigene Datei move_cases.sh.
 #   SU Linux-Einrichter provisioning/setup.sh (Pruefungen vor jeder Aenderung, Docker-Einrichtung, Kern-Aufruf, Befehl + Systemd-Einheit,
 #      Abbau); eigene Datei setup_cases.sh, hier eingebunden.
+#   SH Fallen der Shell im Lib-Code (Geheimnis im argv, umgeleitetes stderr, vererbte Sperre, stiller Abbruch unter pipefail);
+#      eigene Datei shell_trap_cases.sh.
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
@@ -1639,6 +1641,10 @@ dd_exp="$(date -u -d '+5 days' +%Y-%m-%dT%H:%M:%SZ)"
 dd_soon="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$dd_exp\",\"Expired\"}"
 out="$(dd_ts tunnel 0 "$dd_soon")"
 printf '%s' "$out" | grep -q '^  \[WARN\] Tailscale-Anmeldung läuft in [45] Tag(en) ab' && eq D.tunnel-schluessel-laeuft-ab-zaehlt-nicht 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail D.tunnel-schluessel-laeuft-ab "$out"
+# Abgelaufen: nur die rote Zeile, kein Hinweis „läuft in -N Tag(en) ab“ daneben.
+dd_past="${dd_ok/\"Expired\"/\"KeyExpiry\":\"$(date -u -d '-2 days' +%Y-%m-%dT%H:%M:%SZ)\",\"Expired\"}"
+out="$(dd_ts tunnel 0 "$dd_past" "$dd_fun" bot.tail-fantasy.ts.net)"
+case "$out" in *'läuft in'*) fail D.tunnel-abgelaufen-ohne-ablauf-hinweis "$out" ;; *'[FAIL] Tunnel:'*) pass D.tunnel-abgelaufen-ohne-ablauf-hinweis ;; *) fail D.tunnel-abgelaufen-ohne-ablauf-hinweis "$out" ;; esac
 dd_login='{"BackendState":"NeedsLogin","AuthURL":"https://login.tailscale.com/a/abc","Self":{"DNSName":"bot.tail-fantasy.ts.net."}}'
 # Noch nie eingerichtet (kein Tunnel-Name als DOMAIN in core.env): Einrichtung steht aus = Hinweis. Lief der Tunnel schon
 # (DOMAIN gesetzt) und ist jetzt abgemeldet oder abgelaufen: der Bot ist nicht erreichbar = ROT.
@@ -2320,5 +2326,8 @@ rh_has RH.klassisch-unveraendert "$RHK" 'dropdb'
 
 # ---------------------------------------------------------------------------- SU: Linux-Einrichter (setup.sh)
 . "$(dirname "${BASH_SOURCE[0]}")/setup_cases.sh"
+
+# ---------------------------------------------------------------------------- SH: Fallen der Shell (argv, stderr, Sperre, pipefail)
+. "$(dirname "${BASH_SOURCE[0]}")/shell_trap_cases.sh"
 
 exit "$fails"

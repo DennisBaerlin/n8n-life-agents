@@ -24,7 +24,7 @@ _proxy_compose_show() {
   local js state url dns days wh
   js="$(reach_status_json)"
   state="$(printf '%s' "$js" | jq -r '.state')"; url="$(printf '%s' "$js" | jq -r '.url')"
-  dns="$(printf '%s' "$js" | jq -r '.dns_name')"; days="$(printf '%s' "$js" | jq -r '.key_days_left // ""')"
+  dns="$(printf '%s' "$js" | jq -r '.dns_name')"; days="$(printf '%s' "$js" | jq -r '.key_days_left // "" | if type == "number" and . < 0 then "" else . end')"
   wh="$(printf '%s' "$js" | jq -r '.webhook')"
   ui_box 'Weg nach außen (Docker-Verbund)' <<EOF
 Weg:              $(case "$(reach_mode)" in tunnel) printf 'Tunnel (Tailscale Funnel)' ;; fritzbox) printf 'FritzBox' ;; *) printf '— noch keiner gewählt' ;; esac)

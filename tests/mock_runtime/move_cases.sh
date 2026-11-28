@@ -363,3 +363,23 @@ case "$(bash "$W/la-cli2" move help 2>&1 </dev/null)" in *apply*check*done*|*app
 # Auf einer stillgelegten Maschine (alte Seite) gibt es keinen Umzug-Befehl.
 _mv_reset; printf 'STAGE=done\n' > "$MV/retired"
 case "$(LIFEAGENTS_STATE_DIR="$MV" bash "$W/la-cli2" move status 2>&1 </dev/null; echo "rc=$?")" in *stillgelegt*rc=1) pass MV-VT.stillgelegt-gesperrt ;; *) fail MV-VT.stillgelegt-gesperrt "$(LIFEAGENTS_STATE_DIR="$MV" bash "$W/la-cli2" move status 2>&1 </dev/null | tail -n2)" ;; esac
+
+# ---------------------------------------------------------------------------- MV-F: Umzugs-Ordner aus dem Rechner-Ordner holen (Verbund)
+# Ein Manifest ohne Sicherungs-Namen oder mit einem Pfad darin endet mit Satz, bevor eine weitere Datei geholt oder geschrieben wird.
+_fd() (
+  set -e; rt_is_compose() { return 0; }
+  _bkp_tmpdir() { mktemp -d "$W/fd.XXXXXX"; }; _bkp_hd() { printf '%s' "$1"; }
+  rt_host_get() { printf '%s\n' "$2" >> "$W/fd.log"; case "$2" in move.manifest) printf '%b' "$FD_MANIFEST" ;; *) printf 'x' ;; esac; }
+  _ret_fetch_dir /rechner/ordner; printf 'dir=%s\n' "$_RET_DIR"
+)
+: > "$W/fd.log"; _out="$(FD_MANIFEST='FORMAT=1\n' _fd 2>&1)"; _rc=$?
+eq MV-F.ohne-sicherung-rc 1 "$_rc"
+case "$_out" in *'nennt keine Sicherung'*) pass MV-F.ohne-sicherung-satz ;; *) fail MV-F.ohne-sicherung-satz "${_out:-keine Meldung}" ;; esac
+: > "$W/fd.log"; _out="$(FD_MANIFEST='FORMAT=1\nBACKUP_FILE=../fd.fremd\n' _fd 2>&1)"; _rc=$?
+eq MV-F.pfad-rc 1 "$_rc"
+eq MV-F.pfad-nichts-geholt move.manifest "$(paste -sd' ' "$W/fd.log")"
+[ ! -e "$W/fd.fremd" ] && pass MV-F.pfad-nichts-geschrieben || fail MV-F.pfad-nichts-geschrieben "Datei ausserhalb des Arbeitsordners"
+: > "$W/fd.log"; _out="$(FD_MANIFEST='FORMAT=1\nBACKUP_FILE=b.nla.enc\n' _fd 2>&1)"; _rc=$?
+eq MV-F.gut-rc 0 "$_rc"
+eq MV-F.gut-geholt 'move.manifest b.nla.enc vorher.txt' "$(paste -sd' ' "$W/fd.log")"
+rm -rf "$W"/fd.*

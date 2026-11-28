@@ -2,7 +2,7 @@
 # Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
 # Aufruf: `lifeagents config <verb> [args]` (die CLI sourct diese Datei + common.sh).
-# DB-Zugriff: postgres-Superuser via runuser/Peer-Auth am lokalen Socket (host-vermittelt, wie
+# DB-Zugriff: postgres-Superuser via pg_su_psql (runtime.sh: Peer-Auth am lokalen Socket bzw. docker exec; host-vermittelt, wie
 # pkg_lifecycle.sh/apply_schema.sh).
 #
 # Zugriffsmodell: Config ist ein flacher zentraler Store mit global eindeutigem (category,key); die
@@ -41,6 +41,15 @@ _cfg_ident_ok() { printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_]*$'; }
 # _cfg_managed_by <category> <key>  -> owner | system | instance | leer (Zeile fehlt). Argumente vorher ident-geprueft.
 _cfg_managed_by() {
   _cfg_psql -tA -c "SELECT managed_by FROM core.config WHERE category = '$1' AND key = '$2'" 2>/dev/null || true
+}
+
+# _cfg_require_owner <category> <key> — Abbruch mit Satz, wenn die Zeile kein Owner-Wert ist (system, instance); eine fehlende
+#   Zeile laesst sie durch (den Fall meldet die fn danach).
+_cfg_require_owner() {
+  case "$(_cfg_managed_by "$1" "$2")" in
+    system)   die "${1}.${2} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar." ;;
+    instance) die "${1}.${2} gehört zu dieser Installation (setzt der Installer selbst) und ist nicht änderbar." ;;
+  esac
 }
 
 # _cfg_apply_schedule <category> <key>  — nach set/reset: ist es ein Zeitplan, die Workflows des besitzenden Pakets
@@ -148,10 +157,7 @@ config_cmd_reset() {
   local category="$1" key="$2" res ok_flag val
   _cfg_ident_ok "$category" || die "Ungueltige category (erwarte ^[a-z][a-z0-9_]*\$): $category"
   _cfg_ident_ok "$key"      || die "Ungueltiger key (erwarte ^[a-z][a-z0-9_]*\$): $key"
-  case "$(_cfg_managed_by "$category" "$key")" in
-    system)   die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar." ;;
-    instance) die "${category}.${key} gehört zu dieser Installation (setzt der Installer selbst) und ist nicht änderbar." ;;
-  esac
+  _cfg_require_owner "$category" "$key"
   res="$(_cfg_psql -tA -c "SELECT core.fn_config_reset(jsonb_build_object('category','${category}','key','${key}'))")" || \
     die "Config-Reset fehlgeschlagen (Schema angewandt?)."
   ok_flag="$(printf '%s' "$res" | jq -r '.ok // false' 2>/dev/null || echo false)"
@@ -175,7 +181,7 @@ config_cmd_set() {
       "SELECT category || '/' || key || ' = ' || value || '   [' || package || ']', category || ' ' || key FROM core.config WHERE managed_by = 'owner' ORDER BY package, category, key" 2>/dev/null \
       | ui_choose 'Config-Eintrag aendern:' 0 || true)"
     if [ -n "$pick" ]; then
-      local p_category="${pick%% *}" p_key="${pick##* }" p_value="" p_info p_sum p_cur p_def
+      local p_category="${pick%% *}" p_key="${pick##* }" p_value="" p_info p_sum p_cur p_def p_exp
       # Erklaer-Kasten vor der Eingabe (Muster _prompt_validated: printf help | ui_box >&2): der deutsche
       # Einzeiler `summary` + aktueller Wert + Standard. Erst ident-pruefen (Interpolation), Fehlschlag -> kein
       # Kasten (die Pruefung unten bricht dann ohnehin ab).
@@ -212,10 +218,7 @@ config_cmd_set() {
   local category="$1" key="$2" value="$3"
   _cfg_ident_ok "$category" || die "Ungueltige category (erwarte ^[a-z][a-z0-9_]*\$): $category"
   _cfg_ident_ok "$key"      || die "Ungueltiger key (erwarte ^[a-z][a-z0-9_]*\$): $key"
-  case "$(_cfg_managed_by "$category" "$key")" in
-    system)   die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar." ;;
-    instance) die "${category}.${key} gehört zu dieser Installation (setzt der Installer selbst) und ist nicht änderbar." ;;
-  esac
+  _cfg_require_owner "$category" "$key"
 
   # category/key sind ident-validiert; der Wert wird als SQL-Literal interpoliert -> Quotes verdoppeln.
   # UPDATE-only + RETURNING: matcht die (category,key)-Zeile nicht -> leere Rueckgabe -> Fehler (kein

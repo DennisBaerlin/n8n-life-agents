@@ -50,14 +50,7 @@ _mv_set() {
 }
 _mv_stage() { la_move_open || return 0; _mv_get STAGE; }
 # _mv_reached <stufe> — 0, wenn die gespeicherte Stufe <stufe> oder eine spaetere ist.
-_mv_reached() {
-  local cur s seen=0; cur="$(_mv_stage)"; [ -n "$cur" ] || return 1
-  for s in $MOVE_STAGES; do
-    [ "$s" = "$1" ] && seen=1
-    if [ "$s" = "$cur" ]; then [ "$seen" = 1 ]; return; fi
-  done
-  return 1
-}
+_mv_reached() { la_stage_reached "$MOVE_STAGES" "$(_mv_stage)" "$1"; }
 
 # --- Vergleich -----------------------------------------------------------------------------------------------------------
 # move_compare <vorher> <nachher> — nur die abweichenden Zeilen, "<art> <name>  vorher <wert|—>  nachher <wert|—>", sortiert; still,
@@ -130,7 +123,7 @@ _mv_plan() {
     code="$(printf '%s' "$plan" | jq -r '.code // empty' 2>/dev/null || true)"
     case "$code" in
       key_*) ;;
-      *) detail="$(sed 's/\x1b\[[0-9;]*m//g' "$errf" | grep -v '^[[:space:]]*$' | tail -n1 | sed 's/^\[x\] *//')"; rm -f "$errf"
+      *) detail="$(sed 's/\x1b\[[0-9;]*m//g' "$errf" | grep -v '^[[:space:]]*$' | tail -n1 | sed 's/^\[x\] *//' || true)"; rm -f "$errf"
          die "Die Sicherung lässt sich hier nicht einspielen (${detail:-${code:-Prüfung gescheitert}}). Es wurde nichts geändert." ;;
     esac
     rm -f "$errf"
@@ -169,7 +162,7 @@ _mv_tunnel() {
     js="$(reach_status_json 2>/dev/null || true)"
     state="$(printf '%s' "$js" | jq -r '.state // "unavailable"' 2>/dev/null || printf unavailable)"
     url="$(printf '%s' "$js" | jq -r '.url // ""' 2>/dev/null || true)"
-    printf '%s' "$url" | grep -qE '^https://login\.tailscale\.com/[A-Za-z0-9/?=&._~%+-]*$' || url=''
+    printf '%s' "$url" | grep -qE "$REACH_LOGIN_RE" || url=''
     # Der Umzug setzt REACH_MODE=tunnel (move.env). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
     mode="$(printf '%s' "$js" | jq -r '.mode // ""' 2>/dev/null || true)"
     [ -z "$js" ] || [ "$mode" = tunnel ] \
@@ -221,7 +214,7 @@ move_cmd_apply() {
   [ -n "$rel" ] && [ "$rel" = "$inst" ] \
     || die "Der Umzugs-Ordner stammt von Version ${rel:-?}, hier ist ${inst:-keine Version} installiert — beide Maschinen müssen dieselbe Version haben. Es wurde nichts geändert."
   f="$(read_env_value "$d/move.manifest" BACKUP_FILE 2>/dev/null || true)"
-  case "$f" in ''|*/*) die "move.manifest nennt keine Sicherung." ;; esac
+  case "$f" in ''|.|..|*/*) die "move.manifest nennt keine Sicherung." ;; esac
   [ -r "$d/$f" ] || die "Die Sicherung ${f} fehlt im Umzugs-Ordner. Es wurde nichts geändert."
   move="$(read_env_value "$d/move.manifest" CREATED 2>/dev/null || true)"
   [ -n "$move" ] || die "move.manifest nennt keinen Zeitpunkt (CREATED)."

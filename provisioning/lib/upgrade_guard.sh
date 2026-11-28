@@ -525,7 +525,7 @@ upgrade_rollback() {
     src="$UPGRADE_MARKER"; backup="$(read_env_value "$src" BACKUP || true)"
   else
     backup="$(find "$UPGRADE_BACKUP_DIR" -maxdepth 1 -name 'pre-upgrade-*.dump.gpg' -printf '%T@\t%p\n' 2>/dev/null \
-                | sort -rn | head -n1 | cut -f2-)"
+                | sort -rn | head -n1 | cut -f2- || true)"   # fehlt der Ordner (nie ein Update), gilt: keine Sicherung
     src="${backup:+${backup}.meta}"
   fi
   [ -n "$backup" ] && [ -s "$backup" ] && [ -n "$src" ] && [ -r "$src" ] \

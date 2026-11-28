@@ -30,7 +30,7 @@ err()  { printf '%s[x]%s %s\n' "$_C_RED"    "$_C_RST" "$*" >&2; }
 # einer Subshell (Paket-Install `( pkg_install_one )`, $(...)) beendet nur diesen Teil, der Lauf geht weiter.
 die()  { err "$*"; [ "${BASH_SUBSHELL:-0}" -eq 0 ] && result_set status failed; exit 1; }
 # die_because <reason_code> <text> — wie die, merkt aber den festen Grund fuer die Fehler-Hilfe im Chat
-# (core.fn_update_report: net, rate_limit, not_found, checksum, signature, disk, backup, db, n8n_start, locked, downgrade).
+# (Codes und ihre Texte: core.fn_update_report; neue Abbruchstelle = neuer Code dort).
 die_because() { [ "${BASH_SUBSHELL:-0}" -eq 0 ] && result_set reason_code "$1"; shift; die "$@"; }
 
 # --- Ergebnis-Datei eines Laufs (Update im Chat) -----------------------------------------------------------------
@@ -103,6 +103,11 @@ pg_server_versions() {
   [ -n "$run" ] && [ -n "$inst" ] || return 0
   printf '%s %s' "${run%% *}" "${inst%%-*}"
 }
+
+# Zeitgrenzen der drei Hintergrund-Schritte = TimeoutStartSec ihrer Units (templates/lifeagents-update-run|update-check|
+# backup.service.tpl). Die eine Adresse fuer den Tick im Verbund (update_runner.sh _ur_step) und fuer doctor (_doctor_tick_step).
+# shellcheck disable=SC2034  # gelesen von update_runner.sh und doctor.sh
+UPDATE_RUN_TIMEOUT_S="${UPDATE_RUN_TIMEOUT_S:-7200}" UPDATE_CHECK_TIMEOUT_S="${UPDATE_CHECK_TIMEOUT_S:-300}" BACKUP_TIMEOUT_S="${BACKUP_TIMEOUT_S:-1800}"
 
 # --- Betriebsart (systemd | compose): alle runuser/systemctl/docker-Aufrufe leben in lib/runtime.sh ------------------
 # shellcheck source=runtime.sh
@@ -236,7 +241,7 @@ lifeagents_db_name() {
   if [ -z "${N8N_DB_NAME:-}" ]; then
     local envf="${N8N_ENV_FILE:-/etc/n8n/n8n.env}" val=""
     if [ -r "$envf" ]; then
-      val="$(grep -E '^DB_POSTGRESDB_DATABASE=' "$envf" 2>/dev/null | tail -n1)"
+      val="$(grep -E '^DB_POSTGRESDB_DATABASE=' "$envf" 2>/dev/null | tail -n1 || true)"
       val="${val#*=}"
     fi
     N8N_DB_NAME="${val:-n8n}"
@@ -397,18 +402,23 @@ provision_role_password() {
 
 # --- template rendering -------------------------------------------------------
 # render_template <tpl> KEY=VAL KEY=VAL ...  → rendered text on stdout.
-# Replaces @@KEY@@ tokens. Values are hex/codenames/paths (no |, &, or \) by
-# construction (secrets are rand_hex), so sed with | delimiter is safe; we still
-# escape the three sed-actives defensively.
+# Ersetzt jedes @@KEY@@ woertlich durch VAL, rein in bash: unter den Werten sind Geheimnisse (N8N_ENCRYPTION_KEY,
+# Datenbank-Passwort), und ein Hilfsprogramm wie sed truege sie in seiner Befehlszeile (Test
+# tests/mock_runtime/shell_trap_cases.sh SH-A). Teilen an der Fundstelle statt ${content//…/…}: dort haette `&` im Wert ab
+# bash 5.2 eine Sonderbedeutung. Ein eingesetzter Wert wird fuer denselben Schluessel nicht noch
+# einmal durchsucht.
 render_template() {
   local tpl="$1"; shift
   [ -f "$tpl" ] || die "Template fehlt: $tpl"
-  local content kv key val
+  local content kv tok val out
   content="$(cat "$tpl")"
   for kv in "$@"; do
-    key="${kv%%=*}"; val="${kv#*=}"
-    val="$(printf '%s' "$val" | sed -e 's/[\\&|]/\\&/g')"
-    content="$(printf '%s' "$content" | sed "s|@@${key}@@|${val}|g")"
+    tok="@@${kv%%=*}@@"; val="${kv#*=}"; out=''
+    while [[ "$content" == *"$tok"* ]]; do
+      out+="${content%%"$tok"*}${val}"
+      content="${content#*"$tok"}"
+    done
+    content="${out}${content}"
   done
   printf '%s\n' "$content"
 }

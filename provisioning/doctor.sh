@@ -9,9 +9,12 @@
 # Ausgabe je Pruefung: [ OK ], [FAIL] (ROT), [WARN] und [SKIP] zaehlen nicht als Fehler.
 # Exit-Code = Anzahl ROT (0 = alles gruen, CI-/Gate-tauglich).
 #
-# Infra-Pruefungen: PG / n8n / Env / Paket-Secrets / Host-Keys (Telegram/Anthropic, Google optional) /
-# Ingress. Der HTTPS-Reverse-Proxy ist bring-your-own: doctor prueft nicht, welcher Terminierer laeuft,
-# sondern das Outcome (Orchestrator-Trigger aktiv + oeffentliches HTTPS erreichbar), proxy-agnostisch.
+# Pruefungen (Gliederung = die `# ---`-Abschnitte in main): Platz, PostgreSQL + UTF-8, n8n + n8n-Korrekturen, Update im Chat
+# (Zeitgeber bzw. Tick-Schleife, Sicherung, Versionsnummer), LLM-Gateway, Bind + Firewall, Credential-Dubletten, Paket-Secrets,
+# Grund-Zugaenge, Env-Datei, Ingress (Orchestrator-Trigger, HTTPS, Telegram-Webhook, Bestaetigen im Chat, Mini-App), im Verbund
+# Pod und Tunnel; stillgelegt nur der Ruhezustand (_doctor_retired). Beim Ingress zaehlt das Ergebnis (Trigger aktiv +
+# oeffentliches HTTPS erreichbar), nicht welcher Proxy laeuft.
+# Test-Naehte: DOCTOR_PROC_ROOT (ersetzt /proc), DOCTOR_TS_TRIES, UPDATE_TICK_STATE, N8N_ENV_FILE.
 set -euo pipefail
 # UTF-8 unabhaengig von der System-Locale, auch bei direktem Aufruf auf einem LANG="C"-System.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -90,22 +93,22 @@ _doctor_proc_age() {
 # _doctor_tick_step — laeuft gerade ein Tick-Schritt (update_runner.sh update_tick)? Ausgabe "<Name>\t<Sekunden seit Start>\t<Zeitgrenze s>"
 #   oder nichts. Ein Schritt ist ein eigener Prozess (`lifeagents update --run-requested | update --check | backup auto`,
 #   Start aus /proc/<pid>/stat Feld 22 + /proc/uptime; der mtime von /proc/<pid> ist nur der erste Zugriff); laeuft er nicht als eigener Prozess (aelterer Tick), zeigt die belegte Update-Sperre
-#   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen wie update_runner.sh.
+#   ein Update an, gemessen ab LAST_TICK (der Tick beginnt mit dem Update-Schritt). Zeitgrenzen: common.sh (eine Adresse mit dem Tick).
 _doctor_tick_step() {
   local root="${DOCTOR_PROC_ROOT:-/proc}" p cmd name='' lim
   for p in "$root"/[0-9]*; do
     [ -r "$p/cmdline" ] || continue   # ohne Treffer bleibt das Muster stehen; ein verschwundener Prozess ebenso
     cmd="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
     case "$cmd" in
-      *"lifeagents update --run-requested"*) name=Update; lim="${UPDATE_RUN_TIMEOUT_S:-7200}" ;;
-      *"lifeagents update --check"*)         name=Release-Check; lim="${UPDATE_CHECK_TIMEOUT_S:-300}" ;;
-      *"lifeagents backup auto"*)            name=Sicherung; lim="${BACKUP_TIMEOUT_S:-1800}" ;;
+      *"lifeagents update --run-requested"*) name=Update; lim="$UPDATE_RUN_TIMEOUT_S" ;;
+      *"lifeagents update --check"*)         name=Release-Check; lim="$UPDATE_CHECK_TIMEOUT_S" ;;
+      *"lifeagents backup auto"*)            name=Sicherung; lim="$BACKUP_TIMEOUT_S" ;;
       *) continue ;;
     esac
     printf '%s\t%s\t%s' "$name" "$(_doctor_proc_age "$root" "$p")" "$lim"; return 0
   done
   # shellcheck disable=SC2119  # bewusst ohne Wartezeit: Anzeige, kein Zeitgeber (scripts/timer_lock_lint.ps1)
-  if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "${UPDATE_RUN_TIMEOUT_S:-7200}"; fi
+  if ! update_lock_free; then printf 'Update (Sperre belegt)\t%s\t%s' "${1:-0}" "$UPDATE_RUN_TIMEOUT_S"; fi
   return 0
 }
 
@@ -209,7 +212,7 @@ _doctor_compose_tunnel() {
         *) _red "Tunnel: ${txt}" ;;
       esac ;;
   esac
-  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -le 14 ] 2>/dev/null; then
+  if [ -n "$REACH_TS_KEY_DAYS" ] && [ "$REACH_TS_KEY_DAYS" -ge 0 ] 2>/dev/null && [ "$REACH_TS_KEY_DAYS" -le 14 ]; then
     _warn "Tailscale-Anmeldung läuft in ${REACH_TS_KEY_DAYS} Tag(en) ab — danach schweigt der Bot. Im Tailscale-Konto: Machines → Gerät → "'„Disable key expiry“'
   fi
 }
@@ -308,7 +311,7 @@ _doctor_backup() {
 }
 
 # _doctor_compose_pod <bind> — Docker-Verbund: (1) alle Pod-Container im Netz-Namensraum des anchor (nach einem
-#   `docker restart` des anchor haengen sie sonst an einem toten Namensraum, Einwand 17), (2) Netz-Grenze von aussen.
+#   `docker restart` des anchor haengen sie sonst an einem toten Namensraum), (2) Netz-Grenze von aussen.
 _doctor_compose_pod() {
   local anchor ns c n bad='' p
   anchor="$(rt_netns "${LA_PROJECT}-anchor" || true)"
@@ -327,7 +330,7 @@ _doctor_compose_pod() {
     fi
   fi
   # Rand: tailscale haengt per network_mode am Namensraum von edge — wird edge neu angelegt (z. B. anderer Port), bleibt
-  # tailscale sonst an einem toten Namensraum haengen (derselbe Einwand 17). Ein neu startender Container gilt fuer Docker
+  # tailscale sonst an einem toten Namensraum haengen. Ein neu startender Container gilt fuer Docker
   # als laufend (State.Running), nimmt aber kein exec an: leere Messung -> kurz warten wie die Tunnel-Zeile, danach "nicht
   # gemessen" statt "abgehaengt" (den Ausfall selbst meldet _doctor_compose_tunnel).
   if rt_container_running "${LA_PROJECT}-tailscale"; then

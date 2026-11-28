@@ -354,13 +354,13 @@ case "$cmd" in
     [ -f "$LIFEAGENTS_PROVISION" ] || { printf 'lifeagents: provision.sh fehlt (%s).\n' "$LIFEAGENTS_PROVISION" >&2; exit 1; }
     exec bash "$LIFEAGENTS_PROVISION" --uninstall "$@"
     ;;
-  version|--version|-V)
+  version|--version|-v)   # -V kommt klein an (cmd,, oben)
     # Ohne VERSION (der Erfolgs-Marker von install_cli; das reversible Deinstallieren entfernt ihn) gibt es keine
     # installierte Release-Version.
     if [ -r "$LIFEAGENTS_VERSION_FILE" ]; then cat "$LIFEAGENTS_VERSION_FILE"; else echo "keine installierte Release-Version (Entwicklungs-Stand oder deinstalliert)"; fi
     ;;
   --update)
-    # openclaw-Stil: das Flag schreibt auf das Verb um.
+    # --update ist ein Alias fuer das Verb.
     exec "$0" update "$@"
     ;;
   help|--help|-h)

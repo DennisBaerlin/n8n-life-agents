@@ -52,6 +52,8 @@ for _c in "update" "config set a b" "package install x" "household pair-owner" "
 done
 case "$(_cli update --tick)" in *stillgelegt*) fail RT-V.tick-durch "gesperrt" ;; *) pass RT-V.tick-durch ;; esac
 case "$(_cli version)" in *stillgelegt*) fail RT-V.version-durch "gesperrt" ;; *) pass RT-V.version-durch ;; esac
+# Der Verteiler schreibt den Befehl klein: die Kurzform -V kommt als -v an und zeigt die Version.
+case "$(_cli -V; echo "rc=$?")" in *unbekannter*|*stillgelegt*) fail RT-V.version-kurzform "$(_cli -V | tail -n1)" ;; *rc=0) pass RT-V.version-kurzform ;; *) fail RT-V.version-kurzform "$(_cli -V | tail -n1)" ;; esac
 # hand-injected: Merker-Ordner im Wegwerf-Verzeichnis statt /var/lib/lifeagents (Attrappe, kein echtes System); echter Pfad in tests/backup/retire_cases.sh
 case "$(LIFEAGENTS_STATE_DIR="$RS" bash "$ROOT/provisioning/provision.sh" --unattended "$W/none.env" 2>&1; echo "rc=$?")" in
 # hand-injected: wie oben, Merker-Ordner im Wegwerf-Verzeichnis

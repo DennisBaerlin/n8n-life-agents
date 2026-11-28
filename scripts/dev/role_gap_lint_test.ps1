@@ -5,27 +5,18 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\role_call_pairs.ps1')
-$u8 = New-Object System.Text.UTF8Encoding($false)
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 $fails = 0
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
     else { Write-Host "  FAIL $Name $Detail" -ForegroundColor Red; $script:fails++ }
-}
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('rgl_' + [guid]::NewGuid().ToString('N'))
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
 }
 function Wf([string]$Cred, [string]$Query) {
     return (@{ name = 'agent.x'; nodes = @(@{ name = 'n'; credentials = @{ postgres = @{ id = $Cred } }; parameters = @{ query = $Query } }) } | ConvertTo-Json -Depth 8)
 }
 
 $P = 'packages'; $TD = 'tests/db'
-$tree = New-Tree @{
+$tree = New-TestTree @{
     "$P/finance/workflows/a.json" = (Wf '__CRED_POSTGRES_FINANCE_RW__' "SELECT finance.fn_book_x(`$1::jsonb), core.fn_today() -- core.fn_kommentar(")
     "$P/finance/workflows/b.json" = (Wf '__CRED_POSTGRES_WRITE__' 'SELECT finance.fn_owner_only()')
     "$P/core/workflows/c.json" = (Wf '__CRED_POSTGRES_CORE_RO__' 'SELECT agent.fn_owner_person_id()')

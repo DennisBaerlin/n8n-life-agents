@@ -8,18 +8,9 @@ $ErrorActionPreference = 'Stop'
 $lint = Join-Path $PSScriptRoot '..\ps_glue_lint.ps1'
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 
-function Test-Case([string]$Name, [string]$Code, [bool]$ExpectRed) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('pgl_' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $root -Force | Out-Null
-    try {
-        [System.IO.File]::WriteAllText((Join-Path $root 'x.ps1'), $Code, $u8)
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        if ($red -eq $ExpectRed) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
-}
+function Test-Case([string]$Name, [string]$Code, [bool]$ExpectRed) { Test-LintCase -Lint $lint -Name $Name -Files @{ 'x.ps1' = $Code } -ExpectRed $ExpectRed }
 
 Test-Case 'eingebauter Befehl klebt im Kommentar' "`$a = 1   # nur so freiWrite-Host `"x`"`n" $true
 Test-Case 'Befehl des Baums klebt im Kommentar' "function Invoke-Eigen { }`n`$a = 1   # nur so freiInvoke-Eigen 3`n" $true

@@ -7,8 +7,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $lint = Join-Path $PSScriptRoot '..\derived_input_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 
 function New-Wf([string]$Tool, [string]$Field, [string]$Desc, [string]$Field2, [string]$Desc2) {
     $value = [ordered]@{ $Field = "={{ `$fromAI('$Field', '$Desc', 'string') }}" }
@@ -19,18 +19,9 @@ function New-Wf([string]$Tool, [string]$Field, [string]$Desc, [string]$Field2, [
 }
 
 function Test-Case([string]$Name, [string]$Wf, [string]$Allow, [bool]$ExpectRed, [string]$ExpectText) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('dil_' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path (Join-Path $root 'packages\x\workflows') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $root 'scripts\build') -Force | Out-Null
-    [System.IO.File]::WriteAllText((Join-Path $root 'packages\x\workflows\a-agent.x.json'), $Wf, $u8)
-    if ($Allow) { [System.IO.File]::WriteAllText((Join-Path $root 'scripts\build\derived_input_allowlist.json'), $Allow, $u8) }
-    try {
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
+    $files = @{ 'packages\x\workflows\a-agent.x.json' = $Wf }
+    if ($Allow) { $files['scripts\build\derived_input_allowlist.json'] = $Allow }
+    Test-LintCase -Lint $lint -Name $Name -Files $files -ExpectRed $ExpectRed -ExpectText $ExpectText
 }
 
 Test-Case 'Hoechststand als Eingang ist rot' (New-Wf 'tool_create_x' 'reference_value' 'peak of the series') '' $true 'reference_value (N)'

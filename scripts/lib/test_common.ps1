@@ -37,3 +37,35 @@ function Invoke-SqlViaTempFile {
     if ($AsLines) { return $lines }
     return ($lines -join "`n").Trim()
 }
+
+# New-TestTree <Dateien> [<Praefix>] -> Wurzel eines Wegwerf-Baums im Temp-Ordner: Schluessel = Pfad ab Wurzel, Wert = Inhalt
+# (UTF-8 ohne BOM). Den Baum loescht der Aufrufer.
+function New-TestTree([hashtable]$Files, [string]$Prefix = 'tt') {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ($Prefix + '_' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    foreach ($rel in $Files.Keys) {
+        $p = Join-Path $root $rel
+        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
+        [System.IO.File]::WriteAllText($p, $Files[$rel], (New-Object System.Text.UTF8Encoding($false)))
+    }
+    return $root
+}
+
+# Test-LintCase -Lint <skript> -Name <fall> -Files <baum> -ExpectRed <bool> [-ExpectText <teil der meldung>] [-LintArgs <weitere>]
+# Ein Fall eines Lint-Selbsttests: der Lint laeuft mit -Root auf einem Wegwerf-Baum (New-TestTree) in einem eigenen Prozess (er endet
+# mit exit); verglichen wird rot/gruen und, falls genannt, ein Teil der Ausgabe. Schreibt PASS/FAIL und zaehlt bei FAIL $fails des
+# aufrufenden Skripts hoch. Der Prozess ist die PowerShell des Aufrufers (5.1 im Commit-Hook, pwsh auf dem Linux-Runner), per .NET
+# ermittelt: Get-Process kaeme aus einem Modul, das unter einem fremden PSModulePath fehlt (scripts/hook_autoload_lint.ps1).
+function Test-LintCase {
+    param([Parameter(Mandatory)][string]$Lint, [Parameter(Mandatory)][string]$Name, [hashtable]$Files = @{}, [bool]$ExpectRed,
+        [string]$ExpectText = '', [string[]]$LintArgs = @())
+    $root = New-TestTree $Files 'lt'
+    try {
+        $shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+        $out = (& $shell -NoProfile -ExecutionPolicy Bypass -File $Lint -Root $root @LintArgs) -join "`n"
+        $red = $LASTEXITCODE -ne 0
+        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
+        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
+        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
+    } finally { Remove-Item -Recurse -Force $root }
+}

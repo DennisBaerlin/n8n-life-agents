@@ -7,24 +7,13 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if ($PSVersionTable.PSEdition -ne 'Desktop') { Write-Host 'hook_autoload_lint_test: [skip] nur in Windows PowerShell 5.1' -ForegroundColor DarkGray; exit 0 }
 $lint = Join-Path $PSScriptRoot '..\hook_autoload_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 
+# -ModulePath: der Lint laeuft mit diesem PSModulePath (das Kind erbt ihn), wie ein Hook unter pwsh 7.
 function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText, [string]$ModulePath = '') {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('hal_' + [guid]::NewGuid().ToString('N'))
-    try {
-        foreach ($rel in $Files.Keys) {
-            $p = Join-Path $root $rel
-            New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-            [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-        }
-        $savedMp = $env:PSModulePath; if ($ModulePath) { $env:PSModulePath = $ModulePath }
-        try { $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n" } finally { $env:PSModulePath = $savedMp }
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { if (Test-Path $root) { Remove-Item -Recurse -Force $root } }
+    $savedMp = $env:PSModulePath; if ($ModulePath) { $env:PSModulePath = $ModulePath }
+    try { Test-LintCase -Lint $lint -Name $Name -Files $Files -ExpectRed $ExpectRed -ExpectText $ExpectText } finally { $env:PSModulePath = $savedMp }
 }
 
 # Pfade zusammengesetzt: doc_lint liest ausgeschriebene Repo-Pfade als Verweise auf echte Dateien.

@@ -6,20 +6,12 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\prop_test_coverage.ps1')
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
     if ($Ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
     else { Write-Host "  FAIL $Name $Detail" -ForegroundColor Red; $script:fails++ }
-}
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ptl_' + [guid]::NewGuid().ToString('N'))
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
 }
 function Invoke-Lint([string]$Root) {
     # dieselbe PowerShell wie der Aufrufer (5.1 lokal, pwsh auf dem Linux-Runner); eigener Prozess, weil der Lint mit exit endet
@@ -31,7 +23,7 @@ function Fn([string]$Name, [string]$Body) {
 }
 
 $M = 'packages/finance/db/migrations'; $TD = 'tests/db/finance'; $AL = 'tests/util/prop_test_allowlist.json'
-$tree = New-Tree @{
+$tree = New-TestTree @{
     "$M/R__fn_set_a.sql"  = (Fn 'finance.fn_set_a'  'UPDATE finance.recurring_payments SET amount = 1 WHERE id = 1;')
     "$M/R__fn_set_b.sql"  = (Fn 'finance.fn_set_b'  'UPDATE finance.savings_goals SET target_date = NULL WHERE id = 1;')
     "$M/R__fn_read_c.sql" = (Fn 'finance.fn_read_c' 'PERFORM 1 FROM finance.recurring_payments;')

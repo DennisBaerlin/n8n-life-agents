@@ -9,15 +9,7 @@ $lint = Join-Path $PSScriptRoot '..\hook_path_lint.ps1'
 $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('hpl_' + [guid]::NewGuid().ToString('N'))
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
-}
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 
 # Eine settings.json mit genau einem Hook-Kommando; {ROOT} wird durch den Wegwerf-Baum ersetzt.
 function New-Settings([string]$Command) {
@@ -26,16 +18,8 @@ function New-Settings([string]$Command) {
 }
 
 function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText, [switch]$IncludeLocal) {
-    $root = New-Tree $Files
-    try {
-        $args2 = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Root', $root)
-        if ($IncludeLocal) { $args2 += '-IncludeLocal' }
-        $out = (& powershell.exe @args2) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
+    $more = @(); if ($IncludeLocal) { $more += '-IncludeLocal' }
+    Test-LintCase -Lint $lint -Name $Name -Files $Files -ExpectRed $ExpectRed -ExpectText $ExpectText -LintArgs $more
 }
 
 $H = '.claude/hooks/guard.ps1'
@@ -84,7 +68,7 @@ Test-Case 'settings.local.json zaehlt ohne -IncludeLocal nicht (nicht getrackt)'
 } $false ''
 
 # Absoluter Pfad: der Baum-Pfad steht erst nach dem Anlegen fest, darum ein eigener Fall.
-$root = New-Tree @{ $H = $script }
+$root = New-TestTree @{ $H = $script }
 try {
     $abs = (Join-Path $root $H).Replace('\', '/')
     [System.IO.File]::WriteAllText((Join-Path $root $S), (New-Settings "$ps `"$abs`""), $u8)

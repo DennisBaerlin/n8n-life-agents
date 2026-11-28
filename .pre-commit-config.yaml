@@ -5,7 +5,7 @@
 # Our domain linters live as `local` system hooks below (same commands as CI). The remote
 # hooks are the recognizable OSS-standard layer. EOL is governed by .gitattributes, so no
 # mixed-line-ending hook here. Mutating hygiene hooks deliberately skip *.ps1 (UTF-8-BOM/LF,
-# owned by PSScriptAnalyzer in a later phase) and packages/*/workflows/ (generated — only via build.ps1).
+# owned by the ps-lint hook below) and packages/*/workflows/ (generated — only via build.ps1).
 
 minimum_pre_commit_version: "3.0.0"
 
@@ -291,7 +291,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/role_gap_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/role_call_pairs|dev/role_gap_lint_test|role_test_lint)\.ps1$
+        files: ^scripts/(lib/role_call_pairs|lib/test_common|dev/role_gap_lint_test|role_test_lint)\.ps1$
 
       - id: prop-test-lint
         name: prop_test_lint (every fn that UPDATEs a table dates, deadlines or amounts are derived from is called in a tests/db test_prop_ file or sits on the shrink-only list; fail-closed)
@@ -305,7 +305,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/prop_test_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/prop_test_coverage|dev/prop_test_lint_test|prop_test_lint)\.ps1$
+        files: ^scripts/(lib/prop_test_coverage|lib/test_common|dev/prop_test_lint_test|prop_test_lint)\.ps1$
 
       - id: privacy-lint
         name: privacy_lint (no real owner data - private IPs/home hostnames/user paths everywhere, local denylist .local/privacy_denylist.txt)
@@ -501,14 +501,14 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/derived_input_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(derived_input_lint|dev/derived_input_lint_test)\.ps1$
+        files: ^scripts/(derived_input_lint|dev/derived_input_lint_test|lib/test_common)\.ps1$
 
       - id: standin-lint-test
         name: standin_lint_test (unmarked fixture, dangling marker, unexplained hand-injected value and provider-shaped fake key turn standin_lint red; no Docker)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/standin_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(standin_lint|dev/standin_lint_test)\.ps1$
+        files: ^scripts/(standin_lint|dev/standin_lint_test|lib/test_common)\.ps1$
 
       - id: timer-lock-lint
         name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered)
@@ -522,7 +522,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/timer_lock_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
+        files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test|lib/test_common)\.ps1$
 
       - id: gate-wiring-lint
         name: gate_wiring_lint (every test in scripts/dev hangs on a gate - commit hook, free suites, workflow - or carries a manual-gate marker with a reason)
@@ -536,7 +536,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/gate_wiring_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(gate_wiring_lint|dev/gate_wiring_lint_test)\.ps1$
+        files: ^scripts/(gate_wiring_lint|dev/gate_wiring_lint_test|lib/test_common)\.ps1$
 
       - id: ps-glue-lint
         name: ps_glue_lint (a command glued behind a comment - a lost line break - never runs; PowerShell parser tokens)
@@ -549,7 +549,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/ps_glue_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(ps_glue_lint|dev/ps_glue_lint_test)\.ps1$
+        files: ^scripts/(ps_glue_lint|dev/ps_glue_lint_test|lib/test_common)\.ps1$
 
       - id: seed-reconcile-lint
         name: seed_reconcile_lint (tables the seed reconciles = tables the DB test for blocking FKs/triggers lists)
@@ -563,7 +563,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/seed_reconcile_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(seed_reconcile_lint|dev/seed_reconcile_lint_test)\.ps1$
+        files: ^scripts/(seed_reconcile_lint|dev/seed_reconcile_lint_test|lib/test_common)\.ps1$
 
       - id: native-process-test
         name: native_process_test (a file as stdin reaches a native program byte-exact - the master build context is a tar; no Docker)
@@ -583,7 +583,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_autoload_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(hook_autoload_lint|dev/hook_autoload_lint_test)\.ps1$
+        files: ^scripts/(hook_autoload_lint|dev/hook_autoload_lint_test|lib/test_common)\.ps1$
 
       - id: release-notes-check-test
         name: release_notes_check_test (release-note summary cases - umlauts, emoji, limits, markers; no Docker)
@@ -610,14 +610,14 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/desktop_paths_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(desktop_paths_lint|lib/main_push|dev/desktop_paths_lint_test)\.ps1$
+        files: ^scripts/(desktop_paths_lint|lib/main_push|lib/test_common|dev/desktop_paths_lint_test)\.ps1$
 
       - id: hook-path-lint
         name: hook_path_lint (every hook command in .claude/settings.json is anchored on CLAUDE_PROJECT_DIR or absolute and names an existing file; the test runs the lint on fixtures and on the real tree; no Docker)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/hook_path_lint_test.ps1
         pass_filenames: false
-        files: ^(\.claude/(settings\.json|hooks/.*)|scripts/(hook_path_lint|dev/hook_path_lint_test)\.ps1)$
+        files: ^(\.claude/(settings\.json|hooks/.*)|scripts/(hook_path_lint|dev/hook_path_lint_test|lib/test_common)\.ps1)$
 
       - id: ci-wait-test
         name: ci_wait_test (check_ci_status -Wait verdict - green, red, pending, no run, rerun after red; no network)

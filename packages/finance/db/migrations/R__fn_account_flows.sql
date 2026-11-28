@@ -2,7 +2,8 @@
 -- fn_account_flows (READ, STABLE) -- die laufenden und kommenden Dauerauftraege eines Kontos mit ihrem Monatsbetrag
 --   Je Kette, die das Konto beruehrt (Quelle oder Uebertrags-Ziel), das massgebliche Glied (fn_recurring_effective),
 --   Praedikat wie finance.active_recurring_payments ohne den Start-Filter (status active, valid_to leer oder kuenftig):
---   die Spar-Deckung braucht gerade die erst kommenden Zahlungen. Befristete Zahlungen zaehlen mit.
+--   die Spar-Deckung braucht gerade die erst kommenden Zahlungen. Befristete Zahlungen zaehlen mit, eine einmalige
+--   (finance.fn_recurring_is_single) nicht: sie ist kein Monatsbetrag.
 --   side 'in'  = Eingang ohne Quellkonto (Gehalt, externe Zuwendung) oder Uebertrag auf das Konto
 --   side 'out' = Abgang vom Konto (Sparplan, Uebertrag, Lastschrift)
 --   monthly = monthly_equivalent signiert in Kontowaehrung (Uebertrags-Ziel ueber den Kurs; ohne Kurs NULL).
@@ -31,6 +32,7 @@ BEGIN
         JOIN finance.recurring_payments r ON r.id = finance.fn_recurring_effective(h.head, current_date)
         WHERE r.status = 'active' AND (r.valid_to IS NULL OR (r.valid_to > current_date AND r.valid_to > r.valid_from))
           AND (r.account_id = p_account_id OR r.target_account_id = p_account_id)
+          AND NOT finance.fn_recurring_is_single(r.id)
     )
     SELECT g.id,
            CASE WHEN g.account_id = p_account_id AND g.monthly_equivalent < 0 THEN 'out' ELSE 'in' END,

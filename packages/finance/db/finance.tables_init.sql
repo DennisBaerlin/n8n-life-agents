@@ -1338,6 +1338,22 @@ RETURNS date LANGUAGE sql STABLE AS $$
     FROM finance.recurring_payments r WHERE r.id = p_rp_id;
 $$;
 
+-- fn_recurring_is_single (READ, STABLE): die eine Adresse fuer "einmalige erwartete Zahlung" = eine Zeile ohne Vorgaenger und
+--   Nachfolger (keine Kette), mit Ende und genau einem Termin in [valid_from, valid_to) (Bauweise: Jahres-Rhythmus, Ende einen
+--   Tag nach dem ersten Termin; kein eigener Rhythmus-Wert). Sie zaehlt nicht in die Monatsrechnung (regulaer Laufendes):
+--   recurring_cashflow_classified und fn_account_flows lassen sie aus; faellig, sichtbar und im Monats-Check bleibt sie.
+--   Unbekannte id -> FALSE. Init, weil die View sie liest (R__finance_views laeuft vor den R__fn_*).
+--   Tests: tests/db/finance/test_fn_recurring_is_single.sql
+CREATE OR REPLACE FUNCTION finance.fn_recurring_is_single(p_rp_id int)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+    SELECT COALESCE((
+        SELECT r.valid_to IS NOT NULL AND r.predecessor_id IS NULL
+           AND NOT EXISTS (SELECT 1 FROM finance.recurring_payments s WHERE s.predecessor_id = r.id)
+           AND (SELECT count(*) FROM finance.fn_schedule_occurrences(r.first_payment_date, r.schedule_interval, r.schedule_unit,
+                    r.schedule_day_of_month, r.schedule_days_of_month, r.valid_from, r.valid_to - 1)) = 1
+          FROM finance.recurring_payments r WHERE r.id = p_rp_id), false);
+$$;
+
 -- fn_recurring_effective (READ, STABLE): das massgebliche Glied einer Raten-Kette fuer „laeuft oder kommt"
 --   = (1) das am Tag p_on gueltige aktive Glied ([valid_from, valid_to)), (2) das naechste startende aktive Glied (Kette noch
 --   nicht gestartet, Luecke zwischen zwei Gliedern, pausiert mit aktivem Nachfolger „laeuft wieder ab ..."), nicht der Kopf ->

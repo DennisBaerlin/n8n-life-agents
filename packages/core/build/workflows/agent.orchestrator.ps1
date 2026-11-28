@@ -839,6 +839,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
             edit_json       = ''
             note_text       = ''
             choice_json     = "={{ JSON.stringify({ prompt_id: ((`$('$Name choice prompt').first().json.r) || {}).prompt_id, buttons: ((`$('$Name choice prompt').first().json.r) || {}).buttons, text: `$('$Name choices').first().json.text }) }}"
+            agent           = ''
         })
         $send['onError'] = 'continueRegularOutput'
         # Lehnt Telegram den Send mit Knoepfen ab, geht der Text ohne Knoepfe ueber die Relay-Kette (wie Reply prompt missing im Hauptweg).
@@ -872,6 +873,8 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     $chatAnyJs = "String(((`$('Trigger normalize').first().json.message || (`$('Trigger normalize').first().json.callback_query || {}).message || {}).chat || {}).id || '')"
     # Antwort-Knoepfe (Relay final choice): der Text des Beraters geht hier mit den Knoepfen raus, keine weitere Karte in diesem Lauf.
     $RF = "(`$('Relay final').isExecuted ? `$('Relay final').first().json : {})"
+    $planAgentMap = [ordered]@{}; foreach ($a in $AdvisorPlanStepList) { $planAgentMap[[string]$a.Domain] = [string]$a.Agent }
+    $planAgentJs = '(' + (ConvertTo-Json -Compress -InputObject $planAgentMap) + ')'   # Plan-Knopf: Domain -> Berater
     $nSendDue = Build-CallWorkflow 'Send due prompt' @(1910, 120) (Resolve-Id 'core.sub_send_chat_prompt') 'core.sub_send_chat_prompt' ([ordered]@{
         chat_id         = "={{ $chatAnyJs }}"
         replied         = "={{ String(!`$('Relay final').isExecuted || `$('Relay final').first().json.has_text === true) }}"
@@ -881,6 +884,8 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         edit_json       = ''
         note_text       = ''
         choice_json     = "={{ $RF.choice ? JSON.stringify($RF.choice) : '' }}"
+        # Agent, der diesen Lauf beantwortet hat (core.fn_next_chat_prompt gibt einen pausierten Stapel nur nach einem Lauf desselben Beraters frei).
+        agent           = "={{ (() => { const R = `$('Dispatch callback').isExecuted ? (`$('Dispatch callback').first().json.result || {}) : {}; if (`$('Relay compose').isExecuted) return String(`$('Relay compose').first().json.answer_agent || ''); if (R.then === 'continue') return String((R.continue || {}).agent || ''); return R.route === 'plan' ? String($planAgentJs[String(R.domain || '')] || '') : ''; })() }}"
     })
     $nSendDue['executeOnce'] = $true
     $nSendDue['onError'] = 'continueRegularOutput'
@@ -1083,6 +1088,7 @@ return [{ json: { body: made ? '' : (rc.body || ''), has_text: made ? false : rc
         edit_json       = "={{ ($RQ.edit && ($CQ.message || {}).message_id) ? JSON.stringify({ text: String(($CQ.message || {}).text || ''), entities: ($CQ.message || {}).entities || [], append: String(($RQ.edit || {}).append || '') }) : '' }}"
         note_text       = "={{ String(($RQ.force_reply || {}).text || '') }}"
         choice_json     = ''
+        agent           = ''
     })
     $nPromptCard['onError'] = 'continueRegularOutput'
     $nPromptAgent = Build-If 'Prompt continues?' @(260, 1960) "={{ ($RQ.then) === 'continue' && !!(($RQ.continue || {}).agent) }}" 'true' 'equals' 'boolean'
@@ -1687,7 +1693,7 @@ const choice_agent = choices.length ? agentOf(lastTool) : '';
 const next_marker = !choices.length && reply_ok && body !== '' && (parts.length ? markedBy.get(lastTool) === true : (!steps.length && rawM.marked));
 // Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -> nie Sticker/Reaktion davor.
 return [{ json: { body, memory_signal, memory_content, next_marker, raw_output: String(a.output ?? ''), signal, mood, tool_called: steps.length > 0,
-  reply_ok, react_only: isReact && body === '' && mood !== '', has_text: body !== '', has_parts: parts.length > 0, await_prompt, choices, choice_agent } }];
+  reply_ok, react_only: isReact && body === '' && mood !== '', has_text: body !== '', has_parts: parts.length > 0, await_prompt, choices, choice_agent, answer_agent: lastTool !== undefined ? agentOf(lastTool) : '' } }];
 '@
     # Marker-Recht (Vorschlag mit Knopf): heute nur der Hilfe-Agent; weitere Agenten (z. B. ein Berater) kommen hierher, nicht als
     # Sonderfall. Abgleich ueber den bereinigten Route-Tool-Namen (Endung agent<name>), siehe markRight im Code.

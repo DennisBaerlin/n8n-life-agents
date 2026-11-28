@@ -7,7 +7,7 @@
 --   * replaces_topic ersetzt ein Thema unter neuer Bezeichnung an seiner Stelle (offene Aufgaben ziehen mit), unbekannt
 --     -> unknown_topic + topics;
 --   * mixed_script: ein Wort mit lateinischen und anderen Schriftzeichen in content/why/open_points/handoff text;
---   * core.fn_advisor_read_plan liefert topic_index; core.fn_render_plan_text gibt den Text unveraendert zurueck.
+--   * core.fn_advisor_topic_index liefert die Themen je Abschnitt; core.fn_render_plan_text gibt den Text unveraendert zurueck.
 -- Werte erfunden. BEGIN..ROLLBACK -> kein Residual-State.
 BEGIN;
 

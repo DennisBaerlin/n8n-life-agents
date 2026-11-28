@@ -304,12 +304,12 @@ BEGIN
         IF v_item->>'holder_role' = 'partner' AND p_mode = 'cron' THEN
             v_chat := core.fn_person_chat_id(v_pid);
             v_key  := t.id || ':r' || v_round || ':' || v_pid;
-            IF p_mode = 'cron' AND v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)
+            IF v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)
                AND NOT v_proom ? v_pid AND NOT core.fn_notify_told(c_src, v_key) THEN
                 v_proom := v_proom || jsonb_build_object(v_pid, core.fn_proactive_claim(v_pid, 'bank_todo', 'normal'));
             END IF;
             IF v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)
-               AND (p_mode <> 'cron' OR COALESCE((v_proom->>v_pid)::boolean, false))
+               AND COALESCE((v_proom->>v_pid)::boolean, false)
                AND core.fn_should_notify(c_src, v_key, v_ttl) THEN
                 v_person := COALESCE(v_people->v_pid, jsonb_build_object('recipient', v_pid, 'chat_id', v_chat, 'items', '[]'::jsonb, 'latches', '[]'::jsonb));
                 v_people := jsonb_set(v_people, ARRAY[v_pid], v_person

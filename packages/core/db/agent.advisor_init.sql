@@ -166,8 +166,9 @@ CREATE TABLE IF NOT EXISTS agent.dispatch_followup (
 -- kind = grobe Art fuer den Buchhalter (Validierung der Werte bleibt allein der Probelauf der Ziel-fn), payload = die
 -- rohen Nutzerwerte, text = der Alltags-Satz fuer Karte und Uebersicht (Gespraechssprache, nie uebersetzt).
 -- Schreiber: agent.fn_advisor_save_section (anlegen/ersetzen), core.fn_handle_handoff_cb + core.fn_release_handoff_tasks
--- (Claim), core.fn_complete_handoff_task / core.fn_cancel_handoff_task (Endzustand). Frei-SQL (core_ro) gesperrt:
--- Deny-Liste util_create_core_ro.
+-- (Claim), core.fn_defer_handoff_task (zurueckstellen), core.fn_complete_handoff_task / core.fn_cancel_handoff_task
+-- (Endzustand), core.fn_reopen_handoff_task + agent.fn_record_handoff_correction (Folge-Aufgabe mit follows_task_id).
+-- Frei-SQL (core_ro) gesperrt: Deny-Liste util_create_core_ro.
 CREATE TABLE IF NOT EXISTS agent.handoff_tasks (
     id          serial PRIMARY KEY,
     domain      text NOT NULL CHECK (btrim(domain) <> ''),

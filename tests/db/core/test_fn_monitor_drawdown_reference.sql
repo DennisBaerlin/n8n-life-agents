@@ -84,7 +84,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS ddref [unbrauchbare Reihe -> ok:false]';
 
-  -- 8: die Reihe laeuft read-only (dieselbe Leserolle wie die Beschaffung): Schreib-Versuch scheitert als ok:false
+  -- 8: die Reihe laeuft read-only (dieselbe Leserolle wie die Beschaffung): ein Zugriff, den nur ein Superuser darf (pg_authid), scheitert als ok:false
   v := agent.fn_monitor_drawdown_reference(jsonb_build_object('method', 'sql',
          'spec', jsonb_build_object('query', 'SELECT 1',
            'history_query', 'SELECT now()::date, (SELECT count(*) FROM pg_catalog.pg_authid)'), 'current_value', 1));

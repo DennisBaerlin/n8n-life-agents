@@ -46,7 +46,6 @@ BEGIN
   VALUES (d, 'core', 'erika', 's', 'other', 'noch offen') RETURNING id INTO v_open;
 
   -- 1) Ablehnungen ohne Write
-  SELECT count(*) INTO v_n FROM agent.handoff_tasks;
   r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','222','handoff_task_id',v_old,'kind','other','text','x'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_task_invalid' THEN RAISE EXCEPTION 'FAIL [1 fremde Person]: %', r; END IF;
   r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','111','handoff_task_id',v_open,'kind','other','text','x'));
@@ -86,7 +85,6 @@ BEGIN
   VALUES (d, 'core', 'lena', 's', 'other', 'alt lena', 'done', now()) RETURNING id INTO v_n;
   r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','222','handoff_task_id',v_n,'kind','other','text','x'));
   IF r->>'code' IS DISTINCT FROM 'handoff_not_permitted' THEN RAISE EXCEPTION 'FAIL [1 Mitglied]: %', r; END IF;
-  SELECT count(*) INTO v_n FROM agent.handoff_tasks;
   IF EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id IS NOT NULL) THEN RAISE EXCEPTION 'FAIL [1 trotzdem geschrieben]'; END IF;
 
   -- 2) Aufruf -> neue offene Vormerkung mit Verweis, Abschnitt/Thema der alten; die alte bleibt unveraendert

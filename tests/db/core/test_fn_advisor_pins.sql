@@ -3,8 +3,8 @@
 -- paused_advisor). Je Zeile der Matrix ein Fall:
 --   heiss (< 2 h) -> nur interview_advisor; 3 Tage -> nur paused_advisor; aelter als advisor.rollout_draft_stale_days
 --   -> beide leer; Entwurf eines anderen Mitglieds / Haushalts-Entwurf fuer ein Mitglied -> leer; eigener Entwurf eines
---   Mitglieds -> seiner; zwei Entwuerfe -> der juengste; Paket inaktiv -> leer; leere Eingabe -> leer; genau zwei Keys.
---   Rechte (core_ro ja, Paket-Rolle nein): tests/db/cross/test_role_permissions.sql (3e-PINS).
+--   Mitglieds -> seiner; zwei Entwuerfe -> der juengste; Paket inaktiv -> leer; leere Eingabe -> leer; genau drei Keys.
+--   Rechte (nur Host-Cred; core_ro und Paket-Rolle abgewiesen): tests/db/cross/test_role_permissions.sql (3e-PINS).
 -- db_test hat kein seed_data -> Registry, Berater, Plaene self-seeden. BEGIN..ROLLBACK.
 BEGIN;
 
@@ -28,7 +28,7 @@ BEGIN
   -- trg_advisor_plans_touch stempelt updated_at selbst -> fuer die Alters-Faelle in dieser Transaktion aus
   ALTER TABLE agent.advisor_plans DISABLE TRIGGER trg_advisor_plans_touch;
 
-  -- ---------- (1) Haushalts-Entwurf heiss (< 2 h), Owner -> nur interview_advisor; genau zwei Keys ----------
+  -- ---------- (1) Haushalts-Entwurf heiss (< 2 h), Owner -> nur interview_advisor; genau drei Keys ----------
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, updated_at)
   VALUES ('finance', NULL, 'Plan', 'draft', 1, '{}', now() - interval '30 minutes');
   v := core.fn_advisor_pins(jsonb_build_object('person_id', 'erika', 'role', 'owner'));

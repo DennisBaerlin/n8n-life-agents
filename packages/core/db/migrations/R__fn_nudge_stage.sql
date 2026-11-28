@@ -5,7 +5,7 @@
 --   Ein dritter Nachfass-Typ ruft diesen Helfer und erbt alle Regeln.
 --   p: { source, key_prefix, person_id, slot, idle_since, rearm_since, first_days, last_days, gap_days, rearm_days,
 --        exclusive_sources:[source, ...] } — alle Pflicht ausser exclusive_sources (Default leer).
---     key_prefix beginnt mit '<person_id>:' (Merker '<key_prefix>:1' / ':2', source in core.notification_state, NULL-TTL);
+--     key_prefix ist die person_id oder beginnt mit '<person_id>:' (Merker '<key_prefix>:1' / ':2', source in core.notification_state, NULL-TTL);
 --     daran erkennt die Quellen-Grenze die Person ueber alle Nachfass-Quellen.
 --   Reihenfolge (wie der Bestand des Einrichtungs-Nachfassens):
 --     1. ausserhalb core.fn_in_reminder_window() -> NULL (Schutz gegen Nachhol-Laeufe nach einem Neustart).

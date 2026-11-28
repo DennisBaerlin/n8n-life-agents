@@ -11,7 +11,8 @@ DECLARE
 BEGIN
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','t',NULL,'lazy','f', jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
-    jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner','birth_date','1980-05-20','telegram_user_id',111,'language','de')))))
+    jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner','birth_date','1980-05-20','telegram_user_id',111,'language','de'),
+    jsonb_build_object('person_id','lena','first_name','Lena','last_name','B','role','partner','birth_date','1985-06-21','telegram_user_id',222,'language','de')))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
   INSERT INTO core.package_registry (package, version, status) VALUES ('finance','0.1.0','active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
@@ -32,6 +33,9 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [0 Claim]: %', r; END IF;
   -- spaeter vereinbart, nicht in der Runde
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance','finance','erika','g','other','D') RETURNING id INTO v_open;
+  -- dieselbe Claim-Zeit bei einer anderen Person: zaehlt nicht mit
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  SELECT 'finance','finance','lena','g','other','L','working', t.claimed_at FROM agent.handoff_tasks t WHERE t.id = v_c;
 
   r := core.fn_handoff_position(v_a);
   IF (r->>'k')::int <> 1 OR (r->>'n')::int <> 3 THEN RAISE EXCEPTION 'FAIL [1 A]: %', r; END IF;

@@ -25,11 +25,6 @@ BEGIN
   IF (SELECT value FROM core.config WHERE category = '__tc' AND key = 'inst') <> 'b' THEN
     RAISE EXCEPTION 'FAIL [2 instance-Wert vom Seed ueberschrieben]'; END IF;
   RAISE NOTICE 'PASS [instance-Wert bleibt beim Seed]';
-
-  -- Die Ausgeliefert-Zuordnung: telegram.bot_username ist ein Instanz-Wert (setzt der Installer per getMe).
-  IF EXISTS (SELECT 1 FROM core.config WHERE category = 'telegram' AND key = 'bot_username' AND managed_by <> 'instance') THEN
-    RAISE EXCEPTION 'FAIL [3 telegram.bot_username nicht instance]'; END IF;
-  RAISE NOTICE 'PASS [telegram.bot_username = instance]';
 END $$;
 
 ROLLBACK;

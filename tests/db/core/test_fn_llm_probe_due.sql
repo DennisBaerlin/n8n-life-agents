@@ -11,6 +11,8 @@ SET LOCAL TimeZone = 'Europe/Berlin';
 DO $$
 DECLARE
   r jsonb; inc bigint; t0 timestamptz := now(); m jsonb;
+  -- Datum des Anbieters relativ zum Lauf: ein festes Datum liefe ab und der Zweig "vor dem Datum" bliebe still ungeprueft
+  t_res timestamptz := date_trunc('second', now()) + interval '3 days';
 BEGIN
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family', 'llm_probe fixture', NULL, 'lazy', E'## fam',
@@ -35,7 +37,8 @@ BEGIN
   IF (r->>'due')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [1 ohne Vorfall]: %', r; END IF;
 
   -- (2) Limit ohne Wahl: erste Nachschau nach 10 Min, Sperre, danach 30, dann 60
-  r := core.fn_llm_incident_note(jsonb_build_object('code','spend_limit','resume_at','2026-12-01T00:00:00Z','source','error_notify'));
+  r := core.fn_llm_incident_note(jsonb_build_object('code','spend_limit','source','error_notify',
+         'resume_at', to_char(t_res AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')));
   inc := (r->>'incident_id')::bigint;
   r := core.fn_llm_probe_due(jsonb_build_object('at', t0 + interval '9 minutes'));
   IF (r->>'due')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 zu frueh]: %', r; END IF;
@@ -69,9 +72,11 @@ BEGIN
   UPDATE core.llm_incidents SET owner_choice = 'wait' WHERE id = inc;
   PERFORM core.fn_llm_probe_result(jsonb_build_object('incident_id', inc, 'ok', false, 'trigger', 'cron', 'at', t0 + interval '4 hours'));
   -- vor dem Datum: genau resume_at + 1 Min; danach (Datum schon vorbei) wieder alle 10 Min
-  IF (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) <> (SELECT CASE WHEN t0 + interval '4 hours' < timestamptz '2026-12-01T00:01:00Z'
-        THEN timestamptz '2026-12-01T00:01:00Z' ELSE t0 + interval '4 hours 10 minutes' END) THEN
-    RAISE EXCEPTION 'FAIL [4 wait]: %', (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc); END IF;
+  IF (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) IS DISTINCT FROM t_res + interval '1 minute' THEN
+    RAISE EXCEPTION 'FAIL [4 wait vor dem Datum]: %', (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc); END IF;
+  PERFORM core.fn_llm_probe_result(jsonb_build_object('incident_id', inc, 'ok', false, 'trigger', 'cron', 'at', t_res + interval '2 hours'));
+  IF (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc) IS DISTINCT FROM t_res + interval '2 hours 10 minutes' THEN
+    RAISE EXCEPTION 'FAIL [4 wait nach dem Datum]: %', (SELECT next_probe_at FROM core.llm_incidents WHERE id = inc); END IF;
 
   -- (5) Erholung: Owner-Entwarnung mit seinen 2 Nachrichten (Anzahl + letzte), Mitglied mit Zitat, Sprachnachricht extra
   INSERT INTO agent.llm_held_messages (update_id, incident_id, chat_id, from_id, message_id, kind, payload, sent_at) VALUES

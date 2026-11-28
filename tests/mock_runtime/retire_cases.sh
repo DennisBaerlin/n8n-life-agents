@@ -110,7 +110,7 @@ _rr() (
 )
 _rt_env() {
   { printf "OWNER_FIRST_NAME=Erika\nOWNER_LAST_NAME=Muster'mann\nOWNER_BIRTH_DATE=1980-01-01\nTELEGRAM_BOT_TOKEN=123:abc\n"
-    printf 'ANTHROPIC_API_KEY=sk-test\nREACH_MODE=proxy\nDOMAIN=bot.example.org\nTRUSTED_PROXIES=192.0.2.10\n'
+    printf 'ANTHROPIC_API_KEY=sk-test\nREACH_MODE=tunnel\nDOMAIN=bot.example.org\nTRUSTED_PROXIES=192.0.2.10\n'
     printf 'TELEGRAM_WEBHOOK_TAKEOVER=1\nN8N_DB_PASSWORD=geheim\nHOUSEHOLD_TIMEZONE=Europe/Berlin\nOWNER_LANGUAGE=de\nGOOGLE_API_KEY=\n'
     printf 'BACKUP_HOST_DIR=/srv/hd\n'; } > "$W/ret_etc/core.env"
   printf 'ADZUNA_APP_ID=app 1\nADZUNA_APP_KEY=k2\nCAREER_RW_PASSWORD=x\n' > "$W/ret_etc/career.env"
@@ -151,7 +151,7 @@ eq RT.merker-fertig 'done' "$(read_env_value "$RS/retired" STAGE)"
 eq RT.ordner-rechte 700 "$(stat -c %a "$W/ret_out")"
 eq RT.dateien-rechte 600 "$(stat -c %a "$W/ret_out"/* | sort -u | tr '\n' ' ' | sed 's/ $//')"
 _f0=$fails
-for _f in move.env move.manifest vorher.txt SO-GEHT-ES-WEITER.txt; do
+for _f in move.env.gpg move.manifest vorher.txt SO-GEHT-ES-WEITER.txt; do
   [ -s "$W/ret_out/$_f" ] || fail "RT.ordner-$_f" "fehlt/leer"
 done; [ "$fails" = "$_f0" ] && pass RT.ordner-vollstaendig
 _bf="$(read_env_value "$W/ret_out/move.manifest" BACKUP_FILE)"
@@ -159,9 +159,13 @@ case "$_bf" in lifeagents-backup-*-v9.1.0.nla.enc) [ -s "$W/ret_out/$_bf" ] && p
 eq RT.manifest-pakete career "$(read_env_value "$W/ret_out/move.manifest" PACKAGES)"
 grep -qF -- '--packages career' "$W/ret_out/SO-GEHT-ES-WEITER.txt" && pass RT.naechste-schritte || fail RT.naechste-schritte "$(cat "$W/ret_out/SO-GEHT-ES-WEITER.txt")"
 if ls -A "$W"/tmp.* >/dev/null 2>&1; then fail RT.arbeitsordner-weg "$(ls -d "$W"/tmp.*)"; else pass RT.arbeitsordner-weg; fi
+# Die Antwort-Datei traegt den Bot-Schluessel: im Ordner nur verschluesselt (Sicherungs-Schluessel wie die Sicherung, der Ordner
+# liegt im Verbund oft in iCloud o. ae.), kein Klartext daneben.
+if [ ! -e "$W/ret_out/move.env" ] && ! grep -rqF '123:abc' "$W/ret_out"; then pass RT.ordner-ohne-klartext-schluessel
+else fail RT.ordner-ohne-klartext-schluessel "$(find "$W/ret_out" -mindepth 1 -printf '%f ')"; fi
 
 # Antwort-Datei: Positivliste, Tunnel, nie Uebernahme/erzeugte Geheimnisse/Proxy; liest sich ohne Warnung zurueck.
-_ae="$W/ret_out/move.env"
+_ae="$W/ret.answers"; gpg_sym_decrypt 0123456789abcdef0123 "$W/ret_out/move.env.gpg" > "$_ae" 2>/dev/null || : > "$_ae"
 _keys="$(grep -oE '^[A-Z_]+=' "$_ae" | tr -d = | sort | tr '\n' ' ')"
 eq RT.antworten-schluessel 'ANTHROPIC_API_KEY HOUSEHOLD_TIMEZONE OWNER_BIRTH_DATE OWNER_FIRST_NAME OWNER_LANGUAGE OWNER_LAST_NAME REACH_MODE TELEGRAM_BOT_TOKEN ' "$_keys"
 if grep -qE '^(TELEGRAM_WEBHOOK_TAKEOVER|DOMAIN|TRUSTED_PROXIES|N8N_DB_PASSWORD|CAREER_RW_PASSWORD|ADZUNA_APP_ID|ADZUNA_APP_KEY)=' "$_ae"; then fail RT.antworten-nie "$(grep -E 'TAKEOVER|DOMAIN|TRUSTED|PASSWORD' "$_ae")"; else pass RT.antworten-nie; fi
@@ -170,7 +174,7 @@ eq RT.antworten-zurueck "tunnel|Muster'mann" "$_back"
 eq RT.antworten-ohne-warnung '' "$(cat "$W/ret.load")"
 _rt_reset; _rt_env
 ( _rr --out "$W/ret_out" --backup-dir /srv/sicherung ) >/dev/null 2>&1
-eq RT.antworten-backup-dir "'/srv/sicherung'" "$(grep '^BACKUP_PARENT_DIR=' "$W/ret_out/move.env" | cut -d= -f2-)"
+eq RT.antworten-backup-dir "'/srv/sicherung'" "$(gpg_sym_decrypt 0123456789abcdef0123 "$W/ret_out/move.env.gpg" | grep '^BACKUP_PARENT_DIR=' | cut -d= -f2-)"
 # Vorab-Release (Umzugs-Probe): Vorpruefung gruen, Ordner und Sicherung tragen das Vorab-Tag (die neue Maschine vergleicht es
 # woertlich).
 _rt_reset; _rt_env
@@ -210,7 +214,7 @@ _rt_reset; _rt_env
 eq RT.verbund-ok 0 "$_rc"
 grep -qE '^docker\|compose\|.*\|stop\|n8n' "$STUB_LOG" && pass RT.verbund-stop-n8n || fail RT.verbund-stop-n8n "$(_rt_log | tr '\n' ' ')"
 if grep -q '^systemctl' "$STUB_LOG"; then fail RT.verbund-ohne-systemctl "$(grep '^systemctl' "$STUB_LOG")"; else pass RT.verbund-ohne-systemctl; fi
-grep -q '^== /out/' "${STUB_LOG}.put" 2>/dev/null || grep -q 'move.env' "$STUB_LOG" && pass RT.verbund-ordner-rechner || fail RT.verbund-ordner-rechner "$(grep 'run' "$STUB_LOG" | head -3)"
+grep -q '^== /out/' "${STUB_LOG}.put" 2>/dev/null || grep -q 'move.env.gpg' "$STUB_LOG" && pass RT.verbund-ordner-rechner || fail RT.verbund-ordner-rechner "$(grep 'run' "$STUB_LOG" | head -3)"
 eq RT.verbund-ordner '/srv/hd/lifeagents-move' "$(read_env_value "$RS/retired" OUT)"
 # Ohne Sicherungs-Ordner auf dem Rechner: Abbruch vor dem Export (die in $(…) darf nicht still mit leerem Ziel weiterlaufen).
 _rt_reset; _rt_env; sed -i '/^BACKUP_HOST_DIR=/d' "$W/ret_etc/core.env"
@@ -276,15 +280,17 @@ for _c in "household add" "backup restore x.nla.enc"; do
   # shellcheck disable=SC2086  # bewusst in Woerter zerlegt
   case "$(_cli $_c; echo "rc=$?")" in *stillgelegt*rc=1) pass "RT-P.gesperrt-${_c// /-}" ;; *) fail "RT-P.gesperrt-${_c// /-}" "$(_cli $_c | tail -n2)" ;; esac
 done
-# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und ein alter Gedaechtnis-Abzug (frueherer Stand) fliegen
-# raus; eine
-# andere Sicherung im Ordner bleibt (--out kann der normale Sicherungs-Ordner sein); fremder Ordner -> Abbruch.
+# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und Klartext-Reste aelterer Staende (Antwort-Datei,
+# Gedaechtnis-Abzug) fliegen raus; eine andere Sicherung im Ordner bleibt (--out kann der normale Sicherungs-Ordner sein); fremder
+# Ordner -> Abbruch.
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"
-printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"; printf 'alt' > "$W/ret_out/memory.dump"
+printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"; printf 'TELEGRAM_BOT_TOKEN=9:alt\n' > "$W/ret_out/move.env"
+printf 'alt' > "$W/ret_out/memory.dump"
 printf 'alt' > "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc"; printf 'taeglich' > "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc"
 ( _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"
-[ ! -e "$W/ret_out/memory.dump" ] && pass RT-P.alter-abzug-weg || fail RT-P.alter-abzug-weg "liegt noch"
 [ ! -e "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc" ] && pass RT-P.alte-move-sicherung-weg || fail RT-P.alte-move-sicherung-weg "liegt noch"
+[ ! -e "$W/ret_out/move.env" ] && pass RT-P.alter-klartext-weg || fail RT-P.alter-klartext-weg "move.env liegt noch"
+[ ! -e "$W/ret_out/memory.dump" ] && pass RT-P.alter-abzug-weg || fail RT-P.alter-abzug-weg "liegt noch"
 [ -e "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc" ] && pass RT-P.andere-sicherung-bleibt || fail RT-P.andere-sicherung-bleibt "geloescht"
 eq RT-P.neue-sicherung-da 1 "$(find "$W/ret_out" -name '*-v9.1.0.nla.enc' | wc -l)"
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"; printf 'fremd' > "$W/ret_out/notiz.txt"
@@ -329,3 +335,36 @@ case "$(_cli brandneu; echo "rc=$?")" in *stillgelegt*rc=1) pass RT-P.neues-verb
 # n8n-Unit: startet nicht, solange die Datei liegt (gilt auch fuer Neustart, Restart=on-failure, systemctl von Hand).
 _unit="$(cd "$ROOT/provisioning" && render_template templates/n8n.service.tpl N8N_USER=n8n N8N_ENV_FILE=/e N8N_OWNER_ENV_FILE=/o N8N_BIN=/b N8N_HOME=/h RETIRED_FILE=/var/lib/lifeagents/retired 2>/dev/null)"
 case "$_unit" in *'ConditionPathExists=!/var/lib/lifeagents/retired'*) pass RT-P.unit-bedingung ;; *) fail RT-P.unit-bedingung "fehlt" ;; esac
+
+# ---------------------------------------------------------------------------- RT-R: Weg nach aussen in der Antwort-Datei
+# Eigener Reverse Proxy zieht mit (REACH_MODE, DOMAIN, TRUSTED_PROXIES: der Verbund pinnt damit die Knopf-Probe, reach.sh Kopf);
+# jeder andere Weg wird der Tunnel. Geprueft an _ret_write_answers direkt (unabhaengig davon, wie der Ordner die Datei ablegt).
+_ra() (  # _ra <core.env-Zeilen…> -> Inhalt der Antwort-Datei
+  export LIFEAGENTS_DIR="$W/ra_etc"; rm -rf "$LIFEAGENTS_DIR"; mkdir -p "$LIFEAGENTS_DIR"
+  lifeagents_env_file() { printf '%s/%s.env' "$LIFEAGENTS_DIR" "$1"; }
+  { printf 'TELEGRAM_BOT_TOKEN=123:abc\nOWNER_FIRST_NAME=Erika\n'; printf '%s\n' "$@"; } > "$LIFEAGENTS_DIR/core.env"
+  _ret_write_answers "$W/ra.env" v9.1.0 && cat "$W/ra.env"
+)
+_rk() { printf '%s\n' "$1" | grep -E '^(REACH_MODE|DOMAIN|TRUSTED_PROXIES)=' | sort | paste -sd' '; }
+eq RT-R.proxy-zieht-mit "DOMAIN='bot.example.org' REACH_MODE='proxy' TRUSTED_PROXIES='192.0.2.10'" \
+  "$(_rk "$(_ra REACH_MODE=proxy DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10)")"
+eq RT-R.proxy-abgeleitet "DOMAIN='bot.example.org' REACH_MODE='proxy' TRUSTED_PROXIES='192.0.2.10'" \
+  "$(_rk "$(_ra DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10)")"
+eq RT-R.tunnel-ohne-adresse "REACH_MODE='tunnel'" "$(_rk "$(_ra REACH_MODE=tunnel DOMAIN=x.tail-fantasy.ts.net TRUSTED_PROXIES=127.0.0.1)")"
+eq RT-R.fritzbox-wird-tunnel "REACH_MODE='tunnel'" "$(_rk "$(_ra REACH_MODE=fritzbox DOMAIN=box.deine-domain.myfritz.net)")"
+eq RT-R.ohne-weg-tunnel "REACH_MODE='tunnel'" "$(_rk "$(_ra)")"
+_ra REACH_MODE=proxy DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10 > "$W/ra.out"
+_back="$( ( unset REACH_MODE DOMAIN TRUSTED_PROXIES; install_answers_load "$W/ra.out" 2>"$W/ra.load"; printf '%s|%s|%s' "$REACH_MODE" "$DOMAIN" "$TRUSTED_PROXIES" ) )"
+eq RT-R.proxy-liest-sich-zurueck "proxy|bot.example.org|192.0.2.10" "$_back"
+eq RT-R.proxy-ohne-warnung '' "$(cat "$W/ra.load")"
+# Vorpruefung: ein Proxy auf dieser Maschine (nur 127.0.0.1) oder ohne Adresse zieht nicht mit -> rot, nichts geaendert.
+for _tp in 127.0.0.1 ''; do
+  _rt_reset; _rt_env; sed -i "s/^REACH_MODE=.*/REACH_MODE=proxy/; s/^TRUSTED_PROXIES=.*/TRUSTED_PROXIES=${_tp}/" "$W/ret_etc/core.env"
+  ( _rr --check ) >/dev/null 2>"$W/ret.err"; _rc=$?
+  eq "RT-R.proxy-lokal-rot-${_tp:-leer}" 1 "$_rc"
+  grep -q 'Reverse Proxy' "$W/ret.err" && pass "RT-R.proxy-lokal-satz-${_tp:-leer}" || fail "RT-R.proxy-lokal-satz-${_tp:-leer}" "$(tail -n2 "$W/ret.err")"
+done
+_rt_reset; _rt_env; sed -i 's/^REACH_MODE=.*/REACH_MODE=proxy/' "$W/ret_etc/core.env"
+( _rr --check ) >/dev/null 2>&1; eq RT-R.proxy-fremder-rechner-gruen 0 "$?"
+_rt_reset; _rt_env; sed -i 's/^REACH_MODE=.*/REACH_MODE=proxy/; /^DOMAIN=/d' "$W/ret_etc/core.env"
+( _rr --check ) >/dev/null 2>"$W/ret.err"; eq RT-R.proxy-ohne-adresse-rot 1 "$?"

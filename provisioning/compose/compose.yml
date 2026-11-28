@@ -357,6 +357,37 @@ services:
       - caddy_data:/data
       - reach_conf:/reach:ro
 
+  lan:
+    # Nur beim eigenen Reverse Proxy im Heimnetz (Profil proxy, nicht beworbene Hintertuer; der master startet ihn gezielt,
+    # nachdem der Port frei ist, lib/reach.sh REACH_LAN_PORT). Veroeffentlicht die Pfad-Liste des Rands (edge:8088) als
+    # schlichtes HTTP im Heimnetz; TLS und Zertifikat macht der Proxy des Nutzers. Port 5678 wie n8n der CLI-Installation:
+    # ein bestehender Proxy aendert beim Umzug nur die Adresse seines Ziels. Vertraut keinem Vorgaenger (wie wan).
+    profiles: [proxy]
+    image: *img_caddy
+    container_name: ${LA_PROJECT:-lifeagents}-lan
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 128m
+    depends_on: [edge]
+    networks: [edge_public]
+    ports:
+      - "5678:5678"
+    environment:
+      LA_CADDYFILE: |
+        {
+          admin off
+          auto_https off
+        }
+        :5678 {
+          reverse_proxy edge:8088
+        }
+    command:
+      - sh
+      - -c
+      - |
+        printf '%s' "$$LA_CADDYFILE" > /tmp/Caddyfile
+        exec caddy run --config /tmp/Caddyfile --adapter caddyfile
+
 networks:
   internal:
     internal: true

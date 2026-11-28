@@ -13,10 +13,9 @@
 # REST-POST vergibt neue -> das dichte executeWorkflow-Referenznetz (Orchestrator->Agenten->Tools->Gate,
 # errorWorkflow, load_context/load_config) bliebe zerrissen. CLI-Import = ids stabil.
 #
-# Credential-Remap per Namens-Aufloesung: inject_credentials setzt die Creds id-stabil
-# (import:credentials-Upsert, stabile id); hier loest deploy_workflows jeden im Workflow gefundenen `__CRED_*__`-
-# Platzhalter ueber die Platzhalter<->Name-Map (inject_credentials.sh) gegen die Live-n8n-Credential-Liste
-# (GET, name+type) auf. Robust fuer Provision-Zeit und Standalone-CLI. Kein Remap-File-Handoff.
+# Credential-Remap per Namens-Aufloesung: inject_credentials setzt die Creds id-stabil (import:credentials-Upsert); hier wird
+# jeder `__CRED_*__`-Platzhalter ueber die Platzhalter<->Name-Map (inject_credentials.sh) gegen die Live-Credential-Liste
+# (GET, name+type) aufgeloest. Robust fuer Provision-Zeit und Standalone-CLI, kein Remap-File-Handoff.
 #
 # Kein Deploy-Restart: weil die Credential-id stabil ist (kein DELETE), referenziert ein laufender
 # In-Memory-Trigger nie eine geloeschte id -> der Geister-Cron (#21770) kann strukturell nicht
@@ -419,6 +418,9 @@ retire_stale() {
   return 0
 }
 
+# _wf_private <pfad> <modus> <arbeitsordner> — root:n8n mit <modus>; scheitert es, Arbeitsordner (geheime Eingangs-ids) weg und Abbruch.
+_wf_private() { if ! { chown "root:${N8N_USER:-n8n}" "$1" && chmod "$2" "$1"; }; then rm -rf -- "$3"; die "Rechte von $1 ließen sich nicht setzen (root:n8n $2)."; fi; }
+
 # deploy_workflows [scope]  — scope='core' (Default) | '<pkg>'. Deployt die Workflows des Scopes.
 deploy_workflows() {
   local scope="${1:-core}"
@@ -473,15 +475,15 @@ deploy_workflows() {
 
   local cfg_map; cfg_map="$(_schedule_placeholder_map)"
   printf '%s' "$cfg_map" | jq -e 'type == "object"' >/dev/null 2>&1 || cfg_map='{}'
-  # Geheime Telegram-Eingangs-ids je Instanz: der secret_token <workflowId>_<nodeId> und die
-  # Route <webhookId>/webhook stehen build-stabil im oeffentlichen Repo -> id + webhookId jedes telegramTrigger werden
-  # hier aus INGRESS_ID_KEY (core.env, bootstrap_owner._ensure_ingress_id_key) abgeleitet. Ohne Schluessel: Abbruch
-  # beim ersten Trigger-Workflow, nie ein Rueckfall auf die oeffentlichen ids.
+  # Geheime Telegram-Eingangs-ids je Instanz: secret_token <workflowId>_<nodeId> und Route <webhookId>/webhook stehen im Repo ->
+  # id + webhookId jedes telegramTrigger aus INGRESS_ID_KEY (core.env, bootstrap_owner._ensure_ingress_id_key). Ohne Schluessel:
+  # Abbruch beim ersten Trigger-Workflow, nie ein Rueckfall auf die oeffentlichen ids.
   local ingress_key; ingress_key="$(read_env_value "${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" INGRESS_ID_KEY || true)"
   local hitl_chat; _hitl_chat_approval "$scope" >/dev/null; hitl_chat="$_HITL_CHAT_APPROVAL_VAL"   # Cache im Eltern-Prozess setzen
   local app_path; app_path="$(_app_path)"
 
-  local staging; staging="$(mktemp -d "$(n8n_input_dir)/n8n_wf_deploy.XXXXXX")"; chmod 0755 "$staging"
+  # Der Ordner traegt die geheimen Eingangs-ids: root:n8n 0750/0640 (n8n liest als n8n, im Verbund uid 1000), sonst niemand.
+  local staging; staging="$(mktemp -d "$(n8n_input_dir)/n8n_wf_deploy.XXXXXX")"; _wf_private "$staging" 0750 "$staging"
   log "Workflows patchen (Scope '$scope': Credential-Remap + Zeitplaene + Owner-chat_id) -> $staging ..."
   local f base name count=0
   for d in "${wf_dirs[@]}"; do
@@ -515,10 +517,10 @@ deploy_workflows() {
         rm -rf "$staging"
         die "Eingangs-Schlüssel INGRESS_ID_KEY fehlt in core.env — ohne ihn wäre die Adresse der Übersicht öffentlich ableitbar. Abhilfe: 'lifeagents update' (bzw. provision.sh) erneut ausführen."
       fi
-      # Zeitplan-Platzhalter: nur exakte String-Werte ersetzen (jq --argjson, kein sed — ein Cron enthaelt '/').
-      jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" --argjson ing "$ing_map" \
-         --arg app "$app_path" '
-        walk(
+      # Zeitplan-Platzhalter nur als exakte String-Werte (jq, kein sed: ein Cron enthaelt '/'). Eingangs-ids und App-Pfad ueber
+      # die Umgebung, nie im argv (/proc/<pid>/cmdline ist fuer jeden lesbar, environ nicht).
+      WF_ING_MAP="$ing_map" WF_APP_PATH="$app_path" jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" '
+        ($ENV.WF_ING_MAP | fromjson) as $ing | $ENV.WF_APP_PATH as $app | walk(
           if (type == "object") and (has("credentials")) and ((.credentials | type) == "object")
           then .credentials |= map_values(
                  if (type == "object") and (.id != null) and ($map[.id] != null)
@@ -532,7 +534,7 @@ deploy_workflows() {
             then .id = ($ing[.id] // .id) | (if has("webhookId") then .webhookId = ($ing[.webhookId] // .webhookId) else . end)
             else . end) else . end
       ' "$f" | sed "s/__OWNER_CHAT_ID__/${owner_chat}/g" > "$staging/$base"
-      chmod 0644 "$staging/$base"
+      _wf_private "$staging/$base" 0640 "$staging"
       count=$((count + 1))
     done
   done
@@ -543,8 +545,7 @@ deploy_workflows() {
     retire_stale "$scope"
     return 0
   fi
-  # Rest-Platzhalter = ein Zeitplan ohne Wert in core.config (Seed fehlt/DB nicht lesbar) -> abbrechen, bevor
-  # irgendetwas live geaendert wird (ein Platzhalter als Cron-Ausdruck liesse den Workflow nie oder falsch laufen).
+  # Rest-Platzhalter = Zeitplan ohne Wert in core.config (Seed fehlt/DB nicht lesbar) -> Abbruch vor jeder Live-Aenderung
   local missing; missing="$(grep -oh '__CFG_[A-Z0-9_]*__\|"__APP_PATH__"' "$staging"/*.json 2>/dev/null | sort -u | tr '\n' ' ' || true)"
   if [ -n "$missing" ]; then
     rm -rf "$staging"
@@ -568,7 +569,7 @@ deploy_workflows() {
     fi
   fi
   ctx="$(_wf_deploy_context)"
-  mkdir -p "$staging/import"; chmod 0755 "$staging/import"
+  mkdir -p "$staging/import"; _wf_private "$staging/import" 0750 "$staging"
   for f in "$staging"/*.json; do
     id="$(jq -r '.id // empty' "$f")"
     if [ -z "$id" ]; then mv "$f" "$staging/import/"; continue; fi
@@ -621,9 +622,8 @@ deploy_workflows() {
     [ "$progressed" -eq 1 ] || break
   done
 
-  # Zustand der eingespielten Workflows festhalten — nach dem Publish (der laesst die versionId stehen) und nur bei
-  # neuer versionId: hat ein Import still nicht gegriffen (versionId wie vorher), bleibt der alte Eintrag und der
-  # naechste Lauf spielt ihn erneut ein, statt ihn fuer immer zu ueberspringen.
+  # Zustand festhalten — nach dem Publish (laesst die versionId stehen), nur bei neuer versionId: griff ein Import still nicht,
+  # bleibt der alte Eintrag und der naechste Lauf spielt ihn erneut ein, statt ihn fuer immer zu ueberspringen.
   local upd="$staging/state.tsv" after
   local -A new_vid=()
   : > "$upd"
@@ -996,7 +996,7 @@ _set_bot_menu_buttons_run() {
     failed) fails=$((fails + 1)); warn "Übersicht-Knopf: Bestand bei Telegram nicht prüfbar — neuer Versuch in etwa 10 Minuten." ;;
   esac
   [ -n "$url" ] || [ "$enabled" != true ] || [ "$screens" -eq 0 ] || note "Übersicht-Knopf: keine https-WEBHOOK_URL bzw. kein INGRESS_ID_KEY — nur Befehlsmenüs."
-  uj="$(jq -Rn --arg u "$url" '$u')"
+  uj="$(printf '%s' "$url" | jq -Rs '.')"   # Adresse traegt den geheimen App-Pfad: ueber stdin, nie im argv
   core_loc="${REPO_ROOT:-${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}}/packages/core/locales"
   while IFS='|' read -r tid role lang _; do
     [ "$tid" = cfg ] && continue

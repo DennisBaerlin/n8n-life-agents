@@ -143,6 +143,18 @@ cli backup auto || { fail setup "backup auto: $(last)"; exit "$fails"; }
 cli retire --out "$OUT"; rc=$?
 eq E.retire-ok 0 "$rc"
 [ "$rc" = 0 ] || { printf '# %s\n' "$(cat "$W/out.$n")" | tail -n 12; exit "$fails"; }
+# Antworten nur verschluesselt (Sicherungs-Schluessel wie die Sicherung). Der Entsperr-Schritt von setup.sh (compose/move_unlock.sh, Terminal
+# ueber script) fragt einmal, entschluesselt und legt den Schluessel fuer das Einspielen ab; apply loescht ihn wieder (A.schluessel-weg).
+[ -s "$OUT/move.env.gpg" ] && [ ! -e "$OUT/move.env" ] && pass E.antworten-verschluesselt || fail E.antworten-verschluesselt "$(find "$OUT" -mindepth 1 -printf '%f ')"
+SHEET_KEY="$(dirname "$(la_move_file)")/move-sheet.key"
+if command -v script >/dev/null 2>&1; then
+  MU="$ROOT/provisioning/compose/move_unlock.sh"
+  bash "$MU" put < "$OUT/move.env.gpg"
+  backup_key_candidates | head -n1 | script -qec "GUM_DISABLE=1 bash '$MU' open" /dev/null > "$W/unlock.out" 2>&1
+  bash "$MU" take > "$W/move.ans" 2>/dev/null || true; bash "$MU" drop
+  grep -qx "REACH_MODE='tunnel'" "$W/move.ans" 2>/dev/null && pass E.entsperrt || fail E.entsperrt "$(tail -n3 "$W/unlock.out" | tr '\n' ' ')"
+  [ "$(stat -c %a "$SHEET_KEY" 2>/dev/null)" = 600 ] && pass E.schluessel-abgelegt || fail E.schluessel-abgelegt "fehlt"
+else printf 'SKIP E.entsperrt: kein script(1)\n'; fi
 cli retire --undo; eq E.undo-ok 0 "$?"
 ready || { fail E.n8n-wieder-da "n8n antwortet nicht"; exit "$fails"; }
 grep -q "^config .*${CK#* } " "$OUT/vorher.txt" && pass E.vorher-nennt-einstellung || fail E.vorher-nennt-einstellung "$(grep '^config' "$OUT/vorher.txt")"
@@ -162,7 +174,7 @@ setowner "$OWNER_BEFORE"
 cli move apply "$OUT"; rc=$?
 { [ "$rc" = 1 ] && said 'in Gebrauch'; } && pass A.in-gebrauch-abbruch || fail A.in-gebrauch-abbruch "rc=$rc $(last)"
 [ ! -e "$(la_move_file)" ] && pass A.in-gebrauch-kein-merker || fail A.in-gebrauch-kein-merker "Merker liegt"
-[ -e "$OUT/move.env" ] && pass A.in-gebrauch-dateien-bleiben || fail A.in-gebrauch-dateien-bleiben "move.env weg"
+[ -e "$OUT/move.env.gpg" ] && pass A.in-gebrauch-dateien-bleiben || fail A.in-gebrauch-dateien-bleiben "move.env.gpg weg"
 setowner null
 # Vorpruefung: falsche Release im Manifest -> nichts.
 cp "$OUT/move.manifest" "$W/manifest.bak"; sed -i 's/^RELEASE=.*/RELEASE=v0.0.1/' "$OUT/move.manifest"
@@ -182,8 +194,9 @@ eq A.wasserstand-max 5 "$(sql "SELECT last_seen_id FROM agent.guide_learn_waterm
 eq A.eigentuemer-n8n "$_owner" "$(sql "SELECT tableowner FROM pg_tables WHERE schemaname || '.' || tablename = '${MEM}'")"
 eq A.einstellung-da "$CV2" "$(sql "SELECT value FROM core.config WHERE category = '${CK% *}' AND key = '${CK#* }'")"
 _f0=$fails
-for f in move.env memory.dump memory.counts; do [ ! -e "$OUT/$f" ] || fail "A.geloescht-$f" "liegt noch"; done
+for f in move.env.gpg move.env memory.dump memory.counts; do [ ! -e "$OUT/$f" ] || fail "A.geloescht-$f" "liegt noch"; done
 [ "$fails" = "$_f0" ] && pass A.geheimnisse-geloescht
+[ ! -e "$SHEET_KEY" ] && pass A.schluessel-weg || fail A.schluessel-weg "$SHEET_KEY liegt noch"
 BF="$(read_env_value "$OUT/move.manifest" BACKUP_FILE)"
 [ -s "$OUT/$BF" ] && pass A.sicherung-bleibt || fail A.sicherung-bleibt "weg"
 [ -s "$OUT/nachher.txt" ] && pass A.nachher-geschrieben || fail A.nachher-geschrieben "fehlt"

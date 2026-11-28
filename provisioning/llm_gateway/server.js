@@ -121,7 +121,7 @@ const TG_STICKER_RE = /^[a-z_]{1,32}_(hallo|top|hmm|yay)$/;
 // Spiegel des CHECK agent.reaction_log.emoji (packages/core/db/agent.reaction_log_init.sql); ❤ ohne VS16 (Telegram-Liste).
 const TG_REACTIONS = new Set(['❤', '👌', '🎉', '👀', '🙏', '😁']);
 const TG_MAX_BODY = 4096;
-const TG_TIMEOUT_MS = Math.max(500, Math.min(10000, parseInt(process.env.LLM_GATEWAY_TELEGRAM_TIMEOUT_MS || '3000', 10) || 3000));
+const TG_TIMEOUT_MS = 3000;
 const TG_STICKER_DIR = process.env.LLM_GATEWAY_STICKER_DIR || '';
 
 function emit(obj) {

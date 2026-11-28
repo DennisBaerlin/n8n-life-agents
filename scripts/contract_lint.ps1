@@ -2367,20 +2367,19 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
 }
 $rtRel = 'provisioning/lib/runtime.sh'
 $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
-# Deinstaller: `volume rm` nur mit einem Namen aus "$1" (rt_volume_rm_own prueft davor unser
-# Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
-# damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
-# Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
+# Deinstaller: `volume rm` nur mit einem Namen aus "$1" (rt_volume_rm_own prueft davor unser Label an genau diesem Namen) und
+# `compose down` nur fest ohne -v/--rmi (rt_stack_down), damit kein breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt
+# (rt_published_ports_json, Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
 # `stop` nur fuer den eigenen Wechsel-Helfer mit festem Namen (rt_swap_helper_stop, haengender Helfer). `image rm` nur mit
 # "$1" und ohne -f (rt_image_rm_own: Docker lehnt ab, solange ein Container das Abbild nutzt); `info` nur mit festem Format.
 $dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+stop\s+"\$\{LA_PROJECT\}-swap"\s|^\s+ps\s+--format\s+''\{"image":|^\s+info\s+--format\s+''\{\{\.MemTotal\}\}''|^\s+(image|volume)\s+(inspect|create)\b|^\s+(volume|image)\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
-# Einzige Ausnahme von der Regel "docker/systemctl nur in runtime.sh": der Linux-Einrichter setup.sh. Er ist ein eigenstaendiges
-# Release-Asset ohne Baum (kein Sourcing, es gibt noch keine lib/), muss Docker einrichten und den Kern starten. Erlaubt sind nur
-# die Formen unten; der Kern-Aufruf `docker "${a[@]}"` ist eine Zeile in core(), deren Feld-Kopf eine Selbst-Pruefung festnagelt.
+# Einzige Ausnahme von "docker/systemctl nur in runtime.sh": setup.sh, ein Release-Asset ohne lib/, richtet Docker ein und startet
+# den Kern. Nur die Formen unten; `docker "${a[@]}"` ist die Zeile in core() (Feld-Kopf per Selbst-Pruefung), die letzte Form
+# entsperrt verschluesselte Umzugs-Antworten (setup.sh --answers *.gpg) mit move_unlock.sh im master, nur dessen vier Verben.
 $setupRel = 'provisioning/setup.sh'
-$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+-i\s+"\$P-master"\s+stack\s+wizard-url\s+--hints-stdin\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b'
+$setupDockerAllow = '^\s+version\s+>/dev/null|^\s+inspect\s+(-f\s+''\{\{\.Config\.Image\}\}''\s+)?"\$P-(master|core)"\s+>?|^\s+image\s+inspect\s+"\$IMAGE"\s+>/dev/null|^\s+image\s+rm\s+"\$img"\s+>/dev/null|^\s+"\$\{a\[@\]\}"\s+<\s+"\$in"\s+\|\s+tee\s+"\$OUT"\s+\||^\s+exec\s+-i\s+"\$P-master"\s+stack\s+wizard-url\s+--hints-stdin\s+--json|^\s+exec\s+"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/reach_ctl\.sh\s+status\b|^\s+exec\s+(-i\s+|-it\s+)?"\$P-master"\s+bash\s+/opt/lifeagents/provisioning/compose/move_unlock\.sh\s+(put|open|take|drop)\b'
 $setupSystemctlAllow = '^\s+enable\s+(--now\s+docker|(--now\s+)?"\$UNIT_NAME")\s+>&2|^\s+start\s+"\$UNIT_NAME"\s+>&2|^\s+is-active\s+--quiet\s+"\$UNIT_NAME"|^\s+disable\s+"\$UNIT_NAME"\s+>&2|^\s+daemon-reload\s+>&2|^\s+is-enabled\s+--quiet\s+"\$UNIT_NAME"'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
     $iss = New-Object System.Collections.Generic.List[string]
@@ -2449,6 +2448,7 @@ foreach ($sa in @(
     @{ n = 'setup: image rm ok';     r = $setupRel; t = "  docker image rm `"`$img`" >/dev/null 2>&1`n";          want = 0 },
     @{ n = 'setup: exec Link ok';    r = $setupRel; t = "  docker exec -i `"`$P-master`" stack wizard-url --hints-stdin --json`n"; want = 0 },
     @{ n = 'setup: exec frei';       r = $setupRel; t = "  docker exec -i `"`$P-master`" sh -c x`n";              want = 1 },
+    @{ n = 'setup: move_unlock';     r = $setupRel; t = "  docker exec -it `"`$P-master`" bash /opt/lifeagents/provisioning/compose/move_unlock.sh open`n  docker exec `"`$P-master`" bash /opt/lifeagents/provisioning/compose/move_unlock.sh cat`n"; want = 1 },
     @{ n = 'setup: enable Docker ok'; r = $setupRel; t = "  systemctl enable --now docker >&2`n";                 want = 0 },
     @{ n = 'setup: kill frei';       r = $setupRel; t = "  docker kill `"`$P-core`"`n";                             want = 1 },
     @{ n = 'setup: run frei';        r = $setupRel; t = "  docker run busybox true`n";                             want = 1 },

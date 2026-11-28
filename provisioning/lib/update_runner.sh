@@ -29,6 +29,11 @@ UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/log/lifeagents}"
 # update_cli [args] — der `lifeagents update`-Arm: --check | --run-requested (Timer, kehren zurueck) oder ein normales
 #   Update (optional --version <tag>, --allow-downgrade; Rest geht an provision.sh) — fetch_and_run_release kehrt nie zurueck.
 update_cli() {
+  # Aeussere Zeitgrenze um den ganzen Tick (UPDATE_TICK_TIMEOUT_S): der Tick laeuft als zweiter Prozess unter _ur_step, mit ihm
+  #   lifeagents_version_heal und die docker-Aufrufe zwischen den Schritten (haengt Docker selbst, stuende der Tick sonst).
+  if [ "${1:-}" = --tick ] && [ -z "${LA_TICK_INNER:-}" ]; then
+    export LA_TICK_INNER=1; _ur_step "$UPDATE_TICK_TIMEOUT_S" update --tick; return 0
+  fi
   case "${1:-}" in --help|-h) ;; *) lifeagents_version_heal || true ;; esac   # vor dem Lesen von VERSION (common.sh)
   case "${1:-}" in
     --check)         update_check "$([ "${2:-}" = --scheduled ] && printf scheduled)"; return 0 ;;
@@ -569,6 +574,10 @@ UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem C
 BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # Abstand der Sicherungs-Laeufe (stuendlich wie der Timer)
 # Zeitgrenzen je Schritt: UPDATE_RUN_TIMEOUT_S, UPDATE_CHECK_TIMEOUT_S, BACKUP_TIMEOUT_S (common.sh, auch doctor liest sie).
 UPDATE_STEP_KILL_S="${UPDATE_STEP_KILL_S:-60}"          # nach TERM so lange warten, dann KILL (systemd: TimeoutStopSec 90 s)
+# Ganzer Tick: alle drei Schritte samt KILL-Nachlauf plus Luft fuer die Zwischenschritte; greift also nur bei einem Haenger ausserhalb der Schritte.
+UPDATE_TICK_TIMEOUT_S="${UPDATE_TICK_TIMEOUT_S:-$(( UPDATE_RUN_TIMEOUT_S + UPDATE_CHECK_TIMEOUT_S + BACKUP_TIMEOUT_S + 3 * UPDATE_STEP_KILL_S + 600 ))}"
+# Nach einer Sicherung, die an ihrer Zeitgrenze endete, laenger warten: sonst haelt jede Stunde ein neuer Haenger den Tick eine halbe Stunde auf.
+BACKUP_RETRY_AFTER_TIMEOUT_S="${BACKUP_RETRY_AFTER_TIMEOUT_S:-14400}"
 
 # _ur_cli -> Pfad der CLI (vor der ersten Installation zeigt der Link im master-Image ins Leere).
 _ur_cli() { command -v lifeagents || printf '/usr/local/bin/lifeagents'; }
@@ -576,8 +585,8 @@ _ur_cli() { command -v lifeagents || printf '/usr/local/bin/lifeagents'; }
 # _ur_step <sekunden> <cli-args…> — ein Tick-Schritt als eigener Prozess unter `timeout` (eigene Prozessgruppe: bei Ablauf
 #   endet die ganze Gruppe samt Fortschritts-Helfer und docker-Client; Prozesse, die per `docker exec` in einem anderen
 #   Container laufen, erreicht das nicht). Ein TERM an den Tick (docker stop, Neuanlage des master) geht an den Schritt
-#   weiter, sonst liefe er bis zum KILL nach 10 s ungeordnet weiter. Ablauf der Grenze = Alarm im Log. Immer rc 0.
-_UR_STEP_PID=''
+#   weiter, sonst liefe er bis zum KILL nach 10 s ungeordnet weiter. Ablauf der Grenze = Alarm im Log. Immer rc 0; der Exit des Schritts steht in _UR_STEP_RC.
+_UR_STEP_PID='' _UR_STEP_RC=0
 _ur_step() {
   local secs="$1" rc=0 old_term old_int; shift
   old_term="$(trap -p TERM)"; old_int="$(trap -p INT)"
@@ -588,7 +597,7 @@ _ur_step() {
   trap - TERM INT
   if [ -n "$old_term" ]; then eval "$old_term"; fi
   if [ -n "$old_int" ]; then eval "$old_int"; fi
-  _UR_STEP_PID=''
+  _UR_STEP_PID='' _UR_STEP_RC="$rc"
   case "$rc" in
     124|137) _ur_alert "Tick: '$*' nach ${secs} s abgebrochen (Zeitgrenze) — der nächste Tick macht weiter." ;;
   esac
@@ -634,10 +643,17 @@ update_tick() {
   local try
   try="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TRY 2>/dev/null || true)"; [[ $try =~ ^[0-9]+$ ]] || try=0
   [ "$try" -le "$nowe" ] || try=0   # Uhr zurueckgestellt
-  if rt_is_compose && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
+  local every="$BACKUP_RETRY_EVERY_S"
+  [ "$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP_TIMEOUT 2>/dev/null || true)" != 1 ] || every="$BACKUP_RETRY_AFTER_TIMEOUT_S"
+  if rt_is_compose && [ "$((10#$now))" -ge "$((10#$BACKUP_AUTO_AT))" ] && [ "$((nowe - try))" -ge "$every" ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"
     heartbeat_record loop busy "$(_ur_busy_s "$BACKUP_TIMEOUT_S")"
     _ur_step "$BACKUP_TIMEOUT_S" backup auto --scheduled
+    # Nach der Zeitgrenze zaehlt die Pause ab dem Abbruch, nicht ab dem Start.
+    case "$_UR_STEP_RC" in
+      124|137) env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(date -u +%s)"; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TIMEOUT 1 ;;
+      *)       env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TIMEOUT 0 ;;
+    esac
     heartbeat_record loop ok
   fi
   return 0

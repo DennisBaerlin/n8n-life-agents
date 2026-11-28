@@ -51,6 +51,14 @@ master_swap_begin() {
     phase="$(_swap_get PHASE)"
     die_because locked "Ein früherer master-Wechsel ist noch offen (Phase ${phase:-?}) — er wird beim nächsten Tick abgeschlossen; danach erneut versuchen."
   fi
+  # Platz fuer die Sicherung vor dem Update schon hier: ein Release-Wechsel sichert immer (upgrade_guard.sh _upg_release_change),
+  # preflight.sh prueft erst im neuen master, also nach dem Tausch. Ein Rueckweg sichert nicht.
+  if [ "$mode" = update ]; then
+    local need free; need="$(rt_app_db_mb)"; free="$(df -Pm "${UPGRADE_STATE_DIR:-/var/lib/lifeagents}" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ "$need" -gt 0 ] && [[ $free =~ ^[0-9]+$ ]] && [ "$free" -lt "$need" ]; then
+      die_because disk "Zu wenig freier Speicher für die Sicherung vor dem Update (Volume var_la): ${free} MB frei, ${need} MB nötig — Update abgebrochen, es wurde nichts geändert."
+    fi
+  fi
   result_set stage download   # Schritt-Code wie das Laden des Release (core.fn_update_report kennt ihn)
   log "Neues Programm-Paket für ${tag} bereitlegen (${target}) ..."
   rt_image_ensure "$cf" "$target" \
@@ -118,11 +126,11 @@ master_swap_resolve() {
   master_swap_pending || { printf 'none'; return 0; }
   local phase from to me
   phase="$(_swap_get PHASE)"; from="$(_swap_get FROM)"; to="$(_swap_get TO)"; me="${LA_MASTER_IMAGE:-}"
-  # Haengender Helfer: laeuft, schrieb aber SWAP_HELPER_MAX_MIN lang keinen Schritt (Frist wie doctor; ein Wechsel braucht
+  # Haengender Helfer: laeuft, schrieb aber 30 Minuten lang keinen Schritt (Frist wie doctor; ein Wechsel braucht
   # Minuten) -> anhalten und wie bei einem gestorbenen Helfer nach dem eigenen Image entscheiden, sonst stuende jeder Tick
   # und jeder neue Auftrag dauerhaft auf "wait".
   if rt_swap_helper_running; then
-    if [ -z "$(find "$SWAP_STATE" -mmin +"${SWAP_HELPER_MAX_MIN:-30}" 2>/dev/null)" ]; then printf 'wait'; return 0; fi
+    if [ -z "$(find "$SWAP_STATE" -mmin +30 2>/dev/null)" ]; then printf 'wait'; return 0; fi
     rt_swap_helper_stop || true
   fi
   case "$phase" in

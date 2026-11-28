@@ -353,23 +353,19 @@ ensure_lifeagents_dir() {
 }
 
 # psql_setvar <name> <value>  -> eine psql-`\set name 'value'`-Zeile (escaped fuer den Single-Quote-
-#   Kontext: \ -> \\, ' -> \'). Fuer einen 600/postgres-eigenen Treiber — der Wert steht nie in der
+#   Kontext: \ -> \\, ' -> \'). Fuer psql_superuser_driver — der Wert steht nie in der
 #   Kommandozeile (kein /proc/cmdline-Leak).
 psql_setvar() {
   local v="$2"; v="${v//\\/\\\\}"; v="${v//\'/\\\'}"
   printf "\\set %s '%s'\n" "$1" "$v"
 }
 
-# psql_superuser_driver [psql-args...]  -> liest \set-Zeilen + SQL von STDIN, fuehrt sie als
-#   postgres-Superuser ueber eine 600/postgres-eigene Temp-Datei aus (Werte bleiben in der 600-Datei).
+# psql_superuser_driver [psql-args...]  -> liest \set-Zeilen + SQL von STDIN und reicht sie psql als Superuser per `-f -` durch:
+#   die Werte stehen nie in einer Befehlszeile und in keiner Datei, die ein Abbruch liegen liesse.
 #   Liest Globals: DB_SUPERUSER (default postgres), N8N_DB_NAME.
 # shellcheck disable=SC2120  # generischer Treiber: optionale psql-Args via "$@"; aktueller Caller bare
 psql_superuser_driver() {
-  local su="${DB_SUPERUSER:-postgres}" drv; drv="$(mktemp /tmp/la_drv.XXXXXX.sql)"
-  cat > "$drv"; chmod 600 "$drv"; chown "$su" "$drv" 2>/dev/null || true
-  local rc=0
-  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@" -f "$drv" || rc=$?
-  rm -f "$drv"; return $rc
+  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@" -f -
 }
 
 # provision_role_password <role> <env_file> <var_name>  -> einer LOGIN-Rolle ein Passwort sicherstellen,

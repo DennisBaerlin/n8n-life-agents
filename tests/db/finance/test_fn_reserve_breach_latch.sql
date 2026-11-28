@@ -13,7 +13,7 @@ DO $$
 DECLARE v_res JSONB; v_a INT; v_g INT;
 BEGIN
   -- Konto A mit Reserve 600 (getaggt) -> Saldo 600, reserviert 600 (kein Breach: gleich).
-  SELECT finance.fn_create_account('{"name":"__rbl_a__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rbl_a__","account_type":"cash"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rbl_g__', 9000, current_date + 365, 'active') RETURNING id INTO v_g;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
     VALUES (v_a, 600, current_date - 10, 'transfer', v_g, gen_random_uuid());
@@ -45,8 +45,8 @@ END $$;
 DO $$
 DECLARE v_res JSONB; v_f INT; v_r INT; v_gf INT; v_gr INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__rbl_f__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_f := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__rbl_r__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_r := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rbl_f__","account_type":"cash"}'::jsonb) INTO v_res; v_f := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rbl_r__","account_type":"cash"}'::jsonb) INTO v_res; v_r := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rbl_gf__', 9000, current_date + 365, 'active') RETURNING id INTO v_gf;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rbl_gr__', 9000, current_date + 365, 'active') RETURNING id INTO v_gr;
   -- F: eigene Reserve 500 (getaggt) -> Saldo 500, reserviert 500.

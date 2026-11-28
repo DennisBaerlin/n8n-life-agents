@@ -16,9 +16,9 @@ DECLARE
   v_total NUMERIC; v_elapsed NUMERIC; v_exp_calc NUMERIC; v_months_to INT; v_cnt INT;
   v_settle INT; v_depot INT; v_gF INT; v_gG INT; v_obs NUMERIC;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__sgp3_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;   v_giro  := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgp3_topf1__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;  v_topf1 := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgp3_topf2__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;  v_topf2 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgp3_giro__","account_type":"cash"}'::jsonb) INTO v_res;   v_giro  := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgp3_topf1__","account_type":"cash"}'::jsonb) INTO v_res;  v_topf1 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgp3_topf2__","account_type":"cash"}'::jsonb) INTO v_res;  v_topf2 := (v_res->>'account_id')::int;
 
   -- ===================================================================================
   -- Ziel A: Reserve ueber zwei Konten verteilt (+300 Topf1, +400 Topf2) + eine Entnahme (-100 Topf1)
@@ -111,8 +111,8 @@ BEGIN
   --   Der Marktwert zaehlt nicht in den Fortschritt (nur Deckung, depot_reserve_status) -> Kurs-Explosion
   --   blaeht current_amount nicht auf. Dann CASCADE-Probe (Ziel-DELETE -> Journal weg).
   -- ===================================================================================
-  SELECT finance.fn_create_account('{"name":"__sgp3_settle__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_settle := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account(jsonb_build_object('name','__sgp3_depot__','account_type','stocks_depot','settlement_id',v_settle,'account_holder','Test')) INTO v_res; v_depot := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgp3_settle__","account_type":"cash"}'::jsonb) INTO v_res; v_settle := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account(jsonb_build_object('name','__sgp3_depot__','account_type','stocks_depot','settlement_id',v_settle)) INTO v_res; v_depot := (v_res->>'account_id')::int;
 
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
     VALUES ('__sgp3_gF__', 5000, current_date + 365, 'active') RETURNING id INTO v_gF;

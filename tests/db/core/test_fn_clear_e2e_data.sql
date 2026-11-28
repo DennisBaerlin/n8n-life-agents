@@ -42,7 +42,7 @@ BEGIN
   -- Sentinel-Kredit: erzeugt ein Loan-Konto 'Kredit __E2E__ ...' (Marker nicht am Anfang).
   -- settle_loan wuerde dieses Konto nicht loeschen -> fn_clear_e2e_data muss es einsammeln.
   PERFORM finance.fn_create_loan(jsonb_build_object(
-    'name','__E2E__ CL Kredit','lender','TB','borrower','T','original_amount','5000','current_balance','5000',
+    'name','__E2E__ CL Kredit','lender','TB','original_amount','5000','current_balance','5000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','200',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_a_id));
   SELECT loan_account_id INTO v_loan_acc FROM finance.loans WHERE name = '__E2E__ CL Kredit';

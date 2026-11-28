@@ -18,10 +18,10 @@ DECLARE
   v_goal INT;
   v_cur NUMERIC; v_cnt INT; v_acct INT; v_amt NUMERIC;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__sgt_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)  INTO v_res; v_giro  := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgt_topf1__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_topf1 := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgt_topf2__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_topf2 := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgt_usd__","account_type":"cash","currency":"USD","account_holder":"Test"}'::jsonb) INTO v_res; v_usd := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_giro__","account_type":"cash"}'::jsonb)  INTO v_res; v_giro  := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_topf1__","account_type":"cash"}'::jsonb) INTO v_res; v_topf1 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_topf2__","account_type":"cash"}'::jsonb) INTO v_res; v_topf2 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_usd__","account_type":"cash","currency":"USD"}'::jsonb) INTO v_res; v_usd := (v_res->>'account_id')::int;
 
   -- Ziel mit Reserve-Topf topf1 (jedes Ziel hat eine auto-berechnete Rate; create legt keine Tx an -> Tag-Count startet 0)
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
@@ -126,8 +126,8 @@ DO $$
 DECLARE
   v_res JSONB; v_giro INT; v_topf INT; v_gA INT; v_gB INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__sgt_disc_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_giro := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgt_disc_topf__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_topf := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_disc_giro__","account_type":"cash"}'::jsonb) INTO v_res; v_giro := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgt_disc_topf__","account_type":"cash"}'::jsonb) INTO v_res; v_topf := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sgt_disc_gA__', 9000, current_date + 365, 'active') RETURNING id INTO v_gA;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sgt_disc_gB__', 9000, current_date + 365, 'active') RETURNING id INTO v_gB;
   -- topf haelt Zweier-Ziel-Reserve: gB direkt +1000 (getaggt) + unsere gA +300 (getaggt) -> Saldo 1300, reserviert 1300.
@@ -159,9 +159,9 @@ DO $$
 DECLARE
   v_res JSONB; v_giro INT; v_topf1 INT; v_topf2 INT; v_goal INT; v_low INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__sgr_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)  INTO v_res; v_giro  := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgr_topf1__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_topf1 := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__sgr_topf2__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_topf2 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgr_giro__","account_type":"cash"}'::jsonb)  INTO v_res; v_giro  := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgr_topf1__","account_type":"cash"}'::jsonb) INTO v_res; v_topf1 := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__sgr_topf2__","account_type":"cash"}'::jsonb) INTO v_res; v_topf2 := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sgr_goal__', 1000, current_date + 365, 'active') RETURNING id INTO v_goal;
 
   -- (R1) deposit 1500 giro->topf1 -> current 1500 >= target 1000 -> reached-Note (uebertroffen)
@@ -231,8 +231,8 @@ END $$;
 DO $$
 DECLARE v_res JSONB; v_giro INT; v_topf INT; v_goal INT;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__sgt2_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_topf := (finance.fn_create_account('{"name":"__sgt2_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__sgt2_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_topf := (finance.fn_create_account('{"name":"__sgt2_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   v_goal := (finance.fn_create_savings_goal(jsonb_build_object(
     'name','__sgt2_goal__','target_amount',500,'target_date',(current_date + 365)::text,
     'monthly_savings_rate',50,'account_id',v_giro,'reserve_account_id',v_topf,

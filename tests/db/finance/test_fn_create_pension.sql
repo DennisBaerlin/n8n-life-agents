@@ -14,7 +14,7 @@ DECLARE
 BEGIN
 
   SELECT finance.fn_create_account(
-    '{"name":"__test_pension_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_pension_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 

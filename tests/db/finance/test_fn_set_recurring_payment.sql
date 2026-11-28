@@ -9,7 +9,7 @@ DECLARE
   v_oldto DATE; v_newamt NUMERIC; v_newfrom DATE; v_status TEXT;
   v_ins_rp INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_srp_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_srp_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- Standalone-Ausgabe 'Miete' (gespeichert -900), valid_from 2026-01-01
@@ -65,9 +65,9 @@ DECLARE
   v_res JSONB; v_acct INT; v_kid INT; v_rp INT; v_new INT; c INT; v_txt TEXT;
   v_to DATE; v_status TEXT; v_target INT; v_first DATE;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_srp2_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_srp2_acct__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__test_srp2_kid__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_srp2_kid__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_kid := (v_res->>'account_id')::int;
 
   -- TEST 6: Miete -900 ab 2026-01-01, Erhoehung auf 1000 ab 2026-06-01 -> am 06-01 nur die neue Rate faellig
@@ -170,7 +170,7 @@ DO $$
 DECLARE
   v_res jsonb; v_acct int; v_exp_a int; v_exp_b int;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__srp_fold_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__srp_fold_acct__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- Einkommen +2000 (aktiv ueber alle Sub-Tests)

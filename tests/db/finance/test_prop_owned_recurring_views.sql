@@ -27,7 +27,7 @@ DECLARE
   v_occ INT; v_flow NUMERIC; v_dates0 DATE[]; v_dates1 DATE[]; v_eff DATE; v_last DATE; v_next DATE;
   v_n_ins INT := 0; v_n_pen INT := 0; v_n_plan INT := 0;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_orv_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_orv_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__prop_orv_depot__','account_type','stocks_depot','currency','EUR',
             'settlement_id',v_giro))->>'account_id')::int INTO v_depot;
 

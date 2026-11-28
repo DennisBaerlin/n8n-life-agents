@@ -6,7 +6,7 @@ DO $$
 DECLARE v_acct INT; v_bal NUMERIC;
 BEGIN
   SELECT (finance.fn_create_account(
-    '{"name":"__gb_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb
+    '{"name":"__gb_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   )->>'account_id')::int INTO v_acct;
 
   PERFORM finance.fn_book_transaction(jsonb_build_object(

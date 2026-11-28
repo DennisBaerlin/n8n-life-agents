@@ -18,7 +18,7 @@ BEGIN
   FOR r IN SELECT * FROM (VALUES (3.00, 1, -1), (1.25, 1, 15), (2.40, 3, -1)) x(rate, intv, dom) LOOP
     FOREACH v_cut IN ARRAY ARRAY[20, 50, 85] LOOP
       BEGIN
-        SELECT (finance.fn_create_account('{"name":"__prop_irc_tg__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_sav;
+        SELECT (finance.fn_create_account('{"name":"__prop_irc_tg__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_sav;
         INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_sav, 10000, v_t - 260, 'other');
         v_res := finance.fn_set_account_interest(jsonb_build_object('account_id',v_sav,'annual_rate',r.rate,'schedule_unit','month',
                    'schedule_interval',r.intv,'schedule_day_of_month',r.dom,'valid_from',v_t - 200));

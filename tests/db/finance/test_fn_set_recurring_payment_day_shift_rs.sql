@@ -9,7 +9,7 @@ BEGIN;
 DO $$
 DECLARE v_acct INT; v_rp INT; v_res JSONB; v_n0 INT; v_n1 INT; r RECORD; v_bad TEXT := '';
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__r1_acct__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__r1_acct__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_acct;
   FOR r IN SELECT * FROM (VALUES (5),(25)) x(newdom) LOOP
     v_rp := (finance.fn_create_recurring_payment(jsonb_build_object('name','__r1_'||r.newdom||'__','account_id',v_acct,'direction','expense',
       'amount',100,'schedule_unit','month','schedule_day_of_month',15,'first_payment_date','2031-03-15','valid_to','2031-07-15'))->>'recurring_payment_id')::int;
@@ -29,7 +29,7 @@ END $$;
 DO $$
 DECLARE v_acct INT; v_rp INT; v_res JSONB; v_t DATE := current_date; r RECORD; v_bad TEXT := ''; v_open TEXT; v_booked TEXT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__r2_acct__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__r2_acct__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_acct;
   FOR r IN SELECT * FROM (VALUES (25),(3)) x(newdom) LOOP
     v_rp := (finance.fn_create_recurring_payment(jsonb_build_object('name','__r2_'||r.newdom||'__','account_id',v_acct,'direction','expense',
       'amount',100,'schedule_unit','month','schedule_day_of_month',10,
@@ -55,7 +55,7 @@ END $$;
 DO $$
 DECLARE v_acct INT; v_rp INT; v_new INT; v_res JSONB; r RECORD; v_bad TEXT := ''; v_m TEXT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__r3_acct__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__r3_acct__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_acct;
   FOR r IN SELECT * FROM (VALUES (DATE '2031-06-10', 5),(DATE '2031-06-20', 25)) x(eff, newdom) LOOP
     v_rp := (finance.fn_create_recurring_payment(jsonb_build_object('name','__r3_'||r.newdom||'__','account_id',v_acct,'direction','expense',
       'amount',100,'schedule_unit','month','schedule_day_of_month',15,'first_payment_date','2031-01-15'))->>'recurring_payment_id')::int;

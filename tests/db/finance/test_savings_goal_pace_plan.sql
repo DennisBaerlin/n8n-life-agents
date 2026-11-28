@@ -11,8 +11,8 @@ DECLARE
   v_giro INT; v_pot INT; v_res JSONB; v_goal INT; v_rp INT; v_t DATE := current_date; v_first DATE; v_td DATE; v_b JSONB;
   v_pace TEXT; v_p RECORD; v_k INT; v_dueN INT; v_bad TEXT := ''; v_d DATE;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__pp_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__pp_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__pp_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__pp_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
   PERFORM finance.fn_book_transaction(jsonb_build_object('account_id',v_giro,'amount',9000,'direction','inflow','transaction_date',v_t - 400,'description','Startgeld'));
   -- Ziel 600 in 6 Raten zu 100; erste Rate vor k Tagen -> verschieden viele Raten schon faellig, der Abstand zur
   -- naechsten Rate wechselt von Lauf zu Lauf (2, 28, 33, ... Tage)

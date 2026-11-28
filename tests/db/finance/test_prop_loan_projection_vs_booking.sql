@@ -17,7 +17,7 @@ DECLARE
   v_mid DATE; v_pmid NUMERIC; v_amid NUMERIC; v_pd DATE; v_pi NUMERIC; v_int NUMERIC; v_last DATE; v_n INT; v_i INT := 0;
   v_changed BOOLEAN; v_dates0 DATE[]; v_dates1 DATE[];
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_lpb_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_lpb_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
 
   FOR r IN SELECT * FROM (VALUES
       (10000.00, 4.00, 500.00,  15, 0),   (10000.00, 0.00, 500.00,  1, 0),  (7300.00, 7.25, 333.33, -1, 0),

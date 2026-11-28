@@ -29,7 +29,7 @@ BEGIN
 
   -- Voraussetzungen: Settlement + Crypto-Depot
   SELECT finance.fn_create_account(
-    '{"name":"__test_crypto_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_crypto_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle_id := (v_result->>'account_id')::int;
 
@@ -37,7 +37,6 @@ BEGIN
     jsonb_build_object(
       'name',           '__test_crypto_depot__',
       'account_type',   'crypto_depot',
-      'account_holder', 'Test',
       'currency',       'EUR',
       'settlement_id',  v_settle_id
     )

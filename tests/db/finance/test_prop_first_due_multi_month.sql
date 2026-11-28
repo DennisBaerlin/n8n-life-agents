@@ -8,7 +8,7 @@ DO $$
 DECLARE
   v_acct INT; v_res JSONB; r RECORD; v_first DATE; v_second DATE; v_bad TEXT := ''; v_rp INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__fdm_acct__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__fdm_acct__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_acct;
   FOR r IN SELECT * FROM (VALUES
       -- Einheit, Intervall, Tag, genanntes Datum, erwarteter erster Termin, erwarteter zweiter Termin
       ('month', 1,  1, '2031-02-10', '2031-03-01', '2031-04-01'),

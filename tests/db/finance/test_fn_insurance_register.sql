@@ -15,7 +15,7 @@ DECLARE
 BEGIN
   -- Debit-Konto
   SELECT finance.fn_create_account(
-    '{"name":"__test_insreg_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_insreg_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 

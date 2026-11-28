@@ -13,9 +13,9 @@ DECLARE
   v_last     NUMERIC;
 BEGIN
   -- Setup: zwei Cash-Konten
-  SELECT finance.fn_create_account('{"name":"__test_recon_batch_a__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__test_recon_batch_a__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_a1 := (v_result->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__test_recon_batch_b__","account_type":"cash","account_holder":"T","currency":"CLP"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__test_recon_batch_b__","account_type":"cash","currency":"CLP"}'::jsonb) INTO v_result;
   v_a2 := (v_result->>'account_id')::int;
 
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
@@ -79,7 +79,7 @@ BEGIN
 
   -- TEST 3: Atomaritaet -> ein gueltiges + ein unbekanntes Konto -> ok:false, kein Write
   -- Reset: neues Konto C ohne Reconcile-Historie
-  SELECT finance.fn_create_account('{"name":"__test_recon_batch_c__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__test_recon_batch_c__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES ((v_result->>'account_id')::int, 300, CURRENT_DATE, 'other', 'Einlage C');
 

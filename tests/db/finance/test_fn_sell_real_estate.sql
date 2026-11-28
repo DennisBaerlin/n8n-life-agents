@@ -16,8 +16,8 @@ DECLARE
   v_status TEXT;
   v_cv     NUMERIC;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_sre_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_acct;
-  SELECT (finance.fn_create_account('{"name":"__test_sre_debit__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
+  SELECT (finance.fn_create_account('{"name":"__test_sre_acct__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__test_sre_debit__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_debit;
 
   -- Immobilie A: ohne Kredit
   SELECT (finance.fn_create_real_estate('{"name":"__test_sre_clean__","current_value":300000,"owner":"T"}'::jsonb)->>'real_estate_id')::int INTO v_re;
@@ -25,7 +25,7 @@ BEGIN
   -- Immobilie B: mit aktivem verknuepftem Kredit (Restschuld 120000)
   SELECT (finance.fn_create_real_estate('{"name":"__test_sre_loaned__","current_value":300000,"owner":"T"}'::jsonb)->>'real_estate_id')::int INTO v_re2;
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_sre_loan__','lender','TB','borrower','T','original_amount','120000','current_balance','120000',
+    'name','__test_sre_loan__','lender','TB','original_amount','120000','current_balance','120000',
     'disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','600',
     'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_debit,
     'real_estate_id', v_re2)) INTO v_res;

@@ -13,7 +13,7 @@ DECLARE
   v_status     TEXT; v_valid_to DATE; v_rp_status TEXT;
 BEGIN
   -- Setup: Abbuchungskonto
-  SELECT finance.fn_create_account('{"name":"__test_ci_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_ci_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- Insurance A: keine Buchungen -> Hard-DELETE-Kandidat

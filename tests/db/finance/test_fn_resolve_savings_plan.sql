@@ -8,11 +8,10 @@ DECLARE
   v_res JSONB; v_settle INT; v_id1 INT; v_id2 INT; v_id INT; v_count INT;
 BEGIN
   -- Setup: Verrechnungskonto + Depot + zwei Sparplaene
-  SELECT finance.fn_create_account('{"name":"__test_rsp_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_rsp_settle__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_settle := (v_res->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object(
-    'name','__test_rsp_depot__','account_type','stocks_depot','account_holder','Test',
-    'currency','EUR','settlement_id',v_settle)) INTO v_res;
+    'name','__test_rsp_depot__','account_type','stocks_depot','currency','EUR','settlement_id',v_settle)) INTO v_res;
 
   SELECT finance.fn_create_savings_plan(jsonb_build_object(
     'name','__test_rsp_one__','depot_name','__test_rsp_depot__','isin','IE00B4L5Y983',

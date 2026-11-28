@@ -14,7 +14,7 @@ BEGIN
 
   -- Voraussetzung: ein Cash-Konto
   SELECT finance.fn_create_account(
-    '{"name":"__test_btx_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_btx_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
 
@@ -125,7 +125,7 @@ BEGIN
 
   -- TEST 7 (Reserve-Waechter): un-getaggte Belastung drueckt Saldo unter die getaggte Reserve ->
   -- die fn faltet reserve_breach in {ok:true,...} (nur bei Outflow; Inflow nie).
-  SELECT finance.fn_create_account('{"name":"__btx_rb__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__btx_rb__","account_type":"cash"}'::jsonb) INTO v_result;
   v_rb_acct := (v_result->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__btx_rb_goal__', 5000, current_date + 365, 'active') RETURNING id INTO v_rb_goal;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
@@ -148,7 +148,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_transaction [7b: Inflow faltet kein reserve_breach]';
 
   -- (c) Outflow auf einem Konto ohne Reserve -> kein reserve_breach.
-  SELECT finance.fn_create_account('{"name":"__btx_norb__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__btx_norb__","account_type":"cash"}'::jsonb) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
   SELECT finance.fn_book_transaction(jsonb_build_object(
     'account_id', v_acct_id, 'amount', '100', 'direction', 'outflow', 'transaction_date', CURRENT_DATE::text)) INTO v_result;

@@ -14,8 +14,8 @@ DO $$
 DECLARE
   v_giro INT; v_pot INT; v_res JSONB; v_a INT; v_b INT; v_c INT; v_d INT; v_first DATE;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__v42_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__v42_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__v42_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__v42_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
   v_first := current_date + 20;
   -- (a)
   v_res := finance.fn_create_savings_goal(jsonb_build_object('name','__v42_a__','goal_type','other','target_amount',1200,'monthly_savings_rate',100,

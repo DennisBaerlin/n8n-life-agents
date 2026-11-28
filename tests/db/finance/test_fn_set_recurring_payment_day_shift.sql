@@ -36,9 +36,9 @@ DECLARE
   v_sum0 NUMERIC; v_sum1 NUMERIC;
   m0 DATE := date_trunc('month', core.fn_today())::date;   -- laufender Monat
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_dsh_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_dsh_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__test_dsh_kid__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_dsh_kid__","account_type":"cash"}'::jsonb) INTO v_res;
   v_kid := (v_res->>'account_id')::int;
 
   -- TEST 1 (Fund): monatlich am 25., erster Termin = valid_from 2031-01-25; Tag -> 20. Der Januar-Termin wandert auf den 20.
@@ -261,7 +261,7 @@ BEGIN
   RAISE NOTICE 'PASS day_shift [vorletzter Tag -> 5.: Februar bleibt]';
 
   -- TEST 16: Eroeffnungssaldo-Stichtag 2031-01-22 bleibt Untergrenze: der Termin am 20.01. steckt schon im Saldo
-  SELECT finance.fn_create_account('{"name":"__test_dsh_open__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_dsh_open__","account_type":"cash"}'::jsonb) INTO v_res;
   -- hand-injected: Stichtag in der Zukunft, den fn_create_account (nur Vergangenheit/heute) nicht annimmt; prueft die Schranke
   UPDATE finance.accounts SET opening_balance_date = '2031-01-22' WHERE id = (v_res->>'account_id')::int;
   SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__test_dsh_l__','account_id',(v_res->>'account_id')::int,

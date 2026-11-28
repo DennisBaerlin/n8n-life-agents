@@ -13,7 +13,7 @@ DECLARE
 BEGIN
 
   -- Setup: Konto ohne Zinszeile
-  SELECT finance.fn_create_account('{"name":"__test_int_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_int_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- TEST 1: erste Zinszeile (keine offene vorhanden -> closed_previous=false)
@@ -84,7 +84,7 @@ BEGIN
   DECLARE
     v_acct2 INT;
   BEGIN
-    SELECT finance.fn_create_account('{"name":"__test_int_hist__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+    SELECT finance.fn_create_account('{"name":"__test_int_hist__","account_type":"cash"}'::jsonb) INTO v_res;
     v_acct2 := (v_res->>'account_id')::int;
     -- Geschlossene historische Zinszeile [2026-01-01, 2026-07-01); keine offene Zeile.
     INSERT INTO finance.account_interest_rates

@@ -14,12 +14,12 @@ DECLARE
   v_row      JSONB;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_liabreg_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_liabreg_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit := (v_result->>'account_id')::int;
 
   SELECT finance.fn_create_account(
-    '{"name":"__test_liabreg_disb__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_liabreg_disb__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_disb := (v_result->>'account_id')::int;
 

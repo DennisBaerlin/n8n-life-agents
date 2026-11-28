@@ -20,7 +20,7 @@ DECLARE
   v_res JSONB; v_giro INT; v_pen INT; v_rp INT; v_head INT; v_n INT := 0;
   v_start INT; v_done TEXT; v_eff INT; v_first DATE; v_bad TEXT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__ppc_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__ppc_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
   PERFORM finance.fn_book_transaction(jsonb_build_object('account_id',v_giro,'amount',9000,'direction','inflow','transaction_date',v_t - 200));
 
   FOREACH v_start IN ARRAY ARRAY[-100, -40, -5, 12] LOOP

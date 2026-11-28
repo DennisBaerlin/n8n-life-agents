@@ -22,7 +22,7 @@ DECLARE
   v_status  TEXT; v_valid_to DATE; v_journal_sum NUMERIC;
 BEGIN
   -- Konten
-  SELECT finance.fn_create_account('{"name":"__test_ssf_fund__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_ssf_fund__","account_type":"cash"}'::jsonb) INTO v_res;
   v_fund := (v_res->>'account_id')::int;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
   VALUES ('__test_ssf_depot__','stocks_depot','EUR','active', v_fund) RETURNING id INTO v_depot;

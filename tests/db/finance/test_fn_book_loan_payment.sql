@@ -21,7 +21,7 @@ BEGIN
 
   -- Setup: Girokonto (Abbuchungskonto fuer die Rate)
   SELECT finance.fn_create_account(
-    '{"name":"__test_loanpay_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_loanpay_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
@@ -29,7 +29,6 @@ BEGIN
   SELECT finance.fn_create_loan(jsonb_build_object(
     'name',              '__test_loanpay_kredit__',
     'lender',            'Testbank',
-    'borrower',          'Test',
     'original_amount',   v_current_bal,
     'current_balance',   v_current_bal,
     'disbursement_date', CURRENT_DATE::text,
@@ -191,10 +190,9 @@ DECLARE
 BEGIN
   v_d2 := (v_f + interval '1 month')::date;
   v_d3 := (v_f + interval '2 months')::date;
-  SELECT finance.fn_create_account('{"name":"__test_lp2_giro__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_lp2_giro__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_giro := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lp2_kredit__','lender','B','borrower','T',
-    'original_amount',200000,'current_balance',200000,'disbursement_date',(v_f - 30)::text,'interest_rate',3.6,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lp2_kredit__','lender','B','original_amount',200000,'current_balance',200000,'disbursement_date',(v_f - 30)::text,'interest_rate',3.6,
     'monthly_annuity',1000,'first_payment_date',v_f::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -242,7 +240,7 @@ BEGIN
   -- TEST 10: explizite, schon gebuchte Faelligkeit -> ok:false (Race-Backstop nach dem Lock, unabhaengig
   --   vom Belastungskonto -- der Unique-Index greift nur bei gleichem account_id)
   SELECT finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,
-    'debit_account_id',(finance.fn_create_account('{"name":"__test_lp2_giro2__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int,
+    'debit_account_id',(finance.fn_create_account('{"name":"__test_lp2_giro2__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int,
     'payment_amount',1000,'payment_date',v_d2::text,'due_date',v_d2::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL loan [schon gebucht, anderes Konto]: erwartet ok=false, got %', v_res; END IF;
@@ -256,9 +254,8 @@ DECLARE
   v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_rp INT; v_rpid INT; v_date DATE;
   v_due DATE := CURRENT_DATE + 3;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_lp3_giro__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lp3_kredit__','lender','B','borrower','T',
-    'original_amount',50000,'current_balance',50000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',2.4,
+  SELECT (finance.fn_create_account('{"name":"__test_lp3_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lp3_kredit__','lender','B','original_amount',50000,'current_balance',50000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',2.4,
     'monthly_annuity',500,'first_payment_date',v_due::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int;
   SELECT recurring_payment_id INTO v_rp FROM finance.loans WHERE id = v_loan;

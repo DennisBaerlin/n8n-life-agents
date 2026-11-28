@@ -18,13 +18,13 @@ DECLARE
   v_cnt1   INT;
   v_rp     INT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_cb_clean__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_clean;
-  SELECT (finance.fn_create_account('{"name":"__test_cb_money__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_money;
-  SELECT (finance.fn_create_account('{"name":"__test_cb_rp__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_rp_acc;
-  SELECT (finance.fn_create_account('{"name":"__test_cb_settle__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_settle;
+  SELECT (finance.fn_create_account('{"name":"__test_cb_clean__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_clean;
+  SELECT (finance.fn_create_account('{"name":"__test_cb_money__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_money;
+  SELECT (finance.fn_create_account('{"name":"__test_cb_rp__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_rp_acc;
+  SELECT (finance.fn_create_account('{"name":"__test_cb_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_settle;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_cb_depot__','account_type','stocks_depot',
-    'account_holder','T','currency','EUR','settlement_id',v_settle))->>'account_id')::int INTO v_depot;
-  SELECT (finance.fn_create_account('{"name":"__test_cb_giro__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
+    'currency','EUR','settlement_id',v_settle))->>'account_id')::int INTO v_depot;
+  SELECT (finance.fn_create_account('{"name":"__test_cb_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
 
   -- TEST 1: leeres Konto ohne Bezuege -> nicht blockiert, read-only
   SELECT count(*) INTO v_cnt0 FROM finance.transactions;
@@ -65,8 +65,7 @@ BEGIN
   RAISE NOTICE 'PASS blockers [Depotbestand + Verrechnungskonto -> blockiert]';
 
   -- TEST 5: Belastungskonto eines aktiven Kredits -> blockiert
-  PERFORM finance.fn_create_loan(jsonb_build_object('name','__test_cb_kredit__','lender','B','borrower','T',
-    'original_amount',1000,'current_balance',1000,'disbursement_date',CURRENT_DATE::text,'interest_rate',1,
+  PERFORM finance.fn_create_loan(jsonb_build_object('name','__test_cb_kredit__','lender','B','original_amount',1000,'current_balance',1000,'disbursement_date',CURRENT_DATE::text,'interest_rate',1,
     'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 10)::text,'debit_account_id',v_giro));
   v_b := finance.fn_get_account_close_blockers(v_giro);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_b->'blockers') e
@@ -77,7 +76,7 @@ BEGIN
   -- TEST 6: beendeter Dauerauftrag mit noch offener (ungebuchter) Rate im Erinnerungsfenster -> blockiert
   --   (sonst bietet die Erinnerung die Rate nach dem Schliessen an -> Closed-Konto-Trigger + Owner-Alarm)
   DECLARE v_end_acc INT; BEGIN
-    SELECT (finance.fn_create_account('{"name":"__test_cb_ended__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_end_acc;
+    SELECT (finance.fn_create_account('{"name":"__test_cb_ended__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_end_acc;
     PERFORM finance.fn_add_recurring_payment(v_end_acc, -20, '__test_cb_ended_rp__', 1::smallint, 'month'::finance.schedule_unit,
       NULL, CURRENT_DATE - 20, CURRENT_DATE - 20, CURRENT_DATE - 2, NULL, NULL);
     v_b := finance.fn_get_account_close_blockers(v_end_acc);

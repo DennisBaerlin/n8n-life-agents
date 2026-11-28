@@ -13,7 +13,7 @@ DECLARE
   v_bal    NUMERIC;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_bookrec_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_bookrec_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 
@@ -72,7 +72,7 @@ DECLARE
   v_bal    NUMERIC;
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_bookrec_adj__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_bookrec_adj__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 
@@ -119,7 +119,7 @@ BEGIN
 
   -- (4) Transfer + amount -> zwei Beine mit dem Ist-Betrag
   SELECT finance.fn_create_account(
-    '{"name":"__test_bookrec_adj2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_bookrec_adj2__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct2 := (v_result->>'account_id')::int;
   v_rpt := finance.fn_add_recurring_payment(v_acct, -100, 'Transfer', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
@@ -145,10 +145,9 @@ DECLARE
   v_res  JSONB; v_giro INT; v_loan INT; v_lacc INT; v_rp INT;
   v_due  DATE := CURRENT_DATE - 10;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_bookrec_lgiro__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_bookrec_lgiro__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_giro := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_bookrec_kredit__','lender','B','borrower','T',
-    'original_amount',200000,'current_balance',200000,'disbursement_date',(v_due - 30)::text,'interest_rate',3.6,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_bookrec_kredit__','lender','B','original_amount',200000,'current_balance',200000,'disbursement_date',(v_due - 30)::text,'interest_rate',3.6,
     'monthly_annuity',1000,'first_payment_date',v_due::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -189,7 +188,7 @@ DECLARE
   v_desc TEXT;
 BEGIN
   v_acct := (finance.fn_create_account(
-    '{"name":"__test_bookrec_text__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int;
+    '{"name":"__test_bookrec_text__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   v_rp := finance.fn_add_recurring_payment(v_acct, -40, 'Verein', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
                                            '2026-05-01', '2026-05-01', NULL, NULL, NULL);
 

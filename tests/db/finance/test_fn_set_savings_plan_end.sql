@@ -28,10 +28,10 @@ BEGIN
   INSERT INTO core.config (package, category, key, value) VALUES ('finance', 'cron_enable', 'remind_bank_end', 'true')
   ON CONFLICT (category, key) DO UPDATE SET value = 'true';
 
-  r := finance.fn_create_account('{"name":"__spe_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb);
+  r := finance.fn_create_account('{"name":"__spe_settle__","account_type":"cash","currency":"EUR"}'::jsonb);
   v_settle := (r->>'account_id')::int;
   r := finance.fn_create_account(jsonb_build_object('name','__spe_depot__','account_type','stocks_depot',
-         'account_holder','Test','currency','EUR','settlement_id', v_settle));
+         'currency','EUR','settlement_id', v_settle));
   v_depot := (r->>'account_id')::int;
   UPDATE finance.accounts SET plan_execution_days = '{}', bank = 'Testbroker' WHERE id = v_depot;
 

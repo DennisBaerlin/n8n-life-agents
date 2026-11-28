@@ -6,12 +6,17 @@
 # Regeln (Kennung in eckigen Klammern; Pruefnummern in Lints sind Adressen und treffen nicht):
 #   [verlauf]  Herkunft und Verlauf: Befund/Fund + Datum, "neu seit",  comment-lint: ok Regeltext
 #              "seit/bis vX.Y", "(vX.Y.Z)", "KW45 Fund", "(KW45)", "Phase B", das Wort fuer "einst" als Rueckblick.  comment-lint: ok Regeltext
+#              Dazu Arbeits-Marken (wer, wann, welches Arbeitspaket): Owner/Abnahme/Entscheid/Lauf + Datum, "Owner-Runde",  comment-lint: ok Regeltext
+#              "Probelauf-Fund", "(Paket 3)", "Paket 2/5", "Einwand 4", "Pruefliste Nr. 7", "Bug B4", "(P5)" ohne Test-Verweis,  comment-lint: ok Regeltext
+#              und Verweise auf Plaene: "Plan <name-mit-bindestrich>", "Plan *Titel*", .claude/plans/, .local/handover/.  comment-lint: ok Regeltext
 #   [code]     auskommentierter Code: Zuweisung, Kontrollkopf mit Klammer, einzelne Klammer, SQL-Anweisung mit Semikolon.
 #              Der Kopf-Block einer Datei ist ausgenommen (Aufruf-Beispiele gehoeren hinein).
 #   [todo]     TODO/FIXME ohne Ausloeser: erlaubt sind "TODO(<Ausloeser>)" oder "TODO wenn/sobald/nach/falls ...".  comment-lint: ok Regeltext
 #   [caps]     Betonung in Grossbuchstaben (feste Wortliste; Abkuerzungen wie JSON, NULL, HITL treffen nicht).
 #   [kopf]     Pflichtteile tragender Koepfe neuer Dateien: scripts/**/*.ps1 (ohne lib/) mit Aufruf-Beispiel und Exit-Code;
-#              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile.
+#              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile; packages/*/build/**/*.ps1 mit
+#              mindestens zwei Kopfzeilen; provisioning/lib/*.sh mit erster Zeile "<datei> — <Zweck>" und wer sie sourct;
+#              provisioning/*.sh mit Aufruf und Exit-Code. "Dot-gesourct von <datei>.ps1" im Kopf verlangt, dass es die Datei gibt.
 # Ausnahme je Zeile: "comment-lint: ok <Grund>" im selben Kommentar (Lint-Marker, bleibt stehen).
 # Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), jsCode in Build-Defs (liegt in
 # PowerShell-Here-Strings).
@@ -191,6 +196,14 @@ $verlaufRx = [regex]::new(("(?i:\b(Befund|Fund)\s+$dateRx)|(?i:\bneu\s+(seit|ab)
     '\(v\d+\.\d+\.\d+\)|\bKW\s?\d{1,2}\s+(Fund|Befund|Sprint)\b|\(KW\s?\d{1,2}\)|\bPhase\s+[A-Z]\b|' +
     '(?i:\b(fr(ü|ue)her|vormals|ehemals)\s+(war|hie(ß|ss)|stand|lief|galt|gab|wurde|wurden|kam|lag|ging)\b)|' +
     '(?i:\b(war|hie(ß|ss)|stand|lief|galt|wurde)\s+(hier\s+)?fr(ü|ue)her\b)'), $ropt::Compiled)
+# Arbeits-Marken und Plan-Verweise. Andere Pfade unter .local/ sind Fakten (Zustandsdateien) und treffen nicht; "Paket <n>" trifft
+# nur in Klammern oder als "n/m", weil "je Paket 1 Datei" ein Fakt ist; "Plan" nur vor einem Namen mit Bindestrich oder in
+# Sternen, weil der Plan des Haushalts ein Fachbegriff ist. Migrations-Verweise (core:V012) sind Adressen und treffen nicht.
+$workMarkRx = [regex]::new(("(?i:\b(Owner|Owner-\w+|Abnahme|Entscheid\w*|decision|Lauf)\s+$dateRx)|\bOwner-(Runde|Wunsch)\b|\b(Probelauf|Live)-(Fund|Befund)\b|" +
+    '\(([^()]*,\s*)?Paket\s+[A-Z]?\d+[a-z]?\)|\bPaket\s+\d+/\d+\b|\bEinwand\s+\d+\b|\bPr(ü|ue)fliste\s+Nr\.?\s*\d+|' +
+    '\bBug\s+[A-Z]\d+\b|\bPlan\s+([a-z0-9]+(-[a-z0-9]+)+|\*[^*]+\*)|\.claude/plans/|\.local/(handover|plans?)/'), $ropt::Compiled)
+# Nummern einer Abnahme-Liste wie "(P5)" oder "(B10)"; neben einem Test-Verweis ist "(P5)" die Eigenschaft im Test, also eine Adresse.  comment-lint: ok Regeltext
+$listNoRx = [regex]::new('\((P|B)\d{1,2}\)', $ropt::Compiled)
 # Auskommentierter Code: nur eindeutige Formen. Ein Beispiel im Kommentar ist eingerueckt (ab drei Leerzeichen) und trifft nicht,
 # ebenso eine Parameter-Beschreibung "$Name = Prosa".
 $codeRx = @{
@@ -208,11 +221,19 @@ function Get-LineRules([string]$Lang, $C) {
     $t = $C.Text
     if ($okRx.IsMatch($t)) { return @() }
     $r = @()
-    if ($verlaufRx.IsMatch($t)) { $r += 'verlauf' }
+    if ($verlaufRx.IsMatch($t) -or $workMarkRx.IsMatch($t) -or ($listNoRx.IsMatch($t) -and $t -notmatch 'tests?[/_]')) { $r += 'verlauf' }
     if (-not $C.Head -and $codeRx[$Lang].IsMatch($t)) { $r += 'code' }
     if ($todoRx.IsMatch($t) -and -not $todoOkRx.IsMatch($t)) { $r += 'todo' }
     if ($capsRx.IsMatch($t)) { $r += 'caps' }
     $r
+}
+
+# Gibt es die im Kopf genannte Quelle? Als Repo-Pfad oder als Dateiname irgendeiner getrackten .ps1.
+$script:trackedPs1 = $null
+function Test-RepoScript([string]$Name) {
+    if (Test-Path -LiteralPath (Join-Path $RepoRoot $Name) -PathType Leaf) { return $true }
+    if ($null -eq $script:trackedPs1) { $script:trackedPs1 = @{}; foreach ($p in (Invoke-Git @('ls-files', '*.ps1'))) { $script:trackedPs1[(Split-Path $p -Leaf)] = $true } }
+    return $script:trackedPs1.ContainsKey((Split-Path $Name -Leaf))
 }
 
 # Pflichtteile tragender Koepfe neuer Dateien: liefert Liste fehlender Teile.
@@ -230,6 +251,24 @@ function Get-HeadGaps([string]$Path, [string]$Lang, $Comments) {
         for ($k = 0; $k -lt $hl.Count; $k++) { if ($hl[$k] -match ('^\s*([a-z0-9_]+\.)?' + [regex]::Escape($name) + '\b')) { $ti = $k; break } }
         if ($ti -lt 0) { $gaps += "Titelzeile '-- $name'" }
         elseif ($ti + 1 -ge $hl.Count) { $gaps += 'Beschreibung unter der Titelzeile' }
+    }
+    # Inhaltszeilen des Kopfs: ohne Leerzeilen, #Requires und shellcheck-Direktiven.
+    $headLines = @($Comments | Where-Object { $_.Head } | ForEach-Object { $_.Text } | Where-Object { $_.Trim() -and $_ -notmatch '^\s*(Requires|shellcheck)\b' })
+    if ($Lang -eq 'ps' -and $Path -match '(^|/)packages/[^/]+/build/') {
+        if ($headLines.Count -lt 2) { $gaps += 'Kopf mit mindestens zwei Zeilen (was die Datei baut; Ausloeser und Ausgang)' }
+    }
+    if ($Lang -eq 'sh' -and $Path -match '(^|/)provisioning/lib/([^/]+\.sh)$') {
+        $base = $Matches[2]
+        if ($headLines.Count -eq 0 -or $headLines[0] -notmatch ('^\s*' + [regex]::Escape($base) + '\s+(—|--|-)\s+\S')) { $gaps += "erste Zeile '# $base — <Zweck>'" }
+        if ($headText -notmatch '(?i)sourc(t|ed)') { $gaps += "wer die Datei sourct ('Gesourct von ...')" }
+    }
+    if ($Lang -eq 'sh' -and $Path -match '(^|/)provisioning/[^/]+\.sh$') {
+        if ($headText -notmatch '(?i)(aufruf|usage)') { $gaps += 'Aufruf-Beispiel' }
+        if ($headText -notmatch '(?i)exit') { $gaps += 'Exit-Code' }
+    }
+    foreach ($m in [regex]::Matches($headText, '(?i)Dot-gesourct von\s+([\w./\\-]+\.ps1)')) {
+        $src = $m.Groups[1].Value.Replace('\', '/')
+        if (-not (Test-RepoScript $src)) { $gaps += "'Dot-gesourct von $src': die Datei gibt es nicht" }
     }
     $gaps
 }

@@ -511,6 +511,20 @@ repos:
         pass_filenames: false
         files: ^scripts/(standin_lint|dev/standin_lint_test|lib/test_common)\.ps1$
 
+      - id: size-lint
+        name: size_lint (ceilings for file sizes and for tools and tool descriptions per agent; new files stay below the limits, recorded ceilings only shrink)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/size_lint.ps1
+        pass_filenames: false
+        always_run: true
+
+      - id: size-lint-test
+        name: size_lint_test (file over a limit, grown file, stale or loose ceiling, agent without entry or with one more tool turn size_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/size_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(size_lint|dev/size_lint_test|lib/test_common)\.ps1$
+
       - id: timer-lock-lint
         name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered)
         language: system

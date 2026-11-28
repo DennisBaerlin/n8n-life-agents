@@ -81,6 +81,11 @@ cleanup() { restore_orig; new_backups | xargs -r rm -f;pg_su_psql -X -q -d "$N8N
   pg_su_psql -X -q -d "$N8N_DB_NAME" -c "DROP TABLE IF EXISTS finance.bk_neu, finance.bk_ziel; ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_ziel, DROP COLUMN IF EXISTS bk_pflicht, DROP COLUMN IF EXISTS bk_alt, DROP COLUMN IF EXISTS bk_dev, DROP COLUMN IF EXISTS bk_ber; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_neu, DROP COLUMN IF EXISTS bk_std; DELETE FROM agent.monitor_triggers WHERE origin = 'user' AND label = 'bk Testfrist'; DELETE FROM finance.accounts WHERE name = 'bk Testkonto'" >/dev/null 2>&1
   [ -z "${VER0:-}" ] || printf '%s\n' "$VER0" > "$ROOT/VERSION"
   [ ! -s "$W/career.manifest" ] || cp "$W/career.manifest" "$ROOT/packages/career/manifest.json"
+  [ ! -s "$W/estate.manifest" ] || cp "$W/estate.manifest" "$ROOT/packages/estate/manifest.json"
+  [ ! -s "$W/finance.manifest" ] || cp "$W/finance.manifest" "$ROOT/packages/finance/manifest.json"
+  [ ! -s "$W/core.manifest" ] || cp "$W/core.manifest" "$ROOT/packages/core/manifest.json"
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE finance.accounts DROP COLUMN IF EXISTS bk_weg, DROP COLUMN IF EXISTS bk_vorher, DROP COLUMN IF EXISTS bk_nachher; DROP TABLE IF EXISTS finance.bk_weg_t; ALTER TABLE agent.monitor_triggers DROP COLUMN IF EXISTS bk_weg" >/dev/null 2>&1
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE estate.task_templates DROP COLUMN IF EXISTS bk_titel" >/dev/null 2>&1
   [ ! -s "$W/career.sections" ] || cp "$W/career.sections" "$ROOT/packages/career/onboarding/sections.json"
   rm -rf "$W"; }
 trap cleanup EXIT
@@ -431,6 +436,47 @@ q "ALTER TABLE agent.monitor_triggers DROP COLUMN bk_std"
 setver v0.1.0; q "ALTER TABLE finance.accounts ADD COLUMN bk_alt text"
 V6="$(vexp entfernt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_alt"; setver v0.2.0
 vblock V.aelter-entfernt "$V6" version_older v0.1.0
+# Seed-Katalog, den eine aeltere Version samt einer seither entfernten Spalte noch sicherte (estate:V003 entfernte
+# task_templates.title/detail): diese Version sichert ihn nicht mehr (exclude_tables) -> der Restore laesst ihn weg und spielt
+# den Rest ein.
+# hand-injected: das Manifest der aelteren Version (Katalog nicht ausgeschlossen) und ihr Spaltenaufbau stehen nur so im Substrat.
+cp "$ROOT/packages/estate/manifest.json" "$W/estate.manifest"
+jq '.backup.exclude_tables -= ["task_templates", "directive_types"]' "$W/estate.manifest" > "$ROOT/packages/estate/manifest.json"
+setver v0.1.0; q "ALTER TABLE estate.task_templates ADD COLUMN bk_titel text"
+v0="$(fin)"; tt0="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM estate.task_templates")"
+V11="$(vexp katalog-alt)"; cp "$W/estate.manifest" "$ROOT/packages/estate/manifest.json"
+q "ALTER TABLE estate.task_templates DROP COLUMN bk_titel"; setver v0.2.0
+vplan "$V11"; c1="$(js .ok)/$(js .code)"; vyes "$V11"; rc=$?
+tt1="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM estate.task_templates")"
+ok_if V.aelter-katalog-entfernt '[ "$c1" = true/null ] && [ "$rc" -eq 0 ] && [ "$(fin)" = "$v0" ] && [ "$tt1" = "$tt0" ]' \
+  "Probelauf=$c1 echt rc=$rc/$(js .code) / Konten $(fin) vs $v0 / Vorlagen $tt1 vs $tt0 / $(tail -n2 "$W/err.$n" 2>/dev/null)"
+# Gewollt entfernte bzw. umbenannte Spalten und Tabellen gesicherter Tabellen (Manifest backup.removed_columns,
+# renamed_columns, removed_tables; Waechter scripts/backup_migration_lint.ps1): eine aeltere Sicherung spielt ein, die
+# entfernte Spalte faellt aus dem Strom (Protokoll nennt sie), die umbenannte bringt ihren Wert in die neue Spalte.
+# hand-injected: die Manifest-Eintraege einer kuenftigen Migration und ihr DDL gibt es nur so im Substrat.
+cp "$ROOT/packages/finance/manifest.json" "$W/finance.manifest"; cp "$ROOT/packages/core/manifest.json" "$W/core.manifest"
+# max(): ein liegengebliebenes Testkonto eines frueheren Laufs auf demselben Substrat ergaebe sonst zwei Zeilen.
+kval() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT COALESCE(max($1), '-') FROM finance.accounts WHERE name = 'bk Testkonto'"; }
+setver v0.1.0
+q "ALTER TABLE finance.accounts ADD COLUMN bk_weg text, ADD COLUMN bk_vorher text; UPDATE finance.accounts SET bk_weg = 'weg', bk_vorher = 'bleibt' WHERE name = 'bk Testkonto';
+   CREATE TABLE finance.bk_weg_t (id serial PRIMARY KEY); INSERT INTO finance.bk_weg_t DEFAULT VALUES;
+   ALTER TABLE agent.monitor_triggers ADD COLUMN bk_weg text"
+# Ein Nutzer-Trigger, damit agent.monitor_triggers in shared.json Spalten traegt (V.gefiltert-leer hat ihn geloescht).
+q "SELECT agent.fn_create_monitor_trigger('{\"label\": \"bk Testfrist\", \"trigger_type\": \"date\", \"due_date\": \"2030-01-01\", \"action_note\": \"Testfrist\", \"check_interval\": \"1 day\"}'::jsonb)"
+V12="$(vexp spalten-alt)"
+q "ALTER TABLE finance.accounts DROP COLUMN bk_weg; ALTER TABLE finance.accounts RENAME COLUMN bk_vorher TO bk_nachher;
+   UPDATE finance.accounts SET bk_nachher = NULL WHERE name = 'bk Testkonto'; DROP TABLE finance.bk_weg_t;
+   ALTER TABLE agent.monitor_triggers DROP COLUMN bk_weg"
+setver v0.2.0
+vblock V.spalten-ohne-eintrag "$V12" version_older v0.1.0
+jq '.backup.removed_columns = {"accounts": {"bk_weg": "V999"}} | .backup.renamed_columns = {"accounts": {"bk_vorher": "bk_nachher"}}
+    | .backup.removed_tables = {"bk_weg_t": "V999"}' "$W/finance.manifest" > "$ROOT/packages/finance/manifest.json"
+jq '.backup.removed_columns = {"agent.monitor_triggers": {"bk_weg": "V999"}}' "$W/core.manifest" > "$ROOT/packages/core/manifest.json"
+vplan "$V12"; c1="$(js .ok)/$(js .code)"; vyes "$V12"; rc=$?
+ok_if V.spalten-mit-eintrag '[ "$c1" = true/null ] && [ "$rc" -eq 0 ] && [ "$(kval bk_nachher)" = bleibt ] && grep -q bk_weg "$W/err.$n" && grep -q bk_nachher "$W/err.$n"' \
+  "Probelauf=$c1 echt rc=$rc/$(js .code) / umbenannt=$(kval bk_nachher) / $(grep -i 'bk_' "$W/err.$n" 2>/dev/null | tr '\n' ' ' | tail -c 800)"
+cp "$W/finance.manifest" "$ROOT/packages/finance/manifest.json"; cp "$W/core.manifest" "$ROOT/packages/core/manifest.json"
+q "ALTER TABLE finance.accounts DROP COLUMN bk_nachher"
 # Release unbekannt (dev): Code version_newer, der Satz nennt beide Wege.
 setver dev; q "ALTER TABLE finance.accounts ADD COLUMN bk_dev text"
 V7="$(vexp unbekannt)"; q "ALTER TABLE finance.accounts DROP COLUMN bk_dev"
@@ -472,7 +518,8 @@ S_RO="$(cro)"; S_LAB="$(dlab)"; S_ST="$(cst)"
 ok_if S.vorbereitet '[ "${S_RO%%:*}" -gt 0 ] && [ "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM career.onboarding_state WHERE for_roles IS NULL")" = 0 ] && [ -n "$S_LAB" ] && [ -n "$S_ST" ]' \
   "Abschnitte=$S_RO Bezeichnung=$S_LAB Status=$S_ST"
 # hand-injected: kein Export eines frueheren Release im Substrat; den aelteren Stand stellt ein UPDATE vor dem Export nach
-# (Rollen leer wie vor ihrer Einfuehrung, alte Katalog-Bezeichnung), dazu ein Nutzer-Status (skipped). Danach geht der Status
+# (Rollen leer wie vor ihrer Einfuehrung; alte Katalog-Bezeichnung: der Katalog reist nicht mit, der Abgleich muss sie auf dem
+# Ziel korrigieren), dazu ein Nutzer-Status (skipped). Danach geht der Status
 # im Ziel auf unknown, damit nur die Sicherung skipped zurueckbringen kann.
 q "UPDATE career.onboarding_state SET for_roles = NULL; UPDATE career.onboarding_state SET status = 'skipped' WHERE section_key = 'profile_basics'; UPDATE estate.directive_types SET label = 'bk alt' WHERE doc_type = 'testament'"
 S1="$(vexp abgleich)"

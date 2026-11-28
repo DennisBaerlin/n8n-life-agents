@@ -62,7 +62,7 @@ Rollen `estate_rw`/`estate_ro` + core_ro-Aufsichtsfenster via `core.fn_provision
 
 - `advisors` deklariert (estate → `estate_overview`/`estate.fn_advisor_review`/`agent.estate_advisor`), eigener Enable-Cron `cron_review_register`.
 - Katalog: Kategorie „Nachlass & Vorsorge" + eine `tail`-Sektion (Muster career).
-- Backup `schema_dump: true` (hochsensible, nirgends sonst existierende Eingabe); `directive_types` konvergiert nach Restore per Re-Seed (`DO UPDATE`).
+- Backup `schema_dump: true` (hochsensible, nirgends sonst existierende Eingabe) ohne die Code-Kataloge `directive_types`/`task_templates` (`exclude_tables`, Seed der Init).
 
 ## Write-Tools-Katalog
 

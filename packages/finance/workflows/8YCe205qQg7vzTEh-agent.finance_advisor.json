@@ -2356,7 +2356,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_send_handoff_overview",
-                                         "description":  "Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open. Sends a message only, changes nothing.",
+                                         "description":  "Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open, or sent=false with reason=send_failed when the list did not arrive. Sends a message only, changes nothing.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "0B1E3C3H5DyWhJtt",

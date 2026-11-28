@@ -245,7 +245,7 @@ function Build-AgentFinanceAdvisor {
     $nToolHandoffCheck = $null
     if ($hasHandoff) {
         $nToolHandoffOverview = New-AdvisorToolNode 'tool_send_handoff_overview' (Resolve-CoreServiceAlias 'core:send_handoff_overview' $CoreServiceMap) `
-            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
+            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with an [Enter now] button; each entry then comes on its own confirmation card. Call it only when the user asks to enter agreed items now, or asks about an account hint that an open entry solves. Never call it on your own, never after tool_publish_plan (the list follows by itself). Returns sent=false when nothing is open, or sent=false with reason=send_failed when the list did not arrive. Sends a message only, changes nothing.' `
             @() ([ordered]@{ domain = $DOMAIN_EXPR }) @(1120, 208) -StartNode $START_NODE
         # Eintrag pruefen: neue Vormerkung mit Verweis auf einen erledigten Eintrag ohne Soll (Domain kommt aus der alten Vormerkung).
         $nToolHandoffCorrection = New-AdvisorToolNode 'tool_record_handoff_correction' (Resolve-CoreServiceAlias 'core:record_handoff_correction' $CoreServiceMap) `

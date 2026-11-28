@@ -320,6 +320,11 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
     assert.equal(fn.ts, null, 'ein Wert, der kein gewürfelter Name sein kann, kommt nie ins Bild');
+    // Ein erlaubter Link, der nicht in den QR-Code passt: die Seite kommt trotzdem (ohne Code), der Knopf bleibt.
+    const langerLink = 'https://login.tailscale.com/a/' + 'x'.repeat(280);
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_login', url: langerLink }));
+    const lang = await waitFor(async () => { const p = await page(w); return p && p.link && p.link.href === langerLink ? p : null; });
+    assert.equal(lang.qr, null, 'kein QR-Code, wenn der Link nicht hineinpasst');
     // Tunnel steht (Telegram zeigt noch nicht darauf = pending_activation): jetzt die Installation, gleich mit der Adresse.
     // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht, ohne neue Anmeldung.
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');

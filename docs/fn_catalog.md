@@ -2574,7 +2574,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_insurance (READ, STABLE)
 - `finance.fn_resolve_insurance(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Versicherungs-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: wenn TRUE, nur status='active'.
+- Loest Versicherungs-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
 
 ## finance.fn_resolve_loan (READ, STABLE)
 - `finance.fn_resolve_loan(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( loan_id int, loan_account_id int, debit_account_id int, monthly_annuity numeric, hit_count int, candidates jsonb )`
@@ -2594,7 +2594,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_pension (READ, STABLE)
 - `finance.fn_resolve_pension(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Altersvorsorge-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: wenn TRUE, nur status='active'.
+- Loest Altersvorsorge-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
 
 ## core.fn_resolve_person (READ-ONLY, SECURITY DEFINER — publiziertes Core-Lesefenster)
 - `core.fn_resolve_person(p_name text, p_chat_id text DEFAULT NULL) -> TABLE ( person_id text, full_name text, hit_count int, candidates jsonb )`
@@ -2614,7 +2614,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_real_estate (READ, STABLE)
 - `finance.fn_resolve_real_estate(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Immobilien-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool bei hit_count > 1 dem Nutzer die Treffer praesentieren kann. Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: wenn TRUE, nur status='active'.
+- Loest Immobilien-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool bei hit_count > 1 dem Nutzer die Treffer praesentieren kann. Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
 
 ## finance.fn_resolve_recurring_payment (READ, STABLE)
 - `finance.fn_resolve_recurring_payment(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
@@ -2624,7 +2624,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_savings_goal (READ, STABLE)
 - `finance.fn_resolve_savings_goal(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Sparziel-Name in ID auf (Vorbild fn_resolve_account). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: default TRUE -> nur status='active'.
+- Loest Sparziel-Name in ID auf (Vorbild fn_resolve_account). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
 
 ## finance.fn_resolve_savings_plan (READ, STABLE)
 - `finance.fn_resolve_savings_plan(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`

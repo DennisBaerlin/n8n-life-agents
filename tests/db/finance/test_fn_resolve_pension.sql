@@ -39,6 +39,22 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS resolve_pension [dup: count=2, id=NULL]';
 
+  -- TEST 4: p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle (die Aendern-Werkzeuge finden so auch Nicht-Aktives)
+  UPDATE finance.pension SET status = 'paused' WHERE name = '__test_pen_uniq__';
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_pension('__test_pen_uniq__');
+  IF v_count IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL resolve_pension [Standard nur aktive]: count=%', v_count; END IF;
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_pension('__test_pen_uniq__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT x.id FROM finance.pension x WHERE x.name = '__test_pen_uniq__') THEN
+    RAISE EXCEPTION 'FAIL resolve_pension [NULL findet Nicht-Aktives]: count=% id=%', v_count, v_id; END IF;
+  -- zwei gleichnamige, eine nicht aktiv: NULL nimmt die aktive, FALSE meldet beide
+  UPDATE finance.pension SET status = 'paused' WHERE id = (SELECT min(x.id) FROM finance.pension x WHERE x.name = '__test_pen_dup__');
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_pension('__test_pen_dup__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT max(x.id) FROM finance.pension x WHERE x.name = '__test_pen_dup__') THEN
+    RAISE EXCEPTION 'FAIL resolve_pension [NULL bevorzugt die aktive]: count=% id=%', v_count, v_id; END IF;
+  SELECT hit_count INTO v_count FROM finance.fn_resolve_pension('__test_pen_dup__', FALSE);
+  IF v_count IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL resolve_pension [FALSE meldet beide]: count=%', v_count; END IF;
+  RAISE NOTICE 'PASS resolve_pension [NULL: aktive zuerst, sonst alle]';
+
 END $$;
 
 ROLLBACK;

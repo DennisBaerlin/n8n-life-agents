@@ -4,7 +4,8 @@
 --   Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool
 --   bei hit_count > 1 dem Nutzer die Treffer praesentieren kann.
 --   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
---   p_active_only: wenn TRUE, nur status='active'.
+--   p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle
+--     (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_real_estate(
     p_name        text,
@@ -19,8 +20,10 @@ DECLARE
     v_count      INT;
     v_id         INT;
     v_exact      BOOLEAN;
+    v_act        BOOLEAN;
 BEGIN
     FOREACH v_exact IN ARRAY ARRAY[TRUE, FALSE] LOOP
+    FOREACH v_act IN ARRAY CASE WHEN p_active_only IS NULL THEN ARRAY[TRUE, FALSE] ELSE ARRAY[p_active_only] END LOOP
     SELECT
         jsonb_agg(jsonb_build_object(
             'id',     re.id,
@@ -33,7 +36,9 @@ BEGIN
     INTO v_candidates, v_count, v_id
     FROM finance.real_estate re
     WHERE finance.fn_name_matches(re.name, p_name, v_exact)
-      AND (p_active_only = FALSE OR re.status = 'active');
+      AND (NOT v_act OR re.status = 'active');
+    EXIT WHEN v_count > 0;
+    END LOOP;
     EXIT WHEN v_count > 0;
     END LOOP;
 

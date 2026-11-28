@@ -49,6 +49,22 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS resolve_insurance [dup: count=2, id=NULL]';
 
+  -- TEST 4: p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle (die Aendern-Werkzeuge finden so auch Nicht-Aktives)
+  UPDATE finance.insurances SET status = 'cancelled' WHERE name = '__test_ins_uniq__';
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_insurance('__test_ins_uniq__');
+  IF v_count IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL resolve_insurance [Standard nur aktive]: count=%', v_count; END IF;
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_insurance('__test_ins_uniq__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT x.id FROM finance.insurances x WHERE x.name = '__test_ins_uniq__') THEN
+    RAISE EXCEPTION 'FAIL resolve_insurance [NULL findet Nicht-Aktives]: count=% id=%', v_count, v_id; END IF;
+  -- zwei gleichnamige, eine nicht aktiv: NULL nimmt die aktive, FALSE meldet beide
+  UPDATE finance.insurances SET status = 'cancelled' WHERE id = (SELECT min(x.id) FROM finance.insurances x WHERE x.name = '__test_ins_dup__');
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_insurance('__test_ins_dup__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT max(x.id) FROM finance.insurances x WHERE x.name = '__test_ins_dup__') THEN
+    RAISE EXCEPTION 'FAIL resolve_insurance [NULL bevorzugt die aktive]: count=% id=%', v_count, v_id; END IF;
+  SELECT hit_count INTO v_count FROM finance.fn_resolve_insurance('__test_ins_dup__', FALSE);
+  IF v_count IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL resolve_insurance [FALSE meldet beide]: count=%', v_count; END IF;
+  RAISE NOTICE 'PASS resolve_insurance [NULL: aktive zuerst, sonst alle]';
+
 END $$;
 
 ROLLBACK;

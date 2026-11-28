@@ -32,7 +32,7 @@ BEGIN
         'depot_performance|depot_name, is_total, return_pa_pct, return_since_start_pct, takeover_start_date, price_stale, missing_reason',
         'account_everyday_spending|account_id, account_name, has_history, everyday_per_day, everyday_per_month',
         'loan_overview|id, name, lender, borrower, current_remaining_debt, monthly_annuity, status',
-        'active_insurances|id, name, insurance_company, annual_premium, account_name, last_valid_day',
+        'active_insurances|id, name, insurance_company, policyholder, annual_premium, account_name, last_valid_day',
         'real_estate_overview|id, name, owner, current_value, associated_debt, net_equity'
         -- view-hints:end
     ];
@@ -46,11 +46,11 @@ BEGIN
             END IF;
         END LOOP;
     END LOOP;
-    -- Person als Name: zeigt eine genannte Ansicht den Besitzer als Namen (owner, account_holder, borrower), steht die Spalte im
+    -- Person als Name: zeigt eine genannte Ansicht den Besitzer als Namen (owner, account_holder, borrower, policyholder), steht die Spalte im
     -- Spickzettel. Fehlt sie, raet das Modell einen Namen (owner_name) und die erste Abfrage scheitert.
     FOR v_view, v_col IN
         SELECT c.table_name::text, c.column_name::text FROM information_schema.columns c
-        WHERE c.table_schema = 'finance' AND c.column_name IN ('owner', 'account_holder', 'borrower')
+        WHERE c.table_schema = 'finance' AND c.column_name IN ('owner', 'account_holder', 'borrower', 'policyholder')
           AND EXISTS (SELECT 1 FROM unnest(v_hints) h WHERE split_part(h, '|', 1) = c.table_name)
         ORDER BY 1, 2
     LOOP

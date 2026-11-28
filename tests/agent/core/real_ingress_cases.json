@@ -1707,7 +1707,7 @@
     "expected_node": "Send overview",
     "expected_not_ran": ["Mark overview"],
     "pre_sql": "INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) SELECT 'finance', 'finance', agent.fn_owner_person_id(), 'goals_triggers', 'savings_goal', '__E2E__ RI Liste Sparziel 500 Euro';",
-    "check_sql": "SELECT NOT EXISTS (SELECT 1 FROM core.notification_state n WHERE n.source = 'plan_rollout' AND n.key LIKE 'finance:%:handoff:' || (SELECT max(id) FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro'))",
+    "check_sql": "SELECT NOT EXISTS (SELECT 1 FROM core.notification_state n WHERE n.source = 'plan_rollout' AND n.state = 'fired' AND n.expires_at IS NULL AND n.key LIKE 'finance:%:handoff:' || (SELECT max(id) FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro'))",
     "post_sql": "DELETE FROM core.notification_state n WHERE n.source = 'plan_rollout' AND n.key LIKE 'finance:%:handoff:' || (SELECT max(id) FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro'); DELETE FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro';",
     "notes": "Mock-Telegram lehnt nur den Send mit Knopf ab (fail_tg markup). agent.tool_send_handoff_overview darf den Merker der Abfolge (core.fn_handoff_overview_mark, Schluessel core.fn_handoff_latch_key) nur nach gelungenem Versand setzen: sonst gilt die Liste als gezeigt und die gefuehrte Abfolge schickt sie nie. Mock: Szenario 'Listen-Test Fehlerweg' (Router -> Berater -> tool_send_handoff_overview)."
   },

@@ -55,6 +55,7 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
         ,@('ok', 'true', 'boolean')
         ,@('sent', 'false', 'boolean')
         ,@('open_count', "={{ Number($OV.count || 0) }}", 'number')
+        ,@('reason', 'send_failed', 'string')
     ) -Name 'Return not sent'
     $retNone = Build-Return @(660, 120) @(
         ,@('ok', 'true', 'boolean')
@@ -64,7 +65,7 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
 
     $sticky = Build-Sticky 'Doc Handoff-Uebersicht' @(120, -360) `
         'Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)' `
-        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -> Sent? (kam die Nachricht an): ja -> Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -> Return sent; nein -> Return not sent (sent false, open_count bleibt), kein Merker: die Abfolge schickt die Liste später selbst.' 340 600
+        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -> Sent? (kam die Nachricht an): ja -> Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -> Return sent; nein -> Return not sent (sent false, reason send_failed, open_count bleibt), kein Merker: die Liste gilt nicht als gezeigt, Schritt 1 der Abfolge schickt sie nach dem Veröffentlichen.' 340 600
 
     $nodes = @($trig, $read, $ifOpen, $render, $send, $ifSent, $mark, $retSent, $retFailed, $retNone, $sticky)
     $conns = [ordered]@{

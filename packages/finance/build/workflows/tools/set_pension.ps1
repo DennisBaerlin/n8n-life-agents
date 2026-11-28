@@ -10,7 +10,7 @@ function Build-SetPension {
                            'retirement_start_date','status','notes',
                            'contribution_amount','effective_from','schedule_interval','schedule_unit','debit_account_name','handoff_task_id')
 
-    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle: eine pausierte Sache bleibt aenderbar (status active).
+    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle (Regel im Resolver finance.fn_resolve_*, test_fn_resolve_*): eine pausierte Sache bleibt aenderbar.
     $resPen = Build-Pg 'Resolve Pension' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_pension((`$1::jsonb)->>'pension_name', NULL);" `
         ([ordered]@{ pension_name = '$(''Start'').item.json.pension_name' })

@@ -398,7 +398,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**career.fn_record_job_match (atomar, source=forwarded)**\n\nSchreibt career.fn_record_job_match atomar: UPSERT auf den partial-UNIQUE-Index external_id (Re-Forward derselben external_id aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -\u003e {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit source=bundesagentur + score.",
+                                         "content":  "## DB-Automatik\n**career.fn_record_job_match (atomar, source=forwarded)**\n\nSchreibt career.fn_record_job_match atomar: Der Eintrag gehört der Person des Absenders (chat_id; ohne sie dem Owner). UPSERT auf den partial-UNIQUE-Index (source, external_id, person_id) (Re-Forward derselben external_id durch dieselbe Person aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -\u003e {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit der Quelle des Abrufs + score.",
                                          "height":  220,
                                          "width":  420,
                                          "color":  4

@@ -255,6 +255,12 @@
                                                                                      "name":  "open_count",
                                                                                      "value":  "={{ Number(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).count || 0) }}",
                                                                                      "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cdd3df1f-205b-5885-b525-7aecca8193ac",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "send_failed",
+                                                                                     "type":  "string"
                                                                                  }
                                                                              ]
                                                          },
@@ -310,7 +316,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)**\n\nRead overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -\u003e Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -\u003e Sent? (kam die Nachricht an): ja -\u003e Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -\u003e Return sent; nein -\u003e Return not sent (sent false, open_count bleibt), kein Merker: die Abfolge schickt die Liste später selbst.",
+                                         "content":  "## DB-Automatik\n**Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)**\n\nRead overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -\u003e Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -\u003e Sent? (kam die Nachricht an): ja -\u003e Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -\u003e Return sent; nein -\u003e Return not sent (sent false, reason send_failed, open_count bleibt), kein Merker: die Liste gilt nicht als gezeigt, Schritt 1 der Abfolge schickt sie nach dem Veröffentlichen.",
                                          "height":  340,
                                          "width":  600,
                                          "color":  4

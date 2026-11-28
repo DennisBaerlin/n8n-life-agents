@@ -10,7 +10,7 @@ function Build-SetInsurance {
                            'effective_from','valid_to','status','notes','debit_account_name',
                            'insurance_type','beneficiary','coverage_amount','claim_deadline_hours')  # WS-0b estate
 
-    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle: eine pausierte Sache bleibt aenderbar (status active).
+    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle (Regel im Resolver finance.fn_resolve_*, test_fn_resolve_*): eine pausierte Sache bleibt aenderbar.
     $resIns = Build-Pg 'Resolve Insurance' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_insurance((`$1::jsonb)->>'insurance_name', NULL);" `
         ([ordered]@{ insurance_name = '$(''Start'').item.json.insurance_name' })

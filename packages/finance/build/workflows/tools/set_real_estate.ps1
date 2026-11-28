@@ -8,9 +8,8 @@ function Build-SetRealEstate {
     $trig = Build-Trigger @('real_estate_name','new_name','current_value','value_updated_at',
                            'owner_person','status','notes','living_area_m2','year_built')
 
-    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle: eine pausierte Sache bleibt aenderbar (status active).
     $resRe = Build-Pg 'Resolve Real Estate' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_real_estate((`$1::jsonb)->>'real_estate_name', NULL);" `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_real_estate((`$1::jsonb)->>'real_estate_name', TRUE);" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
 
     $ifRe = Build-If 'Real estate unique?' @(440, 0) "={{ `$json.hit_count }}" '1'

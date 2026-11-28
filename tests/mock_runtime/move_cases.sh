@@ -13,7 +13,7 @@ _mv_folder() {
   printf 'FORMAT=1\nRELEASE=%s\nCREATED=%s\nRUNTIME=systemd\nBACKUP_FILE=b.nla.enc\nPACKAGES=career\n' "${F_REL:-v9.1.0}" "${F_MOVE:-2026-11-20T10:00:00Z}" > "$MI/move.manifest"
   printf 'enc' > "$MI/b.nla.enc"
   printf 'rows finance.accounts 3\nmd5 finance.accounts aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nmemory agent.guide_chat_memory 2\n' > "$MI/vorher.txt"
-  printf "REACH_MODE='tunnel'\nTELEGRAM_BOT_TOKEN='123:abc'\n" > "$MI/move.env"
+  printf "REACH_MODE='tunnel'\nTELEGRAM_BOT_TOKEN='123:abc'\n" > "$MI/move.env.gpg"
   chmod 0700 "$MI"; chmod 0600 "$MI"/*
 }
 
@@ -198,7 +198,7 @@ _ua() (
   _ret_fetch_dir() { _RET_DIR="$MI"; }
   rt_host_rm() { ev "host_rm $*"; [ -z "${RM_FAIL:-}" ]; }
   rt_host_put() { ev "host_put $*"; cat "$3" > /dev/null; }
-  move_cli "$@"
+  if [ "${1:-}" = unlock ]; then shift; move_unlock "$@"; else move_cli "$@"; fi
 )
 _mv_run() { _mv_reset; _mv_folder; rm -f "$W/mv.reach"; "$@"; }
 
@@ -206,7 +206,7 @@ _mv_run() { _mv_reset; _mv_folder; rm -f "$W/mv.reach"; "$@"; }
 _mv_nothing() {  # <name> <grund-im-satz>
   if _mv_log | grep -qE '^(restore|rows|finalize|menu)'; then fail "MV.$1-nichts" "$(_mv_log | tr '\n' ' ')"; else pass "MV.$1-nichts"; fi
   [ ! -e "$MV/move-open" ] && pass "MV.$1-kein-merker" || fail "MV.$1-kein-merker" "Merker liegt"
-  [ -e "$MI/move.env" ] && pass "MV.$1-dateien-bleiben" || fail "MV.$1-dateien-bleiben" "move.env geloescht"
+  [ -e "$MI/move.env.gpg" ] && pass "MV.$1-dateien-bleiben" || fail "MV.$1-dateien-bleiben" "move.env geloescht"
   [ -z "${2:-}" ] || { grep -qi -- "$2" "$W/mv.err" && pass "MV.$1-satz" || fail "MV.$1-satz" "$(tail -n3 "$W/mv.err")"; }
 }
 _mv_run true; rm -f "$MI/move.manifest"
@@ -236,6 +236,25 @@ _mv_run true; ( PLAN_CODE=key_needed _ua apply "$MI" ) >/dev/null 2>"$W/mv.err";
 _mv_run true; ( PLAN_CODE=key_needed IA=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.blatt-mit-terminal-rc 0 "$?"
 eq MV.blatt-einmal-gefragt 1 "$(_mv_log | grep -c '^ask_key')"
 case "$(_mv_log | grep -E '^(plan|restore)' | tr '\n' ',')" in 'plan key=,plan key=ja,restore key=ja,') pass MV.blatt-an-plan-und-restore ;; *) fail MV.blatt-an-plan-und-restore "$(_mv_log | grep -E '^(plan|restore)' | tr '\n' ',')" ;; esac
+# Verschluesselte Antworten (move.env.gpg): move_unlock fragt EINMAL das Notfallblatt, entschluesselt und legt den Schluessel ab; das
+# Einspielen nimmt ihn (keine zweite Frage, auch ohne Terminal) und loescht ihn mit den Geheimnis-Dateien. Echter gpg-Lauf.
+_ul_key="$(printf '7%.0s' $(seq 1 64))"; _ul_falsch="$(printf '3%.0s' $(seq 1 64))"   # 64 Hex wie ein Blatt-Schluessel, ohne Literal (gitleaks)
+_ul_prep() { _mv_run true; printf "REACH_MODE='tunnel'\nTELEGRAM_BOT_TOKEN='123:abc'\n" > "$W/ul.plain"
+  gpg_sym_encrypt "$_ul_key" "$MI/move.env.gpg" "$W/ul.plain" >/dev/null 2>&1; rm -f "$W/ul.plain" "$W/ul.out"; }
+_ul_prep; ( IA=1 ASK_KEY="$_ul_key" _ua unlock "$MI/move.env.gpg" "$W/ul.out" ) >/dev/null 2>"$W/mv.err"; eq MV-UL.entsperrt-rc 0 "$?"
+grep -qx "TELEGRAM_BOT_TOKEN='123:abc'" "$W/ul.out" 2>/dev/null && pass MV-UL.klartext-da || fail MV-UL.klartext-da "$(tail -n2 "$W/mv.err")"
+eq MV-UL.schluessel-abgelegt "600|$_ul_key" "$(stat -c %a "$MV/move-sheet.key" 2>/dev/null)|$(cat "$MV/move-sheet.key" 2>/dev/null)"
+eq MV-UL.einmal-gefragt 1 "$(_mv_log | grep -c '^ask_key')"
+: > "$STUB_LOG"; ( PLAN_CODE=key_needed _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV-UL.einspielen-ohne-frage-rc 0 "$?"
+eq MV-UL.einspielen-keine-zweite-frage 0 "$(_mv_log | grep -c '^ask_key')"
+case "$(_mv_log | grep -E '^(plan|restore)' | tr '\n' ',')" in 'plan key=ja,restore key=ja,') pass MV-UL.schluessel-an-plan-und-restore ;; *) fail MV-UL.schluessel-an-plan-und-restore "$(_mv_log | grep -E '^(plan|restore)' | tr '\n' ',')" ;; esac
+[ ! -e "$MV/move-sheet.key" ] && [ ! -e "$MI/move.env.gpg" ] && pass MV-UL.danach-weg || fail MV-UL.danach-weg "$(ls "$MV" "$MI")"
+_ul_prep; ( IA=1 ASK_KEY="$_ul_falsch" _ua unlock "$MI/move.env.gpg" "$W/ul.out" ) >/dev/null 2>"$W/mv.err"
+eq MV-UL.falscher-schluessel-rc 1 "$?"
+eq MV-UL.falscher-schluessel-dreimal 3 "$(_mv_log | grep -c '^ask_key')"
+[ ! -e "$W/ul.out" ] && [ ! -e "$MV/move-sheet.key" ] && pass MV-UL.falscher-schluessel-nichts || fail MV-UL.falscher-schluessel-nichts "Reste"
+_ul_prep; ( _ua unlock "$MI/move.env.gpg" "$W/ul.out" ) >/dev/null 2>"$W/mv.err"; eq MV-UL.ohne-terminal-rc 1 "$?"
+grep -q 'Terminal' "$W/mv.err" && [ "$(_mv_log | grep -c '^ask_key')" = 0 ] && pass MV-UL.ohne-terminal-satz || fail MV-UL.ohne-terminal-satz "$(tail -n2 "$W/mv.err")"
 # Verbund-Tunnel: nicht fertig -> Link zeigen, nach der Wartezeit Abbruch ohne Aenderung; Anmeldung waehrenddessen -> weiter.
 _mv_run true; ( RT=compose TUNNEL_WAIT=2 REACH='needs_login' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.tunnel-nicht-fertig-rc 1 "$?"
 _mv_nothing tunnel-nicht-fertig 'login.tailscale.com/a/abc123'
@@ -255,7 +274,7 @@ case "$_seq" in
   *) fail MV.reihenfolge "$_seq" ;; esac
 eq MV.stufe-angewendet applied "$(_mv_state STAGE)"
 eq MV.merker-move 2026-11-20T10:00:00Z "$(_mv_state MOVE)"
-[ ! -e "$MI/move.env" ] && pass MV.geloescht-move.env || fail MV.geloescht-move.env "liegt noch"
+[ ! -e "$MI/move.env.gpg" ] && pass MV.geloescht-move.env || fail MV.geloescht-move.env "liegt noch"
 [ -e "$MI/b.nla.enc" ] && [ -e "$MI/move.manifest" ] && pass MV.sicherung-bleibt || fail MV.sicherung-bleibt "weg"
 [ -s "$MI/nachher.txt" ] && pass MV.nachher-geschrieben || fail MV.nachher-geschrieben "fehlt"
 case "$(cat "$W/mv.out" "$W/mv.err")" in *'move done'*) pass MV.satz-abnahme ;; *) fail MV.satz-abnahme "$(tail -n4 "$W/mv.err")" ;; esac
@@ -271,7 +290,7 @@ if _mv_log | grep -qE '^(plan|restore)'; then fail MV.anderer-move-nichts "$(_mv
 grep -q 'move done' "$W/mv.err" && pass MV.anderer-move-satz || fail MV.anderer-move-satz "$(tail -n2 "$W/mv.err")"
 # Verbund: Geheimnisse ueber den Rechner-Ordner loeschen (rt_host_rm), nie ueber die Platte des master.
 _mv_run true; ( RT=compose _ua apply "$MI" ) >/dev/null 2>&1
-case "$(_mv_log | grep '^host_rm')" in *'move.env'*) pass MV.verbund-loescht-ueber-rechner ;; *) fail MV.verbund-loescht-ueber-rechner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
+case "$(_mv_log | grep '^host_rm')" in *'move.env.gpg'*) pass MV.verbund-loescht-ueber-rechner ;; *) fail MV.verbund-loescht-ueber-rechner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
 case "$(_mv_log | grep '^host_put')" in *nachher.txt*) pass MV.verbund-nachher-in-ordner ;; *) fail MV.verbund-nachher-in-ordner "$(_mv_log | grep host_ | tr '\n' ' ')" ;; esac
 
 # Abbruch an jeder Stufe: Stand bleibt, Geheimnisse bleiben, ein neuer Lauf macht dort weiter und spielt nichts doppelt ein.
@@ -280,7 +299,7 @@ for _s in restore:started finalize:restored; do
   _mv_run true; ( FAIL_AT="$_at" _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; _rc=$?
   eq "MV.bricht-ab-$_at-rc" 1 "$_rc"
   eq "MV.bricht-ab-$_at-stand" "$_st" "$(_mv_state STAGE)"
-  [ -e "$MI/move.env" ] && pass "MV.bricht-ab-$_at-geheimnisse-bleiben" || fail "MV.bricht-ab-$_at-geheimnisse-bleiben" "geloescht"
+  [ -e "$MI/move.env.gpg" ] && pass "MV.bricht-ab-$_at-geheimnisse-bleiben" || fail "MV.bricht-ab-$_at-geheimnisse-bleiben" "geloescht"
   : > "$STUB_LOG"; _ua apply "$MI" >/dev/null 2>&1; _rc=$?
   eq "MV.weiter-nach-$_at-rc" 0 "$_rc"
   eq "MV.weiter-nach-$_at-fertig" applied "$(_mv_state STAGE)"
@@ -315,7 +334,7 @@ _ua abort >/dev/null 2>"$W/mv.err"; eq MV.abort-ohne-terminal-rc 1 "$?"
 : > "$STUB_LOG"; _ua abort --yes >"$W/mv.out" 2>"$W/mv.err"; eq MV.abort-yes-rc 0 "$?"
 [ ! -e "$MV/move-open" ] && pass MV.abort-merker-weg || fail MV.abort-merker-weg "liegt noch"
 if _mv_log | grep -qE '^(restore|rows|finalize|host_rm)'; then fail MV.abort-ruehrt-nichts-an "$(_mv_log | tr '\n' ' ')"; else pass MV.abort-ruehrt-nichts-an; fi
-[ -e "$MI/move.env" ] && pass MV.abort-dateien-bleiben || fail MV.abort-dateien-bleiben "geloescht"
+[ -e "$MI/move.env.gpg" ] && pass MV.abort-dateien-bleiben || fail MV.abort-dateien-bleiben "geloescht"
 case "$(cat "$W/mv.out" "$W/mv.err")" in *Daten*) pass MV.abort-sagt-daten-bleiben ;; *) fail MV.abort-sagt-daten-bleiben "$(tail -n3 "$W/mv.err")" ;; esac
 # Ein anderer Umzug bei offenem Merker nennt den Ausweg.
 printf 'STAGE=restored\nMOVE=alt\nAT=x\n' > "$MV/move-open"; _mv_folder

@@ -20,7 +20,8 @@ MOVE_FORMAT=1
 MOVE_STAGES="started restored finalized applied"
 MOVE_TUNNEL_WAIT_SECS="${MOVE_TUNNEL_WAIT_SECS:-600}"
 MOVE_TUNNEL_POLL_SECS="${MOVE_TUNNEL_POLL_SECS:-5}"
-MOVE_SECRET_FILES="move.env"
+# move.env = Klartext-Antworten aus einem Ordner vor der Verschluesselung (gleiche Rolle, darum mitgeloescht).
+MOVE_SECRET_FILES="move.env.gpg move.env"
 
 move_usage() {
   cat >&2 <<'USAGE'
@@ -108,12 +109,41 @@ _mv_owner_paired() {
   [ "$n" -gt 0 ]
 }
 
+# _mv_key_file -> Ablage des Notfallblatt-Schluessels zwischen move_unlock (vor der Einrichtung) und dem Einspielen; 0600 auf dem
+#   Volume var_la neben dem Merker. Weg mit den Geheimnis-Dateien (_mv_wipe_secrets), bei abort und done.
+_mv_key_file() { printf '%s/move-sheet.key' "$(dirname "$(la_move_file)")"; }
+
+# move_unlock <move.env.gpg> <ziel> — vor der Einrichtung im master (compose/move_unlock.sh, gerufen von setup.sh --answers): einmal den
+#   Schluessel vom Notfallblatt am Terminal fragen (derselbe Leser wie beim Einspielen, _bkp_ask_key_tty), die Antworten damit nach
+#   <ziel> entschluesseln (0600) und den Schluessel bis zum Einspielen ablegen (_mv_key_file): move apply fragt dann nicht noch einmal.
+move_unlock() {
+  local in="$1" out="$2" tries=0 k
+  [ -r "$in" ] || die "Die Antwort-Datei ${in} fehlt."
+  ui_interactive || die "Die Antwort-Datei ist verschlüsselt — dafür braucht setup.sh ein Terminal (Schlüssel vom Notfallblatt der alten Maschine). Es wurde nichts geändert."
+  { printf '\n  %s\n\n' "$(backup_text ask.intro)" > /dev/tty; } 2>/dev/null || true
+  while [ "$tries" -lt 3 ]; do
+    tries=$((tries + 1))
+    k="$(_bkp_ask_key_tty | sed -n 's/^key://p' | head -n1)"
+    if [ -n "$k" ] && ( umask 077; gpg_sym_decrypt "$k" "$in" > "$out" ); then
+      ( umask 077; mkdir -p "$(dirname "$(_mv_key_file)")" && printf '%s' "$k" > "$(_mv_key_file)" ) \
+        || die "Der Schlüssel ließ sich für das Einspielen nicht ablegen ($(_mv_key_file)). Es wurde nichts geändert."
+      ok "Antwort-Datei entschlüsselt — das Einspielen (lifeagents move apply) fragt den Schlüssel nicht noch einmal."
+      return 0
+    fi
+    rm -f -- "$out"
+    warn "Dieser Schlüssel öffnet die Antwort-Datei nicht — bitte das Notfallblatt der alten Maschine nehmen."
+  done
+  die "Der Schlüssel passte dreimal nicht. Es wurde nichts geändert."
+}
+
 # _mv_plan <sicherung> — Probelauf (aendert nichts). Kein gespeicherter Schluessel dieser Maschine oeffnet die Sicherung (sie hat
 #   einen eigenen): dann EINMAL den Schluessel vom Notfallblatt am Terminal erfragen (_MV_SHEET) und an Probelauf UND Einspielen
 #   reichen (--key-stdin), sonst fragte das Einspielen ein zweites Mal. Setzt _MV_PLAN. Direkt rufen, nie in $(…).
 _MV_SHEET=''; _MV_PLAN=''
 _mv_plan() {
   local f="$1" plan code detail tries=0 parsed errf
+  # Schon beim Entsperren der Antworten eingegeben (move_unlock): derselbe Wert, keine zweite Frage.
+  if [ -z "$_MV_SHEET" ] && [ -r "$(_mv_key_file)" ]; then _MV_SHEET="$(cat "$(_mv_key_file)")"; fi
   errf="$(mktemp)"
   while :; do
     plan="$( ( printf '%s' "$_MV_SHEET" | backup_cmd_restore "$f" --plan --json --key-stdin ) 2>"$errf" | tail -n1 || true)"
@@ -163,10 +193,10 @@ _mv_tunnel() {
     state="$(printf '%s' "$js" | jq -r '.state // "unavailable"' 2>/dev/null || printf unavailable)"
     url="$(printf '%s' "$js" | jq -r '.url // ""' 2>/dev/null || true)"
     printf '%s' "$url" | grep -qE "$REACH_LOGIN_RE" || url=''
-    # Der Umzug setzt REACH_MODE=tunnel (move.env). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
+    # Der Umzug setzt REACH_MODE=tunnel (Antwort-Datei). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
     mode="$(printf '%s' "$js" | jq -r '.mode // ""' 2>/dev/null || true)"
     [ -z "$js" ] || [ "$mode" = tunnel ] \
-      || die "Der Weg nach außen ist hier nicht der Tunnel (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt REACH_MODE='tunnel'. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/move.env"
+      || die "Der Weg nach außen ist hier nicht der Tunnel (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt REACH_MODE='tunnel'. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/move.env.gpg"
     case "$state" in
       ready) return 0 ;;
       pending_activation)
@@ -189,6 +219,7 @@ _mv_tunnel() {
 #   die verschluesselte Sicherung bleibt (Sicherheitsnetz bis `done`). Verbund: ueber den Rechner-Ordner.
 _mv_wipe_secrets() {
   local dir="$1" d="$2" f
+  rm -f -- "$(_mv_key_file)" || return 1
   if rt_is_compose; then
     # shellcheck disable=SC2086  # feste Dateinamen ohne Leerzeichen
     rt_host_rm "$(_bkp_hd "$dir")" $MOVE_SECRET_FILES
@@ -250,7 +281,7 @@ move_cmd_apply() {
     _mv_set STAGE restored
   fi
   # Gespraeche, Einstellungen oder Zugaenge nicht angekommen (backup_cli.sh _bkp_restore_parts): einmal nachholen, ohne die Daten
-  # erneut zu ersetzen; sonst hier anhalten, bevor move.env geloescht und der Umzug als eingespielt gilt.
+  # erneut zu ersetzen; sonst hier anhalten, bevor die Antworten geloescht werden und der Umzug als eingespielt gilt.
   if [ -n "$(read_env_value "$BACKUP_STATE_FILE" LAST_RESTORE_PARTS 2>/dev/null || true)" ]; then
     log "Hole die nicht übernommenen Teile nach ..."
     ( printf '%s' "$_MV_SHEET" | backup_cmd_restore "$d/$f" --yes --key-stdin --parts ) || true
@@ -312,7 +343,7 @@ move_cmd_abort() {
     choice="$(printf '%s\t%s\n' 'Ja, verwerfen (nur die Update-Sperre fällt weg, Daten bleiben)' yes 'Nein' no | ui_choose 'Umzug verwerfen? Eingespieltes bleibt, es gibt danach wieder Updates.' 0)"
     [ "$choice" = yes ] || die "Nicht verworfen — nichts geändert."
   fi
-  rm -f "$(la_move_file)"
+  rm -f "$(la_move_file)" "$(_mv_key_file)"
   ok "Umzug verworfen: die Update-Sperre ist weg. Eingespielte Daten bleiben, wie sie sind (zurück auf die alte Maschine: lifeagents retire hier, dann lifeagents retire --undo dort)."
 }
 
@@ -330,7 +361,7 @@ move_cmd_done() {
     choice="$(printf '%s\t%s\n' 'Ja, abnehmen (kein Rückweg mehr, Updates wieder frei)' yes 'Noch nicht' no | ui_choose 'Läuft alles so, wie es soll? Der Umzug wird abgenommen.' 0)"
     [ "$choice" = yes ] || die "Nicht abgenommen — nichts geändert."
   fi
-  rm -f "$(la_move_file)"
+  rm -f "$(la_move_file)" "$(_mv_key_file)"
   ok "Umzug abgenommen: Updates sind wieder frei. Die alte Maschine, die Proxy-Regel im Heimnetz und die Weiterleitung in der FritzBox dürfen jetzt weg; einen Rückweg auf die alte Maschine gibt es nicht mehr."
 }
 

@@ -8,6 +8,7 @@
 #   apt-get update && apt-get install -y curl && curl -fsSL https://github.com/<slug>/releases/latest/download/setup.sh -o setup.sh && bash setup.sh
 #   bash setup.sh --yes                       # Docker ohne Rueckfrage einrichten
 #   bash setup.sh --answers antworten.env     # statt Fragebogen: Antwort-Datei (nach `--` Optionen fuer provision.sh)
+#   bash setup.sh --answers <ordner>/move.env.gpg   # Umzug: verschluesselte Antworten, fragt einmal das Notfallblatt (Terminal)
 #   bash setup.sh --uninstall [--delete-data] # Verbund entfernen; Docker bleibt
 # Optionen: --yes, --image <ref> (Entwickler/CI; Releases tragen den Pin), --answers <datei>, --uninstall, --delete-data, --help.
 # Test-Naehte (nicht in der Hilfe): LA_PROJECT, LA_CORE_PORTS (an den Kern), LA_SETUP_ROOT (Pfad-Praefix), LA_SETUP_WAIT,
@@ -79,6 +80,10 @@ done
 # Eine Referenz, die mit - beginnt, wuerde Docker als Option lesen.
 [ -z "$IMAGE_ARG" ] || [[ "$IMAGE_ARG" =~ ^[a-z0-9][A-Za-z0-9._:/@-]*$ ]] || usage_err "--image: ungueltige Abbild-Referenz."
 [ -z "$ANSWERS" ] || [ -r "$ANSWERS" ] || die "Antwort-Datei nicht lesbar: $ANSWERS"
+# Verschluesselte Umzugs-Antworten brauchen ein Terminal fuer das Notfallblatt: vor jedem Schritt pruefen, nicht erst nach dem Start.
+if [[ "$ANSWERS" == *.gpg ]] && ! { [ -t 0 ] && [ -t 1 ]; }; then
+  die "Die Umzugs-Antworten sind verschlüsselt — setup.sh braucht dafür ein Terminal (Schlüssel vom Notfallblatt der alten Maschine). Es wurde nichts eingerichtet."
+fi
 
 # ask <frage> <hinweis-ohne-terminal> — ja = 0. Ohne --yes und ohne Terminal nie raten.
 ask() {
@@ -400,7 +405,7 @@ reach_hint() {
     needs_machine_auth) printf '\nIm Tailscale-Konto die Maschine freigeben: https://login.tailscale.com/admin/machines\n' ;;
     *) return 0 ;;
   esac
-  if head -n1 "$ANSWERS" | grep -q '^# lifeagents-move'; then
+  if [[ "$ANSWERS" == *.gpg ]] || head -n1 "$ANSWERS" | grep -q '^# lifeagents-move'; then
     dir="$(dirname "$(readlink -f "$ANSWERS")")"
     next="Danach die Daten einspielen: lifeagents move apply ${dir}   (wartet auf die Anmeldung und macht dann weiter)"
   else
@@ -413,7 +418,27 @@ if [ -n "$ANSWERS" ]; then
   [ "${#PROV[@]}" -gt 0 ] || PROV=(--profile release)
   case " ${PROV[*]} " in *" --profile "*|*" --profile="*) ;; *) PROV=(--profile release "${PROV[@]}") ;; esac
   log "Richte mit der Antwort-Datei ein …"
-  rc=0; core "$ANSWERS" install --json -- "${PROV[@]}" || rc=$?
+  rc=0
+  if [[ "$ANSWERS" == *.gpg ]]; then
+    # Umzugs-Antworten (lifeagents retire) sind mit dem Sicherungs-Schluessel verschluesselt: im master entsperren
+    # (compose/move_unlock.sh fragt einmal das Notfallblatt), der Klartext geht nur durch eine Pipe an den Kern, nie auf die Platte.
+    # Jeder Abbruch ab hier (Strg-C, Fehler, gescheiterte Einrichtung) raeumt Antworten und abgelegten Schluessel im master weg.
+    trap 'rm -f "$OUT"; docker exec "$P-master" bash /opt/lifeagents/provisioning/compose/move_unlock.sh drop all >/dev/null 2>&1 || true' EXIT
+    docker exec -i "$P-master" bash /opt/lifeagents/provisioning/compose/move_unlock.sh put < "$ANSWERS" \
+      || die "Die Umzugs-Antworten ließen sich nicht in den master legen. Es wurde nichts eingerichtet."
+    docker exec -it "$P-master" bash /opt/lifeagents/provisioning/compose/move_unlock.sh open \
+      || die "Die Umzugs-Antworten ließen sich nicht entschlüsseln (Meldung oben). Es wurde nichts eingerichtet."
+    mv_plain="$(docker exec "$P-master" bash /opt/lifeagents/provisioning/compose/move_unlock.sh take)" \
+      || die "Die entschlüsselten Umzugs-Antworten ließen sich nicht lesen. Es wurde nichts eingerichtet."
+    core <(printf '%s\n' "$mv_plain") install --json -- "${PROV[@]}" || rc=$?
+    unset mv_plain
+    if [ "$rc" -eq 0 ]; then   # eingerichtet: der Schluessel bleibt fuer move apply, nur die Antworten gehen
+      docker exec "$P-master" bash /opt/lifeagents/provisioning/compose/move_unlock.sh drop >/dev/null 2>&1 || true
+      trap 'rm -f "$OUT"' EXIT
+    fi
+  else
+    core "$ANSWERS" install --json -- "${PROV[@]}" || rc=$?
+  fi
   core_verdict "$rc" || exit 1
   ok "Eingerichtet ($version). Zustand prüfen: lifeagents doctor"
   reach_hint

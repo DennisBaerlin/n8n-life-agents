@@ -418,8 +418,8 @@ retire_stale() {
   return 0
 }
 
-# _wf_private <pfad> <modus> — root:n8n mit <modus>; ohne chown scheiterte erst der Import in n8n, mit unklarer Meldung.
-_wf_private() { if ! { chown "root:${N8N_USER:-n8n}" "$1" && chmod "$2" "$1"; }; then die "Rechte von $1 ließen sich nicht setzen (root:n8n $2)."; fi; }
+# _wf_private <pfad> <modus> <arbeitsordner> — root:n8n mit <modus>; scheitert es, Arbeitsordner (geheime Eingangs-ids) weg und Abbruch.
+_wf_private() { if ! { chown "root:${N8N_USER:-n8n}" "$1" && chmod "$2" "$1"; }; then rm -rf -- "$3"; die "Rechte von $1 ließen sich nicht setzen (root:n8n $2)."; fi; }
 
 # deploy_workflows [scope]  — scope='core' (Default) | '<pkg>'. Deployt die Workflows des Scopes.
 deploy_workflows() {
@@ -483,7 +483,7 @@ deploy_workflows() {
   local app_path; app_path="$(_app_path)"
 
   # Der Ordner traegt die geheimen Eingangs-ids: root:n8n 0750/0640 (n8n liest als n8n, im Verbund uid 1000), sonst niemand.
-  local staging; staging="$(mktemp -d "$(n8n_input_dir)/n8n_wf_deploy.XXXXXX")"; _wf_private "$staging" 0750
+  local staging; staging="$(mktemp -d "$(n8n_input_dir)/n8n_wf_deploy.XXXXXX")"; _wf_private "$staging" 0750 "$staging"
   log "Workflows patchen (Scope '$scope': Credential-Remap + Zeitplaene + Owner-chat_id) -> $staging ..."
   local f base name count=0
   for d in "${wf_dirs[@]}"; do
@@ -534,7 +534,7 @@ deploy_workflows() {
             then .id = ($ing[.id] // .id) | (if has("webhookId") then .webhookId = ($ing[.webhookId] // .webhookId) else . end)
             else . end) else . end
       ' "$f" | sed "s/__OWNER_CHAT_ID__/${owner_chat}/g" > "$staging/$base"
-      _wf_private "$staging/$base" 0640
+      _wf_private "$staging/$base" 0640 "$staging"
       count=$((count + 1))
     done
   done
@@ -569,7 +569,7 @@ deploy_workflows() {
     fi
   fi
   ctx="$(_wf_deploy_context)"
-  mkdir -p "$staging/import"; _wf_private "$staging/import" 0750
+  mkdir -p "$staging/import"; _wf_private "$staging/import" 0750 "$staging"
   for f in "$staging"/*.json; do
     id="$(jq -r '.id // empty' "$f")"
     if [ -z "$id" ]; then mv "$f" "$staging/import/"; continue; fi

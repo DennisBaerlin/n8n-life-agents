@@ -10,7 +10,8 @@
 # Ein neuer Lauf setzt nach der letzten erledigten Stufe fort; `--undo` geht aus jeder Stufe zurueck. PostgreSQL bleibt immer an.
 #
 # Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc; traegt auch Gespraeche, geaenderte Einstellungen und Paket-Zugaenge),
-#   move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
+#   move.env.gpg (Antworten fuer setup.sh --answers, verschluesselt mit dem Sicherungs-Schluessel wie die Sicherung: sie tragen den
+#   Bot-Schluessel, der Ordner liegt im Verbund oft in iCloud o. ae.), vorher.txt (move_snapshot),
 #   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. move_snapshot nutzt auch
 #   `lifeagents move`; es fuehrt auf backup_cli.sh backup_fingerprint.
 #
@@ -194,8 +195,9 @@ TXT
   cat <<TXT
 1. Diesen Ordner direkt auf die neue Maschine kopieren (enthält Schlüssel — nie über Laptop oder Chat):
      scp -r ${dir} root@<neue-maschine>:/root/
-2. Auf der neuen Maschine einrichten (die Antworten kommen aus der Datei):
-     bash setup.sh --answers /root/${base}/move.env -- --packages ${pk}
+2. Auf der neuen Maschine einrichten (die Antworten kommen aus der Datei; sie ist mit dem Schlüssel vom Notfallblatt
+   verschlüsselt, setup.sh fragt ihn einmal, das Einspielen danach nicht noch einmal):
+     bash setup.sh --answers /root/${base}/move.env.gpg -- --packages ${pk}
 3. Auf der neuen Maschine die Daten einspielen:
      lifeagents move apply /root/${base}
 
@@ -206,7 +208,8 @@ TXT
 
 # _ret_publish <staging> <ziel> — Dateien in den Umzugs-Ordner: klassisch ein Ordner hier (0700, Dateien 0600, je Datei .part ->
 #   umbenannt), im Verbund ein Ordner auf dem Rechner (rt_host_put prueft je Datei die Pruefsumme).
-#   Die Sicherung eines frueheren Laufs wuerde sonst mit eingespielt: geloescht wird genau die, die das alte move.manifest nennt —
+#   Die Sicherung eines frueheren Laufs wuerde sonst mit eingespielt: geloescht wird genau die, die das alte move.manifest nennt,
+#   dazu Klartext-Reste aelterer Staende (move.env vor der Verschluesselung, memory.dump eines Vorab-Release mit allen Gespraechen) —
 #   nie andere Sicherungen im Ordner (--out kann der normale Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit
 #   Sicherungen (Verbund) ohne move.manifest bricht ab.
 _ret_publish() {
@@ -216,7 +219,8 @@ _ret_publish() {
     if rt_host_get "$hd" move.manifest > "$st/.alt.manifest" 2>/dev/null; then
       old="$(read_env_value "$st/.alt.manifest" BACKUP_FILE 2>/dev/null || true)"
       case "$old" in */*|*\\*) old='' ;; esac
-      [ -z "$old" ] || rt_host_rm "$hd" "$old" || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
+      # shellcheck disable=SC2086  # $old ist leer oder genau ein Dateiname ohne Leerzeichen (Namensmuster der Sicherung)
+      rt_host_rm "$hd" move.env memory.dump $old || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
     elif [ -n "$(rt_host_ls "$hd" 2>/dev/null)" ]; then
       die "Im Ordner '${out}' liegen Sicherungen, er ist aber kein Umzugs-Ordner — einen eigenen wählen: lifeagents retire --out <ordner>"
     fi
@@ -228,6 +232,7 @@ _ret_publish() {
     [ -e "$out/move.manifest" ] || die "Ordner ${out} ist nicht leer und kein Umzugs-Ordner — einen anderen wählen: lifeagents retire --out <ordner>"
     old="$(read_env_value "$out/move.manifest" BACKUP_FILE 2>/dev/null || true)"
     case "$old" in ''|*/*) ;; *) rm -f -- "${out:?}/${old}" ;; esac
+    rm -f -- "$out/move.env" "$out/memory.dump"
   fi
   ( umask 077; mkdir -p "$out" ) || die "Umzugs-Ordner ${out} ließ sich nicht anlegen."
   chmod 0700 "$out"
@@ -262,7 +267,9 @@ _ret_export() {
   name="$(_bkp_file_name "$(date -u +%Y%m%d%H%M%S)" "$(printf '%s' "$key" | backup_key_id)" "$rel")"
   # Eigene Subshell: backup_cmd_export setzt seinen EXIT-Trap und beendet sich per die.
   ( backup_cmd_export "$st/$name" ) || die "Sicherung ließ sich nicht schreiben — nichts verloren, erneut: lifeagents retire"
-  _ret_write_answers "$st/move.env" "$rel" "$bdir"
+  _ret_write_answers "$st/move.ans" "$rel" "$bdir"
+  ( umask 077; gpg_sym_encrypt "$key" "$st/move.env.gpg" "$st/move.ans" ) || die "Die Antwort-Datei ließ sich nicht verschlüsseln — nichts verloren, erneut: lifeagents retire"
+  rm -f -- "$st/move.ans"
   move_snapshot > "$st/vorher.txt" || die "Vergleichswerte ließen sich nicht lesen."
   pk="$(for p in $(_bkp_active_names); do [ "$p" = core ] || printf '%s\n' "$p"; done | paste -sd, -)"
   {

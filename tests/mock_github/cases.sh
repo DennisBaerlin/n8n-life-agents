@@ -5,7 +5,7 @@
 # `lifeagents update`) gegen den Mock tests/mock_github/server.js: immer anonym (auch mit altem GH_TOKEN in der Env nie
 # ein Auth-Header), Repo nicht oeffentlich / kein Release / falsches Tag ohne Frage, Abfragelimit, Netzfehler,
 # abgebrochener Download, Unterschrift + SHA256 (Fake-Releases mit Test-Schluessel signiert; ohne Bund Abbruch; der
-# echte Projekt-Schluessel lehnt die Test-Unterschrift ab), Redirect, Aufraeumen des Arbeitsverzeichnisses, drop_legacy_repo_token, Rueckweg auf nicht mehr ladbare Tags. Das
+# echte Projekt-Schluessel lehnt die Test-Unterschrift ab), Redirect, Aufraeumen des Arbeitsverzeichnisses, drop_legacy_repo_token, Rueckweg auf nicht mehr ladbare Tags, Rueckweg-Profil. Das
 # Fake-Release enthaelt einen Stub-provision.sh, der RELEASE_TAG + Args in eine Marker-Datei schreibt (= "Applier
 # gestartet").
 #
@@ -210,6 +210,18 @@ done
 for kept in v0.35.0 v0.40.0 v1.0.0; do
   rb_run upgrade_rollback_hint "$kept"
   if ! has 'KEIN RÜCKWEG' && has 'dropdb' && has "--version ${kept}"; then pass "rollback_hint_kept_$kept"; else fail "rollback_hint_kept_$kept" "$(show)"; fi
+done
+
+# 15 Rueckweg-Profil: wie provision.sh gespeichert, sonst dev. Eine dev-Installation speichert keins (nur release wird
+#    persistiert), und install.sh haengt ohne --profile release an: das stellte ihr beim Rueckweg die Fragen einer Neuinstallation.
+pdir="$W/rb_profile"; mkdir -p "$pdir"
+# shellcheck disable=SC2016  # $ROOT expandiert erst im inneren bash -c
+RBP_SH='. "$ROOT/provisioning/lib/common.sh"; . "$ROOT/provisioning/lib/upgrade_guard.sh"; _rb_profile_args'
+for want in none dev release; do
+  if [ "$want" = none ]; then printf 'HOUSEHOLD_TIMEZONE=Europe/Berlin\n' > "$pdir/core.env"; exp='--profile dev'
+  else printf 'INSTALL_PROFILE=%s\n' "$want" > "$pdir/core.env"; exp="--profile $want"; fi
+  got="$(env LIFEAGENTS_DIR="$pdir" bash -c "$RBP_SH" 2>&1 < /dev/null)"
+  if [ "$got" = "$exp" ]; then pass "rollback_profile_$want"; else fail "rollback_profile_$want" "erwartet [$exp], bekam [$got]"; fi
 done
 
 exit "$fails"

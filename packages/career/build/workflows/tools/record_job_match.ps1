@@ -3,7 +3,8 @@
 
 # --- agent.career.tool_record_job_match -------------------------------
 # Merkt eine manuell weitergeleitete Stelle vor (source='forwarded'). Verb record_: idempotenter
-# Tracking-Eintrag, UPSERT auf external_id -> bewusst nicht create_ (dessen lokaler Vertrag
+# Tracking-Eintrag der Person des Absenders (chat_id -> career.fn_record_job_match; ohne chat_id fiele er an den Owner),
+# UPSERT auf (source, external_id, person_id) -> bewusst nicht create_ (dessen lokaler Vertrag
 # "nur Neues + Pflicht-Dubletten-Node" widerspricht UPSERT) und nicht book_ (Finanz).
 # HITL owner_info (additiv, kein Identitaets-/Plan-Write). Cred = Haupt-RW (nur finance nutzt finance_rw).
 # Nach dem Write: Zero-Spam-Angebot, den werktaeglichen Job-Scan zu aktivieren (rem:on:score_jobs = nur
@@ -36,6 +37,7 @@ function Build-RecordJobMatch {
             location = '$(''Start'').item.json.location'
             url      = '$(''Start'').item.json.url'
             external_id    = '$(''Start'').item.json.external_id'
+            chat_id  = "String(`$('Start').item.json.chat_id || '')"
         })
 
     $ifWriteOk = Build-If 'Write ok?' @(1300, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'

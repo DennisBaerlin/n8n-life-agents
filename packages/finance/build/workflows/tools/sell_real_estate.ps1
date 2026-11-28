@@ -17,7 +17,7 @@ function Build-SellRealEstate {
         "=Proceeds account '{{ `$('Start').item.json.proceeds_account_name }}' resolves to {{ `$('Resolve Proceeds Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Proceeds Account').item.json.candidates) }}. Ask the user which exact account to use."
 
     $readRe = Build-Pg 'Read Property' @(660, 0) `
-        "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status, (SELECT COUNT(*)::int FROM finance.loans l WHERE l.real_estate_id = re.id AND l.status = 'active') AS loan_count FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name = ((`$1::jsonb)->>'real_estate_name') ORDER BY re.id LIMIT 1;" `
+        "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name = ((`$1::jsonb)->>'real_estate_name') ORDER BY re.id LIMIT 1;" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
     # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readRe -KeyField 're_status' -IfName 'Property found?' -ErrName 'Property not found' `
@@ -46,7 +46,7 @@ function Build-SellRealEstate {
         (New-HitlLine 'finance.label.credited_to'   "$S.proceeds_account_name")
         (New-HitlLine 'core.label.date'             "`$('Dry run').item.json.r.effective.sale_date" -Kind date)   # DB-Default heute (Probelauf)
         (New-HitlNote -Key 'finance.note.sell_re_action')
-        (New-HitlNote -Key 'finance.note.sell_re_loans' -If "$R.loan_count > 0" -Params @{ count = "$R.loan_count" })
+        (New-HitlNote -Key 'finance.note.sell_re_loans' -If "Number(`$('Dry run').item.json.r.linked_loan_count || 0) > 0" -Params @{ count = "`$('Dry run').item.json.r.linked_loan_count" })   # Zahl der offenen Kredite aus dem Probelauf (fn_sell_real_estate), kein eigener Zaehler
     )
 
     $gateId = $GateId
@@ -76,7 +76,7 @@ function Build-SellRealEstate {
 
     $stickyFn = Build-Sticky 'fn_sell_real_estate: Verkauf + Allow+Hinweis' @(2200, -300) `
         'Erlös einbeinig; status=sold; offene Kredite nur Hinweis' `
-        'fn_sell_real_estate bucht den Erlös einbeinig (+sale_price, category other, Saldo via Trigger) und setzt die Immobilie auf sold (current_value=Verkaufspreis). Verknüpfte AKTIVE Kredite werden NICHT abgelöst: linked_loans (Name + Restschuld) + note kommen zurück, der Agent weist den Nutzer hin (separat settle_loan). Bereits verkauft / sale_price<=0 -> {ok:false}. RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools) (Resolver p_active_only=FALSE).' 260 540
+        'fn_sell_real_estate bucht den Erlös einbeinig (+sale_price, category other, Saldo via Trigger) und setzt die Immobilie auf sold (current_value=Verkaufspreis). Verknüpfte Offene Kredite (aktiv oder pausiert, finance.fn_loan_is_outstanding) werden nicht abgelöst: linked_loans (Name + Restschuld) + note kommen zurück, der Agent weist den Nutzer hin (separat settle_loan). Bereits verkauft / sale_price<=0 -> {ok:false}. Nicht gefunden/mehrdeutig: {ok:false, code} (nicht gefunden fängt vorher das Found?-Gate des Tools) (Resolver p_active_only=FALSE).' 260 540
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(880, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `

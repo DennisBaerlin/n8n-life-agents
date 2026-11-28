@@ -7,8 +7,9 @@ function Build-SetSavingsGoal {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months','depot_risk_accepted','handoff_task_id')
 
+    # p_active_only NULL = aktive zuerst, ohne aktiven Treffer alle: eine pausierte Sache bleibt aenderbar (status active).
     $resGoal = Build-Pg 'Resolve Goal' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'goal_name', TRUE);" `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'goal_name', NULL);" `
         ([ordered]@{ goal_name = '$(''Start'').item.json.goal_name' })
 
     $ifGoal = Build-If 'Goal unique?' @(440, 0) "={{ `$json.hit_count }}" '1'

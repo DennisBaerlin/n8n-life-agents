@@ -635,7 +635,6 @@
   "finance.hitl.settle_loan": "Kredit ablösen – bitte prüfen:",
   "finance.hitl.void_transaction": "Buchung rückgängig machen – bitte prüfen:",
   "finance.label.balance": "Saldo",
-  "finance.note.delete_account_referenced": "⚠️ Am Konto hängen noch {count} Einträge, darum geht Löschen nicht. Schließ das Konto stattdessen.",
   "finance.note.delete_account_hard": "⚠️ Das leere Konto wird endgültig gelöscht.",
   "finance.label.shares": "Anteile",
   "finance.label.booked_trades": "Gebuchte Käufe/Verkäufe",

@@ -27,7 +27,7 @@
       "create_real_estate", "set_real_estate", "sell_real_estate", "delete_real_estate",
       "create_recurring_payment", "set_recurring_payment", "delete_recurring_payment",
       "create_recurring_transfer", "import_recurring_suggestions", "send_recurring_suggestions", "cancel_handoff_task", "defer_handoff_task",
-      "create_savings_goal", "set_savings_goal", "close_savings_goal",
+      "create_savings_goal", "set_savings_goal", "close_savings_goal", "book_savings_goal_transfer", "book_savings_reservation",
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
       "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",

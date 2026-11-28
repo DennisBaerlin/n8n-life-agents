@@ -8,7 +8,7 @@ function Build-DeleteAccount {
     $trig = Build-Trigger @('account_name')
 
     $readAcc = Build-Pg 'Read Account' @(220, 0) `
-        "=SELECT a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance, ( (SELECT COUNT(*) FROM finance.transactions WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.depot_holdings WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.recurring_payments WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.insurances WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.savings_goal_reserve_entries WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.savings_plans WHERE depot_id=a.id) + (SELECT COUNT(*) FROM finance.loans WHERE loan_account_id=a.id OR debit_account_id=a.id OR disbursement_account_id=a.id)+ (SELECT COUNT(*) FROM finance.accounts o WHERE o.settlement_account_id=a.id) )::int AS ref_count FROM finance.accounts a LEFT JOIN finance.account_balances bal ON bal.account_id=a.id WHERE a.name ILIKE ((`$1::jsonb)->>'account_name') LIMIT 1;" `
+        "=SELECT a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance FROM finance.accounts a LEFT JOIN finance.account_balances bal ON bal.account_id=a.id WHERE a.name ILIKE ((`$1::jsonb)->>'account_name') LIMIT 1;" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
     # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readAcc -KeyField 'acc_status' -IfName 'Account found?' -ErrName 'Account not found' `
@@ -20,7 +20,8 @@ function Build-DeleteAccount {
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'account_id')::int AS account_id" `
         -Params ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
-    # Saldo in der Konto-Waehrung (Read Account). Keine Datumsfelder.
+    # Saldo in der Konto-Waehrung (Read Account). Die Karte erscheint nur nach bestandenem Probelauf, also ohne jede Referenz:
+    # der Hinweis ist fest, ein eigener Referenz-Zaehler im Workflow waere eine zweite Adresse neben fn_delete_account.
     $S = "`$('Start').item.json"
     $A = "`$('Read Account').item.json"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.delete_account' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -29,7 +30,7 @@ function Build-DeleteAccount {
         (New-HitlLine 'finance.label.bank'    "$A.bank")
         (New-HitlLine 'finance.label.balance' "$A.balance" -Kind money -Currency "$A.currency")
         (New-HitlLine 'core.label.status'     "$A.acc_status" -Kind enum -Enum 'finance.enum.status')
-        (New-HitlNote -KeyExpr "($A.ref_count > 0 ? 'finance.note.delete_account_referenced' : 'finance.note.delete_account_hard')" -Params @{ count = "$A.ref_count" })
+        (New-HitlNote -Key 'finance.note.delete_account_hard')
     )
 
     $gateId = $GateId
@@ -54,11 +55,11 @@ function Build-DeleteAccount {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_delete_account mit denselben Werten, immer zurückgerollt. ok:false (Konto hat noch Referenzen: Transaktionen, Holdings, Daueraufträge, Kredite ...) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (mehrdeutig; nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_delete_account mit denselben Werten, immer zurückgerollt. ok:false (Konto hat noch Referenzen: Transaktionen, Holdings, Daueraufträge, Kredite ...) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Mehrdeutig kommt ebenfalls als ok:false (code ambiguous, Kandidaten); nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
 
     $stickyFn = Build-Sticky 'fn_delete_account: Hard-DELETE-if-empty' @(1760, -300) `
         'Löschen nur ohne jede Referenz' `
-        'fn_delete_account prüft alle FK-Referenzen (Transaktionen, Depot-Holdings, abbuchende recurring_payments, Versicherungen, Sparziel-Reserve-Journal (Depot), Sparpläne, Kredite (loan/debit/disbursement), Verrechnungskonto-Nutzung). Beliebige Referenz: {ok:false, reason, ...count} OHNE Write -> Delete rejected (für aktive Konten close_account nutzen). Sonst: DELETE interest_rates (CASCADE) + balance-Zeile (KEIN CASCADE -> explizit) + Konto; action=deleted. RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools).' 260 520
+        'fn_delete_account prüft alle FK-Referenzen (Transaktionen, Depot-Holdings, abbuchende recurring_payments und Ziele eines Dauer-Übertrags, Sparziel-Reserve-Journal, Sparpläne, Kredite (loan/debit/disbursement), Verrechnungskonto-Nutzung). Beliebige Referenz: {ok:false, reason, ...count} OHNE Write -> Delete rejected (für aktive Konten close_account nutzen). Sonst: DELETE interest_rates (CASCADE) + balance-Zeile (KEIN CASCADE -> explizit) + Konto; action=deleted. Nicht gefunden/mehrdeutig: {ok:false, code} (nicht gefunden fängt vorher das Found?-Gate des Tools).' 260 520
 
     $nodes = @($trig, $readAcc, $found.If, $found.Err) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn)

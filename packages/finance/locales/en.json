@@ -635,7 +635,6 @@
   "finance.hitl.settle_loan": "Pay off loan – please check:",
   "finance.hitl.void_transaction": "Reverse booking – please check:",
   "finance.label.balance": "Balance",
-  "finance.note.delete_account_referenced": "⚠️ {count} entries still depend on this account, so it cannot be deleted. Close the account instead.",
   "finance.note.delete_account_hard": "⚠️ The empty account is deleted permanently.",
   "finance.label.shares": "Shares",
   "finance.label.booked_trades": "Booked buys/sells",

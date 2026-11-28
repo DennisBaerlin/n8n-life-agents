@@ -179,6 +179,8 @@ _ur_report() {
 }
 
 # _ur_lock_release — Update-Sperre abgeben: Telegram-Aufrufe duerfen ein Terminal-Update nie aufhalten (es wartet nur 30 s).
+#   Nur fd 9 schliessen: jede weitere Umleitung an einem `exec` ohne Befehl gilt fuer den Rest des Prozesses (ein `2>/dev/null`
+#   hier naehme dem Runner alle spaeteren Meldungen; Test tests/mock_runtime/shell_trap_cases.sh SH-B).
 _ur_lock_release() { exec 9>&-; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
 
 # _ur_reports_flush [auftrag] — offene Ergebnis-Meldungen zustellen. Der erste Aufruf fragt n8n nicht (Leerlauf jede Minute).

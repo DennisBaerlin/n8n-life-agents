@@ -23,13 +23,22 @@ if (-not $prek) {
     throw "prek nicht gefunden. Installieren:  winget install --id j178.Prek  (dann Shell neu starten)."
 }
 
+# Haken mit `-full`-Zwilling laufen in der Push-Stufe voll; mit --all-files liefe dieselbe Pruefung schon in der Commit-Stufe. SKIP gilt
+# nur fuer den ersten Lauf: `shellcheck-full` ruft prek selbst auf und erbte die Liste. Test: scripts/dev/pre_push_check_test.ps1.
+$ids = @([regex]::Matches([System.IO.File]::ReadAllText((Join-Path $RepoRoot '.pre-commit-config.yaml')), '(?m)^\s*- id:\s*(\S+)') | ForEach-Object { $_.Groups[1].Value })
+$twins = @($ids | Where-Object { $ids -ccontains "$_-full" } | Sort-Object -Unique)
+
 Push-Location $RepoRoot
+$savedSkip = $env:SKIP
 try {
+    $env:SKIP = (@($savedSkip -split ',') + $twins | Where-Object { $_ }) -join ','
     & $prek run --all-files --hook-stage pre-commit
     $a = $LASTEXITCODE
+    $env:SKIP = $savedSkip
     & $prek run --all-files --hook-stage pre-push
     $b = $LASTEXITCODE
 } finally {
+    $env:SKIP = $savedSkip
     Pop-Location
 }
 

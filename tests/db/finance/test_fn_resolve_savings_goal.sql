@@ -46,6 +46,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL resolve_savings_goal [NULL bevorzugt die aktive]: count=% id=%', v_count, v_id; END IF;
   SELECT hit_count INTO v_count FROM finance.fn_resolve_savings_goal('__test_sg_dup__', FALSE);
   IF v_count IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL resolve_savings_goal [FALSE meldet beide]: count=%', v_count; END IF;
+  -- "aktive zuerst" gilt ueber beide Treffer-Stufen: die aktive mit anderer Gross-/Kleinschreibung schlaegt die nicht aktive mit exaktem Namen
+  UPDATE finance.savings_goals SET name = '__TEST_SG_DUP__' WHERE id = (SELECT max(x.id) FROM finance.savings_goals x WHERE x.name = '__test_sg_dup__');
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_savings_goal('__test_sg_dup__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT x.id FROM finance.savings_goals x WHERE x.name = '__TEST_SG_DUP__') THEN
+    RAISE EXCEPTION 'FAIL resolve_savings_goal [NULL: aktive (andere Schreibweise) vor nicht aktiver (exakt)]: count=% id=%', v_count, v_id; END IF;
   RAISE NOTICE 'PASS resolve_savings_goal [NULL: aktive zuerst, sonst alle]';
 
 END $$;

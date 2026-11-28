@@ -214,6 +214,22 @@ BEGIN
      OR EXISTS (SELECT 1 FROM finance.market_prices WHERE symbol = 'MPTNY') THEN
     RAISE EXCEPTION 'FAIL [4b]: Kurs unter der Spalten-Aufloesung: %', v_result; END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [Kurs rundet auf 0 -> verworfen, Lauf laeuft weiter]';
+
+  -- Ein Kurs jenseits der Spalte numeric(20,8) faellt still heraus; die anderen Symbole des Laufs werden geschrieben.
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency) VALUES
+    (v_depot, 'IE00BMPBIG01', 'MPBIG', 'Riesen-Kurs', 3, 'EUR'),
+    (v_depot, 'IE00BMPOKL01', 'MPOKL', 'Normal-Kurs zwei', 3, 'EUR');
+  BEGIN
+    v_result := finance.fn_upsert_market_prices(jsonb_build_object('as_of', '2026-06-22',
+                  'prices', jsonb_build_object('MPBIG', 1e15, 'MPOKL', 7.25)));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL [4c]: Kurs ueber der Spalte bricht den Lauf ab: %', SQLERRM;
+  END;
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 1
+     OR (SELECT price FROM finance.market_prices WHERE symbol = 'MPOKL' AND as_of = DATE '2026-06-22') IS DISTINCT FROM 7.25
+     OR EXISTS (SELECT 1 FROM finance.market_prices WHERE symbol = 'MPBIG') THEN
+    RAISE EXCEPTION 'FAIL [4c]: Kurs ueber der Spalte: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_upsert_market_prices [Kurs ueber der Spalte -> verworfen, Lauf laeuft weiter]';
 END $$;
 
 ROLLBACK;

@@ -53,6 +53,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL resolve_real_estate [NULL bevorzugt die aktive]: count=% id=%', v_count, v_id; END IF;
   SELECT hit_count INTO v_count FROM finance.fn_resolve_real_estate('__test_re_dup__', FALSE);
   IF v_count IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL resolve_real_estate [FALSE meldet beide]: count=%', v_count; END IF;
+  -- "aktive zuerst" gilt ueber beide Treffer-Stufen: die aktive mit anderer Gross-/Kleinschreibung schlaegt die nicht aktive mit exaktem Namen
+  UPDATE finance.real_estate SET name = '__TEST_RE_DUP__' WHERE id = (SELECT max(x.id) FROM finance.real_estate x WHERE x.name = '__test_re_dup__');
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_real_estate('__test_re_dup__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT x.id FROM finance.real_estate x WHERE x.name = '__TEST_RE_DUP__') THEN
+    RAISE EXCEPTION 'FAIL resolve_real_estate [NULL: aktive (andere Schreibweise) vor nicht aktiver (exakt)]: count=% id=%', v_count, v_id; END IF;
   RAISE NOTICE 'PASS resolve_real_estate [NULL: aktive zuerst, sonst alle]';
 
 END $$;

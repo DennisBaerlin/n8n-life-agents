@@ -44,7 +44,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    SELECT value INTO v_cur_api FROM core.config WHERE category = 'api' AND key = 'core_version';
+    SELECT btrim(value, E' \t\r\n') INTO v_cur_api FROM core.config WHERE category = 'api' AND key = 'core_version';
     IF v_req_api <> '' THEN
         IF v_cur_api IS NULL OR v_cur_api = '' THEN
             v_api_ok := FALSE;   -- keine bekannte Core-API -> nicht kompatibel

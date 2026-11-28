@@ -12,6 +12,6 @@ LANGUAGE plpgsql STABLE
 SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
-    RETURN COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d+)\s*$'), '')::int, 2);
+    RETURN COALESCE(NULLIF(substring(COALESCE(core.fn_config_get('core', 'advisor', 'check_max_passes'), '') FROM '^\s*(\d{1,6})\s*$'), '')::int, 2);
 END;
 $$;

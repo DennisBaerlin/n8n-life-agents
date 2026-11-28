@@ -5,7 +5,8 @@
 --   bei hit_count > 1 dem Nutzer die Treffer praesentieren kann.
 --   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 --   p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle
---     (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
+--     (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt, auch bei anderer
+--     Gross-/Kleinschreibung).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_real_estate(
     p_name        text,
@@ -22,8 +23,8 @@ DECLARE
     v_exact      BOOLEAN;
     v_act        BOOLEAN;
 BEGIN
-    FOREACH v_exact IN ARRAY ARRAY[TRUE, FALSE] LOOP
     FOREACH v_act IN ARRAY CASE WHEN p_active_only IS NULL THEN ARRAY[TRUE, FALSE] ELSE ARRAY[p_active_only] END LOOP
+    FOREACH v_exact IN ARRAY ARRAY[TRUE, FALSE] LOOP
     SELECT
         jsonb_agg(jsonb_build_object(
             'id',     re.id,

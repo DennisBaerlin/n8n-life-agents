@@ -382,7 +382,7 @@ Umfang: 643 fn-Dateien.
 ## agent.fn_approve_learn_candidate
 - `agent.fn_approve_learn_candidate(p jsonb) -> jsonb`
 - jsonb-Keys: candidate_id, chat_id, ok
-- agent.fn_approve_learn_candidate(p jsonb) -> jsonb Der owner-gegatete einzige core_contexts-Schreibpfad des Lern-Loops (Orchestrator-Callback learn:ok:<id>). Dispatcht nach target_kind: 'fact' -> agent.fn_set_context_facts (metadata.facts-Merge, validierte Route); 'note' -> core.fn_append_context_note (Prosa unter "## Gelernt"). Markiert den Kandidaten 'approved' nur bei erfolgreichem Write; ein {ok:false} des Ziel-Writes (z. B. Person fehlt im Haushalt, nicht-Knowledge-Kontext) wird durchgereicht, der Kandidat bleibt pending. owner_only- Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate. Eingabe p: { candidate_id, chat_id }, candidate_id Pflicht. Rueckgabe: {ok:true, target_kind, context_name, write} | {ok:false, reason}; reason = owner_only, "candidate_id required", "candidate not found", "candidate already <status>" (auch 'expired' fuer einen pending- Vorschlag nach expires_at, bevor der Lern-Cron ihn umstellt) oder der durchgereichte Ziel-Write. Seiteneffekt: Ziel-Write (Fakten bzw. Notiz) und guide_learn_candidates.status = 'approved'. INVOKER, search_path-Pin + REVOKE.
+- agent.fn_approve_learn_candidate(p jsonb) -> jsonb Der owner-gegatete einzige core_contexts-Schreibpfad des Lern-Loops (Orchestrator-Callback learn:ok:<id>). Dispatcht nach target_kind: 'fact' -> agent.fn_set_context_facts (metadata.facts-Merge, validierte Route); 'note' -> core.fn_append_context_note (Prosa unter "## Gelernt"). Markiert den Kandidaten 'approved' nur bei erfolgreichem Write; ein {ok:false} des Ziel-Writes (z. B. Person fehlt im Haushalt, nicht-Knowledge-Kontext) wird durchgereicht, der Kandidat bleibt pending. owner_only- Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate. Eingabe p: { candidate_id, chat_id }, candidate_id Pflicht. Rueckgabe: {ok:true, target_kind, context_name, write} | {ok:false, reason}; reason = owner_only, "candidate_id required", "candidate not found", "candidate already <status>" (approved|rejected), "candidate expired" (Status expired oder pending nach expires_at, bevor der Lern-Cron ihn umstellt; eigener Wortlaut, weil nichts gespeichert wurde) oder der durchgereichte Ziel-Write. Seiteneffekt: Ziel-Write (Fakten bzw. Notiz) und guide_learn_candidates.status = 'approved'. INVOKER, search_path-Pin + REVOKE.
 
 ## agent.fn_arm_pairing_challenge (Multi-User-Pairing — Einmal-Code armieren)
 - `agent.fn_arm_pairing_challenge(p jsonb) -> jsonb`
@@ -1292,7 +1292,7 @@ Umfang: 643 fn-Dateien.
 ## core.fn_handoff_claim_ttl
 - `core.fn_handoff_claim_ttl() -> int`
 - jsonb-Keys: --
-- core.fn_handoff_claim_ttl() — wie lange ein Claim einer vereinbarten Plan-Aufgabe als "diese Runde" gilt (READ) Die eine Lese-Adresse fuer core.config advisor.handoff_claim_ttl_minutes (fehlend -> 120), in Minuten. Aufrufer: core.fn_handoff_task_check, core.fn_handle_handoff_cb, core.fn_handoff_overview, core.fn_plan_rollout_next, core.fn_stash_hitl_note. Rueckgabe int. STABLE, INVOKER, search_path gepinnt; plpgsql (late-bound). Tests: tests/db/core/test_fn_handoff_claim_ttl.sql
+- core.fn_handoff_claim_ttl() — wie lange ein Claim einer vereinbarten Plan-Aufgabe als "diese Runde" gilt (READ) Die eine Lese-Adresse fuer core.config advisor.handoff_claim_ttl_minutes (fehlend oder unlesbar -> 120), in Minuten. Aufrufer: core.fn_handoff_task_check, core.fn_handle_handoff_cb, core.fn_handoff_overview, core.fn_plan_rollout_next, agent.fn_stash_hitl_note. Rueckgabe int. STABLE, INVOKER, search_path gepinnt; plpgsql (late-bound). Tests: tests/db/core/test_fn_handoff_claim_ttl.sql
 
 ## finance.fn_handoff_diff (READ, STABLE) -- Unterschied zwischen dem vereinbarten Soll einer Plan-Aufgabe und dem heutigen Stand
 - `finance.fn_handoff_pairs(p_wanted jsonb, p_entered_refs jsonb) -> jsonb`
@@ -2574,7 +2574,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_insurance (READ, STABLE)
 - `finance.fn_resolve_insurance(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Versicherungs-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
+- Loest Versicherungs-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt, auch bei anderer Gross-/Kleinschreibung).
 
 ## finance.fn_resolve_loan (READ, STABLE)
 - `finance.fn_resolve_loan(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( loan_id int, loan_account_id int, debit_account_id int, monthly_annuity numeric, hit_count int, candidates jsonb )`
@@ -2594,7 +2594,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_pension (READ, STABLE)
 - `finance.fn_resolve_pension(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Altersvorsorge-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
+- Loest Altersvorsorge-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt, auch bei anderer Gross-/Kleinschreibung).
 
 ## core.fn_resolve_person (READ-ONLY, SECURITY DEFINER — publiziertes Core-Lesefenster)
 - `core.fn_resolve_person(p_name text, p_chat_id text DEFAULT NULL) -> TABLE ( person_id text, full_name text, hit_count int, candidates jsonb )`
@@ -2614,7 +2614,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_real_estate (READ, STABLE)
 - `finance.fn_resolve_real_estate(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Immobilien-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool bei hit_count > 1 dem Nutzer die Treffer praesentieren kann. Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
+- Loest Immobilien-Name in ID auf (Vorbild: fn_resolve_account). Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool bei hit_count > 1 dem Nutzer die Treffer praesentieren kann. Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt, auch bei anderer Gross-/Kleinschreibung).
 
 ## finance.fn_resolve_recurring_payment (READ, STABLE)
 - `finance.fn_resolve_recurring_payment(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
@@ -2624,7 +2624,7 @@ Umfang: 643 fn-Dateien.
 ## finance.fn_resolve_savings_goal (READ, STABLE)
 - `finance.fn_resolve_savings_goal(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`
 - jsonb-Keys: --
-- Loest Sparziel-Name in ID auf (Vorbild fn_resolve_account). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt).
+- Loest Sparziel-Name in ID auf (Vorbild fn_resolve_account). Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer. p_active_only: TRUE (Default) = nur status='active'; FALSE = alle; NULL = aktive zuerst, ohne aktiven Treffer alle (Aendern-Werkzeuge: eine pausierte oder beendete Sache bleibt auffindbar, eine aktive gleichen Namens gewinnt, auch bei anderer Gross-/Kleinschreibung).
 
 ## finance.fn_resolve_savings_plan (READ, STABLE)
 - `finance.fn_resolve_savings_plan(p_name text, p_active_only boolean DEFAULT TRUE) -> TABLE ( id int, hit_count int, candidates jsonb )`

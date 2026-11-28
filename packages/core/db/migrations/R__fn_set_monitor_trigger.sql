@@ -182,7 +182,7 @@ BEGIN
             threshold_value  = COALESCE(agent.fn_parse_decimal_or_null(p->>'threshold_value'), threshold_value),
             drawdown_pct     = COALESCE(agent.fn_parse_decimal_or_null(p->>'drawdown_pct'), drawdown_pct),
             due_date         = COALESCE(v_due, due_date),
-            warn_days_before = COALESCE(NULLIF(p->>'warn_days_before', '')::int, warn_days_before),
+            warn_days_before = COALESCE(NULLIF(trim(p->>'warn_days_before'), '')::int, warn_days_before),
             expected_unit    = COALESCE(NULLIF(trim(COALESCE(p->>'expected_unit','')), ''), expected_unit),
             min_plausible    = COALESCE(agent.fn_parse_decimal_or_null(p->>'min_plausible'), min_plausible),
             max_plausible    = COALESCE(agent.fn_parse_decimal_or_null(p->>'max_plausible'), max_plausible),

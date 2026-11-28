@@ -8,8 +8,9 @@
 --   Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate.
 --   Eingabe p: { candidate_id, chat_id }, candidate_id Pflicht.
 --   Rueckgabe: {ok:true, target_kind, context_name, write} | {ok:false, reason}; reason = owner_only,
---   "candidate_id required", "candidate not found", "candidate already <status>" (auch 'expired' fuer einen pending-
---   Vorschlag nach expires_at, bevor der Lern-Cron ihn umstellt) oder der durchgereichte Ziel-Write.
+--   "candidate_id required", "candidate not found", "candidate already <status>" (approved|rejected), "candidate expired"
+--   (Status expired oder pending nach expires_at, bevor der Lern-Cron ihn umstellt; eigener Wortlaut, weil nichts
+--   gespeichert wurde) oder der durchgereichte Ziel-Write.
 --   Seiteneffekt: Ziel-Write (Fakten bzw. Notiz) und guide_learn_candidates.status = 'approved'.
 --   INVOKER, search_path-Pin + REVOKE.
 -- ============================================================
@@ -33,11 +34,11 @@ BEGIN
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'candidate not found');
     END IF;
+    IF c.status = 'expired' OR (c.status = 'pending' AND c.expires_at <= now()) THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'candidate expired');
+    END IF;
     IF c.status <> 'pending' THEN
         RETURN jsonb_build_object('ok', false, 'reason', format('candidate already %s', c.status));
-    END IF;
-    IF c.expires_at <= now() THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'candidate already expired');
     END IF;
 
     IF c.target_kind = 'fact' THEN

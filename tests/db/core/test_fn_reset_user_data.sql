@@ -52,8 +52,9 @@ END $$;
 -- ===== (v) Jede Tabelle in agent/core ist fuer den Reset eingeordnet =====
 -- Paket-Tabellen leert der Reset deny-by-default; die Host-Tabellen stehen einzeln in der fn. Eine neue Tabelle mit
 -- Nutzer-Inhalt fiele dort still durch. Darum: jede Basistabelle in agent/core wird entweder von core.fn_reset_user_data,
--- dem Personen-Abbau oder dem Onboarding-Reset genannt (bzw. heisst *_chat_memory), oder sie steht hier als bewusst
--- behalten, mit Grund. Eine neue Tabelle ohne Einordnung macht den Test rot.
+-- dem Personen-Abbau oder dem Onboarding-Reset geschrieben (DELETE/UPDATE/INSERT/TRUNCATE auf genau diesen Namen; nur
+-- gelesen zaehlt nicht) bzw. heisst *_chat_memory, oder sie steht hier als bewusst behalten, mit Grund. Eine neue
+-- Tabelle ohne Einordnung macht den Test rot.
 DO $$
 DECLARE
   v_src  text := pg_get_functiondef('core.fn_reset_user_data(text)'::regprocedure)
@@ -62,6 +63,7 @@ DECLARE
   v_keep text[] := ARRAY[
     -- Stammdaten und Einstellungen aus Manifest/Seed, kein Nutzer-Inhalt
     'agent.ai_models', 'core.advisors', 'core.app_screens', 'core.callback_handlers', 'core.config', 'core.context_renderers',
+    'core.context_scopes', 'core.context_validators',
     'core.cron_labels', 'core.help_catalog', 'core.monitor_acquisition_methods', 'core.package_registry', 'core.prompt_kinds',
     'core.schema_version', 'core.services', 'core.ui_languages', 'core.ui_personas', 'core.ui_texts',
     -- Schluessel der Installation
@@ -83,7 +85,7 @@ BEGIN
     FROM (SELECT n.nspname || '.' || c.relname AS t, c.relname AS r
             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
            WHERE n.nspname IN ('agent', 'core') AND c.relkind IN ('r', 'p') AND NOT c.relispartition) x
-   WHERE position(x.t IN v_src) = 0 AND x.r NOT LIKE '%\_chat\_memory' ESCAPE '\' AND NOT x.t = ANY (v_keep);
+   WHERE v_src !~ ('(DELETE FROM|UPDATE|INSERT INTO|TRUNCATE TABLE)\s+' || replace(x.t, '.', '\.') || '\M') AND x.r NOT LIKE '%\_chat\_memory' ESCAPE '\' AND NOT x.t = ANY (v_keep);
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL (v) Tabelle ohne Reset-Einordnung (in core.fn_reset_user_data leeren oder hier mit Grund behalten): %', v_bad;
   END IF;

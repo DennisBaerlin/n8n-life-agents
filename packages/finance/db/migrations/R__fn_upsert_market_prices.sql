@@ -65,8 +65,11 @@ BEGIN
     WHERE (p->'prices') ? h.symbol
       -- numerisch inkl. wissenschaftlicher Notation (JSON.stringify liefert z. B. '1e-7' fuer
       -- sub-microcent-Krypto -> sonst still verworfen). Leading-Zero ist in JSON immer vorhanden.
-      AND ((p->'prices')->>h.symbol) ~ '^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
-      AND round(((p->'prices')->>h.symbol)::numeric, 8) > 0   -- in der Aufloesung der Spalte: darunter wuerde der Kurs zu 0
+      -- Erst das Format, dann die Zahl (CASE haelt die Reihenfolge). Grenzen = Spalte numeric(20,8): darunter wuerde der
+      -- Kurs zu 0 (CHECK), ab 1e12 liefe er ueber; beides braeche sonst den ganzen Lauf ab.
+      AND CASE WHEN ((p->'prices')->>h.symbol) ~ '^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]{1,3})?$'
+               THEN round(((p->'prices')->>h.symbol)::numeric, 8) > 0 AND ((p->'prices')->>h.symbol)::numeric < 1e12
+               ELSE FALSE END
     ON CONFLICT (symbol, as_of)
     DO UPDATE SET price = EXCLUDED.price, currency = EXCLUDED.currency,
                   isin = EXCLUDED.isin, source = EXCLUDED.source, updated_at = NOW()

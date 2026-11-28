@@ -255,6 +255,13 @@ BEGIN
   v := agent.fn_set_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__','reset_peak','vielleicht'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%reset_peak%' THEN
     RAISE EXCEPTION 'FAIL [set reset_peak Text]: got %', v; END IF;
+  -- nur Leerzeichen = nicht genannt: kein Cast-Fehler, Wert bleibt
+  BEGIN
+    v := agent.fn_set_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__','warn_days_before','  ','expected_unit','EUR'));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL [set warn_days_before nur Leerzeichen wirft]: %', SQLERRM;
+  END;
+  IF (v->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [set warn_days_before nur Leerzeichen]: got %', v; END IF;
   RAISE NOTICE 'PASS [set] warn_days_before/reset_peak ohne lesbaren Wert abgelehnt';
 END $$;
 

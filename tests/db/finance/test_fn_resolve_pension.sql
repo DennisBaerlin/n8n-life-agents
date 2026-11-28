@@ -53,6 +53,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL resolve_pension [NULL bevorzugt die aktive]: count=% id=%', v_count, v_id; END IF;
   SELECT hit_count INTO v_count FROM finance.fn_resolve_pension('__test_pen_dup__', FALSE);
   IF v_count IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'FAIL resolve_pension [FALSE meldet beide]: count=%', v_count; END IF;
+  -- "aktive zuerst" gilt ueber beide Treffer-Stufen: die aktive mit anderer Gross-/Kleinschreibung schlaegt die nicht aktive mit exaktem Namen
+  UPDATE finance.pension SET name = '__TEST_PEN_DUP__' WHERE id = (SELECT max(x.id) FROM finance.pension x WHERE x.name = '__test_pen_dup__');
+  SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_pension('__test_pen_dup__', NULL);
+  IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM (SELECT x.id FROM finance.pension x WHERE x.name = '__TEST_PEN_DUP__') THEN
+    RAISE EXCEPTION 'FAIL resolve_pension [NULL: aktive (andere Schreibweise) vor nicht aktiver (exakt)]: count=% id=%', v_count, v_id; END IF;
   RAISE NOTICE 'PASS resolve_pension [NULL: aktive zuerst, sonst alle]';
 
 END $$;

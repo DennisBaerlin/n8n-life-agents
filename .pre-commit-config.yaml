@@ -523,6 +523,20 @@ repos:
         pass_filenames: false
         files: ^scripts/(timer_lock_lint|dev/timer_lock_lint_test)\.ps1$
 
+      - id: backup-migration-lint
+        name: backup_migration_lint (a migration that drops or renames a column or table of a backed-up table needs a manifest backup entry, else older backups stop restoring; shrink-only allowlist)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/backup_migration_lint.ps1
+        pass_filenames: false
+        files: ^(packages/[^/]+/(manifest\.json|db.*\.sql)|scripts/backup_migration_lint\.ps1|scripts/build/backup_migration_allowlist\.json)$
+
+      - id: backup-migration-lint-test
+        name: backup_migration_lint_test (undeclared drop or rename in a backed-up table and a stale allowlist entry turn backup_migration_lint red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/backup_migration_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(backup_migration_lint|dev/backup_migration_lint_test)\.ps1$
+
       - id: gate-wiring-lint
         name: gate_wiring_lint (every test in scripts/dev hangs on a gate - commit hook, free suites, workflow - or carries a manual-gate marker with a reason)
         language: system

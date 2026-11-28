@@ -121,36 +121,126 @@ _bkp_bulk_tables() {
   printf '%s' "$out" | grep -v '^$' | sort -u
 }
 
-# _bkp_skip_tables [weitere-pakete] -> qualifizierte Tabellen, die diese Version ausdruecklich nicht sichert (exclude_tables der
-#   schema_dump-Pakete), eine je Zeile. Eine aeltere Sicherung kann sie noch tragen, auch mit inzwischen entfernten Spalten:
-#   _bkp_schema_check prueft sie nicht, _bkp_rs_apply spielt sie nicht ein (der Stand dieser Version bleibt).
-_bkp_skip_tables() {
-  local active mf pkg schema t
+# Aufbau-Aenderungen, die diese Version erklaert, damit aeltere Sicherungen einspielbar bleiben (Waechter
+#   scripts/backup_migration_lint.ps1): im backup-Block exclude_tables (nicht mehr gesichert), removed_tables (entfernt),
+#   removed_columns {"<tabelle>": {"<spalte>": "<Migration>"}} und renamed_columns {"<tabelle>": {"<alt>": "<neu>"}}; <tabelle>
+#   ohne Schema = Schema des Pakets. _bkp_schema_check rechnet sie heraus, _bkp_rs_apply schreibt den Abzug entsprechend um.
+#   Tests: tests/backup/cases.sh (V.aelter-katalog-entfernt, V.spalten-*)
+
+# _bkp_manifests_active [weitere-pakete] -> "schema<TAB>manifest"-Zeilen der aktiven (und weiteren) Pakete mit backup-Block.
+_bkp_manifests_active() {
+  local active mf pkg schema
   active="$(_bkp_active_names) ${1:-}"
   for mf in "$(_pkg_dir)"/*/manifest.json; do
     [ -r "$mf" ] || continue
     pkg="$(jq -r '.name // empty' "$mf" 2>/dev/null)" || continue
     [ -n "$pkg" ] || continue
     _bkp_is_active "$pkg" "$active" || continue
-    [ "$(jq -r '.backup.schema_dump // false' "$mf" 2>/dev/null)" = "true" ] || continue
+    [ "$(jq -r 'has("backup")' "$mf" 2>/dev/null)" = "true" ] || continue
     schema="$(jq -r '.schema // empty' "$mf" 2>/dev/null)"
-    [[ $schema =~ ^[a-z][a-z0-9_]*$ ]] || continue
-    while IFS= read -r t; do
-      [ -n "$t" ] || continue
-      printf '%s.%s\n' "$schema" "$t"
-    done < <(jq -r '.backup.exclude_tables[]?' "$mf" 2>/dev/null)
+    printf '%s\t%s\n' "$schema" "$mf"
   done
   return 0
 }
 
-# _bkp_drop_copies <tabellen> (stdin: SQL von pg_restore -f -) -> dasselbe SQL ohne die COPY-Bloecke dieser Tabellen (eine je
-#   Zeile). Block-Grenzen wie in _bkp_schema_check: Kopf "COPY … FROM stdin;" ausserhalb eines Blocks, Ende "\.".
-_bkp_drop_copies() {
-  awk -v skip="$1" '
-    BEGIN { n = split(skip, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") s[a[i]] = 1 }
+# _bkp_skip_tables [weitere-pakete] -> qualifizierte Tabellen, die diese Version nicht (mehr) sichert: exclude_tables der
+#   schema_dump-Pakete und removed_tables, eine je Zeile. Eine aeltere Sicherung kann sie noch tragen, auch mit inzwischen
+#   entfernten Spalten: _bkp_schema_check prueft sie nicht, _bkp_rs_apply spielt sie nicht ein (der Stand dieser Version bleibt).
+_bkp_skip_tables() {
+  local schema mf
+  while IFS=$'\t' read -r schema mf; do
+    [[ $schema =~ ^[a-z][a-z0-9_]*$ ]] || continue
+    jq -r --arg s "$schema" '.backup | ((if .schema_dump == true then .exclude_tables // [] else [] end)
+      + ((.removed_tables // {}) | keys - ["_comment"]))[] | if contains(".") then . else $s + "." + . end' "$mf" 2>/dev/null || true
+  done < <(_bkp_manifests_active "${1:-}")
+  return 0
+}
+
+# _bkp_col_changes [weitere-pakete] -> "tabelle<TAB>spalte<TAB>cut<TAB>" bzw. "tabelle<TAB>alt<TAB>rename<TAB>neu", eine je Zeile.
+_bkp_col_changes() {
+  local schema mf
+  while IFS=$'\t' read -r schema mf; do
+    [[ $schema =~ ^[a-z][a-z0-9_]*$ ]] || continue
+    jq -r --arg s "$schema" 'def q: if contains(".") then . else $s + "." + . end;
+      ((.backup.removed_columns // {}) | to_entries[] | select(.key != "_comment") | (.key | q) as $t
+        | .value | keys[] | [$t, ., "cut", ""] | @tsv),
+      ((.backup.renamed_columns // {}) | to_entries[] | select(.key != "_comment") | (.key | q) as $t
+        | .value | to_entries[] | [$t, .key, "rename", .value] | @tsv)' "$mf" 2>/dev/null || true
+  done < <(_bkp_manifests_active "${1:-}")
+  return 0
+}
+
+# _bkp_map_cols <tabelle> <aenderungen> (stdin: Spaltennamen, einer je Zeile) -> dieselben Namen im Aufbau dieser Version:
+#   entfernte fallen weg, umbenannte tragen den neuen Namen.
+_bkp_map_cols() {
+  awk -F'\t' -v t="$1" -v chg="$2" '
+    BEGIN { n = split(chg, l, "\n"); for (i = 1; i <= n; i++) { split(l[i], f, "\t"); if (f[1] == t) { k[f[2]] = f[3]; nw[f[2]] = f[4] } } }
+    $0 == "" { next }
+    k[$0] == "cut" { next }
+    k[$0] == "rename" { print nw[$0]; next }
+    { print }
+  '
+}
+
+# _bkp_keep_sequences <tabellen> -> Folge-Nummern dieser Datenbank (schema.name, eine je Zeile) ausser denen, die einer der
+#   Tabellen (eine je Zeile, _bkp_skip_tables) gehoeren (pg_depend: serial 'a', identity 'i').
+_bkp_keep_sequences() {
+  local t q=''
+  while IFS= read -r t; do
+    _bkp_qual_ok "$t" || continue
+    q="${q:+$q,}'${t}'"
+  done <<< "$1"
+  _bkp_psql_scalar "SELECT n.nspname || '.' || s.relname FROM pg_class s JOIN pg_namespace n ON n.oid = s.relnamespace
+                     WHERE s.relkind = 'S' AND NOT EXISTS (
+                       SELECT 1 FROM pg_depend d JOIN pg_class o ON o.oid = d.refobjid JOIN pg_namespace on2 ON on2.oid = o.relnamespace
+                        WHERE d.classid = 'pg_class'::regclass AND d.objid = s.oid AND d.deptype IN ('a', 'i')
+                          AND (on2.nspname || '.' || o.relname) IN (${q:-NULL}))"
+}
+
+# _bkp_rewrite_copies <tabellen> <aenderungen> <folgen> (stdin: SQL von pg_restore -f -) -> dasselbe SQL ohne die COPY-Bloecke der
+#   Tabellen (eine je Zeile) und mit den Spalten-Aenderungen (_bkp_col_changes) im Kopf und in jeder Datenzeile. Block-Grenzen wie
+#   in _bkp_schema_check: Kopf "COPY … FROM stdin;" ausserhalb eines Blocks, Ende "\.". Im Text-Format von COPY trennt ein Tab die
+#   Felder, ein Tab im Wert steht als \t: Feldschnitt am Tab ist sicher (PostgreSQL-Doku COPY, Text Format).
+#   Eine uebersprungene Tabelle verliert auch die Zeilen, die pg_restore um ihren Block legt (ALTER TABLE … DISABLE/ENABLE
+#   TRIGGER ALL): eine entfernte Tabelle gibt es im Ziel nicht mehr, das ALTER braeche die TX. <folgen> = Folge-Nummern, deren
+#   setval bleibt (_bkp_keep_sequences); die einer uebersprungenen Tabelle fallen weg, ihr Stand hier bleibt wie ihre Zeilen.
+_bkp_rewrite_copies() {
+  awk -v skip="$1" -v chg="$2" -v seqs="$3" '
+    BEGIN {
+      n = split(skip, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") s[a[i]] = 1
+      n = split(chg, l, "\n"); for (i = 1; i <= n; i++) { split(l[i], f, "\t"); if (f[1] != "") { has[f[1]] = 1; k[f[1], f[2]] = f[3]; nw[f[1], f[2]] = f[4] } }
+      n = split(seqs, a, "\n"); for (i = 1; i <= n; i++) if (a[i] != "") ks[a[i]] = 1
+    }
     drop { if ($0 == "\\.") drop = 0; next }
-    inb  { if ($0 == "\\.") inb = 0; print; next }
-    /^COPY .* FROM stdin;$/ { t = $2; gsub(/"/, "", t); if (t in s) { drop = 1; next } inb = 1 }
+    !inb && /^ALTER TABLE (ONLY )?[^ ]+ (DISABLE|ENABLE) TRIGGER ALL;$/ { t = ($3 == "ONLY") ? $4 : $3; gsub(/"/, "", t); if (t in s) next }
+    !inb && /^SELECT pg_catalog\.setval\(/ {
+      q = $0; sub(/^SELECT pg_catalog\.setval\(\047/, "", q); sub(/\047.*$/, "", q); gsub(/"/, "", q)
+      if (!(q in ks)) next
+    }
+    inb {
+      if ($0 == "\\.") { inb = 0; print; next }
+      if (!map) { print; next }
+      m = split($0, v, "\t"); o = ""; first = 1
+      for (i = 1; i <= m; i++) if (keep[i]) { o = o (first ? "" : "\t") v[i]; first = 0 }
+      print o; next
+    }
+    /^COPY .* FROM stdin;$/ {
+      t = $2; gsub(/"/, "", t)
+      if (t in s) { drop = 1; next }
+      inb = 1; map = 0
+      if (t in has) {
+        map = 1; hd = $0; delete keep
+        sub(/^COPY [^ ]+ \(/, "", hd); sub(/\) FROM stdin;$/, "", hd)
+        m = split(hd, c, ", "); o = ""; first = 1
+        for (i = 1; i <= m; i++) {
+          nm = c[i]; gsub(/"/, "", nm); keep[i] = (k[t, nm] != "cut")
+          if (!keep[i]) continue
+          if (k[t, nm] == "rename") c[i] = "\"" nw[t, nm] "\""
+          o = o (first ? "" : ", ") c[i]; first = 0
+        }
+        print "COPY " $2 " (" o ") FROM stdin;"; next
+      }
+    }
     { print }
   '
 }
@@ -1353,13 +1443,14 @@ _bkp_schema_check() {
                         FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
                        WHERE a.attnum > 0 AND NOT a.attisdropped AND (n.nspname || '.' || c.relname) IN (${q_in})" > "$tside" \
       || _bkp_rdie internal "Der Aufbau dieser Version ließ sich nicht lesen. Es wurde NICHTS geaendert."
-    local filt_mode
+    local filt_mode chg; chg="$(_bkp_col_changes "$extra")"
     while IFS= read -r tt; do
       [ -n "$tt" ] || continue
       case ",${q_in}," in *",'${tt}',"*) ;; *) continue ;; esac
       local bcols fcols has_b=0 has_f=0
-      bcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^b:/ { print substr($2, 3) }' "$bside" | sort -u)"
-      fcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^f:/ { print substr($2, 3) }' "$bside" | sort -u)"
+      # Spalten der Sicherung im Aufbau dieser Version (erklaerte Entfernungen/Umbenennungen, _bkp_col_changes).
+      bcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^b:/ { print substr($2, 3) }' "$bside" | _bkp_map_cols "$tt" "$chg" | sort -u)"
+      fcols="$(awk -F'\t' -v t="$tt" '$1 == t && $2 ~ /^f:/ { print substr($2, 3) }' "$bside" | _bkp_map_cols "$tt" "$chg" | sort -u)"
       [ -n "$bcols" ] && has_b=1; [ -n "$fcols" ] && has_f=1
       [ "$has_b$has_f" != 00 ] || continue   # leeres gefiltertes Array: keine Spalten-Aussage
       filt_mode=alle; [ "$tt" = agent.core_contexts ] && filt_mode=liste
@@ -1900,16 +1991,33 @@ _bkp_rs_apply() {
   # (b) pg_restore -> SQL-Text (kein eigener DB-Connect; laeuft so in unserer einen TX).
   # pg_restore (postgres via runuser) liest die Archiv-Datei nicht direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
-  #     Tabellen, die diese Version nicht mehr sichert (_bkp_skip_tables), fallen aus dem Strom: ihr Stand hier bleibt.
-  local skip; skip="$(_bkp_skip_tables)"
+  #     Erklaerte Aufbau-Aenderungen (_bkp_skip_tables, _bkp_col_changes): Tabellen fallen aus dem Strom (ihr Stand hier
+  #     bleibt), Spalten fallen weg bzw. tragen den neuen Namen. Das Protokoll nennt nur, was die Sicherung wirklich traegt.
+  local skip chg ct cc ck cn; skip="$(_bkp_skip_tables)"; chg="$(_bkp_col_changes)"
   while IFS= read -r t; do
-    if [ -n "$t" ] && grep -qxF -- "$t" < <(cut -f1 "$tmp/sc.bundle"); then log "$t wird nicht mehr gesichert — der Stand dieser Version bleibt."; fi
+    if [ -n "$t" ] && grep -qxF -- "$t" < <(cut -f1 "$tmp/sc.bundle"); then log "$(backup_text restore.skip_table table "$t")"; fi
   done <<< "$skip"
-  if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" | _bkp_drop_copies "$skip" >> "$restore_sql"; then
+  while IFS=$'\t' read -r ct cc ck cn; do
+    [ -n "$ct" ] || continue
+    grep -qxF -e "${ct}"$'\t'"b:${cc}" -e "${ct}"$'\t'"f:${cc}" < "$tmp/sc.bundle" || continue
+    if [ "$ck" = cut ]; then log "$(backup_text restore.column_removed table "$ct" column "$cc")"
+    else log "$(backup_text restore.column_renamed table "$ct" column "$cc" new "$cn")"; fi
+  done <<< "$chg"
+  local seqs; seqs="$(_bkp_keep_sequences "$skip")" || _bkp_rdie internal "Der Aufbau dieser Version ließ sich nicht lesen. Es wurde NICHTS geaendert."
+  if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" | _bkp_rewrite_copies "$skip" "$chg" "$seqs" >> "$restore_sql"; then
     _bkp_rdie corrupt "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
   fi
-  # (c) gefilterte Tabellen regel-bewusst (shared.json als base64 -> kein Quoting-Risiko).
-  local shared_b64; shared_b64="$(base64 -w0 "$tmp/shared.json" 2>/dev/null || base64 "$tmp/shared.json" | tr -d '\n')"
+  # (c) gefilterte Tabellen regel-bewusst (shared.json als base64 -> kein Quoting-Risiko); erklaerte Spalten-Aenderungen vorher
+  #     an jeder Zeile (core.fn_backup_restore_filtered liest die Schluessel als Spaltennamen).
+  local shared_f="$tmp/shared.json"
+  if [ -n "$chg" ]; then
+    jq --arg chg "$chg" '($chg | split("\n") | map(select(. != "") | split("\t"))) as $c
+      | reduce $c[] as $x (.; if (.[$x[0]] | type) == "array" then .[$x[0]] |= map(
+          if has($x[1]) then (if $x[2] == "rename" then .[$x[3]] = .[$x[1]] else . end) | del(.[$x[1]]) else . end) else . end)' \
+      "$tmp/shared.json" > "$tmp/shared.mapped.json" || _bkp_rdie corrupt "Die Sicherung ist beschädigt (Inhaltsliste unlesbar). Es wurde NICHTS geaendert."
+    shared_f="$tmp/shared.mapped.json"
+  fi
+  local shared_b64; shared_b64="$(base64 -w0 "$shared_f" 2>/dev/null || base64 "$shared_f" | tr -d '\n')"
   printf "SELECT core.fn_backup_restore_filtered(convert_from(decode('%s','base64'),'UTF8')::jsonb);\n" "$shared_b64" >> "$restore_sql"
   # (d) Count-Verify: post-Restore count(*) vs. manifest.verify_counts -> Mismatch = RAISE = Rollback der ganzen TX.
   {

@@ -24,6 +24,7 @@ Jedes Paket: `packages/<pkg>/db/*.sql` (Baseline-Inits, bei jedem Apply, idempot
 - **GENERATED-Spalten können keine andere Tabelle referenzieren** → Cross-Table-Live-Werte (z. B. Restschuld) gehören in eine VIEW.
 - **Neue Spalte in bestehender Tabelle:** `CREATE TABLE IF NOT EXISTS` legt sie nicht an → zusätzlich `ALTER TABLE … ADD COLUMN IF NOT EXISTS` direkt nach der Tabellendefinition.
 - **Spalten-RENAME** = `V{NNN}__` im besitzenden Paket: geguardeter `DO`-Block (`IF alte EXISTS AND neue NOT EXISTS → RENAME`), kein Tabellen-Existenz-Guard; das Init trägt den Endzustand.
+- **Daten einer gesicherten Tabelle verschieben = Spalte umbenennen**, nie neue Spalte füllen und die alte entfernen: Ältere Sicherungen sind reine Daten-Abzüge, der Restore kennt nur erklärte Umbenennungen und Entfernungen (Manifest `backup.renamed_columns`/`removed_columns`/`removed_tables`, `docs/package-contract.md` §3.7; Wächter `backup_migration_lint`), Neu+Kopie+Entfernen ließe deren Wert still fallen. Braucht der Wert eine Umrechnung, bleibt die alte Spalte stehen, bis keine Sicherung aus der Zeit davor mehr eingespielt werden muss.
 - **Views in `R__finance_views.sql`:** Drop in umgekehrter, Create in normaler Dependency-Reihenfolge; Spalten-Renames dort frei. `CREATE OR REPLACE VIEW` außerhalb: neue Spalten nur am Ende.
 
 ## Integritäts-Konventionen

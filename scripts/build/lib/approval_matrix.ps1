@@ -20,7 +20,7 @@
 # ausgenommen; approval_lint prueft am GEBAUTEN Workflow, dass er ausschliesslich diese fn ruft und keinen scope-Eingang hat.
 $ApprovalTierRank = @{ self = -1; owner_info = 0; owner_approval = 1; owner_only = 2 }
 $ApprovalSelfFn   = 'agent.fn_set_own_context_facts'
-# Verb -> Mindest-Rang. save/publish/invite = Plan-/Identitaets-Writes (owner_only); set/close/delete/… =
+# Verb -> Mindest-Rang. save/publish/invite/sync = Plan-/Identitaets-Writes (owner_only); set/close/delete/… =
 # Aenderung/Lebenszyklus inkl. Multi-Row-Import (owner_approval); create/book/record/cancel/defer/export = Anlegen/Buchen/Zurueckstellen/Break-Glass (owner_info).
 $ApprovalVerbFloor = @{ save = 2; publish = 2; invite = 2; sync = 2
                         set = 1; close = 1; delete = 1; void = 1; settle = 1; sell = 1; reconcile = 1; commit = 1; import = 1; replace = 1

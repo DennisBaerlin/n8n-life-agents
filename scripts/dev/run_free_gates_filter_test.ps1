@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Selbsttest des -Suites-Filters von run_free_gates.ps1: ein Filter fahren nur die genannten Suiten (frueher liefen trotz Filter alle).
+# Selbsttest von run_free_gates.ps1: ein -Suites-Filter faehrt nur die genannten Suiten, die CI-Matrix (-ListJobs) traegt jede Suite genau einmal, und der Grund einer abgebrochenen Suite steht lesbar im Log.
 # Kein Substrat, keine Kosten: -ListPlan gibt den Plan aus, ohne etwas zu starten.
 # Usage:  .\scripts\dev\run_free_gates_filter_test.ps1
 # Exit-Code = Anzahl Fehler.

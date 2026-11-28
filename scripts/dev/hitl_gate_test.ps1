@@ -19,8 +19,9 @@
 # Bestaetigen im Chat: alle Faelle laufen in beiden Knopf-Modi (Link = signierte Resume-URL per GET; Chat =
 # callback_data -> das callback_query-Update per POST an /webhook-waiting-telegram, wie der Orchestrator-Trigger es
 # weiterreicht). Sendet das Substrat Chat-Knoepfe (bootstrap_test_n8n.ps1 -HitlChatApproval), laufen zusaetzlich
-# hitlC1-3: fremder Tipper + gefaelschte Signatur blockiert, Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht,
-# Text mit Markdown-Entity geht durch.
+# hitlC1-C6: fremder Tipper + gefaelschte Signatur blockiert, Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht,
+# Text mit Markdown-Entity geht durch, Doppel-Tipp im Cron-Dialog beantwortet die Folgefrage nicht, gescheiterte
+# Telegram-Vorpruefung (getWebhookInfo, setWebhook) endet ohne Knopf und ohne Write.
 #
 # Karte-offen-Sperre: je Send prueft der Test vor dem Tipp die Zeile in agent.hitl_pending (Ursprungs-Chat
 # des Falls, diese Execution, offen, Ablauf <= 16 Min) und nach dem Lauf, dass sie freigegeben ist (Gnadenfrist; loeschen
@@ -1395,7 +1396,7 @@ try {
 } catch {
     Register-Abort $_ 'hitlC0' -Extra {
         $script:chatMode = $false
-        Write-Host "    Chat-Faelle hitlC1-C4 werden uebersprungen: die Modus-Erkennung ist abgebrochen." -ForegroundColor Yellow
+        Write-Host "    Chat-Faelle hitlC1-C6 werden uebersprungen: die Modus-Erkennung ist abgebrochen." -ForegroundColor Yellow
     }
 }
 Write-Host ""

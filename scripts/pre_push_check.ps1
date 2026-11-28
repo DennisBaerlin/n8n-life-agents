@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-# Duenner Wrapper: das Pre-Push-Gate selbst steht in .pre-commit-config.yaml (prek; commit-stage: die
-# deterministischen Linter, pre-push-stage: db_test/infra_test + llm_suite_advice). Der echte .git/hooks/pre-push
+# Duenner Wrapper: das Pre-Push-Gate selbst steht in .pre-commit-config.yaml (prek; welche Pruefung in welcher Stufe laeuft,
+# steht nur dort: `stages:` je Hook). Der echte .git/hooks/pre-push
 # ist prek-eigen (Installer: scripts/install_git_hooks.ps1). Dieses Skript ist der manuelle Befehl
 # "Gate jetzt voll ueber alle Dateien laufen lassen".
 # Usage:  .\scripts\pre_push_check.ps1

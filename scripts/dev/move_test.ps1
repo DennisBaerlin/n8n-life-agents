@@ -3,7 +3,7 @@
 # klassischen Substrat: echtes systemd, n8n, PostgreSQL; Telegram ist die Attrappe des Substrats (enable_mock_telegram.ps1).
 # Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner (tests/backup/move_cases.sh) in den Container und faehrt dort
 # move_cases.sh mit der CLI dieses Baums:
-#   - Erzeugung: B1-`retire` schreibt den Umzugs-Ordner, danach wird „frisch eingerichtete Maschine“ nachgebaut (Platzhalter-chat_id);
+#   - Erzeugung: `lifeagents retire` schreibt den Umzugs-Ordner, danach wird „frisch eingerichtete Maschine“ nachgebaut (Platzhalter-chat_id);
 #   - apply: „in Gebrauch“ und falsche Release brechen vor jeder Aenderung ab; apply spielt Daten, Gedaechtnis (Wasserstand), Einstellung ein,
 #     0 Platzhalter, Geheimnis-Dateien weg, Sicherung bleibt, Vergleich gruen;
 #   - Sperre/Abnahme: Update endet mit Satz, doctor nennt den Umzug nur als Hinweis, zweiter Lauf spielt nichts doppelt ein, done hebt auf.

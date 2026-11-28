@@ -150,7 +150,7 @@ function Select-TestStackSideContainers([string[]]$Rows, [string]$Project) {
 # nur, was zum Verbund gehoert, und davon darf nichts bleiben. Rueckgabe = Funde @{Severity; Text}, leer = sauber.
 # Schwere: ein fehlendes fremdes Abbild (Eintrag mit @digest) und jeder eigene Rest sind Fehler; ein fehlender fremder
 # Container/Volume ist ein Hinweis, weil parallele Sessions ihre Substrate laufend abbauen (gemessen: ein Nachbar-Test
-# entfernte waehrend des Abbaus seine Objekte). Abbilder baut sonst kaum jemand ab, und genau dort lag der Schaden aus P1a.
+# entfernte waehrend des Abbaus seine Objekte). Abbilder baut sonst kaum jemand ab: fehlt ein fremdes, hat es der eigene Abbau geloescht.
 function Test-TestStackOwnName([string]$Project, [string]$Name, [string[]]$Labeled) {
     if ($Labeled -contains $Name) { return $true }
     $q = [regex]::Escape($Project)

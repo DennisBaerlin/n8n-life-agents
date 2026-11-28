@@ -1,7 +1,9 @@
 ﻿#Requires -Version 5.1
 # test_stack_test.ps1 -- die Bausteine des Test-Verbunds (scripts/lib/test_stack.ps1) ohne Docker: Projektname, Namen, Ports,
 # Daten-Volumes aus runtime.sh, Schnappschuss-Schluessel, Vertrag der Kern-Ausgabe, TEST_*-Zuordnung, Zusatz-Zeilen der
-# Antwort-Datei, Abbau-Abgleich. Den echten Weg (kalt, -Reset per Schnappschuss, -Down) beweist bootstrap_test_stack.ps1 selbst.
+# Antwort-Datei, Abbau-Abgleich, Attrappen-Weichen; dazu der Suiten-Weg (N8NTEST_RUNTIME, Wegwerf-Container, Tick-/Zeitgeber-Pause)
+# und statische Pruefungen der Suiten- und Linux-Skripte. Braucht git und bash (Syntax-Pruefung erzeugter sh-Skripte).
+# Den echten Weg (kalt, -Reset per Schnappschuss, -Down) beweist bootstrap_test_stack.ps1 selbst.
 # Usage:  .\scripts\dev\test_stack_test.ps1     Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -197,7 +199,7 @@ Assert-That (-not (@($sa | Where-Object { $_ -like 'io.lifeagents.install=*' }).
 $gh = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\mock_github\cases.sh'))
 Assert-That ($gh -match '(?m)^export LIFEAGENTS_RUNTIME=systemd\b') 'mock_github/cases.sh setzt die klassische Betriebsart selbst (export LIFEAGENTS_RUNTIME=systemd)'
 Assert-That (-not ($sa -contains '-e')) 'Wegwerf-Container: keine Sonder-Umgebung, die Runner setzen ihre Betriebsart selbst'
-Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst melden die KZ-Faelle einen Zombie als lebend)'
+Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst meldet ein Fall einen Zombie als lebend)'
 Assert-That ($sa[-2] -eq 'sleep' -and [int]$sa[-1] -gt 0) 'Wegwerf-Container: Ruhe-Befehl mit Ablauf (raeumt sich auch bei totem Skript ab)'
 
 . (Join-Path $repo 'scripts\lib\substrate_reservations.ps1')
@@ -227,7 +229,7 @@ foreach ($s in @('runtime_test', 'reachability_test', 'release_fetch_test', 'bot
     Assert-That ($res.Count -eq 1 -and $inFinally.Count -ge 1) "$s : ruft Resolve-TestSuiteContainer mit eigenem Namen und raeumt in finally mit Remove-TestSuiteScratch ab"
 }
 
-# --- Suiten im laufenden Verbund (T3b): Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------
+# --- Suiten im laufenden Verbund: Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------------
 # Die Tick-Schleife des master (compose.yml) ruft jede Minute `lifeagents update --tick` und konkurriert mit den Suiten um
 # Auftraege und die Update-Sperre. Sie ruft die CLI nur, wenn /usr/local/bin/lifeagents ausfuehrbar ist; der Runner ruft die CLI aber
 # selbst direkt auf (`command -v lifeagents`), ein `chmod a-x` bremste also auch ihn. Darum Link-Tausch: die CLI liegt waehrend der

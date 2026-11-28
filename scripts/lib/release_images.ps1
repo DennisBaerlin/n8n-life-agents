@@ -1,7 +1,8 @@
 ﻿# release_images.ps1 — eine Adresse fuer die Auslieferung des master-Images (Docker-Verbund): Release-Pathspec, die zwei Formen
-# der Pin-Zeile in provisioning/compose/compose.yml und der Blick ins Container-Register per HTTP (ohne Docker, ohne Anmeldung).
-# Dot-Sourcing: scripts/build_master_image.ps1, scripts/sign_release.ps1, scripts/release_pin_guard.ps1, scripts/contract_lint.ps1 (33),
-# scripts/layout_lint.ps1 (L6), scripts/dev/release_images_test.ps1.
+# der Pin-Zeile in provisioning/compose/compose.yml und der Blick ins Container-Register per HTTP (ohne Docker, ohne Anmeldung);
+# dazu die Herkunfts-Pruefungen im Git (Test-MasterRevision, Test-HeadIsRemoteMain, Test-MasterPinOffline), die Pruefung der
+# Release-Assets fuer sign_release (Test-ReleaseSums/-Compose/-Setup) und der Pin in provisioning/setup.sh (Get-/Set-SetupPin).
+# Laedt hash.ps1. Nutzer (Dot-Sourcing): per Grep nach release_images.ps1; layout_lint L6 liest nur $ReleasePathspec als Text.
 #
 # Pin-Zeile (x-images.master, Anker &img_master):
 #   neutral  ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}   Branches + jeder Bau-Kontext des Images

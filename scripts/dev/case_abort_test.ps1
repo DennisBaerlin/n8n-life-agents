@@ -3,6 +3,7 @@
 # Schwarzkasten: ein Wegwerf-Treiber mit erfundenen Faellen laedt die Bibliothek per Dot-Sourcing wie ein echtes Testskript und laeuft als
 # Kindprozess; geprueft werden Exit-Code und Ausgabe. So ist belegt statt vermutet, dass der Zaehler nicht in einer Kopie verloren geht
 # und dass $script: aus der Bibliothek im Treiber ankommt (ein verlorenes $failed++ waere ein stiller Falsch-Gruen-Lauf).
+# Prueft ausserdem Send-HarnessRequest (Eingang zu, 500, 200, langsamer als das Timeout) gegen einen kurzlebigen Loopback-HTTP-Server.
 # Usage:  .\scripts\dev\case_abort_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

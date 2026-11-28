@@ -1,8 +1,10 @@
 ﻿#Requires -Version 5.1
 # Test von build.ps1 -VerifyWorkflows: in einem Wegwerf-Repo (Kopie der Bau-Eingaben) laeuft der Vergleich erst auf dem unveraenderten
 # Stand (gruen), dann nach vier Eingriffen (rot, jeder mit Dateiname): Hand-Aenderung, unsichtbares Null-Breite-Zeichen, geloeschtes
-# JSON, JSON ohne Bau-Quelle. Der Vergleich darf nichts schreiben.
-# Aufruf: .\scripts\dev\workflow_drift_test.ps1     Exit-Code = Anzahl roter Faelle. Kein Docker, kein Netz, keine .env.
+# JSON, JSON ohne Bau-Quelle. Dazu build.ps1 -VerifyCatalog und gen_fn_catalog.ps1 -Verify (Katalog rot auch bei Gross-/Klein-
+# schreibung, beide bei weichem Trennstrich). Der Vergleich darf nichts schreiben.
+# Aufruf: .\scripts\dev\workflow_drift_test.ps1     Exit-Code = Anzahl roter Faelle. Kein Docker, kein Netz; die echte .env bleibt
+# ungelesen (das Wegwerf-Repo bekommt eine mit erfundenem OWNER_CHAT_ID).
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')

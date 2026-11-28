@@ -8,10 +8,11 @@
 # Antwort-Datei, compose.yml), sonst kalt neu. Bausteine, Etiketten-Vertrag und Abbau-Regeln: scripts/lib/test_stack.ps1.
 #
 # Usage (Pflicht: Projekt $env:N8NTEST_CONTAINER, Bruecken-Port $env:N8NTEST_PORT, Port-Spanne des Kerns $env:N8NTEST_STACK_PORTS):
-#   $env:N8NTEST_CONTAINER='s4t0'; $env:N8NTEST_PORT='57500'; $env:N8NTEST_STACK_PORTS='57510-57519'
+#   $env:N8NTEST_CONTAINER='stack1'; $env:N8NTEST_PORT='57500'; $env:N8NTEST_STACK_PORTS='57510-57519'
 #   .\scripts\dev\bootstrap_test_stack.ps1             # hoch + installieren
 #   … .\scripts\dev\bootstrap_test_stack.ps1 -Reset     # Schnappschuss zurueck (passt er nicht: kalt neu + neuer Schnappschuss)
 #   … .\scripts\dev\bootstrap_test_stack.ps1 -Down      # Verbund, Daten, Schnappschuss, Abbild, Zustandsdatei weg
+#     -Down braucht das gebaute Abbild, solange ein Verbund installiert ist (sonst Abbruch: erst ohne -Down bauen).
 #   -HitlChatApproval / -FullDeploy / $env:LLM_GATEWAY_SERIAL_TOOLS wie bootstrap_test_n8n.ps1; -Verbose zeigt die Kern-Ausgabe.
 # Ohne Schalter auf einem vorhandenen Verbund: `stack up` (neues Abbild ersetzt den master) und eine Installation ueber die
 # vorhandenen Daten, kein neuer Schnappschuss (er bliebe sonst nicht der Stand „frisch installiert“).
@@ -19,7 +20,7 @@
 # als Test-Weichen ueber `stack install` (SC_TEST_SWITCHES im Kern) bzw. als Antworten in die Installation, das Bot-Token ist
 # erfunden (scripts/lib/test_stack.ps1 TestStackMock*). Kein Aufruf verlaesst den Rechner.
 # Voraussetzungen: Docker Desktop (Linux-Container), git, .env mit TEST_HARNESS_SECRET.
-# Exit 0 = Verbund bereit bzw. abgebaut; jeder Fehler wirft (Exit ungleich 0).
+# Exit 0 = Verbund bereit bzw. abgebaut (fehlender API-Schluessel nur als Warnung); jeder andere Fehler wirft (Exit ungleich 0).
 param(
     [switch]$Reset,
     [switch]$Down,
@@ -79,7 +80,7 @@ if ($Down) {
     Remove-OwnStack -WithSnapshot
     if ((Invoke-Native docker @('image', 'inspect', $Names.Image)).Code -eq 0) {
         # Die Kurzlauf-Container des Kerns (docker run --rm) verschwinden nach ihrem Ende mit Verzoegerung; bis dahin meldet
-        # Docker das Abbild als benutzt (gemessen). Nur darauf warten, nie mit -f entfernen.
+        # Docker das Abbild als benutzt. Nur darauf warten, nie mit -f entfernen.
         $deadline = (Get-Date).AddSeconds(30)
         do {
             $r = Invoke-Native docker @('image', 'rm', $Names.Image)

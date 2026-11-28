@@ -8,7 +8,8 @@
 #   (b) kein Orphan: jeder registrierte Befehl ist real im Router verdrahtet;
 #   (c) jeder registrierte Befehl ist in einer /help-Tail-Sektion dokumentiert, in jeder Katalogsprache (Texte
 #       <pkg>.help.<tail-id>.body im Textkatalog; gegen die Quelle, nicht die generierte .md);
-#   plus Registry-Selbstkonsistenz (cmd-Form, visibility-Enum, keine Dubletten) und der Menue-Text je Sprache
+#   plus Registry-Selbstkonsistenz (cmd-Form, visibility-Enum, keine Dubletten, keine description im Manifest), genau ein
+#   Switch-Node 'Command router' im Bau und der Menue-Text je Sprache
 #   (Katalog-Key <pkg>.cmd.<name>, nicht leer, Laengen-Cap; docs/package-contract.md §3.11).
 # Aufruf: .\scripts\command_lint.ps1 [-Verbose]   (-Verbose listet die im Router behandelten Befehle)
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.

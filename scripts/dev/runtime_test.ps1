@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # runtime_test.ps1 — deterministischer, gratis Test der Betriebsart-Naht des Installers (systemd | Docker-Verbund).
-# Kopiert provisioning/ dieses Checkouts + den Fall-Runner (tests/mock_runtime/) in den laufenden Substrat-Container und
+# Kopiert provisioning/ dieses Checkouts, den Fall-Runner (tests/mock_runtime/) und seine Daten (core-Locales, Paket-Manifeste,
+# tests/mock_llm, tests/backup) in den laufenden Substrat-Container und
 # faehrt dort tests/mock_runtime/cases.sh gegen den echten Lib-Code (common.sh -> runtime.sh, release_inputs.sh):
 #   - Antwort-Datei fuer --unattended wird gelesen, nie ausgefuehrt ('…', $(), Backticks, Zeilenumbruch, gesperrte Schluessel);
 #   - Wrapper: systemd-Zweig = runuser/systemctl-Aufrufe, compose-Zweig = docker exec mit festem Container
@@ -9,6 +10,8 @@
 #   - Daten-Seed (tests/mock_runtime/seed_pipe_cases.sh): keine Pipe mit fruehem Leser, die unter pipefail mit 141 abbricht.
 #   - Daten-Seed (tests/mock_runtime/seed_cron_disable_cases.sh): der Install-Schalter CRON_DISABLE der Test-Installationen.
 # docker, systemctl und runuser sind dort Attrappen (PATH): nichts wird wirklich gestartet. Braucht kein n8n und kein Netz.
+# N8NTEST_RUNTIME=compose: statt des Substrats ein Wegwerf-Container aus dem master-Abbild des Arbeitsstands (baut das Abbild;
+# $env:N8NTEST_CONTAINER = eigener Projektname ist Pflicht; Container am Ende abgebaut).
 # Usage:  .\scripts\dev\runtime_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)

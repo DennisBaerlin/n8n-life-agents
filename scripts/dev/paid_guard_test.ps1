@@ -2,7 +2,8 @@
 # Selbsttest der Abbruch-Absicherung der bezahlten Suiten (scripts/lib/paid_guard.ps1). Kein Substrat, keine Kosten, keine Suite wird gestartet.
 #  1. Kostenrechnung und Grenze (Get-UsageCostUsd, Test-CostLimitExceeded, Test-RunCostExceeded) gegen erfundene usage-Zeilen.
 #  2. Invoke-PaidRunCleanup: stoppt wartende und laufende Executions je Workflow, loest die Karten-Sperre, schluckt Fehler.
-#  3. Statisch: jede scripts/*_test.ps1 mit echtem Gateway (-Expect real) parst fehlerfrei und traegt die Absicherung (Parameter -MaxCostUsd und
+#  3. Statisch: jedes scripts/*.ps1 mit echtem Gateway (-Expect real) oder direktem Anthropic-Aufruf (judge_eval) parst fehlerfrei und traegt
+#     die Absicherung (Parameter -MaxCostUsd und
 #     -ForceAbortId, Kostenpruefung, finally-Aufraeumen, Abbruch-Fall-Helfer). Eine neue bezahlte Suite ohne sie macht diesen Test rot.
 #  4. Bewerter-Urteile (lib/judge_record.ps1): Schreibweg mit Attrappe in einem Temp-Ordner (Zeilenformat, Dateiname, Kalibrier-Zeile, Schreibfehler),
 #     Ablageort im Haupt-Checkout, Verdrahtung in judge_eval und den drei Bundle-Schreibern (Suite).

@@ -1,5 +1,7 @@
 ﻿#Requires -Version 5.1
-# Test der Auswahl in scripts/post_merge_regenerate.ps1: welche Quellen-Dateien welchen Generator anstossen (Tokens, Site, fn-Katalog). Baut nichts.
+# Test der Auswahl in scripts/post_merge_regenerate.ps1: welche Quellen-Dateien welchen Generator anstossen (Tokens, Site, fn-Katalog);
+# dazu -Commit/-Plan gegen echte Merges in einem Wegwerf-Repo (braucht git) und die Warnung statt Erfolgsmeldung, wenn ein Generator
+# scheitert (Stand-in mit Exit 3). Baut nichts Echtes.
 # Usage:  .\scripts\dev\post_merge_regenerate_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

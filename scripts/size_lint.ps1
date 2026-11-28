@@ -1,5 +1,6 @@
 ﻿#Requires -Version 5.1
-# size_lint.ps1 -- Obergrenzen fuer das, was ein Modell am Stueck lesen muss: Dateigroessen und Werkzeug-Last je Agent (hartes Gate).
+# size_lint.ps1 -- Obergrenzen fuer das, was ein Modell am Stueck lesen muss: Dateigroessen, Werkzeug-Last je Agent und Laenge der
+# Sticky-Notes (hartes Gate).
 # Den Code lesen KI-Modelle: eine Datei mit 2000 Zeilen kostet bei jedem Oeffnen Kontext, ein Agent mit 60 Werkzeugen bei jedem
 # Aufruf. Regeln und Bestand stehen in scripts/build/size_budget.json:
 #   rules   je Dateigruppe die Grenzen lines, bytes, line_chars (laengste Zeile). include/exclude sind Regex auf den Repo-Pfad
@@ -7,16 +8,18 @@
 #   files   Bestand ueber einer Grenze: je Datei die Decke jeder ueberschrittenen Groesse.
 #   agents  je Agent-Knoten der gebauten Workflows (packages/*/workflows, Schluessel "<workflow> / <knoten>") die Decken tools
 #           (Knoten am ai_tool-Eingang), description_chars (Summe der Werkzeug-Beschreibungen) und longest_description.
+#   sticky_chars  Grenze fuer den Text einer Sticky-Note; stickies = Bestand darueber ("<workflow> / <sticky>", Decke chars).
 # Rot:
-#   (1) Datei ueber einer Grenze ohne Decke; Agent ohne Eintrag;
-#   (2) Wert ueber seiner Decke (die Datei bzw. der Agent ist gewachsen);
-#   (3) Decke ohne Anlass: Wert unter der Grenze, Datei fehlt oder passt auf keine Regel, Agent fehlt, Eintrag doppelt oder leer;
+#   (1) Datei oder Sticky-Note ueber einer Grenze ohne Decke; Agent ohne Eintrag;
+#   (2) Wert ueber seiner Decke (die Datei, der Agent oder die Sticky-Note ist gewachsen);
+#   (3) Decke ohne Anlass: Wert unter der Grenze, Datei fehlt oder passt auf keine Regel, Agent oder Sticky-Note fehlt, Eintrag
+#       doppelt oder leer;
 #   (4) Decke mehr als headroom_pct ueber dem Wert (tools: jede Abweichung) -> Decke senken;
 #   (5) Regel ohne id, include oder Grenze.
 # Die Decken sinken nur. Eine Decke anzuheben oder einen Eintrag neu anzulegen ist eine Entscheidung des Owners, kein Ausweg aus
 # (1) und (2). Gemessen wird nach Umwandlung von CRLF in LF (gleiche Zahlen unter Windows und Linux); bytes = UTF-8 ohne BOM.
 # Aufruf: .\scripts\size_lint.ps1 [-Baseline] [-Root <Baum>]
-#   -Baseline  druckt files und agents mit den heutigen Werten als JSON (Geruest fuer size_budget.json) und endet mit 0.
+#   -Baseline  druckt files, agents und stickies mit den heutigen Werten als JSON (Geruest fuer size_budget.json) und endet mit 0.
 #   -Root      prueft einen anderen Baum und nimmt dort alle Dateien statt der git-getrackten (nur scripts/dev/size_lint_test.ps1).
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
 param([switch]$Baseline, [string]$Root)
@@ -27,7 +30,7 @@ $Ordinal = [System.StringComparison]::Ordinal
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 # @{} vergleicht Schluessel ohne Gross-/Kleinschreibung; Pfade unterscheiden sie unter Linux.
-function New-OrdinalMap { return ,(New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)) }
+function New-OrdinalMap { return , (New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::Ordinal)) }
 
 if ($Root) {
     $Root = (Resolve-Path $Root).Path
@@ -52,20 +55,23 @@ function Measure-TextFile([string]$Path) {
     return @{ lines = $lines; bytes = $u8.GetByteCount($text); line_chars = $longest }
 }
 
-# Werkzeug-Last je Agent-Knoten aus den gebauten Workflows: was das Modell bei jedem Aufruf dieses Agenten mitliest.
-function Get-AgentLoads {
-    $loads = New-OrdinalMap
+# Aus den gebauten Workflows: Werkzeug-Last je Agent-Knoten (was das Modell bei jedem Aufruf dieses Agenten mitliest) und die
+# Textlaenge jeder Sticky-Note.
+$loads = New-OrdinalMap
+$stickies = New-OrdinalMap
+function Read-BuiltWorkflows {
     $pkgRoot = Join-Path $Root 'packages'
-    if (-not (Test-Path $pkgRoot)) { return $loads }
+    if (-not (Test-Path $pkgRoot)) { return }
     foreach ($pkg in (Get-ChildItem $pkgRoot -Directory)) {
         $wfDir = Join-Path $pkg.FullName 'workflows'
         if (-not (Test-Path $wfDir)) { continue }
         foreach ($f in (Get-ChildItem $wfDir -Filter '*.json' -File)) {
-            $raw = [System.IO.File]::ReadAllText($f.FullName, $u8)
-            if ($raw.IndexOf('n8n-nodes-langchain.agent"', $Ordinal) -lt 0) { continue }
-            $wf = $raw | ConvertFrom-Json
+            $wf = [System.IO.File]::ReadAllText($f.FullName, $u8) | ConvertFrom-Json
             $byName = New-OrdinalMap
-            foreach ($n in $wf.nodes) { $byName[[string]$n.name] = $n }
+            foreach ($n in $wf.nodes) {
+                $byName[[string]$n.name] = $n
+                if ($n.type -ceq 'n8n-nodes-base.stickyNote') { $stickies["$($wf.name) / $($n.name)"] = ("$($n.parameters.content)").Length }
+            }
             foreach ($agent in @($wf.nodes | Where-Object { $_.type -ceq '@n8n/n8n-nodes-langchain.agent' })) {
                 $tools = 0; $sum = 0; $longest = 0
                 foreach ($src in $wf.connections.PSObject.Properties) {
@@ -82,13 +88,13 @@ function Get-AgentLoads {
             }
         }
     }
-    return $loads
 }
 
 $budgetPath = [System.IO.Path]::Combine($Root, 'scripts', 'build', 'size_budget.json')
 if (-not (Test-Path -LiteralPath $budgetPath -PathType Leaf)) { Write-Host '  [FAIL] scripts/build/size_budget.json fehlt' -ForegroundColor Red; exit 1 }
 $budget = [System.IO.File]::ReadAllText($budgetPath, $u8) | ConvertFrom-Json
 $headroom = if ($budget.PSObject.Properties['headroom_pct']) { [int]$budget.headroom_pct } else { 0 }
+$stickyLimit = if ($budget.PSObject.Properties['sticky_chars']) { [int]$budget.sticky_chars } else { 0 }   # 0 = Sticky-Notes ohne Grenze
 function Get-MaxCap([int]$Value) { return [int][math]::Floor($Value * (100 + $headroom) / 100) }
 
 $rules = @(foreach ($r in @($budget.rules)) {
@@ -109,7 +115,8 @@ foreach ($rel in $relFiles) {
     $m.Rule = $rule
     $measured[$rel] = $m
 }
-$loads = Get-AgentLoads
+Read-BuiltWorkflows
+$longStickies = @($stickies.Keys | Where-Object { $stickyLimit -gt 0 -and $stickies[$_] -gt $stickyLimit } | Sort-Object)
 
 if ($Baseline) {
     $files = @(foreach ($rel in ($measured.Keys | Sort-Object)) {
@@ -118,7 +125,8 @@ if ($Baseline) {
         if ($row.Count -gt 1) { $row }
     })
     $agents = @(foreach ($k in ($loads.Keys | Sort-Object)) { $row = [ordered]@{ agent = $k }; foreach ($d in $AgentDims) { $row[$d] = $loads[$k][$d] }; $row })
-    [ordered]@{ files = $files; agents = $agents } | ConvertTo-Json -Depth 5
+    $notes = @(foreach ($k in $longStickies) { [ordered]@{ sticky = $k; chars = $stickies[$k] } })
+    [ordered]@{ files = $files; agents = $agents; stickies = $notes } | ConvertTo-Json -Depth 5
     exit 0
 }
 
@@ -171,6 +179,22 @@ foreach ($key in ($loads.Keys | Sort-Object)) {
     }
 }
 
-if ($fails -eq 0) { Write-Host "size_lint: OK ($($measured.Count) Datei(en) unter Regeln, $($entries.Count) mit Decke, $($loads.Count) Agent(en))" -ForegroundColor Green }
+# --- Sticky-Notes ---
+$stickyEntries = New-OrdinalMap
+foreach ($e in @($budget.stickies)) {
+    $key = [string]$e.sticky
+    if ($stickyEntries.ContainsKey($key)) { Fail "stickies: '$key' steht doppelt"; continue }
+    $stickyEntries[$key] = $e
+    if (-not $stickies.ContainsKey($key)) { Fail "stickies: '$key' gibt es in den gebauten Workflows nicht -- Eintrag streichen"; continue }
+    $val = $stickies[$key]; $cap = [int]$e.chars
+    if ($val -le $stickyLimit) { Fail "stickies: '$key' hat $val Zeichen und liegt unter der Grenze $stickyLimit -- Eintrag streichen" }
+    elseif ($val -gt $cap) { Fail "${key}: $val Zeichen ueber der Decke $cap -- die Sticky-Note ist gewachsen; kuerzen oder je Abschnitt eine eigene setzen" }
+    elseif ($cap -gt (Get-MaxCap $val)) { Fail "stickies: '$key' Decke $cap liegt mehr als $headroom % ueber dem Wert $val -- auf hoechstens $(Get-MaxCap $val) senken" }
+}
+foreach ($key in $longStickies) {
+    if (-not $stickyEntries.ContainsKey($key)) { Fail "${key}: $($stickies[$key]) Zeichen ueber der Grenze $stickyLimit -- Sticky-Note kuerzen oder je Abschnitt eine eigene setzen" }
+}
+
+if ($fails -eq 0) { Write-Host "size_lint: OK ($($measured.Count) Datei(en) unter Regeln, $($entries.Count) mit Decke, $($loads.Count) Agent(en), $($stickies.Count) Sticky-Note(s))" -ForegroundColor Green }
 else { Write-Host "size_lint: $fails Fehler." -ForegroundColor Red }
 exit $fails

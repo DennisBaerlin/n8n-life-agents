@@ -24,7 +24,8 @@
 #   .\scripts\build\build.ps1 -CatalogOnly            # nur den /help-Katalog neu schreiben (packages/core/seed/capabilities_catalog/<lang>.md + Paket-Fragmente)
 #                                                       # (keine Workflow-JSONs anfassen)
 #   .\scripts\build\build.ps1 -VerifyWorkflows        # Drift-Check: getrackte packages/*/workflows/*.json == frischer Bau (byte-genau),
-#                                                       # keine Datei ohne Bau-Quelle (kein File-Write; mit -VerifyCatalog kombinierbar).
+#                                                       # keine Datei ohne Bau-Quelle (nur beim vollen Lauf ohne -Only); kein File-Write;
+#                                                       # mit -VerifyCatalog kombinierbar.
 #                                                       # Test: scripts/dev/workflow_drift_test.ps1
 param([string]$Only = '*', [switch]$VerifyCatalog, [switch]$CatalogOnly, [switch]$VerifyWorkflows)
 

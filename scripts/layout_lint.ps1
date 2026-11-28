@@ -4,10 +4,10 @@
 # unter .claude/** und gitignorte .local/** sind nicht getrackt und damit ausgeschlossen).
 # Aufruf: .\scripts\layout_lint.ps1 [-Verbose] [-Baseline]   (-Baseline druckt das L4-Allowlist-Geruest)
 #         .\scripts\layout_lint.ps1 -MojibakeFile a.md,b.sql   (nur L8 auf diesen Dateien; Test: scripts/dev/layout_lint_test.ps1)
-#         .\scripts\layout_lint.ps1 -Staged                    (Commit-Hook: L4/L8 nur auf gestagten Dateien, Struktur L1-L3/L5-L7 baumweit;
+#         .\scripts\layout_lint.ps1 -Staged                    (Commit-Hook: L4/L8 nur auf gestagten Dateien, Struktur L1-L3/L5-L7/L9 baumweit;
 #                                                               ohne gestagte Dateien voller Lauf; -Files a.md,b.sql nennt die Dateien selbst)
 #
-# Acht Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
+# Neun Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
 # die Extraktion/Praedikat-Logik still, wird das Lint hart rot statt leise gruen):
 #   L1 Top-Level-Allowlist: jeder getrackte Root-Eintrag (Dir bzw. Datei) steht in der In-Skript-Allowlist
 #      -> re-committetes db/ o.ae. failt hart.
@@ -31,7 +31,8 @@
 #      git-archive-Pathspec, provision.sh install_cli-Mirror, bootstrap_test_n8n-foreach, $ReleasePathspec) -- jedes
 #      Listen-Token loest als getracktes Root-Artefakt auf oder ist ein bekanntes Release-Artefakt
 #      (VERSION). Ein Root-Eintrag ausserhalb der Listen bricht Release-Archiv bzw. Mirror. Extraktion 0 Treffer = FAIL
-#      (Zeile verschoben/reformatiert = totes Gate).
+#      (Zeile verschoben/reformatiert = totes Gate). Dazu traegt die Pathspec in release.yml dieselben Tokens wie
+#      $ReleasePathspec (scripts/lib/release_images.ps1).
 #      Haelfte 1 (jeder .pre-commit-config-files:-Filter matcht >=1 Pfad) laeuft ueber die prek-nativen
 #      repo:meta-Hooks check-hooks-apply + check-useless-excludes, nicht hier.
 #   L7 (SOLLTE) SQL-Selbst-/Tests-Header: jeder Repo-Pfad-Token im fuehrenden Kommentar-Block einer
@@ -41,14 +42,17 @@
 #      der Quelle): typische Folgen von UTF-8, das als Windows-1252/Latin-1 gelesen und wieder gespeichert wurde -- Ã vor einem
 #      Zeichen aus 0x80-0xBF bzw. dessen 1252-Abbild (ü -> Ã+¼), â€ + Folgezeichen, Â vor 0xA0-0xBF. Die Muster stehen als
 #      \u-Escapes im Regex, damit diese Datei selbst sauber bleibt. Ausnahme nur mit Grund in $L8Allow (Pfad -> Grund).
+#   L9 Werkzeug-Liste: provides.tools im Manifest und die Dateien packages/<pkg>/build/workflows/tools/*.ps1 nennen dieselben
+#      Werkzeuge. Eines nur im Manifest wird nie gebaut; eines nur als Datei kennen Katalog und Paket-Vertrag nicht.
+#      Ausnahmen mit Grund in $L9Allow ('<pkg>|manifest|<name>' bzw. '<pkg>|file|<name>'); ein Eintrag ohne Anlass ist ein Fehler.
 #
 # Erweitern der L1/L2/L3-Allowlists oder des L4-Ban-Sets = bewusster reviewter Edit der In-Skript-Arrays
 # (+ Begruendung), nie ad-hoc -> docs/reference/packages.md *Struktur-Invariante*.
-# Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
+# Exit-Code = Anzahl Fehler (-Baseline: 0). Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [string[]]$MojibakeFile, [string[]]$Files, [switch]$Staged, [switch]$Verbose)
 
 # -Staged (Commit-Hook) bzw. -Files <rel,..>: die Inhaltsregeln je Datei (L4 Retired-Roots-Token, L8 Mojibake) laufen nur auf den
-# gestagten bzw. genannten Dateien; die Strukturregeln (L1-L3, L5-L7) bleiben baumweit. Ohne gestagte Dateien (CI-Checkout, prek --all-files
+# gestagten bzw. genannten Dateien; die Strukturregeln (L1-L3, L5-L7, L9) bleiben baumweit. Ohne gestagte Dateien (CI-Checkout, prek --all-files
 # auf sauberem Baum), ohne Schalter und im pre-push-Hook laeuft alles. Wird die L4-Allowlist selbst gestagt, laeuft L4 voll (ihre Zaehler
 # lassen sich nur gegen den ganzen Baum pruefen).
 if ($Staged -and -not $Files) {
@@ -83,6 +87,18 @@ $L4Rx  = [regex]'((?<![\w./@-])(?:db|n8n)/)|(^/(?:db|n8n)/)'
 $L8Cp1252 = '\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178'
 $L8Rx = [regex]('\u00C3[\u0080-\u00BF' + $L8Cp1252 + ']|\u00E2[\u20AC\u0080][\u0080-\u00BF' + $L8Cp1252 + ']|\u00C2[\u00A0-\u00BF]')
 $L8Allow = @{}   # 'pfad' = 'Grund' (z. B. Testdaten fuer genau diesen Fehler)
+$L9Allow = @{
+    'core|manifest|load_context'                  = 'Def liegt als agent.tool_load_context.ps1 neben den Agenten, nicht unter tools/'
+    'finance|manifest|set_onboarding_section'     = 'Def heisst finance_set_onboarding_section.ps1 (core hat eine Def gleichen Werkzeug-Namens)'
+    'finance|file|finance_set_onboarding_section' = 'Werkzeug-Name im Manifest: set_onboarding_section'
+    'finance|file|book_savings_goal_transfer'     = 'steht nicht in provides.tools'
+    'finance|file|book_savings_reservation'       = 'steht nicht in provides.tools'
+}
+# L9: Abweichungen eines Pakets als Schluessel '<pkg>|manifest|<name>' (nur im Manifest) bzw. '<pkg>|file|<name>' (nur als Datei).
+function Get-L9Gaps([string]$Pkg, [string[]]$Declared, [string[]]$Defs) {
+    @($Declared | Where-Object { $Defs -cnotcontains $_ } | ForEach-Object { "$Pkg|manifest|$_" }) +
+    @($Defs | Where-Object { $Declared -cnotcontains $_ } | ForEach-Object { "$Pkg|file|$_" })
+}
 $L7PathRx = [regex]'(?:packages/[^/\s<>]+/db|tests/db/[a-z]+|tests/(?:util|fixtures))/[A-Za-z0-9_./-]+\.(?:sql|md|json)'
 
 function Test-L1TopLevel([string]$rel) {
@@ -214,6 +230,10 @@ if (-not $L8Rx.IsMatch([string][char]0xE2 + [char]0x20AC + [char]0x201C)) { $st+
 if (-not $L8Rx.IsMatch('1' + [char]0xC2 + [char]0xB0 + 'C'))         { $st++ }   # Grad-Zeichen mit Â davor
 if ($L8Rx.IsMatch('d' + [char]0xFC + 'rfen, Gr' + [char]0xF6 + [char]0xDF + 'e, 5 ' + [char]0x20AC)) { $st++ }   # echte Umlaute, Euro
 if ($L8Rx.IsMatch('S' + [char]0xC3 + 'O Paulo, ' + [char]0xC2 + '-Taste'))  { $st++ }   # Ã/Â vor normalen Zeichen
+# L9
+if ((@(Get-L9Gaps 'p' @('a', 'b') @('b', 'c')) -join ',') -cne 'p|manifest|a,p|file|c') { $st++ }
+if (@(Get-L9Gaps 'p' @('a') @('a')).Count -ne 0)                                      { $st++ }
+if (@(Get-L9Gaps 'p' @() @()).Count -ne 0)                                            { $st++ }
 if ($st -gt 0) {
     Fail "Selbst-Assert fehlgeschlagen ($st) -- Praedikat-/Extraktions-Logik defekt, Scan abgebrochen."
     Write-Host "layout_lint: $fails Fehler (Selbst-Assert)." -ForegroundColor Red
@@ -411,8 +431,30 @@ foreach ($e in @(git -C $RepoRoot -c core.quotepath=false ls-files --eol)) {
 }
 
 # =====================================================================================================
+# L9 -- Werkzeug-Liste im Manifest == Defs unter build/workflows/tools/
+# =====================================================================================================
+$l9Seen = @{}
+foreach ($pkg in $pkgNames) {
+    $mfPath = Join-Path (Join-Path (Join-Path $RepoRoot 'packages') $pkg) 'manifest.json'
+    if (-not (Test-Path -LiteralPath $mfPath)) { continue }   # fehlendes Manifest meldet L2
+    $declared = @(([System.IO.File]::ReadAllText($mfPath, $u8) | ConvertFrom-Json).provides.tools | Where-Object { $_ })
+    $defRx = '^packages/' + [regex]::Escape($pkg) + '/build/workflows/tools/([^/]+)\.ps1$'
+    $defs = @($tracked | ForEach-Object { if ($_ -match $defRx) { $Matches[1] } })
+    foreach ($gap in (Get-L9Gaps $pkg $declared $defs)) {
+        $l9Seen[$gap] = $true
+        if ($L9Allow.ContainsKey($gap)) { continue }
+        $name = ($gap -split '\|')[2]
+        if ($gap -like '*|manifest|*') { Fail "L9: packages/$pkg/manifest.json nennt das Werkzeug '$name' in provides.tools, aber build/workflows/tools/$name.ps1 fehlt -- Def anlegen oder Eintrag streichen." }
+        else { Fail "L9: packages/$pkg/build/workflows/tools/$name.ps1 steht nicht in provides.tools des Manifests -- eintragen (Katalog und Paket-Vertrag lesen die Liste) oder Datei entfernen." }
+    }
+}
+foreach ($k in ($L9Allow.Keys | Sort-Object)) {
+    if (-not $l9Seen.ContainsKey($k)) { Fail "L9: Ausnahme '$k' in L9Allow hat keinen Anlass mehr -- Eintrag entfernen." }
+}
+
+# =====================================================================================================
 if ($Verbose) { foreach ($k in ($found.Keys | Sort-Object)) { Write-Host "  L4 $k = $($found[$k])" -ForegroundColor DarkGray } }
 Write-Host ""
-if ($fails -eq 0) { Write-Host "layout_lint: OK (L1-L8 konsistent; $($tracked.Count) getrackte Pfade, $($pkgNames.Count) Pakete, $($found.Count) allowlistete Retired-Root-Stelle(n))." -ForegroundColor Green }
+if ($fails -eq 0) { Write-Host "layout_lint: OK (L1-L9 konsistent; $($tracked.Count) getrackte Pfade, $($pkgNames.Count) Pakete, $($found.Count) allowlistete Retired-Root-Stelle(n))." -ForegroundColor Green }
 else              { Write-Host "layout_lint: $fails Fehler -- Layout/Struktur gegen die Invarianten abgleichen." -ForegroundColor Red }
 exit $fails

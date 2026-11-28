@@ -31,12 +31,13 @@
 #       deutsche Signatur und in jeder Sprache (reine Kleinbuchstaben-Schluessel ausgenommen). Ort = Pfad.
 # Treffer (a)/(b)/(d) = Literal mit deutscher Signatur (Umlaut/ß oder ein typisches deutsches Funktionswort) und mindestens
 # einem Wort aus >= 3 Buchstaben; Katalog-Keys, englische Gruende/Codes und Identifier fallen so heraus.
-# Selbst-Asserts laufen vor jedem Scan; stirbt die Erkennung still, bricht der Lint.
+# Selbst-Asserts laufen vor jedem Scan, Scope-Selbst-Asserts (kein Workflow, keine R__-/Init-Datei, Helfer-Senke nicht erkannt)
+# danach; stirbt die Erkennung still, bricht der Lint.
 # Aufruf: .\scripts\ui_literal_lint.ps1 [-Verbose] [-Baseline]
 #         .\scripts\ui_literal_lint.ps1 -ShellFile a.sh,b.sh   (nur Scan (c) dieser Dateien, ohne Allowlist; Test-Einstieg)
 #         .\scripts\ui_literal_lint.ps1 -SqlFile a.sql,b.sql   (nur Scan (d), ebenso)
 # -Baseline: druckt die gefundenen (where,literal,count) als JSON-Geruest (reason:'TODO').
-# Exit-Code = Anzahl Fehler (-ShellFile/-SqlFile: Anzahl Treffer). Kein LLM, kein Netz, kein Substrat.
+# Exit-Code = Anzahl Fehler (-ShellFile/-SqlFile: Anzahl Treffer; -Baseline: 0). Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose, [string[]]$ShellFile, [string[]]$SqlFile)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

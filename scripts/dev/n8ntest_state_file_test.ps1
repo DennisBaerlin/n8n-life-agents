@@ -3,7 +3,8 @@
 # Aus jedem Worktree desselben Repos zeigt Get-TestN8nStateFile auf .local/n8ntest_state.<container>.json im Haupt-Checkout, und der
 # Datums-Bezugstag (scripts/lib/date_placeholder.ps1) liest dieselbe Datei. Sonst liest ein zweiter Worktree einen alten Schluessel
 # (Symptom: 401 Unauthorized gegen ein laufendes Substrat).
-# Wegwerf-Repo mit Worktree, kein Docker, kein Netz.
+# Dazu das Unterbau-Feld (lib/n8ntest_state_file.ps1): ohne runtime = classic, Write-TestN8nState schreibt die Felder ohne BOM,
+# ein unbekannter Unterbau bricht beim Schreiben und Lesen ab. Wegwerf-Repo mit Worktree, kein Docker, kein Netz.
 # Usage:  .\scripts\dev\n8ntest_state_file_test.ps1     Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

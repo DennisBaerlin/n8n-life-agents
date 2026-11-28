@@ -4,29 +4,31 @@
 # entscheidet je Sprache ein Scanner (PowerShell = echter Tokenizer; SQL, bash, JS = Zustandsautomat mit String-, Here-Doc-,
 # Dollar-Quote- und Template-Zustand), damit Text in Here-Strings und String-Literalen nie trifft.
 # Regeln (Kennung in eckigen Klammern; Pruefnummern in Lints sind Adressen und treffen nicht):
-#   [verlauf]  Herkunft und Verlauf: Befund/Fund + Datum, "neu seit",  comment-lint: ok Regeltext
-#              "seit/bis vX.Y", "(vX.Y.Z)", "KW45 Fund", "(KW45)", "Phase B", das Wort fuer "einst" als Rueckblick.  comment-lint: ok Regeltext
+#   [verlauf]  Herkunft und Verlauf: Befund/Fund + Datum, "neu seit/ab",  comment-lint: ok Regeltext
+#              "seit/bis vX.Y", "(vX.Y.Z)", "KW45 Fund/Sprint", "(KW45)", "Phase B",  comment-lint: ok Regeltext
+#              das Wort fuer "einst" (auch vormals/ehemals) als Rueckblick.
 #              Dazu Arbeits-Marken (wer, wann, welches Arbeitspaket): Owner/Abnahme/Entscheid/Lauf + Datum, "Owner-Runde",  comment-lint: ok Regeltext
 #              "Probelauf-Fund", "(Paket 3)", "Paket 2/5", "Einwand 4", "Pruefliste Nr. 7", "Bug B4", "(P5)" ohne Test-Verweis,  comment-lint: ok Regeltext
 #              und Verweise auf Plaene: "Plan <name-mit-bindestrich>", "Plan *Titel*", .claude/plans/, .local/handover/.  comment-lint: ok Regeltext
 #   [code]     auskommentierter Code: Zuweisung, Kontrollkopf mit Klammer, einzelne Klammer, SQL-Anweisung mit Semikolon.
 #              Der Kopf-Block einer Datei ist ausgenommen (Aufruf-Beispiele gehoeren hinein).
-#   [todo]     TODO/FIXME ohne Ausloeser: erlaubt sind "TODO(<Ausloeser>)" oder "TODO wenn/sobald/nach/falls ...".  comment-lint: ok Regeltext
+#   [todo]     TODO/FIXME ohne Ausloeser: erlaubt sind "TODO(<Ausloeser>)" oder "TODO wenn/sobald/nach/falls/bei ...".  comment-lint: ok Regeltext
 #   [caps]     Betonung in Grossbuchstaben (feste Wortliste; Abkuerzungen wie JSON, NULL, HITL treffen nicht).
 #   [kopf]     Pflichtteile tragender Koepfe neuer Dateien: scripts/**/*.ps1 (ohne lib/) mit Aufruf-Beispiel und Exit-Code;
 #              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile; packages/*/build/**/*.ps1 mit
 #              mindestens zwei Kopfzeilen; provisioning/lib/*.sh mit erster Zeile "<datei> — <Zweck>" und wer sie sourct;
 #              provisioning/*.sh mit Aufruf und Exit-Code. "Dot-gesourct von <datei>.ps1" im Kopf verlangt, dass es die Datei gibt.
 # Ausnahme je Zeile: "comment-lint: ok <Grund>" im selben Kommentar (Lint-Marker, bleibt stehen).
-# Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), jsCode in Build-Defs (liegt in
-# PowerShell-Here-Strings).
+# Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), node_modules/, jsCode in Build-Defs
+# (liegt in PowerShell-Here-Strings).
 # Aufruf:
 #   .\scripts\comment_lint.ps1                     # Arbeitsbaum gegen merge-base mit origin/main (Fallback main)
 #   .\scripts\comment_lint.ps1 -Staged             # nur der gestagte Diff (prek-Hook)
 #   .\scripts\comment_lint.ps1 -Base <rev>         # Arbeitsbaum gegen <rev> (CI: PR-Basis bzw. Vor-Push-Stand)
 #   .\scripts\comment_lint.ps1 -All [-Verbose]     # ganzer Baum, nur Bericht der Treffer je Regel, Exit 0
-#   .\scripts\comment_lint.ps1 -Files a.ps1,b.sql -Json   # alle Zeilen der genannten Dateien als JSON (Test)
-# Exit-Code = Anzahl Funde (bei -All 0). Kein LLM, kein Netz, kein Substrat. Test: scripts/dev/comment_lint_test.ps1.
+#   .\scripts\comment_lint.ps1 -Files a.ps1,b.sql -Json   # alle Kommentarzeilen der Dateien pruefen, Funde (File, Line, Rule) als JSON (Test)
+# Exit-Code = Anzahl Funde (bei -All und -Json 0); vorab laufen Selbst-Asserts der Scanner, schlagen sie fehl, deren Anzahl.
+# Kein LLM, kein Netz, kein Substrat. Test: scripts/dev/comment_lint_test.ps1.
 param([string]$Base, [switch]$Staged, [switch]$All, [string[]]$Files, [switch]$Json, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

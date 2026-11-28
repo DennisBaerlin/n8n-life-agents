@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# retire_test.ps1 — GRATIS Test von `lifeagents retire` (Umzug: stilllegen, exportieren, zurueck) auf dem echten Weg im
+# retire_test.ps1 — gratis Test von `lifeagents retire` (Umzug: stilllegen, exportieren, zurueck) auf dem echten Weg im
 # klassischen Substrat: echtes systemd, n8n, PostgreSQL; Telegram ist die Attrappe des Substrats (enable_mock_telegram.ps1), an der
 # auch n8n haengt: so sieht der Test, dass n8n den Bot nach dem Rueckweg selbst wieder anmeldet.
 # Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner (tests/backup/retire_cases.sh) in den Container und faehrt dort
@@ -7,13 +7,13 @@
 #   - Lauf: Bot geloest, n8n, Gateway und Timer aus und deaktiviert, PostgreSQL an, Umzugs-Ordner vollstaendig und pruefbar;
 #   - Sperre: update/config set enden mit Satz, systemctl start n8n bleibt wirkungslos, doctor zeigt den Ruhezustand gruen;
 #   - Rueckweg: fremder Webhook -> nichts; --undo --restore -> Daten, Gedaechtnis, Wasserstand zurueck, alles wieder an, Bot wieder hier.
-# Haelt n8n im Substrat voruebergehend an -> nur im EIGENEN Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
+# Haelt n8n im Substrat voruebergehend an -> nur im eigenen Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
 # am Ende laeuft alles wieder wie vorher. Voraussetzung: enable_mock_telegram.ps1 (aktuelle Attrappe). Kein LLM, kein echtes Telegram.
 # N8NTEST_RUNTIME=compose: der Weg im Docker-Verbund (bootstrap_test_stack.ps1, Fall-Runner tests/backup/retire_stack_cases.sh im master):
 #   retire -> `stack start --json` (der Aufruf der Start-App beim Anmelden: n8n bleibt aus, die uebrigen Container laufen; ob das Gateway
 #   laeuft, ist nicht Gegenstand) -> retire --undo (n8n laeuft wieder). Die Tick-Schleife des master ruht waehrend des Laufs.
 #   Braucht zusaetzlich $env:N8NTEST_STACK_PORTS; die Telegram-Attrappe startet der Runner selbst auf Port 8101.
-# Usage:  $env:N8NTEST_CONTAINER='s4b1-n8ntest'; $env:N8NTEST_PORT='57900'; .\scripts\dev\retire_test.ps1 [-Verbose]
+# Usage:  $env:N8NTEST_CONTAINER='n8ntest-xx'; $env:N8NTEST_PORT='57xx'; .\scripts\dev\retire_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 

@@ -1,6 +1,7 @@
 {
-  "_comment": "Regeln und Bestand von scripts/size_lint.ps1 (dort die Bedeutung der Felder). rules: Grenzen fuer neue Dateien. files und agents: Bestand ueber einer Grenze bzw. je Agent, die Decken sinken nur; anheben oder neu eintragen ist eine Owner-Entscheidung. Geruest mit den heutigen Werten: scripts/size_lint.ps1 -Baseline.",
+  "_comment": "Regeln und Bestand von scripts/size_lint.ps1 (dort die Bedeutung der Felder). rules und sticky_chars: Grenzen fuer Neues. files, agents und stickies: Bestand ueber einer Grenze bzw. je Agent, die Decken sinken nur; anheben oder neu eintragen ist eine Owner-Entscheidung. Geruest mit den heutigen Werten: scripts/size_lint.ps1 -Baseline.",
   "headroom_pct": 10,
+  "sticky_chars": 4000,
   "rules": [
     { "id": "provisioning", "include": "^provisioning/(?!desktop/).*\\.(sh|tpl)$", "lines": 800 },
     { "id": "build-defs", "include": "^packages/[^/]+/build/.*\\.ps1$", "lines": 600, "bytes": 80000, "line_chars": 5000 },
@@ -35,9 +36,9 @@
     { "path": "provisioning/provision.sh", "lines": 927 },
     { "path": "scripts/build/lib/build_helpers.ps1", "lines": 2588 },
     { "path": "scripts/contract_lint.ps1", "lines": 3292 },
-    { "path": "scripts/dev/hitl_gate_test.ps1", "lines": 1605 },
-    { "path": "scripts/dev/real_ingress_test.ps1", "lines": 1293 },
-    { "path": "scripts/dev/test_n8n_state.ps1", "lines": 1506 },
+    { "path": "scripts/dev/hitl_gate_test.ps1", "lines": 1607 },
+    { "path": "scripts/dev/real_ingress_test.ps1", "lines": 1298 },
+    { "path": "scripts/dev/test_n8n_state.ps1", "lines": 1515 },
     { "path": "tests/agent/core/infra_cases.json", "lines": 804 },
     { "path": "tests/agent/core/orch_cases.json", "lines": 810 },
     { "path": "tests/agent/core/real_ingress_cases.json", "lines": 1865, "bytes": 119594 },
@@ -56,5 +57,11 @@
     { "agent": "agent.monitor / Monitor Agent", "tools": 6, "description_chars": 5739, "longest_description": 2452 },
     { "agent": "agent.orchestrator.main_route / Orchestrator agent", "tools": 7, "description_chars": 7250, "longest_description": 1648 },
     { "agent": "agent.paperless_assistant / Document Agent", "tools": 4, "description_chars": 966, "longest_description": 299 }
+  ],
+  "stickies": [
+    { "sticky": "agent.career_advisor / Doc: Überblick", "chars": 4423 },
+    { "sticky": "agent.orchestrator.main_route / Doc: Agent + Modell + Send", "chars": 6234 },
+    { "sticky": "agent.orchestrator.main_route / Doc: Callback-Handler (Owner + Member)", "chars": 7807 },
+    { "sticky": "core.sub_send_onboarding_menu / Doc: Überblick", "chars": 4381 }
   ]
 }

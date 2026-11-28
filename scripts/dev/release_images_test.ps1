@@ -1,15 +1,18 @@
 ﻿#Requires -Version 5.1
 # release_images_test.ps1 -- Regressionstest fuer scripts/lib/release_images.ps1 (Pin-Zeile, Herkunft im Git, Blick ins Register).
-# Teil A (immer, ohne Netz/Docker): Get-MasterPin/Set-MasterPin, Test-MasterRevision in einem Wegwerf-Repo.
+# Teil A (immer, ohne Netz/Docker): Get-/Set-MasterPin, Get-/Set-SetupPin (setup.sh), Test-MasterRevision, Test-HeadIsRemoteMain und
+#   Test-ReleaseSetup in einem Wegwerf-Repo, Test-ReleaseSums (SHA256SUMS) in einem Temp-Ordner; liest die echte compose.yml und setup.sh.
 # Teil B (nur mit -Registry): kleine Test-Images in ein lokales Register (registry:2 auf 127.0.0.1) und Get-MasterImageReport
 #   dagegen: Multi-Arch mit Label = gruen; eine Plattform, ohne Label, falscher Digest = rot. Das Register startet der Aufrufer
 #   (Docker nur mit eigenem Vorsatz), z. B.:
-#     docker run -d --name di5-registry -p 127.0.0.1:5099:5000 registry:2
+#     docker run -d --name release-test-registry -p 127.0.0.1:5099:5000 registry:2
 #     .\scripts\dev\release_images_test.ps1 -Registry 127.0.0.1:5099
-#     docker rm -fv di5-registry
+#     docker rm -fv release-test-registry
 # Teil C (nur mit -MasterImage <register/pfad@sha256:…>, ein mit build_master_image.ps1 -NoPin aus HEAD gebautes Image): die
 #   Pruefung von sign_release.ps1 (Test-ReleaseCompose) gegen lose Pin-Commits — gruen, Installer geaendert, falscher Digest,
 #   Asset abweichend, ohne Pin. Legt nur lose Git-Objekte an (kein Branch, kein Tag).
+# Teil D (immer, ohne Docker): Release-Version im master-Abbild (RELEASE_TAG in master.Dockerfile, build_master_image.ps1 und
+#   genericity.yml) und shm_size des master in compose.yml; liest diese Repo-Dateien.
 # Exit-Code = Anzahl Fehler.
 param([string]$Registry, [string]$MasterImage)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

@@ -1,6 +1,7 @@
 ﻿# main_push.ps1 -- Urteil der main-Push-Sperre (scripts/main_push_guard.ps1), getrennt von git und Netz, damit
 # scripts/dev/main_push_guard_test.ps1 es an erfundenen Workflow-Texten und Lauf-Listen pruefen kann. Dot-sourcen;
-# braucht Get-CiWaitVerdict und Test-CiPartialRun aus ci_wait.ps1.
+# braucht Get-CiWaitVerdict und Test-CiPartialRun aus ci_wait.ps1. Get-WorkflowPushFilter und ConvertTo-PathRegex nutzt auch
+# scripts/desktop_paths_lint.ps1.
 
 # Pfad-Filter eines Ausloesers (Standard push; auch pull_request) aus dem Text einer Workflow-Datei: @{ Paths; Ignore }. Die Filter stehen nur in der
 # Workflow-Datei; hier wird gelesen, nicht gespiegelt. Liest die Block-Form (push: / paths: / - 'muster'), die alle

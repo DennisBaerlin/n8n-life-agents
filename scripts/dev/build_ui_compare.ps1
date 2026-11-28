@@ -5,7 +5,8 @@
 # -Patch ist eine JS-Datei unter .local/, die vor dem Rendern window.__APP_PREVIEW__ aendert und ueber window.__CMP_SIDE__
 # ('vorher'|'nachher') die Seiten unterscheidet. So laesst sich ein Vorschlag zeigen, bevor er gebaut ist.
 #   .\scripts\dev\build_ui_compare.ps1 -Name kurzer-hinweis -Patch .local\ui_review\kurzer-hinweis\patch.js [-Title 'Was sich aendert']
-# Ausgabe: .local/ui_review/<Name>/vergleich.html. Exit 0, bei fehlender Datei Abbruch. Kein Netz, keine DB, kein Container.
+# Ausgabe: .local/ui_review/<Name>/vergleich.html; der Ordner muss schon existieren (build_ui_review.ps1 -Capture legt ihn an).
+# Exit 0, bei fehlender Datei Abbruch. Kein Netz, keine DB, kein Container.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,
     [Parameter(Mandatory)][string]$Patch,

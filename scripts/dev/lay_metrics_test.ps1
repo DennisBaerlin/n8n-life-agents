@@ -2,6 +2,7 @@
 # Selbsttest der Laien-Messung (scripts/lib/lay_metrics.ps1): je Regel ein verletzender Fall, der gemeldet werden muss, und ein
 # erlaubter Fall, der still bleiben muss. Aufgezeichnete Runden in der Form von ConvertTo-BotOutputs, alle Texte erfunden.
 # Kein Docker, kein Netz. Exit-Code = Anzahl Fehler.
+# Usage:  .\scripts\dev\lay_metrics_test.ps1 [-Verbose]   (-Verbose zeigt auch die gruenen Faelle)
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'

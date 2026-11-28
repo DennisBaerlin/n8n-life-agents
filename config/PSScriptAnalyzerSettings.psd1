@@ -1,8 +1,8 @@
-# PSScriptAnalyzer settings for scripts/**/*.ps1 — used by scripts/ps_lint.ps1 (prek hook `ps-lint`
-# + CI). Curated baseline (Phase 3, 2026-06-14): every excluded rule carries a one-line reason.
+# PSScriptAnalyzer settings for scripts/**/*.ps1 and packages/*/build/**/*.ps1 — used by scripts/ps_lint.ps1
+# (prek hook `ps-lint` + CI). Every excluded rule carries a one-line reason.
 # Severity is Error+Warning only (Information rules are stylistic noise for our dev-tooling scripts).
-# KEPT ON (high value): PSUseBOMForUnicodeEncodedFile — enforces our UTF-8-BOM convention for *.ps1
-# (the 3 violators were fixed in the baseline pass), plus all other correctness rules.
+# Kept on (high value): PSUseBOMForUnicodeEncodedFile — enforces our UTF-8-BOM convention for *.ps1,
+# plus all other correctness rules.
 @{
     Severity = @('Error', 'Warning')
 
@@ -18,13 +18,12 @@
         #     constructor. "Build" (and "Deploy") were added to the approved-verb Lifecycle group in
         #     PowerShell 6.0; PSSA only flags them here because the gate host is Windows PowerShell 5.1,
         #     whose Get-Verb predates that addition (verify: `Get-Verb Build` is empty on 5.1, present on 7+).
-        #     The genuinely-unapproved "Make-*" node helpers were renamed to Build-* (Phase 5b); the
-        #     dev one-offs were renamed to approved verbs. Only Build-* and one Sort-* helper remain.
+        #     Only Build-* and one Sort-* helper use unapproved verbs.
         #   PSUseSingularNouns — the mirror convention legitimately yields plural nouns where the
         #     workflow/tool name is plural (cron.refresh_fx_rates, reconcile_accounts, set_household_facts,
         #     import_stage_rows, monitor_check_triggers). Singularizing those would diverge the function
         #     from its workflow file. The generic collection helpers (Get-ToolCall, Get-StringValue, ...)
-        #     WERE singularized in Phase 5b; only the workflow-mirroring Build-* names stay plural.
+        #     are singular; only the workflow-mirroring Build-* names stay plural.
 
         # Same rationale: internal helpers, not user-facing cmdlets with a -WhatIf/-Confirm contract.
         'PSUseApprovedVerbs'
@@ -48,7 +47,7 @@
         'PSUseDeclaredVarsMoreThanAssignments'
 
         # Known false positives: switch params consumed via preference vars or passed through
-        # scriptblocks (e.g. $WriteTools/$Verify are documented, used params the analyzer can't trace).
+        # scriptblocks (e.g. $Verify in gen_fn_catalog.ps1 / build_site.ps1, used params the analyzer can't trace).
         'PSReviewUnusedParameter'
 
         # The sole hit is Get-FileHash -Algorithm MD5 in db_apply.ps1 — a migration content-IDENTITY
@@ -56,7 +55,7 @@
         # hashes require the algorithm stay stable, so this is intentional and must not change.
         'PSAvoidUsingBrokenHashAlgorithms'
 
-        # The sole hit is $AllNodes, which is an automatic variable ONLY inside DSC configurations.
+        # The sole hit is $AllNodes, which is an automatic variable only inside DSC configurations.
         # This repo authors no DSC; the local variable (workflow nodes) is safe.
         'PSAvoidAssignmentToAutomaticVariable'
     )

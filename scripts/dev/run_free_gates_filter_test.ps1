@@ -11,7 +11,7 @@ $failed = 0
 function Assert-That([bool]$Cond, [string]$Name) {
     if ($Cond) { Write-Host "  [PASS] $Name" -ForegroundColor Green } else { Write-Host "  [FAIL] $Name" -ForegroundColor Red; $script:failed++ }
 }
-# PS 5.1: ConvertFrom-Json gibt ein JSON-Array als EIN Objekt in die Pipeline -> erst zuweisen.
+# PS 5.1: ConvertFrom-Json gibt ein JSON-Array als ein Objekt in die Pipeline -> erst zuweisen.
 function ConvertFrom-JsonList([string]$t) { $o = $t.Trim() | ConvertFrom-Json; @($o) }
 function Get-Plan([hashtable]$Splat) { ConvertFrom-JsonList (& $gates -ListPlan @Splat | Out-String) }
 

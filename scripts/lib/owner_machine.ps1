@@ -1,5 +1,6 @@
 ﻿# owner_machine.ps1 -- erkennt die Owner-Maschine: private Denylist oder echte Chat-ID in der .env des Haupt-Checkouts.
-# Sperren, die nur dort gelten (Pruefstempel scripts/privacy_outgoing.ps1 -Check, Release-Pin scripts/release_pin_guard.ps1),
+# Sperren, die nur dort gelten (Pruefstempel scripts/privacy_outgoing.ps1 -Check, Release-Pin scripts/release_pin_guard.ps1,
+# main-Push-Sperre scripts/main_push_guard.ps1),
 # fragen hier: Beitraege von aussen und die CI haben beides nicht und werden nie blockiert.
 
 function Test-OwnerMachine([string]$MainRoot) {

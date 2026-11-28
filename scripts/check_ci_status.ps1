@@ -5,7 +5,8 @@
 # derselbe Weg wie git push), nie interaktiv. Exit-Code ohne -Wait = Anzahl roter Workflows (Fehler beim Abfragen -> 0 + Hinweis).
 #
 # -Wait <workflow> wartet auf den Lauf dieses Workflows auf einem Stand (-Sha, sonst HEAD) und endet laut: Exit 0 gruen,
-# 1 rot, 2 nicht entschieden (Zeitgrenze -TimeoutMin, kein Lauf nach 10 Minuten, GitHub mehrfach nicht abrufbar). Als
+# 1 rot, 2 nicht entschieden (Zeitgrenze -TimeoutMin, kein Lauf nach 10 Minuten, GitHub mehrfach nicht abrufbar, -Sha im
+# Checkout unbekannt). Als
 # Hintergrund-Befehl gedacht: das Ende weckt die wartende Session, auch bei Gruen.
 #
 # Usage:  .\scripts\check_ci_status.ps1 [-Hook]

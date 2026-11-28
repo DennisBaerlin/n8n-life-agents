@@ -1,11 +1,12 @@
 ﻿#Requires -Version 5.1
 # enable_mock_telegram.ps1 — den Mock-Telegram-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (Aufruf: .\scripts\dev\enable_mock_telegram.ps1 [-Down] [-Verbose]). Operiert auf einem bereits hochgefahrenen
+# (Aufruf: .\scripts\dev\enable_mock_telegram.ps1 [-Down]). Operiert auf einem bereits hochgefahrenen
 # Substrat (scripts/dev/bootstrap_test_n8n.ps1) — bewusst getrennt, damit der byte-identische Install-Pfad und der
 # bootstrap-Treiber unberuehrt bleiben (kleinerer Blast-Radius).
 #
 # Was es tut (idempotent):
 #   1) tests/mock_telegram/server.js in den Container kopieren (-> /opt/mock_telegram/server.js).
+#   1b) tests/mock_telegram/docs mitkopieren; CSV-Dateien mit {{date:..}} vorher aufloesen (Bezugstag core.fn_today()).
 #   2) Den Mock als transiente systemd-unit `n8ntest-mock-telegram` starten (127.0.0.1:<port>,
 #      Node ist durch n8n garantiert) + Health-Probe.
 #   3) Den Telegram-baseUrl der Credential 'Telegram account' per REST-PATCH auf den Mock umbiegen
@@ -17,6 +18,8 @@
 #      LLM_GATEWAY_TELEGRAM_API=<mock>) + Neustart auf den Mock biegen; geprueft per /__health.telegram.upstream.
 #      Eigener Dateiname: enable_mock_llm.ps1 schreibt mock.conf nur mit seiner eigenen Zeile. /run ist fluechtig ->
 #      nach einem Container-Neustart bzw. bootstrap ohne -Reset dieses Skript erneut laufen lassen.
+#   3c) Jeden Workflow mit telegramTrigger, dessen Webhook-Route 404 liefert (setWebhook scheiterte beim Deploy), per API
+#      unpublish/publish gegen den Mock neu anmelden; Bot-Name per core.fn_set_bot_username('mock_test_bot') setzen.
 #   4) Einen `mock_telegram`-Block ins State-File schreiben (Port/Log/Unit) fuer die Tier-/Verify-Skripte.
 #
 # -Down: Mock-Unit stoppen + baseUrl zurueck auf https://api.telegram.org patchen + Gateway-Drop-in weg + State-Block entfernen.
@@ -32,8 +35,7 @@
 # selbst ignoriert den Token, aber der Telegram-Node braucht eine gebundene Credential).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
-    [switch]$Down,
-    [switch]$Verbose
+    [switch]$Down
 )
 
 $ErrorActionPreference = 'Stop'

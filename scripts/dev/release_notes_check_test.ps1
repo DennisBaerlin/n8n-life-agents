@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# release_notes_check_test.ps1 - GRATIS Test von scripts\release_notes_check.ps1 (kein Docker, kein n8n).
+# release_notes_check_test.ps1 - gratis Test von scripts\release_notes_check.ps1 (kein Docker, kein n8n).
 # Liest die gemeinsamen Faelle aus tests\fixtures\release_notes\ (<fall>.md + <fall>.<lang>.expected.txt = erwartete
 # Kurzfassung) und prueft Exit-Code und Meldung; Grenzfaelle der Laenge (Umlaute, Emoji = ein Codepoint) entstehen
 # im Test. Dieselben Faelle stehen inline in tests\db\core\test_fn_release_card.sql (Abschnitt 9) - Aenderungen an beiden Stellen.

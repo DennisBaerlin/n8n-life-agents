@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # Selbsttest der Absender-Aufloesung von n8n_test (Resolve-TestCaseChatId, Get-TestSenderPairingSql in dev/test_n8n_state.ps1). Kein Substrat, keine Kosten.
-# Der Fehler, den er festhaelt: n8n_test setzte jede chat_id auf den Owner, ein Mitglieds-Fall pruefte still den Owner.
+# Haelt fest: n8n_test loest die chat_id je Fall auf (numerisch = diese uid, sonst Owner); ein Mitglieds-Fall darf nicht still als Owner laufen.
+# Prueft ausserdem die Wahl des Agent-Knotens, der lief (Resolve-AgentNodeName, Get-AgentOutput), und die Verdrahtung in n8n_test und mock_route_test.
 # Usage:  .\scripts\dev\chat_sender_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -33,14 +34,14 @@ Assert-That ($lisa -match "'person_id' = 'lisa' THEN p \|\| jsonb_build_object\(
 Write-Host "Verdrahtung"
 $drv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\n8n_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Assert-That ($drv -match 'Resolve-TestCaseChatId \$tc' -and $drv -match 'Set-TestSenderPairing') 'n8n_test loest die chat_id des Falls auf und paart den Absender'
-Assert-That ($drv -notmatch '\[long\]\$chatId\s*=\s*\$TestOwnerTelegramUid') 'n8n_test setzt die chat_id nicht mehr fest auf den Owner'
+Assert-That ($drv -notmatch '\[long\]\$chatId\s*=\s*\$TestOwnerTelegramUid') 'n8n_test setzt die chat_id nicht fest auf den Owner'
 Write-Host "Agent-Knoten, der lief (Guide: Kind laeuft ueber 'Guide Agent (personal)')"
 $names = @('Guide Agent', 'Guide Agent (personal)')
 $rdChild = '{ "Household status read": [ {} ], "Guide Agent (personal)": [ { "data": { "main": [ [ { "json": { "output": "Du kannst mich fragen: wie es funktioniert." } } ] ] } } ] }' | ConvertFrom-Json
 $rdOwner = '{ "Guide Agent": [ { "data": { "main": [ [ { "json": { "output": "Antwort Owner" } } ] ] } } ] }' | ConvertFrom-Json
 $nodeChild = Resolve-AgentNodeName $rdChild $names
 Assert-That ($nodeChild -eq 'Guide Agent (personal)') 'Kind: der Knoten, der lief, wird gewaehlt'
-Assert-That ((Get-AgentOutput $rdChild $nodeChild) -eq 'Du kannst mich fragen: wie es funktioniert.') 'Kind: die Antwort kommt im Buendel an (war leer, weil der erste Agent-Knoten gelesen wurde)'
+Assert-That ((Get-AgentOutput $rdChild $nodeChild) -eq 'Du kannst mich fragen: wie es funktioniert.') 'Kind: die Antwort des Knotens, der lief, kommt im Buendel an'
 Assert-That ((Get-AgentOutput $rdChild $names[0]) -eq '') 'Gegenprobe: der erste Knoten allein liefert fuer das Kind nichts'
 Assert-That ((Resolve-AgentNodeName $rdOwner $names) -eq 'Guide Agent') 'Owner: erster Knoten'
 Assert-That ((Resolve-AgentNodeName ('{}' | ConvertFrom-Json) $names) -eq 'Guide Agent') 'kein Knoten gelaufen: erster Kandidat'

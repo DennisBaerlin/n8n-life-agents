@@ -7,11 +7,14 @@
 # Liest nur ~/.claude/projects/<Repo>--claude-worktrees-*/ (neuestes *.jsonl je Worktree), aendert nichts.
 #
 # Usage:  .\scripts\dev\session_stall_check.ps1 [-StallMinutes 30]
-#         (-ProjectsRoot/-RepoPrefix/-WorktreeNames nur fuer den Test: scripts/dev/session_stall_check_test.ps1)
-# Exit-Code = Anzahl stehender Sessions.
+#         (-ProjectsRoot/-RepoPrefix/-WorktreeNames nur fuer den Test: scripts/dev/session_stall_check_test.ps1;
+#         -TailBytes = gelesenes Transkript-Ende, Standard 1 MB). Braucht git.
+# Exit-Code = Anzahl stehender Sessions; 255 = Skriptfehler.
 param([int]$StallMinutes = 30, [string]$ProjectsRoot, [string]$RepoPrefix, [string[]]$WorktreeNames, [int]$TailBytes = 1MB)
 
 $ErrorActionPreference = 'Stop'
+# Exit 255 trennt einen Skriptfehler von der Zahl stehender Sessions; ungefangen gaebe er Exit 1, also scheinbar eine stehende Session.
+trap { Write-Host "FEHLER  $_" -ForegroundColor Red; exit 255 }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 if (-not $ProjectsRoot) { $ProjectsRoot = Join-Path $env:USERPROFILE '.claude\projects' }

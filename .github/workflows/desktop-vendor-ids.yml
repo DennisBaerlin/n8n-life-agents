@@ -1,8 +1,8 @@
-# Herstellerkennung von Docker Desktop am Original ablesen (Plan docker-installer-freunde, Paket 6): Die Start-App
+# Herstellerkennung von Docker Desktop am Original ablesen: Die Start-App
 # prueft vor dem Installieren Team-ID (Mac) und Herausgeber (Windows) gegen Konstanten in
 # provisioning/desktop/core/src/docker_desktop.rs. Aendert Docker sie, wird dieser Lauf rot, bevor eine App mit falscher
 # Pruefung ausgeliefert wird. Laeuft bei Aenderung der Konstanten, woechentlich und von Hand, nicht bei jedem App-Push
-# (laedt rund 1,2 GB). Von Hand: gh workflow run desktop-vendor-ids.yml --ref <branch>
+# (grosser Download). Von Hand: gh workflow run desktop-vendor-ids.yml --ref <branch>
 name: desktop-vendor-ids
 
 on:

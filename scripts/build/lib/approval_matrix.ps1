@@ -8,10 +8,11 @@
 #   (a) tier ∈ self | owner_info | owner_approval | owner_only, reason nicht leer (self: s. $ApprovalTierRank);
 #   (b) kein Workflow in zwei Bloecken;
 #   (c) Verb-Praefix-Strenge: der tier ist mindestens so streng wie das Verb im Tool-Namen verlangt
-#       (strenger erlaubt; ein neues Verb muss hier bewusst klassifiziert werden).
+#       (strenger erlaubt; Ausnahme "break_glass": true, s. unter $ApprovalVerbFloor; ein neues Verb muss hier bewusst
+#       klassifiziert werden).
 # Besitz (deklarierendes Paket == Paket des Workflows) pruefen die Konsumenten: build.ps1 gegen das Paket
 # des erzeugenden Build-Defs, approval_lint gegen den Ablageort der gebauten Datei.
-# Konsumenten: build.ps1 (Set-ApprovalTier, throw bei Verstoss) + scripts/approval_lint.ps1.
+# Konsumenten: build.ps1 (Set-ApprovalTier, throw bei Verstoss), scripts/approval_lint.ps1, scripts/derived_input_lint.ps1.
 # Abhaengigkeitsfrei (nur Manifest-JSON rein, Objekte raus), damit der Lint sie dot-sourcen kann.
 # =====================================================================================================
 

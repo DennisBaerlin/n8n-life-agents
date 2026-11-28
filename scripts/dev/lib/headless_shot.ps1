@@ -1,5 +1,6 @@
 ﻿#Requires -Version 5.1
-# headless_shot.ps1 -- Bildschirmfoto einer lokalen Seite per Headless-Chrome (sonst Edge). Verbraucher:
+# headless_shot.ps1 -- Bildschirmfoto (Invoke-HeadlessShot) und sichtbarer Text (Get-HeadlessText) einer lokalen Seite per
+# Headless-Chrome (sonst Edge). Verbraucher:
 # render_app_screenshots.ps1 (Doku-Bilder) und build_ui_review.ps1 (Vorschau-Seite fuer den Owner). Kein Netz, keine DB.
 # Headless-Chrome hat eine Mindest-Fensterbreite (~500 px): die Seite wird per CSS auf Handybreite gesetzt und das Bild danach
 # zugeschnitten. Dunkel braucht zusaetzlich prefers-color-scheme (-Dark).
@@ -19,7 +20,8 @@ function Get-HeadlessBaseArg([string]$ProfileDir) {
 
 # -File: lokale HTML-Datei. -WidthPx/-HeightPx: Ausschnitt in CSS-px. -WindowWidth: Fensterbreite (Standard 600 = Handy-
 # Layout der Seiten; breiter fuer die Fensteransicht des Wizards). -TrimBottom: gleichfarbigen Rest unter dem Inhalt abschneiden
-# (lange Seiten: -HeightPx ist dann die Obergrenze).
+# (lange Seiten: -HeightPx ist dann die Obergrenze; ist die Seite hoeher, bricht es ab, mit -AllowCut nur ein Hinweis).
+# -Scale: Geraete-Faktor; -Dark: --force-dark-mode. Schreibt -Out als PNG (Zwischendatei <Out>.raw.png wird geloescht).
 function Invoke-HeadlessShot {
     param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Out, [int]$WidthPx = 390, [int]$HeightPx = 790,
           [double]$Scale = 2, [switch]$Dark, [switch]$TrimBottom, [switch]$AllowCut, [int]$WindowWidth = 600)

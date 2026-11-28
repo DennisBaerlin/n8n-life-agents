@@ -2,8 +2,9 @@
 # demselben Substrat wie genericity.yml (privilegierter systemd-Container, gleiches Image). Ein Runner je Stueck
 # (kurze Suiten nacheinander auf einem Substrat, lange in Teilen; Schnitt in run_free_gates.ps1), das Basis-Image wird einmal
 # gebaut und per Cache verteilt; die Matrix kommt aus dem Skript (-ListJobs). Kein Required Check.
+# Daneben eigene Jobs: backup-roundtrip (Docker-Verbund) und db (scripts/db_test.ps1).
 #
-# SICHERHEIT: Der Workflow laeuft bei PRs, auch von Forks, und startet privilegierte Container mit fremdem Code.
+# Sicherheit: Der Workflow laeuft bei PRs, auch von Forks, und startet privilegierte Container mit fremdem Code.
 #  - Nur `pull_request`, nie `pull_request_target`: Fork-Laeufe bekommen ein Nur-Lese-Token und keine Secrets.
 #  - Der Workflow nutzt keine Secrets. Die .env besteht aus erfundenen Werten (scripts/dev/new_ci_env.ps1).
 #  - Minimale `permissions`, `persist-credentials: false`: im Arbeitsbaum liegt kein Token, das ein Skript finden koennte.
@@ -181,7 +182,7 @@ jobs:
   # "Alles wie vorher": ein Docker-Verbund mit erfundenen Daten in jedem Sicherungsteil wird gesichert, frisch aufgesetzt und
   # wieder eingespielt; der Fingerabdruck davor und danach muss gleich sein (scripts/dev/backup_roundtrip_test.ps1). Eigener
   # Job statt Matrix-Eintrag: der Verbund ist ein anderer Unterbau (N8NTEST_RUNTIME=compose) als das systemd-Substrat der
-  # Matrix und braucht dessen Basis-Image nicht. Gemessen lokal: Kaltstart des Verbunds rund 7 Minuten, Roundtrip rund 8.
+  # Matrix und braucht dessen Basis-Image nicht.
   backup-roundtrip:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

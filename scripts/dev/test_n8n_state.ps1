@@ -12,6 +12,13 @@
 #
 # Throw (kein Silent-Fallback): laeuft kein Test-Substrat, soll der Tier-Lauf mit klarer Anweisung
 # abbrechen statt versehentlich gegen eine fremde Instanz zu feuern.
+# Bibliothek, nur dot-sourcen. Funktionsgruppen: Verbindung und Ziel (Get-TestN8nConnection [-AllowMissing -> $null statt Throw],
+#   Get-TestN8nState, Get-TestN8nTarget classic|compose, Invoke-TestN8nPsql/-PsqlFile); Attrappen-Logs (Get-/Clear-MockTelegramRequests,
+#   Get-/Clear-MockLlmRequests); HITL (Get-HitlResumeUrl, Invoke-HitlResume, Get-HitlTelegramSecret); LLM-Gateway und Kosten
+#   (Assert-LlmGatewayUpstream, Get-LlmUsage, Write-LlmCostReport); Fall-Vorbereitung (Initialize-AgentTestState, Reset-TestCaseState,
+#   Invoke-TestCaseSetup/-Teardown, Set-TestSenderPairing, Set-TestPackageOnboarding); Lauf (Send-TelegramIngress,
+#   Wait-ExecResolvingGates, Start-TestCron, Write-CaseAbort); runData (Get-ToolCall, Get-CalledTool, Get-AgentOutput);
+#   Textkatalog (Get-CatalogText, Test-TextHasKey).
 # Get-TestN8nStateFile: Pfad der Zustandsdatei (Haupt-Checkout, je Container) -> scripts/lib/n8ntest_state_file.ps1.
 . (Join-Path $PSScriptRoot '..\lib\n8ntest_state_file.ps1')
 # Namen, Log-Ordner und Attrappen-Ziele des Verbunds (eine Adresse); bringt Invoke-Native (test_common.ps1) mit.
@@ -210,7 +217,7 @@ function Clear-ThinkingLease {
 # 'Erika' (nie echte PII). Der Substrat-Owner wird aber aus .env TEST_OWNER_* gebootstrappt -> traegt
 # dort jemand einen anderen/echten Namen, driften Substrat-Haushalt und Goldens auseinander: der Agent
 # verweigert dann jeden 'Erika'-Auftrag ('nicht im Haushalt') und eine ganze LLM-Suite verbrennt nur
-# Klaerungs-Fehlschlaege (Symptom: ein Substrat mit echtem Owner-Namen liess 21/32 e2e-Faelle scheitern).
+# Klaerungs-Fehlschlaege.
 # Dieser Riegel prueft vor dem ersten LLM-Call (1 gratis DB-Query) den Haushalts-Owner -> sonst harter
 # Abbruch mit Fix-Hinweis (kein Credit-Spend). Faengt zugleich versehentliche Echtdaten-Lecks
 # (keine reale PII in Test-Faellen). Aufrufer: n8n_test (finance/advisor) + e2e_test.
@@ -510,12 +517,14 @@ function Get-LlmGatewayHealth {
     try { return (($out -join '') | ConvertFrom-Json) } catch { return $null }
 }
 
-# Restart-TestLlmGateway -Container <c> -- Gateway neu starten (liest dabei seine Umgebung neu) und warten, bis /__health antwortet.
+# Get-TestLlmGatewayRestartArgs -Target <t> -- docker-Argumente fuer den Gateway-Neustart je Unterbau (classic: systemctl restart im
+# Container, compose: docker restart des Gateway-Containers).
 function Get-TestLlmGatewayRestartArgs {
     param([Parameter(Mandatory)]$Target)
     if ($Target.Runtime -eq 'compose') { return @('restart', $Target.Gateway) }
     return @('exec', $Target.Gateway, 'systemctl', 'restart', $script:LlmGatewayUnit)
 }
+# Restart-TestLlmGateway -Container <c> -- Gateway neu starten (liest dabei seine Umgebung neu) und warten, bis /__health antwortet.
 function Restart-TestLlmGateway {
     param([Parameter(Mandatory)][string]$Container, [int]$TimeoutSec = 30)
     $target = Get-TestN8nTarget -Container $Container
@@ -589,7 +598,7 @@ function Get-LlmUsageCursor {
     return $null
 }
 
-# Get-LlmUsage — die usage-Zeilen NACH dem Cursor (ohne Cursor: alle) als Objekte, aelteste zuerst.
+# Get-LlmUsage — die usage-Zeilen nach dem Cursor (ohne Cursor: alle) als Objekte, aelteste zuerst.
 function Get-LlmUsage {
     param([Parameter(Mandatory)][string]$Container, [string]$AfterCursor)
     $target = Get-TestN8nTarget -Container $Container
@@ -682,7 +691,7 @@ function Write-LlmCostReport {
     } catch { Write-Host "  (Verlaufszeile nicht geschrieben: $($_.Exception.Message))" -ForegroundColor DarkGray }
 }
 
-# Invoke-TestN8nPsqlFile — eine SQL-Datei vom HOST (Source of Truth) in der Container-DB ausfuehren:
+# Invoke-TestN8nPsqlFile — eine SQL-Datei vom Host (Quelle der Wahrheit) in der Container-DB ausfuehren:
 # docker cp -> /tmp (0644, damit der postgres-User sie liest) -> psql -f -> aufraeumen.
 function Invoke-TestN8nPsqlFile {
     param(
@@ -1084,7 +1093,7 @@ function Get-TestRouteAgent {
 # __E2E__ im Namen; aufgeraeumt wird nur ueber agent.fn_clear_e2e_data().
 # Optional -Precondition (Case-Feld precondition_sql): ein boolescher SQL-Ausdruck, der nach dem setup_sql wahr sein muss. Er belegt
 # den Zustand, den die Erwartung des Falls voraussetzt (z. B. das Konto, ohne das der Agent nachfragen muss); ist er falsch, ist der
-# Fall rot, BEVOR ein bezahlter Aufruf losgeht (dann ist die Vorbereitung des Falls schuld, nicht der Agent).
+# Fall rot, bevor ein bezahlter Aufruf losgeht (dann ist die Vorbereitung des Falls schuld, nicht der Agent).
 $script:CaseSqlPrelude = @'
 CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$ BEGIN IF COALESCE((p_res->>'ok')::boolean, TRUE) = FALSE THEN RAISE EXCEPTION 'e2e setup: % fehlgeschlagen: %', p_label, COALESCE(p_res->>'reason', p_res::text); END IF; RETURN p_res; END $f$;
 CREATE FUNCTION pg_temp.publish_plan(p_domain text, p_plan_name text, p_topics jsonb) RETURNS int LANGUAGE plpgsql AS $f$ DECLARE t jsonb; r jsonb; BEGIN FOR t IN SELECT e FROM jsonb_array_elements(p_topics) e LOOP PERFORM pg_temp.ok('Plan-Thema ' || (t->>'topic'), agent.fn_advisor_save_section(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'plan_name', p_plan_name, 'section_key', t->>'section_key', 'topic', t->>'topic', 'section_content', t->>'content'))); END LOOP; r := pg_temp.ok('Plan veroeffentlichen', agent.fn_advisor_publish_plan(jsonb_build_object('domain', p_domain, 'chat_id', 'test_fixture', 'reminders', '[]', 'check_findings', '[]', 'check_passes', 1))); UPDATE agent.advisor_plans SET synced_at = now() WHERE id = (r->>'plan_id')::int; RETURN (r->>'plan_id')::int; END $f$;
@@ -1105,7 +1114,7 @@ function Invoke-TestCaseSetup {
 # Teardown (optional je Case, Feld teardown_sql): raeumt, was agent.fn_clear_e2e_data() nicht kennt (Zustand ohne __E2E__-Sentinel, den ein
 # setup_sql setzt, z. B. Plan-Zahlen in core_contexts), damit er spaetere Faelle nicht erreicht. Gleiche Regeln wie setup_sql (einfache
 # Hochkommas). Ablauf aller Treiber mit setup_sql (n8n_test, mock_route_test, e2e_test, multiturn_test): Register-TestCaseTeardown merkt
-# das Feld VOR dem setup_sql (es laeuft also auch, wenn das setup_sql mittendrin scheitert); Complete-TestCaseTeardown fuehrt es aus, und zwar
+# das Feld vor dem setup_sql (es laeuft also auch, wenn das setup_sql mittendrin scheitert); Complete-TestCaseTeardown fuehrt es aus, und zwar
 # nach dem fn_clear_e2e_data des Falls, vor dem naechsten Fall und im finally am Lauf-Ende (rot, abgebrochen, Vorbereitung gescheitert: egal).
 # Complete wirft nie (laeuft im finally) und liefert die Fehlermeldung oder $null; der Treiber zaehlt sie als roten Fall.
 $script:PendingTeardown = $null

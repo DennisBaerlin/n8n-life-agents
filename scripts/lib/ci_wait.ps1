@@ -1,5 +1,6 @@
-﻿# ci_wait.ps1 -- Urteil des Warte-Modus von scripts/check_ci_status.ps1 (-Wait), getrennt vom Netz-Abruf, damit
-# scripts/dev/ci_wait_test.ps1 es an erfundenen Lauf-Listen pruefen kann. Dot-sourcen.
+﻿# ci_wait.ps1 -- Urteile ueber GitHub-Laeufe, getrennt vom Netz-Abruf, damit scripts/dev/ci_wait_test.ps1 sie an erfundenen
+# Lauf-Listen pruefen kann: Warte-Modus (-Wait) und Ampel (Get-CiLatestMainRuns) von scripts/check_ci_status.ps1, dazu
+# Get-CiWaitVerdict und Test-CiPartialRun fuer die main-Push-Sperre (scripts/lib/main_push.ps1). Dot-sourcen.
 
 # Teil-Lauf: ein Handstart mit Suiten-Auswahl (free-gates.yml setzt den run-name "free-gates [Auswahl] ...") prueft nicht den
 # ganzen Stand und zaehlt darum nie als Lauf des Workflows, weder gruen noch rot. Nur workflow_dispatch und Titel-Anfang: ein

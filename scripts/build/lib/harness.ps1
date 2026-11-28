@@ -3,13 +3,15 @@
 # Die Registry $script:Harnesses wird hier leer initialisiert; jedes Paket steuert seine Eintraege in
 # packages/<pkg>/build/workflows/harnesses.ps1 per `$script:Harnesses += @(...)` bei. Init in der Engine ->
 # Paket-Lade-Reihenfolge ist irrelevant. Build-Harness + Get-HarnessWorkflow sind paket-agnostisch.
-# Nutzt $WorkflowsDir/Get-WorkflowIdByName/New-Id/E aus dem build.ps1-Scope.
+# Nutzt aus dem build.ps1-Scope: Get-RequiredWorkflowId, $CRED_HARNESS, New-Id, E.
 # Harnesses sind Test-Eingaenge: kein errorWorkflow (laufen manuell), daher nicht Build-Workflow. Die
 # Header-Auth-Credential referenziert den lesbaren Platzhalter __CRED_HARNESS__; inject_credentials legt
 # sie aus TEST_HARNESS_SECRET an + remappt den Platzhalter.
 
 $script:Harnesses = @()
 
+# $H = @{ name; path; targetName | targetIdField; [inputMap]; [noWait] } aus packages/<pkg>/build/workflows/harnesses.ps1;
+# ohne inputMap traegt der Body task, chat_id, call_depth.
 function Build-Harness {
     param($H)
     $cred    = $CRED_HARNESS   # Host-Deskriptor (build.ps1-Host-Block)

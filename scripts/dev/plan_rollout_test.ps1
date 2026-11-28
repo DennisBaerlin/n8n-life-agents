@@ -3,7 +3,11 @@
 # Prüft: genau eine Rollout-Nachricht nach der Antwort, keine bei offener Karte oder Rückfrage, Antwort kommt auch bei Fehler im Sub,
 # Übergabe-Liste nicht doppelt, Bestandsplan bekommt Schritt 0, Wortlaut der Liste samt Folge-Zeile aus dem Textkatalog, stilles
 # Warten auf offene Einträge (zurückgestellte halten nicht auf). Laufzeit-Szenarien (Repo-scenarios bleibt unberührt).
-# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1. Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1]. Exit = Anzahl roter Fälle.
+# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1; liest .env.
+# Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1] [-Timeout 120]. Exit = Anzahl roter Fälle.
+# Seiteneffekte im Substrat: leert finance-Übergaben und -Pläne (agent.handoff_tasks, agent.advisor_plans), agent.hitl_pending und die
+# plan_rollout-Merker, schaltet cron_enable plan_rollout am Ende aus; ersetzt kurz core.advisors.entry_effects_fn und scenarios.json
+# der Mock-LLM (danach zurück).
 param([string[]]$Id, [string]$ForceAbortId, [int]$Timeout = 120)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -114,7 +118,7 @@ $Cases = @(
     try { Send-Text 'ROLLOUTPING vier' } finally { Invoke-Sql 'ALTER FUNCTION core.fn_plan_rollout_claim_off(jsonb) RENAME TO fn_plan_rollout_claim;' | Out-Null }
     if (-not (Has-Answer 'Alles klar')) { throw 'Antwort fehlt' }
     Assert-Equal @(Get-Rollout).Count 0 'Rollout-Nachrichten'
-    # Messung errorWorkflow: Claim laeuft mit onError continue, also ohne Fehler-Workflow.
+    # errorWorkflow greift hier nicht: Claim laeuft mit onError continue, also ohne Fehler-Workflow.
     Assert-Equal @(Get-Sends | Where-Object { [string]$_.body.text -match 'core.sub_plan_rollout_next' }).Count 0 'Owner-Alarm'
  } }
  @{ id = 'rr5'; name = 'Uebergabe-Liste schon gesendet: kein Doppel'; run = {

@@ -2,26 +2,29 @@
 # ui_token_lint.ps1 -- eine Farbquelle fuer alle Oberflaechen (hartes Gate).
 # Regeln und Ablauf: docs/reference/ui.md, Skill /ui-task. Mechanik der Bloecke: scripts/lib/ui_tokens.ps1.
 # Prueft in dieser Reihenfolge:
-#   Selbst-Asserts   stirbt die Erkennung still, bricht der Lint (Kontrast-Formel, Literal-Erkennung, Blockformat).
-#   (1) Farbdatei    config/ui.tokens.json: hex und components passen zueinander, jede Kontrast-Paarung nennt echte Tokens,
-#                    hell und dunkel haben dieselben Namen.
-#   (2) Kontrast     jede Paarung aus $extensions in hell und dunkel; Schwelle am Eintrag (Text 4,5:1, Punkte/Raender 3:1).
-#   (3) Bloecke      der erzeugte Block jeder Oberflaeche ist aktuell (sonst: scripts/build_ui_tokens.ps1).
+#   Selbst-Asserts   stirbt die Erkennung still, bricht der Lint (Kontrast-Formel, Literal-Erkennung, Blockformat, Zeichen-Erkennung;
+#                    der Assert der Erklaer-Bilder laeuft erst bei (8)).
+#   (1) Farbdatei    config/ui.tokens.json: hex und components passen zueinander, hell und dunkel haben dieselben Namen.
+#   (2) Kontrast     jede Paarung aus $extensions nennt echte Tokens und eine Schwelle > 0 und haelt sie in hell und dunkel
+#                    (Schwelle am Eintrag: Text 4,5:1, Punkte/Raender 3:1).
+#   (3) Bloecke      der erzeugte Block jeder Oberflaeche ist aktuell, ebenso jede Baustein-Kopie (Get-UiCopies) und jeder
+#                    Textblock aus dem Katalog packages/core/locales (Get-UiLocaleBlocks) (sonst: scripts/build_ui_tokens.ps1);
+#                    ein Block-, Text- oder Baustein-Marker ausserhalb einer registrierten Datei ist ein Fehler.
 #   (4) Literale     feste Farben (Hex, rgb(), hsl()) unter den Wurzeln aus Get-UiScanRoots, ausserhalb der Bloecke. RATCHET:
 #                    jede heute vorhandene Stelle steht je (Datei, Literal) in scripts/build/ui_token_allowlist.json mit
 #                    Begruendung. Found > Allowlist = neue Farbe (FAIL), Found < Allowlist = schrumpfen (FAIL), Orphan = FAIL.
 #                    Begruendungen: mock:<warum> Nachbau fremder Oberflaeche; derived:<warum> vom Token abgeleitet (Transparenz,
 #                    Abdunklung); pilot:<warum> alter Wert, die Umstellung raeumt ihn ab; art:<warum> Zeichnung.
 #   (5) Neue Flaechen UI-Datei ausserhalb der registrierten Wurzeln -> FAIL (Oberflaeche in lib/ui_tokens.ps1 eintragen).
-#   (6) Bot-Profilbild  das committete JPG ist aus dem aktuellen Zeichen und der Farbdatei abgeleitet (Pruefwert der Quelle).
 #   (7) Zeichen        das Site-Partial ist aus config/ui.mark.svg erzeugt (sonst: scripts/build_ui_tokens.ps1); jede inline-SVG im
 #                    Zeichen-Kasten (viewBox 0 0 26 26) unter den Wurzeln aus Get-UiScanRoots traegt die Pfade der Quelle, nur die
 #                    Farben duerfen abweichen. Ausnahmen mit Begruendung: Get-UiMarkExempt.
+#   (6) Bot-Profilbild  das committete JPG ist aus dem aktuellen Zeichen und der Farbdatei abgeleitet (Pruefwert der Quelle).
 #   (8) Erklaer-Bilder die Ordner aus Get-UiArtDirs enthalten genau die aus config/ui.art.*.svg erzeugten Dateien (feste Farben dort
 #                    sind gewollt: das Bild wird per <img> gezeigt und erreicht keine var(--token) der Seite).
 # Aufruf: .\scripts\ui_token_lint.ps1 [-Verbose] [-Baseline]
 # -Baseline: druckt die gefundenen Literale als JSON-Geruest (reason:'TODO').
-# Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
+# Exit-Code = Anzahl Fehler (-Baseline: 0). Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

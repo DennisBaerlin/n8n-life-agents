@@ -2,7 +2,7 @@
 # session_stall_check_test.ps1 -- prueft scripts/dev/session_stall_check.ps1 gegen erfundene Transkripte in einem
 # Wegwerf-Ordner: eine Session haengt an einem Werkzeug-Aufruf ohne Ergebnis (alt), eine ist frisch, eine ist alt,
 # aber ohne offenen Aufruf (ruht nur; ein frueher abgelehnter Aufruf ohne Ergebnis und die Aufruf-Kopie einer api-request-blob-Zeile zaehlen nicht), eine haengt in einem laengst geloeschten Worktree, eine in einem Worktree mit Sonderzeichen im Namen.
-# Als STEHT gemeldet werden nur die erste und die letzte.
+# Als STEHT gemeldet werden nur die erste und die letzte. Ein Skriptfehler endet mit Exit 255.
 # Usage: .\scripts\dev\session_stall_check_test.ps1   Exit-Code = Anzahl roter Faelle.
 $ErrorActionPreference = 'Stop'
 $failed = 0
@@ -41,6 +41,10 @@ try {
         if ($c.ok) { Write-Host "[PASS] $($c.n)" } else { Write-Host "[FAIL] $($c.n)"; $failed++ }
     }
     if ($failed) { Write-Host "Ausgabe (rc=$rc):"; Write-Host $out }
+
+    # Skriptfehler (hier: unmoegliche Leselaenge) ist kein Befund: eigener Exit-Code statt "eine stehende Session".
+    $rcErr = try { & (Join-Path $PSScriptRoot 'session_stall_check.ps1') -ProjectsRoot $root -RepoPrefix $prefix -WorktreeNames 'haengt' -TailBytes -5 6>&1 | Out-Null; $LASTEXITCODE } catch { 1 }
+    if ($rcErr -eq 255) { Write-Host '[PASS] skriptfehler_exit_255' } else { Write-Host "[FAIL] skriptfehler_exit_255 (rc=$rcErr)"; $failed++ }
 } finally {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

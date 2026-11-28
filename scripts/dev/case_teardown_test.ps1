@@ -2,6 +2,7 @@
 # Selbsttest des Fall-Feldes teardown_sql (Register-/Complete-/Invoke-TestCaseTeardown in dev/test_n8n_state.ps1). Kein Substrat, keine Kosten.
 # Haelt fest: das Feld wird vor dem setup_sql gemerkt (laeuft also auch nach einer gescheiterten Vorbereitung), genau einmal ausgefuehrt,
 # ein Fehler kommt als Meldung zurueck (wirft nie, laeuft im finally) und jeder Treiber mit setup_sql ruft es vor dem naechsten Fall und am Lauf-Ende.
+# Prueft ausserdem precondition_sql (Invoke-TestCaseSetup -Precondition): falsche oder leere Vorbedingung macht den Fall rot, die Treiber reichen sie durch.
 # Usage:  .\scripts\dev\case_teardown_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

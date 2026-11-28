@@ -2,6 +2,8 @@
 # Selbsttest der Datums-Platzhalter {{date:<offset>[@<tag>]}} (Grammatik: scripts/lib/date_placeholder.ps1). Kein Substrat, keine Kosten.
 # Dieselben Pruefwerte (tests/util/date_placeholder_vectors.json, u. a. Monats- und Jahreswechsel) laufen gegen die PowerShell-Seite
 # und gegen den JS-Zwilling in tests/mock_llm/server.js (node lokal, sonst Docker-Image des workflow_lint).
+# Prueft ausserdem die Erkennung fester Daten in Fall-Dateien (Get-FixedDateFinding), den Bezugstag aus dem Substrat-State und dass
+# tests/mock_*/server.js keine Nachbardatei laedt.
 # Usage:  .\scripts\dev\date_placeholder_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

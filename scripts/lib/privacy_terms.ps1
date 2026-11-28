@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # privacy_terms.ps1 -- macht aus einem (art, wert) der Instanz die Schreibweisen fuer die Denylist.
-# Reine Funktion ohne Ein-/Ausgabe, damit der Test sie ohne Instanz pruefen kann. Dot-Sourcing wie scripts/lib/devenv.ps1.
+# Reine Funktion ohne Ein-/Ausgabe, damit der Test sie ohne Instanz pruefen kann. Dot-sourcen; Nutzer: scripts/refresh_privacy_denylist.ps1
+# (die (art, wert)-Paare liefert dort scripts/lib/privacy_terms.sql).
 
 # Eine Zahl (Punkt als Dezimaltrenner) in deutscher und englischer Schreibweise, ohne nachlaufende Nullen.
 function Get-PrivacyAmountVariants([string]$Value) {

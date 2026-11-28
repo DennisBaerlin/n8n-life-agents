@@ -1,13 +1,13 @@
-# Bare-core genericity gate — proves the package-install machinery is GENERIC (not secretly wired to
-# finance): install ONLY the core, then add the `career` package on top, WITHOUT finance ever present.
-# Runs the REAL provision.sh in a privileged systemd container — identical image + flags to the local dev
+# Bare-core genericity gate — proves the package-install machinery is generic (not secretly wired to
+# finance): install only the core, then add the `career` package on top, without finance ever present.
+# Runs the real provision.sh in a privileged systemd container — identical image + flags to the local dev
 # substrate (scripts/dev/bootstrap_test_n8n.ps1), so CI and dev cannot drift. No DB-only shortcut:
 # apply_schema.sh is peer-auth/runuser/systemctl-coupled, so a postgres-service test would need a drifting
-# re-implementation of the apply. doctor.sh is the INFRA gate; the psql asserts (registry state +
+# re-implementation of the apply. doctor.sh is the infra gate; the psql asserts (registry state +
 # search_path + finance absence) are the actual genericity proof.
-# Install-UX-Phase 5 adds the reverse-proxy-on-another-host proof (TRUSTED_PROXIES): only the trusted helper
+# Also the reverse-proxy-on-another-host proof (TRUSTED_PROXIES): only the trusted helper
 # container reaches n8n, the table survives an nftables restart, n8n refuses to start without it (fail-closed).
-# Install-UX-Phase 4 adds the RUNTIME-modularity proof: in every installed-set state (core-only, +career,
+# And the runtime-modularity proof: in every installed-set state (core-only, +career,
 # after an update with career switched off, after uninstall) no deployed workflow holds a literal reference to an
 # absent workflow (n8n would refuse to activate it -> deaf bot), and an update keeps the installed set as is.
 #
@@ -15,8 +15,8 @@
 # are omitted -> skipped (non-fatal). Trigger ACTIVATION failure (telegram trigger, no valid token) is a
 # `warn`, not a `die`, in deploy_workflows.sh -> provision.sh still exits 0 + doctor stays green.
 #
-# Required gate; path-scoped to the provisioning surfaces so it only runs when they change. If the
-# privileged-systemd container ever flakes on the runner, diagnose/re-pin — do NOT demote the gate.
+# Path-scoped to provisioning/, packages/ and this file. If the
+# privileged-systemd container ever flakes on the runner, diagnose/re-pin — do not demote the gate.
 name: genericity
 
 on:
@@ -54,7 +54,7 @@ jobs:
       - name: Boot privileged systemd container (same image + flags as the local substrate)
         run: |
           set -euo pipefail
-          # Same reference as scripts/dev/bootstrap_test_n8n.ps1 (tag, NOT digest) -> no CI<->dev drift.
+          # Same reference as scripts/dev/bootstrap_test_n8n.ps1 (tag, not digest) -> no CI<->dev drift.
           docker run -d --name la --privileged --cgroupns=host \
             -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
             jrei/systemd-debian:12
@@ -85,7 +85,7 @@ jobs:
             "OWNER_LANGUAGE='de'" > ci.env
           docker cp ci.env la:/root/ci.env
           docker exec la chmod 600 /root/ci.env
-          # Dangling-reference probe (Install-UX-Phase 4): n8n (checked 2.21.7 + 2.44.4) refuses to ACTIVATE a workflow whose literal
+          # Dangling-reference probe: n8n refuses to activate a workflow whose literal
           # executeWorkflow/toolWorkflow target does not exist (workflow-validation.service.ts) -> a core workflow
           # pointing at an absent package = a deaf bot. Counts literal (non-expression) workflowId refs in n8n's own
           # workflow_entity that resolve to no workflow. Must be 0 in every installed-set state below.
@@ -119,12 +119,12 @@ jobs:
           test "$(q "SELECT to_regnamespace('finance') IS NULL")" = t
           test "$(q "SELECT to_regnamespace('career') IS NULL")" = t
           test "$(q "SELECT count(*) FROM core.package_registry WHERE package IN ('finance','career')")" = 0
-          # core_ro search_path = base ONLY -> the old finance-hardcode is gone, no package tail yet (B).
+          # core_ro search_path = base only -> no finance hardcode, no package tail yet (B).
           cfg="$(docker exec la runuser -u postgres -- psql -d "$db" -tAc \
             "SELECT s FROM pg_roles r, unnest(r.rolconfig) s WHERE r.rolname='core_ro' AND s LIKE 'search_path=%'")"
           echo "core_ro: $cfg"
           test "$(echo "$cfg" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')" = "search_path=pg_catalog, agent, core"
-          # Install-UX-Phase 4: core alone is runnable — no core workflow points at an absent package workflow
+          # Core alone is runnable — no core workflow points at an absent package workflow
           # (package agents are reached only via agent.sub_dispatch_agent's expression call).
           dangling="$(docker exec la bash /root/dangling.sh)"
           [ -z "$dangling" ] || { echo "FAIL dangling workflow refs (core-only):"; echo "$dangling"; exit 1; }
@@ -146,7 +146,7 @@ jobs:
           test "$(q "SELECT status FROM core.package_registry WHERE package='career'")" = active
           test "$(q "SELECT to_regnamespace('finance') IS NULL")" = t      # finance was NEVER installed
           test "$(q "SELECT to_regnamespace('career') IS NOT NULL")" = t
-          # The generic search_path (B): core_ro AND the n8n owner role now carry the career tail.
+          # The generic search_path (B): core_ro and the n8n owner role now carry the career tail.
           for role in core_ro "$owner"; do
             cfg="$(docker exec la runuser -u postgres -- psql -d "$db" -tAc \
               "SELECT s FROM pg_roles r, unnest(r.rolconfig) s WHERE r.rolname='$role' AND s LIKE 'search_path=%'")"
@@ -184,7 +184,7 @@ jobs:
       - name: Reverse proxy on another host (TRUSTED_PROXIES) — only the proxy reaches n8n, fail-closed
         run: |
           set -euo pipefail
-          # Install-UX-Phase 5: two helper containers on the same Docker network — one is the trusted proxy,
+          # Two helper containers on the same Docker network — one is the trusted proxy,
           # the other a stranger. The socat-free path matters: traffic from 127.0.0.1 is always admitted (lo).
           docker run -d --name la-proxy alpine:3.20 sleep 3600
           docker run -d --name la-stranger alpine:3.20 sleep 3600
@@ -198,8 +198,8 @@ jobs:
           docker exec la systemctl restart nftables
           sleep 3
           docker exec la nft list table inet lifeagents >/dev/null
-          # Requires= (fail-closed) startet n8n beim Firewall-Neustart mit; n8n 2.44.4 braucht ~9 s bis readiness
-          # -> darauf warten statt fester Pause, sonst meldet doctor ein startendes n8n als ROT.
+          # Requires= (fail-closed) startet n8n beim Firewall-Neustart mit; n8n braucht einige Sekunden bis readiness
+          # -> darauf warten statt fester Pause, sonst meldet doctor ein startendes n8n als rot.
           ready=""
           for _ in $(seq 1 60); do
             if docker exec la curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:5678/healthz/readiness 2>/dev/null; then ready=1; break; fi
@@ -225,7 +225,7 @@ jobs:
   # mit allen Paketen. Beweist: Wrapper-Naht (lib/runtime.sh) traegt die ganze Installation, das master-Image aus dem
   # Release-Weg (`git archive`, LF laut .gitattributes) laeuft, Zweitlauf legt keinen Container neu an, n8n uebersteht
   # einen Neustart, der Rand erreicht n8n, aber weder Postgres noch Gateway, und ein fremder Nachbar-Container samt Volume
-  # und Netz bleibt unveraendert (Plan *Wenn Docker schon da ist*).
+  # und Netz bleibt unveraendert.
   # Je Weg nach aussen (lib/reach.sh) ein eigener kalter Lauf: tunnel = echter Tailscale-Container ohne Konto (Anmelde-Link
   # erscheint, nichts wird angemeldet), fritzbox = wan mit internem Zertifikat (*.localhost, keine ACME-Anfrage) samt
   # belegtem Port 80 vorher (nichts wird ueberschrieben). Beide pruefen die Pfad-Liste des Rands und die Tailnet-Sperre.
@@ -237,7 +237,7 @@ jobs:
       matrix:
         reach: [tunnel, fritzbox]
     # Wie ein Release: der master kommt per Digest aus einem Register (hier ein lokales registry:2) ueber den Release-Pin in
-    # compose.yml, OHNE LA_MASTER_IMAGE in der Umgebung (Form: scripts/lib/release_images.ps1).
+    # compose.yml, ohne LA_MASTER_IMAGE in der Umgebung (Form: scripts/lib/release_images.ps1).
     services:
       registry:
         image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
@@ -259,7 +259,7 @@ jobs:
           img=127.0.0.1:5000/ci/master
           git archive --format=tar HEAD provisioning packages .gitattributes \
             | docker build -q -f provisioning/compose/master.Dockerfile --build-arg RELEASE_TAG=v9.0.0 -t "$img:ci" -
-          # CRLF-Fund aus dem Probelauf: ein CR in einem Installer-Skript bricht bash mit pipefail ab.
+          # Ein CR in einem Installer-Skript bricht bash mit pipefail ab.
           crlf="$(docker run --rm --entrypoint sh "$img:ci" -c "grep -rlI \"\$(printf '\r')\" /opt/lifeagents/provisioning || true")"
           [ -z "$crlf" ] || { echo "FAIL CRLF im master-Image:"; echo "$crlf"; exit 1; }
           docker push -q "$img:ci" >/dev/null
@@ -409,7 +409,7 @@ jobs:
       - name: Second run is a no-op (no container recreated) and n8n survives a restart
         run: |
           set -euo pipefail
-          # Wie `lifeagents update`: ohne --packages -> Grundsystem + die INSTALLIERTEN Pakete (aus der Registry, also ueber
+          # Wie `lifeagents update`: ohne --packages -> Grundsystem + die installierten Pakete (aus der Registry, also ueber
           # den Datenbank-Wrapper des master); keines darf verloren gehen.
           docker exec -i "$LA_PROJECT-master" sh -c 'umask 077; cat > /run/lifeagents-wizard/answers.env' < "$RUNNER_TEMP/answers.env"
           # hand-injected: wie im Erstlauf (Bot-Aufrufe auf den Mock, Gateway ohne Aufwaermen); ein Lauf ohne sie wuerde die Credential-Adresse auf api.telegram.org zuruecksetzen
@@ -436,7 +436,7 @@ jobs:
           done
           [ -n "$ready" ] || { docker logs --tail 80 "$LA_PROJECT-n8n"; exit 1; }
           # Nach dem Neustart darf kein Auth-Fehler auftauchen (AxiosError 401 = ein Telegram-Aufruf ging an die echte Adresse
-          # statt an den Mock, Probelauf-Fund).
+          # statt an den Mock).
           if docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since "$restarted" "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
@@ -653,10 +653,10 @@ jobs:
           docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
           docker network rm ci-neighbour-net >/dev/null 2>&1 || true
 
-  # Laufzeit im Docker-Verbund (Paket 2): Versionssprung als master-Image-Wechsel ueber den Helfer (lib/master_swap.sh) mit
+  # Laufzeit im Docker-Verbund: Versionssprung als master-Image-Wechsel ueber den Helfer (lib/master_swap.sh) mit
   # Abbruch je Schritt — Image nicht ladbar / neues Image kaputt (Rueckweg des Helfers) / Einrichtung scheitert nach der
   # Sicherung (lifeagents rollback --yes: Daten zurueck + master zurueck) —, die Tick-Schleife statt der Update-Timer, die
-  # CLI ueberlebt jede Neuanlage des master, Sicherung in einen Ordner AUF DEM RECHNER + Restore, doctor misst Namensraum und
+  # CLI ueberlebt jede Neuanlage des master, Sicherung in einen Ordner auf dem Rechner + Restore, doctor misst Namensraum und
   # Netz-Grenze, Deinstallation ohne und mit Daten neben einem Nachbarn (Vorher-Nachher gleich). Kern-Installation
   # (--packages none) haelt den Lauf kurz; alle Pakete prueft compose-stack-cold.
   compose-stack-ops:
@@ -1155,9 +1155,8 @@ jobs:
 
   # Linux-Einrichter provisioning/setup.sh auf einem kalten Rechner: Docker wird vom Runner entfernt, setup.sh richtet es aus Dockers
   # offizieller Paketquelle wieder ein, startet den Verbund ueber den Kern (Abbild aus einem Register ohne Docker: crane), die
-  # Systemd-Einheit holt den Verbund nach einem Neustart von Docker zurueck. Der Erfolgsweg von --answers ist hier NICHT bewiesen
-  # (stack install gibt keine Test-Umgebung an provision.sh weiter, die Telegram-Attrappe kaeme nicht an): nur der Fehlerfall; die
-  # Installation selbst laeuft wie im Wizard-Weg per docker exec (Luecke fuer P3, siehe Bericht).
+  # Systemd-Einheit holt den Verbund nach einem Neustart von Docker zurueck. --answers: Fehlerfall (kaputte Datei) und
+  # Erfolgsweg (setup.sh -> Kern `stack install` -> provision.sh, Telegram-Attrappe ueber SC_TEST_SWITCHES in lib/stack_core.sh).
   linux-setup:
     runs-on: ubuntu-24.04
     timeout-minutes: 60

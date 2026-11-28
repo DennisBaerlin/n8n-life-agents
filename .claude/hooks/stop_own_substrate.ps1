@@ -1,6 +1,6 @@
-# SessionEnd-Hook: raeumt das n8n-Test-Substrat DIESES Worktrees ab (nie im Haupt-Checkout), wenn die Session endet (je Substrat 1-1,5 GB
-# RAM; liegengebliebene Substrate liessen den 16-GB-Host auslagern). Trifft NUR Container mit den Labels
-# lifeagents.substrate=n8n UND lifeagents.worktree=<dieser Checkout> (gesetzt von bootstrap_test_n8n.ps1) ->
+# SessionEnd-Hook: raeumt das n8n-Test-Substrat dieses Worktrees ab (nie im Haupt-Checkout), wenn die Session endet
+# (liegengebliebene Substrate fressen RAM). Trifft nur Container mit den Labels
+# lifeagents.substrate=n8n und lifeagents.worktree=<dieser Checkout> (gesetzt von bootstrap_test_n8n.ps1) ->
 # nie das Substrat einer anderen Session, nie Alt-Container ohne Label. db_test-Container bleiben (je ~50 MB).
 # Docker-Verbund: scripts/lib/substrate_reservations.ps1 (Get-WorktreeComposeTargets), Test scripts/dev/substrate_reservation_test.ps1.
 # Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1 (z. B. Owner-Fenster-Suiten nach Session-Ende).

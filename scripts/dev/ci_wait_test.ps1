@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # Urteil des Warte-Modus von scripts/check_ci_status.ps1 (-Wait) an erfundenen Lauf-Listen: gruen, rot, laeuft noch,
-# kein Lauf fuer den Stand, neuer Anlauf nach rotem Lauf, grosse Lauf-Nummer bleibt ganzzahlig. Kein Netz, kein Token.
+# kein Lauf fuer den Stand, neuer Anlauf nach rotem Lauf, grosse Lauf-Nummer bleibt ganzzahlig; dazu die Ampel ohne -Wait
+# (Get-CiLatestMainRuns: juengster Lauf je Workflow-Datei auf main). Kein Netz, kein Token.
 # Usage: .\scripts\dev\ci_wait_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

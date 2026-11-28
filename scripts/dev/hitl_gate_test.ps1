@@ -29,7 +29,9 @@
 #
 # Ausgang der Karte: hitlO* pruefen outcome am Gate je Pfad (Tipp und Ablauf), hitlT* den Text ans Modell je Fall ueber echte Tools.
 #
-# Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief (Mock aktiv + baseUrl umgebogen).
+# Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief (Mock aktiv + baseUrl umgebogen); .env mit TEST_HARNESS_SECRET.
+# Seiteneffekte: spielt tests/fixtures/util_seed_test_fixtures.sql ein, paart Owner und Lena (bleibt), leert agent.hitl_pending und
+# die Denk-Sperre (Clear-HitlPending, Clear-ThinkingLease) und stoppt wartende Gate-Executions.
 #
 # Fall-Abbruch: eine Ausnahme in einem Block macht nur diesen Fall rot (Grund + Skriptzeile, Aufraeumen), der Lauf geht weiter.
 # -ForceAbortId hitlR3 = Testschalter: wirft am Anfang dieses Blocks eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last); wird die id

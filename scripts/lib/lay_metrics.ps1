@@ -2,7 +2,8 @@
 # Laien-Messung ohne Modell: misst die Form dessen, was die Person liest, nicht die Verstaendlichkeit. Eingabe = Ausgaben einer
 # Runde in der Form von ConvertTo-BotOutputs (lib/judge_card_text.ps1: method, text, buttons, card). Jeder Befund ist
 # @{ rule; detail; excerpt }. Verbraucher: conversation_test (jede Runde), mock_lint (Antwort-Texte der Mock-Szenarien).
-# Per Dot-Sourcing laden; Selbsttest scripts/dev/lay_metrics_test.ps1.
+# Per Dot-Sourcing laden; laedt next_step_marker.ps1 und choices_marker.ps1 (Measure-BotText nimmt die Markerzeilen vor der
+# Messung heraus). Selbsttest scripts/dev/lay_metrics_test.ps1.
 #   L1  hoechstens eine Frage je Nachricht (auch Karten).
 #   L2  Gespraechstext hoechstens 600 Zeichen; nach einer Karte hoechstens ein Satz.
 #   L3  eine Wahl steht als Knoepfe da, nie als nummerierte Wege mit Frage.

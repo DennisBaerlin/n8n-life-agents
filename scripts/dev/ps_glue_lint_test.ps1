@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Fehl- und Gutfaelle von scripts/ps_glue_lint.ps1 in einem Wegwerf-Baum (-Root): ein Befehl, der hinter dem Kommentar der vorigen
 # Zeile klebt, muss rot werden (eingebauter und im Baum definierter Befehl); ein zusammengesetztes Wort, ein `#` im String, ein
-# getrennter Befehl und die Ausnahme gruen. Kein Docker, kein git.
+# getrennter Befehl und die Ausnahme mit Grund gruen (ohne Grund rot); dazu der Aufruf wie pre-commit mit mehreren Dateien als
+# Argumenten. Kein Docker, kein git.
 # Usage: .\scripts\dev\ps_glue_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

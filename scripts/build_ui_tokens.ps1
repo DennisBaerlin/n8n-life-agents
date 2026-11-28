@@ -2,10 +2,12 @@
 # build_ui_tokens.ps1 -- schreibt die Farben aus config/ui.tokens.json als markierten Block in die Datei jeder Oberflaeche
 # (Liste und Begruendung: scripts/lib/ui_tokens.ps1). Nur der Block aendert sich, die Marker muessen schon in der Datei stehen.
 # Erzeugt ausserdem die Erklaer-Bilder aus config/ui.art.*.svg (scripts/lib/ui_art.ps1) und das Zeichen-Partial der Site (docs/site/layouts/partials/mark.html) aus config/ui.mark.svg.
+# Ebenso die ui-copy-Bloecke (geteilte Bausteine, Get-UiCopies) und ui-locale-Bloecke (Katalog-Texte, Get-UiLocaleBlocks) zwischen
+# ihren Markern. Ohne -Verify loescht es fremde Dateien in den Bild-Zielordnern (Get-UiArtDirs).
 # Danach bei der Doku-Seite: .\scripts\build_site.ps1 (der Hugo-Output ist getrackt). Die Pruefung im Commit macht
 # scripts/ui_token_lint.ps1.
 #   .\scripts\build_ui_tokens.ps1            Bloecke schreiben
-#   .\scripts\build_ui_tokens.ps1 -Verify    nur vergleichen, Exit-Code = Anzahl veralteter Bloecke
+#   .\scripts\build_ui_tokens.ps1 -Verify    nur vergleichen, Exit-Code = Anzahl veralteter Bloecke, Kopien und erzeugter Dateien
 param([switch]$Verify)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

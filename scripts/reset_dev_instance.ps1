@@ -19,8 +19,9 @@
 #
 # Ziel aus .env (gitignored): DEV_INSTANCE_HOST (Pflicht), DEV_INSTANCE_USER (Default root),
 # DEV_INSTANCE_SSH_KEY (Pflicht; Pfad zum privaten Key; ~ erlaubt). Nur Key-Login (BatchMode).
-# Ziel-Sperre (Abschnitt 0): ohne Merkdatei /etc/lifeagents-dev-instance auf dem Ziel bricht das Skript vor jedem Schreiben ab;
-# Abbruch auch, wenn DEV_INSTANCE_HOST = LIVE_INSTANCE_HOST (Produktiv). Test: scripts/dev/reset_dev_guard_test.ps1.
+# Ziel-Sperre (Abschnitt 0): die Merkdatei /etc/lifeagents-dev-instance auf dem Ziel muss die Zeilen 'lifeagents-dev-instance:
+# <Rechnername des Ziels>' und 'data: test-only' enthalten, sonst Abbruch vor jedem Schreiben; ebenso, wenn DEV_INSTANCE_HOST auf
+# dasselbe Ziel zeigt wie LIVE_INSTANCE_HOST (gleicher Name oder gleiche Adresse). Test: scripts/dev/reset_dev_guard_test.ps1.
 #
 # -KeepInstance: denselben Stand bereitlegen, aber die bestehende Instanz nicht abbauen (kein
 # Abbau, kein Rest-Check) — zum Testen des Update-Pfads (install-dev.sh laeuft dann als Bestands-Lauf).

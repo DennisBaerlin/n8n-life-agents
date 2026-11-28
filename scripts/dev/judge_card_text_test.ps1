@@ -2,7 +2,7 @@
 # Selbsttest: Im Bewerter-Buendel des Durchspiels stehen Bestaetigungs-Karte und Agenten-Antwort getrennt
 # (scripts/lib/judge_card_text.ps1, Abschnitt CONFIRMATION_CARD in scripts/lib/judge_prompt.ps1). Ohne Trennung las der
 # Bewerter den Karten-Text als Antwort: Karten-Knoepfe wurden zur erneuten Rueckfrage, ein von der Datenbank aufgeloester
-# Inhaber-Name zum erfundenen Wert. Kein Substrat, kein API-Aufruf, keine Kosten.
+# Inhaber-Name zum erfundenen Wert. Prueft auch den Abschnitt DB_CHECKS (Format-JudgeDbChecks). Kein Substrat, kein API-Aufruf, keine Kosten.
 # Usage:  .\scripts\dev\judge_card_text_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -35,7 +35,7 @@ Check ($sp.card -notmatch 'angelegt') 'Karte enthaelt nichts von der Antwort'
 $none = Split-JudgeCardOutput @($reply)
 Check ($none.card -eq '' -and $none.reply -match 'angelegt') 'ohne Karte: card leer, Antwort vollstaendig'
 
-Write-Host 'Aufgezeichnete Telegram-Anfragen einer Karten-Runde (Durchspiel s6 Runde 6, Gratis-Modus, Mock-Telegram-Log)'
+Write-Host 'Aufgezeichnete Telegram-Anfragen einer Karten-Runde (Mock-Telegram-Log)'
 # Wortlaut der Log-Zeilen (Get-MockTelegramRequests), Werte aus den erfundenen Test-Fixtures; Karte im Link-Modus (Resume-URL).
 $recorded = @'
 {"t":"2026-11-16T21:44:00.024Z","method":"sendMessageDraft","query":"","body":{"chat_id":"880055071","draft_id":1,"text":""}}

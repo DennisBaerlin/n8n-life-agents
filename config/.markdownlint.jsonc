@@ -1,6 +1,6 @@
 {
   // markdownlint config for hand-authored **/*.md — used by the markdownlint-cli2 hook in
-  // .pre-commit-config.yaml. Curated in the Phase-3 baseline pass (2026-06-14). Defaults stay ON;
+  // .pre-commit-config.yaml. Defaults stay on;
   // only the rules below are tuned off, each with a reason. Generated/seeded markdown
   // (docs/fn_catalog.md + packages/*/{contexts,seed}/) is excluded at the hook level, not here. Rule ref:
   // https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
@@ -11,7 +11,7 @@
   "MD013": false,
 
   // Whitespace cosmetics that would rewrite the deliberate dense layout of the docs (same reason we
-  // do NOT run a reformatter like shfmt on the shell scripts): blank lines around headings / lists /
+  // do not run a reformatter like shfmt on the shell scripts): blank lines around headings / lists /
   // fenced blocks, and table pipe-padding. The content is what matters, not the vertical spacing.
   "MD022": false,
   "MD032": false,
@@ -27,6 +27,6 @@
   "MD041": false,
 
   // README uses GitHub-native inline HTML (<details> progressive disclosure) — an established
-  // README device that has no pure-Markdown equivalent; opened deliberately (Site-Phase 2026-07-02).
+  // README device that has no pure-Markdown equivalent; opened deliberately.
   "MD033": false
 }

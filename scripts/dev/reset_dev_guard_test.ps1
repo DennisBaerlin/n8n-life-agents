@@ -1,8 +1,10 @@
 ﻿#Requires -Version 5.1
 # reset_dev_guard_test.ps1 -- Regressionstest der Ziel-Sperre im Reset-Skript der Entwickler-Instanz und der Trennung
-# LIVE_INSTANCE_* (Produktiv, nur lesend) / DEV_INSTANCE_* (nur Reset). Beide Skripte laufen als Kopie in einem Wegwerf-Repo
-# mit erfundener .env; ssh/scp sind Attrappen auf dem PATH (Aufruf-Log + vorgegebene Antwort der Merkdatei-Abfrage). Kein
-# echtes Ziel, kein Netz, kein Substrat; alle Werte erfunden.
+# LIVE_INSTANCE_* (Produktiv, nur lesend) / DEV_INSTANCE_* (nur Reset). scripts/reset_dev_instance.ps1 und
+# scripts/refresh_privacy_denylist.ps1 laufen als Kopie in einem Wegwerf-Repo mit erfundener .env; ssh/scp sind Attrappen auf dem
+# PATH (Aufruf-Log + vorgegebene Antwort der Merkdatei-Abfrage). Dazu der Adress-Vergleich Test-SameTargetAddresses
+# (scripts/lib/dev_target.ps1) und ein Scan der getrackten Dateien: DEV_INSTANCE_* steht nur in erlaubten Nutzern (braucht git).
+# Kein echtes Ziel, kein Netz, kein Substrat; alle Werte erfunden.
 # Usage:  .\scripts\dev\reset_dev_guard_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

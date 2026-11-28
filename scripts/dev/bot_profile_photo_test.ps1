@@ -11,7 +11,8 @@
 # Belegt nicht das Verhalten des echten Telegram (Bot API: setMyProfilePhoto, getUserProfilePhotos mit eigener Kennung).
 # Dazu prueft es, dass das Test-Substrat den Schritt abschaltet: es installiert mit einem echten Test-Bot-Schluessel.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur einen laufenden Container mit bash, curl, jq und node.
-# Usage:  .\scripts\dev\bot_profile_photo_test.ps1 [-Container <name>] [-Port 8082] [-Verbose]   (ohne -Container: das Substrat)
+# Usage:  .\scripts\dev\bot_profile_photo_test.ps1 [-Container <name>] [-Port 8082] [-Verbose]
+#   ohne -Container: das Substrat; mit N8NTEST_RUNTIME=compose ein Wegwerf-Container aus dem master-Abbild (N8NTEST_CONTAINER setzen).
 # Exit-Code = Anzahl Fehler.
 param([string]$Container, [int]$Port = 8082, [switch]$Verbose)
 

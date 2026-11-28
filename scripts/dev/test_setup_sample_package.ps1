@@ -2,7 +2,8 @@
 # Prueft die Positionsrechnung der Ersteinrichtung gegen ein lokales Test-Paket mit Beispieldaten (kein Gate).
 # Rechnet fn_setup_positions auf export.csv mit den Einstand-Antworten aus user_inputs.json und vergleicht Stueck, Einstand und Euro-Wert
 # (Mocks price_feed_mock.json, fx_mock.json) mit expected_positions.json und expected_valuation.json. Ausgabe nur Anzahlen und Muster-ISIN, keine Werte.
-# Fehlt das Paket: "uebersprungen", Exit 0.
+# Laeuft in einer Transaktion mit ROLLBACK (Test-Konto __sample_pkg__ im Test-Container, nichts bleibt). Geschlossene Positionen
+# duerfen nicht als offen erscheinen. Fehlt das Paket: "uebersprungen", Exit 0.
 # Aufruf:  $env:DBTEST_CONTAINER='...'; .\scripts\dev\test_setup_sample_package.ps1 [-PackageDir <Pfad>]
 #          (Pfad sonst $env:LIFEAGENTS_SETUP_TEST_PACKAGE)
 # Voraussetzung: laufender Test-Container (db_test.ps1 hat das Schema gebaut). Exit-Code = Anzahl Abweichungen.

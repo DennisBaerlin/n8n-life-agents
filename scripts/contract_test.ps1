@@ -4,10 +4,13 @@
 # Grund: cron_refresh_fx_rates -> finance.fn_upsert_fx_rates liest p->'rates'->>CCY als
 # positive Zahl (jede gelieferte Waehrung) und as_of aus time_last_update_unix. Aendert open.er-api.com sein Schema (oder liefert 0/n-a), schreibt der Cron
 # still falsch/nichts -> jede Cross-Currency-Bewertung kippt, ohne dass ein Test es faengt.
+# Ausserdem api.frankfurter.dev /v2/rates: EZB-Historie (Zeilen {date, base EUR, quote USD, rate > 0}) und Edelmetalle XAU/XAG
+# (rate = EUR je Feinunze), die Eingaenge der Zweige in cron_refresh_fx_rates.
 #
 # Usage:  .\scripts\contract_test.ps1 [-Verbose]
 # Voraussetzung: Netzzugang zu open.er-api.com und api.frankfurter.dev (kein Container, keine .env).
-# Exit-Code = Anzahl fehlgeschlagener Contract-Checks; 1, wenn die API nicht erreichbar ist.
+# Exit-Code = Anzahl fehlgeschlagener Contract-Checks; sofort 1, wenn open.er-api.com nicht antwortet (ein Frankfurter-Ausfall
+# zaehlt als fehlgeschlagener Check).
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'

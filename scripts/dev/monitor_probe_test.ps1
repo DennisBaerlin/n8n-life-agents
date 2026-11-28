@@ -4,8 +4,10 @@
 # Mock-Telegram, DB und runData. Web-Antworten kommen aus Laufzeit-Szenarien (Mock-LLM; die Repo-scenarios.json bleibt unberuehrt,
 # Muster cron_text_test). Faelle laufen nacheinander und nie um Minute 10 oder zum Stundenwechsel (echter Zeitplan, Fenster).
 #
-# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 (eigene N8NTEST_CONTAINER/-PORT).
-# Usage:  .\scripts\dev\monitor_probe_test.ps1 [-Id mf07,mf10] [-ForceAbortId mf01]
+# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 (eigene N8NTEST_CONTAINER/-PORT), .env mit TEST_HARNESS_SECRET.
+# Seiteneffekte: setzt next_check_at aller Waechter ausserhalb der Sentinel-Domain auf +1 Jahr (bleibt), ueberschreibt core.config
+# reminders_from/reminders_until, leert core.proactive_budget/proactive_deferred; scenarios.json im Container wird am Ende zurueckgespielt.
+# Usage:  .\scripts\dev\monitor_probe_test.ps1 [-Id mf07,mf10] [-ForceAbortId mf01] [-Timeout 150]
 # Exit-Code = Anzahl roter Faelle.
 param([string[]]$Id, [string]$ForceAbortId, [int]$Timeout = 150)
 $ErrorActionPreference = 'Stop'

@@ -42,6 +42,7 @@ function New-MonitorModelConfigNode {
 # unfertige Suche via anthropicText) wird {ok:false, reason} -> Fehlerpfad (fail_streak), nie Exception.
 # $ResultExprJs: JS-Zeilen, die aus dem geparsten Objekt `obs` das Item bauen
 # (z. B. 'return [{ json: { probe: obs } }];' fuer die Tool-Probe).
+# -Prelude: JS-Zeilen vor dem Parse-Code (Konstanten/Hilfsfunktionen des Aufrufers).
 # -PerItem: fuer Code-Nodes im runOnceForEachItem-Modus — n8n blockt `.first()` dort
 # statisch (auch im nicht genommenen Ternary-Zweig), daher zwei Varianten.
 function Get-MonitorShapeJs {

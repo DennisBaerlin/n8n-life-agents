@@ -18,6 +18,8 @@
 # bootstrap_test_stack.ps1 -Down abgebaut.
 #   -ComposeOnly  nur den Verbund-Zweig (die beiden klassischen -Down-Pfade laufen nicht)
 #   -Worktree     Checkout-Pfad statt des eigenen (Test); -StateDir Ordner der State-Dateien statt Haupt-Checkout/.local
+#   -Verbose      zeigt den Aufruf je Ziel
+# Die klassischen Ziele kommen aus $env:DBTEST_CONTAINER / $env:N8NTEST_CONTAINER; ohne sie trifft -Down die geteilten Standard-Container.
 param([switch]$Verbose, [switch]$ComposeOnly, [string]$Worktree, [string]$StateDir)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'       # Geschwister-Muster (global Stop); die Toleranz je Ziel liefert das try/catch unten

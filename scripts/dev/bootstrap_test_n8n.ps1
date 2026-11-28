@@ -12,7 +12,7 @@
 # Warum systemd-in-Docker: provision.sh steuert alle Dienste ueber systemctl (PG/n8n als units),
 # daher muss der Container systemd als PID 1 fahren. Auf cgroup v2 (Docker Desktop/WSL2) genuegt
 #   --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw
-# (verifiziert: systemctl is-system-running -> running). Kein .wslconfig-Eingriff noetig.
+# Kein .wslconfig-Eingriff noetig.
 #
 # Warum die socat-Bruecke: n8n bindet im Container an 127.0.0.1:5678 (N8N_LISTEN_ADDRESS, fuer Prod
 # korrekt — der (bring-your-own) Reverse Proxy ist die oeffentliche Flaeche). Docker-Port-Publishing
@@ -40,14 +40,14 @@
 # Basis-Image (Schnellpfad, Default): ein neuer Container startet aus dem lokalen Image lifeagents-substrate-base, in dem
 # Basis-Pakete, PostgreSQL (Cluster UTF-8), Node und n8n in den Pins aus provision.sh schon liegen (scripts/dev/
 # substrate-image/: Dockerfile + build_base.sh, die dieselben provisioning/lib-Funktionen sourcen). provision.sh erkennt
-# sie als vorhanden und faehrt nur Schema/Owner/Credentials/Workflows (gemessen: -Reset 7:21 -> 3:35 Min;
-# beschreibbare Schicht je Container 3,9 GB -> 0,2 GB, n8n liegt einmal im Image). Tag = Pins + Hash ueber die
+# sie als vorhanden und faehrt nur Schema/Owner/Credentials/Workflows (schneller, und n8n liegt einmal im Image statt in der
+# beschreibbaren Schicht jedes Containers). Tag = Pins + Hash ueber die
 # Build-Eingaben (Get-SubstrateBaseSpec) -> jede inhaltliche Aenderung baut automatisch neu (einmalig ~10 Min, Named
 # Mutex gegen Doppel-Bauten paralleler Sessions); nach einem Bau bleibt neben dem aktuellen das juengste weitere
 # Basis-Image (paralleler Worktree), aeltere ungenutzte werden geloescht. Der jrei-Stand wird nur per
 # -RebuildBase aufgefrischt (Hinweis ab 30 Tagen).
-# Kalter Pfad: -Cold und -Version laufen auf dem nackten $Image (Installer von null, Owner-Regel „Installer immer
-# getestet"); CI genericity.yml faehrt ihn bei jeder provisioning/-Aenderung. Aendert der Branch den Install-Kern
+# Kalter Pfad: -Cold und -Version laufen auf dem nackten $Image (Installer von null); CI genericity.yml faehrt ihn bei jeder
+# provisioning/-Aenderung. Aendert der Branch den Install-Kern
 # (Dateiliste: Show-InstallCoreHint), weist der Schnellpfad auf `-Reset -Cold` vor dem Push hin.
 #
 # Parallel-Limit + Aufraeumen (RAM, 16-GB-Host): ein neues Substrat startet erst, wenn weniger als
@@ -65,7 +65,10 @@
 # Secrets aus dem .env-Test-Block (gitignored): TEST_HARNESS_SECRET ist Pflicht (Harness-Auth);
 # Owner/PG werden generiert, LLM-/Telegram-Keys sind optional (fehlend -> Credential uebersprungen).
 # Vorbedingung: Docker (Desktop) installiert + Daemon laeuft.
-# Exit-Code: 0 = Substrat bereit; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
+# Umgebung: $env:N8NTEST_CONTAINER (Standard lifeagents-n8ntest) und $env:N8NTEST_PORT (Standard 5680) fuer ein eigenes Substrat je Worktree;
+# N8NTEST_REAL_TELEGRAM=1 installiert mit dem echten Test-Bot (TEST_TELEGRAM_BOT_TOKEN, biegt dessen Webhook auf das Substrat), -Down gibt ihn frei.
+# Exit-Code: 0 = Container und Installation liefen durch (fehlender API-Key oder nicht erreichbares n8n nur als Warnung); jeder andere
+# Fehler wirft ($ErrorActionPreference = 'Stop', Exit ungleich 0).
 param(
     [switch]$Reset,
     [switch]$Down,
@@ -421,7 +424,7 @@ if (-not $sysd) { throw "systemd im Container $Container wurde nicht bereit (Tim
 
 # Systemsprache wie die Proxmox-Debian-Vorlage (LANG="C"). postgresql-common legt den Cluster mit der System-Locale
 # aus /etc/default/locale an (maintscripts-functions::set_system_locale), nicht mit der Sitzung; das jrei-Image hat
-# die Datei leer -> Fallback C.UTF-8 verdeckte, dass der Installer ohne UTF-8-Zwang eine SQL_ASCII-DB anlegte.
+# die Datei leer, ein Fallback auf C.UTF-8 liesse einen Installer ohne UTF-8-Zwang (SQL_ASCII-DB) unbemerkt durch.
 # Das Substrat faehrt deshalb bewusst den schaerferen Fall.
 # \042 statt " im Argument: PS 5.1 reicht eingebettete doppelte Anfuehrungszeichen nicht escaped an native Programme weiter.
 $r = Invoke-Native docker @('exec',$Container,'sh','-c','printf ''LANG=\042C\042\n'' > /etc/default/locale')

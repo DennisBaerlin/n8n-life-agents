@@ -8,21 +8,25 @@
 #     abschaltbar und per /reminders schaltbar (c); Plumbing, Pflicht (cron_labels.mandatory) und Person-Notschalter
 #     (cron_labels.person, je Person rem:on|off) tragen keinen cron_on/cron_off-Knopf (nur Konsole bzw. rem:).
 # Zusaetzlich (g) Person-Reminder, (h) Default-Zeitplan im Erinnerungs-Fenster, (i) jeder Telegram-sendende Cron ist
-# registriert, (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung, (k) Tagesbudget (Details an den Bloecken).
+# registriert, (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung, (k) Tagesbudget (Details an den Bloecken);
+# dazu: jeder cron_enable-Key einmal deklariert mit Default true|false, Pflicht-Erinnerungen (cron_labels.mandatory) haben
+# einen cron_enable-Key, stehen in keiner anderen Ebene und tragen keinen Knopf.
 # Geprueft wird die Toggle-Oberflaeche (die gebauten Inline-Keyboard-Buttons), nicht der Cron-Node. Quelle der Keys und
 # Defaults = die Manifest-`.config.cron_enable`-Bloecke (wie contract_lint F9); Quelle der Buttons = die getrackten
 # gebauten Workflow-JSONs (kein dist/) und cron_on:/cron_off:-Literale in Nicht-Kommentar-Zeilen von provisioning/lib/*.sh
 # (Knoepfe, die der Host-Teil selbst sendet, z. B. die Kopie der Sicherung). Fail-closed:
 #   (a) jeder Opt-in-Key hat einen erreichbaren cron_off:<key> (der Abschaltknopf);
 #   (b) jeder Opt-in-Key hat einen erreichbaren cron_on:<key> (die Setup-Aktivierung; alle Opt-in-Crons starten AUS);
+#       Ausnahme drift_check und plan_review, solange das Core-Manifest callback_handlers.watch fuehrt (watch:on);
 #   (c) Always-on: Haushalts-Erinnerung -> cron_off:<key> oder Fusszeile core.reminders.card_footer an der Karte;
 #       sonst kein cron_on/cron_off-Knopf;
 #   (d) kein Dangling: jede cron_on:/cron_off:-callback_data verweist auf einen deklarierten cron_enable-Key, und
 #       keine cron-callback_data ist ein dynamischer/unparsbarer Ausdruck (entzoege sich dem statischen Gate);
 #   (f) cron_labels<->cron_enable-Paritaet: jeder Opt-in-Key steht in einer Manifest-cron_labels.list
-#       (= die Registry-Membership, die die fn als Togglability liest) und hat seine vier Katalog-Texte,
-#       kein Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
-# Aufruf: .\scripts\cron_toggle_lint.ps1 [-Verbose]
+#       (= die Registry-Membership, die die fn als Togglability liest); jede list-Zeile (auch Always-on) hat einen
+#       cron_enable-Key und ihre vier Katalog-Texte, kein Key steht in zwei Paketen.
+# Aufruf: .\scripts\cron_toggle_lint.ps1 [-Verbose] [-ExtraWorkflowDir <Ordner>] [-ExtraHostDir <Ordner>]   (-Extra*Dir nur fuer
+#         scripts/dev/cron_toggle_lint_test.ps1)
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Verbose, [string]$ExtraWorkflowDir, [string]$ExtraHostDir)   # -Extra*Dir: nur fuer den Fehlfall-Test scripts/dev/cron_toggle_lint_test.ps1
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -112,7 +116,7 @@ foreach ($file in (Get-ChildItem $hostDirs -Filter '*.sh')) {
 # --- (a) jeder Opt-in-Key hat einen cron_off-Knopf ---
 foreach ($key in ($chatKeys | Sort-Object)) {
     if (-not $offKeys.ContainsKey($key)) {
-        Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_off:$key-Knopf im gebauten Graph (Cron ohne Abschaltknopf -- genau das verhindert diese Phase)"
+        Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_off:$key-Knopf im gebauten Graph (Cron ohne Abschaltknopf)"
     }
 }
 $watchHandler = $null -ne (([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\packages\core\manifest.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).callback_handlers.watch)
@@ -155,8 +159,8 @@ foreach ($key in (@($onKeys.Keys) + @($offKeys.Keys) | Sort-Object -Unique)) {
 
 # --- (f) cron_labels<->cron_enable-Paritaet: die core.cron_labels-Registry ist die
 # Togglability-Quelle von core.fn_set_cron_enable (Mitgliedschaft = schaltbar). Jeder Opt-in-Key braucht einen
-# Manifest-cron_labels-Block (sonst lehnt die fn den Chat-Toggle ab), kein always-on-Key darf einen
-# haben (sonst waere er chat-schaltbar). Die vier Texte je Key stehen im Textkatalog
+# Manifest-cron_labels-Block (sonst lehnt die fn den Chat-Toggle ab); ein Always-on-Key darf einen haben (Haushalts-
+# Erinnerung, siehe (c)). Die vier Texte je Key stehen im Textkatalog
 # des Pakets (<pkg>.cron.<key>.on_toast|off_toast|on_message|off_message) und muessen in de.json
 # existieren (locale_lint haelt die anderen Sprachen paritaetisch). Quelle = die Manifest-cron_labels.list.
 $labelKeys = @{}   # key -> @{ pkg; complete }
@@ -177,7 +181,7 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
 }
 foreach ($key in ($chatKeys | Sort-Object)) {
     if (-not $labelKeys.ContainsKey($key)) {
-        Fail "Opt-in-Cron '$key' ($($declared[$key].pkg)) steht in KEINER Manifest-cron_labels.list -- core.fn_set_cron_enable (Registry-Membership = Togglability) lehnt den Chat-Toggle ab (WS-0c #2/#3)"
+        Fail "Opt-in-Cron '$key' ($($declared[$key].pkg)) steht in KEINER Manifest-cron_labels.list -- core.fn_set_cron_enable (Registry-Membership = Togglability) lehnt den Chat-Toggle ab"
     } elseif (-not $labelKeys[$key].complete) {
         Fail "Opt-in-Cron '$key' ($($labelKeys[$key].pkg)): Katalog-Texte unvollstaendig (<pkg>.cron.$key.on_toast/off_toast/on_message/off_message muessen in locales/de.json stehen)"
     }

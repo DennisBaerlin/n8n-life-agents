@@ -1,4 +1,4 @@
-# Start-App bauen (Plan docker-installer-freunde, Paket 6). Wiederverwendbar: desktop.yml (Branch/PR, Artefakte zum
+# Start-App bauen. Wiederverwendbar: desktop.yml (Branch/PR, Artefakte zum
 # Herunterladen) und release.yml (Tag, Assets am Release-Entwurf) rufen ihn auf.
 #   core  -> Pruef-Logik (provisioning/desktop/core): fmt, clippy, alle Tests gegen die Befehls-Attrappe
 #   app   -> Tauri 2 (provisioning/desktop/app): macOS arm64 als DMG mit Ad-hoc-Signatur ("-", kein Apple-Konto, keine
@@ -93,7 +93,7 @@ jobs:
           if ($a -ne $b) { throw "Eingebaute compose.yml ($a) weicht von provisioning/compose/compose.yml ($b) ab" }
           Write-Host "compose.yml eingebaut, SHA256 $a"
 
-      # bash statt pwsh: codesign schreibt auf stderr, das in pwsh hier leer ankam (Lauf 2026-11-06)
+      # bash statt pwsh: codesign schreibt auf stderr, das in pwsh hier leer ankam
       - name: Ad-hoc-Signatur pruefen (Mac)
         if: runner.os == 'macOS'
         working-directory: provisioning/desktop/app
@@ -108,7 +108,7 @@ jobs:
           codesign --verify --deep --strict "$app"
           lipo -archs "$app/Contents/MacOS/lifeagents" | grep -q arm64 || { echo "::error::kein arm64"; exit 1; }
 
-      # Owner 2026-11-06: kein Mac-Test vor dem Release, darum hier so viel wie moeglich am echten System pruefen.
+      # Es gibt keinen Mac-Test vor dem Release, darum hier so viel wie moeglich am echten System pruefen.
       - name: Selbsttest gegen das echte System (nur lesen)
         run: |
           $exe = if ($IsMacOS) { 'provisioning/desktop/app/target/release/bundle/macos/lifeagents.app/Contents/MacOS/lifeagents' } else { 'provisioning/desktop/app/target/release/lifeagents.exe' }

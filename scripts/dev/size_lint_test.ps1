@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Fehl- und Gutfaelle von scripts/size_lint.ps1 in einem Wegwerf-Baum (-Root): Datei ueber einer Grenze ohne Decke, gewachsene Datei,
-# Decke ohne Anlass oder zu weit ueber dem Wert, Agent ohne Eintrag, Agent mit einem Werkzeug mehr muessen rot werden; die passenden
-# Gegenstuecke gruen. Kein Docker, kein git.
+# Decke ohne Anlass oder zu weit ueber dem Wert, Agent ohne Eintrag, Agent mit einem Werkzeug mehr, zu lange Sticky-Note muessen rot
+# werden; die passenden Gegenstuecke gruen. Kein Docker, kein git.
 # Usage: .\scripts\dev\size_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -16,8 +16,12 @@ $B = 'scripts/build/size_budget.json'
 $P = 'packages'
 $Def = "$P/x/build/a.ps1"
 $Rule = '{ "id": "defs", "include": "^packages/[^/]+/build/.*\\.ps1$", "exclude": "/gen_", "lines": 3, "bytes": 100, "line_chars": 20 }'
-function New-Budget([string]$Files = '', [string]$Agents = '', [string]$Rules = $Rule) {
-    return '{ "headroom_pct": 10, "rules": [' + $Rules + '], "files": [' + $Files + '], "agents": [' + $Agents + '] }'
+function New-Budget([string]$Files = '', [string]$Agents = '', [string]$Rules = $Rule, [string]$Stickies = '') {
+    return '{ "headroom_pct": 10, "sticky_chars": 10, "rules": [' + $Rules + '], "files": [' + $Files + '], "agents": [' + $Agents + '], "stickies": [' + $Stickies + '] }'
+}
+# Ein Workflow ohne Agent mit einer Sticky-Note 'Doc' des angegebenen Textes.
+function New-StickyWorkflow([string]$Text) {
+    return '{ "name": "core.x", "nodes": [{ "name": "Doc", "type": "n8n-nodes-base.stickyNote", "parameters": { "content": "' + $Text + '" } }], "connections": {} }'
 }
 # Ein Workflow mit einem Agent-Knoten 'A' und je Eintrag in $Tools einem Werkzeug-Knoten (Name = Beschreibung) an dessen ai_tool-Eingang.
 function New-Workflow([string[]]$Tools, [string]$AgentType = '@n8n/n8n-nodes-langchain.agent') {
@@ -60,5 +64,14 @@ Test-Case 'laengere Beschreibung ist rot' @{ $B = (New-Budget '' $entry); $Wf = 
 Test-Case 'Eintrag fuer einen Agenten, den es nicht gibt, ist rot' @{ $B = (New-Budget '' $entry); $Def = $Three } $true 'gibt es in den gebauten Workflows nicht'
 Test-Case 'ein Knoten anderen Typs ist kein Agent' @{ $B = (New-Budget); $Wf = (New-Workflow @('t1') '@n8n/n8n-nodes-langchain.agentTool') } $false ''
 
-if ($fails -eq 0) { Write-Host 'size_lint_test: alle Faelle bestanden.' -ForegroundColor Green } else { Write-Host "size_lint_test: $fails Fehler." -ForegroundColor Red }
+$note = '{ "sticky": "core.x / Doc", "chars": 12 }'
+Test-Case 'kurze Sticky-Note ist gruen' @{ $B = (New-Budget); $Wf = (New-StickyWorkflow 'kurz') } $false ''
+Test-Case 'lange Sticky-Note ohne Decke ist rot' @{ $B = (New-Budget); $Wf = (New-StickyWorkflow 'zwoelfzeichen') } $true '13 Zeichen ueber der Grenze 10'
+Test-Case 'lange Sticky-Note mit Decke ist gruen' @{ $B = (New-Budget -Stickies $note); $Wf = (New-StickyWorkflow 'elf zeichen!') } $false ''
+Test-Case 'gewachsene Sticky-Note ist rot' @{ $B = (New-Budget -Stickies $note); $Wf = (New-StickyWorkflow 'dreizehn text') } $true 'ueber der Decke 12'
+Test-Case 'Decke fuer eine kurze Sticky-Note ist rot' @{ $B = (New-Budget -Stickies $note); $Wf = (New-StickyWorkflow 'kurz') } $true 'unter der Grenze 10'
+Test-Case 'Decke fuer eine Sticky-Note, die es nicht gibt, ist rot' @{ $B = (New-Budget -Stickies $note); $Def = $Three } $true 'gibt es in den gebauten Workflows nicht'
+
+if ($fails -eq 0)
+ { Write-Host 'size_lint_test: alle Faelle bestanden.' -ForegroundColor Green } else { Write-Host "size_lint_test: $fails Fehler." -ForegroundColor Red }
 exit $fails

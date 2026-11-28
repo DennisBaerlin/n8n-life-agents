@@ -1,6 +1,7 @@
 // Vergleichsseite (build_ui_compare.ps1): zeigt zwei Staende der echten Mini-App nebeneinander und markiert jede
 // Abweichung aus dem gerenderten DOM, damit keine Aenderung von Hand vergessen wird. Eingabe: window.__CMP__ = {light, dark}
 // je {vorher, nachher} als Base64 und screens = [{id, title}].
+// Die Host-Seite (build_ui_compare.ps1) traegt die iframes #L (vorher) und #R (nachher), die Reiter-Leiste #tabs und den Knopf #scheme.
 (function () {
   var C = window.__CMP__;
   var L = document.getElementById('L'), R = document.getElementById('R');

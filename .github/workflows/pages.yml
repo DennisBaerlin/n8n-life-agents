@@ -1,5 +1,5 @@
 # Doku-Seite auf GitHub Pages (kostenlos, solange das Repo oeffentlich ist — GitHub Free kennt Pages nur fuer
-# oeffentliche Repos). Veroeffentlicht den GETRACKTEN Hugo-Output docs/site/public/ unveraendert: kein
+# oeffentliche Repos). Veroeffentlicht den getrackten Hugo-Output docs/site/public/ unveraendert: kein
 # Hugo-Build in der CI, denn public/ ist per pre-push site-verify (build_site.ps1 -Verify) byte-genau gegen die
 # Quelle geprueft. uglyURLs + relativeURLs (docs/site/hugo.toml) => laeuft unter dem Unterpfad /<repo>/ ohne
 # baseURL-Anpassung. Einmalige Voraussetzung: Settings -> Pages -> Source "GitHub Actions".

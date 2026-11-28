@@ -8,7 +8,7 @@
 #   .\scripts\live_read.ps1 -SqlFile <datei.sql>          # SQL lesend; unausgerichtete Zeilen, Spalten per Tab
 #   .\scripts\live_read.ps1 -Usage [-After <id>] [-Limit n]   # Gateway-Mitschrift (/__usage), rohes JSON
 #   Test statt Produktiv-System: -Local [-Project <name>] (lokaler Test-Verbund), -Container <name> (klassisches Substrat)
-# Exit-Code: 0 = ok; 1 = Zugang fehlt oder Quelle nicht lesbar.
+# Exit-Code: 0 = ok; 1 = Zugang fehlt, Quelle nicht lesbar oder nicht genau eines von -Runtime/-SqlFile/-Usage angegeben.
 param(
     [switch]$Runtime,
     [string]$SqlFile,

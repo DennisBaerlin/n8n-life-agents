@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Fall-Tests von scripts/prop_test_lint.ps1 (Bausteine scripts/lib/prop_test_coverage.ps1) in einem Wegwerf-Baum:
 # welche fn gilt als aendernd, was zaehlt als Aufruf in einem Eigenschafts-Test, Abgleich mit der schrumpfenden
-# Ausnahmeliste, und der Lint selbst gegen den Baum (Exit-Code).
+# Ausnahmeliste, die Doppel-Definition einer fn (Init + R__ = Fehler, zwei Init-Dateien erlaubt) und der Lint selbst gegen den
+# Baum (Exit-Code).
 # Kein Docker, kein git. Usage: .\scripts\dev\prop_test_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

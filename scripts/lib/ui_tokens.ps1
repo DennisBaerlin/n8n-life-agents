@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
-# ui_tokens.ps1 -- geteilte Mechanik der einen Farbquelle config/ui.tokens.json (DTCG-Format, Gruppen light/dark/shape).
-# Verbraucher: scripts/build_ui_tokens.ps1 (schreibt die Bloecke), scripts/ui_token_lint.ps1 (prueft sie) und
-# scripts/dev/build_ui_review.ps1 (Farben der Vorschau-Seite). Dot-sourcen; $RepoRoot wird als Parameter uebergeben.
+# ui_tokens.ps1 -- geteilte Mechanik der einen Farbquelle config/ui.tokens.json (DTCG-Format, Gruppen light/dark/shape) und der
+# uebrigen erzeugten UI-Bausteine: markierte Bloecke (Farben, ui-copy aus config/ui.steps.*/ui.nudge.*, ui-locale aus
+# packages/core/locales), Projekt-Zeichen config/ui.mark.svg samt Site-Partial, Bot-Profilbild, WCAG-Kontrast, Scan-Wurzeln des Lints.
+# Nutzer: per Grep nach ui_tokens.ps1 (Skripte und .github/workflows). Dot-sourcen; $RepoRoot wird als Parameter uebergeben.
 #
 # Warum markierte Bloecke statt Laufzeit-Datei: Mini-App und Wizard duerfen zur Laufzeit nichts nachladen, die Doku-Seite
 # laeuft per file://. Der Block steht committet in der Oberflaechen-Datei, an keiner Auslieferung aendert sich etwas.

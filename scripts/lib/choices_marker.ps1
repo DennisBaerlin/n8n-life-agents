@@ -2,7 +2,8 @@
 # Die Markerzeile CHOICES der Berater-Grammatik (packages/core/contexts/advisor_conversation.md): der Berater schreibt als letzte Zeile
 # "CHOICES a | b | c", das System nimmt sie aus dem Text und macht aus den Optionen Knoepfe (offene Frage, Art choice). Eine Quelle fuer
 # die Erkennung: der Relay im Orchestrator setzt diese Regeln in sein JavaScript ein, der Direkt-Test (n8n_test) trennt die Zeile damit
-# vom Agententext und gibt dem Bewerter die Knoepfe mit. Per Dot-Sourcing laden; Selbsttest dev/choices_marker_test.ps1.
+# vom Agententext und gibt dem Bewerter die Knoepfe mit, ebenso e2e_test; lay_metrics (Measure-BotText) nimmt sie vor der Messung
+# heraus. Per Dot-Sourcing laden; Selbsttest dev/choices_marker_test.ps1.
 # Auch Abwandlungen des Modells (CHOICES:, **CHOICES**, Choices mit |) gelten als Markerzeile, damit nie eine roh beim Nutzer landet;
 # klein geschrieben nur mit Trennstrich, sonst waere ein Satz, der mit dem Wort beginnt, weg.
 # Gueltig nur als letzte nicht-leere Zeile mit 2-3 Optionen zu je 1-24 Zeichen ohne Link; eine ungueltige oder nicht-letzte

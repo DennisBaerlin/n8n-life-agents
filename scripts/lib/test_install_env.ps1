@@ -1,10 +1,11 @@
 ﻿# test_install_env.ps1 -- die eine Adresse fuer die Eingaben einer Test-Installation, die beide Unterbauten gleich brauchen:
 # welche .env-Schluessel TEST_<x> als welcher Kern-Schluessel in die Installation gehen, und die festen Test-Schalter.
 # Verwender: scripts/dev/bootstrap_test_n8n.ps1 (klassisch, Env-Datei) und scripts/lib/test_stack.ps1 (Verbund, Zusatz-Zeilen
-# der Antwort-Datei ueber tests/wizard/render_ci_answers.js --extra-stdin). Test: scripts/dev/test_stack_test.ps1.
+# der Antwort-Datei ueber tests/wizard/render_ci_answers.js --extra-stdin); Resolve-TestTelegramToken ruft auch
+# scripts/dev/test_n8n_state.ps1 (HITL-Bot-Token). Test: scripts/dev/test_stack_test.ps1.
 # Dot-sourcen.
 
-# Bot-Token einer Test-Installation -- eine Adresse fuer beide Unterbauten. Ein Substrat bekommt ein ERFUNDENES Token: n8n ruft beim
+# Bot-Token einer Test-Installation -- eine Adresse fuer beide Unterbauten. Ein Substrat bekommt ein erfundenes Token: n8n ruft beim
 # Aktivieren des Orchestrators setWebhook auf und biegt den Webhook des Bots auf die Substrat-Adresse (Dev-Profil: https://example.com/),
 # ein echter Test-Bot waere danach fuer jede andere Installation stumm. Die Suiten brauchen den echten Bot nicht: sie laufen ueber
 # Harness-Webhooks und den Mock-Telegram (enable_mock_telegram.ps1), CI (new_ci_env.ps1) und der Verbund tun es schon so.

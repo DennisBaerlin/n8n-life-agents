@@ -6,6 +6,7 @@
 #   (2) Je Eintrag: type ∈ string|integer|number|boolean|cron, minimum/maximum nur bei integer/number (Zahlen,
 #       minimum <= maximum), managed_by ∈ owner|system|instance, und der Standardwert passt zu Typ + Grenzen (dieselben Regeln
 #       wie core.fn_config_value_valid). Kategorie-Pflicht: schedule -> cron, cron_enable -> boolean.
+#       Werte, die der Installer je Installation setzt (telegram.bot_username), tragen managed_by instance.
 #   (3) Zeitplan-Platzhalter: jeder `__CFG_SCHEDULE_<KEY>__` in packages/<pkg>/workflows/*.json hat seine Zeile
 #       .config.schedule.<key> im Manifest DESSELBEN Pakets, und jede schedule-Zeile wird von einem Workflow genutzt
 #       (der Installer setzt den Wert beim Einspielen ein, provisioning/lib/deploy_workflows.sh).
@@ -15,8 +16,10 @@
 #           Ablauf vorausgehen (bei Umschaltern: der Kette, an der der Umschalter haengt); die geladenen (Paket, Key)
 #           stehen als .config.model.<key> im Manifest des Pakets. Agenten lesen ueber core.sub_load_config ('Load
 #           Config'/'Load core.config', alle Zeilen) -> dort genuegt: der Key ist irgendeine Manifest-Modell-Zeile.
-#       (b) jede Manifest-Modell-Zeile wird von mindestens einem Workflow gelesen (jede Zeile in config list wirkt);
-#       (c) kein Anthropic-HTTP-Knoten traegt ein Modell-Literal (das Modell kommt aus dem Config-Knoten);
+#       (b) jede Manifest-Modell-Zeile wird von mindestens einem Workflow gelesen (jede Zeile in config list wirkt), und ein
+#           model.<key> steht nur in einem Paket (core.config UNIQUE(category,key));
+#       (c) jeder Anthropic-HTTP-Knoten (url */v1/messages) geht ueber den LLM-Gateway (nie api.anthropic.com), traegt kein
+#           Modell-Literal und liest das Modell aus einem Config-Knoten; findet (4) keinen solchen Knoten, ist das ein Fehler;
 #       (d) die Bau-Zeit-Helfer Get-PackageConfig/Get-AnthropicModel duerfen im Bau-Code nicht vorkommen.
 #   (5) Modell-Register packages/core/seed/ai_models.json (Quelle des Selector-Baus): mode chat|embedding, chat <=>
 #       selector_index, Chat nur Anthropic, Chat-Nummern lueckenlos 1..n, und jeder Manifest-model.*-Standard ist dort
@@ -121,6 +124,8 @@ $schedules   = @{}   # "<pkg>|<key>" -> $true
 $modelDefaults = @{} # "<pkg>: model.<key>" -> Standard-model_key (Check 5)
 $modelKeys   = @{}   # "<pkg>|<key>" -> $true (Check 4)
 $entries = 0
+# Werte, die der Installer je Installation setzt. Kein DB-Test kann das pruefen: db_test seedet keine Manifest-Config.
+$InstanceKeys = @('telegram.bot_username'); $instanceSeen = 0
 foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory)) {
     $mfPath = Join-Path $pkgDir.FullName 'manifest.json'
     if (-not (Test-Path $mfPath)) { continue }
@@ -146,6 +151,10 @@ foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory))
             }
             if ($null -ne $min -and $null -ne $max -and [decimal]$min -gt [decimal]$max) { Fail "$where`: minimum > maximum" }
             if ($names -contains 'managed_by' -and @('owner','system','instance') -cnotcontains [string]$e.managed_by) { Fail "$where.managed_by '$($e.managed_by)' (erlaubt: owner|system|instance)" }
+            if ($InstanceKeys -ccontains "$($cat.Name).$($k.Name)") {
+                $instanceSeen++
+                if ([string]$e.managed_by -cne 'instance') { Fail "$where`: managed_by muss 'instance' sein (Wissen dieser Installation: core.fn_config_import ueberspringt nur dann den Wert, sonst traegt ein Umzug den Bot-Namen der alten Maschine mit)" }
+            }
             $val = [string]$e.value
             if (-not (Test-ConfigValue $type $val $min $max)) { Fail "$where`: Standardwert '$val' passt nicht zu type '$type'$(if ($null -ne $min) { " min $min" })$(if ($null -ne $max) { " max $max" })" }
             else { Pass "$where = '$val' ($type)" }
@@ -154,6 +163,7 @@ foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory))
         }
     }
 }
+if ($instanceSeen -ne $InstanceKeys.Count) { Fail "Installations-Werte: $instanceSeen von $($InstanceKeys.Count) Schluesseln ($($InstanceKeys -join ', ')) in den Manifesten gefunden" }
 Write-Host "  (2) $entries Config-Eintraege geprueft ($($schedules.Count) Zeitplaene)"
 
 # ---------- (3) Zeitplan-Platzhalter <-> schedule-Zeilen ----------
@@ -275,7 +285,7 @@ foreach ($f in $srcFiles) {
     foreach ($line in [System.IO.File]::ReadAllLines($f.FullName, $Utf8NoBom)) {
         $i++
         if ($line -match '\b(Get-PackageConfig|Get-AnthropicModel)\b') {
-            Fail "$($f.FullName.Substring($RepoRoot.Length + 1)):${i}: $($Matches[1]) backte ein Modell beim Bauen ein — entfernt seit Festwert-Phase 2 (New-ModelConfigNode + Laufzeit-Bezug)"
+            Fail "$($f.FullName.Substring($RepoRoot.Length + 1)):${i}: $($Matches[1]) backt ein Modell beim Bauen ein (New-ModelConfigNode + Laufzeit-Bezug nutzen)"
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
-# release_tag_test.ps1 -- Regressionstest der Vorab-Erkennung beim Release: scripts/lib/release_tag.ps1 (EINE Stelle fuer
-# "Vorab ja/nein"), ihr Kommandozeilen-Eingang scripts/release_meta.ps1 (Aufruf in .github/workflows/release.yml) und die
+# release_tag_test.ps1 -- Regressionstest der Vorab-Erkennung beim Release: scripts/lib/release_tag.ps1 (eine Stelle fuer
+# "Vorab ja/nein"; dazu der Installations-Hinweis im Release-Text, Get-ReleaseInstallNote), ihr Kommandozeilen-Eingang
+# scripts/release_meta.ps1 (Aufruf in .github/workflows/release.yml) und die
 # Verdrahtung in release.yml, scripts/sign_release.ps1 und scripts/build_master_image.ps1. Eigenschaft: ein Vorab-Tag wird nie
 # latest, sonst zeigte /releases/latest darauf und jede Installation bekaeme es als Update.
 # Kein Netz, kein gh-Aufruf, kein Docker; alle Werte erfunden. prek startet ihn bei Aenderungen.

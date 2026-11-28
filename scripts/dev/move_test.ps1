@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# move_test.ps1 — GRATIS Test von `lifeagents move` (Annahme auf der neuen Maschine) und `config import` auf dem echten Weg im
+# move_test.ps1 — kostenloser Test von `lifeagents move` (Annahme auf der neuen Maschine) und `config import` auf dem echten Weg im
 # klassischen Substrat: echtes systemd, n8n, PostgreSQL; Telegram ist die Attrappe des Substrats (enable_mock_telegram.ps1).
 # Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner (tests/backup/move_cases.sh) in den Container und faehrt dort
 # move_cases.sh mit der CLI dieses Baums:
@@ -7,12 +7,12 @@
 #   - apply: „in Gebrauch“ und falsche Release brechen vor jeder Aenderung ab; apply spielt Daten, Gedaechtnis (Wasserstand), Einstellung ein,
 #     0 Platzhalter, Geheimnis-Dateien weg, Sicherung bleibt, Vergleich gruen;
 #   - Sperre/Abnahme: Update endet mit Satz, doctor nennt den Umzug nur als Hinweis, zweiter Lauf spielt nichts doppelt ein, done hebt auf.
-# Haelt n8n im Substrat voruebergehend an (retire) -> nur im EIGENEN Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
+# Haelt n8n im Substrat voruebergehend an (retire) -> nur im eigenen Container laufen lassen ($env:N8NTEST_CONTAINER/N8NTEST_PORT);
 # am Ende laeuft alles wieder wie vorher. Voraussetzung: enable_mock_telegram.ps1 (aktuelle Attrappe). Kein LLM, kein echtes Telegram.
 # N8NTEST_RUNTIME=compose: laeuft im master des Verbunds (bootstrap_test_stack.ps1), ohne Telegram-Attrappe, nur die Versions-Sperre
 # (lock_cases in move_cases.sh: update, rollback, provision.sh mit anderer/ohne/gleicher Version); die Tick-Schleife des master ist dabei
 # angehalten (Suspend-TestStackTick, in finally zurueck).
-# Usage:  $env:N8NTEST_CONTAINER='s4b2-n8ntest'; $env:N8NTEST_PORT='58000'; .\scripts\dev\move_test.ps1 [-Verbose]
+# Usage:  $env:N8NTEST_CONTAINER='move-n8ntest'; $env:N8NTEST_PORT='58000'; .\scripts\dev\move_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 

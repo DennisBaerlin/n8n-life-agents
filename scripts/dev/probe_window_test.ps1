@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # probe_window_test.ps1 -- Regressionstest des Zeitfensters der Waechter-Probe (scripts/lib/probe_window.ps1): das Fenster 'outside'
-# wird erst NACH dem Warten auf eine sichere Minute berechnet, sonst liegt der Lauf nach einem Stundenwechsel im Fenster.
+# wird erst nach dem Warten auf eine sichere Minute berechnet, sonst liegt der Lauf nach einem Stundenwechsel im Fenster.
 # Die Uhr, das Schlafen und die Datenbank-Stunde werden eingespeist; kein Warten, kein Substrat, kein Netz.
 # Usage:  .\scripts\dev\probe_window_test.ps1
 # Exit-Code = Anzahl Fehler.

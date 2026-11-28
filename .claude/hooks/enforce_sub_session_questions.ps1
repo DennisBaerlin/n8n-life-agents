@@ -2,8 +2,9 @@
 # selbst (Skill /coordinate Abschnitt 5). Die Regel allein reicht nicht: sonst kommt eine
 # Frage direkt beim Owner an. Hart per 'deny', weil Hook-'ask' still durchgewinkt wird (siehe enforce_owner_window.ps1).
 #
-# Wer gilt als Unter-Session: Zeile 1 je Eintrag in .claude/sub_sessions.txt im Haupt-Checkout (gitignored, schreibt die Leitung
-# per scripts/register_sub_session.ps1 direkt nach start_session). Verglichen wird mit CLAUDE_CODE_HOST_SESSION_ID.
+# Wer gilt als Unter-Session: Zeile 1 je Eintrag in .claude/sub_sessions.txt im eigenen oder im Haupt-Checkout
+# (gitignored, schreibt die Leitung per scripts/register_sub_session.ps1 direkt nach start_session). Verglichen wird mit
+# CLAUDE_CODE_HOST_SESSION_ID.
 # Geprueft wird: AskUserQuestion immer; wrap_up nur mit Frage oder Knoepfen (ask, actions), der Bericht allein laeuft durch.
 # Nicht betroffen: Sessions, die der Owner selbst startet; Freigabe-Karten der App (Plan, Berechtigung), die kein Tool-Aufruf sind.
 # Fehlt die Kennung oder die Liste -> fail-open (kein Block). Test: scripts/dev/lead_guard_hook_test.ps1.

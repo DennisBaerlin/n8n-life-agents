@@ -12,13 +12,17 @@
 #   * expect_sql     — nach dem Lauf: [{sql, expect}], die erste Ergebniszeile muss genau expect sein (z. B. was gemerkt wurde).
 #   * tg_fail        — Bot-API-Methode, die waehrend des Falls scheitert (Mock-Schalter /__fail); der Versuch steht trotzdem im Log.
 #   * stop_units     — systemd-Units des Substrats, die waehrend des Falls ruhen (z. B. die Timer, die sonst seed_sql ueberschreiben).
+#   * harness / harness_body / harness_actor — statt des Crons einen Test-Eingang (Webhook) ausloesen; actor = wer den Schritt ausloest.
+#   * mock_llm_scenario — Mock-LLM-Szenario nur fuer diesen Fall.
 # Paket-neutral: Faelle aus tests/agent/<pkg>/cron_text_cases.json (kind cron_text). Je Fall nacheinander: reset_sql ->
 # seed_sql -> ggf. cron_enable an -> Cron sofort starten (Start-TestCron: Test-Eingang core.cron_run.test_harness ->
 # 'Test run'-Einstieg) -> auf die neue Execution warten -> pruefen -> finally: wartende Executions stoppen, cron_enable zurueck, reset_sql.
 # So laufen nie zwei Crons gleichzeitig (die Berater-Crons teilen Latches) und kein Netz-Cron wird angefasst.
-# Zusaetzlich (einmal): Datums-Paritaet core.fn_fmt_date (SQL-Dokumente) == Intl (Workflows) je Katalogsprache.
+# Zusaetzlich (einmal, nur ohne -Id): Datums-Paritaet core.fn_fmt_date (SQL-Dokumente) == Intl (Workflows) je Katalogsprache.
 #
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1 -Reset -HitlChatApproval) + enable_mock_llm.ps1 + enable_mock_telegram.ps1.
+# Dazu .env mit TEST_HARNESS_SECRET. Aendert im Substrat: Fixtures und Pairing von Owner und Lena (bleiben), leert je Fall
+# core.proactive_budget/proactive_deferred; die Owner-Sprache stellt es am Ende zurueck.
 # Dauer ~3 Min gesamt (je Fall Sekunden; vorab einmal Pairing + Redeploy je Paket). Rueckfall auf einem Substrat ohne den
 # Test-Eingang: Zeitplan '* * * * *' (CLI-Redeploy) + Warten auf die Minute (~2 Min je Fall). Gezielt, nicht im Pre-Push.
 # Usage:  .\scripts\dev\cron_text_test.ps1 [-Id ctf01] [-Timeout 150] [-Verbose]

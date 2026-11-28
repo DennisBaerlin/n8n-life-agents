@@ -8,12 +8,12 @@
 # -Reset baut immer das klassische Substrat (bootstrap_test_n8n.ps1); den Docker-Verbund (N8NTEST_RUNTIME=compose) baut dieses Skript nicht.
 # Voraussetzung: .env im Checkout (TEST_HARNESS_SECRET u. a.; ein frischer Worktree hat keine, CI legt sie mit new_ci_env.ps1 an).
 # Fallen bei Handarbeit: fehlende Mock-Vorbedingung (infra_test braucht mock_paperless), ein aus Bash
-# uebergebenes -WriteTools kommt als EIN String an, und eine psql-NOTICE bricht unter *>-Umleitung ab.
+# uebergebenes -WriteTools kommt als ein String an, und eine psql-NOTICE bricht unter *>-Umleitung ab.
 #
-# Parallel: -Parallel verteilt die Substrat-Suiten auf ZWEI Substrate
+# Parallel: -Parallel verteilt die Substrat-Suiten auf zwei Substrate
 # (das eigene + <N8NTEST_CONTAINER>-b auf Port +1), je ein Kind-Prozess mit eigenen Mocks und eigener Zustandsdatei
 # (.local/n8ntest_state.<container>.json, Get-TestN8nStateFile); db_test laeuft derweil im Eltern-Prozess. Die Gruppen
-# sind nach gemessener Dauer balanciert ($GroupA/$GroupB). Belegt beide Substrat-Plaetze (Limit 2) nur fuer den Lauf: das
+# sind nach Dauer balanciert ($GroupA/$GroupB). Belegt beide Substrat-Plaetze (Limit 2) nur fuer den Lauf: das
 # zweite Substrat baut jeder -Parallel-Lauf frisch auf (auch ohne -Reset) und am Ende wieder ab.
 #
 # Usage (eigene Container, Pflicht — nie die geteilten Defaults):
@@ -24,6 +24,7 @@
 #   .\scripts\dev\run_free_gates.ps1 -Reset -Cold       # vorher kalt (nur wenn der Install-Kern geaendert wurde)
 # Exit-Code = Anzahl roter Suiten (0 = alles gruen). Logs: $env:TEMP\free_gate_<N8NTEST_CONTAINER>_<suite>.log
 # (je Container benannt: den TEMP-Ordner teilen alle Sessions desselben Windows-Nutzers).
+# Sperre: .local/run_free_gates.lock (PID, Container); ein zweiter Lauf bricht ab, solange der erste lebt (db_test.ps1 prueft dieselbe Datei).
 #   .\scripts\dev\run_free_gates.ps1 -Suites mr_estate,hitl_gate   # nur diese Substrat-Suiten, ohne db_test (mit -Reset frisches Substrat)
 #   .\scripts\dev\run_free_gates.ps1 -Suites backup              # ein Name ohne _<n> faehrt alle Teile backup_<n>
 # -Child / -ResultFile sind intern (Kind-Prozess eines -Parallel-Laufs, je Stueck ein Job in .github/workflows/free-gates.yml).
@@ -49,7 +50,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 Set-Location $RepoRoot
-# Ueber powershell.exe -File kommt eine Liste als EIN String an ("a,b,c") -> aufteilen (Muster mock_route_test -WriteTools).
+# Ueber powershell.exe -File kommt eine Liste als ein String an ("a,b,c") -> aufteilen (Muster mock_route_test -WriteTools).
 $Suites = @($Suites | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # Eigene Container sind Pflicht (Root-CLAUDE.md *Scripts*): ohne die vier Variablen liefe alles gegen die geteilten
@@ -94,12 +95,11 @@ $Gates = [ordered]@{
     monitor_probe = @{ Script = 'scripts\dev\monitor_probe_test.ps1' }   # Waechter-Heartbeat Ende-zu-Ende gegen die Mocks
     conversation  = @{ Script = 'scripts\conversation_test.ps1' }   # Ablauf-Faelle ueber den echten Eingang samt Laien-Messung (Mock-Modell)
 }
-# Gruppen fuer -Parallel: je ein Substrat, grob nach Dauer verteilt (vor dem naechsten Umbau neu messen).
+# Gruppen fuer -Parallel: je ein Substrat, nach Dauer verteilt.
 # '|' schneidet die Gruppen in die CI-Jobs (free-gates.yml, -ListJobs): je Stueck ein Runner mit eigenem Substrat. Stuecke statt
-# freier Buendel, weil jedes Stueck dann ein Ausschnitt einer Reihenfolge ist, die lokal schon auf einem Substrat laeuft. Schnitt
-# nach der reinen Suite-Zeit auf GitHub: je Stueck bis etwa so lang wie real_ingress allein, denn jeder Job zahlt rund 5 Min
-# Ruestzeit (Abbild, Substrat) und die Runner-Plaetze teilt free-gates mit den anderen Workflows; wenige gleich lange Stuecke
-# schlagen viele kurze.
+# freier Buendel, weil jedes Stueck dann ein Ausschnitt einer Reihenfolge ist, die lokal schon auf einem Substrat laeuft. Jeder Job
+# zahlt Ruestzeit (Abbild, Substrat), und die Runner-Plaetze teilt free-gates mit den anderen Workflows: wenige gleich lange Stuecke
+# (etwa so lang wie real_ingress allein) schlagen viele kurze.
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', '|', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
 $GroupB = @('release_fetch', 'reachability', 'backup_1', '|', 'backup_2', '|', 'runtime', 'backup_3', '|', 'backup_4', 'n8n_patch',
@@ -241,7 +241,7 @@ if ($Parallel) {
     foreach ($c in $children) {
         $c.Proc.WaitForExit()
         if (Test-Path $c.Result) {
-            # PS 5.1: ConvertFrom-Json gibt ein JSON-Array als EIN Objekt in die Pipeline -> erst zuweisen, dann iterieren
+            # PS 5.1: ConvertFrom-Json gibt ein JSON-Array als ein Objekt in die Pipeline -> erst zuweisen, dann iterieren
             # (sonst landete das ganze Array als ein Ergebnis und rote Suiten zaehlten nicht).
             $parsed = [System.IO.File]::ReadAllText($c.Result, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
             foreach ($r in $parsed) { $results.Add($r) }

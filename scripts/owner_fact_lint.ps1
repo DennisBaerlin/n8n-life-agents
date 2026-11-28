@@ -7,7 +7,9 @@
 #       die Person, Bank oder Summe.
 #   (B) Ueberall: kein "Live-Befund" zusammen mit einem Geldbetrag auf derselben Zeile oder, bei Kommentaren, auf der Folgezeile.
 # Die Muster bleiben grob: Sie finden typische Formulierungen, keine Umschreibungen; die pruefen /privacy-review und der Owner.
-# Ausgenommen: generierte Dateien (ihre Quellen werden geprueft), angewandte V__-Migrationen (Pruefsummen-Schutz), diese Datei.
+# Ausgenommen: generierte Dateien (ihre Quellen werden geprueft), angewandte V__-Migrationen (Pruefsummen-Schutz), diese Datei
+# und scripts/dev/privacy_lint_test.ps1. Selbst-Asserts vorab: jede Regel trifft ihre Probe und keinen Fachbegriff, keine
+# Version und kein Datum.
 # Ausgaben nennen nur Datei:Zeile und die Regel (nie den Fund). Nutzt `git grep`, prueft also nur getrackte Dateien.
 # Aufruf: .\scripts\owner_fact_lint.ps1
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # ui_art.ps1 -- Erklär-Bilder: eine Quelle je Bild (config/ui.art.<name>.svg), daraus selbstständige SVG-Dateien je Sprache und
 # Hell/Dunkel für alle Verbraucher (README, Doku-Seite, Start-App, Wizard). Schreiben: scripts/build_ui_tokens.ps1,
-# Prüfen: scripts/ui_token_lint.ps1 (8). Dot-sourcen nach scripts/lib/ui_tokens.ps1.
+# Prüfen: scripts/ui_token_lint.ps1 (8), Vorschau: scripts/dev/serve_art_preview.ps1. Dot-sourcen nach scripts/lib/ui_tokens.ps1.
 #
 # Warum Dateien statt Inline-SVG: Alle Verbraucher zeigen das Bild per <img>. So gilt die CSP der Seite (style-src 'self') nicht
 # für das <style> im Bild, GitHub zeigt es in der README, und „Bewegung reduzieren" wirkt im Bild selbst. Folge: Farben und

@@ -2,7 +2,7 @@
 # agent_routing.ps1 — die eine Lese- + Pruef-Stelle fuer provides.agents[] aller Paket-Manifeste
 #
 # Das Routing-Wissen eines Pakets lebt in seinen provides.agents-Objekten {name, router_description, order,
-# fallback_for?} — der Core-Prompt kennt kein Paket. Diese Funktion liefert die nach order sortierte Routing-
+# fallback_for?, audience?} — der Core-Prompt kennt kein Paket. Diese Funktion liefert die nach order sortierte Routing-
 # Liste (ohne 'orchestrator' = der Router routet nicht zu sich selbst) und die Verstoesse gegen den Vertrag:
 #   (a) jeder Agent ausser 'orchestrator' hat eine nicht-leere router_description;
 #   (b) jedes agent.<x> in einer router_description ist ein deklarierter Agent irgendeines Manifests.
@@ -12,7 +12,8 @@
 #       ein abwesendes (optionales, docs/package-contract.md §4.2) Paket -> nur Warnung
 #       (ein Repo ohne beliebiges Domaenen-Paket bleibt baubar; zur Laufzeit meldet der Verteiler "nicht installiert");
 #   (c) fallback_for ist eine Liste aus $AgentFallbackKinds, nicht am 'orchestrator', und jede Art
-#       beansprucht hoechstens ein Agent ueber alle Pakete.
+#       beansprucht hoechstens ein Agent ueber alle Pakete;
+#   (d) audience ist adults (Default) oder all (Kinder-Sicht, Tor in agent.sub_dispatch_agent).
 # Konsumenten: build.ps1 ($AgentRoutingList -> throw bei Verstoss), contract_lint.ps1 Check 19 (freundliche
 # Meldung + synthetische Negativ-Asserts) und die Test-Treiber ueber scripts/dev/test_n8n_state.ps1
 # Get-TestRouteAgent (kein Paket im Treiber).
@@ -57,15 +58,6 @@ function Get-PackageManifest([string]$RepoRoot) {
     })
 }
 
-# Onboarding-Reihenfolge der Pakete (Menue + Dispatch) — abgeleitet, nie deklariert: Pakete mit
-# onboarding/sections.json; wer Daten/Dienste eines anderen Onboarding-Pakets konsumiert (consumes.reads
-# '<schema>.<fn>', consumes.services '<pkg>:<dienst>'), kommt danach (dessen Daten liegen dann schon vor).
-# Gleichstand: haushaltsweite Pakete vor persoenlichen (ein context_scopes-Eintrag mit scope per_user), dann Name.
-# Zyklus -> throw. Core-Haushalt ist nicht dabei (Host-Sonderfall, steht immer vorn).
-# Rueckgabe: @( [pscustomobject]@{ Package; Agent } ) in Onboarding-Reihenfolge (Agent = bare
-# provides.onboarding.agent; contract_lint 11 erzwingt provides.onboarding <-> sections.json).
-# Get-OnboardingPackageOrder liest das Repo; Get-OnboardingOrderFromManifests ist die reine Sortierung (Eingabe
-# @{ Path; Json } nur der Pakete mit sections.json) — contract_lint 21 fuettert sie mit synthetischen Faellen.
 # Get-OnboardingSectionKeys — die Sektions-Keys eines Pakets in Reihenfolge (ord) aus packages/<pkg>/onboarding/
 # sections.json, fuer Tool-Beschreibungen (tool_set_onboarding_section): die Liste wird abgeleitet, nie abgetippt
 # (eine abgetippte Liste verliert Keys). Fehlt die Datei -> throw.
@@ -80,6 +72,15 @@ function Get-OnboardingSectionKeys([string]$RepoRoot, [string]$Package, [switch]
     return @($secs | ForEach-Object { [string]$_.key })
 }
 
+# Onboarding-Reihenfolge der Pakete (Menue + Dispatch) — abgeleitet, nie deklariert: Pakete mit
+# onboarding/sections.json; wer Daten/Dienste eines anderen Onboarding-Pakets konsumiert (consumes.reads
+# '<schema>.<fn>', consumes.services '<pkg>:<dienst>'), kommt danach (dessen Daten liegen dann schon vor).
+# Gleichstand: haushaltsweite Pakete vor persoenlichen (ein context_scopes-Eintrag mit scope per_user), dann Name.
+# Zyklus -> throw. Core-Haushalt ist nicht dabei (Host-Sonderfall, steht immer vorn).
+# Rueckgabe: @( [pscustomobject]@{ Package; Agent } ) in Onboarding-Reihenfolge (Agent = bare
+# provides.onboarding.agent; contract_lint 11 erzwingt provides.onboarding <-> sections.json).
+# Get-OnboardingPackageOrder liest das Repo; Get-OnboardingOrderFromManifests ist die reine Sortierung (Eingabe
+# @{ Path; Json } nur der Pakete mit sections.json) — contract_lint 19b fuettert sie mit synthetischen Faellen.
 function Get-OnboardingPackageOrder([string]$RepoRoot) {
     $withSections = @(Get-PackageManifest $RepoRoot | Where-Object {
         Test-Path (Join-Path $RepoRoot "packages\$(($_.Path -split '/')[1])\onboarding\sections.json") })
@@ -129,7 +130,7 @@ function Get-OnboardingOrderFromManifests([array]$Manifests) {
 # voll oder ''; Ziel von [Durchgehen] und Schalter fuer den Parameter handoff_tasks am Plan-Tool); ReadyKeys (Katalog-Keys
 # <pkg>.plan_ready.<key> aus packages/<pkg>/locales/de.json = die Texte der fehlenden Mindestdaten) } ).
 # Konsumenten: core.sub_send_onboarding_menu (Plan-Zeile + Knopf plan:<domain>) und agent.orchestrator (je Domain ein
-# Dispatch-Arm 'Run plan <domain>' -> advisor_agent). Ein Paket ohne Onboarding-Abschnitte bekommt keinen Plan-Schritt.
+# Dispatch-Arm 'Run plan <domain>' -> advisor_agent). plan_step in einem Paket ohne onboarding/sections.json -> throw.
 function Get-AdvisorPlanStepList([string]$RepoRoot) {
     $enc = New-Object System.Text.UTF8Encoding($false)
     $order = @(Get-OnboardingPackageOrder $RepoRoot | ForEach-Object { $_.Package })

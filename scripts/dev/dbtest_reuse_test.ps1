@@ -5,7 +5,7 @@
 #   1) erster Lauf baut; 2) zweiter Lauf im selben Baum = Reuse; 3) traegt die DB den Bau-Stand eines fremden Baums, wird neu gebaut.
 # Voraussetzung: Docker laeuft und das Image pgvector/pgvector:pg17 ist lokal vorhanden (sonst [SKIP], Exit 0; es wird nie geladen),
 # psql im PATH bzw. unter C:\Program Files\PostgreSQL\17\bin (wie bootstrap_test_db.ps1). Dauer: zwei Schema-Bauten.
-# Eigener Container ta-dbreuse-<pid> auf einem freien, reservierten DB-Port; am Ende entfernt.
+# Eigener Container ta-dbreuse-<pid> auf einem freien, reservierten DB-Port (keiner frei: [SKIP], Exit 0); am Ende entfernt.
 # Usage:  .\scripts\dev\dbtest_reuse_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

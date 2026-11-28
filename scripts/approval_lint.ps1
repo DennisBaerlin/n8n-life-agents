@@ -3,11 +3,12 @@
 # (packages/*/workflows/*.json) gegen die `approval_matrix`-Bloecke der Paket-Manifeste
 # (gelesen ueber scripts/build/lib/approval_matrix.ps1, dieselbe lib wie build.ps1), fail-closed:
 #   (a) jeder Gate-Aufruf-Node (executeWorkflow -> cachedResultName == agent.tool_human_approval) traegt
-#       einen approval_tier-Input, und der Wert == Matrix-Eintrag des Workflows;
+#       einen approval_tier-Input, der Workflow steht in der Matrix, und der Wert == sein Matrix-Eintrag;
 #   (b) kein Orphan: jeder Matrix-Eintrag entspricht einem real gebauten Gate-Aufrufer;
 #   (c) Matrix-Selbstkonsistenz (lib): gueltiger tier-Enum, kein Doppel-Eintrag, Verb-Praefix-Strictness;
 #   (d) Besitz: der Eintrag steht im Manifest des Pakets, in dessen workflows/-Verzeichnis die gebaute Datei liegt;
-#   (e) Stufe self: nur die selbst-beschraenkende fn, kein scope-Eingang (siehe unten).
+#   (e) Stufe self: genau ein Postgres-Node, der $ApprovalSelfFn ruft (Ausnahme: der Lese-Node "Resolve dates"), ausser dem
+#       Gate kein executeWorkflow, kein scope-Eingang (Grund am Block).
 # Harnesses (*.test_harness) liefern approval_tier ueber den Test-Webhook -> ausgenommen.
 # Aufruf: .\scripts\approval_lint.ps1
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.

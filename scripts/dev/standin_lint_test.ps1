@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Fehl- und Gutfaelle von scripts/standin_lint.ps1 in einem Wegwerf-Baum (-Root): Attrappe ohne Marker, Marker auf
 # fehlende Datei, Ausnahme ohne Grund, von Hand mitgegebener Wert ohne Begruendung muessen rot werden; die markierten
-# Gegenstuecke gruen. Kein Docker, kein git.
+# Gegenstuecke gruen. Dazu PATH-Attrappen, Dateien in tests/mock_runtime und tests/mock_reach, export NAME=Wert, die Ausnahmeliste
+# und Werte in der Form echter Anbieter-Schluessel. Kein Docker, kein git.
 # Usage: .\scripts\dev\standin_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

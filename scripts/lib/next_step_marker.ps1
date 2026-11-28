@@ -2,7 +2,8 @@
 # Die Markerzeile NEXT_STEP der Router-/Hilfe-Agent-Grammatik (core.fn_get_next_step): der Agent schreibt sie als letzte Zeile, das System
 # nimmt sie vor dem Senden aus dem Text und haengt den Knopf an. Eine Quelle fuer die Erkennung: der Relay-Baustein
 # (scripts/build/lib/build_helpers.ps1, New-TelegramRelayChain) setzt dieses Muster in sein JavaScript ein, der Direkt-Test
-# (n8n_test) trennt die Zeile damit vom Agententext. Per Dot-Sourcing laden; Selbsttest dev/next_step_marker_test.ps1.
+# (n8n_test) trennt die Zeile damit vom Agententext, ebenso e2e_test und lay_metrics (Measure-BotText). Per Dot-Sourcing laden;
+# Selbsttest dev/next_step_marker_test.ps1.
 # Das Muster gilt je Zeile und ist in .NET und JavaScript gleich lesbar.
 $script:NextStepMarkerPattern = '^\s*NEXT_STEP\s*$'
 

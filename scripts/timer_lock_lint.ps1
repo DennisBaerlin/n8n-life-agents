@@ -1,11 +1,17 @@
 ﻿#Requires -Version 5.1
 # timer_lock_lint.ps1 -- Zeitgeber und die gemeinsame Update-Sperre (hartes Gate; Regel im Kopf der Sperre, provisioning/lib/common.sh).
 # Der Minuten-Runner (lifeagents-update-run) haelt die Update-Sperre zu jeder vollen Minute kurz. Wer sie zur selben
-# Sekunde ohne Warten probt oder nimmt, faellt still aus. Der Lint haelt drei Regeln:
+# Sekunde ohne Warten probt oder nimmt, faellt still aus. Der Lint haelt fuenf Regeln:
 #   (A) `update_lock_free` ohne Wartezeit steht nur in provisioning/doctor.sh (Anzeige, kein Zeitgeber);
 #   (B) `update_lock_acquire` ohne Wartezeit steht nur in provisioning/lib/update_runner.sh (der Minuten-Runner selbst);
 #   (C) jede provisioning/templates/*.timer.tpl steht in $KnownTimers mit ihrem Umgang mit der Sperre; ein neuer
 #       Zeitgeber wird erst gruen, wenn er dort eingetragen ist.
+#   (D) `exec` ohne Programm (die Sperre haengt an Deskriptor 9: `exec 9>>...`, `exec 9>&-`) leitet nur Deskriptoren ab 3 um.
+#       Steht in derselben Zeile ein 0/1/2 (`exec 9>&- 2>/dev/null`), gilt das fuer den Rest des Skripts: jede spaetere
+#       Fehlermeldung verschwindet. Gewollte Stellen stehen in $ExecStdAllowed.
+#   (E) jedes ausfuehrbare Skript unter provisioning/ (Shebang in Zeile 1, ohne desktop/) exportiert selbst LANG=C.UTF-8 und
+#       LC_ALL=C.UTF-8; gesourcte Bibliotheken erben beides vom Aufrufer.
+# (D) und (E) sind Shell-Regeln des Installers ohne eigenen Lint; sie stehen hier, weil dieser Lint dieselben Dateien liest.
 # Aufruf: .\scripts\timer_lock_lint.ps1 [-Root <Baum>]   (-Root nur fuer scripts/dev/timer_lock_lint_test.ps1)
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
 param([string]$Root)
@@ -27,6 +33,11 @@ $BareAllowed = @{
     'update_lock_free'    = 'provisioning/doctor.sh'
     'update_lock_acquire' = 'provisioning/lib/update_runner.sh'
 }
+# (D) Gewollte Umleitungen von stdin/stdout/stderr der Shell selbst: Datei -> Zeilen (ohne Einrueckung, zeichengenau).
+$ExecStdAllowed = @{
+    'provisioning/lib/common.sh'     = @('exec >>"$UI_LOG_FILE" 2>&1', 'exec 0</dev/null')   # ui_log_begin: Installer-Protokoll
+    'provisioning/lib/backup_cli.sh' = @('exec </dev/null >"$log_f" 2>&1')                    # abgeloester Hintergrund-Lauf in einer Subshell
+}
 
 $prov = Join-Path $Root 'provisioning'
 $files = @()
@@ -45,6 +56,38 @@ foreach ($f in $files) {
         if ($rel -ne $BareAllowed[$fn]) {
             Fail "${rel}:$($i + 1): $fn ohne Wartezeit; nur $($BareAllowed[$fn]) darf das. Der Minuten-Runner haelt die Sperre zur vollen Minute kurz, ein Aufruf ohne Warten faellt dann still aus -> Sekunden angeben."
         }
+    }
+}
+
+# --- (D) `exec` ohne Programm: nur Deskriptoren ab 3 ---
+$rxExec  = [regex]'(?:^|[;&|(]|\bthen\b|\bdo\b)\s*exec((?:\s+(?:\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|\S+))+)\s*(?:$|[;&|)#])'
+$rxRedir = [regex]'(?:^|\s)(\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|\S+)'
+foreach ($f in $files) {
+    $rel = Rel $f.FullName
+    $lines = [System.IO.File]::ReadAllLines($f.FullName, $u8)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i].Trim()
+        if ($line.StartsWith('#')) { continue }
+        $m = $rxExec.Match($line); if (-not $m.Success) { continue }
+        if ($ExecStdAllowed[$rel] -ccontains $line) { continue }
+        foreach ($r in $rxRedir.Matches($m.Groups[1].Value)) {
+            $fd = $r.Groups[1].Value
+            if ($fd.StartsWith('{') -or ($fd -and [int]$fd -ge 3)) { continue }
+            Fail "${rel}:$($i + 1): exec ohne Programm leitet Deskriptor $(if ($fd) { $fd } else { '0/1' }) der Shell selbst um, das gilt fuer den Rest des Skripts (ein '2>/dev/null' hinter 'exec 9>&-' verschluckt jede spaetere Fehlermeldung) -> nur Deskriptoren ab 3; gewollte Stellen in `$ExecStdAllowed eintragen."
+            break
+        }
+    }
+}
+
+# --- (E) ausfuehrbares Skript (Shebang) setzt LANG und LC_ALL selbst ---
+foreach ($f in $files) {
+    $rel = Rel $f.FullName
+    if ($rel -like 'provisioning/desktop/*') { continue }
+    $lines = [System.IO.File]::ReadAllLines($f.FullName, $u8)
+    if ($lines.Count -eq 0 -or -not $lines[0].StartsWith('#!')) { continue }
+    $exports = @($lines | Where-Object { $_ -match '^\s*export\s' } | ForEach-Object { ($_ -split '\s#')[0] })
+    if (-not (($exports -match '\bLANG=C\.UTF-8\b') -and ($exports -match '\bLC_ALL=C\.UTF-8\b'))) {
+        Fail "${rel}: ausfuehrbares Skript (Shebang) ohne 'export LANG=C.UTF-8 LC_ALL=C.UTF-8' -- direkt gestartet gilt sonst die Systemsprache des Rechners (psql, sort und der Pager schreiben Umlaute dann als Bytes)."
     }
 }
 

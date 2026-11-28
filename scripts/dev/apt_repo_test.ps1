@@ -4,8 +4,9 @@
 #   tests/util/apt_repo/cases.sh             apt-Quellen des Installers (add_apt_key/add_apt_source, Tunnel-Schritt) ohne gnupg: kein
 #                                       Schluessel-Fehler, keine Quelle ohne Schluesselbund (sonst bricht jedes spaetere apt-get update).
 #   tests/util/apt_repo/first_step_cases.sh  der dokumentierte erste Schritt (Einzeiler im Kopf von provisioning/setup.sh) ohne curl.
-# Usage:  $env:APT_TEST_CONTAINER = 's4fg-apt'; .\scripts\dev\apt_repo_test.ps1 [-Verbose]
-# Container: Name aus APT_TEST_CONTAINER (Standard apt-repo-test), Wegwerf, wird nach jeder Datei entfernt. Exit-Code = Anzahl Fehler.
+# Usage:  $env:APT_TEST_CONTAINER = 'apt-probe'; .\scripts\dev\apt_repo_test.ps1 [-Verbose]
+# Container: Name aus APT_TEST_CONTAINER (Standard apt-repo-test); ein vorhandener Container gleichen Namens wird vorher entfernt, am
+# Ende jeder Datei wieder. Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'

@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
-# Der Pre-Push-Hook shellcheck-full prueft alle Shell-Skripte, nicht nur die geaenderten: eine Funktion las ploetzlich $1,
-# der unveraenderte Aufrufer gab SC2119, der Commit-Hook sah nur die geaenderte Datei.
+# Der Pre-Push-Hook shellcheck-full prueft alle Shell-Skripte, nicht nur die geaenderten: aendert ein Commit eine Funktion (liest
+# sie nun $1), meldet shellcheck (SC2119) den unveraenderten Aufrufer, den der Commit-Hook nicht sieht.
 #   1. Verdrahtung: .pre-commit-config.yaml hat shellcheck-full (pre-push, always_run, ganzer Baum).
 #   2. Nachgestellter Fall im Wegwerf-Repo: lib.sh + caller.sh, zweiter Commit aendert nur lib.sh. Der Lauf ueber die
 #      geaenderte Datei bleibt gruen (die Luecke), der Lauf ueber alle Dateien (was shellcheck-full fuehrt) wird rot.
-# Voraussetzung: prek, Hook-Umgebung im prek-Cache (kein Docker, kein Netz bei warmem Cache).
+# Voraussetzung: prek, git, Hook-Umgebung im prek-Cache (kein Docker, kein Netz bei warmem Cache).
 # Usage: .\scripts\dev\shellcheck_full_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

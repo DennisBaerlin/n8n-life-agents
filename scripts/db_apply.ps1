@@ -17,7 +17,8 @@
 # oder ein Wildcard-Glob (-> alle Treffer, sortiert) sein. Sortierung nach Name macht den
 # Ziffern-Prefix (00_schema.sql) reihenfolge-stabil vor den fn_*.sql.
 #
-# Voraussetzung: das Test-Postgres laeuft (bootstrap_test_db.ps1). Exit: 0 = alles angewandt, ungleich 0 = throw
+# Voraussetzung: das Test-Postgres laeuft (bootstrap_test_db.ps1), psql im PATH oder unter C:\Program Files\PostgreSQL\17\bin.
+# Exit: 0 = alles angewandt, ungleich 0 = throw
 # (psql-Fehler, Datei/Glob nicht gefunden).
 #
 # Connection: ephemeres Docker-Test-Postgres (trust-Auth, Loopback, nicht-geheime Wegwerf-Defaults;

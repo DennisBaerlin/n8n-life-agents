@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Dirty-Surface-Analyse -- weiche Empfehlung, blockt nie.
 # Laeuft als pre-push-Hook (.pre-commit-config.yaml, id llm-suite-advice). Nennt die LLM-kostenden
-# Suiten (n8n_test/orch_test/e2e_test), die laut Blast-Radius-Matrix fuer den zu pushenden Diff
+# Suiten, die laut Blast-Radius-Matrix fuer den zu pushenden Diff
 # laufen sollten, plus semantische Doku-Touchpoints. Exit immer 0 (rein informativ).
 # Aufruf: .\scripts\llm_suite_advice.ps1 (ohne Parameter); braucht ein git-Repo, kein Docker, keine .env.
 
@@ -40,7 +40,7 @@ foreach ($p in $toolPkgs) {
     $docTouchpoints += "Tool in '$p' beruehrt -> Write-Tools-Katalog (docs/reference/packages.md), Golden-Case (tests/agent/$p/*_cases.json), 'Not yet available'-Liste im Prompt pruefen."
 }
 if ($changed | Where-Object { $_ -match '^packages/[^/]+/manifest\.json$' -or $_ -match '^packages/core/seed/ai_models\.json$' }) {
-    $recs += "n8n_test.ps1 + orch_test.ps1: Manifest-/Modell-/Config-Wechsel -> Routing kann still kippen (Config lebt seit WS4a in den Manifesten)."
+    $recs += "n8n_test.ps1 + orch_test.ps1: Manifest-/Modell-/Config-Wechsel -> Routing kann still kippen (Config lebt in den Manifesten)."
 }
 if ($changed | Where-Object { $_ -match 'orchestrator' }) {
     $recs += "orch_test.ps1: Orchestrator-Workflow geaendert -> Routing-Entscheidung pruefen."

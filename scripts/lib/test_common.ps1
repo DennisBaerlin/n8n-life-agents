@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Gemeinsame Helfer der Test-Skripte (scripts/*_test.ps1, scripts/dev/*_test.ps1). Dot-sourcen:
+# Gemeinsame Helfer der Test-Skripte und Test-Treiber (Nutzer: per Grep nach test_common.ps1). Dot-sourcen:
 #   . "$PSScriptRoot\..\lib\test_common.ps1"     (aus scripts/dev; aus scripts/ ohne "..")
 # Nur Helfer, die in mehreren Skripten wortgleich gebraucht wurden; Substrat-Helfer (n8n, Mock-Telegram, Kosten) liegen in
 # scripts/dev/test_n8n_state.ps1, Wegwerf-Repos in git_sandbox.ps1.

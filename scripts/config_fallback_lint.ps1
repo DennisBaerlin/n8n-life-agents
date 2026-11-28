@@ -5,15 +5,19 @@
 # Scan: packages/*/db/**/*.sql ohne migrations/V*.sql (angewandte Migrationen sind eingefroren) und die SQL-/Ausdrucks-Texte der
 # gebauten Workflows packages/*/workflows/*.json (Stickies nicht; die Bauquellen deckt build.ps1 -VerifyWorkflows).
 # Lese-Formen: core.fn_config_get(paket, kategorie, key), SELECT value FROM core.config, finance.fn_config_eur_in_currency(key,
-# standard, ...) und in Ausdruecken .json.<kategorie>.<key> || <wert>.
+# standard, ...) und in Ausdruecken .json.<kategorie>.<key> || <wert> (auch ??).
 # Rueckfall-Formen: COALESCE(..., <wert>) (auch um einen Vergleich = '<x>'), Zuweisung an eine Variable mit spaeterem
 # COALESCE(var, <wert>), var := <wert> oder CASE WHEN var ... ELSE <wert> END, zusammengesetzter Key mit CASE-Rueckfall,
 # Schluessel-Schleife ueber eine jsonb-Standardkarte.
 # Rot: Rueckfall != Manifest; Key ohne Manifest-Zeile in diesem Paket; ein Lese-Aufruf ohne erkannten Rueckfall, der nicht in
 # scripts/build/config_fallback_allowlist.json steht (so faellt eine neue, nicht erkannte Rueckfall-Form auf).
-# Ausnahme ohne Eintrag: cron_enable mit Rueckfall 'false' (fail-closed, Kopf von R__fn_config_get.sql).
+# Ausnahme ohne Eintrag: cron_enable mit Rueckfall 'false' (fail-closed, Kopf von R__fn_config_get.sql). Kategorie model prueft
+# dieser Lint nicht (config_test 4).
 # Allowlist je (where, read, fallback) mit count; reason 'none:<warum>' (kein Rueckfall), 'differs:<warum>' (bewusst anders).
+# Rot dort: reason passt nicht zum Rueckfall, doppelter Eintrag, count weicht ab, Eintrag ohne Fund. Selbst- und Scope-Asserts
+# (Erkennung defekt, nichts gelesen) sind ebenfalls Fehler.
 # Aufruf: .\scripts\config_fallback_lint.ps1 [-Verbose] [-Baseline] [-Root <Baum>]   (-Root nur fuer den Test)
+#   -Baseline druckt das Allowlist-Geruest (Exit 0), -Verbose listet jede Lese-Stelle.
 # Test: scripts/dev/config_fallback_lint_test.ps1. Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
 param([string]$Root, [switch]$Baseline, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

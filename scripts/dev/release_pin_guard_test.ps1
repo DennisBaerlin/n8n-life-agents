@@ -3,6 +3,8 @@
 # scripts/lib/release_images.ps1) und ihr Einsatz in .claude/hooks/dev_cycle_guard.ps1 (git tag v.., git push mit Tag), alle als
 # Kopie in einem Wegwerf-Repo mit Wegwerf-Remote. Ausgangsfall: Tag auf einem Stand, dessen Release-Baum sich seit dem Bau des
 # master-Images geaendert hat. Kein Substrat, kein Netz, keine Kosten; alle Werte erfunden. prek startet ihn bei Aenderungen.
+# Prueft auch den prek-pre-push-Weg (nur PRE_COMMIT_*-Variablen, Exit 0/1/2) und: ohne Owner-Maschine (keine Liste, keine echte
+# Chat-ID) sperrt nichts.
 # Usage:  .\scripts\dev\release_pin_guard_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

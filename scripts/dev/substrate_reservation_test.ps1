@@ -1,8 +1,10 @@
 ﻿#Requires -Version 5.1
 # Test der Substrat-Platz-Reservierung: scripts/lib/substrate_reservations.ps1 (Logik, wie Wait-SubstrateSlot sie nutzt) und
-# scripts/reserve_substrate_slot.ps1 (Bedienung). Kein Substrat, keine Kosten; arbeitet nur in einem Temp-Ordner.
+# scripts/reserve_substrate_slot.ps1 (Bedienung), dazu DB-Ports und Wait-SubstrateSlot. Kein Substrat, keine Kosten; Dateien nur in
+# einem Temp-Ordner.
 # Der Abschnitt "Verbund echt" legt Wegwerf-Projekte s4t5* aus busybox:latest an (nie geladen, keine Ports) und prueft Zaehlung,
 # Abbau, SessionEnd-Hook und stop_test_containers.ps1 -ComposeOnly gegen fremde Verbuende; ohne Docker oder busybox entfaellt er.
+# Unter Windows prueft eine Docker-Attrappe (docker.cmd) den SessionEnd-Hook zusaetzlich ohne Docker.
 # Usage:  .\scripts\dev\substrate_reservation_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -246,7 +248,7 @@ if (-not $haveDocker) {
         $hook = Join-Path $repo '.claude\hooks\stop_own_substrate.ps1'
         $exe = (Get-Process -Id $PID).Path
         New-Probe 's4t5h' $wtTop $mainState        # Verbund dieses Worktrees
-        # Mock wie T1: im Netz-Namensraum des anchor, Etiketten install + worktree, kein lifeagents.substrate
+        # Mock wie im Verbund: im Netz-Namensraum des anchor, Etiketten install + worktree, kein lifeagents.substrate
         [void](Invoke-D @('run', '-d', '--name', 's4t5h-mock-tg', '--network', 'container:s4t5h-anchor', '--label', 'io.lifeagents.install=s4t5h', '--label', "lifeagents.worktree=$wtTop", 'busybox:latest', 'sleep', '600'))
         Assert-That 'Probe: Mock-Container laeuft im Namensraum des anchor' (Test-DExists 'container' 's4t5h-mock-tg')
         New-Probe 's4t5i' 'C:\s4t5-fremder-worktree' $mainState

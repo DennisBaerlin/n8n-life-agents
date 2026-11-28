@@ -15,6 +15,8 @@
 #   - vierter Runner tests/mock_reach/answers_cases.sh: Antwort-Datei der Install-Tests (scripts/ci/install_test_answers.sh,
 #     Schluessel per OAuth gegen eine Attrappe der Tailscale-API, Geheimnisse nie im argv).
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, node, openssl).
+# N8NTEST_RUNTIME=compose: statt des Substrats ein Wegwerf-Container aus dem master-Abbild des Arbeitsstands (baut das Abbild;
+# $env:N8NTEST_CONTAINER = eigener Projektname ist Pflicht; Container am Ende abgebaut).
 # Usage:  .\scripts\dev\reachability_test.ps1 [-Port 8084] [-Verbose]   (belegt Port und Port+1; 8086/8087 = update_chat)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8084, [switch]$Verbose)
@@ -33,7 +35,7 @@ Write-Host "Geräte-Erreichbarkeit (IPv4/IPv6, FritzBox-Falle) gegen Mock-Gegens
 Write-Host ("-" * 64)
 
 try {
-# Frischer Stand im Container: alten Test-Baum leeren (docker cp MERGT sonst), dann provisioning/ + Mock kopieren.
+# Frischer Stand im Container: alten Test-Baum leeren (docker cp mischt sonst alt und neu), dann provisioning/ + Mock kopieren.
 $root = '/opt/reachability_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }

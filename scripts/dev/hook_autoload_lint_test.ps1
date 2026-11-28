@@ -2,7 +2,8 @@
 # Fehl- und Gutfaelle von scripts/hook_autoload_lint.ps1 in einem Wegwerf-Baum (-Root): ein Befehl, den Windows PowerShell 5.1 per Autoload holt
 # (Get-FileHash, Expand-Archive, ...), muss im Hook-Skript und in einem von ihm eingebundenen Skript rot werden; ein Kommentar, eine Zeichenkette,
 # ein Skript ausserhalb des Hook-Umfelds und die Ausnahme gruen. Kein Docker, kein git.
-# Usage: .\scripts\dev\hook_autoload_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle. Nur in Windows PowerShell 5.1 (wie die Pruefung).
+# Usage: .\scripts\dev\hook_autoload_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle. Nur in Windows PowerShell 5.1 (wie die
+# Pruefung); unter PowerShell 7 ueberspringt der Test mit Exit 0.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if ($PSVersionTable.PSEdition -ne 'Desktop') { Write-Host 'hook_autoload_lint_test: [skip] nur in Windows PowerShell 5.1' -ForegroundColor DarkGray; exit 0 }

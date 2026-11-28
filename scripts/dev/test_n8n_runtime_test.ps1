@@ -2,7 +2,8 @@
 # test_n8n_runtime_test.ps1 -- die Treiber-Bibliothek (scripts/dev/test_n8n_state.ps1) waehlt den Weg je Unterbau aus der
 # Zustandsdatei: classic = alles im einen systemd-Container (runuser, systemctl, Logs im Container), compose = der Docker-Verbund
 # (psql im Postgres-Container, Gateway als eigener Container, Attrappen-Logs als Datei auf dem Rechner).
-# Kein Docker, kein Netz: geprueft werden die reinen Bausteine und die Datei-Wege.
+# Dazu die .env-Lesart (lib/dotenv.ps1), Bot-Token-Wahl und Test-Bot-Schutz (Resolve-TestTelegramToken) samt Scan ueber
+# scripts/**/*.ps1, dass kein Skript daran vorbei liest. Kein Docker, kein Netz: geprueft werden die reinen Bausteine und die Datei-Wege.
 # Usage:  .\scripts\dev\test_n8n_runtime_test.ps1     Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

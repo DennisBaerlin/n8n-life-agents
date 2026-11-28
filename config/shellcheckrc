@@ -1,6 +1,6 @@
 # config/shellcheckrc — repo-wide ShellCheck config, referenced by the `shellcheck` hook in
-# .pre-commit-config.yaml via `--rcfile=config/shellcheckrc`. One reason comment per disabled code
-# (OpenClaw pattern): a suppression is only allowed with a justification on the line above it.
+# .pre-commit-config.yaml via `--rcfile=config/shellcheckrc`. One reason comment per disabled code:
+# a suppression is only allowed with a justification on the line above it.
 
 # Most provisioning/lib/*.sh files are SOURCED, not executed: they carry no shebang on purpose
 # (common.sh documents this). Without a shebang ShellCheck can't infer the dialect, so pin it here.

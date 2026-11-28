@@ -23,8 +23,9 @@
 #   .\scripts\db_test.ps1 -Sequential            # 1 psql-Spawn je Datei (Debug)
 #   .\scripts\db_test.ps1 -Reset                 # Test-Container + DB verwerfen und frisch bauen
 #
-# Vorbedingung: Docker (Desktop) laeuft (die Test-DB ist ein Wegwerf-Container). Eigener Container/Port
-# je Worktree: $env:DBTEST_CONTAINER / $env:DBTEST_PG_PORT.
+# Vorbedingung: Docker (Desktop) laeuft (die Test-DB ist ein Wegwerf-Container), psql im PATH oder unter
+# C:\Program Files\PostgreSQL\17\bin. Eigener Container/Port je Worktree: $env:DBTEST_CONTAINER / $env:DBTEST_PG_PORT.
+# Bricht mit throw ab, solange scripts/dev/run_free_gates.ps1 (Sperrdatei .local/run_free_gates.lock) dieselbe Test-DB haelt.
 # Exit-Code = Anzahl fehlgeschlagener Tests (0 = alle gruen, >0 = CI-Fehler).
 param(
     [string[]]$Filter = @('test_*.sql'),

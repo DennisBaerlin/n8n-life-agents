@@ -1,12 +1,9 @@
 ﻿#Requires -Version 5.1
 # Geteilte Helfer der Dev-Umgebungs-Einrichtung (dot-source-only, keine Seiteneffekte beim Laden).
 #
-# Konsumenten:
-#   - scripts/install_git_hooks.ps1     -> Resolve-Prek (nach dem Clone)
-#   - scripts/setup_dev_env.ps1         -> Resolve-Prek (nach frischem winget-Install), $DevEnvPins
-#                                          (Download-Versionen) + Get-DevEnvRequirementHash (Marker)
-#   - .claude/hooks/check_dev_env.ps1   -> Get-DevEnvRequirementHash (Frisch-System-Erkennung)
-#   - scripts/doc_lint.ps1 (Check 11)   -> liest $DevEnvPins textuell fuer den Pin-Drift-Check
+# Inhalt: gepinnte Toolchain-Versionen ($DevEnvPins; doc_lint Check 11 liest sie textuell), prek-Aufloesung (Resolve-Prek),
+# Hinweis auf die Windows-Skriptsperre (Get-ExecutionPolicyHint) und Fingerprint der Anforderungs-Liste fuer den
+# Frisch-System-Marker (Get-DevEnvRequirementHash). Nutzer: per Grep nach devenv.ps1 (Skripte und .claude/hooks).
 #
 # Die gepinnten Binary-Versionen sind hier die Source of Truth; doc_lint Check 11 haelt sie
 # driftfrei gegen die externen Zweitquellen (ci.yml fuer gitleaks/squawk, build_site.ps1 fuer Hugo).

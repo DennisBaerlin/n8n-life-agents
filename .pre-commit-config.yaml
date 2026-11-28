@@ -9,17 +9,16 @@
 
 minimum_pre_commit_version: "3.0.0"
 
-# Hooks without an explicit `stages:` run at pre-commit ONLY (so the file-only linters do not also
+# Hooks without an explicit `stages:` run at pre-commit only (so the file-only linters do not also
 # fire at commit-msg/pre-push). The live/LAN hooks below opt into pre-push / commit-msg explicitly.
 default_stages: [pre-commit]
 
 repos:
-  # --- prek/pre-commit meta hooks: config self-consistency (arch-ADOPT, S5b WP-10) ---
-  # check-hooks-apply: every configured hook matches >=1 file (would have caught the DEAD
-  #   squawk migration-glob rooted at the retired top-level dir on the move day). check-useless-excludes:
-  #   every `exclude:` pattern matches >=1 file. Together these cover L6-half-1 (the dead-gate
-  #   guard for the files:/exclude: filters IN THIS CONFIG). layout_lint's L6 only adds the
-  #   slashless pathspec-LIST check the meta hooks cannot see (release.yml/provision.sh/bootstrap).
+  # --- prek/pre-commit meta hooks: config self-consistency ---
+  # check-hooks-apply: every configured hook matches >=1 file. check-useless-excludes: every `exclude:`
+  #   pattern matches >=1 file. Together they cover the files:/exclude: filters in this config;
+  #   layout_lint L6 adds only the slashless pathspec-list check the meta hooks cannot see
+  #   (release.yml/provision.sh/bootstrap).
   - repo: meta
     hooks:
       - id: check-hooks-apply
@@ -30,7 +29,7 @@ repos:
     rev: v6.0.0
     hooks:
       # A few of these ship upstream `stages` that include pre-push; pin them to pre-commit so the
-      # MUTATING hooks (eof/trailing-ws) never rewrite files mid-push. default_stages covers the rest.
+      # mutating hooks (eof/trailing-ws) never rewrite files mid-push. default_stages covers the rest.
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=500]
@@ -60,10 +59,10 @@ repos:
     hooks:
       - id: zizmor
 
-  # --- Per-language linters (Phase 3, baseline-first) -----------------------------
+  # --- Per-language linters ---------------------------------------------------------
   # NOTE on hook sourcing: the canonical shellcheck hook (koalaman/shellcheck-precommit) is
   # `language: docker_image` — it needs a Linux Docker daemon, which the windows-latest CI runner
-  # does NOT have. We therefore use the PYTHON-WHEEL variant below: prek bootstraps an isolated
+  # does not have. We therefore use the Python-wheel variant below: prek bootstraps an isolated
   # Python and pulls the prebuilt shellcheck binary (no Docker, no global toolchain).
   # markdownlint-cli2 is `language: node` (prek bootstraps Node the same way).
   #
@@ -71,50 +70,55 @@ repos:
   # reformatter whose case-expansion / statement-splitting / comment-alignment normalization would
   # rewrite the provisioning scripts' deliberate compact style (and keep_padding, which would
   # preserve column-aligned comments, is deprecated → removed in shfmt v4). The reference repo
-  # (OpenClaw) likewise runs shellcheck only, no shfmt. Owner decision 2026-06-14.
+  # (OpenClaw) likewise runs shellcheck only, no shfmt.
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1-1
     hooks:
       # Static analysis of all shell scripts. Config (dialect + source-path + suppressions w/ reasons)
       # lives in config/shellcheckrc. types:[shell] limits it to *.sh (the provisioning/templates/*.tpl
-      # are Caddyfile/systemd/env config files, NOT shell — correctly skipped).
+      # are Caddyfile/systemd/env config files, not shell — correctly skipped).
       - id: shellcheck
         args: ['--rcfile=config/shellcheckrc']
+      # The one template that is shell: the `lifeagents` CLI (bash without a .sh suffix, so types:[shell] does not see it).
+      - id: shellcheck
+        alias: shellcheck-cli
+        name: shellcheck (provisioning/templates/lifeagents.tpl, the lifeagents CLI)
+        args: ['--rcfile=config/shellcheckrc', '--shell=bash']
+        types: [text]
+        files: ^provisioning/templates/lifeagents\.tpl$
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.23.3
     hooks:
       # Markdown style on hand-authored *.md. Rules curated in config/.markdownlint.jsonc (cosmetic
       # whitespace rules off; substantive rules kept). docs/fn_catalog.md is excluded: it is
-      # GENERATED (gen_fn_catalog.ps1, never hand-edited), like capabilities_catalog.md; and
+      # generated (gen_fn_catalog.ps1, never hand-edited), like capabilities_catalog.md; and
       # contexts/*.md are seeded model-instruction prose whose literal list-markers / SQL signatures
       # trip false positives — none are conventional docs to style-lint. prek loads the Node toolchain
       # isolated — no global Node needed.
       - id: markdownlint-cli2
         args: ['--config', 'config/.markdownlint.jsonc']
-        # Corpus (geseedete Modell-Instruktionen / generierte Kataloge), NICHT hand-authored *.md:
+        # Corpus (geseedete Modell-Instruktionen / generierte Kataloge), nicht hand-authored *.md:
         # docs/fn_catalog.md (generiert) + packages/<pkg>/{contexts,seed}/.
         exclude: '(^docs/fn_catalog\.md$|^packages/[^/]+/(contexts|seed)/)'
 
-  # SQL lint (lint-ONLY, no `fix`) over ALL tracked SQL: packages/*/db/** (baseline inits + V__/R__
-  # migrations) + tests/** (WP-8 gate widening 2026-07-02; before that only the 12 ops-/test-utils
-  # were in scope — 241 package + 194 test SQL files were unlinted). `language: python` → prek bootstraps an
-  # isolated interpreter + sqlfluff (same mechanism as the shellcheck python wheel in Phase 3, so
-  # it runs in CI too — no SKIP). Config in config/.sqlfluff disables the whole layout group so the
-  # deliberate hand-alignment is never reflowed; only substantive rules (capitalisation/references/
-  # structure/conventions) gate. We use sqlfluff-LINT, never sqlfluff-fix.
+  # SQL lint (lint-only, no `fix`) over all tracked SQL: packages/*/db/** (baseline inits + V__/R__
+  # migrations) + tests/**. `language: python` → prek bootstraps an isolated interpreter + sqlfluff
+  # (same mechanism as the shellcheck python wheel above, so it runs in CI too — no SKIP). Config in
+  # config/.sqlfluff disables the whole layout group so the deliberate hand-alignment is never reflowed;
+  # only substantive rules (capitalisation/references/structure/conventions) gate.
   - repo: https://github.com/sqlfluff/sqlfluff
     rev: 4.4.0
     hooks:
       - id: sqlfluff-lint
         files: '^(packages/[^/]+/db|tests)/.*\.sql$'
-        # Per-FILE excludes, each with a reason (rules stay live everywhere else — no rule exclude):
-        #   - V001 (core) + V011 (finance): applied Flyway migrations are FROZEN (checksum drift
+        # Per-file excludes, each with a reason (rules stay live everywhere else — no rule exclude):
+        #   - V001 (core) + V011 (finance): applied Flyway migrations are frozen (checksum drift
         #     guard) → their 6 casing findings are permanently unfixable.
         #   - R__finance_views.sql: exceeds sqlfluff's parse depth (limit 255) → PRS error, 0% rule
         #     coverage possible.
-        #   - 5 finance test files: SAVEPOINT sections the sqlfluff 4.2.2 postgres dialect cannot
-        #     parse (PRS error). NOTE: SQL inside DO $$/function bodies is a dollar-quoted string to
+        #   - 5 finance test files: SAVEPOINT sections the pinned sqlfluff postgres dialect cannot
+        #     parse (PRS error). Note: SQL inside DO $$/function bodies is a dollar-quoted string to
         #     the raw templater and is never linted anywhere — a pre-existing, accepted blind spot.
         exclude: |
           (?x)^(
@@ -141,7 +145,7 @@ repos:
         always_run: true
 
       - id: layout-lint
-        name: layout_lint (repo layout/structure invariants L1-L8 incl. no mojibake in tracked text files + retired-roots ratchet)
+        name: layout_lint (repo layout/structure invariants L1-L9 incl. no mojibake in tracked text files and manifest tool list = tool build defs + retired-roots ratchet)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1 -Staged
         pass_filenames: false
@@ -228,28 +232,28 @@ repos:
         stages: [pre-push]
 
       - id: approval-lint
-        name: approval_lint (WS-5b HITL approval_tier matrix vs built workflows, fail-closed)
+        name: approval_lint (HITL approval_tier matrix vs built workflows, fail-closed)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/approval_lint.ps1
         pass_filenames: false
         always_run: true
 
       - id: command-lint
-        name: command_lint (WS-5 manifest commands registry vs Command router + /help catalog, fail-closed)
+        name: command_lint (manifest commands registry vs Command router + /help catalog, fail-closed)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/command_lint.ps1
         pass_filenames: false
         always_run: true
 
       - id: cron-toggle-lint
-        name: cron_toggle_lint (Phase 0 cron-toggle UX parity; opt-in chat buttons / always-on console)
+        name: cron_toggle_lint (cron-toggle UX parity; opt-in chat buttons / always-on console)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cron_toggle_lint.ps1
         pass_filenames: false
         always_run: true
 
       - id: core-literal-lint
-        name: core_literal_lint (Phase 0 no new core package-literal; ratchet allowlist)
+        name: core_literal_lint (no new core package-literal; ratchet allowlist)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/core_literal_lint.ps1
         pass_filenames: false
@@ -512,7 +516,7 @@ repos:
         files: ^scripts/(standin_lint|dev/standin_lint_test|lib/test_common)\.ps1$
 
       - id: size-lint
-        name: size_lint (ceilings for file sizes and for tools and tool descriptions per agent; new files stay below the limits, recorded ceilings only shrink)
+        name: size_lint (ceilings for file sizes, for tools and tool descriptions per agent and for sticky notes; new ones stay below the limits, recorded ceilings only shrink)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/size_lint.ps1
         pass_filenames: false
@@ -526,7 +530,7 @@ repos:
         files: ^scripts/(size_lint|dev/size_lint_test|lib/test_common)\.ps1$
 
       - id: timer-lock-lint
-        name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered)
+        name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered; exec without a program redirects only descriptors from 3 up; every executable installer script exports LANG and LC_ALL)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/timer_lock_lint.ps1
         pass_filenames: false
@@ -791,7 +795,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/workflow_drift_test.ps1
         pass_filenames: false
-        files: ^scripts/(build/build\.ps1|build/lib/workflow_lifecycle\.ps1|dev/workflow_drift_test\.ps1|lib/git_sandbox\.ps1|gen_fn_catalog\.ps1)$
+        files: ^scripts/(build/build\.ps1|build/lib/(workflow_lifecycle|catalog)\.ps1|dev/workflow_drift_test\.ps1|lib/(git_sandbox|ordinal)\.ps1|gen_fn_catalog\.ps1)$
 
       - id: fn-catalog
         name: gen_fn_catalog -Verify (fn catalog drift)
@@ -800,13 +804,13 @@ repos:
         pass_filenames: false
         always_run: true
 
-      # PowerShell static analysis (PSScriptAnalyzer) over scripts/**/*.ps1. language:system because
-      # PSScriptAnalyzer is a MODULE, not a binary: preinstalled on windows-latest CI, locally in
-      # $HOME/.local/psmodules (see CONTRIBUTING.md / ps_lint.ps1) — so it runs in BOTH points (no CI
+      # PowerShell static analysis (PSScriptAnalyzer) over scripts/**/*.ps1 and packages/*/build/**/*.ps1.
+      # language:system because PSScriptAnalyzer is a module, not a binary: preinstalled on windows-latest CI, locally in
+      # $HOME/.local/psmodules (see CONTRIBUTING.md / ps_lint.ps1) — so it runs in both points (no CI
       # SKIP, unlike dotenv-linter). Curated rules in config/PSScriptAnalyzerSettings.psd1. Fires when
       # any *.ps1 is staged and then scans the whole tree (cross-file dot-source awareness).
       - id: ps-lint
-        name: ps_lint (PSScriptAnalyzer on scripts/**/*.ps1)
+        name: ps_lint (PSScriptAnalyzer on scripts/ and packages/*/build/)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ps_lint.ps1 -Staged
         files: '(?i)\.ps1$'
@@ -839,16 +843,16 @@ repos:
         files: ^(\.pre-commit-config\.yaml|scripts/dev/shellcheck_full_test\.ps1|config/shellcheckrc)$
 
       # Postgres-migration safety lint over packages/*/db/migrations/V*.sql (Flyway versioned).
-      # Catches unsafe ALTER/lock patterns that APPLY cleanly yet would block or fail at runtime on a
+      # Catches unsafe ALTER/lock patterns that apply cleanly yet would block or fail at runtime on a
       # real DB (e.g. CREATE INDEX CONCURRENTLY inside our transaction-wrapped migrations, a stray
       # BEGIN/COMMIT, an unsafe NOT NULL add). language: system on a prebuilt `squawk` binary on PATH
-      # — NOT the upstream squawk-action / `language: rust`: prek would build the Rust binary from
+      # — not the upstream squawk-action / `language: rust`: prek would build the Rust binary from
       # source (j178/prek#681), same gap as gitleaks/dotenv-linter. Install once (see CONTRIBUTING.md
       # "squawk"). pass_filenames default true + the files: filter → lints exactly the touched
       # V-migration(s); `prek run --all-files` lints all of them (green on all applied V-migrations —
       # every firing rule is excluded with a reason, applied migrations are frozen/unfixable).
       # Config (assume_in_transaction + the excluded rules, each with a reason) in config/.squawk.toml.
-      # UNLIKE dotenv-linter this DOES run in CI (ci.yml installs the pinned binary) — substantive
+      # Unlike dotenv-linter this does run in CI (ci.yml installs the pinned binary) — substantive
       # safety net, no other gate covers it; not skipped.
       - id: squawk
         name: squawk (Postgres migration safety; packages/*/db/migrations/V*.sql)
@@ -856,14 +860,14 @@ repos:
         entry: squawk
         args: ['--config', 'config/.squawk.toml']
         files: '^packages/[^/]+/db/migrations/V\d+__.*\.sql$'
-        pass_filenames: true   # explicit: squawk needs the staged V-file(s) as positional args (siblings set false — do NOT copy that here)
+        pass_filenames: true   # explicit: squawk needs the staged V-file(s) as positional args (siblings set false — do not copy that here)
 
       # .env.example style lint via the prebuilt dotenv-linter binary (language: system, on PATH).
-      # NOT language:rust: prek's cli: deps compile from source (cargo install), which needs the
+      # Not language:rust: prek's cli: deps compile from source (cargo install), which needs the
       # MSVC linker on Windows — and prek has no prebuilt/binstall option (issue j178/prek#681).
       # The release binary is tiny + instant; install it once (see CONTRIBUTING.md "dotenv-linter").
-      # LOCAL-ONLY: CI skips this hook (SKIP=dotenv-linter in ci.yml) — the substantive env
-      # invariants live in doc_lint (which DOES run in CI); this only adds generic .env style polish
+      # Local-only: CI skips this hook (SKIP=dotenv-linter in ci.yml) — the substantive env
+      # invariants live in doc_lint (which does run in CI); this only adds generic .env style polish
       # on one rarely-touched file. v4 CLI: `check <FILE> --ignore-checks <NAMES>`; ignore
       # UnorderedKey (grouped by concern, not alphabetical) + KeyWithoutValue (empty values are
       # valid in v4, so this is a no-op safety net for a truly malformed `KEY` line); --skip-updates:
@@ -877,12 +881,12 @@ repos:
         files: '^\.env\.example$'
         pass_filenames: false
 
-      # Secret scan over staged changes — a SECOND net beside the hygiene-layer detect-private-key
+      # Secret scan over staged changes — a second net beside the hygiene-layer detect-private-key
       # (that one only catches PEM key blocks; gitleaks matches ~hundreds of token/credential
-      # patterns). language: system on a prebuilt gitleaks binary on PATH (NOT the upstream
+      # patterns). language: system on a prebuilt gitleaks binary on PATH (not the upstream
       # `language: golang` hook — prek would build it from source, needing a Go toolchain; same class
       # of problem as the Rust binstall gap, issue j178/prek#681). Install once (see CONTRIBUTING.md
-      # "gitleaks"). LOCAL here scans the STAGED diff (fast); CI runs a dedicated full-tree + history
+      # "gitleaks"). Locally it scans the staged diff (fast); CI runs a dedicated full-tree + history
       # scan step instead (SKIP=gitleaks in the prek CI run — `--staged` is meaningless on a fresh
       # checkout). config/.gitleaks.toml carries the allowlist (redaction placeholder + synthetic
       # test fixtures) with per-entry reasons. Fires on every commit regardless of files staged.
@@ -944,9 +948,8 @@ repos:
         files: '^(docs/site/|scripts/build_site\.ps1$)'
         stages: [pre-push]
 
-      # Soft pre-push checks (NEVER block — exit 0): reachability-gated infra_test + external
-      # contract_test as warnings. Preserves the old pre_push_check semantics (a briefly
-      # unreachable VM must not block a push).
+      # Soft pre-push checks (never block, exit 0): reachability-gated infra_test + external
+      # contract_test as warnings (a briefly unreachable VM must not block a push).
       - id: infra-softcheck
         name: infra_test + contract_test (soft; warning only)
         language: system

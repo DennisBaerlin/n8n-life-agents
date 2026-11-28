@@ -8,12 +8,15 @@
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Capture nachher     nach der Aenderung
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Page                baut .local/ui_review/<Name>/index.html
 #   -Capture ... -Surface site -Pages index.html,docs/erste-schritte.html       Doku-Seite (vorher .\scripts\build_site.ps1), nur hell
-#   -Capture ... -Surface desktop                                               Start-App: alle Faelle aus preview/mock.js, 600 px
-#   -Screens overview,accounts                                                  nur diese Reiter (Standard: alle aus dem Datenmodell)
+#   -Capture ... -Surface desktop                                               Start-App: Faelle aus der Liste in diesem Skript (Attrappe
+#                                                                               preview/mock.js), je Fall 600 px und Fenster 760 x 640, Menue am Symbol (Fall tray)
+#   -Screens overview,accounts                                                  nur diese Reiter (mini-app), Seiten (wizard) bzw. Fall-Namen
+#                                                                               (desktop); Standard: alle
 #   -Capture ... -Surface wizard [-Cached]                                         Wizard: alle Seiten aus tests/wizard/preview_dump.js (Docker),
 #                                                                               Handy und Fenster; -Cached nimmt die letzte Sammlung
 #   -Title 'Hinweis kuerzer'                                                    Ueberschrift der Seite
-# Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/. Kein Netz, keine DB, kein Container.
+# Kein Netz, keine DB; jede Aufnahme braucht Chrome oder Edge (Headless), -Surface wizard zusaetzlich Docker. -Capture ersetzt
+# .local/ui_review/<Name>/<vorher|nachher> samt Inhalt. Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/.
 # Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,

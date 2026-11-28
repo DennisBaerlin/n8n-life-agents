@@ -1,8 +1,6 @@
 ﻿#Requires -Version 5.1
 # Infra Sub-Workflow Tests (Tier 4).
-# Prueft Cross-Cutting-Sub-Workflows direkt und isoliert (Faelle: tests/agent/core/infra_cases.json):
-#   agent.tool_load_context     -- Static + Lazy-Manifest Assembly (include_manifest-Flag)
-#   core.sub_load_config        -- Config-Store-Read + Pivot (model-Objekt befuellt)
+# Prueft Sub-Workflows und Werkzeuge direkt und isoliert (Faelle und ihre Ziele: tests/agent/core/infra_cases.json, Feld target_name).
 # Das HITL-Gate (agent.tool_human_approval) prueft diese Suite nicht: Approve/Decline deckt
 # scripts\dev\hitl_gate_test.ps1 ab (echtes Send-and-Wait ueber Mock-Telegram). Depth-Gates (ic08/11/12) +
 # web_search/expert_panel-Guards gehoeren hierher.
@@ -23,8 +21,8 @@
 # Usage:  .\scripts\infra_test.ps1 [-Id ic01] [-Timeout 30] [-Verbose]
 # Exit-Code = Anzahl Fehler; 1 ohne Lauf, wenn ein Mock fehlt, den ein gewaehlter Fall verlangt (`requires`).
 # Voraussetzungen: Harnesses aktiv (build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset);
-#   .env mit TEST_HARNESS_SECRET; die Mocks der Faelle (heute enable_mock_llm, enable_mock_telegram, enable_mock_paperless
-#   unter scripts\dev\), die Vorabpruefung nennt fehlende samt Befehl.
+#   .env mit TEST_HARNESS_SECRET; die Mocks, die die gewaehlten Faelle verlangen (Feld requires; scripts\dev\enable_mock_*.ps1),
+#   die Vorabpruefung nennt fehlende samt Befehl.
 #         -Id ic01,ic02 = mehrere Faelle (unbekannte id = Abbruch vor dem Lauf).
 #         -ForceAbortId ic01 = Testschalter: wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last).
 # Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht nur diesen Fall rot, der Lauf geht weiter.

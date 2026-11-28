@@ -61,6 +61,6 @@
     "expected_tool_args": { "trigger_type": "drawdown", "acquisition_method": "sql", "drawdown_pct": "20" },
     "expected_card_contains": ["Höchststand", "23,47", "Meldung bei", "18,77"],
     "expected_behavior": "The user confirms a fully specified crash watch on stored prices. The monitor agent must call tool_create_monitor_trigger with trigger_type drawdown, drawdown_pct 20, acquisition_method sql (acquisition_sql = newest price of ZZDDT1) AND history_sql over all stored prices of ZZDDT1 (rows date, price). It must NOT state a peak or an alert level of its own in chat - the database computes them and the confirmation shows them. Under the test bypass the gate declines; the agent must then report the creation as cancelled, not as done.",
-    "notes": "Live-Eigenschaft: der Hoechststand kam aus einer Modell-Zahl bzw. dem heutigen Kurs. Kurse erfunden (Symbol ZZDDT1, nicht im Depot); die Karte muss den Hoechststand 23,47 aus der Reihe und die Meldegrenze 18,77 tragen (Mock: expected_card_contains)."
+    "notes": "Eigenschaft: der Hoechststand kam aus einer Modell-Zahl bzw. dem heutigen Kurs. Kurse erfunden (Symbol ZZDDT1, nicht im Depot); die Karte muss den Hoechststand 23,47 aus der Reihe und die Meldegrenze 18,77 tragen (Mock: expected_card_contains)."
   }
 ]

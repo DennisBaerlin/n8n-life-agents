@@ -533,7 +533,16 @@ BEGIN
   IF finance.fn_import_depot_currency((v_result->>'batch_id')::uuid, '__dr7 Depot EUR') IS DISTINCT FROM 'EUR' THEN
     RAISE EXCEPTION 'FAIL [DR7b]: Batch-Verrechnungskonto ohne Waehrung muss EUR liefern, nicht die des gleichnamigen Bestandskontos';
   END IF;
-  RAISE NOTICE 'PASS fn_import_depot_currency [DR7 Batch-Depot case-insensitiv -> USD, Bestand -> CHF, unbekannt -> EUR, kein Durchfall]';
+  -- Verrechnungskonto ist ein bestehendes Konto (keine Batch-Zeile): seine Waehrung gilt
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__dr7 Bestand USD','cash','USD','active');
+  SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
+    jsonb_build_object('entity_type','account','name','__dr7 Depot am Bestand','account_type','stocks_depot',
+                       'settlement_account','__dr7 Bestand USD')))) INTO v_result;
+  IF finance.fn_import_depot_currency((v_result->>'batch_id')::uuid, '__dr7 Depot am Bestand') IS DISTINCT FROM 'USD' THEN
+    RAISE EXCEPTION 'FAIL [DR7c]: bestehendes USD-Verrechnungskonto muss USD liefern, got %',
+      finance.fn_import_depot_currency((v_result->>'batch_id')::uuid, '__dr7 Depot am Bestand');
+  END IF;
+  RAISE NOTICE 'PASS fn_import_depot_currency [DR7 Batch-Depot case-insensitiv -> USD, Bestand -> CHF, unbekannt -> EUR, kein Durchfall, bestehendes Verrechnungskonto]';
 END $$;
 
 -- ============================================================

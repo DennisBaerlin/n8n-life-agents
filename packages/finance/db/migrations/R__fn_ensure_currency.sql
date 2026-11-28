@@ -27,7 +27,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
   v_minor_unit SMALLINT;
 BEGIN
-  IF p_code !~ '^[A-Z]{3}$' THEN
+  IF p_code IS NULL OR p_code !~ '^[A-Z]{3}$' THEN
     RETURN jsonb_build_object('ok', false,
       'reason', format('invalid currency code %L: must match ^[A-Z]{3}$', p_code));
   END IF;

@@ -142,11 +142,12 @@ BEGIN
            COALESCE((SELECT bool_or(st.fx_gap) FROM st), false),
            -- frueherer Tag hilft: an jedem Tag unter der Schwelle reicht es, wenn je Zufluss-Kette ihr naechster Termin der
            -- folgenden 31 Tage schon da waere (je Kette einer: zwei Monatstermine liegen oft weniger als 31 Tage auseinander).
-           -- Nur Tage, deren 31-Tage-Fenster im Horizont liegt; sonst fehlten Eingaenge nach v_until.
+           -- Nur Tage, deren 31-Tage-Fenster im Horizont liegt; sonst fehlten Eingaenge nach v_until. Ziel-Raten zaehlen
+           -- nicht: sie heben Stand und Schwelle gleich, vorgezogen aendern sie den freien Stand nicht.
            NOT EXISTS (SELECT 1 FROM st WHERE st.day >= v_today AND st.day <= v_until - 31 AND st.bal < st.thr
                          AND st.bal - st.thr + COALESCE((SELECT sum(n.amount) FROM (
                                  SELECT DISTINCT ON (f.head) f.amount FROM f
-                                  WHERE f.amount > 0 AND f.due_date > st.day AND f.due_date <= st.day + 31
+                                  WHERE f.amount > 0 AND f.g_in IS NULL AND f.due_date > st.day AND f.due_date <= st.day + 31
                                   ORDER BY f.head, f.due_date) n), 0) < 0)
     INTO v_bal, v_min, v_min_date, v_out_on, v_min_free, v_free_date, v_gap, v_fixable;
     v_bal := COALESCE(v_bal, finance.fn_get_balance_as_of(p_account_id, v_today), 0);

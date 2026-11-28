@@ -11,8 +11,9 @@
 CREATE OR REPLACE FUNCTION finance.fn_import_depot_currency(p_batch uuid, p_depot text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
 DECLARE
-    v_row jsonb;
-    v_ccy text;
+    v_row    jsonb;
+    v_ccy    text;
+    v_settle text;
 BEGIN
     SELECT s.payload INTO v_row FROM finance.import_staging s
     WHERE s.batch_id = p_batch AND s.entity_type = 'account' AND lower(s.payload->>'name') = lower(p_depot)
@@ -25,14 +26,16 @@ BEGIN
     IF v_ccy IS NULL AND NULLIF(v_row->>'settlement_account', '') IS NOT NULL THEN
         -- Verrechnungskonto: Batch-Zeile zuerst (wie das Bundle) — ihre fehlende Waehrung heisst EUR und faellt nicht
         -- auf ein gleichnamiges Bestandskonto durch.
+        -- Name vorab sichern: ohne Batch-Treffer setzt das SELECT INTO v_row auf NULL
+        v_settle := v_row->>'settlement_account';
         SELECT s.payload INTO v_row FROM finance.import_staging s
         WHERE s.batch_id = p_batch AND s.entity_type = 'account'
-          AND lower(s.payload->>'name') = lower(v_row->>'settlement_account')
+          AND lower(s.payload->>'name') = lower(v_settle)
         ORDER BY s.row_no LIMIT 1;
         IF FOUND THEN
             v_ccy := finance.fn_normalize_currency(NULLIF(v_row->>'currency', ''));
         ELSE
-            SELECT r.currency INTO v_ccy FROM finance.fn_resolve_account(v_row->>'settlement_account', NULL, TRUE) r;
+            SELECT r.currency INTO v_ccy FROM finance.fn_resolve_account(v_settle, NULL, TRUE) r;
         END IF;
     END IF;
     RETURN COALESCE(v_ccy, 'EUR');

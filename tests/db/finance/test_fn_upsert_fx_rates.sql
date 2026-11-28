@@ -150,12 +150,22 @@ BEGIN
     RAISE EXCEPTION 'FAIL upsert [m2 Nachziehen]: %', v_result;
   END IF;
   -- doppelte Zeile in einer Antwort bricht den Lauf nicht ab
-  SELECT finance.fn_upsert_fx_rates('{"rows":[{"date":"2026-05-06","base":"XAU","quote":"EUR","rate":3241},
+  -- doppelte Zeile mit zwei Werten: eine Zeile, der hoechste gespeicherte Wert gewinnt (= der niedrigere Metallpreis)
+  SELECT finance.fn_upsert_fx_rates('{"rows":[{"date":"2026-05-06","base":"XAU","quote":"EUR","rate":3250},
                                               {"date":"2026-05-06","base":"XAU","quote":"EUR","rate":3241}]}'::jsonb) INTO v_result;
-  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'upserted')::int IS DISTINCT FROM 1
+     OR (SELECT rate FROM finance.fx_rates WHERE quote_currency = 'XAU' AND as_of = DATE '2026-05-06') IS DISTINCT FROM round(1 / 3241.0, 10) THEN
     RAISE EXCEPTION 'FAIL upsert [m2 Dublette]: %', v_result;
   END IF;
   RAISE NOTICE 'PASS fn_upsert_fx_rates [m2 gleiche Quelle zieht nach, Dublette ok]';
+
+  -- Tages-Modus mit unmoeglichem Kalendertag: alles verworfen, kein Cast-Fehler
+  SELECT finance.fn_upsert_fx_rates('{"as_of":"2026-02-30","rates":{"USD":1.1}}'::jsonb) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'upserted')::int IS DISTINCT FROM 0
+     OR (v_result->>'skipped')::int IS DISTINCT FROM 1 OR v_result->>'as_of' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL upsert [Kalendertag]: %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_upsert_fx_rates [Tages-Modus: unmoeglicher Kalendertag verworfen]';
 
   -- [m3] nur Metalle kommen invertiert: Fremdwaehrung gegen EUR weiter abgelehnt; im Tages-Modus kein Metall
   PERFORM finance.fn_ensure_currency('USD');

@@ -202,6 +202,18 @@ BEGIN
   IF EXISTS (SELECT 1 FROM finance.market_prices WHERE symbol IN ('MPBAD', 'MPZER')) THEN
     RAISE EXCEPTION 'FAIL [4]: Text- oder 0-Kurs eines gehaltenen Symbols geschrieben: %', v_result; END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [gehalten: Text/0 nie geschrieben]';
+
+  -- Ein Kurs, der in numeric(20,8) auf 0 rundet, faellt still heraus; die anderen Symbole des Laufs werden geschrieben.
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency) VALUES
+    (v_depot, 'IE00BMPTNY01', 'MPTNY', 'Winz-Kurs', 3, 'EUR'),
+    (v_depot, 'IE00BMPOKK01', 'MPOKK', 'Normal-Kurs', 3, 'EUR');
+  v_result := finance.fn_upsert_market_prices(jsonb_build_object('as_of', '2026-06-21',
+                'prices', jsonb_build_object('MPTNY', 0.000000004, 'MPOKK', 12.5)));
+  IF (v_result->>'upserted')::int IS DISTINCT FROM 1
+     OR (SELECT price FROM finance.market_prices WHERE symbol = 'MPOKK' AND as_of = DATE '2026-06-21') IS DISTINCT FROM 12.5
+     OR EXISTS (SELECT 1 FROM finance.market_prices WHERE symbol = 'MPTNY') THEN
+    RAISE EXCEPTION 'FAIL [4b]: Kurs unter der Spalten-Aufloesung: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_upsert_market_prices [Kurs rundet auf 0 -> verworfen, Lauf laeuft weiter]';
 END $$;
 
 ROLLBACK;

@@ -196,6 +196,27 @@ BEGIN
       RAISE EXCEPTION 'FAIL [n] Ziel-Rate hinein ist nicht frei, got %', v; END IF;
     RAISE NOTICE 'PASS [n] Ziel-Rate hinein zaehlt nicht als frei';
 
+    -- [n2] timing_fixable zaehlt nur freie Eingaenge: Stand 100, einmal -550 am t+2, danach monatlich am t+20 +100 frei
+    --      und +400 Ziel-Rate. Die Ziel-Rate hebt Stand und Schwelle gleich, vorgezogen behebt sie die Luecke nicht:
+    --      frei am t+2 = -450, mit dem freien Eingang -350 -> nicht behebbar.
+    DECLARE v_dip INT; BEGIN
+      INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_dip__', 'cash', 'EUR', 'active') RETURNING id INTO v_dip;
+      INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_dip, 100, t - 40, 'other');
+      INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+        VALUES ('fu dip frei', v_giro, v_dip, -100, 'month', t + 20, t + 20);
+      INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+        VALUES ('fu dip Ziel-Rate', v_giro, v_dip, -400, 'month', t + 20, t + 20) RETURNING id INTO v_rp;
+      INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id) VALUES ('fu Ziel dip', 20000, t + 1500, v_rp);
+      INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
+        VALUES ('fu Plan dip', v_dip, -550, 'month', t + 2, t + 2, t + 10) RETURNING id INTO v_rp;
+      INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id) VALUES ('fu Plan dip', v_depot, 'FUD1', 'Welt ETF', v_rp);
+      v := finance.fn_account_funding(v_dip);
+      IF (v->>'runs_out_on')::date IS DISTINCT FROM t + 2 OR (v->>'min_free')::numeric IS DISTINCT FROM -450
+         OR (v->>'timing_fixable')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'FAIL [n2] Ziel-Rate ist kein vorziehbarer freier Eingang, got %', v; END IF;
+      RAISE NOTICE 'PASS [n2] timing_fixable ohne Ziel-Raten';
+    END;
+
     -- [o] schon heute mehr verplant als vorhanden (800 fuer Ziele auf 500), keine Abfluesse -> ok (die Luecke traegt die
     --     Pille „mehr verplant“ am Stand, kein Dauer-alert mit taeglich neuem Datum)
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_over__', 'cash', 'EUR', 'active') RETURNING id INTO v_over;

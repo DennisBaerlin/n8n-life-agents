@@ -20,7 +20,7 @@
 -- Mischen ueber Zeilen). Join-Key ist symbol (immer vorhanden); isin nur als sekundaerer Hint mitgeschrieben.
 --
 -- Guards (alle still -> kein RAISE, kein Owner-Alert; ein kaputter Kurs darf den Tages-Refresh der
--- anderen nicht killen): Symbol muss im prices-Objekt existieren; Wert numerisch und > 0 (faengt
+-- anderen nicht killen): Symbol muss im prices-Objekt existieren; Wert numerisch und auf 8 Nachkommastellen > 0 (faengt
 -- 0/Negativ/"n/a"-Kurse ab -> sonst CHECK(price>0)-RAISE). ON CONFLICT (symbol, as_of) -> idempotenter
 -- Tages-Upsert.
 -- RUECKGABE: {ok:true, upserted, as_of} | {ok:false, reason, upserted:0} (kein prices-Objekt im Payload).
@@ -66,7 +66,7 @@ BEGIN
       -- numerisch inkl. wissenschaftlicher Notation (JSON.stringify liefert z. B. '1e-7' fuer
       -- sub-microcent-Krypto -> sonst still verworfen). Leading-Zero ist in JSON immer vorhanden.
       AND ((p->'prices')->>h.symbol) ~ '^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$'
-      AND ((p->'prices')->>h.symbol)::numeric > 0
+      AND round(((p->'prices')->>h.symbol)::numeric, 8) > 0   -- in der Aufloesung der Spalte: darunter wuerde der Kurs zu 0
     ON CONFLICT (symbol, as_of)
     DO UPDATE SET price = EXCLUDED.price, currency = EXCLUDED.currency,
                   isin = EXCLUDED.isin, source = EXCLUDED.source, updated_at = NOW()

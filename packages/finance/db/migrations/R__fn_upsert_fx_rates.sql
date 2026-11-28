@@ -24,8 +24,9 @@
 -- Guards in fn_fx_upsert_input (alle still -> kein RAISE, kein Owner-Alert; ein kaputter Einzelwert darf den Lauf nicht
 -- killen).
 -- Idempotent je (base, quote, as_of).
--- RUECKGABE: {ok:true, upserted, skipped, as_of} (skipped = verworfene oder schon vorhandene Eintraege; as_of = Tag
---   bzw. juengstes Datum der Zeilen) | {ok:false, reason, upserted:0} (kein rates-Objekt bzw. Zeilen-Modus mit Feed-Kennung).
+-- RUECKGABE: {ok:true, upserted, skipped, as_of} (skipped = verworfene oder schon vorhandene Eintraege; as_of = Tag,
+--   null bei ungueltigem as_of, bzw. im Zeilen-Modus das juengste geschriebene Datum, null ohne geschriebene Zeile)
+--   | {ok:false, reason, upserted:0} (kein rates-Objekt bzw. Zeilen-Modus mit Feed-Kennung).
 -- fn_fx_feed_source / fn_fx_history_source / fn_fx_metal_source (READ, IMMUTABLE) -- Kennungen in fx_rates.source: der
 -- taegliche Kurs-Feed, der EZB-Nachlauf und die Edelmetall-Preise (Frankfurter-Mischkurs vieler Zentralbanken). Eine
 -- Adresse je Quelle fuer den Schreiber (Defaults unten) und die Leser (fn_feed_refresh_due, fn_fx_feed_gap zaehlen nur
@@ -121,7 +122,8 @@ BEGIN
       RETURNING as_of
     )
     SELECT count(*) INTO v_count FROM ins;
-    v_as_of := COALESCE(NULLIF(p->>'as_of','')::date, CURRENT_DATE);
+    v_as_of := CASE WHEN NULLIF(p->>'as_of', '') IS NULL THEN CURRENT_DATE
+                    WHEN pg_input_is_valid(p->>'as_of', 'date') THEN (p->>'as_of')::date END;
     SELECT count(*) INTO v_in FROM jsonb_object_keys(p->'rates');
   END IF;
 

@@ -28,6 +28,12 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_ensure_currency [leer -> ok:false]';
 
+  SELECT finance.fn_ensure_currency(NULL) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL fn_ensure_currency [NULL]: erwartet ok=false, got %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_ensure_currency [NULL -> ok:false]';
+
   -- TEST 2: Neue Waehrung USD anlegen (Default minor_unit=2)
   SELECT finance.fn_ensure_currency('USD') INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN

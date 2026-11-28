@@ -78,7 +78,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const parse = (s, d) =\u003e { try { return typeof s === \u0027string\u0027 ? JSON.parse(s || \u0027null\u0027) ?? d : (s ?? d); } catch (e) { return d; } };\nconst rows = parse($(\u0027Handoff state\u0027).first().json.r, []);\nconst status = new Map((Array.isArray(rows) ? rows : []).map((t) =\u003e [Number(t.id), String(t.status || \u0027\u0027)]));\nconst looped = $(\u0027Run next\u0027).isExecuted;\nconst prev = looped ? ($(\u0027Handoff next\u0027).first().json.tasks || []) : parse($(\u0027Start\u0027).first().json.tasks, []);\nconst out = String((looped ? $(\u0027Run next\u0027).first().json.output : $(\u0027Start\u0027).first().json.last_output) || \u0027\u0027).trim();\nconst question = /[?？]\\s*$/.test(out);\nconst tasks = (Array.isArray(prev) ? prev : []).slice(1).filter((t) =\u003e status.get(Number(t \u0026\u0026 t.id)) === \u0027working\u0027);\nreturn [{ json: { more: tasks.length \u003e 0 \u0026\u0026 out !== \u0027\u0027 \u0026\u0026 !question, release: !question, tasks, out } }];"
+                                         "jsCode":  "const parse = (s, d) =\u003e { try { return typeof s === \u0027string\u0027 ? JSON.parse(s || \u0027null\u0027) ?? d : (s ?? d); } catch (e) { return d; } };\nconst rows = parse($(\u0027Handoff state\u0027).first().json.r, []);\nconst status = new Map((Array.isArray(rows) ? rows : []).map((t) =\u003e [Number(t.id), String(t.status || \u0027\u0027)]));\nconst looped = $(\u0027Run next\u0027).isExecuted;\nconst prev = looped ? ($(\u0027Handoff next\u0027).first().json.tasks || []) : parse($(\u0027Start\u0027).first().json.tasks, []);\n// Frage-Test auf dem Text ohne Markerzeilen (wie Reply text), sonst versteckte eine angehaengte Markerzeile die Frage.\nconst out = String((looped ? $(\u0027Run next\u0027).first().json.output : $(\u0027Start\u0027).first().json.last_output) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst question = /[?？]\\s*$/.test(out);\nconst list = Array.isArray(prev) ? prev : [];\nconst tasks = list.slice(1).filter((t) =\u003e status.get(Number(t \u0026\u0026 t.id)) === \u0027working\u0027);\n// Freigabe am Ende: alles noch working; nach einer Frage bleibt nur der fragende Eintrag (der erste der Liste) beansprucht.\nconst current = list.length ? Number(list[0] \u0026\u0026 list[0].id) : null;\nconst release_ids = Array.from(status).filter(([, st]) =\u003e st === \u0027working\u0027).map(([id]) =\u003e id).filter((id) =\u003e !(question \u0026\u0026 id === current));\nreturn [{ json: { more: tasks.length \u003e 0 \u0026\u0026 out !== \u0027\u0027 \u0026\u0026 !question, tasks, release_ids } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -209,44 +209,10 @@
                   },
                   {
                       "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "2ae71d34-6dfd-5ae2-b868-6f6bf31bb995",
-                                                                                   "leftValue":  "={{ $(\u0027Handoff next\u0027).isExecuted ? $(\u0027Handoff next\u0027).first().json.release !== false : true }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       -220,
-                                       160
-                                   ],
-                      "id":  "e4af2dbd-187d-54e3-a745-ac8f3631a83b",
-                      "name":  "Release?"
-                  },
-                  {
-                      "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "SELECT core.fn_release_handoff_tasks($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ task_ids: (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).first().json.task_ids || \u0027[]\u0027); } catch (e) { return []; } })() }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ task_ids: (($(\u0027Run next\u0027).isExecuted \u0026\u0026 ($(\u0027Run next\u0027).first().json || {}).error) ? (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).first().json.task_ids || \u0027[]\u0027); } catch (e) { return []; } })() : ($(\u0027Handoff next\u0027).first().json.release_ids || [])) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -272,7 +238,7 @@
                                                              "assignments":  [
                                                                                  {
                                                                                      "id":  "4fb15191-e8c9-5424-8cfc-05f6e3a2be98",
-                                                                                     "name":  "last_output",
+                                                                                     "name":  "output",
                                                                                      "value":  "={{ $(\u0027Run next\u0027).isExecuted ? String($(\u0027Run next\u0027).first().json.output || \u0027\u0027) : String($(\u0027Start\u0027).first().json.last_output || \u0027\u0027) }}",
                                                                                      "type":  "string"
                                                                                  }
@@ -294,7 +260,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Vereinbarte Einträge: der nächste kommt von selbst**\n\nGerufen vom Orchestrator nach dem ersten Buchhalter-Lauf von [Jetzt eintragen] (Run handoff chain \u003cdomain\u003e). Der Buchhalter erledigt je Lauf genau einen Eintrag mit eigener Karte und endet. Handoff state (core.fn_handoff_tasks_read der beanspruchten ids) -\u003e Handoff next: Rest = Liste des letzten Laufs ohne ihren ersten Eintrag, nur noch working; endet die Antwort mit einer Frage (der Buchhalter braucht einen Rohwert), ist Schluss. More? -\u003e Run next (agent.sub_dispatch_agent, derselbe feste Auftrag mit dem Rest) -\u003e Reply text -\u003e Send reply -\u003e zurück zu Handoff state. Die Liste schrumpft je Runde, eine Endlosschleife gibt es nicht. Send reply statt der Relay-Kette: deren Schleifen-Knoten (splitInBatches) startet im Kreis nicht neu. Ende ohne Frage oder Lauf-Fehler -\u003e Release open (core.fn_release_handoff_tasks): was noch working ist (abgebrochene Karte), ist wieder offen und steht auf der Liste; eingetragene bleiben done.",
+                                         "content":  "## Ablauf\n**Vereinbarte Einträge: der nächste kommt von selbst**\n\nGerufen vom Orchestrator nach dem ersten Buchhalter-Lauf von [Jetzt eintragen] (Run handoff chain \u003cdomain\u003e). Der Buchhalter erledigt je Lauf genau einen Eintrag mit eigener Karte und endet. Handoff state (core.fn_handoff_tasks_read der beanspruchten ids) -\u003e Handoff next: Rest = Liste des letzten Laufs ohne ihren ersten Eintrag, nur noch working; endet die Antwort mit einer Frage (der Buchhalter braucht einen Rohwert), ist Schluss. More? -\u003e Run next (agent.sub_dispatch_agent, derselbe feste Auftrag mit dem Rest) -\u003e Reply text -\u003e Send reply -\u003e zurück zu Handoff state. Die Liste schrumpft je Runde, eine Endlosschleife gibt es nicht. Send reply statt der Relay-Kette: deren Schleifen-Knoten (splitInBatches) startet im Kreis nicht neu. Ende -\u003e Release open (core.fn_release_handoff_tasks): was noch working ist (abgebrochene Karte), ist wieder offen und steht auf der Liste; nach einer Frage bleibt nur der fragende Eintrag beansprucht, nach einem Lauf-Fehler wird alles frei; eingetragene bleiben done. Result.output = zuletzt gesendete Antwort (Folge-Bindung im Orchestrator).",
                                          "height":  420,
                                          "width":  520,
                                          "color":  4
@@ -355,7 +321,7 @@
                                                    [
                                                        {
                                                            "index":  0,
-                                                           "node":  "Release?",
+                                                           "node":  "Release open",
                                                            "type":  "main"
                                                        }
                                                    ]
@@ -401,24 +367,6 @@
                                                         ]
                                                     ]
                                        },
-                        "Release?":  {
-                                         "main":  [
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Release open",
-                                                              "type":  "main"
-                                                          }
-                                                      ],
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Result",
-                                                              "type":  "main"
-                                                          }
-                                                      ]
-                                                  ]
-                                     },
                         "Release open":  {
                                              "main":  [
                                                           [

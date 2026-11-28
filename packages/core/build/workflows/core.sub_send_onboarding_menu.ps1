@@ -243,7 +243,7 @@ if (area) {
   for (const i of areaPlans) { lines.push(CLIP + ' ' + planLine(i)); }
   lines.push('');
   const n = mark;
-  const ap = areaPlans.map(i => planNext(i.P)).find(i => i) || null;
+  const ap = areaPlans.map(i => planOpen(i.P)).find(i => i) || null;   // Bereichsansicht: auch ein Plan mit offenen Eintraegen ist dort der naechste Schritt
   if (!inst) { lines.push(tx('core.onboarding.menu.install_hint')); }
   else if (!mine(area)) { lines.push(tx('core.onboarding.menu.owner_area')); }
   else if (waitOwner) { lines.push(tx('core.onboarding.menu.wait_household_area')); }

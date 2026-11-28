@@ -68,6 +68,11 @@ BEGIN
   -- Kind auf einer abgehakten Aufgabe: weiter nur der Rechte-Hinweis, Nachricht bleibt
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','333'));
   IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.adults_only' OR v_r ? 'edit' THEN RAISE EXCEPTION 'FAIL [Kind auf abgehakter]: %', v_r; END IF;
+  -- Vom System (Abgleich) auf not_applicable gesetzt: der Erledigt-Knopf der alten Erinnerung wirkt weiter.
+  SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND status='open' AND template_key <> 'engage_undertaker' ORDER BY id LIMIT 1;
+  UPDATE estate.case_tasks SET status = 'not_applicable' WHERE id = v_task;
+  v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','111'));
+  IF NOT (v_r->>'ok')::boolean OR (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'done' THEN RAISE EXCEPTION 'FAIL [System-n.a. per Knopf erledigen]: %', v_r; END IF;
 
   -- Happy skip auf einer anderen Task -> not_applicable.
   SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND template_key='engage_undertaker';

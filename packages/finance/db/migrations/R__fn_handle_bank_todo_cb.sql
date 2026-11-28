@@ -55,11 +55,15 @@ BEGIN
     v_done := jsonb_build_object('keep_text', true, 'append', CASE WHEN v_item->>'bank' IS NULL
         THEN core.fn_ui_text('finance.bank_todo.done_line_generic', v_lang)
         ELSE core.fn_ui_text('finance.bank_todo.done_line', v_lang, jsonb_build_object('bank', v_item->>'bank')) END);
-    -- Nichts mehr offen: die Erledigt-Zeile nur, wenn der erste Punkt erledigt ist und kein Nachfolger fuer denselben Kopf
-    -- offen steht. Sonst hat das System ihn ersetzt (fn_bank_note_recorded) oder er ist unsichtbar -> nur Knopf weg.
+    -- Nichts mehr offen: die Erledigt-Zeile nur, wenn ein Punkt dieser Nachricht (gleiche Bank und Inhaber bis max-id) vom
+    -- Nutzer erledigt wurde. Ersetzt das System einen Punkt (fn_bank_note_recorded), entsteht der Nachfolger in derselben
+    -- Transaktion (created_at = closed_at); unsichtbare offene Punkte sind nicht done -> nur Knopf weg.
     IF v_n = 0 THEN
-        IF NOT EXISTS (SELECT 1 FROM finance.bank_todos f WHERE f.id = v_first::int AND f.status = 'done'
-                          AND NOT EXISTS (SELECT 1 FROM finance.bank_todos o WHERE o.head_id = f.head_id AND o.status = 'open')) THEN
+        IF NOT EXISTS (SELECT 1 FROM finance.bank_todos f
+                        WHERE f.id BETWEEN v_first::int AND v_max::int AND f.status = 'done'
+                          AND NOT EXISTS (SELECT 1 FROM finance.bank_todos o WHERE o.head_id = f.head_id AND o.id > f.id AND o.created_at = f.closed_at)
+                          AND finance.fn_bank_todo_item(f.id)->>'bank' IS NOT DISTINCT FROM v_item->>'bank'
+                          AND finance.fn_bank_todo_item(f.id)->>'holder_person_id' IS NOT DISTINCT FROM v_item->>'holder_person_id') THEN
             v_done := jsonb_build_object('keep_text', true);
         END IF;
         RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang),

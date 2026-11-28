@@ -71,6 +71,13 @@ BEGIN
     IF (r->>'ok')::boolean OR r->>'reason' <> 'nothing_open' THEN RAISE EXCEPTION 'FAIL [ersetzt]: %', r; END IF;
     IF NOT COALESCE((r->'edit'->>'keep_text')::boolean, false) OR r->'edit' ? 'append' THEN RAISE EXCEPTION 'FAIL [ersetzt: nur Knopf weg]: %', r; END IF;
     IF (SELECT status FROM finance.bank_todos WHERE id = v_new) <> 'open' THEN RAISE EXCEPTION 'FAIL [ersetzt: neuer Punkt bleibt offen]'; END IF;
+    -- Nutzer hat erledigt, spaeter kommt fuer denselben Dauerauftrag ein neuer Punkt: alte Nachricht zeigt weiter die Zeile.
+    INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__cb_y__','cash','EUR','active','Viertbank','__cb_o__') RETURNING id INTO v_new;
+    v_old := pg_temp.mk('y', v_new, v_t);
+    r := pg_temp.cb(v_old, v_old, '7601');
+    INSERT INTO finance.bank_todos (head_id, event, created_at) SELECT head_id, 'change', now() + interval '1 day' FROM finance.bank_todos WHERE id = v_old;
+    r := pg_temp.cb(v_old, v_old, '7601');
+    IF r->'edit'->>'append' IS DISTINCT FROM v_ol || ':finance.bank_todo.done_line:Viertbank' THEN RAISE EXCEPTION 'FAIL [spaeterer Punkt: Zeile bleibt]: %', r; END IF;
   END;
 
   -- erster Punkt geloescht

@@ -16,7 +16,7 @@
 --   Rueckgabe: {ok:true, toast, edit, case_completed} | {ok:false, reason, toast, edit?}; reasons: 'unknown est action "<a>"',
 --   'invalid task id "<x>"', 'unresolved sender', 'already set', 'set failed', sonst der reason aus fn_set_case_task.
 --   edit (Registry-Feld, docs/package-contract.md §2): Text der Erinnerung bleibt, die Knoepfe verschwinden; nach Erfolg
---   append = Ausgangs-Zeile estate.dialog.line_done | line_not_applicable; schon abgehakt (already set, kein Write) -> Zeile zum
+--   append = Ausgangs-Zeile estate.dialog.line_done | line_not_applicable; vom Nutzer schon abgehakt (already set, kein Write) -> Zeile zum
 --   gespeicherten Status; Aufgabe weg oder Fall zu -> nur Knoepfe weg (wirken nie
 --   mehr). Kein edit bei Rechte-/Eingabefehlern (Nachricht bleibt).
 --   Toasts aus dem Textkatalog (estate.toast.*, core.toast.*) in der Sprache des Tippenden (agent.fn_person_lang:
@@ -71,10 +71,11 @@ BEGIN
 
     v_status := CASE v_action WHEN 'done' THEN 'done' ELSE 'not_applicable' END;
 
-    -- Schon abgehakt (Doppeltipp, alte Erinnerung): fn_set_case_task wuerde done_at neu stempeln oder done still auf
-    -- not_applicable drehen. Kinder laufen weiter in den adults_only-Backstop der Delegation.
-    SELECT ct.status INTO v_cur FROM estate.case_tasks ct WHERE ct.id = v_id;
-    IF v_cur IN ('done', 'not_applicable') AND agent.fn_resolve_sender(v_chat)->>'role' IN ('owner', 'partner') THEN
+    -- Vom Nutzer schon abgehakt (Doppeltipp, alte Erinnerung): fn_set_case_task wuerde done_at neu stempeln oder done still
+    -- auf not_applicable drehen. Ein vom System gesetzter Status (Abgleich) bleibt per Knopf aenderbar; Kinder laufen weiter
+    -- in den adults_only-Backstop der Delegation.
+    SELECT ct.status INTO v_cur FROM estate.case_tasks ct WHERE ct.id = v_id AND ct.status_source = 'user' AND ct.status <> 'open';
+    IF v_cur IS NOT NULL AND core.fn_check_write_permission('adults_only', p->>'chat_id', NULL) IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'already set',
             'toast', core.fn_ui_text('estate.toast.task_already_set', v_lang),
             'edit', jsonb_build_object('keep_text', true, 'append', core.fn_ui_text(CASE v_cur WHEN 'done' THEN 'estate.dialog.line_done'

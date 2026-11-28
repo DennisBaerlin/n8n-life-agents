@@ -19,7 +19,8 @@ BEGIN
   SELECT k, l, upper(l) || ':' || k, split_part(k, '.', 1)
   FROM unnest(ARRAY['core.toast.unresolved_sender','core.toast.unknown_action','core.toast.save_failed',
                     'estate.toast.invalid_task','estate.toast.task_done','estate.toast.task_not_applicable',
-                    'estate.toast.adults_only','estate.toast.case_closed','estate.toast.task_not_found']) k
+                    'estate.toast.adults_only','estate.toast.case_closed','estate.toast.task_not_found','estate.toast.task_already_set',
+                    'estate.dialog.line_done','estate.dialog.line_not_applicable']) k
   CROSS JOIN (VALUES ('de'), ('en'), ('ko')) ls(l)
   ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
 
@@ -29,29 +30,50 @@ BEGIN
 
   -- unresolved sender (chat 999 nicht in family).
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','999'));
-  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:core.toast.unresolved_sender' THEN RAISE EXCEPTION 'FAIL [unresolved sender]: %', v_r; END IF;
+  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:core.toast.unresolved_sender' OR v_r ? 'edit' THEN RAISE EXCEPTION 'FAIL [unresolved sender]: %', v_r; END IF;
 
   -- unbekannte Aktion.
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:foo:'||v_task, 'chat_id','111'));
-  IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%unknown est action%' OR v_r->>'toast' <> 'DE:core.toast.unknown_action' THEN RAISE EXCEPTION 'FAIL [unknown action]: %', v_r; END IF;
+  IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%unknown est action%' OR v_r->>'toast' <> 'DE:core.toast.unknown_action' OR v_r ? 'edit' THEN RAISE EXCEPTION 'FAIL [unknown action]: %', v_r; END IF;
 
   -- Kind (in family, aber role=child) -> Delegat lehnt via adults_only ab -> toast.
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','333'));
-  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.adults_only' THEN RAISE EXCEPTION 'FAIL [Kind via callback]: %', v_r; END IF;
+  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.adults_only' OR v_r ? 'edit' THEN RAISE EXCEPTION 'FAIL [Kind via callback]: %', v_r; END IF;
 
   -- stale id.
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:999999', 'chat_id','111'));
   IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.task_not_found' THEN RAISE EXCEPTION 'FAIL [stale id]: %', v_r; END IF;
+  -- Aufgabe weg: Knoepfe weg (wirken nie mehr), keine Ausgangs-Zeile
+  IF NOT COALESCE((v_r->'edit'->>'keep_text')::boolean, false) OR v_r->'edit' ? 'append' THEN RAISE EXCEPTION 'FAIL [stale id: Knoepfe weg]: %', v_r; END IF;
 
   -- Happy done (Owner 111) -> Task done.
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','111'));
   IF NOT (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.task_done' THEN RAISE EXCEPTION 'FAIL [done happy]: %', v_r; END IF;
+  IF NOT COALESCE((v_r->'edit'->>'keep_text')::boolean, false) OR v_r->'edit'->>'append' IS DISTINCT FROM 'DE:estate.dialog.line_done' THEN
+    RAISE EXCEPTION 'FAIL [done: Ausgangs-Zeile]: %', v_r; END IF;
   IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'done' THEN RAISE EXCEPTION 'FAIL [Task nicht done]'; END IF;
+
+  -- Doppeltipp / alte Nachricht auf eine schon abgehakte Aufgabe: kein Write (done_at bleibt, Status dreht nicht),
+  -- Hinweis-Toast, Knoepfe weg, Zeile zum tatsaechlichen Status.
+  UPDATE estate.case_tasks SET done_at = '2024-01-20 10:00+00' WHERE id = v_task;
+  v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','111'));
+  IF (v_r->>'ok')::boolean OR v_r->>'reason' <> 'already set' OR v_r->>'toast' <> 'DE:estate.toast.task_already_set'
+     OR NOT COALESCE((v_r->'edit'->>'keep_text')::boolean, false) OR v_r->'edit'->>'append' IS DISTINCT FROM 'DE:estate.dialog.line_done' THEN
+    RAISE EXCEPTION 'FAIL [Doppeltipp done]: %', v_r; END IF;
+  v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:skip:'||v_task, 'chat_id','111'));
+  IF (v_r->>'ok')::boolean OR v_r->>'reason' <> 'already set' OR v_r->'edit'->>'append' IS DISTINCT FROM 'DE:estate.dialog.line_done' THEN
+    RAISE EXCEPTION 'FAIL [skip auf erledigte Aufgabe]: %', v_r; END IF;
+  IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'done'
+     OR (SELECT done_at FROM estate.case_tasks WHERE id=v_task) <> '2024-01-20 10:00+00' THEN RAISE EXCEPTION 'FAIL [abgehakte Aufgabe veraendert]'; END IF;
+  -- Kind auf einer abgehakten Aufgabe: weiter nur der Rechte-Hinweis, Nachricht bleibt
+  v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','333'));
+  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.adults_only' OR v_r ? 'edit' THEN RAISE EXCEPTION 'FAIL [Kind auf abgehakter]: %', v_r; END IF;
 
   -- Happy skip auf einer anderen Task -> not_applicable.
   SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND template_key='engage_undertaker';
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:skip:'||v_task, 'chat_id','111'));
   IF NOT (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.task_not_applicable' THEN RAISE EXCEPTION 'FAIL [skip happy]: %', v_r; END IF;
+  IF v_r->'edit'->>'append' IS DISTINCT FROM 'DE:estate.dialog.line_not_applicable' THEN RAISE EXCEPTION 'FAIL [skip: Ausgangs-Zeile]: %', v_r; END IF;
   IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'not_applicable' THEN RAISE EXCEPTION 'FAIL [Task nicht n.a.]'; END IF;
 
   -- Partner-Actor (Haushalts-Policy, Member-Callback-Permeabilitaet): der exakte Break-Glass-Fall — die
@@ -64,8 +86,15 @@ BEGIN
   IF v_case IS NULL THEN RAISE EXCEPTION 'FAIL [Partner-Actor Setup]: fn_create_case gab keinen case_id: %', v_r; END IF;
   SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case ORDER BY id LIMIT 1;
   v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','222'));
-  IF NOT (v_r->>'ok')::boolean OR v_r->>'toast' <> 'EN:estate.toast.task_done' THEN RAISE EXCEPTION 'FAIL [Partner-Actor an subject-fremdem Fall]: %', v_r; END IF;
+  IF NOT (v_r->>'ok')::boolean OR v_r->>'toast' <> 'EN:estate.toast.task_done' OR v_r->'edit'->>'append' IS DISTINCT FROM 'EN:estate.dialog.line_done' THEN RAISE EXCEPTION 'FAIL [Partner-Actor an subject-fremdem Fall]: %', v_r; END IF;
   IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'done' THEN RAISE EXCEPTION 'FAIL [Partner-done Task nicht done]'; END IF;
+
+  -- Fall geschlossen: Knoepfe weg, Hinweis-Toast, keine Ausgangs-Zeile
+  UPDATE estate.cases SET status = 'cancelled', closed_at = now() WHERE id = v_case;
+  SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND status='open' ORDER BY id LIMIT 1;
+  v_r := estate.fn_handle_case_task_callback(jsonb_build_object('data','est:done:'||v_task, 'chat_id','111'));
+  IF (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.case_closed'
+     OR NOT COALESCE((v_r->'edit'->>'keep_text')::boolean, false) OR v_r->'edit' ? 'append' THEN RAISE EXCEPTION 'FAIL [Fall zu]: %', v_r; END IF;
 
   RAISE NOTICE 'PASS [est:-Callback: unresolved/unknown/Kind/stale/done/skip/Partner-Actor]';
 END $$;

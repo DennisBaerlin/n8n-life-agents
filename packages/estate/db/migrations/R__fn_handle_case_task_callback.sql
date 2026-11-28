@@ -13,9 +13,12 @@
 --   "Fall offen?"-Guard + der Auto-Complete liegen in estate.fn_set_case_task (eine Write-fn, kein
 --   Duplikat). Raised nie (der Dispatcher faengt sonst keinen Owner-Alert ab): jeder Fehler -> {ok:false,
 --   reason, toast}.
---   Rueckgabe: {ok:true, toast, case_completed} | {ok:false, reason, toast}; reasons: 'unknown est action "<a>"',
---   'invalid task id "<x>"', 'unresolved sender', 'set failed', sonst der reason aus fn_set_case_task. Der
---   Orchestrator rendert nur den toast.
+--   Rueckgabe: {ok:true, toast, edit, case_completed} | {ok:false, reason, toast, edit?}; reasons: 'unknown est action "<a>"',
+--   'invalid task id "<x>"', 'unresolved sender', 'already set', 'set failed', sonst der reason aus fn_set_case_task.
+--   edit (Registry-Feld, docs/package-contract.md §2): Text der Erinnerung bleibt, die Knoepfe verschwinden; nach Erfolg
+--   append = Ausgangs-Zeile estate.dialog.line_done | line_not_applicable; schon abgehakt (already set, kein Write) -> Zeile zum
+--   gespeicherten Status; Aufgabe weg oder Fall zu -> nur Knoepfe weg (wirken nie
+--   mehr). Kein edit bei Rechte-/Eingabefehlern (Nachricht bleibt).
 --   Toasts aus dem Textkatalog (estate.toast.*, core.toast.*) in der Sprache des Tippenden (agent.fn_person_lang:
 --   Person -> Owner -> en; der Sender wird dafuer vor jeder Pruefung aufgeloest).
 --   Tests: tests/db/estate/test_fn_handle_case_task_callback.sql
@@ -34,6 +37,7 @@ DECLARE
     v_chat   BIGINT;
     v_sender TEXT;
     v_status TEXT;
+    v_cur    TEXT;
     v_res    JSONB;
     v_lang   TEXT;
 BEGIN
@@ -67,6 +71,16 @@ BEGIN
 
     v_status := CASE v_action WHEN 'done' THEN 'done' ELSE 'not_applicable' END;
 
+    -- Schon abgehakt (Doppeltipp, alte Erinnerung): fn_set_case_task wuerde done_at neu stempeln oder done still auf
+    -- not_applicable drehen. Kinder laufen weiter in den adults_only-Backstop der Delegation.
+    SELECT ct.status INTO v_cur FROM estate.case_tasks ct WHERE ct.id = v_id;
+    IF v_cur IN ('done', 'not_applicable') AND agent.fn_resolve_sender(v_chat)->>'role' IN ('owner', 'partner') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'already set',
+            'toast', core.fn_ui_text('estate.toast.task_already_set', v_lang),
+            'edit', jsonb_build_object('keep_text', true, 'append', core.fn_ui_text(CASE v_cur WHEN 'done' THEN 'estate.dialog.line_done'
+                                                                                          ELSE 'estate.dialog.line_not_applicable' END, v_lang)));
+    END IF;
+
     -- Delegiert an die eine Write-fn (adults_only-Backstop + "Fall offen?" + Auto-Complete). Wrap: ein
     -- unerwarteter Fehler darf keinen Owner-Alert ausloesen (der Dispatcher faengt nichts ab).
     BEGIN
@@ -81,13 +95,17 @@ BEGIN
         RETURN jsonb_build_object('ok', true,
             'toast', core.fn_ui_text(CASE v_action WHEN 'done' THEN 'estate.toast.task_done'
                                                     ELSE 'estate.toast.task_not_applicable' END, v_lang),
+            'edit', jsonb_build_object('keep_text', true, 'append', core.fn_ui_text(CASE v_action WHEN 'done' THEN 'estate.dialog.line_done'
+                                                                                          ELSE 'estate.dialog.line_not_applicable' END, v_lang)),
             'case_completed', COALESCE((v_res->>'case_completed')::boolean, false));
+    ELSIF v_res->>'reason' LIKE 'Write rejected%' THEN
+        RETURN jsonb_build_object('ok', false, 'reason', v_res->>'reason',
+            'toast', core.fn_ui_text('estate.toast.adults_only', v_lang));
     ELSE
         RETURN jsonb_build_object('ok', false, 'reason', v_res->>'reason',
-            'toast', core.fn_ui_text(CASE
-                WHEN v_res->>'reason' LIKE 'Write rejected%' THEN 'estate.toast.adults_only'
-                WHEN v_res->>'reason' LIKE 'the case%'       THEN 'estate.toast.case_closed'
-                ELSE 'estate.toast.task_not_found' END, v_lang));
+            'toast', core.fn_ui_text(CASE WHEN v_res->>'reason' LIKE 'the case%' THEN 'estate.toast.case_closed'
+                                          ELSE 'estate.toast.task_not_found' END, v_lang),
+            'edit', jsonb_build_object('keep_text', true));
     END IF;
 END;
 $$;

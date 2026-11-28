@@ -829,6 +829,8 @@
   "finance.bank_todo.toast_done": "Danke, ist erledigt.",
   "finance.bank_todo.toast_nothing": "Hier ist nichts mehr offen.",
   "finance.bank_todo.toast_not_yours": "Das kann nur die Person abhaken, der das Konto gehört.",
+  "finance.bank_todo.done_line": "✅ Bei {bank} erledigt",
+  "finance.bank_todo.done_line_generic": "✅ Erledigt",
   "finance.cron.remind_bank_todo.label": "Bank-Zettel (Haushalt)",
   "finance.cron.remind_bank_todo.on_toast": "Bank-Zettel an",
   "finance.cron.remind_bank_todo.off_toast": "Bank-Zettel aus",

@@ -829,6 +829,8 @@
   "finance.bank_todo.toast_done": "감사합니다, 완료했어요.",
   "finance.bank_todo.toast_nothing": "여기에는 더 이상 남은 항목이 없어요.",
   "finance.bank_todo.toast_not_yours": "계좌 소유자만 완료 처리할 수 있어요.",
+  "finance.bank_todo.done_line": "✅ {bank} 완료",
+  "finance.bank_todo.done_line_generic": "✅ 완료",
   "finance.cron.remind_bank_todo.label": "은행 할 일 (가구)",
   "finance.cron.remind_bank_todo.on_toast": "은행 할 일 켜짐",
   "finance.cron.remind_bank_todo.off_toast": "은행 할 일 꺼짐",

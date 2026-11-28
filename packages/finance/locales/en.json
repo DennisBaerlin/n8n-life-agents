@@ -829,6 +829,8 @@
   "finance.bank_todo.toast_done": "Thanks, marked as done.",
   "finance.bank_todo.toast_nothing": "Nothing is open here anymore.",
   "finance.bank_todo.toast_not_yours": "Only the account holder can tick this off.",
+  "finance.bank_todo.done_line": "✅ Done at {bank}",
+  "finance.bank_todo.done_line_generic": "✅ Done",
   "finance.cron.remind_bank_todo.label": "Bank to-do list (household)",
   "finance.cron.remind_bank_todo.on_toast": "Bank to-do list on",
   "finance.cron.remind_bank_todo.off_toast": "Bank to-do list off",

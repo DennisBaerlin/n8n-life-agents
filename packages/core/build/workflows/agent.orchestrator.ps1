@@ -535,10 +535,9 @@ function Build-AgentOrchestrator {
     $nSendPersonaSticker = New-TelegramRelayNode 'Send persona sticker' @(260, 1700) -Method 'sendSticker' `
         -BodyExpr "{ chat_id: String((`$('Trigger normalize').item.json.callback_query.from || {}).id || ''), sticker: `$('Claim persona sticker').item.json.r.sticker }"
 
-    # Generische Registry-Felder (jeder Handler darf sie setzen, der Core kennt kein Paket-Feld):
-    # result.owner_notice = Hinweis-Text an den Owner (Gleichstand zur HITL-Stufe owner_info, z. B. ein Mitglied hat per Knopf
-    # angelegt) - nach dem Toast-Ast, weil ein haengender Send die Quittung sonst ueber Telegrams Frist schoebe; result.edit = die getippte Nachricht aendern
-    # ({text} neuer Text bzw. {keep_text:true} Text bleibt), ohne Tastatur -> die Knoepfe verschwinden. Beide nicht fatal.
+    # Generische Registry-Felder (Core kennt kein Paket-Feld; Bedeutung im Sticky 'Doc Registry-Felder'): owner_notice (= owner_info) nach dem
+    # Toast-Ast (ein haengender Send schoebe die Quittung ueber Telegrams Frist); edit ohne Tastatur -> Knoepfe weg; keep_text
+    # liest ohne Formatierung, formatierte Karten nehmen den q:-Weg. Beide nicht fatal.
     $RD = "((`$('Dispatch callback').item.json.result || {}))"
     $CQM = "((`$('Trigger normalize').item.json.callback_query || {}).message || {})"
     $nOwnerNoticeIf = Build-If 'Owner notice?' @(-400, 1880) "={{ !!($RD.owner_notice) }}" 'true' 'equals' 'boolean'
@@ -547,9 +546,9 @@ function Build-AgentOrchestrator {
         "={{ !!($RD.edit && ($RD.edit.text || $RD.edit.keep_text) && $CQM.message_id && $CQM.chat) && !String((`$('Trigger normalize').item.json.callback_query || {}).data || '').startsWith('q:') }}" 'true' 'equals' 'boolean'
     $nEditCb = New-TelegramEditMessageNode 'Edit tapped message' @(-180, 2060) `
         -ChatIdExpr "={{ String(($CQM.chat || {}).id || '') }}" -MessageIdExpr "={{ $CQM.message_id }}" `
-        -TextExpr "={{ String(($RD.edit.keep_text ? $CQM.text : $RD.edit.text) || '') }}"
+        -TextExpr "={{ String(($RD.edit.keep_text ? $CQM.text : $RD.edit.text) || '') + ($RD.edit.append ? '\n\n' + String($RD.edit.append) : '') }}"
     $nEditCbSticky = Build-Sticky 'Doc Registry-Felder' @(-420, 2240) 'Registry-Handler: Owner-Hinweis, Nachricht ändern, Antwort, Routen' `
-        'Liefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. result.reply = {text, buttons} geht als neue Nachricht an den Tippenden (core.sub_send_messages). Nur für llm:-Knöpfe: route llm_probe -> Run LLM probe (core.sub_llm_probe, trigger button); route replay + update -> Replay update -> zurück in Trigger normalize: die gemerkten Nachrichten laufen wie eine neue Nachricht durch den Eingang (n8n: .first() liest den letzten Durchlauf eines Knotens, .item folgt der Herkunft; nur die Eingangs-Knoten lesen das Roh-Update). Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).' 300 380
+        'Liefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt (ohne Formatierung), append = Ausgangs-Zeile darunter; ohne Tastatur verschwinden die Knöpfe. Keine Zeitgrenze (48 h nur bei Business-Nachrichten). result.reply = {text, buttons} geht als neue Nachricht an den Tippenden (core.sub_send_messages). Nur für llm:-Knöpfe: route llm_probe -> Run LLM probe (core.sub_llm_probe, trigger button); route replay + update -> Replay update -> zurück in Trigger normalize: die gemerkten Nachrichten laufen wie eine neue Nachricht durch den Eingang (n8n: .first() liest den letzten Durchlauf eines Knotens, .item folgt der Herkunft; nur die Eingangs-Knoten lesen das Roh-Update). Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Nutzer: rsug, btodo, est.' 300 440
     # KI-Pause-Knoepfe (llm:*, core.fn_handle_llm_cb) und generisch result.reply. Unterhalb der Toast-Aeste (v1-Reihenfolge):
     # erst quittieren, dann senden. route llm_probe -> core.sub_llm_probe (trigger button); route replay -> die gemerkten
     # Nachrichten laufen als ein Update zurueck in 'Trigger normalize' und nehmen denselben Weg wie eine neue Nachricht

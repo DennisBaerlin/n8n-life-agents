@@ -1,9 +1,9 @@
 -- ============================================================
 -- fn_pkg_set_status (ATOMIC WRITE — Lifecycle-Status eines Pakets setzen)
 --   Setzt core.package_registry.status; bei ->active wird activated_at gestempelt.
---   Aufgerufen vom CLI-Lifecycle: installed (nach Migration/Deploy), active (zuletzt,
+--   Aufgerufen vom CLI-Lifecycle: active (zuletzt,
 --   atomarer Konvergenz-Deploy), inactive (deactivate — keine Daten geloescht).
---   Eingabe jsonb: package (Pflicht), status (Pflicht; installing|installed|active|inactive).
+--   Eingabe jsonb: package (Pflicht), status (Pflicht; installing|active|inactive).
 --   Rueckgabe: {ok:true, package, status, previous}. Unbekanntes Paket oder
 --     ungueltiger Zielstatus -> {ok:false, reason} ohne Write (korrigierbar, kein RAISE).
 --   Der status-Wertebereich ist zusaetzlich per CHECK (package_registry) gesetzlich.
@@ -18,7 +18,7 @@ BEGIN
     IF v_pkg = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'package must be non-empty');
     END IF;
-    IF v_status NOT IN ('installing','installed','active','inactive') THEN
+    IF v_status NOT IN ('installing','active','inactive') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'invalid status: ' || v_status);
     END IF;
 

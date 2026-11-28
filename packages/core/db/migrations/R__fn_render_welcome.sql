@@ -12,7 +12,7 @@
 --                  Core-first-Gate) -> Vorname + installierte Funktionen + naechster Schritt + 2 Core-Knoepfe.
 --         'back' = Haushalt erledigt/uebersprungen -> kurzer Text, keine Knoepfe.
 --   Installiert = core.package_registry status 'active' (Name aus dem Katalog, Fallback Paket-id; core zuerst);
---   'inactive' wird mit dem Einschalt-Befehl genannt; 'installing'/'installed' (abgebrochen) zaehlen nicht.
+--   'inactive' wird mit dem Einschalt-Befehl genannt; 'installing' (abgebrochen) zaehlt nicht.
 --   Vorname = family.metadata.facts.persons[] role 'owner' (fehlt -> generische Anrede).
 --   Knopf-Vertrag (fest): [onboarding:core:household, help:overview] — beide Core = immer gueltig; workflow_lint prueft
 --     die Orchestrator-Knoepfe gegen genau diese callback_data-Liste (Anzahl/Reihenfolge der n8n-Knoepfe ist build-time

@@ -131,19 +131,24 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   BEGIN
-    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 900, 'mood', '👌');
-    RAISE EXCEPTION 'FAIL reaction_log [mood mit 👌 angenommen]';
+    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 900, 'answer', '👌');
+    RAISE EXCEPTION 'FAIL reaction_log [answer mit 👌 angenommen]';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   BEGIN
-    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 900, 'mood', U&'\2764\FE0F');
+    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 900, 'answer', U&'\2764\FE0F');
     RAISE EXCEPTION 'FAIL reaction_log [❤ mit VS16 angenommen]';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
-  INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 901, 'mood', '🙏');
   BEGIN
-    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 901, 'mood', '😁');
-    RAISE EXCEPTION 'FAIL reaction_log [zweite mood-Zeile je Nachricht angenommen]';
+    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 903, 'mood', '🙏');
+    RAISE EXCEPTION 'FAIL reaction_log [abgeschaffte Art mood angenommen]';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 901, 'answer', '🙏');
+  BEGIN
+    INSERT INTO agent.reaction_log (person_id, chat_id, message_id, kind, emoji) VALUES ('powner', 111, 901, 'answer', '😁');
+    RAISE EXCEPTION 'FAIL reaction_log [zweite answer-Zeile je Nachricht angenommen]';
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
   BEGIN
@@ -151,7 +156,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL reaction_log [unbekannte Person angenommen]';
   EXCEPTION WHEN foreign_key_violation THEN NULL;
   END;
-  RAISE NOTICE 'PASS reaction_log [Koppel-CHECK, ❤ ohne VS16, UNIQUE je Art, FK Person]';
+  RAISE NOTICE 'PASS reaction_log [Arten ohne mood, Koppel-CHECK, ❤ ohne VS16, UNIQUE je Art, FK Person]';
 END $$;
 
 ROLLBACK;

@@ -1604,7 +1604,6 @@ CREATE TABLE IF NOT EXISTS finance.pension_statements (
     reached_claim  numeric(12,2),                 -- erreichter monatlicher Anspruch (ohne weitere Beitraege)
     projection     numeric(12,2),                 -- Hochrechnung monatlich (Annahme: Beitraege wie bisher)
     em_monthly     numeric(12,2),                 -- Rente bei voller Erwerbsminderung (monatlich)
-    is_nominal     boolean NOT NULL DEFAULT TRUE, -- Nominal-Caveat: Werte ohne Inflationsanpassung
     notes          text,
     created_at     timestamptz NOT NULL DEFAULT now(),
     UNIQUE (pension_id, statement_date)           -- dieselbe Standmitteilung nie doppelt
@@ -1617,8 +1616,7 @@ CREATE INDEX IF NOT EXISTS finance_pension_statements_pension_idx
 -- (Ausnahme (c) der Regel "keine ableitbaren Spalten", .claude/rules/sql.md) — die DRV rechnet sie, wir nie.
 -- scenario_1pct/_2pct = Monatsrente bei 1 %/2 % jaehrlicher Rentenanpassung (nominal, ohne Kaufkraftverlust);
 -- regular_retirement_date = Beginn der Regelaltersrente, auf den sich die Hochrechnung bezieht. Den Bezug nennt der feste
--- basis-Text von finance.fn_pension_outlook, nicht is_nominal (Anspruch/Hochrechnung = heutiger Rentenwert,
--- Szenarien = nominal).
+-- basis-Text von finance.fn_pension_outlook (Anspruch/Hochrechnung = heutiger Rentenwert, Szenarien = nominal).
 ALTER TABLE finance.pension_statements ADD COLUMN IF NOT EXISTS earning_points          numeric(8,4);  -- Entgeltpunkte bisher
 ALTER TABLE finance.pension_statements ADD COLUMN IF NOT EXISTS scenario_1pct           numeric(12,2);
 ALTER TABLE finance.pension_statements ADD COLUMN IF NOT EXISTS scenario_2pct           numeric(12,2);

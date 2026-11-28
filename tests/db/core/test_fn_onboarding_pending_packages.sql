@@ -46,9 +46,9 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [(vi) ok<>true bei leer]: %', r; END IF;
   IF jsonb_array_length(r->'pending') <> 0 THEN RAISE EXCEPTION 'FAIL [(vi) pending nicht leer]: %', r; END IF;
 
-  -- ---------- (v) status<>'active' -> nicht iteriert (eine finance-Sektion wieder offen, finance 'installed') ----------
+  -- ---------- (v) status<>'active' -> nicht iteriert (eine finance-Sektion wieder offen, finance 'installing') ----------
   UPDATE finance.onboarding_state SET status='unknown' WHERE section_key='accounts';
-  UPDATE core.package_registry SET status='installed' WHERE package='finance';
+  UPDATE core.package_registry SET status='installing' WHERE package='finance';
   r := core.fn_onboarding_pending_packages();
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'pending') e WHERE e->>'package'='finance') THEN
     RAISE EXCEPTION 'FAIL [(v) nicht-aktives Paket in pending]: %', r; END IF;

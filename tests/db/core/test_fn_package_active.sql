@@ -15,7 +15,7 @@ BEGIN
 
   -- Status-Matrix: nur 'active' -> true.
   IF core.fn_package_active(v_pkg) THEN RAISE EXCEPTION 'FAIL [installing -> true]'; END IF;
-  UPDATE core.package_registry SET status = 'installed' WHERE package = v_pkg;
+  UPDATE core.package_registry SET status = 'installing' WHERE package = v_pkg;
   IF core.fn_package_active(v_pkg) THEN RAISE EXCEPTION 'FAIL [installed -> true]'; END IF;
   UPDATE core.package_registry SET status = 'inactive' WHERE package = v_pkg;
   IF core.fn_package_active(v_pkg) THEN RAISE EXCEPTION 'FAIL [inactive -> true]'; END IF;

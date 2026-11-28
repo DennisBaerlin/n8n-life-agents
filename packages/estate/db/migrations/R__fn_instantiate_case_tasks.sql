@@ -39,12 +39,11 @@ BEGIN
         updated_at = now();
 
     -- Vom System offene Template-Tasks, die der Soll-Satz nicht mehr liefert (fan_out-Stub geloescht, Bedingung
-    -- eines fan_out-Templates entfallen) -> n.a.; retired Templates bleiben unberuehrt (Katalog-Pflege, kein Fakt).
+    -- eines fan_out-Templates entfallen) -> n.a.
     UPDATE estate.case_tasks ct
        SET status = 'not_applicable'
      WHERE ct.case_id = p_case_id
        AND ct.status_source = 'system' AND ct.status = 'open' AND ct.template_key IS NOT NULL
-       AND EXISTS (SELECT 1 FROM estate.task_templates t WHERE t.template_key = ct.template_key AND NOT t.retired)
        AND NOT EXISTS (SELECT 1
                          FROM estate.fn_case_template_rows(v_type, v_subject, v_flags, v_event, v_know, v_bl) r
                         WHERE r.template_key = ct.template_key AND r.subject_ref = ct.subject_ref);

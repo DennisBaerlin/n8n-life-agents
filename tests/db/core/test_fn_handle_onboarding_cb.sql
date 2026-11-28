@@ -57,7 +57,7 @@ BEGIN
   r := core.fn_handle_onboarding_cb('{"data":"onboarding:zzz:x","chat_id":"222","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [4 unbekanntes Paket]: %', r; END IF;
   -- 5) inaktives Paket -> nicht verfuegbar
-  UPDATE core.package_registry SET status='installed' WHERE package='career';
+  UPDATE core.package_registry SET status='installing' WHERE package='career';
   r := core.fn_handle_onboarding_cb('{"data":"onboarding:career:profile_basics","chat_id":"222","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5 inaktiv]: %', r; END IF;
   UPDATE core.package_registry SET status='active' WHERE package='career';

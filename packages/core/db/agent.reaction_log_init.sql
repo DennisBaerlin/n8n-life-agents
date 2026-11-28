@@ -1,10 +1,8 @@
 -- ============================================================
 -- Reaktions-Protokoll — Emoji-Reaktionen des Bots an Nutzer-Nachrichten (agent.fn_claim_reaction)
--- Zweck:   Tages-Kontingent der Gefuehls-Reaktionen je Person (kind 'mood' zaehlt) und Doppel-Sperre je Nachricht.
+-- Zweck:   Doppel-Sperre je Nachricht und Art; Verlaufsquelle fuer spaetere Rueckbezuege.
 --          kind: seen = 👀 Lebenszeichen an Foto/Dokument; done = 👌 nach endgueltig bestaetigter Karte;
---                mood = Stimmung neben einer Antwort (zaehlt zur Obergrenze); answer = Stimmung statt Text.
--- Warum eine eigene Tabelle statt core.fn_should_notify: die Notify-Schicht kennt nur "1 je Fenster" (eine Zeile je
---   Schluessel); die Obergrenze ist "N je Tag". Verlaufsquelle fuer spaetere Rueckbezuege.
+--                answer = Stimmung statt Text.
 -- DB-Gesetze: UNIQUE (chat_id, message_id, kind) -> nie zweimal dieselbe Art an dieselbe Nachricht; Koppel-CHECK
 --   kind <-> emoji (Telegram-Liste, ❤ ohne VS16 wie die Allowlist im LLM-Gateway provisioning/llm_gateway/server.js).
 --   Person per FK, ON DELETE CASCADE (Person entfernt -> Protokoll weg). Aufbewahrung 30 Tage: fn_claim_reaction
@@ -23,12 +21,12 @@ CREATE TABLE IF NOT EXISTS agent.reaction_log (
     kind        text        NOT NULL,
     emoji       text        NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT reaction_log_kind_valid  CHECK (kind IN ('seen', 'done', 'mood', 'answer')),
+    CONSTRAINT reaction_log_kind_valid  CHECK (kind IN ('seen', 'done', 'answer')),
     CONSTRAINT reaction_log_emoji_valid CHECK (emoji IN ('👀', '👌', '❤', '🎉', '🙏', '😁')),
     CONSTRAINT reaction_log_kind_emoji  CHECK (
            (kind = 'seen' AND emoji = '👀')
         OR (kind = 'done' AND emoji = '👌')
-        OR (kind IN ('mood', 'answer') AND emoji IN ('❤', '🎉', '🙏', '😁'))),
+        OR (kind = 'answer' AND emoji IN ('❤', '🎉', '🙏', '😁'))),
     CONSTRAINT reaction_log_once UNIQUE (chat_id, message_id, kind)
 );
 

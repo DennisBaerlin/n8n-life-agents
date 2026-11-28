@@ -1,8 +1,8 @@
 -- tests/db/finance/test_prop_interest_rate_change.sql
 -- Eigenschafts-Test: Zins-Konditionen eines Kontos aendern (fn_set_account_interest) gegen die Zins-Vorschau
--- (fn_interest_due_open, fn_interest_amount_due, fn_interest_accrued_preview) und die Buchung.
+-- (fn_interest_due_open, fn_interest_amount_due) und die Buchung.
 --   I1 ein "Wechsel" auf denselben Satz mit derselben Kadenz mitten im Zeitraum aendert weder die offenen Perioden noch
---      ihre Betraege noch den heute aufgelaufenen Zins (Summe der Teile = Ganzes)
+--      ihre Betraege (Summe der Teile = Ganzes)
 --   I2 ein hoeherer Satz ab einem Stichtag aendert keine Periode, die vor dem Stichtag endet, und senkt keine andere
 --   I3 Karte = Buchung: jede offene Periode wird mit dem unmittelbar vorher genannten Betrag gebucht, danach ist sie
 --      nicht mehr offen, und der Saldo steigt um genau die gebuchten Zinsen
@@ -13,7 +13,7 @@ DO $$
 DECLARE
   v_t DATE := current_date;
   v_res JSONB; v_sav INT; r RECORD; o RECORD; v_cut INT; v_n INT := 0;
-  v_sig0 TEXT; v_sig1 TEXT; v_acc0 NUMERIC; v_due NUMERIC; v_bal0 NUMERIC; v_sum NUMERIC; v_cnt INT;
+  v_sig0 TEXT; v_sig1 TEXT; v_due NUMERIC; v_bal0 NUMERIC; v_sum NUMERIC; v_cnt INT;
 BEGIN
   FOR r IN SELECT * FROM (VALUES (3.00, 1, -1), (1.25, 1, 15), (2.40, 3, -1)) x(rate, intv, dom) LOOP
     FOREACH v_cut IN ARRAY ARRAY[20, 50, 85] LOOP
@@ -25,7 +25,6 @@ BEGIN
         IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL I setup %: %', r, v_res; END IF;
         SELECT string_agg(d.period_start || '..' || d.period_end || '=' || finance.fn_interest_amount_due(v_sav, d.period_end), '|' ORDER BY d.period_end)
           INTO v_sig0 FROM finance.fn_interest_due_open(v_t) d WHERE d.account_id = v_sav;
-        v_acc0 := finance.fn_interest_accrued_preview(v_sav, v_t);
         IF v_sig0 IS NULL THEN RAISE EXCEPTION 'FAIL I setup %: keine offene Zins-Periode in 200 Tagen', r; END IF;
         -- I1
         v_res := finance.fn_set_account_interest(jsonb_build_object('account_id',v_sav,'annual_rate',r.rate,'schedule_unit','month',
@@ -33,9 +32,8 @@ BEGIN
         IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL I1 % stichtag -%: %', r, v_cut, v_res; END IF;
         SELECT string_agg(d.period_start || '..' || d.period_end || '=' || finance.fn_interest_amount_due(v_sav, d.period_end), '|' ORDER BY d.period_end)
           INTO v_sig1 FROM finance.fn_interest_due_open(v_t) d WHERE d.account_id = v_sav;
-        IF v_sig1 IS DISTINCT FROM v_sig0 OR finance.fn_interest_accrued_preview(v_sav, v_t) IS DISTINCT FROM v_acc0 THEN
-          RAISE EXCEPTION 'FAIL I1 % stichtag -%: gleicher Satz aendert die Vorschau: [%] -> [%], aufgelaufen % -> %', r, v_cut, v_sig0, v_sig1, v_acc0,
-            finance.fn_interest_accrued_preview(v_sav, v_t); END IF;
+        IF v_sig1 IS DISTINCT FROM v_sig0 THEN
+          RAISE EXCEPTION 'FAIL I1 % stichtag -%: gleicher Satz aendert die Vorschau: [%] -> [%]', r, v_cut, v_sig0, v_sig1; END IF;
         -- I2
         v_res := finance.fn_set_account_interest(jsonb_build_object('account_id',v_sav,'annual_rate',r.rate + 2,'schedule_unit','month',
                    'schedule_interval',r.intv,'schedule_day_of_month',r.dom,'valid_from',v_t - v_cut + 1));

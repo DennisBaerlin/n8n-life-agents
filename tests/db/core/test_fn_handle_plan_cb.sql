@@ -61,7 +61,7 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS DISTINCT FROM 'DE:core.toast.area_unavailable' THEN RAISE EXCEPTION 'FAIL [5 ohne Plan-Schritt]: %', r; END IF;
   r := core.fn_handle_plan_cb('{"data":"plan:finance'' OR 1=1","chat_id":"111","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5 manipuliert]: %', r; END IF;
-  UPDATE core.package_registry SET status = 'installed' WHERE package = 'career';
+  UPDATE core.package_registry SET status = 'installing' WHERE package = 'career';
   r := core.fn_handle_plan_cb('{"data":"plan:career","chat_id":"111","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5 inaktiv]: %', r; END IF;
   UPDATE core.package_registry SET status = 'active' WHERE package = 'career';

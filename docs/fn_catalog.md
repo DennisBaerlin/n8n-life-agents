@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 645 fn-Dateien.
+Umfang: 643 fn-Dateien.
 
 ## finance.fn_account_confirmed_until (READ, STABLE) -- bis zu welchem Tag der Stand eines Kontos bestaetigt ist
 - `finance.fn_account_confirmed_until(p_account_id int) -> date`
@@ -1573,11 +1573,6 @@ Umfang: 645 fn-Dateien.
 - jsonb-Keys: --
 - Die eine Adresse der Liste fuer die Write-fns; Spiegel von finance_insurances_type_chk (Init, struktureller Backstop). Eingabe: p_value. Rueckgabe: NULL bei leerem oder gueltigem Wert, sonst der korrigierbare Grund (EN) mit den erlaubten Werten. Ohne den Guard scheiterte z. B. "Haftpflicht" erst am CHECK -> RAISE/Owner-Alert bzw. Rohfehler nach der Import-Freigabe.
 
-## finance.fn_interest_accrued_preview (READ — aufgelaufener, noch nicht gebuchter Zins; Schaetzwert, kein Write)
-- `finance.fn_interest_accrued_preview(p_account_id int, p_as_of date) -> numeric`
-- jsonb-Keys: --
-- Liefert den seit der letzten Gutschrift bis p_as_of aufgelaufenen, noch nicht gebuchten Zins eines Kontos (Eingabe: p_account_id, p_as_of; 0 ohne Satz, ohne Habensaldo oder ohne Aufzins-Zeitraum): basis x (annual_rate/100) x fn_interest_day_fraction(aufzins_start, as_of, conv). aufzins_start = juengstes gebuchtes Scheduler-Perioden-Ende (MAX interest_period_end <= as_of), sonst der Zins-Start MIN(valid_from). basis = Saldo zum as_of (nur Habensaldo). Satz + Konvention = am as_of gueltige Rate-Zeile. Nur fuer Anzeige/Advisor/HITL-Preview (kein Write, keine Tabelle). Schaetzwert: kann von der Summe der tatsaechlich (gerundet) gebuchten Tagesgutschriften um Rundungscents abweichen. Mischt zudem die Saetze nicht (ein Satz am as_of fuers ganze Aufzins-Fenster) -> bei unterjaehrigem Satzwechsel kann der Preview von der segmentierten Gutschrift (fn_interest_amount_due) abweichen — bewusst: Preview != Gutschrift, der gebuchte Betrag kommt aus fn_interest_amount_due, nicht aus dem Preview.
-
 ## finance.fn_interest_amount_due (READ — Zins-Betrag am Perioden-Ende, DB rechnet, nie das LLM)
 - `finance.fn_interest_amount_due(p_account_id int, p_period_end date) -> numeric`
 - jsonb-Keys: --
@@ -2057,7 +2052,7 @@ Umfang: 645 fn-Dateien.
 ## core.fn_pkg_set_status (ATOMIC WRITE — Lifecycle-Status eines Pakets setzen)
 - `core.fn_pkg_set_status(p jsonb) -> jsonb`
 - jsonb-Keys: package, status
-- Setzt core.package_registry.status; bei ->active wird activated_at gestempelt. Aufgerufen vom CLI-Lifecycle: installed (nach Migration/Deploy), active (zuletzt, atomarer Konvergenz-Deploy), inactive (deactivate — keine Daten geloescht). Eingabe jsonb: package (Pflicht), status (Pflicht; installing|installed|active|inactive). Rueckgabe: {ok:true, package, status, previous}. Unbekanntes Paket oder ungueltiger Zielstatus -> {ok:false, reason} ohne Write (korrigierbar, kein RAISE). Der status-Wertebereich ist zusaetzlich per CHECK (package_registry) gesetzlich.
+- Setzt core.package_registry.status; bei ->active wird activated_at gestempelt. Aufgerufen vom CLI-Lifecycle: active (zuletzt, atomarer Konvergenz-Deploy), inactive (deactivate — keine Daten geloescht). Eingabe jsonb: package (Pflicht), status (Pflicht; installing|active|inactive). Rueckgabe: {ok:true, package, status, previous}. Unbekanntes Paket oder ungueltiger Zielstatus -> {ok:false, reason} ohne Write (korrigierbar, kein RAISE). Der status-Wertebereich ist zusaetzlich per CHECK (package_registry) gesetzlich.
 
 ## core.fn_plan_adult_recipients (READ-ONLY, SECURITY DEFINER) — wer ueber einen neuen Haushalts-Plan informiert wird
 - `core.fn_plan_adult_recipients(p_domain text) -> TABLE (person_id text, first_name text, chat_id text, lang text)`
@@ -2473,7 +2468,7 @@ Umfang: 645 fn-Dateien.
 ## core.fn_render_welcome (READ-ONLY) — die eine Textquelle der Owner-Begruessung
 - `core.fn_render_welcome(p_lang text DEFAULT NULL) -> jsonb`
 - jsonb-Keys: facts, first_name, lang, persons, role
-- Eingabe: p_lang text (optional, s. Sprache). Zwei Konsumenten, ein Text: (a) der Orchestrator bei einem nackten /start des Owners (liest unter core_ro, 'Start onboarding read', mit der Sprache des Owners) und (b) der Installer direkt nach dem Pairing + _oc_finalize (owner_connect.sh, Superuser, ohne Argument; erst dann sind echte Owner-chat_id + Re-Deploy durch, sonst liefe ein frueher Knopf-Tipp ins Leere). Reiner Text ohne Markdown (der n8n-Send escapt ohnehin, der Installer sendet ohne parse_mode). Sprache: p_lang (NULL/leer -> Sprache des Owners, agent.fn_person_lang); alle Texte aus dem Textkatalog (core.ui_texts, Keys core.welcome.*, Paketnamen <pkg>.package.name; fehlender Key -> en, docs/package-contract.md §3.11). kind 'new' = Core-Haushalt noch offen (agent.guide_onboarding_state 'unknown'; dieselbe Regel wie das Core-first-Gate) -> Vorname + installierte Funktionen + naechster Schritt + 2 Core-Knoepfe. 'back' = Haushalt erledigt/uebersprungen -> kurzer Text, keine Knoepfe. Installiert = core.package_registry status 'active' (Name aus dem Katalog, Fallback Paket-id; core zuerst); 'inactive' wird mit dem Einschalt-Befehl genannt; 'installing'/'installed' (abgebrochen) zaehlen nicht. Vorname = family.metadata.facts.persons[] role 'owner' (fehlt -> generische Anrede). Knopf-Vertrag (fest): [onboarding:core:household, help:overview] — beide Core = immer gueltig; workflow_lint prueft die Orchestrator-Knoepfe gegen genau diese callback_data-Liste (Anzahl/Reihenfolge der n8n-Knoepfe ist build-time fest, nur Text/Data sind Ausdruecke); die Knopf-Texte kommen in derselben Sprache mit. SECURITY INVOKER (core_ro liest agent+core ohnehin; Decision-Rule .claude/rules/sql.md), search_path gepinnt, REVOKE PUBLIC; der core_ro-Grant lebt am Rollen-Ort util_create_core_ro.sql. Rueckgabe: {ok:true, kind, lang, text, buttons:[{text, callback_data}]} Tests: tests/db/core/test_fn_render_welcome.sql
+- Eingabe: p_lang text (optional, s. Sprache). Zwei Konsumenten, ein Text: (a) der Orchestrator bei einem nackten /start des Owners (liest unter core_ro, 'Start onboarding read', mit der Sprache des Owners) und (b) der Installer direkt nach dem Pairing + _oc_finalize (owner_connect.sh, Superuser, ohne Argument; erst dann sind echte Owner-chat_id + Re-Deploy durch, sonst liefe ein frueher Knopf-Tipp ins Leere). Reiner Text ohne Markdown (der n8n-Send escapt ohnehin, der Installer sendet ohne parse_mode). Sprache: p_lang (NULL/leer -> Sprache des Owners, agent.fn_person_lang); alle Texte aus dem Textkatalog (core.ui_texts, Keys core.welcome.*, Paketnamen <pkg>.package.name; fehlender Key -> en, docs/package-contract.md §3.11). kind 'new' = Core-Haushalt noch offen (agent.guide_onboarding_state 'unknown'; dieselbe Regel wie das Core-first-Gate) -> Vorname + installierte Funktionen + naechster Schritt + 2 Core-Knoepfe. 'back' = Haushalt erledigt/uebersprungen -> kurzer Text, keine Knoepfe. Installiert = core.package_registry status 'active' (Name aus dem Katalog, Fallback Paket-id; core zuerst); 'inactive' wird mit dem Einschalt-Befehl genannt; 'installing' (abgebrochen) zaehlt nicht. Vorname = family.metadata.facts.persons[] role 'owner' (fehlt -> generische Anrede). Knopf-Vertrag (fest): [onboarding:core:household, help:overview] — beide Core = immer gueltig; workflow_lint prueft die Orchestrator-Knoepfe gegen genau diese callback_data-Liste (Anzahl/Reihenfolge der n8n-Knoepfe ist build-time fest, nur Text/Data sind Ausdruecke); die Knopf-Texte kommen in derselben Sprache mit. SECURITY INVOKER (core_ro liest agent+core ohnehin; Decision-Rule .claude/rules/sql.md), search_path gepinnt, REVOKE PUBLIC; der core_ro-Grant lebt am Rollen-Ort util_create_core_ro.sql. Rueckgabe: {ok:true, kind, lang, text, buttons:[{text, callback_data}]} Tests: tests/db/core/test_fn_render_welcome.sql
 
 ## core.fn_reopen_handoff_task
 - `core.fn_reopen_handoff_task(p jsonb) -> jsonb`
@@ -3274,11 +3269,6 @@ Umfang: 645 fn-Dateien.
 - `agent.fn_validate_observation(p_obs jsonb, p_method text, p_expected_unit text, p_min numeric, p_max numeric, p_jump_pct numeric, p_last numeric) -> jsonb`
 - jsonb-Keys: as_of, ok, reason, source_url, unit, value
 - Die eine Quelle der Wert-Validierung fuer beschaffte Observations — genutzt von fn_monitor_evaluate (Cron) und fn_monitor_probe (Test-Abruf vor dem HITL-Gate). Eingabe: p_obs jsonb {ok, value, unit, as_of, source_url, reason}, p_method, p_expected_unit, p_min, p_max, p_jump_pct, p_last. Kaskade (vorgelagert: struktureller JSON-Parse im Workflow-Code-Node): (0) input ok=false wird durchgereicht (Beschaffung selbst schlug fehl) (1) value muss numerisch sein (LLM-Prosa wie "ca. 4000" -> dirty) (2) Unit-Echo: nur web_search + expected_unit gesetzt — geliefertes unit muss case-/trim-tolerant matchen (faengt $/t-vs-EUR/t und t-vs-kg, was statische Bounds nicht fangen); sql/fx haben kein Echo (expected_unit = Render-Label) (3) statische Plausibilitaet min/max_plausible (Groessenordnungs-Fehler) (4) Kontinuitaet max_jump_pct (optional): Abweichung > X% vom letzten sauberen Wert -> dirty (Quelle gewechselt / Skala verrutscht); kein last_value (erster Wert) oder Guard NULL -> Stufe uebersprungen p_method='none' (reiner Reminder) -> immer ok, kein Wert noetig. Rueckgabe: normalisierte Observation {ok, value?, unit?, as_of?, source_url?, reason?} — value ist nur enthalten, wenn numerisch (Aufrufer duerfen blind ::numeric casten). Fn-intern (positional), kein Tool-facing {ok:false}-Vertrag.
-
-## finance.fn_verify_holding_shares (READ, STABLE)
-- `finance.fn_verify_holding_shares(p_holding_id int, p_expected numeric) -> boolean`
-- jsonb-Keys: --
-- Self-Check: stimmt shares mit Erwartung ueberein? Derzeit ruft sie nur tests/db/finance/test_fn_verify_holding_shares.sql. Eingabe: p_holding_id, p_expected (erwartete Stueckzahl). TRUE = passt, FALSE = Drift; NULL bei unbekannter holding_id.
 
 ## finance.fn_visible_depots (READ, STABLE) — die sichtbaren Depots einer Sicht
 - `finance.fn_visible_depots(p_household boolean, p_person_id text) -> TABLE (id int, name text, owner_person_id text, kid boolean)`

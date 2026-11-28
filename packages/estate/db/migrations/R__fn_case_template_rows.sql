@@ -51,7 +51,7 @@ BEGIN
 
     FOR t IN
         SELECT * FROM estate.v_task_templates
-        WHERE case_type = p_case_type AND NOT retired
+        WHERE case_type = p_case_type
         ORDER BY ord
     LOOP
         v_anchor := CASE t.deadline_anchor WHEN 'knowledge' THEN p_know ELSE p_event END;

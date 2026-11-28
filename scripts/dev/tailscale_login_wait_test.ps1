@@ -20,6 +20,7 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot '..\lib\native_process.ps1')
 $compose = Join-Path $RepoRoot 'provisioning\compose\compose.yml'
 $name = "$Prefix-tstest"; $vol = "${Prefix}_tstest_state"; $net = "$Prefix-tstest-net"
 $fails = 0
@@ -89,9 +90,7 @@ try {
     Check ($url -and $changed -eq 0) "Anmelde-Link blieb $WaitSeconds s derselbe ($changed Abweichungen)"
 
     if ($env:TS_TEST_AUTHKEY) {
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        $env:TS_TEST_AUTHKEY | docker exec -i $name tailscale up --auth-key=file:/dev/stdin "--hostname=$hostName" --accept-dns=false --timeout=90s *> $null
-        $ErrorActionPreference = $prev
+        Invoke-NativeStdinBytes -FilePath docker -ArgumentList @('exec', '-i', $name, 'tailscale', 'up', '--auth-key=file:/dev/stdin', "--hostname=$hostName", '--accept-dns=false', '--timeout=90s') -InputText $env:TS_TEST_AUTHKEY -CaptureOutput | Out-Null
         Check ((Get-TsStatus).BackendState -eq 'Running') "Anmeldung nach $WaitSeconds s gelingt"
         Invoke-Docker @('restart', $name) | Out-Null
         $ok = $false; $t2 = Get-Date

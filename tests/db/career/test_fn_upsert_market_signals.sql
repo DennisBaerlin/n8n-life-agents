@@ -62,6 +62,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL [6 kein Write bei ungueltigem as_of]'; END IF;
   RAISE NOTICE 'PASS [6] ungueltiges as_of -> ok:false, kein Write';
 
+  -- ---------- TEST 7: Ziffernfolge ueber dem int-Bereich -> still NULL, kein Cast-RAISE ----------
+  BEGIN
+    v_res := career.fn_upsert_market_signals(jsonb_build_object(
+      'signals', jsonb_build_array(jsonb_build_object('kind','postings','primary','Data Steward','secondary','Beispielstadt','postings_count','99999999999'))));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL [7 ueberlanger count wirft statt NULL]: %', SQLERRM;
+  END;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'upserted')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [7 ok, upserted 1]: %', v_res; END IF;
+  IF (SELECT postings_count FROM career.market_signals WHERE scope_key = career.fn_market_scope_key('postings','Data Steward','Beispielstadt')) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [7 ueberlanger count -> NULL]'; END IF;
+  RAISE NOTICE 'PASS [7] count ueber dem int-Bereich -> still NULL, kein RAISE';
+
   RAISE NOTICE 'PASS test_fn_upsert_market_signals';
 END $$;
 ROLLBACK;

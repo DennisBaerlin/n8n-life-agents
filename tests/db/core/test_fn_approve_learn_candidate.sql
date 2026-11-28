@@ -79,6 +79,19 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL 5 [bereits-approved nicht abgewiesen]: %', r; END IF;
   RAISE NOTICE 'PASS 5 [bereits approved -> ok:false]';
 
+  -- ===== 6. abgelaufener Vorschlag (expires_at vorbei, Aufraeumlauf noch nicht gelaufen) -> {ok:false}, kein Write =====
+  INSERT INTO agent.guide_learn_candidates (agent_name, source_id, target_kind, context_name, person_slug, field, proposed_value, kind, slot_key, created_at, expires_at)
+  VALUES ('finance', 40, 'fact', 'family', 'powner', 'language', 'ko', 'update', 'family|powner|language', now() - interval '9 days', now() - interval '2 days')
+  RETURNING id INTO v_om_id;
+  r := agent.fn_approve_learn_candidate(jsonb_build_object('candidate_id', v_om_id, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' <> 'candidate already expired' THEN
+    RAISE EXCEPTION 'FAIL 6 [abgelaufen nicht abgewiesen]: %', r; END IF;
+  SELECT pp->>'language' INTO v_lang
+  FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp
+  WHERE c.name='family' AND pp->>'person_id'='powner';
+  IF v_lang IS DISTINCT FROM 'en' THEN RAISE EXCEPTION 'FAIL 6 [abgelaufener Vorschlag wurde geschrieben]: language=%', v_lang; END IF;
+  RAISE NOTICE 'PASS 6 [abgelaufen -> ok:false candidate already expired, kein Write]';
+
   RAISE NOTICE 'PASS fn_approve_learn_candidate [all tests passed]';
 END $$;
 

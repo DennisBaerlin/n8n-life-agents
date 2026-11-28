@@ -102,6 +102,17 @@ BEGIN
   IF (v_res->>'core_api_ok')::bool THEN RAISE EXCEPTION 'FAIL check_deps: 0.3.1 > 0.3.0 faelschlich kompatibel (%)', v_res; END IF;
   UPDATE core.config SET value = '0.3.0' WHERE category = 'api' AND key = 'core_version';
 
+  -- (9c) Version mit Zusatz ('0.3.0-rc1') ist keine vergleichbare Zahlenfolge -> core_api_ok=false als Daten, kein Cast-RAISE.
+  BEGIN
+    v_res := core.fn_pkg_check_deps(jsonb_build_object('package', '__test_pkg2__', 'core_api', '0.3.0-rc1', 'requires', jsonb_build_array()));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL check_deps: core_api mit Zusatz wirft statt core_api_ok=false (%)', SQLERRM;
+  END;
+  IF (v_res->>'core_api_ok')::bool OR (v_res->>'ok')::bool THEN
+    RAISE EXCEPTION 'FAIL check_deps: core_api mit Zusatz faelschlich kompatibel (%)', v_res; END IF;
+  IF v_res->>'required_core_api' <> '0.3.0-rc1' THEN
+    RAISE EXCEPTION 'FAIL check_deps: required_core_api nennt die Anforderung nicht (%)', v_res; END IF;
+
   -- (10) remove: entfernt die Registry-Zeile.
   v_res := core.fn_pkg_remove(jsonb_build_object('package', '__test_pkg__'));
   IF NOT (v_res->>'ok')::bool OR (v_res->>'removed')::bool IS DISTINCT FROM TRUE

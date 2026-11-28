@@ -8,8 +8,10 @@
 --     candidates[]: { agent_name, source_id, target_kind(fact|note), context_name, person_slug?, field?,
 --                     value, rationale? }
 --     watermarks[]: { agent_name, last_seen_id }   -- MAX gesammelte id je Quelltabelle dieses Laufs
+--   Vor den Kandidaten: Ablauf. Jeder pending-Vorschlag mit expires_at <= now() wird 'expired' (unbeantwortet
+--     verfallen; sein Slot ist wieder frei, anders als nach einer Ablehnung).
 --   Pro Kandidat (DB entscheidet, nicht das LLM):
---     1. Shape-Guard (Pflichtfelder; fact braucht person_slug+field).
+--     1. Shape-Guard (Pflichtfelder; fact braucht person_slug+field; person_slug = person_id in metadata.facts.persons).
 --     2. fact: Kontext-Pruefung core.fn_facts_context_allowed (family + household-Fakten-Kontexte AKTIVER Pakete) + Denylist-Vorfilter via der kanonischen
 --        agent.fn_validate_household_facts (synthetischer Nicht-'family'-Name -> nur die Derived-Value-
 --        Denylist) -> abgeleitete Felder (age/start_year/...) fallen raus (das LLM rechnet nicht).
@@ -21,7 +23,7 @@
 --     6. Cap LIMIT learn_context.daily_cap des Kalendertags (Prio update>new), ON CONFLICT
 --        (agent_name,source_id,slot_key) DO NOTHING (Idempotenz / at-most-once-lossy).
 --     7. Watermark-Vorschub GREATEST je agent_name — selbe Tx (Transactional-Outbox).
---   Config-getrieben: learn_context.daily_cap (3) / learn_context.expiry_days (7) ueber core.fn_config_get.
+--   Config-getrieben: learn_context.daily_cap / learn_context.expiry_days ueber core.fn_config_get (Werte: core-Manifest).
 --   Rueckgabe: { ok, new_pending, inserted:[{id, ...Karte}], skipped:{...}, watermarks_advanced, daily_cap, expiry_days }.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_record_learn_candidates(p jsonb)
@@ -68,6 +70,8 @@ BEGIN
     -- ueberlappende Cron-Laeufe am schreibenden Punkt. Ein zweiter Lauf wartet, sieht dann den
     -- committeten Stand (Dedup vs pending + ON CONFLICT + Watermark-GREATEST machen ihn idempotent).
     PERFORM pg_advisory_xact_lock(hashtext('agent.fn_record_learn_candidates')::bigint);
+
+    UPDATE agent.guide_learn_candidates SET status = 'expired' WHERE status = 'pending' AND expires_at <= now();
 
     -- ===== 1. Per-Kandidat: validieren -> slot_key/kind -> NOOP/Dedup -> akzeptieren =====
     FOR v_cand IN SELECT * FROM jsonb_array_elements(COALESCE(p->'candidates', '[]'::jsonb)) LOOP

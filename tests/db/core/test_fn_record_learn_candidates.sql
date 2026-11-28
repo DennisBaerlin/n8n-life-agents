@@ -159,6 +159,20 @@ BEGIN
   IF v_n <> 60 THEN RAISE EXCEPTION 'FAIL S5 [watermark GREATEST]: erwartet 60, got %', v_n; END IF;
   RAISE NOTICE 'PASS S5 [idempotenz ON CONFLICT + watermark GREATEST]';
 
+  -- ================= S6: Ablauf (learn_context.expiry_days): unbeantworteter Vorschlag verfaellt und sperrt den Slot nicht mehr =================
+  DELETE FROM agent.guide_learn_candidates;
+  INSERT INTO agent.guide_learn_candidates (agent_name, source_id, target_kind, context_name, person_slug, field, proposed_value, kind, slot_key, status, created_at, expires_at)
+  VALUES ('finance', 600, 'fact', 'family', 'lisa', 'language', 'de', 'new', 'family|lisa|language', 'pending', now() - interval '9 days', now() - interval '2 days'),
+         ('finance', 601, 'fact', 'family', 'lisa', 'citizenships', 'DE', 'new', 'family|lisa|citizenships', 'pending', now() - interval '1 day', now() + interval '6 days');
+  v_res := agent.fn_record_learn_candidates(jsonb_build_object('candidates', jsonb_build_array(
+    jsonb_build_object('agent_name','finance','source_id',602,'target_kind','fact','context_name','family','person_slug','lisa','field','language','value','de'))));
+  IF (SELECT status FROM agent.guide_learn_candidates WHERE source_id = 600) IS DISTINCT FROM 'expired' THEN
+    RAISE EXCEPTION 'FAIL S6 [abgelaufener Vorschlag nicht expired]: %', (SELECT status FROM agent.guide_learn_candidates WHERE source_id = 600); END IF;
+  IF (SELECT status FROM agent.guide_learn_candidates WHERE source_id = 601) IS DISTINCT FROM 'pending' THEN
+    RAISE EXCEPTION 'FAIL S6 [laufender Vorschlag nicht mehr pending]'; END IF;
+  IF (v_res->>'new_pending')::int <> 1 THEN RAISE EXCEPTION 'FAIL S6 [Slot nach Ablauf wieder frei]: erwartet 1, got %', v_res; END IF;
+  RAISE NOTICE 'PASS S6 [Ablauf: pending -> expired, Slot wieder frei]';
+
   RAISE NOTICE 'PASS fn_record_learn_candidates [all tests passed]';
 END $$;
 

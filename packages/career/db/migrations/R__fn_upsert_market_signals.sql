@@ -47,7 +47,7 @@ BEGIN
         INSERT INTO career.market_signals (scope_key, as_of, postings_count, source, raw, updated_at)
         VALUES (
             v_key, v_as_of,
-            CASE WHEN (v_sig->>'postings_count') ~ '^[0-9]+$' THEN (v_sig->>'postings_count')::int END,
+            CASE WHEN (v_sig->>'postings_count') ~ '^[0-9]{1,9}$' THEN (v_sig->>'postings_count')::int END,
             v_source,
             COALESCE(v_sig->'raw', '{}'::jsonb),
             NOW())

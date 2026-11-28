@@ -6,7 +6,8 @@
 --         (fehlend -> missing_deps; vorhanden aber nicht aktiv -> inactive_deps).
 --     (2) core_api: die geforderte Mindest-Core-API ist mit CORE_API_VERSION
 --         (core.config category='api' key='core_version') kompatibel — SemVer-Caret:
---         gleiche major und current >= min (0.x: major 0). Element-weiser int[]-Vergleich.
+--         gleiche major und current >= min (0.x: major 0). Element-weiser int[]-Vergleich. Eine Version, die keine
+--         reine Zahlenfolge ist (z. B. '0.3.0-rc1'), ist nicht vergleichbar -> core_api_ok=false.
 --   Eingabe jsonb: package (Doku), core_api (Mindestversion, z. B. '0.2.0'),
 --     requires (jsonb-Array von Paketnamen).
 --   RUECKGABE: {ok, core_api_ok, current_core_api, required_core_api,
@@ -47,6 +48,8 @@ BEGIN
     IF v_req_api <> '' THEN
         IF v_cur_api IS NULL OR v_cur_api = '' THEN
             v_api_ok := FALSE;   -- keine bekannte Core-API -> nicht kompatibel
+        ELSIF v_cur_api !~ '^[0-9]{1,6}(\.[0-9]{1,6})*$' OR v_req_api !~ '^[0-9]{1,6}(\.[0-9]{1,6})*$' THEN
+            v_api_ok := FALSE;
         ELSE
             -- Auf 3 Stellen normalisieren, bevor verglichen wird: Postgres-Array-Vergleich ist
             -- laengen-sensitiv ('{0,3}' >= '{0,3,0}' ist FALSE), eine 2-stellige Version ('0.3') wuerde

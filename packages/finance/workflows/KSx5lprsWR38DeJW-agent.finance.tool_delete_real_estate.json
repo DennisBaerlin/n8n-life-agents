@@ -27,7 +27,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status, (SELECT COUNT(*)::int FROM finance.loans l WHERE l.real_estate_id = re.id) AS loan_count FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name ILIKE (($1::jsonb)-\u003e\u003e\u0027real_estate_name\u0027) LIMIT 1;",
+                                         "query":  "=SELECT CASE WHEN r.hit_count \u003e 0 THEN r.hit_count END AS hits, re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.fn_resolve_real_estate(($1::jsonb)-\u003e\u003e\u0027real_estate_name\u0027, FALSE) r LEFT JOIN finance.real_estate re ON re.id = r.id LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ real_estate_name: $(\u0027Start\u0027).item.json.real_estate_name }) }}"
                                                      }
@@ -59,7 +59,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "5d8adad2-0416-5aef-a7b8-f8c32604d09f",
-                                                                                   "leftValue":  "={{ $json.re_status !== undefined \u0026\u0026 $json.re_status !== null }}",
+                                                                                   "leftValue":  "={{ $json.hits !== undefined \u0026\u0026 $json.hits !== null }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -249,7 +249,7 @@
                                                                                  {
                                                                                      "id":  "ec9d6f0b-befd-5036-b030-fb208a323e80",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.delete_real_estate\u0027, lines: [ { label: \u0027finance.label.real_estate\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.real_estate_name) }, { label: \u0027finance.label.value\u0027, kind: \u0027money\u0027, value: (($(\u0027Read Property\u0027).item.json.current_value || null)), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.owner\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read Property\u0027).item.json.owner ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Read Property\u0027).item.json.owner) } }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: ($(\u0027Read Property\u0027).item.json.re_status), enum: \u0027finance.enum.status\u0027 }, { label: \u0027finance.label.linked_loans\u0027, kind: \u0027text\u0027, value: ($(\u0027Read Property\u0027).item.json.loan_count) }, { kind: \u0027note\u0027, value: (($(\u0027Read Property\u0027).item.json.loan_count \u003e 0 ? \u0027finance.note.delete_re_rejected\u0027 : \u0027finance.note.delete_re_hard\u0027)) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.delete_real_estate\u0027, lines: [ { label: \u0027finance.label.real_estate\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.real_estate_name) }, { label: \u0027finance.label.value\u0027, kind: \u0027money\u0027, value: (($(\u0027Read Property\u0027).item.json.current_value || null)), currency: (\u0027EUR\u0027) }, { label: \u0027finance.label.owner\u0027, kind: \u0027tpl\u0027, value: (($(\u0027Read Property\u0027).item.json.owner ? \u0027finance.tpl.plain\u0027 : \u0027finance.value.household\u0027)), params: { value: ($(\u0027Read Property\u0027).item.json.owner) } }, { label: \u0027core.label.status\u0027, kind: \u0027enum\u0027, value: ($(\u0027Read Property\u0027).item.json.re_status), enum: \u0027finance.enum.status\u0027 }, { kind: \u0027note\u0027, value: \u0027finance.note.delete_re_hard\u0027 } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -481,7 +481,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_delete_real_estate mit denselben Werten, immer zurückgerollt. ok:false (Immobilie hat noch verknüpfte Kredite) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte. Echte Exception (mehrdeutig; nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler) -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_delete_real_estate mit denselben Werten, immer zurückgerollt. ok:false (Immobilie hat noch verknüpfte Kredite oder eine Instandhaltungsrücklage; mehrdeutig mit Kandidaten) -\u003e Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -\u003e Karte mit festem Hinweis (es hängt nichts daran). Nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler (derselbe Auflöser wie die fn). Echte Exception -\u003e Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4
@@ -497,7 +497,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Löschen nur ohne verknüpfte Kredite**\n\nfn zählt verknüpfte Kredite (finance.loans.real_estate_id). loan_count\u003e0: {ok:false, reason, loan_count} OHNE Write -\u003e Delete rejected (weiche Rückfrage, erst Kredite ablösen). loan_count=0: DELETE finance.real_estate; action=deleted. RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools). Kein Soft-Close (Status sold braucht eine Verkaufsbuchung -\u003e vertagt: sell_real_estate).",
+                                         "content":  "## DB-Automatik\n**Löschen nur ohne Kredite und Rücklage**\n\nfn zählt verknüpfte Kredite (finance.loans.real_estate_id) und Instandhaltungsrücklagen (savings_goals.real_estate_id, jeder Status). Eins davon \u003e 0: {ok:false, reason, loan_count bzw. reserve_count} OHNE Write -\u003e Delete rejected. Sonst DELETE finance.real_estate; action=deleted. Nicht gefunden/mehrdeutig: {ok:false, code}. Kein Soft-Close: der Status sold entsteht nur mit der Verkaufsbuchung (tool_sell_real_estate).",
                                          "height":  240,
                                          "width":  500,
                                          "color":  4

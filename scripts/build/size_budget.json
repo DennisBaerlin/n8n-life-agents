@@ -11,7 +11,7 @@
     { "id": "scripts", "include": "^scripts/.*\\.ps1$", "lines": 800 }
   ],
   "files": [
-    { "path": "packages/core/build/workflows/agent.orchestrator.ps1", "lines": 2113, "bytes": 223264, "line_chars": 7715 },
+    { "path": "packages/core/build/workflows/agent.orchestrator.ps1", "lines": 2148, "bytes": 226874, "line_chars": 7715, "_reason": "S4r3 Fixes (Leitung), Teilung U-P4" },
     { "path": "packages/core/db/migrations/R__fn_advisor_save_section.sql", "lines": 514 },
     { "path": "packages/finance/build/workflows/agent.finance.ps1", "lines": 1080, "bytes": 217677, "line_chars": 6127 },
     { "path": "packages/finance/build/workflows/agent.finance_advisor.ps1", "line_chars": 7547 },
@@ -36,7 +36,7 @@
     { "path": "provisioning/provision.sh", "lines": 927 },
     { "path": "scripts/build/lib/build_helpers.ps1", "lines": 2588 },
     { "path": "scripts/contract_lint.ps1", "lines": 3292 },
-    { "path": "scripts/dev/hitl_gate_test.ps1", "lines": 1607 },
+    { "path": "scripts/dev/hitl_gate_test.ps1", "lines": 1443 },
     { "path": "scripts/dev/real_ingress_test.ps1", "lines": 1298 },
     { "path": "scripts/dev/test_n8n_state.ps1", "lines": 1515 },
     { "path": "tests/agent/core/infra_cases.json", "lines": 804 },

@@ -58,7 +58,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
 
     $wg = New-FnWriteGate -Fn 'finance.fn_create_loan' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create loan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'loan_id' AS loan_id, r->>'loan_account_id' AS loan_account_id, r->>'debit_account_id' AS debit_account_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'balance_at_fixed_until')::numeric AS balance_at_fixed_until, (r->>'balance_at_term_end')::numeric AS balance_at_term_end" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'loan_id' AS loan_id, r->>'loan_account_id' AS loan_account_id, r->>'debit_account_id' AS debit_account_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'balance_at_fixed_until')::numeric AS balance_at_fixed_until, (r->>'balance_at_term_end')::numeric AS balance_at_term_end, (r->>'remaining_debt')::numeric AS remaining_debt, (r->>'disbursement_balance')::numeric AS disbursement_balance" `
         -Params ([ordered]@{
             name                      = '$(''Start'').item.json.name'
             lender                    = '$(''Start'').item.json.lender'
@@ -113,6 +113,8 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
         ,@('recurring_payment_id', "={{ `$('Create loan (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('balance_at_fixed_until', "={{ `$('Create loan (atomic)').item.json.balance_at_fixed_until }}", 'number')
         ,@('balance_at_term_end', "={{ `$('Create loan (atomic)').item.json.balance_at_term_end }}", 'number')
+        ,@('remaining_debt', "={{ `$('Create loan (atomic)').item.json.remaining_debt }}", 'number')
+        ,@('disbursement_balance', "={{ `$('Create loan (atomic)').item.json.disbursement_balance }}", 'number')
     )
 
     $stickyGen = Build-Sticky 'DB-Automatik Loan' @(2420, -240) `

@@ -30,7 +30,7 @@
 # = Mock-Telegram lehnt diese Methode fuer die Dauer des Falls ab (markup = nur Aufrufe mit Knopf); expected_not_ran (Sub-
 # Zweig) = Knoten, die in der Sub-Execution nicht laufen duerfen. Die Vorschlags-Merker werden zu Beginn jedes Laufs geleert.
 # Felder bei offener Karte (kind hitl): probe_card_open = zweite Nachricht in denselben Chat; expect_probe_text = Katalog-Schluessel (core, de)
-# der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag.
+# der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag. Ebenfalls bei kind hitl: pre_sql vor dem Update, check_sql nach dem Lauf (muss genau t liefern), post_sql danach (auch bei Rot).
 #
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen. Faelle: tests/agent/core/real_ingress_cases.json.
 # Seiteneffekte in der Substrat-DB: Fixture-Seed (tests/fixtures/util_seed_test_fixtures.sql), Telegram-id und Sprache der family-Personen,
@@ -669,8 +669,8 @@ foreach ($tc in $cases) {
             # owner_lang: der Knopf-Auftrag enthaelt nur die Sprache als Variable; so trifft das Karten-Szenario nicht ri12 (ohne Karte).
             # Szenario-match (mock_lint C2): Start or continue the household onboarding. Reply in the language with ISO code en
             if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code "$($tc.owner_lang)" }
-            # probe_entry_open: waehrend des Falls hat die Person des Chats einen frisch beanspruchten vereinbarten Eintrag (Eintrage-Modus,
-            # agent.fn_stash_hitl_note entry); Domaene = die erste aktive mit Eintrags-Pruefung. Weggeraeumt am Anfang jedes Falls und nach der Probe.
+            $ps = if ($tc.pre_sql) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.pre_sql)") }; if ($ps -and $ps.Code -ne 0) { Write-Host "    [FAIL] pre_sql fehlgeschlagen: $($ps.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
+            # probe_entry_open: die Person des Chats hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag (Eintrage-Modus, agent.fn_stash_hitl_note entry); Domaene = die erste aktive mit Eintrags-Pruefung. Weggeraeumt am Anfang jedes Falls und nach der Probe.
             Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.handoff_tasks WHERE id = 990092;') | Out-Null
             if ($tc.probe_entry_open) {
                 $pe = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT 990092, a.domain, a.package, core.fn_handoff_person('$chatId'), 'wealth_building', 'other', '__E2E__ $($tc.id) Probe in Arbeit', 'working', now() FROM core.advisors a JOIN core.package_registry r ON r.package = a.package WHERE r.status = 'active' AND a.handoff_check_fn IS NOT NULL ORDER BY a.domain LIMIT 1;")
@@ -684,14 +684,13 @@ foreach ($tc in $cases) {
             while ($true) {
                 $msg = Get-MockTelegramRequests -Container $Container |
                        Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup } | Select-Object -Last 1
-                if ($msg) { break }
-                if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { break }
+                if ($msg -or ((Get-Date) - $start).TotalSeconds -ge $Timeout) { break }
                 Start-Sleep -Milliseconds 800
             }
             if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code 'de' }   # vor jedem continue: Auftrag ist hier gebaut
             if (-not $msg) {
                 Write-Host "    [FAIL] Keine abgefangene Gate-Nachricht mit Buttons (Routing bis ins Gate? Mocks aktiv?)." -ForegroundColor Red
-                $failed++; continue
+                if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }; $failed++; continue
             }
 
             # Signierte Resume-URL (decline) ziehen, Host->Bruecke, als GET feuern. Get-HitlResumeUrl wirft,
@@ -823,6 +822,7 @@ foreach ($tc in $cases) {
                 if ($finishRuns.Count -ne 1) { $extraOk = $false; $extraInfo += "Finish card lock $($finishRuns.Count)-mal gelaufen" }
             }
 
+            $cs = if ($tc.check_sql) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($tc.check_sql)") }; $csVal = if ($cs) { "$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)" }; if ($cs -and ($cs.Code -ne 0 -or $csVal -ne 't')) { $extraOk = $false; $extraInfo += "check_sql lieferte '$csVal' (erwartet t)" }; if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
             Write-Host "    Gate abgefangen + aufgeloest (decision=$($tc.gate_decision)); Orchestrator status=$($orch.status)"
             if ($orch -and $orch.status -eq 'success' -and $extraOk) {
                 $passed++; Write-Host "    [PASS]" -ForegroundColor Green

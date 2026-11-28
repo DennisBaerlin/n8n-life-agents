@@ -8,7 +8,7 @@
 --   Auswahl (hoechstens eine, Prioritaet):
 --     seen   👀  event 'seen' (Lebenszeichen, ohne Obergrenze)
 --     done   👌  Karte dieses Laufs endgueltig bestaetigt (agent.hitl_pending.approved, opened_at >= run_started_at)
---                + reply_ok + Signal FRAME + kein Sticker in diesem Lauf + kein Folgetext (has_text false; sonst bleibt 👀)
+--                + reply_ok + Signal FRAME + kein Sticker in diesem Lauf + kein Folgetext (has_text false, auch eine Antwort mit Knoepfen zaehlt als Text; sonst bleibt 👀)
 --     answer     Stimmung statt Text: kein Werkzeug, react_only, kein Text (Router-Zeile genau 'REACT <MOOD>')
 --   Keine Stimmung neben einer Antwort: eine Reaktion an einer Nachricht, die die lange Antwort schon aus dem Bild geschoben
 --   hat, zeigt Telegram am Handy als Reaktions-Zaehler.

@@ -8,10 +8,11 @@ function Build-DeleteRealEstate {
     $trig = Build-Trigger @('real_estate_name')
 
     $readRe = Build-Pg 'Read Property' @(220, 0) `
-        "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status, (SELECT COUNT(*)::int FROM finance.loans l WHERE l.real_estate_id = re.id) AS loan_count FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name ILIKE ((`$1::jsonb)->>'real_estate_name') LIMIT 1;" `
+        "=SELECT CASE WHEN r.hit_count > 0 THEN r.hit_count END AS hits, re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.fn_resolve_real_estate((`$1::jsonb)->>'real_estate_name', FALSE) r LEFT JOIN finance.real_estate re ON re.id = r.id LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id;" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
-    $found = New-RequiredRowGate -Read $readRe -KeyField 're_status' -IfName 'Property found?' -ErrName 'Property not found' `
+    # Derselbe Auflöser wie fn_delete_real_estate. Unbekannter Name -> Tool-Fehler (New-RequiredRowGate); mehrdeutig meldet der
+    # Probelauf mit Kandidaten.
+    $found = New-RequiredRowGate -Read $readRe -KeyField 'hits' -IfName 'Property found?' -ErrName 'Property not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No property named '{{ `$('Start').item.json.real_estate_name }}' exists. List them via postgres_select on finance.real_estate_overview and ask the user which one is meant."
 
@@ -28,8 +29,7 @@ function Build-DeleteRealEstate {
         (New-HitlLine 'finance.label.value'        "($R.current_value || null)" -Kind money -EurByModel)
         (New-HitlLine 'finance.label.owner'        "($R.owner ? 'finance.tpl.plain' : 'finance.value.household')" -Kind tpl -Params @{ value = "$R.owner" })
         (New-HitlLine 'core.label.status'          "$R.re_status" -Kind enum -Enum 'finance.enum.status')
-        (New-HitlLine 'finance.label.linked_loans' "$R.loan_count")
-        (New-HitlNote -KeyExpr "($R.loan_count > 0 ? 'finance.note.delete_re_rejected' : 'finance.note.delete_re_hard')")
+        (New-HitlNote -Key 'finance.note.delete_re_hard')   # Karte nur nach bestandenem Probelauf (keine Kredite, keine Rücklage): fester Hinweis, kein eigener Zähler
     )
 
     $gateId = $GateId
@@ -54,11 +54,11 @@ function Build-DeleteRealEstate {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_delete_real_estate mit denselben Werten, immer zurückgerollt. ok:false (Immobilie hat noch verknüpfte Kredite) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte. Echte Exception (mehrdeutig; nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler) -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_delete_real_estate mit denselben Werten, immer zurückgerollt. ok:false (Immobilie hat noch verknüpfte Kredite oder eine Instandhaltungsrücklage; mehrdeutig mit Kandidaten) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte mit festem Hinweis (es hängt nichts daran). Nicht gefunden fängt vorher das Found?-Gate als Tool-Fehler (derselbe Auflöser wie die fn). Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
 
     $stickyFn = Build-Sticky 'fn_delete_real_estate: Hard-DELETE-if-empty' @(1760, -260) `
-        'Löschen nur ohne verknüpfte Kredite' `
-        'fn zählt verknüpfte Kredite (finance.loans.real_estate_id). loan_count>0: {ok:false, reason, loan_count} OHNE Write -> Delete rejected (weiche Rückfrage, erst Kredite ablösen). loan_count=0: DELETE finance.real_estate; action=deleted. RAISE bei nicht gefunden/mehrdeutig (nicht gefunden fängt vorher das Found?-Gate des Tools). Kein Soft-Close (Status sold braucht eine Verkaufsbuchung -> vertagt: sell_real_estate).' 240 500
+        'Löschen nur ohne Kredite und Rücklage' `
+        'fn zählt verknüpfte Kredite (finance.loans.real_estate_id) und Instandhaltungsrücklagen (savings_goals.real_estate_id, jeder Status). Eins davon > 0: {ok:false, reason, loan_count bzw. reserve_count} OHNE Write -> Delete rejected. Sonst DELETE finance.real_estate; action=deleted. Nicht gefunden/mehrdeutig: {ok:false, code}. Kein Soft-Close: der Status sold entsteht nur mit der Verkaufsbuchung (tool_sell_real_estate).' 240 500
 
     $nodes = @($trig, $readRe, $found.If, $found.Err) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyFn)

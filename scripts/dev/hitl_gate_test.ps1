@@ -953,12 +953,8 @@ try {
     Write-RepeatCase 'hitlB1' 'Zeilenart body: langer Text kommt vollstaendig an' (@($p1) + @(Get-BodyProblems $sent 1500 5000 @('{bleibt}')))
 } catch { Register-Abort $_ 'hitlB1' }
 
-# --- Karten der Plan-Tools ueber die echten Tools (Harness): Plan- und Abschnittsname aus dem Textkatalog in der Sprache des
-# Empfaengers, keine internen Schluessel, kein alter Hinweis, der ganze Text. Erwartete Namen kommen aus den Locale-Dateien (Get-LocaleText).
-# finance verlangt ein Thema je Save (advisor.topic_max_chars) -> Default-Thema; '' prueft die Ablehnung ohne Thema.
-function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [string]$ChatId = $OwnerUnpaired, [string]$Topic = 'Probe-Thema') {
-    Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; topic = $Topic; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }
-}
+# --- Veroeffentlichen-Karte ueber das echte Tool (Harness): Planname aus dem Textkatalog, keine internen Schluessel. Erwartete Namen
+# kommen aus den Locale-Dateien (Get-LocaleText).
 # finance verlangt den Gesamtcheck (advisor.final_check_required) -> ein bewusst offener Probe-Fund, damit die Karte ihn zeigt.
 function Send-PlanPublish([string]$Domain, [string]$ChatId = $OwnerUnpaired,
                           [string]$Findings = '[{"text":"Probe-Fund offen","outcome":"deferred"},{"text":"Probe-Fund geklaert","outcome":"resolved"}]') {
@@ -981,43 +977,7 @@ function Get-CardTextProblems([string]$Text, [string[]]$Must, [string[]]$Forbid)
 }
 # Teile eines Unterstrichs: die Telegram-Helper escapen '_' -> interne Schluessel auch mit Backslash erkennen.
 $InternalNames = @('household.{0,2}basics', 'Plan-Sektion', 'Plan-Entwurf', 'Voller Inhalt', 'Full content', '\(finance\)', 'financial.{0,2}planning', '__e2e', '\*\*')
-$ownerLangBefore = "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT p->>'language' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') p WHERE c.name = 'family' AND p->>'person_id' = 'owner';")).Output | Select-Object -First 1)".Trim()
-$saveWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_save_plan_section' } | Select-Object -First 1).id
 $publishWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_publish_plan' } | Select-Object -First 1).id
-try {
-    foreach ($lang in @('de', 'en', 'ko')) {
-        try {
-            Test-ForceAbort "hitlP1$lang" $ForceAbortId
-            $id = "hitlP1$lang"
-            Set-OwnerLanguage -Container $Container -Code $lang
-            Clear-MockTelegramRequests -Container $Container
-            Send-PlanSection 'finance' 'household_basics' "**Zwei** Erwachsene und eine Regel {bleibt} `# Ende $id"
-            $m = Wait-ButtonSend $id ''
-            $probs = @()
-            if (-not $m) { $probs += "Karte (Marker $id) nicht abgefangen" }
-            else {
-                $probs += Get-CardTextProblems ([string]$m.body.text) @(
-                    (Get-LocaleText 'finance' $lang 'finance.plan.name'),
-                    (Get-LocaleText 'finance' $lang 'finance.plan_section.household_basics'),
-                    ((Get-LocaleText 'core' $lang 'core.label.topic') + ': Probe-Thema'),
-                    'Zwei Erwachsene', '{bleibt}') $InternalNames
-                $probs += Complete-CardTaps $id @($false)
-            }
-            Write-RepeatCase $id "Plan-Karte in $lang`: Namen aus dem Katalog, keine Schluessel, ganzer Text" $probs
-        } catch { Register-Abort $_ "hitlP1$lang" }
-    }
-} finally { Set-OwnerLanguage -Container $Container -Code $ownerLangBefore }
-
-# hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall. Domain ohne Katalog-Abschnitte (general): in finance und career
-# lehnt die DB unbekannte Abschnitts-Keys ab (hitlP11); der Rueckfall der Karte gilt nur fuer Domains ohne <pkg>.plan_section.*.
-try {
-    Test-ForceAbort 'hitlP2' $ForceAbortId
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'general' 'sonder_abschnitt_neu' 'Probe hitlP2'
-    $m = Wait-ButtonSend 'hitlP2' ''
-    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('sonder abschnitt neu') @('sonder.{0,2}_abschnitt')) + @(Complete-CardTaps 'hitlP2' @($false)) } else { @('Karte nicht abgefangen') }
-    Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
-} catch { Register-Abort $_ 'hitlP2' }
 
 # hitlS1: Plan-Durchlauf ohne Aenderung -> keine Karte, nur Stempel.
 try {
@@ -1033,83 +993,14 @@ try {
     Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ hitlS1';") | Out-Null
 } catch { Register-Abort $_ 'hitlS1' }
 
-# hitlP3: Text ohne Leerzeichen ueber dem Telegram-Limit geht vollstaendig durch, nichts gekuerzt. Auf career: finance begrenzt
-# den Thementext (advisor.topic_max_chars, hitlP9), career hat keine Grenze.
-try {
-    Test-ForceAbort 'hitlP3' $ForceAbortId
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'career' 'situation' (('Q' * 6000) + ' hitlP3') ([string]$PairedUidOwner) 'Langtext'
-    $m = Wait-ButtonSend 'hitlP3' ''
-    $probs = @()
-    if (-not $m) { $probs += 'Karte nicht abgefangen' }
-    else {
-        $sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
-        $probs += Get-BodyProblems $sent 0 6000 @((Get-LocaleText 'career' 'de' 'career.plan_section.situation'))
-        $probs += Complete-CardTaps 'hitlP3' @($false)
-    }
-    Write-RepeatCase 'hitlP3' 'Plan-Text ohne Leerzeichen ueber dem Limit: vollstaendig' $probs
-} catch { Register-Abort $_ 'hitlP3' }
-
-# hitlP4: Sentinel-Domain und Career: echter Name statt interner Domain.
-try {
-    Test-ForceAbort 'hitlP4' $ForceAbortId
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection '__e2e_finance__' 'risk_profile' 'Probe hitlP4'
-    $m = Wait-ButtonSend 'hitlP4' ''
-    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames) + @(Complete-CardTaps 'hitlP4' @($false)) } else { @('Karte nicht abgefangen') }
-    Write-RepeatCase 'hitlP4' 'Sentinel-Domain: Name des echten Plans' $probs
-} catch { Register-Abort $_ 'hitlP4' }
-try {
-    Test-ForceAbort 'hitlP5' $ForceAbortId
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'career' 'situation' 'Probe hitlP5' ([string]$PairedUidOwner)
-    $m = Wait-ButtonSend 'hitlP5' ''
-    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'career' 'de' 'career.plan.name'), (Get-LocaleText 'career' 'de' 'career.plan_section.situation')) @('\(career\)')) + @(Complete-CardTaps 'hitlP5' @($false)) } else { @('Karte nicht abgefangen') }
-    Write-RepeatCase 'hitlP5' 'Career-Plan: eigene Namen' $probs
-} catch { Register-Abort $_ 'hitlP5' }
-
-# hitlP6: Abbrechen, derselbe Abschnitt mit neu formuliertem Text -> keine Karte; das Tool sagt dem Modell, dass es antworten soll.
-try {
-    Test-ForceAbort 'hitlP6' $ForceAbortId
-    Clear-MockTelegramRequests -Container $Container
-    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanSection 'finance' 'crossborder' 'Erste Fassung hitlP6a'
-    $probs = @(Complete-CardTaps 'hitlP6a' @($false))
-    $first = Wait-NewExec $saveWfId $toolBase -Finished
-    $firstMsg = ''; try { $firstMsg = [string]$first.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json.message } catch { }
-    if (-not $firstMsg) { $probs += 'erster Abbruch ohne Return cancelled' }
-    elseif ($firstMsg -match 'no new card') { $probs += "erster Abbruch meldet schon die Sperre: $firstMsg" }
-    Clear-MockTelegramRequests -Container $Container
-    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanSection 'finance' 'crossborder' 'Neue Fassung hitlP6b'
-    $probs += Get-RepeatBlockProblem (Wait-NewExec $gateWfId $gateBase) 'hitlP6b'
-    $second = Wait-NewExec $saveWfId $toolBase -Finished
-    $cancel = $null; try { $cancel = $second.data.resultData.runData.'Return cancelled'[0].data.main[0][0].json } catch { }
-    if (-not $cancel) { $probs += 'zweiter Aufruf ohne Return cancelled' }
-    elseif ($cancel.ok -ne $false -or $cancel.cancelled -ne $true -or ([string]$cancel.message) -notmatch 'no new card was sent') { $probs += "Rueckmeldung ans Modell: $($cancel | ConvertTo-Json -Compress)" }
-    Write-RepeatCase 'hitlP6' 'Plan-Karte: neu formulierter Text nach Abbrechen -> keine Karte, Rueckmeldung ans Modell' $probs
-} catch { Register-Abort $_ 'hitlP6' }
-
-# hitlP8: bleibt nach dem Entfernen der Markdown-Zeichen nichts uebrig, zeigt die Karte den Rohtext statt keinen Text.
-try {
-    Test-ForceAbort 'hitlP8' $ForceAbortId
-    $p8Section = Get-LocaleText 'finance' 'de' 'finance.plan_section.retirement_pension'
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'finance' 'retirement_pension' '***'
-    $m = Wait-ButtonSend $p8Section ''
-    $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('*') @()) + @(Complete-CardTaps $p8Section @($false)) } else { @('Karte nicht abgefangen') }
-    Write-RepeatCase 'hitlP8' 'Text nur aus Markdown-Zeichen: Karte zeigt ihn roh' $probs
-} catch { Register-Abort $_ 'hitlP8' }
-
 # hitlP7: Veroeffentlichen-Karte: Planname statt Kontextname, Aenderungen aus der DB (erster Plan); Schluessel = Domain (zweiter Aufruf = gleiche Karte).
 try {
     Test-ForceAbort 'hitlP7' $ForceAbortId
     $probs = @()
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection '__e2e_finance__' 'crossborder' 'Probe-Abschnitt hitlP7s'
-    $probs += Complete-CardTaps 'hitlP7s' @($true)
-    Clear-HitlPending -Container $Container
+    # Entwurf direkt ueber die DB-fn (kein Plan-Abschnitt-Tool mehr).
+    $seed = "SELECT agent.fn_advisor_save_section(jsonb_build_object('domain', '__e2e_finance__', 'chat_id', 'test_e2e_hitl', 'section_key', 'crossborder', 'topic', 'Probe-Thema', 'section_content', 'Probe-Abschnitt hitlP7s'));"
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $seed)
+    if ($r.Code -ne 0) { throw "Entwurf anlegen fehlgeschlagen: $($r.Output -join ' ')" }
     Clear-MockTelegramRequests -Container $Container
     $p7Name = Get-LocaleText 'finance' 'de' 'finance.plan.name'
     Send-PlanPublish '__e2e_finance__'
@@ -1132,62 +1023,6 @@ try {
         Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
     }
 }
-
-# hitlP9: Laengen-Gesetz finance (advisor.topic_max_chars): ohne Thema und mit zu langem Thementext lehnt der Probelauf ab, keine Karte.
-try {
-    Test-ForceAbort 'hitlP9' $ForceAbortId
-    $probs = @()
-    Clear-MockTelegramRequests -Container $Container
-    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanSection 'finance' 'debts_loans' 'Probe hitlP9a' $OwnerUnpaired ''
-    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'topic_required'
-    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanSection 'finance' 'debts_loans' (('W ' * 2000) + 'hitlP9b') $OwnerUnpaired 'Zu lang'
-    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'topic_too_long'
-    if (@(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and ([string]$_.body.text) -match 'hitlP9' }).Count) {
-        $probs += 'trotz Ablehnung eine Karte gesendet'
-    }
-    Write-RepeatCase 'hitlP9' 'Plan-Thema: ohne Thema oder zu lang -> keine Karte, Grund ans Modell' $probs
-} catch { Register-Abort $_ 'hitlP9' }
-
-# hitlP10: erstes Thema auf einem Abschnitt mit Alt-Gesamttext -> Notiz auf der Karte (laufende Entwuerfe vor den Themen).
-try {
-    Test-ForceAbort 'hitlP10' $ForceAbortId
-    $probs = @()
-    # Ohne doppelte Anfuehrungszeichen: PS 5.1 verstuemmelt sie in Argumenten nativer Programme.
-    $seed = "SELECT agent.fn_advisor_save_section(jsonb_build_object('domain', '__e2e_finance__', 'chat_id', 'test_e2e_hitl', 'section_key', 'household_basics', 'topic', 'Haushalt', 'section_content', 'Probe')); " +
-            "UPDATE agent.advisor_plans SET interview_state = interview_state || jsonb_build_object('debts_loans', jsonb_build_object('content', 'Alter Gesamttext hitlP10')) WHERE domain = '__e2e_finance__' AND status = 'draft';"
-    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $seed)
-    if ($r.Code -ne 0) { throw "Alt-Abschnitt anlegen fehlgeschlagen: $($r.Output -join ' ')" }
-    Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection '__e2e_finance__' 'debts_loans' 'Neues Thema hitlP10' $OwnerUnpaired 'Kredit'
-    $m = Wait-ButtonSend 'hitlP10' ''
-    if (-not $m) { $probs += 'Karte nicht abgefangen' }
-    else {
-        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'core' 'de' 'core.hitl.plan_legacy_replaced')) @('Alter Gesamttext')
-        $probs += Complete-CardTaps 'hitlP10' @($false)
-    }
-    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
-    Write-RepeatCase 'hitlP10' 'Plan-Thema auf Alt-Abschnitt: Notiz Ersetzt den bisherigen Gesamttext' $probs
-} catch {
-    Register-Abort $_ 'hitlP10' -Extra {
-        Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
-    }
-}
-
-# hitlP11: unbekannter Abschnitts-Key (Tippfehler) auf finance -> der Probelauf lehnt ab, keine Karte, die gueltigen Keys gehen ans Modell.
-try {
-    Test-ForceAbort 'hitlP11' $ForceAbortId
-    $probs = @()
-    Clear-MockTelegramRequests -Container $Container
-    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-    Send-PlanSection 'finance' 'risk_profil' 'Probe hitlP11' $OwnerUnpaired 'Risiko'
-    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'unknown_section_key'
-    if (@(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and ([string]$_.body.text) -match 'hitlP11' }).Count) {
-        $probs += 'trotz Ablehnung eine Karte gesendet'
-    }
-    Write-RepeatCase 'hitlP11' 'Plan-Abschnitt mit Tippfehler im Key: keine Karte, gueltige Keys ans Modell' $probs
-} catch { Register-Abort $_ 'hitlP11' }
 
 # --- Text ans Modell je Ausgang, ueber die echten Tools (Return cancelled). hitlT1/T2/T4/T5: tool_delete_monitor_trigger, einmal als
 # Owner, einmal als Mitglied im Vier-Augen-Weg. hitlT3: owner_only ohne Karte; das Fakten-Tool hat keinen Probelauf, der den Block vorher abfaengt.
@@ -1602,6 +1437,7 @@ Write-Host ""
 Write-Host ("-" * 64)
 Write-AbortedCases
 $color = if ($failed -eq 0) { 'Green' } else { 'Red' }
-Write-Host "$passed/$($cases.Count) Faelle bestanden, $failed fehlgeschlagen." -ForegroundColor $color
+$skipNote = if (-not $chatMode) { ', 6 Chat-Faelle (hitlC1-C6) uebersprungen: Link-Modus' } else { '' }
+Write-Host "$passed/$($cases.Count) Faelle bestanden, $failed fehlgeschlagen$skipNote." -ForegroundColor $color
 Write-Host ""
 exit $failed

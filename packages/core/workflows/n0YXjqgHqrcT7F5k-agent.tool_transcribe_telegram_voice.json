@@ -105,30 +105,6 @@
                                                                                                                                      "operation":  "equals",
                                                                                                                                      "type":  "string"
                                                                                                                                  },
-                                                                                                                    "rightValue":  "groq"
-                                                                                                                }
-                                                                                                            ],
-                                                                                             "options":  {
-                                                                                                             "caseSensitive":  true,
-                                                                                                             "leftValue":  "",
-                                                                                                             "typeValidation":  "strict",
-                                                                                                             "version":  3
-                                                                                                         }
-                                                                                         },
-                                                                          "outputKey":  "groq",
-                                                                          "renameOutput":  true
-                                                                      },
-                                                                      {
-                                                                          "conditions":  {
-                                                                                             "combinator":  "and",
-                                                                                             "conditions":  [
-                                                                                                                {
-                                                                                                                    "id":  "481b61f4-9292-5028-b8ab-208bf754a962",
-                                                                                                                    "leftValue":  "={{ $(\u0027Load core.config\u0027).item.json.transcription.provider }}",
-                                                                                                                    "operator":  {
-                                                                                                                                     "operation":  "equals",
-                                                                                                                                     "type":  "string"
-                                                                                                                                 },
                                                                                                                     "rightValue":  "google"
                                                                                                                 }
                                                                                                             ],
@@ -153,75 +129,6 @@
                                    ],
                       "id":  "404c678c-3a6f-5108-b8be-266d6870bbbf",
                       "name":  "Which transcription model"
-                  },
-                  {
-                      "parameters":  {
-                                         "assignments":  {
-                                                             "assignments":  [
-                                                                                 {
-                                                                                     "id":  "de73be8a-4e67-5a43-9da9-daf2359d3ccc",
-                                                                                     "name":  "Groq_API",
-                                                                                     "value":  "YOUR_GROQ_API_KEY",
-                                                                                     "type":  "string"
-                                                                                 },
-                                                                                 {
-                                                                                     "id":  "5671e44a-925a-517e-957a-55d78c8fc34f",
-                                                                                     "name":  "Telegram_access_token",
-                                                                                     "value":  "YOUR_TELEGRAM_BOT_ACCESS_TOKEN",
-                                                                                     "type":  "string"
-                                                                                 }
-                                                                             ]
-                                                         },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.set",
-                      "typeVersion":  3.4,
-                      "position":  [
-                                       280,
-                                       -160
-                                   ],
-                      "id":  "500aa79e-9b80-5c57-8ca2-1f7a87f2598b",
-                      "name":  "Groq credentials",
-                      "disabled":  true
-                  },
-                  {
-                      "disabled":  true,
-                      "parameters":  {
-                                         "method":  "POST",
-                                         "url":  "https://api.groq.com/openai/v1/audio/transcriptions",
-                                         "sendBody":  true,
-                                         "sendHeaders":  true,
-                                         "contentType":  "multipart-form-data",
-                                         "bodyParameters":  {
-                                                                "parameters":  [
-                                                                                   {
-                                                                                       "name":  "url",
-                                                                                       "value":  "=https://api.telegram.org/file/bot{{ $(\u0027Groq credentials\u0027).item.json.Telegram_access_token }}/{{ $(\u0027Get Telegram voice file\u0027).item.json.result.file_path }}"
-                                                                                   }
-                                                                               ]
-                                                            },
-                                         "headerParameters":  {
-                                                                  "parameters":  [
-                                                                                     {
-                                                                                         "name":  "Authorization",
-                                                                                         "value":  "=Bearer {{ $(\u0027Groq credentials\u0027).item.json.Groq_API }}"
-                                                                                     }
-                                                                                 ]
-                                                              },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "typeVersion":  4.4,
-                      "position":  [
-                                       500,
-                                       -160
-                                   ],
-                      "id":  "2a9a1661-488d-5d92-889f-08b624fdd6ef",
-                      "name":  "HTTP Request"
                   },
                   {
                       "parameters":  {
@@ -431,7 +338,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.tool_transcribe_telegram_voice (Baustein, KEIN LLM-Agent)**\n\nEingang file_id (Telegram voice ODER audio -- Orchestrator reicht message.voice.file_id bzw. message.audio.file_id durch). Load core.config -\u003e Get Telegram voice file (Download) -\u003e Which transcription model (core.config transcription.provider): google -\u003e Transcribe via Gemini (Gemini-Audio, binary, gemini-2.5-flash; der EINZIGE verbliebene Google-Sprachmodell-Aufruf, Google-Schlüssel optional) -\u003e Extract transcript (Gemini liefert den Text verschachtelt in content.parts[].text, Groq direkt als .text; getrimmt) -\u003e Transcript present? -\u003e Return { ok, text }; leeres Transkript (stille Aufnahme) -\u003e Transcript empty { ok:false, error:voice_empty } (kein Ausfall: der Orchestrator bittet um Wiederholung, keine Owner-Meldung). FEHLERWEG: Download-Fehler, Transkriptions-Fehler (z. B. kein Google-Schlüssel) und unbekannter Anbieter (Switch-Fallback) -\u003e Voice unavailable { ok:false, error:voice_unavailable, reason } (onError=continueErrorOutput, Download maxTries=1 wegen GH #10763) -\u003e der Orchestrator antwortet freundlich + Owner-Info 1x/Tag. Groq-Pfad (HTTP Request) ist DEAKTIVIERT (Platzhalter-Key, 1:1 erhalten). DUAL-USE: inline per executeWorkflow (Orchestrator) ODER als Agent-Tool bindbar (gleicher executeWorkflowTrigger-Eingang).",
+                                         "content":  "## Ablauf\n**agent.tool_transcribe_telegram_voice (Baustein, KEIN LLM-Agent)**\n\nEingang file_id (Telegram voice ODER audio -- Orchestrator reicht message.voice.file_id bzw. message.audio.file_id durch). Load core.config -\u003e Get Telegram voice file (Download) -\u003e Which transcription model (core.config transcription.provider): google -\u003e Transcribe via Gemini (Gemini-Audio, binary, gemini-2.5-flash; der EINZIGE verbliebene Google-Sprachmodell-Aufruf, Google-Schlüssel optional) -\u003e Extract transcript (Gemini liefert den Text verschachtelt in content.parts[].text; getrimmt) -\u003e Transcript present? -\u003e Return { ok, text }; leeres Transkript (stille Aufnahme) -\u003e Transcript empty { ok:false, error:voice_empty } (kein Ausfall: der Orchestrator bittet um Wiederholung, keine Owner-Meldung). FEHLERWEG: Download-Fehler, Transkriptions-Fehler (z. B. kein Google-Schlüssel) und unbekannter Anbieter (Switch-Fallback) -\u003e Voice unavailable { ok:false, error:voice_unavailable, reason } (onError=continueErrorOutput, Download maxTries=1 wegen GH #10763) -\u003e der Orchestrator antwortet freundlich + Owner-Info 1x/Tag. Einziger Anbieter ist google; jeder andere Wert in transcription.provider endet als unbekannter Anbieter. DUAL-USE: inline per executeWorkflow (Orchestrator) ODER als Agent-Tool bindbar (gleicher executeWorkflowTrigger-Eingang).",
                                          "height":  300,
                                          "width":  560,
                                          "color":  4
@@ -492,13 +399,6 @@
                                                                        [
                                                                            {
                                                                                "index":  0,
-                                                                               "node":  "Groq credentials",
-                                                                               "type":  "main"
-                                                                           }
-                                                                       ],
-                                                                       [
-                                                                           {
-                                                                               "index":  0,
                                                                                "node":  "Transcribe via Gemini",
                                                                                "type":  "main"
                                                                            }
@@ -512,28 +412,6 @@
                                                                        ]
                                                                    ]
                                                       },
-                        "Groq credentials":  {
-                                                 "main":  [
-                                                              [
-                                                                  {
-                                                                      "index":  0,
-                                                                      "node":  "HTTP Request",
-                                                                      "type":  "main"
-                                                                  }
-                                                              ]
-                                                          ]
-                                             },
-                        "HTTP Request":  {
-                                             "main":  [
-                                                          [
-                                                              {
-                                                                  "index":  0,
-                                                                  "node":  "Extract transcript",
-                                                                  "type":  "main"
-                                                              }
-                                                          ]
-                                                      ]
-                                         },
                         "Transcribe via Gemini":  {
                                                       "main":  [
                                                                    [

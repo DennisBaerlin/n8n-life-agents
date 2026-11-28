@@ -6,8 +6,8 @@
 # Telegram-file_id (Sprachnachricht oder Audiodatei) -> Download -> Transkription -> { ok, text }.
 # Dual-Use: der Orchestrator ruft ihn inline (executeWorkflow) auf dem voice/audio-Zweig; ein Agent
 # koennte ihn als Tool binden (toolWorkflow, $fromAI), derselbe executeWorkflowTrigger-Eingang.
-# Provider-Wahl runtime ueber core.config transcription.provider; der deaktivierte Groq-Pfad bleibt
-# erhalten, aktiv ist Google-Gemini-Audio, der einzige
+# Provider-Wahl runtime ueber core.config transcription.provider; einziger Anbieter ist
+# Google-Gemini-Audio, der einzige
 # Google-Sprachmodell-Aufruf (Claude versteht kein Audio; Google-Schluessel ist optional).
 # Fehler (kein Google-Schluessel / Credential fehlt, Download- oder API-Fehler, unbekannter Anbieter) enden nicht
 # im Absturz, sondern als Daten { ok:false, error:'voice_unavailable', reason } (Build-ToolError-Vertrag); der
@@ -22,8 +22,7 @@ function Build-TranscribeTelegramVoice {
     # Config laden -> transcription.provider fuer den Switch.
     $loadCfg = Build-CallWorkflow 'Load core.config' @(-420, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
-    # Telegram-Download (resource=file). Node-Name bewusst 'Get Telegram voice file' (der deaktivierte
-    # Groq-HTTP-Node referenziert ihn per Namen).
+    # Telegram-Download (resource=file).
     $getFile = [ordered]@{
         parameters = [ordered]@{
             resource = 'file'
@@ -42,42 +41,11 @@ function Build-TranscribeTelegramVoice {
         credentials = @{ telegramApi = $CRED_TELEGRAM }
     }
 
-    # Provider-Switch (string-equals: groq | google). Fallback [2] (unbekannter Anbieter)
+    # Provider-Switch: nur google. Jeder andere Wert faellt auf den Fallback [1] (unbekannter Anbieter)
     # -> Voice unavailable (unverdrahtet gaebe es stilles Nicht-Antworten).
     $switch = Build-Switch 'Which transcription model' @(40, 0) @(
-        @{ Left = "={{ `$('Load core.config').item.json.transcription.provider }}"; Type = 'string'; Op = 'equals'; Right = 'groq';   OutputKey = 'groq' }
         @{ Left = "={{ `$('Load core.config').item.json.transcription.provider }}"; Type = 'string'; Op = 'equals'; Right = 'google'; OutputKey = 'google' }
     )
-
-    # --- Groq-Pfad (deaktiviert) -------------------------------------------------
-    $groqCreds = Build-Set 'Groq credentials' @(280, -160) @(
-        ,@('Groq_API',              'YOUR_GROQ_API_KEY',              'string')
-        ,@('Telegram_access_token', 'YOUR_TELEGRAM_BOT_ACCESS_TOKEN', 'string')
-    )
-    $groqCreds['disabled'] = $true
-
-    $httpGroq = [ordered]@{
-        disabled = $true
-        parameters = [ordered]@{
-            method = 'POST'
-            url = 'https://api.groq.com/openai/v1/audio/transcriptions'
-            sendBody = $true
-            sendHeaders = $true
-            contentType = 'multipart-form-data'
-            bodyParameters = [ordered]@{ parameters = @(
-                ,[ordered]@{ name = 'url'; value = "=https://api.telegram.org/file/bot{{ `$('Groq credentials').item.json.Telegram_access_token }}/{{ `$('Get Telegram voice file').item.json.result.file_path }}" }
-            ) }
-            headerParameters = [ordered]@{ parameters = @(
-                ,[ordered]@{ name = 'Authorization'; value = "=Bearer {{ `$('Groq credentials').item.json.Groq_API }}" }
-            ) }
-            options = @{}
-        }
-        type = 'n8n-nodes-base.httpRequest'
-        typeVersion = 4.4
-        position = @(500, -160)
-        id = (New-Id)
-        name = 'HTTP Request'
-    }
 
     # --- Google-Pfad (aktiv): Gemini-Audio-Transkription (binary) ------------------------------
     $transcribe = [ordered]@{
@@ -98,7 +66,7 @@ function Build-TranscribeTelegramVoice {
 
     # Transkript aus der Anbieter-Antwort ziehen. Gemini (Simplify Output) liefert je Kandidat
     # { content: { parts: [{ text }] } }, kein Top-Level-.text (sonst ginge "null" als
-    # Chat-Nachricht raus). Groq (OpenAI-Form) liefert .text direkt. Ergebnis getrimmt, leer = kein Transkript.
+    # Chat-Nachricht raus); ein Top-Level-.text wird direkt genommen. Ergebnis getrimmt, leer = kein Transkript.
     $extract = Build-Set 'Extract transcript' @(500, 0) @(
         ,@('text', "={{ (typeof `$json.text === 'string' ? `$json.text : ((`$json.content && `$json.content.parts) || []).map(p => p.text || '').join('')).trim() }}", 'string')
     )
@@ -133,9 +101,9 @@ function Build-TranscribeTelegramVoice {
     $sticky = Build-Sticky 'Doc: Telegram-Voice-Transkription' @(-660, -300) `
         -Header 'Ablauf' `
         'agent.tool_transcribe_telegram_voice (Baustein, KEIN LLM-Agent)' `
-        'Eingang file_id (Telegram voice ODER audio -- Orchestrator reicht message.voice.file_id bzw. message.audio.file_id durch). Load core.config -> Get Telegram voice file (Download) -> Which transcription model (core.config transcription.provider): google -> Transcribe via Gemini (Gemini-Audio, binary, gemini-2.5-flash; der EINZIGE verbliebene Google-Sprachmodell-Aufruf, Google-Schlüssel optional) -> Extract transcript (Gemini liefert den Text verschachtelt in content.parts[].text, Groq direkt als .text; getrimmt) -> Transcript present? -> Return { ok, text }; leeres Transkript (stille Aufnahme) -> Transcript empty { ok:false, error:voice_empty } (kein Ausfall: der Orchestrator bittet um Wiederholung, keine Owner-Meldung). FEHLERWEG: Download-Fehler, Transkriptions-Fehler (z. B. kein Google-Schlüssel) und unbekannter Anbieter (Switch-Fallback) -> Voice unavailable { ok:false, error:voice_unavailable, reason } (onError=continueErrorOutput, Download maxTries=1 wegen GH #10763) -> der Orchestrator antwortet freundlich + Owner-Info 1x/Tag. Groq-Pfad (HTTP Request) ist DEAKTIVIERT (Platzhalter-Key, 1:1 erhalten). DUAL-USE: inline per executeWorkflow (Orchestrator) ODER als Agent-Tool bindbar (gleicher executeWorkflowTrigger-Eingang).' 300 560
+        'Eingang file_id (Telegram voice ODER audio -- Orchestrator reicht message.voice.file_id bzw. message.audio.file_id durch). Load core.config -> Get Telegram voice file (Download) -> Which transcription model (core.config transcription.provider): google -> Transcribe via Gemini (Gemini-Audio, binary, gemini-2.5-flash; der EINZIGE verbliebene Google-Sprachmodell-Aufruf, Google-Schlüssel optional) -> Extract transcript (Gemini liefert den Text verschachtelt in content.parts[].text; getrimmt) -> Transcript present? -> Return { ok, text }; leeres Transkript (stille Aufnahme) -> Transcript empty { ok:false, error:voice_empty } (kein Ausfall: der Orchestrator bittet um Wiederholung, keine Owner-Meldung). FEHLERWEG: Download-Fehler, Transkriptions-Fehler (z. B. kein Google-Schlüssel) und unbekannter Anbieter (Switch-Fallback) -> Voice unavailable { ok:false, error:voice_unavailable, reason } (onError=continueErrorOutput, Download maxTries=1 wegen GH #10763) -> der Orchestrator antwortet freundlich + Owner-Info 1x/Tag. Einziger Anbieter ist google; jeder andere Wert in transcription.provider endet als unbekannter Anbieter. DUAL-USE: inline per executeWorkflow (Orchestrator) ODER als Agent-Tool bindbar (gleicher executeWorkflowTrigger-Eingang).' 300 560
 
-    $nodes = @($trig, $loadCfg, $getFile, $switch, $groqCreds, $httpGroq, $transcribe, $extract, $hasText, $empty, $ret, $unavailable, $sticky)
+    $nodes = @($trig, $loadCfg, $getFile, $switch, $transcribe, $extract, $hasText, $empty, $ret, $unavailable, $sticky)
 
     $conns = [ordered]@{
         'Start'                      = @{ main = @( ,@( E 'Load core.config' ) ) }
@@ -145,12 +113,9 @@ function Build-TranscribeTelegramVoice {
             @( E 'Voice unavailable' )            # [1] Fehler-Ausgang (Download gescheitert)
         ) }
         'Which transcription model'  = @{ main = @(
-            @( E 'Groq credentials' ),       # [0] groq (deaktiviert)
-            @( E 'Transcribe via Gemini' ),  # [1] google (aktiv)
-            @( E 'Voice unavailable' )       # [2] Fallback: unbekannter Anbieter
+            @( E 'Transcribe via Gemini' ),  # [0] google
+            @( E 'Voice unavailable' )       # [1] Fallback: unbekannter Anbieter
         ) }
-        'Groq credentials'           = @{ main = @( ,@( E 'HTTP Request' ) ) }
-        'HTTP Request'               = @{ main = @( ,@( E 'Extract transcript' ) ) }
         'Transcribe via Gemini'      = @{ main = @(
             @( E 'Extract transcript' ),     # [0] Erfolg
             @( E 'Voice unavailable' )       # [1] Fehler-Ausgang (Credential/API)

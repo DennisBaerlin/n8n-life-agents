@@ -3276,7 +3276,8 @@
                                                                               "workflow_id":  "XoSQPFWjY70o6llv",
                                                                               "package":  "core",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "all"
+                                                                              "audience":  "all",
+                                                                              "empty_ok":  "false"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -5055,7 +5056,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Agent-Fehler: der Fehler-Ausgang setzt \u0027Agent error reply\u0027 (step_limit = Meldung \u0027Max iterations\u0027); die Agent-Daten sind dann unbrauchbar.\nlet limitHit = false;\ntry { limitHit = $(\u0027Agent error reply\u0027).first().json.step_limit === true; } catch (e) { limitHit = false; }\nlet a = {};\nif (!limitHit) { try { a = $(\u0027Orchestrator agent\u0027).first().json || {}; } catch (e) { a = {}; } }\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\n// Vorschlags-Marker (core.fn_get_next_step): eine Zeile NEXT_STEP wird VOR jedem Parsen entfernt; ein Knopf darf nur\n// kommen, wenn sie die letzte Zeile einer Quelle mit Marker-Recht war (Router ohne Werkzeug, Agenten aus MARK_AGENTS).\nconst MARK_RE = /^\\s*NEXT_STEP\\s*$/i;\nconst MARK_AGENTS = [\u0027guide\u0027];\nconst stripMarker = (s) =\u003e {\n  const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027);\n  let last = ls.length - 1;\n  while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--;\n  return { text: ls.filter((l) =\u003e !MARK_RE.test(l)).join(\u0027\\n\u0027).trim(), marked: last \u003e= 0 \u0026\u0026 MARK_RE.test(ls[last]) };\n};\nconst markRight = (tool) =\u003e { const t = String(tool || \u0027\u0027).replace(/[^a-z0-9]/gi, \u0027\u0027).toLowerCase(); return MARK_AGENTS.some((m) =\u003e t.endsWith(\u0027agent\u0027 + m)); };\n// Antwort-Knoepfe (offene Frage, Art choice): die letzte Zeile \u0027CHOICES a | b | c\u0027 eines Beraters wird hier entfernt (jede\n// CHOICES-Zeile, auch an anderer Stelle); Knoepfe nur, wenn sie die letzte Zeile der letzten Quelle war und die Quelle ein\n// Berater ist. Pruefen (2-3 Optionen, Laenge, Links) und anlegen macht core.fn_create_choice_prompt.\nconst CHOICE_AGENTS = [\u0027careeradvisor\u0027, \u0027estateadvisor\u0027, \u0027financeadvisor\u0027];\nconst choiceRight = (tool) =\u003e { const t = String(tool || \u0027\u0027).replace(/[^a-z0-9]/gi, \u0027\u0027).toLowerCase(); return CHOICE_AGENTS.some((m) =\u003e t.endsWith(\u0027agent\u0027 + m)); };\nconst stripChoices = ((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; });\nconst agentOf = (tool) =\u003e \u0027agent.\u0027 + String(tool || \u0027\u0027).replace(/^Call_+agent_/, \u0027\u0027).replace(/_+$/, \u0027\u0027);\nconst rawFull = String(a.output || \u0027\u0027).trim();\nconst rawM = stripMarker(rawFull);\nconst raw = stripChoices(rawM.text).text;\nconst nl = raw.indexOf(\u0027\\n\u0027);\nconst firstLine = (nl \u003c 0 ? raw : raw.slice(0, nl)).trim();\nconst afterFirst = (nl \u003c 0 ? \u0027\u0027 : raw.slice(nl + 1)).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\n// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.\nconst MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;\nconst words = firstLine.replace(/[^A-Za-z]+/g, \u0027 \u0027).trim().split(\u0027 \u0027).filter(Boolean);\nconst signalLine = signal !== \u0027\u0027 \u0026\u0026 words.length \u003e= 1 \u0026\u0026 words[0].toUpperCase() === signal \u0026\u0026\n  (words.length === 1 || (words.length === 2 \u0026\u0026 MOOD_RE.test(words[1])));\nconst isSignal = signalLine \u0026\u0026 afterFirst === \u0027\u0027;\nconst isReact = !steps.length \u0026\u0026 /^\\W*REACT\\b/i.test(firstLine);\n// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.\nconst mm = firstLine.match(/\\b(LOVE|CHEER|RELIEF|FUN)\\b/i);\nconst mood = (mm \u0026\u0026 (isReact || (signalLine \u0026\u0026 signal === \u0027FRAME\u0027))) ? mm[1].toUpperCase() : \u0027\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nconst markedBy = new Map();\nconst choicesBy = new Map();\n// Ein Berater, der eine Karte vorgeschlagen hat (tool_propose_plan_topics), schreibt nichts: leere Ausgabe als gueltiges JSON.\n// Dann kein Ersatztext hier; die Karte sendet core.sub_send_chat_prompt am Laufende (fehlt sie dort, kommt der Hinweis).\nlet quietAdvisor = false;\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const sm = stripMarker(textOf(st \u0026\u0026 st.observation));\n  const ch = stripChoices(sm.text);\n  if (!ch.text) {\n    let o = st \u0026\u0026 st.observation;\n    if (typeof o === \u0027string\u0027) { try { o = JSON.parse(o.trim() || \u0027null\u0027); } catch (e) { o = null; } }\n    if (o !== null \u0026\u0026 typeof o === \u0027object\u0027 \u0026\u0026 choiceRight(tool)) quietAdvisor = true;\n    continue;\n  }\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, ch.text);\n  markedBy.set(tool, sm.marked \u0026\u0026 markRight(tool));\n  choicesBy.set(tool, choiceRight(tool) ? ch.options : []);\n}\nconst parts = Array.from(byTool.values());\nconst lastTool = Array.from(byTool.keys()).pop();\nlet body;\nlet reply_ok;\nlet await_prompt = false;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  reply_ok = true;\n} else if (quietAdvisor) {\n  body = \u0027\u0027;\n  reply_ok = true;\n  await_prompt = true;\n} else if (isReact) {\n  // \u0027REACT \u003cMOOD\u003e\u0027 allein -\u003e leerer Body (die Reaktion ist die Antwort); mit Text -\u003e nur der Text.\n  body = afterFirst;\n  reply_ok = body !== \u0027\u0027 || mood !== \u0027\u0027;\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n  reply_ok = true;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = limitHit ? (T[\u0027core.orch.step_limit\u0027] || \u0027core.orch.step_limit\u0027) : (T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027);\n  reply_ok = false;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch\n// \u0027REACT ...\u0027: so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// Ohne Werkzeug mit entferntem Marker: ins Gedaechtnis die bereinigte Fassung (sonst haengte der Router ihn kuenftig ueberall an).\nconst memory_content = (!steps.length \u0026\u0026 rawFull !== raw) ? raw : \u0027\u0027;\n// Knopf nur am letzten Teil einer Quelle mit Marker-Recht bzw. am eigenen Router-Satz; nie am festen Hinweis.\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nconst choices = (reply_ok \u0026\u0026 body !== \u0027\u0027 \u0026\u0026 body.length \u003c= 3800 \u0026\u0026 parts.length \u0026\u0026 lastTool !== undefined) ? (choicesBy.get(lastTool) || []) : [];\nconst choice_agent = choices.length ? agentOf(lastTool) : \u0027\u0027;\nconst next_marker = !choices.length \u0026\u0026 reply_ok \u0026\u0026 body !== \u0027\u0027 \u0026\u0026 (parts.length ? markedBy.get(lastTool) === true : (!steps.length \u0026\u0026 rawM.marked));\n// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie Sticker/Reaktion davor.\nreturn [{ json: { body, memory_signal, memory_content, next_marker, raw_output: String(a.output ?? \u0027\u0027), signal, mood, tool_called: steps.length \u003e 0,\n  reply_ok, react_only: isReact \u0026\u0026 body === \u0027\u0027 \u0026\u0026 mood !== \u0027\u0027, has_text: body !== \u0027\u0027, has_parts: parts.length \u003e 0, await_prompt, choices, choice_agent } }];"
+                                         "jsCode":  "// Agent-Fehler: der Fehler-Ausgang setzt \u0027Agent error reply\u0027 (step_limit = Meldung \u0027Max iterations\u0027); die Agent-Daten sind dann unbrauchbar.\nlet limitHit = false;\ntry { limitHit = $(\u0027Agent error reply\u0027).first().json.step_limit === true; } catch (e) { limitHit = false; }\nlet a = {};\nif (!limitHit) { try { a = $(\u0027Orchestrator agent\u0027).first().json || {}; } catch (e) { a = {}; } }\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\n// Vorschlags-Marker (core.fn_get_next_step): eine Zeile NEXT_STEP wird VOR jedem Parsen entfernt; ein Knopf darf nur\n// kommen, wenn sie die letzte Zeile einer Quelle mit Marker-Recht war (Router ohne Werkzeug, Agenten aus MARK_AGENTS).\nconst MARK_RE = /^\\s*NEXT_STEP\\s*$/i;\nconst MARK_AGENTS = [\u0027guide\u0027];\nconst stripMarker = (s) =\u003e {\n  const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027);\n  let last = ls.length - 1;\n  while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--;\n  return { text: ls.filter((l) =\u003e !MARK_RE.test(l)).join(\u0027\\n\u0027).trim(), marked: last \u003e= 0 \u0026\u0026 MARK_RE.test(ls[last]) };\n};\nconst markRight = (tool) =\u003e { const t = String(tool || \u0027\u0027).replace(/[^a-z0-9]/gi, \u0027\u0027).toLowerCase(); return MARK_AGENTS.some((m) =\u003e t.endsWith(\u0027agent\u0027 + m)); };\n// Antwort-Knoepfe (offene Frage, Art choice): die letzte Zeile \u0027CHOICES a | b | c\u0027 eines Beraters wird hier entfernt (jede\n// CHOICES-Zeile, auch an anderer Stelle); Knoepfe nur, wenn sie die letzte Zeile der letzten Quelle war und die Quelle ein\n// Berater ist. Pruefen (2-3 Optionen, Laenge, Links) und anlegen macht core.fn_create_choice_prompt.\nconst CHOICE_AGENTS = [\u0027careeradvisor\u0027, \u0027estateadvisor\u0027, \u0027financeadvisor\u0027];\nconst choiceRight = (tool) =\u003e { const t = String(tool || \u0027\u0027).replace(/[^a-z0-9]/gi, \u0027\u0027).toLowerCase(); return CHOICE_AGENTS.some((m) =\u003e t.endsWith(\u0027agent\u0027 + m)); };\nconst stripChoices = ((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; });\nconst agentOf = (tool) =\u003e \u0027agent.\u0027 + String(tool || \u0027\u0027).replace(/^Call_+agent_/, \u0027\u0027).replace(/_+$/, \u0027\u0027);\nconst rawFull = String(a.output || \u0027\u0027).trim();\nconst rawM = stripMarker(rawFull.split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));   // HANDOVER gilt nur Spezialisten, nie roh senden\nconst raw = stripChoices(rawM.text).text;\nconst nl = raw.indexOf(\u0027\\n\u0027);\nconst firstLine = (nl \u003c 0 ? raw : raw.slice(0, nl)).trim();\nconst afterFirst = (nl \u003c 0 ? \u0027\u0027 : raw.slice(nl + 1)).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\n// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.\nconst MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;\nconst words = firstLine.replace(/[^A-Za-z]+/g, \u0027 \u0027).trim().split(\u0027 \u0027).filter(Boolean);\nconst signalLine = signal !== \u0027\u0027 \u0026\u0026 words.length \u003e= 1 \u0026\u0026 words[0].toUpperCase() === signal \u0026\u0026\n  (words.length === 1 || (words.length === 2 \u0026\u0026 MOOD_RE.test(words[1])));\nconst isSignal = signalLine \u0026\u0026 afterFirst === \u0027\u0027;\nconst isReact = !steps.length \u0026\u0026 /^\\W*REACT\\b/i.test(firstLine);\n// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.\nconst mm = firstLine.match(/\\b(LOVE|CHEER|RELIEF|FUN)\\b/i);\nconst mood = (mm \u0026\u0026 (isReact || (signalLine \u0026\u0026 signal === \u0027FRAME\u0027))) ? mm[1].toUpperCase() : \u0027\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nconst markedBy = new Map();\nconst choicesBy = new Map();\n// Abgabe: endet ein Spezialist mit der Zeile HANDOVER (gehoert zu einem anderen, global_instructions), faellt sein Teil weg, sobald\n// ein anderer Spezialist in diesem Lauf geantwortet hat; allein bleibt er (ohne die Zeile) die Antwort.\nconst HAND_RE = /^\\s*HANDOVER\\s*$/i;\nconst handBy = new Map();\n// Ein Berater, der eine Karte vorgeschlagen hat (tool_propose_plan_topics), schreibt nichts: leere Ausgabe als gueltiges JSON.\n// Dann kein Ersatztext hier; die Karte sendet core.sub_send_chat_prompt am Laufende (fehlt sie dort, kommt der Hinweis).\nlet quietAdvisor = false;\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const rawText = textOf(st \u0026\u0026 st.observation);\n  const hand = rawText.split(\u0027\\n\u0027).some((l) =\u003e HAND_RE.test(l));\n  const sm = stripMarker(rawText.split(\u0027\\n\u0027).filter((l) =\u003e !HAND_RE.test(l)).join(\u0027\\n\u0027));\n  const ch = stripChoices(sm.text);\n  if (!ch.text) {\n    let o = st \u0026\u0026 st.observation;\n    if (typeof o === \u0027string\u0027) { try { o = JSON.parse(o.trim() || \u0027null\u0027); } catch (e) { o = null; } }\n    // Nur eine leere Antwort ohne Fehler (jedes Item mit output, ohne error/ok:false) gilt als vorgeschlagene Karte; ein\n    // Fehler-Objekt nimmt den Fehlerweg (fester Hinweis, kein Sticker, keine Reaktion).\n    const items = (o !== null \u0026\u0026 typeof o === \u0027object\u0027) ? (Array.isArray(o) ? o : [o]) : [];\n    if (items.length \u0026\u0026 choiceRight(tool) \u0026\u0026 items.every((x) =\u003e x \u0026\u0026 typeof x === \u0027object\u0027 \u0026\u0026 typeof x.output === \u0027string\u0027 \u0026\u0026 !x.error \u0026\u0026 x.ok !== false)) quietAdvisor = true;\n    continue;\n  }\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, ch.text);\n  markedBy.set(tool, sm.marked \u0026\u0026 markRight(tool));\n  choicesBy.set(tool, choiceRight(tool) ? ch.options : []);\n  handBy.set(tool, hand);\n}\nif (Array.from(byTool.keys()).some((t) =\u003e !handBy.get(t))) {\n  for (const t of Array.from(byTool.keys())) { if (handBy.get(t)) { byTool.delete(t); markedBy.delete(t); choicesBy.delete(t); } }\n}\nconst parts = Array.from(byTool.values());\nconst lastTool = Array.from(byTool.keys()).pop();\nlet body;\nlet reply_ok;\nlet await_prompt = false;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  reply_ok = true;\n} else if (quietAdvisor) {\n  body = \u0027\u0027;\n  reply_ok = true;\n  await_prompt = true;\n} else if (isReact) {\n  // \u0027REACT \u003cMOOD\u003e\u0027 allein -\u003e leerer Body (die Reaktion ist die Antwort); mit Text -\u003e nur der Text.\n  body = afterFirst;\n  reply_ok = body !== \u0027\u0027 || mood !== \u0027\u0027;\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n  reply_ok = true;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = limitHit ? (T[\u0027core.orch.step_limit\u0027] || \u0027core.orch.step_limit\u0027) : (T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027);\n  reply_ok = false;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch\n// \u0027REACT ...\u0027: so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// Ohne Werkzeug mit entferntem Marker: ins Gedaechtnis die bereinigte Fassung (sonst haengte der Router ihn kuenftig ueberall an).\nconst memory_content = (!steps.length \u0026\u0026 rawFull !== raw) ? raw : \u0027\u0027;\n// Knopf nur am letzten Teil einer Quelle mit Marker-Recht bzw. am eigenen Router-Satz; nie am festen Hinweis.\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nconst choices = (reply_ok \u0026\u0026 body !== \u0027\u0027 \u0026\u0026 body.length \u003c= 3800 \u0026\u0026 parts.length \u0026\u0026 lastTool !== undefined) ? (choicesBy.get(lastTool) || []) : [];\nconst choice_agent = choices.length ? agentOf(lastTool) : \u0027\u0027;\nconst next_marker = !choices.length \u0026\u0026 reply_ok \u0026\u0026 body !== \u0027\u0027 \u0026\u0026 (parts.length ? markedBy.get(lastTool) === true : (!steps.length \u0026\u0026 rawM.marked));\n// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie Sticker/Reaktion davor.\nreturn [{ json: { body, memory_signal, memory_content, next_marker, raw_output: String(a.output ?? \u0027\u0027), signal, mood, tool_called: steps.length \u003e 0,\n  reply_ok, react_only: isReact \u0026\u0026 body === \u0027\u0027 \u0026\u0026 mood !== \u0027\u0027, has_text: body !== \u0027\u0027, has_parts: parts.length \u003e 0, await_prompt, choices, choice_agent } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -5071,7 +5072,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "WITH s AS (SELECT agent.fn_claim_persona_sticker($1::jsonb) AS r) SELECT s.r AS sticker_r, agent.fn_claim_reaction($1::jsonb || jsonb_build_object(\u0027event\u0027, \u0027reply\u0027, \u0027sticker\u0027, COALESCE(s.r-\u003e\u003e\u0027sticker\u0027, \u0027\u0027))) AS reaction_r, agent.fn_claim_persona_frame($1::jsonb) AS frame_r FROM s;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, text: String($(\u0027Trigger normalize\u0027).first().json.message.text || \u0027\u0027), tool_called: $(\u0027Relay compose\u0027).first().json.tool_called === true, has_file: !!($(\u0027Trigger normalize\u0027).first().json.message.photo || $(\u0027Trigger normalize\u0027).first().json.message.document), signal: String($(\u0027Relay compose\u0027).first().json.signal || \u0027\u0027), mood: String($(\u0027Relay compose\u0027).first().json.mood || \u0027\u0027), react_only: $(\u0027Relay compose\u0027).first().json.react_only === true, has_text: $(\u0027Relay final\u0027).first().json.has_text === true, has_parts: $(\u0027Relay compose\u0027).first().json.has_parts === true \u0026\u0026 !$(\u0027Relay final\u0027).first().json.choice, reply_ok: $(\u0027Relay compose\u0027).first().json.reply_ok === true, run_started_at: String($(\u0027Resolve sender\u0027).first().json.run_at || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, text: String($(\u0027Trigger normalize\u0027).first().json.message.text || \u0027\u0027), tool_called: $(\u0027Relay compose\u0027).first().json.tool_called === true, has_file: !!($(\u0027Trigger normalize\u0027).first().json.message.photo || $(\u0027Trigger normalize\u0027).first().json.message.document), signal: String($(\u0027Relay compose\u0027).first().json.signal || \u0027\u0027), mood: String($(\u0027Relay compose\u0027).first().json.mood || \u0027\u0027), react_only: $(\u0027Relay compose\u0027).first().json.react_only === true, has_text: $(\u0027Relay compose\u0027).first().json.has_text === true, has_parts: $(\u0027Relay compose\u0027).first().json.has_parts === true \u0026\u0026 !$(\u0027Relay final\u0027).first().json.choice, reply_ok: $(\u0027Relay compose\u0027).first().json.reply_ok === true, run_started_at: String($(\u0027Resolve sender\u0027).first().json.run_at || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -5951,6 +5952,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "empty_ok",
+                                                                                   "id":  "empty_ok",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -5960,7 +5971,8 @@
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
                                                                               "thinking":  "",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
                                                                           }
                                                             }
                                      },
@@ -6060,6 +6072,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "empty_ok",
+                                                                                   "id":  "empty_ok",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -6069,7 +6091,8 @@
                                                                               "workflow_id":  "8YCe205qQg7vzTEh",
                                                                               "package":  "finance",
                                                                               "thinking":  "",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           }
                                                             }
                                      },
@@ -6299,6 +6322,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "empty_ok",
+                                                                                   "id":  "empty_ok",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -6308,7 +6341,8 @@
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
                                                                               "thinking":  "",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           }
                                                             }
                                      },
@@ -6408,6 +6442,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "empty_ok",
+                                                                                   "id":  "empty_ok",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -6417,7 +6461,8 @@
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
                                                                               "thinking":  "",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           }
                                                             }
                                      },
@@ -6517,6 +6562,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "empty_ok",
+                                                                                   "id":  "empty_ok",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -6526,7 +6581,8 @@
                                                                               "workflow_id":  "2qHMZcgET92ljlzG",
                                                                               "package":  "paperless",
                                                                               "thinking":  "",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
                                                                           }
                                                             }
                                      },
@@ -6557,7 +6613,8 @@
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6611,7 +6668,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6682,7 +6739,8 @@
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6736,7 +6794,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding estate\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding estate\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6807,7 +6865,8 @@
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6861,7 +6920,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7163,7 +7222,7 @@
                                                                 "value":  {
                                                                               "chat_id":  "={{ String((($(\u0027Trigger normalize\u0027).first().json.message || ($(\u0027Trigger normalize\u0027).first().json.callback_query || {}).message || {}).chat || {}).id || \u0027\u0027) }}",
                                                                               "footer_key":  "",
-                                                                              "skip":  "={{ String(($(\u0027Relay plan finance send choice\u0027).isExecuted || $(\u0027Relay plan career send choice\u0027).isExecuted || $(\u0027Relay prompt career send choice\u0027).isExecuted || $(\u0027Relay prompt estate send choice\u0027).isExecuted || $(\u0027Relay prompt finance send choice\u0027).isExecuted || ($(\u0027Relay plan finance choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay plan finance choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay plan career choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay plan career choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt career choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt career choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt estate choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt estate choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt finance choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt finance choices\u0027).first().json.text || \u0027\u0027)))) || ($(\u0027Relay compose\u0027).isExecuted \u0026\u0026 ($(\u0027Relay compose\u0027).first().json.react_only === true || /[?？]\\s*$/.test(String($(\u0027Relay final\u0027).first().json.body || \u0027\u0027)))) || (($(\u0027Send due prompt\u0027).first().json || {}).sent === true)) }}"
+                                                                              "skip":  "={{ String((($(\u0027Relay plan finance send choice\u0027).isExecuted \u0026\u0026 (($(\u0027Relay plan finance send choice\u0027).first().json) || {}).sent === true) || ($(\u0027Relay plan career send choice\u0027).isExecuted \u0026\u0026 (($(\u0027Relay plan career send choice\u0027).first().json) || {}).sent === true) || ($(\u0027Relay prompt career send choice\u0027).isExecuted \u0026\u0026 (($(\u0027Relay prompt career send choice\u0027).first().json) || {}).sent === true) || ($(\u0027Relay prompt estate send choice\u0027).isExecuted \u0026\u0026 (($(\u0027Relay prompt estate send choice\u0027).first().json) || {}).sent === true) || ($(\u0027Relay prompt finance send choice\u0027).isExecuted \u0026\u0026 (($(\u0027Relay prompt finance send choice\u0027).first().json) || {}).sent === true) || ($(\u0027Relay plan finance choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay plan finance choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay plan career choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay plan career choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt career choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt career choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt estate choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt estate choices\u0027).first().json.text || \u0027\u0027))) || ($(\u0027Relay prompt finance choices\u0027).isExecuted \u0026\u0026 /[?？]\\s*$/.test(String($(\u0027Relay prompt finance choices\u0027).first().json.text || \u0027\u0027)))) || ($(\u0027Relay compose\u0027).isExecuted \u0026\u0026 ($(\u0027Relay compose\u0027).first().json.react_only === true || /[?？]\\s*$/.test(String($(\u0027Relay final\u0027).first().json.body || \u0027\u0027)))) || (($(\u0027Send due prompt\u0027).first().json || {}).sent === true)) }}"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7376,7 +7435,8 @@
                                                                               "workflow_id":  "8YCe205qQg7vzTEh",
                                                                               "package":  "finance",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7402,7 +7462,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run plan finance\u0027).first().json.output || \u0027\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
+                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run plan finance\u0027).first().json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7518,7 +7578,41 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay plan finance choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "09c6336a-ecec-51e3-af04-620a5dae3382",
+                                                                                   "leftValue":  "={{ (($(\u0027Relay plan finance send choice\u0027).first().json) || {}).sent === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       260,
+                                       2560
+                                   ],
+                      "id":  "f704c9eb-df7f-596b-a0d6-60d8bb51ab44",
+                      "name":  "Relay plan finance choice sent?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay plan finance choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7617,7 +7711,8 @@
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7643,7 +7738,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run plan career\u0027).first().json.output || \u0027\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
+                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run plan career\u0027).first().json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7759,7 +7854,41 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay plan career choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "2bd77ffd-827d-5c3a-885e-e136102dd5b7",
+                                                                                   "leftValue":  "={{ (($(\u0027Relay plan career send choice\u0027).first().json) || {}).sent === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       260,
+                                       2720
+                                   ],
+                      "id":  "e9da80b8-27c1-5a6f-ac05-7420784ce450",
+                      "name":  "Relay plan career choice sent?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay plan career choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7858,7 +7987,8 @@
                                                                               "workflow_id":  "QUUjeLfcepLQwpPS",
                                                                               "package":  "core",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7884,7 +8014,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run plan general\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run plan general\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8295,7 +8425,8 @@
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -8321,7 +8452,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt career\u0027).first().json.output || \u0027\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
+                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt career\u0027).first().json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8437,7 +8568,41 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay prompt career choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "f17b698b-1205-5709-83ad-cfa4b3d6082a",
+                                                                                   "leftValue":  "={{ (($(\u0027Relay prompt career send choice\u0027).first().json) || {}).sent === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1360,
+                                       1960
+                                   ],
+                      "id":  "b17c1cf0-380e-5d73-b0c8-ec9365f09dc4",
+                      "name":  "Relay prompt career choice sent?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay prompt career choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8508,7 +8673,8 @@
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -8534,7 +8700,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt estate\u0027).first().json.output || \u0027\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
+                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt estate\u0027).first().json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8650,7 +8816,41 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay prompt estate choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7e7f8550-2d45-5eb5-b38a-fce181c77e7c",
+                                                                                   "leftValue":  "={{ (($(\u0027Relay prompt estate send choice\u0027).first().json) || {}).sent === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1360,
+                                       2200
+                                   ],
+                      "id":  "8507221c-4c2b-528c-8837-7dce96568501",
+                      "name":  "Relay prompt estate choice sent?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay prompt estate choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8721,7 +8921,8 @@
                                                                               "workflow_id":  "8YCe205qQg7vzTEh",
                                                                               "package":  "finance",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -8747,7 +8948,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt finance\u0027).first().json.output || \u0027\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
+                                         "jsCode":  "const r = (((s) =\u003e { const RE = /^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/; const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027).map((l) =\u003e l.replace(/\\r$/, \u0027\u0027)); let last = ls.length - 1; while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--; const m = last \u003e= 0 ? RE.exec(ls[last]) : null; const o = m ? m[1].split(\u0027|\u0027).map((x) =\u003e x.trim()).filter(Boolean) : []; const ok = o.length \u003e= 2 \u0026\u0026 o.length \u003c= 3 \u0026\u0026 o.every((x) =\u003e x.length \u003c= 24 \u0026\u0026 !/https?:|:\\/\\/|t\\.me\\//i.test(x)); return { text: ls.filter((l) =\u003e !RE.test(l)).join(\u0027\\n\u0027).trim(), options: ok ? o : [] }; }))(String($(\u0027Run prompt finance\u0027).first().json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027));\n// Knoepfe nur an einer Antwort, die in eine Telegram-Nachricht passt (laengere gehen ohne Knoepfe in Teilen raus).\nreturn [{ json: { text: r.text, options: (r.text \u0026\u0026 r.text.length \u003c= 3800) ? r.options : [] } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8863,7 +9064,41 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay prompt finance choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "14033fa4-7fd0-53fd-9cbf-98114186927b",
+                                                                                   "leftValue":  "={{ (($(\u0027Relay prompt finance send choice\u0027).first().json) || {}).sent === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1360,
+                                       2440
+                                   ],
+                      "id":  "13051567-cb01-5172-af06-fb9e46676fc5",
+                      "name":  "Relay prompt finance choice sent?"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Relay prompt finance choices\u0027).first().json.text) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8918,7 +9153,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Offene Frage: Tipp auf q:\u003cid\u003e:\u003ckey\u003e**\n\nKarten der offenen Frage (agent.chat_prompts) tragen Knöpfe q:\u003cid\u003e:\u003ckey\u003e. Der Tipp läuft wie jeder Registry-Knopf über Dispatch callback (core.fn_answer_chat_prompt: Absender, Sperre einer offenen Bestätigungskarte, veraltet, speichern über die answer_fn der Art) und Answer dispatched cb (Toast; ohne Toast der DB keiner). Das allgemeine Edit tapped message lässt q: aus. Prompt route? -\u003e Prompt card (core.sub_send_chat_prompt): getippte Nachricht ändern (Text samt Formatierung aus der Telegram-Nachricht, Zusatz wie „✓ Übernommen“, Knöpfe weg; auch beim veralteten Tipp), bei force_reply die Rückfrage „Was soll anders sein?“ mit Eingabefeld, bei then next die nächste Karte des Stapels ohne Modell-Lauf. Bei then continue danach Prompt agent? -\u003e Run prompt \u003cdomain\u003e (Berater aus continue.agent über agent.sub_dispatch_agent; Text der Option wie eine Nutzer-Nachricht bzw. fester Auftrag) -\u003e Relay prompt \u003cdomain\u003e (CHOICES wie im Hauptweg) -\u003e Folge-Bindung -\u003e Finish card lock -\u003e Send due prompt. Text statt Tipp: der Router schickt ihn an open_prompt_agent (Router-Flag aus core.fn_advisor_pins), der Agent behandelt ihn als Antwort oder Änderung. Kein Ablauf, keine Sperre: eine liegende Karte ist „später“. Eine schon offene Karte kommt nach jeder Antwort erneut, damit die offene Frage unten steht.",
+                                         "content":  "## DB-Automatik\n**Offene Frage: Tipp auf q:\u003cid\u003e:\u003ckey\u003e**\n\nKarten der offenen Frage (agent.chat_prompts) tragen Knöpfe q:\u003cid\u003e:\u003ckey\u003e. Der Tipp läuft wie jeder Registry-Knopf über Dispatch callback (core.fn_answer_chat_prompt: Absender, Sperre einer offenen Bestätigungskarte, veraltet, speichern über die answer_fn der Art) und Answer dispatched cb (Toast; ohne Toast der DB keiner). Das allgemeine Edit tapped message lässt q: aus. Prompt route? -\u003e Prompt card (core.sub_send_chat_prompt): getippte Nachricht ändern (Text samt Formatierung aus der Telegram-Nachricht, Zusatz wie „✓ Übernommen“, Knöpfe weg; auch beim veralteten Tipp), bei force_reply die Rückfrage „Was soll anders sein?“ mit Eingabefeld, bei then next die nächste Karte des Stapels ohne Modell-Lauf. Bei then continue danach Prompt agent? -\u003e Run prompt \u003cdomain\u003e (Berater aus continue.agent über agent.sub_dispatch_agent; Text der Option wie eine Nutzer-Nachricht bzw. fester Auftrag) -\u003e Relay prompt \u003cdomain\u003e (CHOICES wie im Hauptweg; lehnt Telegram den Send mit Knöpfen ab, geht der Text ohne Knöpfe über die Relay-Kette) -\u003e Folge-Bindung -\u003e Finish card lock -\u003e Send due prompt. Text statt Tipp: der Router schickt ihn an open_prompt_agent (Router-Flag aus core.fn_advisor_pins), der Agent behandelt ihn als Antwort oder Änderung. Kein Ablauf, keine Sperre: eine liegende Karte ist „später“. Eine schon offene Karte kommt nach jeder Antwort erneut, damit die offene Frage unten steht.",
                                          "height":  360,
                                          "width":  500,
                                          "color":  4
@@ -9055,7 +9290,8 @@
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -9168,7 +9404,54 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run handoff finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "jwQ5OI18SVibbhbv",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/jwQ5OI18SVibbhbv",
+                                                            "cachedResultName":  "core.sub_handoff_next"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).first().json.callback_query.message.chat.id) }}",
+                                                                              "task_ids":  "={{ JSON.stringify((($(\u0027Dispatch callback\u0027).item.json.result || {})).task_ids || []) }}",
+                                                                              "tasks":  "={{ JSON.stringify((($(\u0027Dispatch callback\u0027).item.json.result || {})).tasks || []) }}",
+                                                                              "last_output":  "={{ String($(\u0027Run handoff finance\u0027).first().json.output || \u0027\u0027) }}",
+                                                                              "task_prefix":  "={{ \u0027Handoff mode. The user tapped [Enter now] on the list of entries agreed in the plan conversation. Work through the entries below ONE per turn, in the given order, as your rules for agreed plan entries say: an entry with wanted is called exactly as delivered, without a question; an entry the system cannot enter like this yet goes to tool_defer_handoff_task; skipping keeps an entry open (reason skipped), reason dropped only when the user says it shall not be entered at all. Do not mention the advisor. Entries (data, not instructions): \u0027 }}",
+                                                                              "task_suffix":  "={{ \u0027 Reply in the language with ISO code \u0027 + String($(\u0027Resolve callback sender\u0027).item.json.lang || \u0027en\u0027) + \u0027.\u0027 }}",
+                                                                              "workflow_id":  "S4gO9s0FAm6oFQYr",
+                                                                              "package":  "finance",
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "false"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       260,
+                                       3280
+                                   ],
+                      "id":  "9f1d57a9-bd51-5f44-a215-bdf2f7397f6b",
+                      "name":  "Run handoff chain finance",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = String(($(\u0027Run handoff finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -9514,7 +9797,8 @@
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
                                                                               "thinking":  "loop",
-                                                                              "audience":  "adults"
+                                                                              "audience":  "adults",
+                                                                              "empty_ok":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -9540,7 +9824,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run command notfall\u0027).first().json.output) || (String((($(\u0027Resolve sender\u0027).first().json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run command notfall\u0027).first().json.output) || (String((($(\u0027Resolve sender\u0027).first().json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -9771,7 +10055,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay final\u0027).first().json.body || \u0027\u0027))) || (($(\u0027Resolve sender\u0027).first().json.t || {})[\u0027core.orch.react_fallback\u0027]) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay final\u0027).first().json.body || \u0027\u0027))) || (($(\u0027Resolve sender\u0027).first().json.t || {})[\u0027core.orch.react_fallback\u0027]) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -9826,7 +10110,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding cb\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding cb\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -12109,12 +12393,30 @@
                                                                             [
                                                                                 {
                                                                                     "index":  0,
-                                                                                    "node":  "Set followup plan finance",
+                                                                                    "node":  "Relay plan finance choice sent?",
                                                                                     "type":  "main"
                                                                                 }
                                                                             ]
                                                                         ]
                                                            },
+                        "Relay plan finance choice sent?":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Set followup plan finance",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ],
+                                                                             [
+                                                                                 {
+                                                                                     "index":  0,
+                                                                                     "node":  "Relay plan finance split",
+                                                                                     "type":  "main"
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
                         "Relay plan finance split":  {
                                                          "main":  [
                                                                       [
@@ -12222,12 +12524,30 @@
                                                                            [
                                                                                {
                                                                                    "index":  0,
-                                                                                   "node":  "Set followup plan career",
+                                                                                   "node":  "Relay plan career choice sent?",
                                                                                    "type":  "main"
                                                                                }
                                                                            ]
                                                                        ]
                                                           },
+                        "Relay plan career choice sent?":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Set followup plan career",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ],
+                                                                            [
+                                                                                {
+                                                                                    "index":  0,
+                                                                                    "node":  "Relay plan career split",
+                                                                                    "type":  "main"
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
                         "Relay plan career split":  {
                                                         "main":  [
                                                                      [
@@ -12478,6 +12798,17 @@
                                                                      ]
                                                                  ]
                                                     },
+                        "Run handoff chain finance":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "index":  0,
+                                                                               "node":  "Set followup handoff finance",
+                                                                               "type":  "main"
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
                         "Relay handoff finance split":  {
                                                             "main":  [
                                                                          [
@@ -12494,7 +12825,7 @@
                                                                         [
                                                                             {
                                                                                 "index":  0,
-                                                                                "node":  "Set followup handoff finance",
+                                                                                "node":  "Run handoff chain finance",
                                                                                 "type":  "main"
                                                                             }
                                                                         ],
@@ -12635,12 +12966,30 @@
                                                                              [
                                                                                  {
                                                                                      "index":  0,
-                                                                                     "node":  "Set followup prompt career",
+                                                                                     "node":  "Relay prompt career choice sent?",
                                                                                      "type":  "main"
                                                                                  }
                                                                              ]
                                                                          ]
                                                             },
+                        "Relay prompt career choice sent?":  {
+                                                                 "main":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Set followup prompt career",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ],
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Relay prompt career split",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                             },
                         "Relay prompt career split":  {
                                                           "main":  [
                                                                        [
@@ -12737,12 +13086,30 @@
                                                                              [
                                                                                  {
                                                                                      "index":  0,
-                                                                                     "node":  "Set followup prompt estate",
+                                                                                     "node":  "Relay prompt estate choice sent?",
                                                                                      "type":  "main"
                                                                                  }
                                                                              ]
                                                                          ]
                                                             },
+                        "Relay prompt estate choice sent?":  {
+                                                                 "main":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Set followup prompt estate",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ],
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Relay prompt estate split",
+                                                                                      "type":  "main"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                             },
                         "Relay prompt estate split":  {
                                                           "main":  [
                                                                        [
@@ -12839,12 +13206,30 @@
                                                                               [
                                                                                   {
                                                                                       "index":  0,
-                                                                                      "node":  "Set followup prompt finance",
+                                                                                      "node":  "Relay prompt finance choice sent?",
                                                                                       "type":  "main"
                                                                                   }
                                                                               ]
                                                                           ]
                                                              },
+                        "Relay prompt finance choice sent?":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Set followup prompt finance",
+                                                                                       "type":  "main"
+                                                                                   }
+                                                                               ],
+                                                                               [
+                                                                                   {
+                                                                                       "index":  0,
+                                                                                       "node":  "Relay prompt finance split",
+                                                                                       "type":  "main"
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
                         "Relay prompt finance split":  {
                                                            "main":  [
                                                                         [

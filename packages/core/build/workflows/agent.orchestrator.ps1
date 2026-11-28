@@ -1723,9 +1723,10 @@ return [{ json: { body, memory_signal, memory_content, next_marker, raw_output: 
     # === Sticker, Reaktion, Rahmensatz (deterministisch, kein LLM) ===============================================
     # Claim expression: eine Abfrage, drei DB-Entscheidungen in fester Reihenfolge — erst agent.fn_claim_persona_sticker
     # (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann
-    # agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach bestaetigter Karte, Stimmung aus der Router-Zeile; kein
-    # Gefuehl neben einem Sticker; Tages-Obergrenze nach Stil), dann agent.fn_claim_persona_frame (Tagesgruss bzw.
-    # Rahmensatz). Write-Cred (Bremse, Protokoll, Latch), onError continue -> Fehler = nichts davon, Text kommt trotzdem.
+    # agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach bestaetigter Karte; Stimmung nur als reine Reaktion statt Text;
+    # kein Gefuehl neben einem Sticker), dann agent.fn_claim_persona_frame (Tagesgruss bzw.
+    # Rahmensatz; has_parts nur, wenn die Relay-Kette den Text sendet: vor einer Antwort mit Knoepfen steht kein Rahmensatz, der Gruss
+    # bliebe sonst ungesehen verbraucht). Write-Cred (Bremse, Protokoll, Latch), onError continue -> Fehler = nichts davon, Text kommt trotzdem.
     # Sticker und Reaktion gehen ueber den Telegram-Relay des LLM-Gateways (3-s-Limit statt des Node-Haengers); beide
     # False-Ausgaenge sind verdrahtet. Reine Reaktion (Body leer, Reaktion zugesagt) -> kein Text, direkt zum Abschluss.
     $nClaimExpr = New-OrchPg 'Claim expression' @(1480, -400) `
@@ -1740,7 +1741,7 @@ return [{ json: { body, memory_signal, memory_content, next_marker, raw_output: 
             mood         = "String(`$('Relay compose').first().json.mood || '')"
             react_only   = "`$('Relay compose').first().json.react_only === true"
             has_text     = "`$('Relay final').first().json.has_text === true"
-            has_parts    = "`$('Relay compose').first().json.has_parts === true"
+            has_parts    = "`$('Relay compose').first().json.has_parts === true && !`$('Relay final').first().json.choice"
             reply_ok     = "`$('Relay compose').first().json.reply_ok === true"
             run_started_at = "String(`$('Resolve sender').first().json.run_at || '')" })
     $nClaimExpr['alwaysOutputData'] = $true

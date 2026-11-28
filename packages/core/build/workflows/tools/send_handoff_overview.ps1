@@ -40,14 +40,22 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
         -ChatIdExpr "={{ String(`$('Start').item.json.chat_id || '') }}"
     $send['onError'] = 'continueRegularOutput'   # Komfort-Nachricht: ein Send-Fehler darf den Berater-Lauf nie scheitern lassen
 
-    $mark = Build-Pg 'Mark overview' @(770, -100) '=SELECT core.fn_handoff_overview_mark($1::jsonb) AS r;' `
+    # Der Merker gilt nur fuer eine Liste, die ankam (wie 'Sent?' in core.sub_plan_rollout_next): sonst hielte die Abfolge sie fuer gezeigt.
+    $ifSent = Build-If 'Sent?' @(770, -100) '={{ !$json.error }}' 'true' 'equals' 'boolean'
+
+    $mark = Build-Pg 'Mark overview' @(880, -200) '=SELECT core.fn_handoff_overview_mark($1::jsonb) AS r;' `
         ([ordered]@{ domain = "String(`$('Start').item.json.domain || '')"; chat_id = "String(`$('Start').item.json.chat_id || '')"; max_task_id = "String($OV.max_task_id || '')" }) -ContinueOnError
 
-    $retSent = Build-Return @(990, -100) @(
+    $retSent = Build-Return @(1100, -200) @(
         ,@('ok', 'true', 'boolean')
-        ,@('sent', "={{ !`$json.error }}", 'boolean')
+        ,@('sent', 'true', 'boolean')
         ,@('open_count', "={{ Number($OV.count || 0) }}", 'number')
     ) -Name 'Return sent'
+    $retFailed = Build-Return @(880, 0) @(
+        ,@('ok', 'true', 'boolean')
+        ,@('sent', 'false', 'boolean')
+        ,@('open_count', "={{ Number($OV.count || 0) }}", 'number')
+    ) -Name 'Return not sent'
     $retNone = Build-Return @(660, 120) @(
         ,@('ok', 'true', 'boolean')
         ,@('sent', 'false', 'boolean')
@@ -56,9 +64,9 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
 
     $sticky = Build-Sticky 'Doc Handoff-Uebersicht' @(120, -360) `
         'Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)' `
-        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O (wie das Wächter-Angebot in agent.tool_publish_plan): reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue. Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt.' 340 600
+        'Read overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -> Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:<domain>:<max_task_id> (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -> Sent? (kam die Nachricht an): ja -> Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -> Return sent; nein -> Return not sent (sent false, open_count bleibt), kein Merker: die Abfolge schickt die Liste später selbst.' 340 600
 
-    $nodes = @($trig, $read, $ifOpen, $render, $send, $mark, $retSent, $retNone, $sticky)
+    $nodes = @($trig, $read, $ifOpen, $render, $send, $ifSent, $mark, $retSent, $retFailed, $retNone, $sticky)
     $conns = [ordered]@{
         'Start'          = @{ main = @( ,@( E 'Read overview' ) ) }
         'Read overview'  = @{ main = @( ,@( E 'Anything open?' ) ) }
@@ -67,7 +75,11 @@ return { json: { text: U.msg([ov.msg]), btn: U.t('core.handoff.btn_go') } };
             @( E 'Return nothing open' )
         ) }
         'Render overview' = @{ main = @( ,@( E 'Send overview' ) ) }
-        'Send overview'  = @{ main = @( ,@( E 'Mark overview' ) ) }
+        'Send overview'  = @{ main = @( ,@( E 'Sent?' ) ) }
+        'Sent?'          = @{ main = @(
+            @( E 'Mark overview' ),
+            @( E 'Return not sent' )
+        ) }
         'Mark overview'  = @{ main = @( ,@( E 'Return sent' ) ) }
     }
     return Build-Workflow 'agent.tool_send_handoff_overview' $nodes $conns @{ Internal = $true }

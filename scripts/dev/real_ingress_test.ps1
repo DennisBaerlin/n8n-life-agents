@@ -30,7 +30,7 @@
 # = Mock-Telegram lehnt diese Methode fuer die Dauer des Falls ab (markup = nur Aufrufe mit Knopf); expected_not_ran (Sub-
 # Zweig) = Knoten, die in der Sub-Execution nicht laufen duerfen. Die Vorschlags-Merker werden zu Beginn jedes Laufs geleert.
 # Felder bei offener Karte (kind hitl): probe_card_open = zweite Nachricht in denselben Chat; expect_probe_text = Katalog-Schluessel (core, de)
-# der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag. Ebenfalls bei kind hitl: pre_sql vor dem Update, check_sql nach dem Lauf (muss genau t liefern), post_sql danach (auch bei Rot).
+# der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag. Ebenfalls bei kind hitl: pre_sql vor dem Update, check_sql nach dem Lauf (muss genau t liefern), post_sql danach (auch bei Rot); scheitert check_sql, druckt der Treiber diag_sql und die Knoten-Ausgaben des juengsten Laufs von diag_wf (Workflow-Name).
 #
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen. Faelle: tests/agent/core/real_ingress_cases.json.
 # Seiteneffekte in der Substrat-DB: Fixture-Seed (tests/fixtures/util_seed_test_fixtures.sql), Telegram-id und Sprache der family-Personen,
@@ -822,7 +822,7 @@ foreach ($tc in $cases) {
                 if ($finishRuns.Count -ne 1) { $extraOk = $false; $extraInfo += "Finish card lock $($finishRuns.Count)-mal gelaufen" }
             }
 
-            $cs = if ($tc.check_sql) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($tc.check_sql)") }; $csVal = if ($cs) { "$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)" }; if ($cs -and ($cs.Code -ne 0 -or $csVal -ne 't')) { $extraOk = $false; $extraInfo += "check_sql lieferte '$csVal' (erwartet t)" }; if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
+            $cs = if ($tc.check_sql) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($tc.check_sql)") }; $csVal = if ($cs) { "$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)" }; if ($cs -and ($cs.Code -ne 0 -or $csVal -ne 't')) { $extraOk = $false; $extraInfo += "check_sql lieferte '$csVal' (erwartet t)"; if ($tc.diag_sql) { $dg = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($tc.diag_sql)"); $extraInfo += "diag_sql: $(($dg.Output -join ' ').Trim())" }; $extraInfo += "Orchestrator-Knoten: $((Get-RunNodes $orch) -join ',')"; $dw = if ($tc.diag_wf) { ($wfList.data | Where-Object { $_.name -eq "$($tc.diag_wf)" } | Select-Object -First 1).id }; $dx = if ($dw) { (Invoke-N8nGet "executions?workflowId=$dw&limit=5").data | Where-Object { [int]$_.id -gt $orchBase } | Sort-Object { [int]$_.id } | Select-Object -Last 1 }; if ($dx) { $de = Get-ExecDetail $dx.id; $extraInfo += "$($tc.diag_wf) $($dx.id) status=$($de.status): $((Get-RunNodes $de | ForEach-Object { "$_=$(Get-NodeOutputText $de $_)" }) -join ' | ')" } elseif ($tc.diag_wf) { $extraInfo += "$($tc.diag_wf): kein Lauf" } }; if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
             Write-Host "    Gate abgefangen + aufgeloest (decision=$($tc.gate_decision)); Orchestrator status=$($orch.status)"
             if ($orch -and $orch.status -eq 'success' -and $extraOk) {
                 $passed++; Write-Host "    [PASS]" -ForegroundColor Green

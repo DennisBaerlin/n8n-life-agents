@@ -56,7 +56,7 @@ BEGIN
   -- TEST 3: Rename + Rename auf bestehendes Label -> {ok:false}
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Other Trigger', 'trigger_type', 'date',
-    'due_date', '2027-01-01', 'check_interval', '1 day'));
+    'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '1 day'));
   v := agent.fn_set_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Aluminium over 4000', 'new_label', 'Aluminium over 4200'
   ));
@@ -247,6 +247,15 @@ BEGIN
   SELECT max_jump_pct INTO v_jump FROM agent.monitor_triggers WHERE label = '__t_mon_dd_set__';
   IF v_jump IS NOT NULL THEN RAISE EXCEPTION 'FAIL [dd+jump set] max_jump_pct wurde trotzdem gesetzt (%)', v_jump; END IF;
   RAISE NOTICE 'PASS [dd+jump set] Sprung-Grenze am Absturz-Waechter abgelehnt';
+
+  -- Zahl- und Schalter-Eingaben, die keine sind: freundliche Ablehnung statt Cast-Fehler, nichts geaendert
+  v := agent.fn_set_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__','warn_days_before','bald'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%warn_days_before%' THEN
+    RAISE EXCEPTION 'FAIL [set warn_days_before Text]: got %', v; END IF;
+  v := agent.fn_set_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_dd_set__','reset_peak','vielleicht'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%reset_peak%' THEN
+    RAISE EXCEPTION 'FAIL [set reset_peak Text]: got %', v; END IF;
+  RAISE NOTICE 'PASS [set] warn_days_before/reset_peak ohne lesbaren Wert abgelehnt';
 END $$;
 
 ROLLBACK;

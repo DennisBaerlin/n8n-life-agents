@@ -53,6 +53,12 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_sender_is_member [NULL/leer -> false]';
 
+  -- ueberlange Ziffernfolge (passt nicht in bigint) -> FALSE, kein Wurf
+  IF agent.fn_sender_is_member('9999999999999999999') THEN
+    RAISE EXCEPTION 'FAIL fn_sender_is_member [ueberlang]: erwartet false';
+  END IF;
+  RAISE NOTICE 'PASS fn_sender_is_member [ueberlange Ziffernfolge -> false]';
+
   RAISE NOTICE 'PASS fn_sender_is_member [alle Faelle]';
 END $$;
 

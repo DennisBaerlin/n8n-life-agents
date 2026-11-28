@@ -14,7 +14,7 @@ BEGIN
   -- Fixture: Trigger + 2 Observations
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Doomed Trigger', 'trigger_type', 'date',
-    'due_date', '2027-01-01', 'check_interval', '1 day'));
+    'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '1 day'));
   v_id := (v->>'trigger_id')::int;
   INSERT INTO agent.monitor_observations (trigger_id, ok, value) VALUES (v_id, true, 1), (v_id, false, NULL);
 

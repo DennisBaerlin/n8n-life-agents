@@ -55,7 +55,7 @@ BEGIN
   -- TEST 3: date happy path (acquisition none)
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Zinsbindung Ende',
-    'trigger_type', 'date', 'due_date', '2027-09-30', 'warn_days_before', 60,
+    'trigger_type', 'date', 'due_date', (CURRENT_DATE + 400)::text, 'warn_days_before', 60,
     'check_interval', '7 days', 'action_note', 'Anschlussfinanzierung'
   ));
   IF (v->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -125,7 +125,7 @@ BEGIN
   -- leeres Label
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', '  ', 'trigger_type', 'date',
-    'due_date', '2027-01-01', 'check_interval', '1 day'));
+    'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '1 day'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL create [empty label]: got %', v; END IF;
   -- threshold ohne comparator
@@ -180,9 +180,15 @@ BEGIN
   -- unparsebare check_interval
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'g8', 'trigger_type', 'date',
-    'due_date', '2027-01-01', 'check_interval', 'oft'));
+    'due_date', (CURRENT_DATE + 400)::text, 'check_interval', 'oft'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%interval%' THEN
     RAISE EXCEPTION 'FAIL create [bad interval]: got %', v; END IF;
+  -- warn_days_before keine ganze Zahl -> freundliche Ablehnung (kein Cast-Fehler)
+  v := agent.fn_create_monitor_trigger(jsonb_build_object(
+    'domain', '__test__', 'label', 'g8', 'trigger_type', 'date',
+    'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '1 day', 'warn_days_before', '7 days'));
+  IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%warn_days_before%' THEN
+    RAISE EXCEPTION 'FAIL create [warn_days_before Text]: got %', v; END IF;
   -- kein Guard-Write passiert
   SELECT COUNT(*) INTO v_cnt FROM agent.monitor_triggers
    WHERE domain = '__test__' AND label IN ('g1','g2','g3','g4','g5','g6','g7','g8');
@@ -215,7 +221,7 @@ BEGIN
   -- Format-Verstoss -> freundlich {ok:false} (kein $fromAI; CHECK = Backstop).
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'package', 'finance', 'label', 'Pkg explicit finance',
-    'trigger_type', 'date', 'due_date', '2027-03-01', 'check_interval', '7 days'));
+    'trigger_type', 'date', 'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '7 days'));
   IF (v->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL create [package explicit]: got %', v; END IF;
   SELECT * INTO v_row FROM agent.monitor_triggers WHERE id = (v->>'trigger_id')::int;
@@ -224,14 +230,14 @@ BEGIN
   -- Default 'core', wenn nicht uebergeben
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Pkg default core',
-    'trigger_type', 'date', 'due_date', '2027-04-01', 'check_interval', '7 days'));
+    'trigger_type', 'date', 'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '7 days'));
   SELECT * INTO v_row FROM agent.monitor_triggers WHERE id = (v->>'trigger_id')::int;
   IF v_row.package IS DISTINCT FROM 'core' THEN
     RAISE EXCEPTION 'FAIL create [package default]: package=% (erwartet core)', v_row.package; END IF;
   -- Format-Verstoss -> {ok:false}, kein Write
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'package', 'Fin-ance!', 'label', 'Pkg bad fmt',
-    'trigger_type', 'date', 'due_date', '2027-05-01', 'check_interval', '7 days'));
+    'trigger_type', 'date', 'due_date', (CURRENT_DATE + 400)::text, 'check_interval', '7 days'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false OR v->>'reason' NOT ILIKE '%package%' THEN
     RAISE EXCEPTION 'FAIL create [package bad fmt]: got %', v; END IF;
   RAISE NOTICE 'PASS create [package: explizit gespeichert / Default core / Format-Guard]';

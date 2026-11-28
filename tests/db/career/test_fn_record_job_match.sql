@@ -119,5 +119,11 @@ BEGIN
   SELECT person_id INTO v_pid FROM career.job_matches WHERE id = (r->>'job_match_id')::bigint;
   IF v_pid IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL [5d] badchat person_id=% (erwartet Owner erika)', v_pid; END IF;
   RAISE NOTICE 'PASS [5] Person-Praezedenz (explicit > chat_id > Owner; badchat graceful)';
+  -- (6) is_serendipity ist ein Roh-Wert des Aufrufers: ein Nicht-Boolean wirft nicht, er gilt als false
+  r := career.fn_record_job_match(jsonb_build_object('source','forwarded','title','P6 seren','chat_id',111,'is_serendipity','vielleicht'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT is_serendipity FROM career.job_matches WHERE id = (r->>'job_match_id')::bigint) IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL [6] is_serendipity Nicht-Boolean: %', r; END IF;
+  RAISE NOTICE 'PASS [6] is_serendipity Nicht-Boolean -> false, kein RAISE';
 END $$;
 ROLLBACK;

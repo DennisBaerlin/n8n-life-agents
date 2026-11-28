@@ -27,7 +27,7 @@ DECLARE
     v_board       text     := NULLIF(trim(p->>'board'), '');         -- Original-Board (nur jsearch; sonst NULL)
     v_title       text     := COALESCE(NULLIF(trim(p->>'title'), ''), '');
     v_score       smallint;   -- nur aus einer expliziten JSON-Zahl gesetzt (kein Cast auf Nicht-Zahl -> kein RAISE)
-    v_seren       boolean  := COALESCE((p->>'is_serendipity')::boolean, false);
+    v_seren       boolean  := CASE WHEN pg_input_is_valid(p->>'is_serendipity', 'boolean') THEN (p->>'is_serendipity')::boolean ELSE false END;   -- Nicht-Boolean = false, kein Cast-Fehler
     v_chat        bigint;     -- Sender-chat_id (RAISE-frei gecastet); nur der Tool-Pfad liefert sie
     v_person      text;       -- aufgeloeste Eigentuemer-Person (wholly-per-person)
     v_id          bigint;

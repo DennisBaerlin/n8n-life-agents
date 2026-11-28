@@ -18,7 +18,7 @@
 --     history_sql (Pflicht genau bei drawdown + sql: SELECT mit Zeilen (Datum, Wert) derselben Groesse; sonst {ok:false}),
 --     comparator, threshold_value, drawdown_pct,
 --     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),
---     warn_days_before, expected_unit, min_plausible, max_plausible,
+--     warn_days_before (ganze Tage >= 0, sonst {ok:false}), expected_unit, min_plausible, max_plausible,
 --     max_jump_pct (nicht bei drawdown, CHECK monitor_triggers_drawdown_no_jump -> {ok:false}),
 --     check_interval (Text, z. B. '1 day'), action_note, probe_observation.
 --     first_check (optional, Datum oder relativ, Regel agent.fn_resolve_monitor_due; Tagesbeginn = erster Lauf und Anker des
@@ -68,7 +68,7 @@ DECLARE
     v_lines    JSONB := '[]'::jsonb;
     v_due      DATE;
     v_dchk     JSONB;
-    v_warn     INT := COALESCE(NULLIF(p->>'warn_days_before', '')::int, 0);
+    v_warn     INT := 0;
     v_probe    JSONB := p->'probe_observation';
     v_probe_val NUMERIC;
     v_id       INT;
@@ -211,8 +211,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', agent.fn_monitor_drawdown_jump_reason());
     END IF;
-    IF v_warn < 0 THEN
-        RETURN jsonb_build_object('ok', false, 'reason', 'warn_days_before must be >= 0');
+    IF NULLIF(trim(COALESCE(p->>'warn_days_before', '')), '') IS NOT NULL THEN
+        IF trim(p->>'warn_days_before') !~ '^[0-9]{1,5}$' THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'warn_days_before must be a whole number of days (0 or more)');
+        END IF;
+        v_warn := trim(p->>'warn_days_before')::int;
     END IF;
 
     -- Probe-Wert (vor dem Gate validiert) einmal lesen: Seed von last_value und Untergrenze des Hoechststands

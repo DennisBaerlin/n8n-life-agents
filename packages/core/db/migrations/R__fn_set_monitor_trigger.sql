@@ -21,6 +21,7 @@
 --     Vergangenheit -> {ok:false}.
 --   max_jump_pct an einem drawdown-Trigger -> {ok:false} (CHECK monitor_triggers_drawdown_no_jump).
 --   comparator nur gte|lte, Zahl-Felder als Text mit Punkt oder Komma (agent.fn_parse_decimal_or_null); sonst {ok:false}.
+--   warn_days_before nur ganze Tage >= 0, reset_peak nur true/false; sonst {ok:false}.
 --   Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (core.fn_sender_is_household_restricted) -> {ok:false, reason:'household_only: ...'}.
 --   Eingabe jsonb: label (Pflicht), domain (Default 'general'), new_label, status ('armed'|'disabled'), check_interval,
 --     due_date, comparator, threshold_value, drawdown_pct, warn_days_before, expected_unit, min_plausible, max_plausible,
@@ -76,6 +77,13 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', format('trigger type cannot be changed (%s -> %s) — delete and create a new trigger',
                              v_t.trigger_type, p->>'trigger_type'));
+    END IF;
+    -- Zahl und Schalter vor dem UPDATE pruefen: dessen Casts wuerfen sonst
+    IF NULLIF(trim(COALESCE(p->>'warn_days_before', '')), '') IS NOT NULL AND trim(p->>'warn_days_before') !~ '^[0-9]{1,5}$' THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'warn_days_before must be a whole number of days (0 or more)');
+    END IF;
+    IF NULLIF(trim(COALESCE(p->>'reset_peak', '')), '') IS NOT NULL AND NOT pg_input_is_valid(trim(p->>'reset_peak'), 'boolean') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'reset_peak must be true or false');
     END IF;
 
     -- Status-Eingabe validieren (fired ist nie setzbar — das macht nur fn_monitor_evaluate)

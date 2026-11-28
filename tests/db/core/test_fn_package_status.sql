@@ -39,6 +39,10 @@ BEGIN
   r := core.fn_package_status(jsonb_build_object('package', v_pkg, 'chat_id', '999999999999'));
   IF (r->>'is_owner')::boolean THEN RAISE EXCEPTION 'FAIL [fremd -> owner] %', r; END IF;
 
+  -- ueberlange Ziffernfolge (passt nicht in bigint) -> false, nie Exception
+  r := core.fn_package_status(jsonb_build_object('package', v_pkg, 'chat_id', '9999999999999999999'));
+  IF (r->>'is_owner')::boolean THEN RAISE EXCEPTION 'FAIL [ueberlang -> owner] %', r; END IF;
+
   RAISE NOTICE 'PASS core.fn_package_status [Status-Matrix + is_owner-Guards]';
 END $$;
 

@@ -32,7 +32,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'package_required', 'is_owner', false);
     END IF;
 
-    IF v_chat ~ '^[0-9]{1,19}$' THEN
+    IF v_chat ~ '^[0-9]{1,18}$' THEN   -- 19 Ziffern koennen bigint sprengen
         v_owner := COALESCE((agent.fn_resolve_sender(v_chat::bigint)->>'role') = 'owner', false);
     END IF;
 

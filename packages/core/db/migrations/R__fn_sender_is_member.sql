@@ -16,7 +16,7 @@ DECLARE
     v_sender JSONB;
 BEGIN
     -- Numerik-Guard vor dem ::bigint-Cast (nicht-numerisch = Test/Sentinel -> durchlassen, kein Wurf)
-    IF p_chat_id IS NULL OR p_chat_id !~ '^[0-9]+$' THEN
+    IF p_chat_id IS NULL OR p_chat_id !~ '^[0-9]{1,18}$' THEN
         RETURN false;
     END IF;
     v_sender := agent.fn_resolve_sender(p_chat_id::bigint);

@@ -11,7 +11,7 @@
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
 --   (opt bei monatlichem Beitrag, sonst Pflicht), notes.
 --   Rueckgabe: Erfolg -> {ok:true, pension_id, recurring_payment_id, effective {aufgeloeste Datumsfelder +
---   first_payment_date bei Beitrag}}; unaufloesbares Datum -> code invalid_date. Korrigierbar (unbekannter
+--   first_payment_date bei Beitrag + gespeichertes value_updated_at bei current_value}}; unaufloesbares Datum -> code invalid_date. Korrigierbar (unbekannter
 --   pension_type/Rhythmus, Buchungstag, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
 --   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
 --   -> {ok:false, reason}. Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name.
@@ -146,6 +146,9 @@ BEGIN
         'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
                      || CASE WHEN v_rp_id IS NOT NULL
                              THEN jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'))
+                             ELSE '{}'::jsonb END
+                     || CASE WHEN v_current IS NOT NULL
+                             THEN jsonb_build_object('value_updated_at', (SELECT value_updated_at FROM finance.pension WHERE id = v_pension_id))
                              ELSE '{}'::jsonb END);
 END;
 $$;

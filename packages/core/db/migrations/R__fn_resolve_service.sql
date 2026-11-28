@@ -4,7 +4,7 @@
 --   (docs/package-contract.md §5 Cross-package tool services). Er fragt vor dem Aufruf diese fn, ob er darf und
 --   wohin: p jsonb {service:'<pkg>:<alias>', chat_id} ->
 --     {ok:true,  workflow_id, package}
---     {ok:false, error:'unknown_service'}                                    Zeile fehlt / leere workflow_id (Bau-Drift)
+--     {ok:false, error:'unknown_service', service}                           Zeile fehlt / leere workflow_id (Bau-Drift)
 --     {ok:false, error:'package_unavailable', reason, is_owner, package, package_label}  core.fn_package_status nicht ok
 --     {ok:false, error:'not_permitted', reason}                              reason = unresolved_sender | <permission>
 --   Reihenfolge Zeile -> Paket -> Absender. Ablehnungen sind Daten, nie RAISE (kein Owner-Alert).

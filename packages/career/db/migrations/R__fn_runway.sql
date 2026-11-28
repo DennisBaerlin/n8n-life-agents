@@ -14,11 +14,9 @@
 --   bei jedem Miss RETURN NULL (Runway-Zeile entfaellt graceful, kein RAISE). career.requires bleibt [].
 --   Ebenfalls NULL, wenn der Snapshot has_data nicht true meldet.
 --
---   Schema-qualifiziert durchgehend (finance.*/core.* explizit): der Render-Pfad laeuft via core.fn_fetch_context
---   (DEFINER, search_path pg_catalog,agent,core ohne finance/career; der Renderer laeuft als dessen Owner =
---   Superuser und liest finance.* trotz context_ro-Binding ohne neuen Grant). Kein eigenes SECURITY DEFINER
---   (Auditierbarkeits-Ersatz fuer den fehlenden Grant-Trail = dieser Kommentar + die Manifest-consumes.reads-
---   Deklaration + der Render-unter-Pin-Test test_fn_render_career_planning). Muster: career.fn_market_trend.
+--   Schema-qualifiziert durchgehend (finance.*/core.* explizit) wie career.fn_market_trend; liest finance.* als Owner
+--   von core.fn_fetch_context ohne neuen Grant und ohne eigenes SECURITY DEFINER (Grant-Trail = dieser Kommentar +
+--   Manifest-consumes.reads-Deklaration + Render-unter-Pin-Test test_fn_render_career_planning).
 --
 --   RAISE-frei: kein Cast auf Junk (jsonb_typeof-Guards), Division durch 0 geguarded (effective_burn<=0 ->
 --   runway_months NULL = Notfall-Einkommen deckt die Ausgaben, unbegrenzt + covers=true).
@@ -26,6 +24,7 @@
 --     { cash_eur, monthly_expenses_eur, gap_income, effective_burn, runway_months, probation_months, covers,
 --       has_fx_gap }
 --   has_fx_gap = ein Fremdwaehrungs-Cash-Konto ohne FX-Kurs fehlt in cash_eur (Runway dann zu optimistisch).
+--   gap_income = transition.expected_gap_income_eur (Default 0); effective_burn = monthly_expenses_eur - gap_income.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_runway(p_plan_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

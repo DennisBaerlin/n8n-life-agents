@@ -2,12 +2,13 @@
 -- fn_set_monitor_trigger (ATOMIC WRITE — Monitor-Trigger aendern, Lifecycle inkl.)
 --   Aufgerufen vom HITL-gegateten Tool agent.tool_set_monitor_trigger (nur Monitor-Agent).
 --   Partielles UPDATE via COALESCE(NULLIF) — "nicht gesendet = unveraendert". Aufloesung
---   per (domain, label) ueber fn_resolve_monitor_trigger (0/>1 -> {ok:false} + Kandidaten).
+--   per (domain, label) ueber fn_resolve_monitor_trigger (0 -> {ok:false, available_labels}; >1 -> {ok:false, candidates}).
 --   Lifecycle:
 --     * status='armed' auf einem fired Trigger = Re-Arm (bewusster Akt): fired_at und
 --       fail_streak werden geloescht, next_check_at = now (neue Epoche); date-Trigger mit vergangenem
 --       due_date nur zusammen mit neuem due_date (sonst {ok:false})
 --     * status='disabled' = parken (Due-Selection ueberspringt)
+--     * jeder Statuswechsel loescht retired_by_plan_at
 --     * reset_peak=true = Drawdown-Ratchet nullen (neue Referenz-Epoche; naechste
 --       saubere Beobachtung seedet neu)
 --   Typ-Wechsel wird abgelehnt (delete + create — die Feld-Konsistenz haengt am Typ).
@@ -26,7 +27,7 @@
 --   Eingabe jsonb: label (Pflicht), domain (Default 'general'), new_label, status ('armed'|'disabled'), check_interval,
 --     due_date, comparator, threshold_value, drawdown_pct, warn_days_before, expected_unit, min_plausible, max_plausible,
 --     max_jump_pct, action_note, reset_peak, acquisition_prompt (web_search), acquisition_sql (sql),
---     acquisition_params (Paket-Methode), chat_id.
+--     acquisition_params (Paket-Methode), chat_id, trigger_type (nur Abgleich: abweichend -> {ok:false}).
 --   Rueckgabe (Post-State): {ok:true, trigger_id, status, next_check_at,
 --     check_interval, due_date, reference_value}.
 -- ============================================================

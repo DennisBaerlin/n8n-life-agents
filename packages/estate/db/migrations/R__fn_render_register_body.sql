@@ -2,7 +2,8 @@
 -- estate.fn_render_register_body (READ — der geteilte Register-Body von Overview und Notfallmappe)
 --   Baut render-at-fetch den vollstaendigen Haushalts-Notfall-Register-Ueberblick aus den estate-
 --   Register-Tabellen (Vorsorge-Dokumente, Vertraege, digitaler Nachlass ohne Passwoerter, Kontakte,
---   Stammdaten, Bestattungswuensche, Fundstellen, Sonderfall-Stubs, System-Steckbrief) und konsumiert
+--   Stammdaten, Bestattungswuensche, Fundstellen, Sonderfall-Stubs, System-Steckbrief, Luecken aus estate.fn_gap_report)
+--   und konsumiert
 --   die finance-Lese-fns (fn_insurance/account/liability_register) doppel-guardet
 --   (core.fn_package_active('finance') + to_regprocedure je Call-Site, docs/package-contract.md §4.2
 --   Oberflaeche A) -> finance absent/fn fehlt = ehrliche Absenz-Zeile statt stiller Auslassung, nie

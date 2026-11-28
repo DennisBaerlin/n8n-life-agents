@@ -37,8 +37,9 @@
 --   Kein Platz -> { ok, send:false, deferred:true, alerts:[], first_run:false, digest }, keine Merker.
 --   Rueckgabe jsonb: { ok, send:boolean, alerts:[…neue Breaches, je _latched:[{source,key}]…], first_run:boolean, digest:{…} }
 --     send=true gdw mindestens ein Breach neu ist (Latch-Uebergang) -> der Drift-Cron schickt nur dann.
---     first_run=true beim ersten Lauf je (domain, person) mit neuen Alarmen. _latched braucht core.fn_advisor_alerts_cap.
---     digest reicht die fn unveraendert durch (der Quartals-Cron nutzt ihn ungelatcht).
+--     first_run=true beim ersten Lauf je (domain, person) mit neuen Alarmen (Merker '__first_run__' derselben source,
+--     der Reconcile behaelt ihn). _latched braucht core.fn_advisor_alerts_cap.
+--     digest reicht die fn unveraendert durch (der Quartals-Cron liest ihn ohne Latch ueber core.fn_advisor_review_read).
 --     ok:false, error = 'unknown_advisor_domain' | 'review_fn_missing' (send:false, alerts:[]).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_review_evaluate(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb)

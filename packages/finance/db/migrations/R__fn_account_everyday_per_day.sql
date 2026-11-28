@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_account_everyday_per_day (READ, STABLE) -- geschaetzte Alltagsausgaben je Tag eines Kontos aus seinen Auszuegen
 --   Einzelumsaetze werden nicht gespeichert -> Schaetzung aus den gezaehlten Auszuegen von finance.fn_account_everyday_basis
---   (die eine Adresse der Auswahl: juengste 3, der frueheste Auszug zaehlt nicht, sobald ein spaeterer existiert),
+--   (die eine Adresse der Auswahl-Regel),
 --   je neu abgeglichenem Tag, gerundet auf 2 Stellen; ohne Auszug 0.
 --   per_day     = Summe (unmatched_out - oneoff_out) / Tage (nur Abgaenge ohne einmalige Grossausgaben;
 --                 Kontovorschau bis zum naechsten Geldeingang)
@@ -13,7 +13,7 @@
 --   per_day_raw = per_day ungerundet: Basis jeder Hochrechnung (Monatswert der View), sonst rundete sie doppelt.
 --   Rueckgabe: (per_day <= 0, per_day_net <= 0, has_history, provisional, per_day_raw <= 0)
 --   Eine Aenderung des Rueckgabetyps braucht ein DROP der fn, das die View account_everyday_spending mitreisst; es
---   steht in einer V-Migration (finance:V034, V040), nie hier (sonst verlaere jede spaetere Aenderung dieser Datei die
+--   steht in einer V-Migration, nie hier (sonst verlaere jede spaetere Aenderung dieser Datei die
 --   View still) — dazu die View-Datei mit aendern.
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================

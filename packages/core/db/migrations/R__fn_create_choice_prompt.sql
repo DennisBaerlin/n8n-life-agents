@@ -9,7 +9,8 @@
 --   Die Zeile ist sofort open (Art choice, Agent = p.agent). Eine offene choice des Chats wird superseded, eine offene
 --   andere Frage geht zurueck in die Schlange (sie erscheint wieder, sobald die choice erledigt ist).
 --   Eingabe p: {chat_id, agent ('agent.<x>'), options (Array oder JSON-String)}.
---   Rueckgabe {ok:true, prompt_id, buttons:[[{text, data}]]} | {ok:false, code, reason}. Nie RAISE.
+--   Rueckgabe {ok:true, prompt_id, buttons:[[{text, data}]]} | {ok:false, code, reason} mit code invalid_input
+--   (chat_id/agent), invalid_choices, unknown_chat (keine bekannte Person) oder error (jeder Laufzeitfehler). Nie RAISE.
 --   VOLATILE, INVOKER (Host-Cred), search_path gepinnt.
 --   Tests: tests/db/core/test_chat_prompts.sql
 -- ============================================================

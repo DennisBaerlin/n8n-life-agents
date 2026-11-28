@@ -13,13 +13,15 @@
 --     day_count_convention = Eingabe > offene Zeile > fn_interest_default_convention(Kontotyp); conv_reason =
 --       manual | previous | default_cash | default_fixed | default
 --     valid_from = Eingabe > heute
---   Korrigierbar -> {ok:false, reason}: ungueltiger Abbuchungstag; Kontotyp nicht zins-faehig; Satz fehlt/negativ;
---   valid_from nicht nach der offenen Zeile; valid_from vor dem Ende der juengsten gebuchten/uebersprungenen
---   Zinsperiode (ein rueckdatierter Kadenzwechsel verankerte ein Raster ueber schon verzinste Tage); ungueltiges
---   valid_from -> code 'invalid_date'.
+--   Korrigierbar -> {ok:false, reason}: unbekannter Rhythmus, ungueltiger Gutschrift-/Abbuchungstag oder unbekannte
+--   Konvention (fn_interest_terms_reason); Kontotyp nicht zins-faehig; Satz fehlt/negativ oder zu viele Nachkommastellen
+--   (fn_rate_precision_reason); valid_from nicht nach der offenen Zeile (+ current_valid_from); valid_from vor dem Ende
+--   der juengsten gebuchten/uebersprungenen Zinsperiode (+ credited_until; ein rueckdatierter Kadenzwechsel verankerte
+--   ein Raster ueber schon verzinste Tage); ungueltiges valid_from -> code 'invalid_date'.
 --   Eingabe jsonb wie fn_set_account_interest. Rueckgabe {ok:true, schedule_interval, schedule_unit,
 --   schedule_day_of_month, posting_day_of_month, auto_post, day_count_convention, conv_reason, valid_from,
---   closes_previous, first_period_end, first_credit_date}. RAISE nur bei unbekanntem Konto.
+--   closes_previous, first_period_end, first_credit_date}. RAISE bei unbekanntem Konto und bei nicht castbarer Eingabe
+--   (account_id, annual_rate, schedule_interval, schedule_day_of_month, posting_day_of_month, auto_post).
 --   Tests: tests/db/finance/test_fn_set_account_interest.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_rate_preview(p jsonb)
@@ -96,7 +98,7 @@ BEGIN
     v_interval := COALESCE(v_interval, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.schedule_interval END, 1);
     v_same     := v_open.id IS NOT NULL AND v_unit = v_open.schedule_unit AND v_interval = v_open.schedule_interval;
     -- Tag/Arrears nur bei gleicher Einheit erben: ein Wechsel month/-1 -> year truege sonst still "31.12." statt
-    -- Jahrestag mit (seit dem Kalender-Raster wirkt dom auch bei year).
+    -- Jahrestag mit (dom wirkt auch bei year, Kalender-Raster).
     v_dom      := COALESCE(v_dom, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.schedule_day_of_month END);
     v_pdom     := COALESCE(v_pdom, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.posting_day_of_month END);
     -- Pflicht-Kadenz auf den wirksamen Werten, sobald ein neues Raster beginnt (keine offene Zeile oder anderer

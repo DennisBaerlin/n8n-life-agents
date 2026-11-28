@@ -6,8 +6,7 @@
 --   statt einer erfundenen Zahl. Der Agent liest die Depot-Rendite hier und rechnet nie selbst.
 --   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*): die View braucht die fn, die alphabetisch nach
 --   R__finance_views liegt; Muster R__v_savings_plan_overview.sql.
---   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles); die fn ist INVOKER mit
---   PUBLIC-EXECUTE und liest nur, was finance_ro lesen darf (+ core.fn_household_persons).
+--   Die fn ist INVOKER mit PUBLIC-EXECUTE und liest nur, was finance_ro lesen darf (+ core.fn_household_persons).
 -- ============================================================
 DROP VIEW IF EXISTS finance.depot_performance CASCADE;
 CREATE VIEW finance.depot_performance AS

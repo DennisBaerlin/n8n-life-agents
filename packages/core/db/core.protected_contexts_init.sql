@@ -6,7 +6,8 @@
 --   Kubernetes-Finalizer/ownerReference-Muster (kein Name-Hardcode, kein mutables metadata.protected-Flag):
 --   eine geschuetzte Zeile ist erst loeschbar, wenn ihr Registry-Eintrag entfernt ist — das tut
 --   nur der Host (Installer/Deinstall), nie die Laufzeit. Der Lösch-Trigger
---   agent.trg_core_contexts_protect liest diese Tabelle (NEW.name -> EXISTS -> RAISE).
+--   agent.trg_core_contexts_protect liest diese Tabelle (OLD.name -> EXISTS -> RAISE; dazu per_user-Zeilen
+--   '<base>__<pid>' einer noch lebenden family-Person).
 --
 -- Boundary (Deklaration vs. Ausfuehrung, analog core.context_validators, docs/package-contract.md §3.4/§4):
 --   das Paket deklariert die geschuetzten Context-Namen nur im manifest.json ("protected_contexts"-Liste);

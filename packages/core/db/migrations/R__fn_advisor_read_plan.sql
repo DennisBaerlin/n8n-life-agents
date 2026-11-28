@@ -26,8 +26,7 @@
 --
 --   SECURITY DEFINER + gepinnter search_path + REVOKE ALL FROM PUBLIC + EXECUTE nur an die Paket-Rollen
 --   (erteilt in core.fn_provision_package_roles) = das Muster von core.fn_core_api_version. Read-only.
---   2-Arg-Signatur: core:V014 droppt die alte 1-Arg-Form; der 1-Arg-Call ('career') matcht den
---   chat_id-DEFAULT der 2-Arg-Form (Muster fn_fetch_context/core:V013).
+--   2-Arg-Signatur: ein 1-Arg-Call ('career') matcht den chat_id-DEFAULT.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_read_plan(p_domain text, p_chat_id text DEFAULT NULL)
 RETURNS TABLE (

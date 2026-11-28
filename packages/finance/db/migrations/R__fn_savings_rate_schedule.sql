@@ -8,8 +8,9 @@
 --       liefert fuer dieses Datum wieder n.
 --   Die Rate wird auf den Cent aufgerundet: 1000 / 3 = 333.34, damit die Raten das Ziel
 --   erreichen (gerundet 333.33 -> 999.99, "erreicht" feuerte nie). Sparziele sind EUR -> Cent.
---   Anker der Monatszaehlung ist first_payment_date. Wird vom Tool read-only fuer den HITL-Preview
---   und von fn_create_savings_goal (autoritativ, im Write) aufgerufen -> eine Quelle, kein Drift.
+--   Anker der Monatszaehlung ist first_payment_date. Einziger Aufrufer: fn_savings_goal_funding (fuer
+--   fn_create_savings_goal und die Import-Karte fn_import_card_rows) -> eine Quelle, kein Drift.
+--   Test: tests/db/finance/test_fn_savings_rate_schedule.sql
 --   Erste Rate: first_payment_date leer = der naechste Termin des
 --   Abbuchungstags ab heute (schedule_day_of_month; ohne Tag: heute) -- dasselbe Raster wie der Scheduler
 --   (fn_schedule_occurrences). Deshalb STABLE (heute), nicht IMMUTABLE.

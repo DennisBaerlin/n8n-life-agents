@@ -12,7 +12,7 @@
 --   Eingabe jsonb: recurring_payment_id, due_date (Pflicht); amount (optional, Ist-Magnitude in Quell-Waehrung),
 --   transaction_date (optional, Ist-Datum; Default due_date).
 --   Rueckgabe: ok:true -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, amount (gebucht, Quell-Waehrung, Quell-seitig
---   negativ wie rp.amount), plan_amount (laut Plan), effective}; gleiche Felder wie der Zahlungs-Pfad von
+--   negativ wie rp.amount), plan_amount (laut Plan), effective}; amount/plan_amount/effective wie der Zahlungs-Pfad von
 --   fn_book_recurring_occurrence.
 --   ok:false ohne Write und ohne RAISE: {reason} bei kein-Transfer (target NULL), Konto ohne freie Buchung
 --   (fn_bookable_account_reason), amount <= 0 oder fehlendem FX-Kurs; {code:'already_booked'} (hat Vorrang vor den

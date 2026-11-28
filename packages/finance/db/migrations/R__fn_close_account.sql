@@ -4,9 +4,8 @@
 --   trg_finance_reject_closed_account jeden neuen INSERT auf dieses Konto.
 --   Eingabe jsonb: account_id, closure_date (optional, leer = heute, core.fn_today; relative Angaben wie "yesterday"
 --   loest core.fn_resolve_input_dates auf), notes (optional).
---   Guard: fn_get_account_close_blockers (eine Adresse, auch die HITL-Vorpruefung des Tools) --
---   Saldo <> 0, Verrechnungskonto aktiver Depots, Depotbestand, aktive Sparplaene, Kredite, laufende
---   Dauerauftraege (Quelle/Ziel). Sonst verschwaende ein Guthaben still aus dem Vermoegen.
+--   Guard: fn_get_account_close_blockers (eine Adresse, auch die HITL-Vorpruefung des Tools; Blocker-Arten dort).
+--   Sonst verschwaende ein Guthaben still aus dem Vermoegen.
 --   Rueckgabe: Erfolg -> {ok:true, account_id, status, effective:{closure_date}} (Datum fuer die Karte). Korrigierbar
 --   (Blocker vorhanden) -> {ok:false, code:'invalid_date'} bzw. {ok:false, reason, blockers, depot_count} ohne Write
 --   (kein RAISE -> kein Owner-Alert). RAISE nur fuer echte Ausnahmen (not-found / already-closed -> vom Tool-Resolve

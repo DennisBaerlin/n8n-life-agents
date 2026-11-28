@@ -57,13 +57,16 @@
 --   covered?, required_monthly_rate?, code?, note? (bei no_rate_running bzw. covered_rate_running), effective,
 --   linked_savings_plan_id, paused_cash_rate, paused_plan_count, converted_to? (bei Umwidmung), emergency_reserve?
 --   (Status der Notreserve), replaced_transfer_id?, card_lines?}
---   (card_lines u. a. Bank-Hinweis fn_bank_setup_note: neue Rate bank_setup, stop_funders bank_stop auch fuer
---   verknuepfte Sparplaene, Rate/Topf/Fortsetzen bank_change) + optional
+--   (card_lines u. a. Bank-Hinweis fn_bank_note_recorded: neue Rate bank_setup, stop_funders bank_stop auch fuer
+--   verknuepfte Sparplaene, Rate/Topf/Fortsetzen bank_change; schreibt je Kette einen offenen Bank-Punkt in
+--   finance.bank_todos, bank_stop setzt zusaetzlich den Merker finance:bank_end ueber fn_bank_stop_note_told) + optional
 --   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
 --   gewechselt, Beitraege gestoppt) (Post-State-Vertrag: kein Echo der Eingabe reserve_account_id). Korrigierbar
 --   (target<=0, Zieldatum nicht in der Zukunft, reserve==funding, Reserve-Konto kein aktives saldo-basiertes Konto,
 --   Topf fuer eine neue Rate fehlt, Status completed/cancelled (-> close_savings_goal), Sparplan nicht gefunden/
---   mehrdeutig, unlink eines nicht-gebundenen Plans, unbekannter status) -> {ok:false}.
+--   mehrdeutig, link eines schon an ein anderes Ziel gebundenen Plans (kein stilles Umhaengen), unlink eines
+--   nicht-gebundenen Plans, unbekannter status) -> {ok:false}. RAISE bei unbekannter goal_id und wenn das Reaktivieren
+--   der beendeten Rate (fn_reopen_recurring_payment) scheitert.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================

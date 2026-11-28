@@ -11,8 +11,8 @@
 --       agent.fn_person_chat_id, dieselbe family-Quelle wie fn_resolve_sender). Owner nicht gepairt ->
 --       nichts (fail-closed); sonst koennten Mitglieder-Nachrichten als Vorschlag beim Owner landen.
 --     * Fehlende Watermark = 0 (neue Agent-Tabelle: n8n legt sie beim ersten Turn an -> ihr erstes Gespraech
---       zaehlt). Die einmalige Startmarke schon gefuellter Quellen setzt core:V023 (Alt-Historie z. B.
---       career-/estate-Gespraeche geht nie ans Lern-Modell). STABLE, read-only.
+--       zaehlt); schon gefuellte Altquellen tragen eine einmalige Startmarke (ihre Alt-Historie geht nie ans Lern-Modell).
+--       STABLE, read-only.
 --   Rueckgabe: je Zeile agent_name (Quelle ohne Suffix _chat_memory), source_id (m.id), content.
 --   Filter (DB entscheidet, nicht das LLM):
 --     * m.id > last_seen_id

@@ -12,6 +12,7 @@
 --   Budget: Vorwarnungen/Info (agent.fn_monitor_needs_room) nur mit Platz im Tages-Slot 'monitor' des Owners.
 --   Parken: Trigger einer gerade nicht verfuegbaren Paket-Methode (agent.fn_monitor_method_status,
 --   Paket deinstalliert/inaktiv) erscheinen nicht (Spiegel des Filters in fn_monitor_evaluate).
+--   Fenster: date/recurring_info nur im Erinnerungs-Fenster (core.fn_in_reminder_window; Spiegel in fn_monitor_evaluate).
 --   plpgsql (nicht sql): Aufrufe werden erst zur Laufzeit gebunden; eine sql-fn validiert ihren Body beim
 --   CREATE, und R__fn_monitor_method_status wird alphabetisch nach dieser Datei angewendet.
 -- ============================================================

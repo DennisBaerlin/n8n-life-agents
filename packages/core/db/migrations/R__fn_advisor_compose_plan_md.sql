@@ -1,7 +1,7 @@
 -- ============================================================
 -- agent.fn_advisor_compose_plan_md(p_plan_id, p_reminders) — der Plan-Text aus den gespeicherten Themen (READ)
---   Beim Veroeffentlichen setzt die DB plan_md zusammen; das Modell schreibt den ganzen Plan nicht mehr (ein grosser Plan
---   passt nicht in eine Modell-Antwort: abgeschnitten, neu angesetzt, bis zur Iterations-Grenze).
+--   Beim Veroeffentlichen setzt die DB plan_md zusammen; das Modell schreibt den ganzen Plan nicht (ein grosser Plan
+--   passt nicht in eine Modell-Antwort).
 --   Aufbau: "# <plan_name>", je Teil in der Reihenfolge von core.fn_advisor_parts "## <Abschnitts-Name>" (Katalog
 --   <paket>.plan_section.<key> in der Sprache der Plan-Person, beim Haushalts-Plan des Owners), darunter je Thema
 --   "### <Thema>", Text, Zeile core.plan_md.why {text} und je offenem Punkt core.plan_md.open_point {text}; ein Abschnitt

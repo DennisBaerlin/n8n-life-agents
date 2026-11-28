@@ -5,12 +5,9 @@
 --   agent.fn_resolve_sender (das eine telegram_user_id->person braucht); dieser Helper braucht keine Identitaet,
 --   er liefert den festen Owner-Anker des Haushalts.
 --
---   Eine deterministische Quelle fuer den Owner-Anker, statt das Muster in mehreren fns/Migrationen zu
---   duplizieren. Konsumenten:
---     * career.fn_advisor_review (liest career_planning/career_profile am Owner-Suffix,
---       da der geteilte Review-Wrapper keine Person-Dimension hat)
---     * cron.refresh_market_signals (always-on: liest career_planning am Owner-Suffix)
---     * career:V002 (Daten-Backfill: career_planning + advisor_plans -> Owner-pid)
+--   Eine deterministische Quelle fuer den Owner-Anker, statt das Muster in mehreren fns zu duplizieren
+--   (Konsumenten: git grep fn_owner_person_id). V__-Migrationen koennen ihn nicht rufen (R__ laeuft nach der
+--   V-Phase) und inlinen das Muster.
 --
 --   Deterministisch + RAISE-frei: LIMIT 1 (agent.persons/family erzwingen keine
 --   "genau ein owner"-Invariante -> ohne LIMIT 1 wuerfe ein Scalar-Subquery-Aufruf

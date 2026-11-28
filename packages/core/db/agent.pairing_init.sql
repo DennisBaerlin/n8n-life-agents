@@ -105,8 +105,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS pairing_state_one_open_per_person
 -- ------------------------------------------------------------
 -- Knock-Throttle (Owner-Notify-Anti-Spam): der Cooldown-Zustand lebt in der geteilten
 -- core.notification_state (source='knock', key=uid), nicht in einer eigenen Tabelle
--- -> eine Dedup-Adresse aller Producer; fn_register_knock ruft core.fn_should_notify. Die alte Tabelle
--- agent.knock_log droppt V012__consolidate_notification_state.sql.
+-- -> eine Dedup-Adresse aller Producer; fn_register_knock ruft core.fn_should_notify.
 
 -- Lesepfad: nur die Haupt-Credential (Pre-Router) und die Pairing-fns. Kein Grant an core_ro:
 -- die offenen Einmal-Codes stehen im Klartext, der Frei-SQL-Pfad darf sie nie sehen (nicht auf der

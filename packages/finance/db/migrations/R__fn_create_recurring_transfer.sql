@@ -22,13 +22,16 @@
 --   Rueckgabe: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines, effective (+ last_execution,
 --   free_after bei until_free_money), execution} + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage:
 --   Spar-Deckung von Quelle und Ziel nach dem Write, je Deckungs-Konto eine Kartenzeile „Danach ...").
---   card_lines tragen den Bank-Hinweis (fn_bank_setup_note 'bank_setup': selbst bei der Bank einrichten), ausser bei
+--   card_lines tragen den Bank-Hinweis (fn_bank_note_recorded 'bank_setup': selbst bei der Bank einrichten), ausser bei
 --   executed_by bank/manual und bei until_free_money (dort sagt der Schlusssatz des Workflows es schon).
+--   fn_bank_note_recorded schreibt dazu einen offenen Punkt in finance.bank_todos (auch bei until_free_money).
 --   execution = aufgeloeste Ausfuehrung (bank|manual|unknown, fn_transfer_executed_by) als eigenes Feld, bewusst nicht unter
 --   effective: New-FnWriteGate mischt effective in die Eingabe des echten Writes, ein abgeleitetes manual/unknown wuerde
 --   sonst fest gespeichert.
---   Korrigierbar (amount<=0 / Quelle==Ziel / Depot- oder Kreditkonto als Bein (fn_bookable_account_reason) / until_free_money mit valid_to / ungueltiger executed_by / Ablehnung von
---   fn_transfer_free_end) -> {ok:false, reason} ohne Write.
+--   Korrigierbar (amount<=0 / Quelle==Ziel / Depot- oder Kreditkonto als Bein (fn_bookable_account_reason) /
+--   until_free_money mit valid_to / ungueltiger executed_by / Buchungstag (fn_schedule_dom_reason) / Ablehnung von
+--   fn_transfer_free_end) -> {ok:false, reason} ohne Write; laufende/startende freistehende Zahlung gleichen Namens
+--   -> {ok:false, code:'duplicate_name', candidates} (fn_recurring_name_check); unaufloesbares Datum -> code invalid_date.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
@@ -70,7 +73,6 @@ BEGIN
     IF (v_nc->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_nc;
     END IF;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

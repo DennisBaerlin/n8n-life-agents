@@ -11,7 +11,9 @@
 --   neuen Stand neu); ohne Suffix (Karten-Knopf, z. B. [Nicht mehr erinnern]) nur der Toast.
 --   Erreicht ueber core.fn_dispatch_callback (Member-Gate re-resolvt den Sender, member_permeable=true); der Owner
 --   kommt ueber denselben generischen Dispatch (rem ist kein hartkodierter Orchestrator-Arm).
---   Eingabe p: { data, chat_id (from.id), chat_type }
+--   Eingabe p: { data, chat_id (from.id) }; chat_type wird nicht gelesen (kein Privatchat-Check).
+--   Rueckgabe: {ok:true, key, enabled, toast, route?} | Pause {ok:true, enabled, until_date, toast, route?}
+--     | {ok:false, reason (invalid_verb|unknown_key|mandatory|owner_only|reason der Schreib-fn), toast}.
 --   Toast in der Sprache des Tippenden: <pkg>.cron.<key>.on_toast|off_toast (Paket aus core.cron_labels). Nie RAISE.
 --   SECURITY INVOKER (Host-Cred des Dispatchers, die core.config + agent.* schreibt), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_reminder_prefs.sql

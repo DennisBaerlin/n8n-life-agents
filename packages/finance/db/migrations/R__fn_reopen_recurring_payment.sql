@@ -10,8 +10,8 @@
 --   Besitzer zeigen danach auf die neue Zeile (fn_repoint_recurring_owners). Gerufen von fn_set_savings_plan,
 --   fn_set_savings_goal und fn_set_pension (Status -> active).
 --   Eingabe: p_rp_id (beendete Zeile), p_from (Start der neuen Zeile). Unbekannte p_rp_id -> RAISE.
---   Korrigierbar (kein Write) -> {ok:false, reason}: Zeile noch nicht beendet (valid_to NULL oder nach p_from);
---   Zeile hat schon einen Nachfolger (nur der Kopf der Kette ist reaktivierbar).
+--   Korrigierbar (kein Write) -> {ok:false, reason}: Zeile noch nicht beendet (valid_to NULL oder nach p_from; ein leeres
+--   Glied valid_to <= valid_from gilt als beendet); Zeile hat schon einen Nachfolger (nur der Kopf ist reaktivierbar).
 --   Rueckgabe: {ok:true, recurring_payment_id} (neue Zeile).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reopen_recurring_payment(p_rp_id int, p_from date)

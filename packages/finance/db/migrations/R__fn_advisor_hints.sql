@@ -10,11 +10,12 @@
 --     monthly_check Kontoauszug aelter als finance.statement_stale_days: die Vorschau ist nicht belastbar, der Monats-Check
 --                   holt den Auszug ab (nie vom Berater angesprochen).
 --   Eintraege: account_coverage (aktive Geld-Konten) {account, account_label, currency, lowest_balance, lowest_on,
---     has_history, due_soon} aus fn_account_outlook (mit Auszug: Unterschreitung des Puffers; ohne Auszug nur ein Minus);
+--     has_history, due_soon} aus fn_account_outlook (lowest_balance/lowest_on = dessen min_projected/min_date; mit Auszug:
+--     Unterschreitung des Puffers; ohne Auszug nur ein Minus);
 --     savings_funding {account, account_label, currency, state warn|alert, runs_out_on, lowest_balance, lowest_on, due_soon}
 --     aus account_funding_overview (Deckungs-Konten jeder Art); statement_stale {account, account_label, statement_age_days}
---     (aktive Geld-Konten). Jeder Eintrag zusaetzlich key ('<kind>:<account_id>', fest fuer den Merker "spaeter"), class,
---     pending_entry (eine offene Vormerkung nennt das Konto),
+--     (aktive Geld-Konten). Jeder Eintrag zusaetzlich kind (account_coverage|savings_funding|statement_stale),
+--     key ('<kind>:<account_id>', fest fuer den Merker "spaeter"), class, pending_entry (eine offene Vormerkung nennt das Konto),
 --     text_key + params fuer die Hinweis-Karte ({account, amount, currency, date}; bei statement_stale nur {account}) (Betrag = fehlender Betrag bzw. tiefster Stand, Datum = Problem-Datum).
 --   Eingabe p_domain (Domaene der Vormerkungen, Default finance). Rueckgabe jsonb-Array (Reihenfolge: coverage, funding,
 --   stale; je Konto-id). INVOKER (finance_ro liest alle Quellen, core nur ueber Fenster), plpgsql (late-bound).

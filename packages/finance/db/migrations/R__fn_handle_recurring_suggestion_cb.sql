@@ -12,9 +12,10 @@
 --   bekannt -> declined + Text mit Grund. no: declined. Uebernimmt ein Mitglied, liefert owner_notice den Hinweis in
 --   Owner-Sprache (Gleichstand zur Stufe owner_info der Einzelanlage), samt Cashflow-Warnung. Die fn ist schnell, deshalb kommt der Toast aus
 --   ihrem Ergebnis (kein answerCallbackQuery vorab).
---   p: {data, chat_id, chat_type}. Rueckgabe {ok, toast, edit?:{text}|{keep_text:true}, owner_notice?} | {ok:false, reason,
---   toast}; reason: not_allowed | unknown | expired | already_committed | already_declined | outdated | already_known |
---   create_rejected | error. Nie RAISE (EXCEPTION WHEN OTHERS).
+--   p: {data, chat_id, chat_type}. Rueckgabe {ok, toast, edit?:{text}|{keep_text:true}, declined? (no),
+--   recurring_payment_id? (ok), owner_notice?} | {ok:false, reason, toast, edit?}; reason: not_allowed | unknown | expired
+--   | already_committed | already_declined | outdated | already_known | create_rejected | error.
+--   Nie RAISE (EXCEPTION WHEN OTHERS).
 --   Tests: tests/db/finance/test_fn_handle_recurring_suggestion_cb.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_handle_recurring_suggestion_cb(p jsonb)
@@ -56,7 +57,6 @@ BEGIN
     END IF;
     SELECT * INTO v_row FROM finance.import_staging
     WHERE id = v_id::int AND origin = 'recurring_suggestion' FOR UPDATE;
-    -- fehlt die Zeile oder ist ihr Stapel laenger als 7 Tage nicht ergaenzt, gilt der Vorschlag als abgelaufen
     IF v_row.id IS NULL OR (v_row.status = 'staged' AND finance.fn_recurring_suggestion_expired(v_row.batch_id)) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'expired', 'edit', v_keep,
             'toast', core.fn_ui_text('finance.recurring_suggest.toast_expired', v_lang));

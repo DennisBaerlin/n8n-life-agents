@@ -19,12 +19,10 @@
 --         cron_enable = Laufzeit-Schalter -> value nie ueberschreiben;
 --         model, dessen Owner-Wert nicht zur Modell-Art des (neuen) Standards passt (core.fn_model_value_eligible,
 --         dieselbe Regel wie der Modell-Trigger trg_config_check_model_value) -> zurueck auf den Default (NOTICE;
---         sonst blockierte der Trigger den ganzen Seed). Ein verwaister Modell-Key ist seit core:V024 unmoeglich
---         (Fremdschluessel auf agent.ai_models).
+--         sonst blockierte der Trigger den ganzen Seed). Ein verwaister Modell-Key ist unmoeglich (Fremdschluessel auf
+--         agent.ai_models).
 --     Bestandszeilen mit default_value NULL gelten als vom Owner gesetzt; ist ihr Wert gleich dem
 --     neuen Default, folgen sie ab dann kuenftigen Defaults (default_value ist ab diesem Seed gesetzt).
---     core:V026 traegt fuer nie geaenderte Zeilen den damals ausgelieferten Standard nach -> sie folgen
---     dem heutigen Standard schon in diesem Seed.
 --     Warum DB-seitig: "DB ist Gesetz", die Regel gilt fuer jeden Schreibweg (lifeagents config set,
 --     Paket-Wizard, Agent-fns wie fn_set_cron_enable, psql), ohne dass ein Schreiber ein Flag setzen muss.
 --

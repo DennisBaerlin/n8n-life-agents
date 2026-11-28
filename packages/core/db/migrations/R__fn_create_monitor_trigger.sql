@@ -13,8 +13,8 @@
 --   Beschaffungs-Methode: Core-Builtins web_search | sql | none direkt; jede andere Methode muss
 --     eine verfuegbare Paket-Methode aus core.monitor_acquisition_methods sein (agent.fn_monitor_method_status) —
 --     ihre acquisition_params prueft + normalisiert die validate_fn des Pakets (fn_monitor_validate_params).
---   Eingabe jsonb: domain (default 'general'), label, trigger_type, acquisition_method
---     (default none), acquisition_prompt | acquisition_sql | acquisition_params (Paket-Methode, Objekt),
+--   Eingabe jsonb (Pflicht: label, trigger_type, check_interval): domain (default 'general'), label, trigger_type,
+--     acquisition_method (default none), acquisition_prompt | acquisition_sql | acquisition_params (Paket-Methode, Objekt),
 --     history_sql (Pflicht genau bei drawdown + sql: SELECT mit Zeilen (Datum, Wert) derselben Groesse; sonst {ok:false}),
 --     comparator, threshold_value, drawdown_pct,
 --     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),

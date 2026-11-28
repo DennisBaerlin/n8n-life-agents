@@ -28,8 +28,8 @@
 --     savings_squeeze = monthly_free>=0 aber Sparen>0 und monthly_account_change<0 (Sparraten leeren das Girokonto;
 --     advisor.savings_squeeze_nudge). Guard monthly_income>0. has_fx_gap -> Zusatzsatz "unvollstaendig".
 --     „frei“ und Kontoveraenderung rechnen den geschaetzten Alltag ein (fn_household_everyday_month), Basis-Satz je Meldung.
---   Notreserve-Cash + Monatsbasis aus finance.fn_liquidity_snapshot (freies Cash ohne Kinderkonten
---     und Sparziel-Ruecklagen; Pflichtausgaben ohne Sparraten). Zielmix-Drift normiert die Soll-Anteile der
+--   Notreserve-Alert emergency_reserve aus finance.fn_emergency_reserve_status; finance.fn_liquidity_snapshot liefert nur
+--     earmarked_eur (Sparziel-Ruecklagen, von der Cash-Klasse abgezogen). Zielmix-Drift normiert die Soll-Anteile der
 --     handelbaren Bloecke auf deren Summe; der Ist-Nenner sind nur handelbare Klassen mit Plan-Block (Cash als
 --     freies Cash). net_worth-Basis zaehlt die Immobilie (symmetrisch mit ihrem Kredit). Sparziel ohne Topf ->
 --     savings_goal_unmeasurable statt savings_pace.
@@ -51,6 +51,11 @@
 --     Stufe:Satz -> Stufen-/Satzwechsel meldet erneut; ohne Kurs NULL -> keine Meldung);
 --     maintenance_reserve_missing:<immobilie> = aktive Immobilie ohne aktive Ruecklage (einmal). Digest: Ruecklage als
 --     digest_maintenance_line (Stand + Rate) statt Prozent-Zeile; savings_pace/goal_reached entfallen (kein Ziel).
+--   Ruecklagen-Deckung: reserve_coverage = Konten, deren Saldo die getaggte Ziel-Reserve nicht deckt (account_reserve_status);
+--     reserve_coverage_depot (metric_key depot_reserve_coverage:<konto>) = Depot-Marktwert unter der Reserve, nur wenn ein
+--     Ziel darauf nicht on-pace ist und keine Kursdelle vorliegt (fn_depot_cover_state 'dip').
+--   Umschicht-Hilfe vor dem Zieldatum: savings_goal_derisk:<ziel> aus finance.fn_savings_goal_derisk_status (breach, nicht
+--     accepted; latch_keys = Restjahr). Sparziel erreicht: savings_goal_reached:<name> (ohne Notreserve).
 --
 --   Partial-tolerant: jeder Soll-Block optional; fehlt der Plan/das Fakt, entfaellt die Metrik still
 --   (kein Crash, leeres alerts moeglich). Robust bei leeren Live-Daten.
@@ -68,8 +73,8 @@
 --   told_keys (Quelle finance:told_owner): cashflow_coverage, savings_squeeze, reserve_coverage (je Konto mit latch_keys),
 --   savings_goal_reached (je Ziel-ID) schweigen, wenn der Owner die Lage schon beim Eintragen gehoert hat.
 --
---   Rueckgabe jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg,priority,told_keys?}], digest:{…Rohwerte, lines},
---     net_worth_by_class:[…], rebalanceable_drift:[…], non_rebalanceable_targets:[…],
+--   Rueckgabe jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg,priority,told_keys?,latch_keys?}],
+--     digest:{…Rohwerte, lines}, net_worth_by_class:[…], rebalanceable_drift:[…], non_rebalanceable_targets:[…],
 --     advisories:{unmapped:[…], null_tag:[…], null_price:[…], null_rate:[…], price_as_of, price_stale} }
 --   Tests: tests/db/finance/test_fn_advisor_review.sql
 -- ============================================================
@@ -929,12 +934,7 @@ BEGIN
                      AND finance.fn_price_status(v_price_asof) <> 'ok';
 
     -- Zielportfolio-Drift (FIRE-Topf vs. goal.target_portfolio_eur unterer Wert).
-    -- FIRE-Topf-Basis:
-    --   'investment' (Default) = liquide Anlage-Assets Depot + Cash + Festgeld + P2P (brutto);
-    --     ohne Hypothek/Haus/Rente (Haus+Hypothek heben sich auf, bleiben aussen).
-    --   'net_worth' = investment + Immobilien + alle Kredite (Haus und Hypothek heben sich auf).
-    --   ELSE-Fail-Safe: jede andere/unbekannte Basis rechnet wie investment (nie leerer Pot).
-    --   Kein Netting der Sparziel-Reserven im Topf: hier brutto.
+    -- FIRE-Topf-Basis laut Kopf (FIRE-Topf-Semantik); kein Netting der Sparziel-Reserven im Topf: hier brutto.
     IF jsonb_typeof(v_goal) = 'object' AND (v_goal ? 'target_portfolio_eur') THEN
         v_tp_target := CASE WHEN jsonb_typeof(v_goal->'target_portfolio_eur') = 'array'
                             THEN (v_goal->'target_portfolio_eur'->>0)::numeric

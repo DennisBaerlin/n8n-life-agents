@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_bank_export_resolve_account (READ, STABLE) -- Konto einer Bank-Export-Datei (Konto-Waechter)
---   Ohne Waechter riet der Agent zu einer Export-Datei ein Konto einer anderen Bank. Die eine Konto-Aufloesung
---   fuer Bank-Export-Dateien (fn_statement_prepare source:'file', fn_replace_takeover_with_lots) - nie der Prompt.
+--   Die eine Konto-Aufloesung fuer Bank-Export-Dateien - nie der Prompt. Aufrufer: fn_bank_export_load (fuer
+--   fn_statement_prepare source:'file', fn_replace_takeover_with_lots und die anderen Datei-Wege).
 --   Kandidaten = aktive, buchbare Konten (fn_bookable_account_reason NULL: nie Depot/Kredit) mit dem Datei-Profil
 --   (fn_bank_export_account_profile = p_profile) in einer Waehrung des Exports (p_currencies leer = jede), nach id.
 --   Ohne account_name: genau 1 Kandidat -> dieses Konto; mehrere -> account_ambiguous; keiner -> account_unknown.
@@ -13,7 +13,7 @@
 --   Eingabe: p_account_name (optional), p_profile (Profil-key), p_currencies (Waehrungen der Datei, jsonb-Array).
 --   Rueckgabe: {ok:true, account_id, account_name}
 --   | {ok:false, code, reason, bank (Bank der Datei), account_name?, candidates[{id,name,bank,account_type,status}]};
---   account_unknown ohne Kandidaten traegt profile, is_broker, interest_source.
+--   account_unknown ohne Kandidaten und ohne account_name traegt profile, is_broker, interest_source.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_resolve_account(p_account_name text, p_profile text,
                                                                  p_currencies jsonb DEFAULT '[]'::jsonb)

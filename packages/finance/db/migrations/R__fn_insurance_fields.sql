@@ -15,7 +15,8 @@
 --   ("48h"/"12.5"). schedule_unit = Enum (fn_enum_reason), insurance_type = Liste (fn_insurance_type_reason). Leere
 --   Felder bleiben NULL (set_*: unveraendert). fn_set_insurance reicht den bisherigen Rhythmus mit, wenn keiner genannt ist.
 --   Rueckgabe: {ok:true, premium_amount (je Abbuchung, positiv | NULL = kein Beitrag genannt), annual_premium (abgeleitet),
---   schedule_interval, schedule_unit (wirksam), coverage_amount, claim_deadline_hours} | {ok:false, reason}.
+--   schedule_interval, schedule_unit (wirksam), coverage_amount, claim_deadline_hours} | {ok:false, reason}; bei
+--   unstimmiger Doppelangabe traegt {ok:false} zusaetzlich premium_amount und annual_premium.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_insurance_fields(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -62,7 +63,7 @@ BEGIN
     IF v_interval < 1 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'The payment interval must be at least 1, got ' || v_interval || '.');
     END IF;
-    -- Doppelangabe: bis 0,01 Abweichung = Rundung des Versicherers (wie finance:V027), sonst unstimmig
+    -- Doppelangabe: bis 0,01 Abweichung = Rundung des Versicherers, sonst unstimmig
     IF v_per IS NOT NULL AND v_annual IS NOT NULL
        AND abs(v_per - finance.fn_insurance_period_amount(v_annual, v_interval, v_unit)) > 0.01 THEN
         RETURN jsonb_build_object('ok', false,

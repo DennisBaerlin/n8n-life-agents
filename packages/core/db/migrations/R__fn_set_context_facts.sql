@@ -1,10 +1,11 @@
 -- ============================================================
 -- fn_set_context_facts (ATOMIC WRITE — der einzige Schreibweg fuer facts-Sidecars)
 --   Schreibt metadata.facts eines Kontexts in der Host-Tabelle agent.core_contexts. Paket-Rollen duerfen
---   nichts auf agent.* schreiben -> jeder Fakten-Write ist core-vermittelt (core:V019 droppt die frueheren Fenster).
+--   nichts auf agent.* schreiben -> jeder Fakten-Write ist core-vermittelt.
 --   Aufrufer: HITL-Tool agent.tool_set_context_facts (Guide bindet es als tool_set_household_facts, career als
 --   tool_set_profile_facts/tool_set_career_preferences), fn_add_household_person + fn_merge_member_identity
---   (bewusst OHNE chat_id: CLI/Pairing sind nicht chat-autorisiert), fn_approve_learn_candidate.
+--   (bewusst ohne chat_id: CLI/Pairing sind nicht chat-autorisiert), fn_approve_learn_candidate, die Picker-Handler
+--   fn_set_person_language/fn_set_person_persona (ohne chat_id) und agent.fn_set_own_context_facts (scope per_user).
 --
 --   Eingabe jsonb: context_name (Pflicht), facts (Objekt, partielle Roh-Fakten), content (optional, Prosa-
 --     Replace; der system-verwaltete "## Gelernt"-Block bleibt erhalten, ein mitgeschickter wird verworfen —
@@ -26,7 +27,7 @@
 --       kein Treffer + vollstaendiger Neu-Datensatz (first/last/birth_date/role) -> neue Person mit Slug von
 --       agent.fn_person_slug; mehrdeutig/unvollstaendig -> {ok:false}. Eine unbekannte person_id -> {ok:false}
 --       (keine vom LLM erfundenen Slugs).
---     Ohne chat_id (CLI, Pairing, interne Aufrufer) gilt das bisherige Verhalten (as_of nur, wenn es fehlt).
+--     Ohne chat_id (CLI, Pairing, interne Aufrufer): person_id Pflicht, as_of stempelt die fn nur, wenn es fehlt.
 --   Relative Zeitangaben in *_date / since ("-12 years", "last monday") loest core.fn_resolve_fact_dates auf.
 --
 --   Zwei Zweige (Scope aus core.context_scopes; fehlt die Zeile -> household/owner_only):
@@ -44,7 +45,7 @@
 --   Plan-Dokumente (core.advisors.plan_context, z. B. financial_planning/career_planning) sind fuer alle
 --     Absender gesperrt -> {ok:false}; sie schreibt nur fn_advisor_publish_plan (owner_only, versioniert).
 --   Mitglieder-Selbstpflege: agent.fn_set_own_context_facts setzt scope='per_user' fest (Stufe self).
---   Freundliche Pre-Validation (gleiche Quellen wie der Trigger-Backstop): Core-Validator
+--   Freundliche Pre-Validation agent.fn_validate_context_facts (dieselbe Pruefung wie der Trigger-Backstop) = Core-Validator
 --     agent.fn_validate_household_facts + registrierter Paket-Validator -> {ok:false, reason} ohne Write.
 --   Sprache: language einer Person wird vorab normiert (agent.fn_normalize_language: "Koreanisch" -> ko); ein nicht
 --     abbildbarer Wert bleibt roh und scheitert am Validator (Wertevorrat core.ui_languages) mit Grund.

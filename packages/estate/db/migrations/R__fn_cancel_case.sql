@@ -3,11 +3,10 @@
 --   Bricht einen offenen Ereignisfall ab (status -> 'cancelled', closed_at materialisiert). Die
 --   case_tasks bleiben als Audit erhalten (CASCADE greift erst beim echten Loeschen des Falls, das es
 --   nicht gibt). Danach ist die partial-UNIQUE(subject) WHERE open frei -> ein neuer/korrigierter Fall
---   ist anlegbar (Fall-Korrektur = cancel + create). Verb 'cancel' Floor 0 (owner_info-faehig, Break-
---   Glass): ein erwachsenes Mitglied kann einen Fall allein abbrechen (Owner-Info = Audit) — bewusste
---   Konsequenz. adults_only-DB-Backstop (Kind -> {ok:false}). case_id vom Tool geliefert (der
---   Agent liest ihn per postgres_select). Nicht gefunden/nicht offen = korrigierbar ({ok:false}, kein
---   RAISE -> kein Owner-Alert-Sturm bei einer veralteten id).
+--   ist anlegbar (Fall-Korrektur = cancel + create). Ein erwachsenes Mitglied kann einen Fall allein abbrechen
+--   (Owner-Info = Audit; Break-Glass-Grund: packages/estate/CLAUDE.md). adults_only-DB-Backstop (Kind -> {ok:false}).
+--   case_id vom Tool geliefert (der Agent liest ihn per postgres_select). Nicht gefunden/nicht offen = korrigierbar
+--   ({ok:false}, kein RAISE -> kein Owner-Alert-Sturm bei einer veralteten id).
 --   Eingabe jsonb: chat_id, case_id (Pflicht).
 --   Rueckgabe: {ok:true, case_id, status:'cancelled'} | {ok:false, reason}; reasons: 'Write rejected (<perm>): …'
 --   (Kind/fremder Sender), 'case_id is required.', 'case <id> not found.', 'case <id> is not open (status <s>) …'.

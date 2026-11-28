@@ -5,8 +5,8 @@
 --   Satz "geht noch nicht, weil ..." steht dort). Statt einen vereinbarten Wert in Notizen zu parken, wartet die Aufgabe
 --   auf ein Update; der Korrektur-Schritt der Abfolge (core.fn_plan_rollout_next, step fix) bietet sie wieder an, sobald
 --   die Vorpruefung durchlaeuft. Nur Aufgaben der Person des Absenders (core.fn_handoff_person).
---   Erfolg {ok:true, task_id, status:'deferred', blocked_code, text}; korrigierbar {ok:false, code: unknown_blocked_code
---   (+ valid_codes) | handoff_task_invalid | handoff_task_closed, reason}.
+--   Erfolg {ok:true, task_id (= handoff_task_id), status:'deferred', blocked_code, text}; korrigierbar {ok:false,
+--   code: unknown_blocked_code (+ valid_codes) | handoff_task_invalid | handoff_task_closed, reason}.
 --   Aufrufer: die Paket-fn hinter dem Zurueckstellen-Werkzeug des Pakets. SECURITY DEFINER, EXECUTE an <pkg>_rw via
 --   core.fn_provision_package_roles. Tests: tests/db/core/test_fn_defer_handoff_task.sql
 -- ============================================================

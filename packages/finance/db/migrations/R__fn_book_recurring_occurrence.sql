@@ -19,7 +19,8 @@
 --   ok:false ohne RAISE: {code:'already_booked'} (schon ein Tx fuer (rp_id, Faelligkeit)); {code:'reconciled'}
 --   (Buchungsdatum <= letzter Saldo-Abgleich des Kontos, fn_reconciled_reason; der Abgleich enthaelt die Bewegung
 --   schon -> sonst Doppelzaehlung); {code:'invalid_date'}; {reason} bei amount <= 0 oder Konto ohne freie Buchung
---   (fn_bookable_account_reason). RAISE bei unbekannter rp.
+--   (fn_bookable_account_reason). Unveraendert durchgereicht: ok:false von fn_book_loan_payment (Kredit) bzw.
+--   fn_book_recurring_transfer (Transfer, z. B. before_opening). RAISE bei unbekannter rp.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_recurring_occurrence(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

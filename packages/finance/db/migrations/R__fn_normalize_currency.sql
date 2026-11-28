@@ -2,8 +2,9 @@
 -- fn_normalize_currency (READ HELPER, IMMUTABLE, STRICT)
 -- Normalisiert einen roh vom LLM/Owner gelieferten Waehrungs-Code auf die kanonische
 -- ISO-4217-Schreibweise: upper(trim(...)). Eingabe: p_code (text). Rueckgabe: text.
--- Die eine Quelle fuer alle Waehrungs-Schreibwege
--- (fn_create_account, fn_book_stock_buy.quote_currency, fn_set_holding.currency+quote_currency).
+-- Die eine Quelle fuer die Waehrungs-Schreibwege der Write-fns
+-- (fn_create_account, fn_book_stock_buy.quote_currency, fn_set_holding.currency+quote_currency); fn_import_normalize_payload
+-- (provider_currency) und die Bank-Export-Normalisierer schreiben upper() inline, ohne diese fn.
 --
 -- Warum: der Waehrungs-Input ist ein Roh-Wert (das LLM nennt currency mal klein, 'usd'). Ohne
 -- Normalisierung wuerde fn_create_account den {ok:false} von fn_ensure_currency uebergehen und in einen

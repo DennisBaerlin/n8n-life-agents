@@ -14,10 +14,9 @@
 --   Rueckgabe: Zeilen (label, trigger_type, status, spec_summary), sortiert nach label; label verbatim (der Advisor
 --   braucht es zum Dedup). Enthalten sind auch disabled Trigger und abgelehnte Eintraege (status 'declined' aus
 --   agent.plan_reminder_declines): beide darf der Plan-Durchlauf nicht erneut anbieten.
---   Content-Guard: spec_summary wird ausschliesslich aus den typisierten Vergleichs-Spalten gebaut
---   (acquisition_method-Enum, comparator, threshold_value, drawdown_pct, due_date), nie aus
---   acquisition_spec (freier Web-Prompt/Roh-SQL) oder action_note (freier DE-Text): sonst kaeme ein Prompt-
---   Injection-Echo samt Token-Bombe zurueck in den Advisor-Kontext.
+--   Content-Guard (packages/core/CLAUDE.md *Trigger-Monitoring*): spec_summary nur aus typisierten Spalten (comparator,
+--   threshold_value, drawdown_pct, due_date, acquisition_method; declined-Zeilen: trigger_type 'date', spec_summary
+--   'date <remind_on>' bzw. 'date'), nie aus acquisition_spec oder action_note.
 --   EXECUTE nur an die Paket-Rollen (erteilt in core.fn_provision_package_roles, to_regprocedure-guarded).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_list_monitor_triggers(p_domain text)

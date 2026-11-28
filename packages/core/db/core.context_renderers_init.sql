@@ -29,14 +29,14 @@
 --
 -- Schema-Wahl "core": cross-cutting System-Infrastruktur (wie core.context_validators / core.config),
 --   kein Agenten-Belang. Diese Datei enthaelt nur das Schema; die Zeilen seedet seed_data.sh aus den
---   Manifesten (Paket-Contexts) bzw. dem Core-Manifest (family/finance_profile).
+--   Manifesten (Paket-Contexts, z. B. finance_profile) bzw. dem Core-Manifest (family).
 -- ============================================================
 
 CREATE SCHEMA IF NOT EXISTS core;
 
 CREATE TABLE IF NOT EXISTS core.context_renderers (
     context_name text PRIMARY KEY,                 -- agent.core_contexts.name der facts-Zeile (z. B. 'financial_planning')
-    render_fn    text NOT NULL                     -- schema-qualifizierte fn(text)->text; baut den autoritativen Header (NULL = nur Prosa)
+    render_fn    text NOT NULL                     -- schema-qualifizierte fn(text)->text; baut den autoritativen Header (Rueckgabe NULL/leer = nur Prosa)
                  CHECK (render_fn ~ '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'),  -- schema.fn, lowercase, fuehrender Buchstabe, kein Injection-Zeichen
     package      text NOT NULL DEFAULT '',          -- deklarierendes Paket (Audit / Uninstall-Scope)
     updated_at   timestamptz NOT NULL DEFAULT now()

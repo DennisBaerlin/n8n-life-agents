@@ -29,6 +29,7 @@
 --   gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person, Beitrag <= 0, Rhythmus/Stichtag ohne Beitrag,
 --   Konto ausser beim ersten Beitrag, Beitrag an einer nicht aktiven Vorsorge, erster Beitrag ohne effective_from/Konto
 --   oder auf ein nicht buchbares Konto, Stichtag vor einer geplanten Aenderung, Split-Guards) -> {ok:false}.
+--   RAISE bei unbekannter pension_id und wenn fn_reopen_recurring_payment den beendeten Beitrag nicht reaktiviert.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================

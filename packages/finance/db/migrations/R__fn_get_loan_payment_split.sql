@@ -2,8 +2,8 @@
 -- fn_get_loan_payment_split (READ) -- die eine Zins/Tilgungs-Formel einer Kreditrate
 --   Gerufen von der HITL-Vorschau in tool_book_loan_payment (read-only, Tool-Cred finance_rw; auch unter
 --   finance_ro lesbar), von fn_book_loan_payment (Buchung) und von fn_recurring_occurrence_amount (Erinnerung)
---   -> Karte, Erinnerung und Buchung zeigen garantiert dieselben Zahlen. Zins = fn_loan_monthly_interest (Restschuld
---   * Zinssatz / 1200, die eine Formel auch der Cashflow-Klassifikation) * Monate je Raten-Periode (eine Quartalsrate
+--   -> Karte, Erinnerung und Buchung zeigen garantiert dieselben Zahlen. Zins = fn_loan_monthly_interest (die eine
+--   Zinsformel) * Monate je Raten-Periode (eine Quartalsrate
 --   traegt drei Monatszinsen; Periode aus Kadenz der Kredit-rp ueber fn_loan_period_months, ohne rp = 1 Monat);
 --   Tilgung = Rate - Zins; mit explizitem principal_amount: Zins = Rate - Tilgung.
 --   Faelligkeits-Zuordnung: eine regulaere Rate (Betrag = geplante Rate eines Glieds der Raten-Kette, oder
@@ -24,7 +24,8 @@
 --   principal_amount (opt), due_date (opt), recurring_payment_id (opt, Scheduler-Stempel).
 --   Rueckgabe: {ok:true, payment_amount (gegeben oder abgeleitet), remaining_debt (vor der Rate), interest_portion,
 --   principal_amount, matched_due_date, booking_date, recurring_payment_id (nur bei Zuordnung)} | korrigierbar
---   {ok:false, reason, ...betraege} (Rate <= 0, keine faellige Rate, Tilgung < 0 oder > Rate, Unterzahlung,
+--   {ok:false, reason, ...betraege: payment/interest/principal = payment_amount/interest_portion/principal_amount,
+--   remaining_debt} (Rate <= 0, keine faellige Rate, Tilgung < 0 oder > Rate, Unterzahlung,
 --   Ueberzahlung inkl. payoff_amount, code 'already_booked', code 'invalid_date'). RAISE nur bei not-found.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_get_loan_payment_split(p jsonb)

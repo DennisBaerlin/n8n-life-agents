@@ -2,7 +2,7 @@
 -- fn_pkg_register (ATOMIC WRITE — Paket in core.package_registry an-/nachmelden)
 --   Idempotenter Upsert je `package` (PK). Erstanlage -> status='installing'
 --   (Lifecycle-Start; `active` setzt erst fn_pkg_set_status zuletzt). Re-Register
---   (gleiches Paket) aktualisiert version/description/requires/core_api/checksum,
+--   (gleiches Paket) aktualisiert version/description/display_name/requires/core_api/checksum,
 --   laesst den `status` unangetastet (ein Update-Lauf kippt nicht ungewollt aktiv->installing).
 --   Aufgerufen vom CLI-Lifecycle (pkg_lifecycle.sh) nach erfolgreicher DB-Migration/Deploy.
 --   Eingabe jsonb: package (Pflicht), version, description, display_name (deutscher Anzeigename),

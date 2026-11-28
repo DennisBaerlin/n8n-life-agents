@@ -2,7 +2,7 @@
 -- career.fn_validate_career_planning (VALIDATOR)
 --   Strukturvalidierung des advisor-gepflegten 'career_planning'-Sidecars (Ziel-Rollen, Ziel-Branchen,
 --   Umstiegs-Timeline). Vorbild finance.fn_validate_financial_planning (partial-tolerant: jeder Top-Block
---   optional). Der Plan-Sidecar wird von core.fn_advisor_publish_plan(domain='career') geschrieben. Die Pruefstelle agent.fn_validate_context_facts ruft sie ueber advisors.career.plan_validate_fn (Berater-
+--   optional). Der Plan-Sidecar wird von agent.fn_advisor_publish_plan(domain='career') geschrieben. Die Pruefstelle agent.fn_validate_context_facts ruft sie ueber advisors.career.plan_validate_fn (Berater-
 --   Eintrag, per_user-Basisname; keine context_validators-Zeile). Die Derived-Value-
 --   Denylist (keine gespeicherten Ableitungen wie computed_months/target_year) liegt im Core-Validator.
 --   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig).
@@ -14,6 +14,10 @@
 --   Block der targets-Sektion in diesem Sidecar (Suchkriterien = career_planning-Fakten, kein Tabellen-Konstrukt);
 --   der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert (employment_types: welche Werte die
 --   Suche filtert, steht in career.fn_job_search_employment).
+--   Weitere Pruefungen: target_roles[].title Pflicht, salary_expectation_eur 0..10000000, salary_period month|year,
+--   salary_basis gross|net; target_industries/target_locations/employment_types je Array; search_radius_km 0..500;
+--   target_date YYYY|YYYY-MM|YYYY-MM-DD (timeline_years abgelehnt); transition {probation_months 0..24,
+--   expected_gap_income_eur 0..1000000}.
 --   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_planning(p_facts jsonb)
@@ -93,7 +97,7 @@ BEGIN
     END IF;
 
     -- Zieldatum roh (absolut oder relativ wie gesagt, die DB loest "+2 years" beim Speichern auf), nie eine
-    -- relative Jahreszahl (timeline_years ist naechstes Jahr falsch; Bestand umgerechnet in career:V007).
+    -- relative Jahreszahl (timeline_years ist naechstes Jahr falsch).
     -- Kein Vergangenheits-Check hier: das Dokument wird bei jedem Publish neu geprueft, ein erreichtes Ziel darf
     -- spaeteres Publizieren nicht blockieren (der Renderer zeigt "ueberschritten").
     IF p_facts ? 'timeline_years' THEN

@@ -19,9 +19,10 @@
 --   Sicherheit: die fn-Namen landen in einem dynamischen EXECUTE (fn_monitor_acquire/_validate_params); sie
 --     kommen nur aus dieser Tabelle (Regex-CHECK schema.fn, kein Caller-Input), die Dispatcher pruefen per
 --     to_regprocedure und pinnen search_path (CVE-2018-1058, Muster core.fn_dispatch_callback).
---   Builtin-Literale: web_search | sql | none stehen bewusst gespiegelt auch in fn_monitor_method_status und
---     im spec_shape-CHECK von agent.monitor_triggers (ein CHECK kann keine Tabelle lesen; die Builtins sind
---     Core-Code, keine Daten) — eine neue Core-Methode = alle drei Stellen + contract_lint Check 18.
+--   Builtin-Literale: web_search | sql | none stehen bewusst gespiegelt auch in fn_monitor_method_status,
+--     fn_set_monitor_trigger, agent.trg_monitor_triggers_validate_spec_fn und im spec_shape-CHECK von
+--     agent.monitor_triggers (ein CHECK kann keine Tabelle lesen; die Builtins sind Core-Code, keine Daten) —
+--     eine neue Core-Methode = alle Stellen + contract_lint Check 18.
 --   Kein updated_at-Touch-Trigger (wie callback_handlers): der Seed setzt updated_at beim Upsert explizit.
 --   Tests: tests/db/core/test_monitor_acquisition_methods.sql
 -- ============================================================

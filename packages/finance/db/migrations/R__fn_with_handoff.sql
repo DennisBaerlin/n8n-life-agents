@@ -4,6 +4,9 @@
 --   RETURN finance.fn_with_handoff('<eigene Signatur>'::regprocedure, p). Welche das sind, steht im Manifest
 --   (advisors.finance.handoff_tools); contract_lint prueft Werkzeug-Eingang und diesen Aufruf.
 --   Eingabe: p_fn regprocedure (die aufrufende fn), p jsonb (deren Payload inkl. handoff_task_id, chat_id).
+--   Fuer (2) liest sie je Art die Kennung aus p: recurring_payment_id | goal_id | pension_id | savings_plan_name (Name,
+--   fn_resolve_savings_plan); fehlt sie, kein Vorher-Stand und keine Aenderungs-Zeilen, und ein weiterer Teil einer
+--   fn_set_* wird abgelehnt (handoff_task_invalid).
 --   Ablauf in derselben Transaktion: (1) core.fn_handoff_task_check (Aufgabe working oder in dieser Runde freigegeben, oder
 --   in dieser Runde schon erledigt = weiterer Teil derselben Vormerkung: mit Soll nur ein vereinbarter Aufruf dieses
 --   Werkzeugs, zu dem noch keine Sache eingetragen ist, ohne Soll nur eine fn_create_*; dieselbe Sache nie zweimal; Person
@@ -13,6 +16,7 @@
 --   gibt die Kurz-Zeile statt des Bank-Absatzes); (4) nur bei ok:true core.fn_complete_handoff_task -> done mit
 --   entered_refs [{type, id, call?}] = die angelegte bzw. geaenderte Sache (ein weiterer Teil haengt seine an); call = Stelle
 --   des vereinbarten Aufrufs im Soll, den sie erfuellt (0-basiert, nur mit Soll; Zuordnung finance.fn_handoff_pairs).
+--   Scheitert der Abschluss in (4) (parallel geaenderte Aufgabe) -> RAISE, Rollback samt Ziel-Write.
 --   Rueckgabe: Ergebnis der Ziel-fn + handoff_task_id + handoff_diff (finance.fn_handoff_diff_of gegen wanted nach dem
 --   Write, [] = wie vereinbart, fehlt ohne wanted); bei mehrteiligem Soll zaehlt ein noch nicht eingetragener Teil nicht als
 --   exists-Abweichung + Kartenzeilen am Ende von card_lines in dieser Reihenfolge:
@@ -56,7 +60,7 @@ BEGIN
     END IF;
     v_tool := regexp_replace(v_name, '^fn_', '');
     v_type := finance.fn_handoff_tool_spec()->v_tool->>'type';
-    -- geaenderte Sache vor dem Write: Eingabe-Kennung der set-fn (der Sparplan kommt als Name)
+    -- geaenderte Sache vor dem Write: Eingabe-Kennung der set-fn (Sparplan als Name savings_plan_name = plan_name beim Anlegen)
     v_id := CASE v_type
         WHEN 'recurring_payment' THEN NULLIF(p->>'recurring_payment_id', '')::int
         WHEN 'savings_goal'      THEN NULLIF(p->>'goal_id', '')::int

@@ -15,14 +15,15 @@
 --       und in message_id-Reihenfolge zu einem Update zusammenfuehren (Regel: agent.fn_merge_ingress_updates).
 --       update nur, wenn > 1 Zeile.
 --   Beanspruchte Zeilen: claimed_by = eigene update_id, payload = NULL (Privatsphaere). Raeumt Zeilen > 2 min weg.
---   Nebenlaeufigkeit: Die erste Anweisung ist ein eigenes PERFORM pg_advisory_xact_lock(<Namensraum>, <chat>)
+--   Nebenlaeufigkeit: nach exec_id-/update_id-Pruefung und Nachschlagen der chat_id ein eigenes PERFORM
+--   pg_advisory_xact_lock(<Namensraum>, <chat>), danach wird die Zeile neu gelesen
 --   (VOLATILE-fn -> jede folgende Anweisung sieht unter READ COMMITTED einen frischen Schnappschuss nach dem
 --   Lock). Claims desselben Chats laufen so strikt nacheinander; record nimmt den Lock nicht (es legt nur
 --   neue Zeilen an). Zeitbasis clock_timestamp(), nicht now().
 --   Fehlende exec_id = Bau-Fehler des Aufrufers -> RAISE (der Eingang ist fail-open).
 --   Eingabe p: { update_id (numerisch), exec_id (Pflicht), final? }
---   Rueckgabe: {ok:true, action: process|wait|drop, update?, merged_update_ids?, reason?}; nicht numerische
---   update_id -> {ok:false, action:'process', reason}.
+--   Rueckgabe: {ok:true, action: process|wait|drop, update?, merged_update_ids?, reason?, claimed_by? (bei claimed)};
+--   nicht numerische update_id -> {ok:false, action:'process', reason}.
 --   Tests: tests/db/core/test_fn_ingress_buffer.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_ingress_burst(p jsonb)

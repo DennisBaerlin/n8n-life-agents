@@ -1,8 +1,9 @@
 -- ============================================================
 -- fn_sender_sees_household (READ-ONLY, SECURITY DEFINER) — sieht der Absender den Haushalt?
 --   Die eine Regel fuer den Chat: das Tor im Vermittler (agent.sub_dispatch_agent), das Eingangs-Gate des Monitors, die
---   Wahl des Hilfe-Agent-Knotens, core.fn_fetch_context und die Trigger-fns fragen hier. Der Rollenteil ist allein
---   core.fn_app_sees_household (Allow-List owner/partner, dieselbe Regel wie die Mini-App).
+--   Wahl des Hilfe-Agent-Knotens und core.fn_fetch_context fragen hier; die Monitor-Trigger-fns fragen den Backstop
+--   core.fn_sender_is_household_restricted. Der Rollenteil ist allein core.fn_app_sees_household (Allow-List owner/partner,
+--   dieselbe Regel wie die Mini-App).
 --   Eingabe: p_chat_id = chat_id aus dem Agent-/Werkzeug-Start (produktiv die numerische telegram_user_id).
 --   Rueckgabe boolean, nie NULL:
 --     '^[0-9]{1,18}$' -> fn_app_sees_household(person_id aus agent.fn_resolve_sender); unbekannt -> false;

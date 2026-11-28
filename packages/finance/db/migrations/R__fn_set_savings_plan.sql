@@ -24,7 +24,7 @@
 --   Kalender ein Kalendertag sein); andere Tage = Kadenzwechsel = Split. depot_execution_days (rohe Nutzer-Antwort)
 --   korrigiert den Depot-Kalender (nur zusammen mit einem Rhythmus) und wird im selben Write am Depot gespeichert.
 --   Eine reine Betrags-Aenderung erbt die Tage (fn_split_recurring_payment).
---   Reine Tag-Verlegung (Monatsrhythmus, Einzeltag -> anderer Einzeltag, auch auf einen SPAETEREN Tag im selben Monat):
+--   Reine Tag-Verlegung (Monatsrhythmus, Einzeltag -> anderer Einzeltag, auch auf einen spaeteren Tag im selben Monat):
 --   jeder Monat behaelt genau eine Ausfuehrung; im Uebergangsmonat laeuft nur die am genannten neuen Tag, die am alten
 --   entfaellt (Wechselpunkt aus fn_recurring_day_shift, dieselbe Adresse wie set_recurring_payment; ein genanntes Ende
 --   wandert mit). Ist die alte Ausfuehrung des Uebergangsmonats schon gebucht/uebersprungen oder die erste des Plans:
@@ -32,20 +32,22 @@
 --   Doppelung. Grenzen: Plaene mit festen Monatstagen oder Wochen-Rhythmus sind nicht betroffen (mehrere Ausfuehrungen
 --   je Monat sind dort gewollt); die Karte nennt die entfallende Ausfuehrung nicht, nur das neue Datum.
 --   Eingabe jsonb: savings_plan_name, new_amount (opt, pos), schedule_unit (opt, day|week|month|year),
---   schedule_interval (opt, pos), depot_execution_days (opt), status (opt, paused|active),
+--   schedule_interval (opt, pos), depot_execution_days (opt), status (opt, paused|active; zusammen mit Betrag/Rhythmus/
+--   depot_execution_days still ignoriert, der Split erbt den alten Status),
 --   valid_from (opt, Stichtag des Splits; default heute), notes (opt),
 --   beneficiary_person_id (opt, Slug; leer=unveraendert),
 --   asset_class (opt -- Anlageklasse korrigieren; leer=unveraendert; Format-Verstoss -> {ok:false}),
 --   valid_to (opt, kuenftiges Ende, siehe Absatz "Kuenftiges Ende"), chat_id (opt, fuer den Squeeze-Hinweis).
 --   RUECKGABE: {ok:true, savings_plan_id, recurring_payment_id, split, effective (aufgeloeste Daten + valid_from)};
---   bei split=true zusaetzlich previous_rp_id,
---   schedule_unit/schedule_interval und schedule_days ("2, 9, 16, 23" oder null) der neuen Zeile (gespeichert, fuer
---   die Karte) sowie monthly_amount (Betrag je Monat, positiv);
+--   bei split=true zusaetzlich previous_rp_id (= previous_id der uebrigen set_*-fns),
+--   schedule_unit/schedule_interval und schedule_days (= schedule_days_of_month als Text, "2, 9, 16, 23" oder null) der
+--   neuen Zeile (gespeichert, fuer die Karte) sowie monthly_amount (Betrag je Monat, positiv);
 --   bei Reaktivierung einer beendeten rp zusaetzlich reopened=true + previous_rp_id; optional savings_squeeze
 --   (fn_savings_squeeze_fold: Sparraten leeren das Girokonto) - nur wenn sich die laufende Rate aendert (Split/
 --   Reaktivierung mit Stichtag <= heute, Status-Wechsel), nie bei reinen Notiz-/Anlageklasse-/Person-Edits.
---   card_lines: Bank-Hinweis (fn_bank_setup_note) bei Split und Reaktivierung bank_change, bei echtem Status-Wechsel
---   paused -> bank_stop, active -> bank_change.
+--   card_lines: Bank-Hinweis (fn_bank_note_recorded) bei Split und Reaktivierung bank_change, bei echtem Status-Wechsel
+--   paused -> bank_stop, active -> bank_change. Jeder Bank-Hinweis schreibt einen offenen Bank-Punkt (finance.bank_todos);
+--   bank_stop setzt ueber fn_bank_stop_note_told zusaetzlich den Merker finance:bank_end.
 --   An denselben Stellen card_lines + optional savings_funding (fn_savings_funding_fold, Abbuchungskonto der Kette):
 --   ohne Stichtag-Filter (die Projektion kennt kommende Raten); kuenftiger Stichtag -> nur Zustand + Datum
 --   (monthly_in/out gelten heute noch mit der alten Rate); Pausieren fragt nie nach der Geldquelle, es berichtet nur.
@@ -294,7 +296,7 @@ BEGIN
             v_dom          := (v_sched->>'schedule_day_of_month')::smallint;
             v_days         := COALESCE(finance.fn_jsonb_smallint_array(v_sched->'schedule_days_of_month'),
                                        '{}');   -- '{}' = Tage der alten Zeile leeren
-            -- Reine Tag-Verlegung im Monatsrhythmus (Einzeltag -> anderer Einzeltag): jeder Monat behaelt genau EINE
+            -- Reine Tag-Verlegung im Monatsrhythmus (Einzeltag -> anderer Einzeltag): jeder Monat behaelt genau eine
             -- Ausfuehrung. Der Helfer fn_recurring_day_shift (derselbe wie bei set_recurring_payment) liefert den Wechsel-
             -- punkt; die alte Zeile endet vor ihrer Ausfuehrung im Uebergangsmonat, die neue beginnt dort mit dem genannten Tag.
             IF v_dom IS NOT NULL AND cardinality(v_days) = 0 AND v_unit_new = 'month' AND v_rp.schedule_unit = 'month'

@@ -2,7 +2,7 @@
 -- fn_delete_holding (ATOMIC WRITE) -- Hard-DELETE einer Fehlanlage / leeren Position
 --   Nur fuer eine versehentlich angelegte oder nach vollstaendigem Void verwaiste Position (shares=0,
 --   keine Buchungen); die Historie sind die verknuepften Trades (transactions.holding_id, FK RESTRICT).
---   Eingabe jsonb: holding_id (Pflicht; Agent liest sie via finance_depot_holdings_overview / postgres_select).
+--   Eingabe jsonb: holding_id (Pflicht; das Tool loest sie vorab per fn_find_holding aus Depot-Name + Symbol/ISIN auf).
 --   Rueckgabe: {ok:true, action:'deleted', holding_id}.
 --   {ok:false} (kein RAISE -> kein Owner-Alert): >=1 verknuepfte Transaktion -> reason + transaction_count
 --   (erst die Trades voiden). RAISE nur bei not-found.

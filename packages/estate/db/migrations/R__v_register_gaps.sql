@@ -11,7 +11,8 @@
 --   gap_code = stabiler Code; die Anzeige rendert estate.gap.<code> in der Sprache des Lesers
 --   (fn_render_register_body). gap = englischer Modelltext (Sprachpolitik: der estate_ro-Frei-SQL-Leser ist das LLM).
 --   Personen-Zeilen-Gaps nur fuer Erwachsene (owner|partner — wie v_directive_gaps).
---   Personen-Quelle = core.fn_household_persons() (View laeuft mit Owner-Rechten).
+--   Personen-Quelle = core.fn_household_persons() (View laeuft mit Owner-Rechten). person_id = owner_person_id der
+--   Register-Zeile (provider_contract/digital_account) bzw. die Haushaltsperson (person_record/funeral_preferences).
 --   Konsumiert von estate.fn_gap_report + estate_ro (Frei-SQL).
 -- ============================================================
 DROP VIEW IF EXISTS estate.v_register_gaps CASCADE;

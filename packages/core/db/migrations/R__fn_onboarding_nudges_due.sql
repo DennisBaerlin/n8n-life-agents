@@ -23,8 +23,9 @@
 --       neu geoeffneter Abschnitt). Budget, Pause, Erinnerungs-Fenster und die Quellen-Grenze (advisor_resume hat der
 --       Person heute schon geschrieben -> heute nichts) lassen die Stufe unverbraucht.
 --     * hoechstens eine Karte je Person und Lauf: der erste offene Abschnitt in p.order-Reihenfolge, dann ord.
---   RUECKGABE: {ok:true, nudges:[{person_id, chat_id, stage, package, section_key}]} (immer genau eine Zeile; der Cron
---     faechert im Code-Node). VOLATILE (schreibt Latches) -> im Cron einmal in einer MATERIALIZED CTE aufrufen.
+--   RUECKGABE: {ok:true, nudges:[{person_id, chat_id, stage, package, section_key}]} (section_key = key der Sektion in
+--     core.fn_onboarding_overview; immer genau eine Zeile, der Cron faechert im Code-Node). VOLATILE (schreibt Latches)
+--     -> im Cron einmal in einer MATERIALIZED CTE aufrufen.
 --   INVOKER: laeuft unter der Core-Host-Cred des Crons (liest agent.* + ueber die DEFINER-Fenster alle Bereiche).
 --   search_path gepinnt, alle Refs voll-qualifiziert, kein dynamisches SQL.
 --   Tests: tests/db/core/test_fn_onboarding_nudges_due.sql

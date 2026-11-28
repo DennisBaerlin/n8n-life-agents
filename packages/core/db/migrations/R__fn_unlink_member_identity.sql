@@ -44,8 +44,6 @@ BEGIN
     IF v_idx IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', format('person "%s" not found in household', v_pid));
     END IF;
-    -- Owner-Unlink ist erlaubt (Owner hat Root -> re-linkt via `lifeagents household pair-owner` + /start);
-    -- nur das Loeschen des Owners bleibt blockiert (fn_remove_household_person).
     IF NOT (v_person ? 'telegram_user_id' AND jsonb_typeof(v_person->'telegram_user_id') <> 'null') THEN
         RETURN jsonb_build_object('ok', false, 'reason', format('person "%s" is not linked to a Telegram identity', v_pid));
     END IF;

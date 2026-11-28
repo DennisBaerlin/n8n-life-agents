@@ -7,7 +7,8 @@
 --   Eingabe jsonb: account_id, period_end (Pflicht, sonst RAISE), value_date (optional, Default period_end),
 --   amount (optional Override = Nutzer-Ist; fehlt -> DB-berechnet via fn_interest_amount_due(account_id, period_end)).
 --   Rueckgabe: ok:true -> {ok:true, transaction_id, amount, account_balance (Post-State)}.
---   ok:false ohne RAISE: {reason} bei Kontotyp ohne Zins (nur cash/fixed_deposit/p2p) oder Betrag <= 0 / 0-Vorschlag;
+--   ok:false ohne RAISE: {reason} bei nicht zins-faehigem Kontotyp (fn_interest_eligible_account_type) oder
+--   Betrag <= 0 / 0-Vorschlag;
 --   {code:'already_booked'} wenn fuer (account_id, period_end) schon eine Zins-Tx existiert;
 --   {code:'reconciled'} wenn value_date <= letzter Saldo-Abgleich (fn_reconciled_reason).
 --   RAISE bei unbekanntem Konto.

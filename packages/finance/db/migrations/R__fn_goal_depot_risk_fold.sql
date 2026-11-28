@@ -24,7 +24,8 @@
 --   Betraege der Karte: "Mein Rat" in der fn abgerundet (floor), der Beispiel-Verlust genau; beide mit
 --   core.fn_ui_money(…, p_whole) -> ganze Euro erst im Renderer (card_lines sieht auch das Modell).
 --   p_force: "das bleibt so" (fn_set_savings_goal depot_risk_accepted=true) zeigt die Warnung auch im Pfad.
---   plpgsql (late-bound: fn_savings_goal_derisk_status ist alphabetisch spaeter). Schreibt nur mit p_shown.
+--   plpgsql (late-bound: fn_savings_goal_derisk_status ist alphabetisch spaeter). Schreibt nur mit p_shown:
+--   INSERT finance.savings_goal_risk_decisions (event 'accept').
 --   Rueckgabe jsonb: {card_lines: [...], card_approve_key?, effective?: {depot_risk_shown}, depot_risk?: {reminder_month}}
 --   Tests: tests/db/finance/test_fn_goal_depot_risk_fold.sql
 -- ============================================================

@@ -5,7 +5,7 @@
 --   ohne as_of, ueber family + die household-Fakten-Kontexte aktiver Pakete (ein Praedikat:
 --   core.fn_facts_context_allowed — Fakten inaktiver/deinstallierter Pakete wecken den Owner nicht).
 --   Core kennt kein Paket, darum kein Paket-Literal in der Abfrage. Die Core-
---   Trigger-Zeile ruft nur diese fn (agent.monitor_init.sql; core:V019) -> der Owner kann die Spec
+--   Trigger-Zeile ruft nur diese fn (agent.monitor_init.sql) -> der Owner kann die Spec
 --   editieren, eine Logik-Aenderung bleibt trotzdem eine reine R__-Aenderung.
 --   Ausgefuehrt von fn_monitor_acquire als core_ro_eval (agent.fn_monitor_ro_eval) -> STABLE INVOKER, search_path gepinnt,
 --   array-sicher (jsonb_array_elements nur auf echten Arrays); EXECUTE an core_ro in util_create_core_ro.sql.

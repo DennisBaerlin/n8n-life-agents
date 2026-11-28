@@ -7,6 +7,7 @@
 --   Kalender K = Nutzer-Antwort p_days_input (falls genannt) > accounts.plan_execution_days > fn_broker_plan_days(bank).
 --     p_days_input = roher Nutzer-Fakt nach needs_calendar: Monatstage ("2,9,16,23", "20., 5.", "2, 9, 16 und 23")
 --     oder 'none' = kein fester Kalender. Pruefung per Regex vor dem Cast -> {ok:false} statt RAISE.
+--     p_days_input = Tool-Key depot_execution_days (so heisst er im reason).
 --   Ableitung:
 --     month/n          -> Einzeltag = schedule_day_of_month bzw. Tag der ersten Ausfuehrung; bei festem K muss er
 --                         in K liegen. Nie eine Nachfrage (monatlich ist eindeutig), auch bei unbekanntem K.

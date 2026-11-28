@@ -23,6 +23,7 @@
 --                 missing:[{name,required,is_blocker}],
 --                 weak:[{name,have,required,is_blocker}],
 --                 overskilled:[{name,have,required}] } ] }
+--     required = Soll required_skills[].min_level, have = Ist skills[].level.
 --     roles[] enthaelt nur Ziel-Rollen mit einem required_skills-Array (Konsumenten matchen per title).
 --   Zaehlung je Faehigkeit (Name lower(trim)), nicht je Rolle: eine Faehigkeit, die in mehreren Ziel-Rollen fehlt oder
 --     zu schwach ist, zaehlt in gap_count einmal. blocker_gap_count zaehlt sie, wenn sie in mindestens einer Rolle

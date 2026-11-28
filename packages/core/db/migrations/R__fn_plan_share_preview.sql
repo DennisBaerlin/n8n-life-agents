@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_plan_share_preview (READ-ONLY, SECURITY DEFINER) — Owner-Karte "Erwachsene informieren?"
 --   Eingabe: p_domain text, p_version int, p_chat_id text (Betrachter).
---   Gerufen von agent.tool_publish_plan nach einem erfolgreichen Publish. shareable gdw der Betrachter der
+--   Gerufen von core.fn_plan_rollout_next (Schritt 5) nach einem erfolgreichen Publish. shareable gdw der Betrachter der
 --   Owner ist, p_version die aktive Version des Haushalts-Plans der Domain ist (core.fn_household_plan_active) und es
 --   mindestens einen Empfaenger gibt (core.fn_plan_adult_recipients). names = Vornamen fuer den Kartentext.
 --   Rueckgabe: {shareable, names:[...]} — nie RAISE (die Karte ist Komfort, das Publish ist schon geschehen).

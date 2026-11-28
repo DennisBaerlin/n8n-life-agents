@@ -7,7 +7,7 @@
 --   master_image, pg_major) und seit dem
 --   letzten [Jetzt aktualisieren] fuer <tag> weniger als 2 Wiederholungen liefen (keine Schleife; danach bleiben
 --   Terminal und Rueckweg).
---   Rueckgabe: boolean (nie NULL). Tests: tests/db/core/test_fn_update_requests.sql
+--   Rueckgabe: boolean (nie NULL; p_tag kein stabiles 'vX.Y.Z' -> false). Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_update_retry_allowed(p_tag text)
 RETURNS boolean

@@ -38,7 +38,7 @@ END $$;
 --   Rueckgabe: [] wenn fn_bank_setup_kind NULL ist, sonst [{kind:'note', value:<key>, params}]; der Key je Anlass, Art
 --   und Namens-Lage steht woertlich in der Tabelle unten (locale_lint prueft nur Literale), bei leerem Institutsnamen
 --   die _generic-Variante (Text sagt "deine Bank"/"dein Broker", params ohne bank). Unbekannter Anlass -> RAISE
---   (Programmierfehler). Der Name kommt aus accounts.bank: Dauerauftrag = Quell-Konto des Kopfs
+--   (Programmierfehler; bei Art NULL vorher []). Der Name kommt aus accounts.bank: Dauerauftrag = Quell-Konto des Kopfs
 --   (dort richtet man ihn ein), Sparplan = Depot des Sparplans. Ohne Artikel im Text ("bei {bank}"): der Artikel ist
 --   bei Bank-Namen nicht ableitbar. Hat die Kette ein Ende, nennen bank_setup und bank_stop (solange der Termin noch
 --   kommt und die Kette nicht pausiert ist: Pausieren zaehlt als Stoppen) die letzte Ausfuehrung: _until-Variante mit

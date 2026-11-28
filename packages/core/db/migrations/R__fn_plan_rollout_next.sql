@@ -7,6 +7,9 @@
 --   (core.advisors.rollout_fn, z. B. Bank-Zettel) schon vor dem Warten auf liegen gebliebene Eintraege, 2 still warten,
 --   solange ein Eintrag open/working ist (ohne Frist; deferred und cancelled halten nicht auf), fix Korrektur-Schritt, check Pruef-Schritt,
 --   4 Wert-Waechter, 5 Schluss. advisor.rollout_wait_days gilt nur fuer Schritt 0, das wait eines Paket-Schritts und eine offene Pruefung.
+--   Schritt 0 und 4 nur bei <pkg>.advisor.plan_sync_required = true; nach Schritt 4 wartet advisor.rollout_gap_hours.
+--   Schritt 5: Knopf watch:on nur, solange core cron_enable.drift_check oder plan_review aus ist (hoechstens zwei Angebote),
+--   plan:share laut core.fn_plan_share_preview.
 --   fix: Zeilen des Ersatzweg-Registers mit possible_now (was nachholbar ist, legt allein core.fn_handoff_register fest);
 --   eine Nachricht core.rollout.fix_offer {n} bzw. fix_offer_one, Knopf core.handoff.btn_go mit
 --   handoff:<domain>:<max_task_id>:fix (core.fn_handle_handoff_cb), je Aufgabe ein Merker '<prefix>fix:<task_id>' in latches

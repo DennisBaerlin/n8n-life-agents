@@ -12,7 +12,7 @@
 --     * can_write=false (Mitglied am Haushalts-Plan, write_permission owner_only) -> Toast "pflegt der Haushalts-Owner";
 --     * ready=false (Mindestdaten fehlen, readiness_fn) -> Toast "fehlen noch Daten" (Schutz fuer alte Karten; das Menue
 --       zeigt dann statt des Plan-Knopfs "Zuerst: <Abschnitt>").
---   Verben (share/explain/wish/resume sind als Domain-Name reserviert):
+--   Verben (share/explain/wish/resume und scan/event/alert/watch/drift/check sind als Domain-Name reserviert):
 --     plan:resume:<domain>[:<plan_id>] -> [Weiter] der Beratungs-Erinnerung (core.fn_advisor_resume_due): laeuft durch den
 --       Start (Domain, can_write, ready) plus offene Karte -> Toast plan_card_open; liegt ein Entwurf vor -> verb start (derselbe
 --       Auftrag wie der Plan-Knopf, auch wenn die plan_id inzwischen eine andere ist: gewollt ist weitermachen, nicht eine

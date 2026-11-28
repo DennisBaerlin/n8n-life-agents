@@ -14,7 +14,7 @@
 --   Rueckgabe: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason, oneoff_out,
 --   oneoff_threshold), juengster zuerst, hoechstens die 3 gezaehlten + der fruehste (nur solange er ohne die Regel im
 --   Fenster laege); ohne Auszug leer.
---   Eine Aenderung des Rueckgabetyps braucht ein DROP der alten Signatur in einer V-Migration (zuletzt finance:V035), nie hier.
+--   Eine Aenderung des Rueckgabetyps braucht ein DROP der alten Signatur in einer V-Migration, nie hier.
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_everyday_basis(p_account_id int)

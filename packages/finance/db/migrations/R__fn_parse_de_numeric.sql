@@ -8,7 +8,7 @@
 --   FALSE fuer Stueckzahlen/Kurse/Zinssaetze (dort ist "0.125" BTC oder "3.125" % ein Dezimalwert;
 --   die Tausender-Heuristik machte daraus 125 bzw. 3125).
 --   Regel (deterministisch):
---     * Whitespace + Waehrungssymbole (€, EUR, $) entfernt
+--     * Whitespace + Waehrungssymbole/-codes (€, $, ₩, EUR, USD, CHF, KRW; gross/klein) entfernt
 --     * Vorzeichen: fuehrendes '-', '(..)', nachgestelltes '-' ("1.234,56-", Kontoauszug-Soll) und das
 --       Unicode-Minus U+2212 gelten als negativ
 --     * beide Separatoren ('.' und ',') vorhanden -> der letzte ist das Dezimaltrennzeichen;

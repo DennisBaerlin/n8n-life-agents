@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_similar_note (READ, IMMUTABLE) -- Karten-Hinweis "aehnlicher Eintrag"
---   Die eine Form des weichen Dubletten-Hinweises der create-fns fuer Versicherung, Kredit, Immobilie, Sparziel und
---   Sparplan (Konto: eigene Note similar_account). Jede create-fn stellt ihre Regel mit hoher Schwelle (z. B.
+--   Die eine Form des weichen Dubletten-Hinweises der create-fns fuer Versicherung, Kredit, Immobilie, Sparziel, Sparplan und
+--   Vorsorge (Konto: eigene Note similar_account). Jede create-fn stellt ihre Regel mit hoher Schwelle (z. B.
 --   Versicherung: gleiche Gesellschaft + gleicher Jahresbeitrag) und reicht den Namen des Treffers hierher.
 --   Eingabe: p_existing_name text (Name des aehnlichen Eintrags oder NULL).
 --   NULL -> [] (kein Hinweis), sonst [{kind:'note', value:'finance.note.similar_entry', params:{name}}].

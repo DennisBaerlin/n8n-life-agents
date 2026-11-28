@@ -2,7 +2,8 @@
 -- career.fn_advisor_review (READ)
 --   Review-fn der Career-Advisor-Domaene im generischen Engine-Vertrag fn(text,jsonb)->jsonb { alerts:[…], digest:{…} }:
 --   der Core-Wrapper core.fn_advisor_review_evaluate dispatcht hierher, latcht je alert ueber metric_key
---   (geteilte core.notification_state, source='advisor:career') und reicht den digest ungelatcht durch.
+--   (geteilte core.notification_state, source='advisor:career:<pid>', ohne Person 'advisor:career') und reicht den
+--   digest ungelatcht durch.
 --   Jeder alert traegt `msg` = [tpl…], der digest `lines` = [tpl…] (Textkatalog, Form wie finance:
 --   career.advisor.*-Keys + typisierte Werte); die generischen Core-Crons rendern nur die Struktur.
 --

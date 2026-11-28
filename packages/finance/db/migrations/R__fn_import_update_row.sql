@@ -5,7 +5,7 @@
 --                delete_row (opt true: Row entfernen) }
 --   Rueckgabe: {ok:true, row_no, status, validation_error, valid, invalid} |
 --              {ok:true, deleted_row, valid, invalid} bei delete_row |
---              {ok:false, reason} (Row fehlt, Batch committed, nichts zu tun, batch_id/row_no/
+--              {ok:false, reason} (Row fehlt, Row bereits committed, nichts zu tun, batch_id/row_no/
 --              payload_merge formal ungueltig — Modell-Eingabe, ein Cast im DECLARE wuerde sonst RAISEn)
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_update_row(p jsonb)

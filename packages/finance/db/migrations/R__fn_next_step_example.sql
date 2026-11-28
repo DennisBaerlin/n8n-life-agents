@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_next_step_example (READ, SECURITY DEFINER — Beispielsatz des finance-Pakets fuer den naechsten Schritt)
 --   Einziger Aufrufer: core.fn_get_next_step_example (DEFINER, Doppel-Guard fn_package_active + to_regprocedure). Core
---   prueft zur Laufzeit ueber pg_proc: SECURITY DEFINER, search_path = pg_catalog, pg_temp, Eigentuemer = Eigentuemer
---   von Schema core (Standard-Apply), und verwirft einen Key, den core.ui_texts nicht kennt.
+--   prueft zur Laufzeit die sichere Anlage dieser fn (Bedingungen im Kopf von core.fn_get_next_step_example) und
+--   verwirft einen Key, den core.ui_texts nicht kennt.
 --   Eingabe: p_person_id (text).
 --   Rueckgabe: text 'finance.next_step.example' genau dann, wenn ein aktives Geld-Konto existiert (dieselbe Regel wie die
 --   Plan-Reife: finance.fn_plan_readiness meldet accounts nicht als fehlend) und core.fn_app_sees_household(p_person_id);

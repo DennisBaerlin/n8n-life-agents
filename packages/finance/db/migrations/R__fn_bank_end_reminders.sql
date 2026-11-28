@@ -116,7 +116,8 @@ END $$;
 
 -- ============================================================
 -- fn_bank_stop_note_told (WRITE, Latch) -- Karten-Notiz bank_stop; was die Karte sagt, erinnert der Cron nicht noch einmal
---   = fn_bank_setup_note(p_rp_id, 'bank_stop', p_params); ist die Notiz nicht leer und L <= heute, setzt sie den Owner-Key
+--   = fn_bank_note_recorded(p_rp_id, 'bank_stop', p_params) (schreibt den offenen Bank-Punkt in finance.bank_todos); ist die
+--   Notiz nicht leer und L <= heute, setzt sie den Owner-Key
 --   von fn_bank_end_claim im selben Commit (der Probelauf rollt ihn mit zurueck). Nur der Owner-Key: der Owner sieht die
 --   Karte immer (Schreiber oder Freigeber), der Inhaber nicht, und die Write-fns kennen den Absender nicht.
 --   Kein Trigger: test_dry_run_finance verbietet aufgeschobene Trigger, und Import oder Restore haben keine Karte gezeigt.

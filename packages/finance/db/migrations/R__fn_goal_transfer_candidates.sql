@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_goal_transfer_candidates (READ HELPER)
 --   Freistehende Dauerauftraege (interne Transfers), die schon in den Topf p_pot eines Sparziels fliessen, optional nur
---   vom Abbuchungskonto p_debit (NULL = jedes). Eine Adresse fuer den Guard existing_transfer in fn_create_savings_goal
---   und fn_set_savings_goal (eine neue Ziel-Rate neben einem bestehenden Dauerauftrag zaehlte doppelt) und fuer den Import.
+--   vom Abbuchungskonto p_debit (NULL = jedes). Eine Adresse fuer den Guard existing_transfer (eine neue Ziel-Rate neben
+--   einem bestehenden Dauerauftrag zaehlte doppelt); gerufen von fn_goal_transfer_choice und fn_import_validate_row.
 --   Kandidat = Kopf seiner Kette (fn_recurring_lineage_head), keiner Entitaet gehoerend (fn_recurring_owner NULL),
 --   status active, nicht beendet (valid_to NULL oder > heute; ein kuenftiger Start zaehlt), amount < 0 (Quelle).
 --   replaceable = monatlich mit hoechstens einem Tag (month/1, keine festen Tage) -> eine Ziel-Rate (immer monatlich)

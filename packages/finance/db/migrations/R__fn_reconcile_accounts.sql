@@ -17,7 +17,8 @@
 --   Pass 1 lehnt zusaetzlich ein doppeltes Konto im Batch und die Gruende aus
 --     finance.fn_reconcile_blocker ab (Depot-/Kreditkonto, Stichtag Zukunft / vor letztem Abgleich) -- identisch
 --     mit fn_reconcile_accounts_preview -> Vorschau = Buchung.
---   Rueckgabe: { ok:false, reason (bei Pass-2-Ablehnung zusaetzlich account_name) } | { ok:true, count,
+--   Rueckgabe: { ok:false, reason (+ account_name bei Pass-2-Ablehnung, + code:'invalid_date' bei unlesbarem Datum) }
+--              | { ok:true, count,
 --              results:[{ok, account_id, account_name, currency, db_balance_before, confirmed_balance, difference,
 --              reconciliation_tx_id, balance_after, skipped_occurrences, skipped, effective}],
 --              effective:{accounts} }
@@ -86,10 +87,10 @@ BEGIN
             'notes',               v_acct->>'notes'));
     END LOOP;
 
-    -- Pass 2: jetzt schreiben. Pass 1 hat gegen den Altstand geprueft; ein Konto kann im selben Stapel doppelt stehen
-    -- oder sich seitdem geaendert haben -> eine Ablehnung hier rollt den ganzen Stapel zurueck (Block-Savepoint,
-    -- Sentinel LA002, Muster fn_import_bundle) und kommt als {ok:false, reason, account_name} zurueck, kein Teilzustand
-    -- und kein Owner-Alarm. Echte Exceptions der delegierten fn werden nicht abgefangen.
+    -- Pass 2: jetzt schreiben. Pass 1 hat gegen den Altstand geprueft; ein Konto kann sich seitdem geaendert haben
+    -- -> eine Ablehnung hier rollt den ganzen Stapel zurueck (Block-Savepoint,
+    -- Sentinel LA002, Muster fn_create_recurring_transfer) und kommt als {ok:false, reason, account_name} zurueck,
+    -- kein Teilzustand und kein Owner-Alarm. Echte Exceptions der delegierten fn werden nicht abgefangen.
     BEGIN
         FOR v_acct IN SELECT * FROM jsonb_array_elements(v_resolved) LOOP
             SELECT finance.fn_reconcile_account(jsonb_build_object(

@@ -11,6 +11,7 @@
 --   Eingabe jsonb: chat_id, person_id (Slug, Pflicht).
 --   Rueckgabe: {ok:true, person_id, last_reviewed_at} | {ok:false, reason}; reasons: 'Write rejected (<perm>): …',
 --   'person_id is required …'.
+--   Unbekannte person_id -> FK-Verletzung auf agent.persons (RAISE), kein {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_confirm_review(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

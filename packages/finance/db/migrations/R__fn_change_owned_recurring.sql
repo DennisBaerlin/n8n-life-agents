@@ -15,7 +15,7 @@
 --   Neuer Abbuchungstag bei gleicher Kadenz: jeder Monat behaelt genau einen Termin (in place fn_recurring_reanchor_day, im Split
 --     fn_recurring_day_shift); effective_from ist der gespeicherte Start der Zeile mit den neuen Bedingungen.
 --   Rueckgabe: {ok:true, recurring_payment_id (Kopf danach), split, previous_id (nur Split), effective_from}
---   | {ok:false, reason, ...} aus den Split-Guards bzw. ohne kommenden Termin.
+--   | {ok:false, reason, ...} aus den Split-Guards bzw. ohne kommenden Termin. RAISE bei unbekannter rp-id.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_change_owned_recurring(
     p_rp_id    int,

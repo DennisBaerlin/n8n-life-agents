@@ -17,12 +17,15 @@
 --   - expires_at: optionaler TTL-Backstop. NULL = rein explizit re-armed (nie auto). Gesetzt = der Latch
 --     gilt nach Ablauf als wieder armed (Cooldown-Semantik fuer knock + den valid_to-/squeeze-Pfad).
 --
--- Zugriff (D10): geschrieben ausschliesslich ueber die publizierten SECURITY-DEFINER-Fenster
---   core.fn_should_notify / core.fn_notify_resolve (enge Paket-Rollen wie finance_rw haben kein direktes
---   core-Tabellenrecht); die Advisor-Engine (breites Haupt-Credential) reconciled ebenfalls ueber das
---   DEFINER-Fenster core.fn_notify_reconcile. Keine direkten Tabellen-Grants noetig.
+-- Zugriff (D10): Producer schreiben ueber die publizierten SECURITY-DEFINER-Fenster core.fn_should_notify /
+--   core.fn_notify_commit / core.fn_notify_resolve / core.fn_notify_forget_before (enge Paket-Rollen wie finance_rw
+--   haben kein direktes core-Tabellenrecht); die Advisor-Engine (breites Haupt-Credential) reconciled ueber das
+--   DEFINER-Fenster core.fn_notify_reconcile. Daneben loeschen/ersetzen Zeilen: agent.fn_claim_persona_frame (alte
+--   persona_greet-Latches), core.fn_backup_restore_filtered, core.fn_pkg_purge_data, core.fn_reset_user_data,
+--   agent.fn_remove_household_person. Keine direkten Tabellen-Grants noetig.
 --
--- Ephemer (kein Nutzerinhalt, regeneriert sich): nicht im Backup (kein manifest.json-backup-Eintrag).
+-- Backup: manifest.json backup.filtered_tables sichert alle Zeilen ausser den Merkern dieser Installation
+--   (core.fn_notify_installation_source); core.fn_backup_restore_filtered ersetzt sie beim Restore.
 --
 -- Usage:   db_apply.ps1 -File packages\core\db\core.notification_init.sql
 -- Tests:   tests/db/core/test_fn_should_notify.sql, tests/db/core/test_fn_notify_resolve.sql

@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS agent.ingress_buffer (
     from_id       bigint      NOT NULL,                 -- message.from.id (Gruppen: nie zwei Personen verschmelzen)
     message_id    bigint      NOT NULL,                 -- Reihenfolge im Chat
     kind          text        NOT NULL,
-    exec_id       text        NOT NULL,                 -- n8n-Execution, die die Zeile angelegt hat
+    exec_id       text        NOT NULL,                 -- n8n-Execution, die die Zeile angelegt hat (= execution_id)
     payload       jsonb,                                -- rohes Update (nur text/file, bis zur Beanspruchung)
     registered_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     claimed_by    bigint,                               -- update_id des verarbeitenden Laufs

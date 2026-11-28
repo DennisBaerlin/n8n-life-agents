@@ -11,12 +11,7 @@
 --   liest core.config, gibt aber ausschliesslich die Version zurueck. Sensible Reads
 --   (z. B. core.fn_household_persons) folgen demselben Muster.
 --
---   Haertung (Pflicht bei SECURITY DEFINER):
---     * search_path hart auf pg_catalog gepinnt + alle Objekte schema-qualifiziert
---       (CVE-2018-1058: kein shadowing ueber einen Angreifer-search_path).
---     * REVOKE ALL FROM PUBLIC + explizites GRANT EXECUTE nur an die Paket-Rollen
---       (das macht core.fn_provision_package_roles) — kein Default-PUBLIC-EXECUTE,
---       damit "nur ueber publizierte Read-fns" auch grant-seitig stimmt.
+--   Haertung: DEFINER-Checkliste (.claude/rules/sql.md); EXECUTE nur an die Paket-Rollen via core.fn_provision_package_roles.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_core_api_version()
 RETURNS text
@@ -31,6 +26,5 @@ AS $$
     );
 $$;
 
--- Default-PUBLIC-EXECUTE auf SECURITY-DEFINER-fns ist eine Privileg-Flaeche -> entfernen.
 -- Die Paket-Rollen bekommen EXECUTE gezielt von core.fn_provision_package_roles.
 REVOKE ALL ON FUNCTION core.fn_core_api_version() FROM public;

@@ -7,7 +7,8 @@
 --   FALSE -> auch paused/paid_off (delete_loan findet Fehlanlagen, settle/sell geben
 --   freundliche {ok:false} bei bereits beendeten Entitaeten statt RAISE).
 --   Rueckgabe: TABLE(loan_id, loan_account_id, debit_account_id, monthly_annuity, hit_count, candidates);
---   die Ids nur bei genau einem Treffer.
+--   die Ids nur bei genau einem Treffer. candidates: [{loan_id, name, lender, status, monthly_annuity}] (Schluessel
+--   loan_id = id der anderen fn_resolve_*).
 -- ============================================================
 -- Alte 1-Arg-Signatur droppen: die neue (TEXT, BOOLEAN DEFAULT TRUE) ist sonst ein zweiter
 -- Overload und ein 1-Arg-Aufruf wird mehrdeutig ("function is not unique").

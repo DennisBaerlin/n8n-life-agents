@@ -2,7 +2,7 @@
 -- agent.fn_chat_style (grober Schreibstil eines Chats, read-only)
 --   Stufe aus den letzten 20 Nutzer-Nachrichten an den Router (agent.orchestrator_chat_memory, type 'human'), vorher
 --   ohne [attachment ...]-Marker und /befehle; leere Reste zaehlen nicht. Konsumenten: Router-Flag user_style
---   (Orchestrator 'Resolve sender', Emoji-Spiegeln) und die Tages-Obergrenze in agent.fn_claim_reaction.
+--   (Orchestrator 'Resolve sender', Emoji-Spiegeln).
 --   Regeln (Konstanten unten): < 5 Nachrichten -> neutral; >= 30 % mit Emoji -> expressive; kein Emoji und
 --   Durchschnitt <= 25 Zeichen -> terse; sonst neutral. Emoji = Codepoints U+1F300-1FAFF und U+2600-27BF.
 --   SECURITY DEFINER: 'Resolve sender' laeuft unter core_ro, und *_chat_memory steht auf der core_ro-Deny-Liste

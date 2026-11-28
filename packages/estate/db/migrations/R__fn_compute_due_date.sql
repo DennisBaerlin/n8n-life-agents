@@ -12,7 +12,8 @@
 --                          Postgres-Intervall-Addition (make_interval(months=>n) klemmt auf Monatsende).
 --   Ohne § 193-Verschiebung (Frist-Ende an Sa/So/Feiertag wird nicht auf den naechsten Werktag
 --   geschoben) — bewusst konservativ (fruehere Frist).
---   p_anchor NULL -> NULL. Eingabe: p_anchor date, p_count int, p_unit text, p_bundesland text.
+--   p_anchor NULL -> NULL; unbekannte p_unit -> p_anchor.
+--   Eingabe: p_anchor date, p_count int, p_unit text, p_bundesland text.
 --   Rueckgabe: date.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_compute_due_date(p_anchor date, p_count int, p_unit text, p_bundesland text)

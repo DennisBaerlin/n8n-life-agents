@@ -13,9 +13,10 @@
 --     event 'persona_chosen' (eigene Wahl, agent.fn_set_person_persona) -> hallo im neuen Set
 --   Laufbeginn = run_started_at, eine DB-Zeit vom Anfang des Laufs (Resolve sender, clock_timestamp()) -> derselbe
 --     Zeitgeber wie opened_at/last_fired_at (nie die Telegram-Uhr message.date).
---   Nie bei Signal NOFRAME (ernster Moment, Router-Regel 6); lief ein Werkzeug ohne Signal, gilt das als NOFRAME (wie
---     das Router-Gedaechtnis). top/hmm verlangen FRAME. yay/top/hmm verlangen reply_ok (die Antwort ist kein fester
---     Leer-/Fehler-Hinweis) -> nie ein Daumen hoch vor einer Fehlermeldung.
+--   Nie bei Signal NOFRAME (ernster Moment, Router-Regel 6; ausser event persona_chosen, das vorher greift); lief ein
+--     Werkzeug ohne Signal, gilt das als NOFRAME (wie das Router-Gedaechtnis). top/hmm verlangen FRAME.
+--     reply_ok=false (die Antwort ist ein fester Leer-/Fehler-Hinweis; fehlt -> true) blockt nur bei tool_called=true
+--     -> kein Daumen hoch nach einem Werkzeug-Fehler.
 --   Bremse: core.fn_should_notify('persona_sticker', <pid>, persona.sticker_cooldown_hours) — erst Kandidat, dann
 --     Gate (Vertrag der Notify-Schicht). yay + Persona-Wahl umgehen die Pruefung, setzen den Latch aber neu.
 --     0 Stunden = keine Bremse. Aus-Schalter persona.stickers_enabled.

@@ -32,15 +32,15 @@
 --     6. card_lines = die Kartenzeilen als Struktur (core.fn_ui_tpl/money/date; das Gate rendert je Empfaenger).
 --   unmatched_out/_in = Summe der nicht erkannten Geldzeilen (Alltags-Schaetzung); erkannte, nur nicht buchbare Zeilen
 --   (blocked[], savings_plan_pending[]) zaehlen dort nie, stecken aber im Rest. oneoff_out = Teil von
---   unmatched_out aus Einzelzeilen mit |Betrag| >= oneoff_threshold (core.config finance.everyday_oneoff_eur, Default 250,
---   in Kontowaehrung zum period_end; ohne Kurs NULL und oneoff_out 0).
+--   unmatched_out aus Einzelzeilen mit |Betrag| >= oneoff_threshold (core.config finance.everyday_oneoff_eur, Wert in
+--   manifest.json, in Kontowaehrung zum period_end; ohne Kurs NULL und oneoff_out 0).
 --   RUECKGABE: {ok:true, account_id, account_name, currency, period_start, period_end, opening_balance, closing_balance,
 --   cut, stmt_at_cut, drift, gap, matched[], already_booked[], blocked[], savings_plan_pending[], missing[],
 --   unknown_mandates[], plan_adjustments[], learn[], learned_account_number, line_count, matched_count, unmatched_out,
 --   unmatched_in, oneoff_out, oneoff_threshold, lump, pending_settled, export_gap, card_lines[], fingerprint}
 --   plus moved_legs, learned_accounts, iban_ambiguous, rest_other, rest_unexplained, rest_kind, difference_candidates,
 --   interest_correction, interest_lines, interest_booked, interest_skips, legacy_returns, legacy_return_label,
---   pool_unassigned (je s. u.)
+--   pool_unassigned (je s. u.), source (file|printed), balance_source (owner|printed)
 --   | {ok:false, code, reason, ...}
 --   account_unknown (Nummern-Pfad) traegt zusaetzlich balance_verified und - nur wenn die Saldo-Probe stimmt und der
 --   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein neues Konto
@@ -73,7 +73,7 @@
 --   neue Position nur ins eine Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
 --   Hand vor dem Schnitt datierte Buchung (+-5 Tage, nie doppelt); App-Kontostand ueber fn_parse_numeric_or_null.
 --   Zusaetzliche codes: export_profile_unknown, export_invalid, closing_balance_required (keine Karte), no_starting_point,
---   multiple_sub_accounts, export_account_mismatch (+bank, account_name, candidates). Zusaetzliche Rueckgabe: source, balance_source (printed|owner), owner_balance, after_period,
+--   multiple_sub_accounts, export_account_mismatch (+bank, account_name, candidates). Zusaetzliche Rueckgabe: owner_balance, after_period,
 --   trades, trades_blocked, export_unknown, late_count, seen_refs (Hashes fuer finance.statement_seen_refs).
 --   Bank-Import-Modul (Transfers zwischen eigenen Konten, alle Wege): matched kind transfer (Stufe T, other_account_id)
 --   -> apply bucht fn_book_transfer; nicht buchbar -> blocked[].reason not_bookable | currency_mismatch | pending_pair
@@ -81,11 +81,13 @@
 --   mehr als 5 Tage nach dem Zeilendatum abgeglichen); bis 5 Tage -> matched.partner_date = dessen Abgleich+1 (unterwegs).
 --   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines anderen Kontos in den letzten 5 Tagen gebucht
 --   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
---   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: nicht cash "Sonstige Abweichung"; mit offenen
---   Ein- und Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
---   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
---   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Steht davor ein Block mit Ueberschrift, beginnt der Schlussteil (Zinskorrektur,
---   Hinweise, Rest) mit der Ueberschrift statement_other_heading ("Alles andere"), sonst keine. Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
+--   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label = rest_kind (Texte: finance.label.statement_*):
+--   nicht cash other_diff; mit offenen Ein- und Ausgaengen rest_net; Rest > 0 unexplained_in; Rest < 0 ohne Zeile und
+--   gesperrten Posten unexplained_out; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang rest_net; offene
+--   Abgaenge plus Teil neben der Export-Luecke rest_net; sonst everyday. Steht davor ein Block mit Ueberschrift, beginnt der
+--   Schlussteil (Zinskorrektur, Hinweise, Rest) mit der Ueberschrift statement_other_heading, sonst keine. Unter der
+--   Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau
+--   den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
 --   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
 --   Haushaltsweiter Hinweis: aktive Versicherungen ohne Beitrag (finance.note.statement_insurance_premium_missing mit
 --   den Namen), ausserhalb des fingerprint.
@@ -1035,7 +1037,7 @@ BEGIN
     --   Zeilen = finale unmatched-Liste (Pool-/Lern-Treffer sind dort schon raus; blocked/pending waren nie drin: erkannt,
     --   nur nicht buchbar -> Rest, aber kein Alltag), ohne Wertpapier-Geldfluesse (Datei) und ohne Zins-/Kleinbetrags-
     --   Zeilen der gedruckten Datei. Je Zeile auf Cent gerundet (wie fn_statement_match) -> oneoff_out >= unmatched_out.
-    --   Grenze: core.config finance.everyday_oneoff_eur (fehlt/unlesbar/negativ -> 250) in
+    --   Grenze: core.config finance.everyday_oneoff_eur in
     --   Kontowaehrung zum period_end per fn_config_eur_in_currency; ohne Kurs oder 0 keine Grenze -> nichts einmalig.
     v_oo_thr := finance.fn_config_eur_in_currency('everyday_oneoff_eur', 250, v_acct.currency, v_pe);
     IF v_oo_thr <= 0 THEN v_oo_thr := NULL; END IF;   -- 0 (bzw. auf 0,00 gerundet) waere "alles einmalig" -> keine Regel
@@ -1359,7 +1361,7 @@ BEGIN
     END IF;
     -- Schlussteil (Zinskorrektur, Kleinbetraege, Hinweise zum Rest, Rest, Abgleich-Satz): steht davor ein Block mit
     -- Ueberschrift (z. B. "Schon erfasst"), bekommt er eine eigene, sonst liest ein Laie ihn als Teil des Blocks darueber.
-    -- Ohne Block davor bleibt die Karte flach wie bisher. Bewusst neutral ("Alles andere"): der Rest wird mitgebucht,
+    -- Ohne Block davor bleibt die Karte flach. Bewusst neutral ("Alles andere"): der Rest wird mitgebucht,
     -- "offen" waere nach dem Bestaetigen falsch.
     IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_card) c WHERE c->>'kind' = 'heading') THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_other_heading'));

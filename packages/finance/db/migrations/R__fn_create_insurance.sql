@@ -12,7 +12,7 @@
 --     (recurring_payment_id NULL = "Beitrag fehlt noch", der Monats-Check nennt die Police), Konto/erste Abbuchung/
 --     Rhythmus entfallen, valid_from ohne Angabe = heute. Nachtragen per fn_set_insurance (Beitrag + effective_from +
 --     Konto). Ein Platzhalter-Betrag ist fuer die DB ein normaler Beitrag; das Verbot steht in der Tool-Description.
---   Eine Quelle (finance:V027): Beitrag, Rhythmus, Tag, Vertragsende und Konto stehen nur an der
+--   Eine Quelle: Beitrag, Rhythmus, Tag, Vertragsende und Konto stehen nur an der
 --   Beitrags-Kette; die Police traegt keine Kopie. Rohwerte liest + prueft fn_insurance_fields (dieselbe fn speist die
 --   Karten-Vorschau); den Jahres-/Monatswert leitet active_insurances ab -- das LLM rechnet nie um.
 --   first_payment_date = echtes erstes Abbuchungsdatum (Anker fuer den Faelligkeits-Scheduler; traegt bei
@@ -62,7 +62,6 @@ BEGIN
     v_annual   := (v_fields->>'annual_premium')::numeric;
     v_interval := (v_fields->>'schedule_interval')::smallint;
     v_unit     := (v_fields->>'schedule_unit')::finance.schedule_unit;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

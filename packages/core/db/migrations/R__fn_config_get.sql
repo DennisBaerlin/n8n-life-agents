@@ -14,10 +14,7 @@
 --   fehlende Zeile -> NULL -> COALESCE(..., false) = fail-closed; der Seeder garantiert je
 --   deklariertem Cron die Default-Zeile (always-on 'true', opt-in 'false').
 --
---   Haertung (Pflicht bei SECURITY DEFINER):
---     * search_path hart auf pg_catalog gepinnt + Objekt schema-qualifiziert (CVE-2018-1058).
---     * REVOKE ALL FROM PUBLIC + gezieltes GRANT EXECUTE nur an die Paket-Rollen
---       (das macht core.fn_provision_package_roles, to_regprocedure-guarded).
+--   Haertung: DEFINER-Checkliste (.claude/rules/sql.md); EXECUTE nur an die Paket-Rollen via core.fn_provision_package_roles.
 --   Keine Secrets in core.config (Backup-Key lebt in core.backup_key, ACL-gefenct) -> read-all unkritisch.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_config_get(p_package text, p_category text, p_key text)
@@ -32,6 +29,5 @@ AS $$
     WHERE package = p_package AND category = p_category AND key = p_key;
 $$;
 
--- Default-PUBLIC-EXECUTE auf SECURITY-DEFINER-fns ist eine Privileg-Flaeche -> entfernen.
 -- Die Paket-Rollen bekommen EXECUTE gezielt von core.fn_provision_package_roles.
 REVOKE ALL ON FUNCTION core.fn_config_get(text, text, text) FROM public;

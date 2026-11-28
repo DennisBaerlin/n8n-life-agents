@@ -7,7 +7,8 @@
 --   Kandidaten:
 --     * offene Dauerauftrags-Vorkommen dieses Kontos als Quelle (Soll-Betrag fn_recurring_occurrence_amount) oder als
 --       Transfer-Ziel (+|amount|, nur gleiche Waehrung), Faelligkeit in [p_cut-10, p_period_end+5];
---     * offene Zins-Vorkommen dieses Kontos (Soll fn_interest_amount_due), nur Zeilen mit "zins" im Text;
+--     * offene Zins-Vorkommen dieses Kontos (Soll fn_interest_amount_due), nur Zeilen mit "zins" im Text; Stufe B mit
+--       Zeile 5 Tage vor bis 10 Tage nach value_date und Betrag Soll +-5 % (mind. 0,10);
 --     * Stufe 0: schon gebuchte Dauerauftrags-/Zinsbuchungen dieses Kontos im Zeitraum (z. B. das Gegenbein aus dem
 --       Auszug des Partnerkontos oder eine manuell bestaetigte Abbuchung) und von Hand gebuchte Einzelbuchungen
 --       — werden nicht erneut gebucht.

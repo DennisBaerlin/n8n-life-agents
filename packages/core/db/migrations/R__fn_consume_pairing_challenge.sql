@@ -9,7 +9,8 @@
 --   Eingabe p: { chat_id, challenge, telegram_user_id, person_id }
 --      telegram_user_id = live from.id des einloesenden Senders (Identitaet wird an den lebenden
 --        Sender gebunden, nicht an einen arm-Zeit-Wert — OpenClaw-CVE: numerische Identitaet); Pflicht.
---      person_id        = bestehende family-Person, an die telegram_user_id+role gemergt werden.
+--      person_id        = bestehende family-Person, an die telegram_user_id+role gemergt werden;
+--        Pflicht bei Treffer (fehlt -> RAISE, Rollback der Consume).
 --   Ablauf:
 --     1) Exakt-Match-Consume (race-fest): Code exakt (getrimmt), Chat passt (chat_id IS NULL =
 --        Owner-Bootstrap matcht jeden Chat), armierte Identitaet passt (telegram_user_id IS NULL

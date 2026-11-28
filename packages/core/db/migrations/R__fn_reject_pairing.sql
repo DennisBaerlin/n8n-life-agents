@@ -4,7 +4,8 @@
 --   Orchestrator-Handler vor diesem Aufruf. Markiert die Zeile als konsumiert (consumed_at) ohne jede
 --   Bindung -> die Member-Identitaet wird nicht an die Person geheftet. Idempotent (zweites ❌ -> resolved).
 --   p: { id (Pflicht, pairing_state.id) }
---   Rueckgabe: {ok:true, person_id, full_name, member_chat_id}   (-> Member „abgelehnt"-Notiz)
+--   Rueckgabe: {ok:true, person_id, full_name, member_chat_id}   (member_chat_id = pairing_state.claimed_chat_id;
+--              -> Member „abgelehnt"-Notiz)
 --            | {ok:false, resolved:true}     (bereits aufgeloest)
 --            | {ok:false, reason}            ('pairing id is required' | 'pairing request not found')
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql

@@ -10,11 +10,11 @@
 --   Ausserhalb core.fn_in_reminder_window() -> leere Liste. Je Person mit Telegram-Verbindung, hoechstens ein Item:
 --     * core.fn_reminder_allowed('advisor_resume', person) (Knopf rem:off:advisor_resume, Notschalter
 --       cron_enable.advisor_resume) vor jedem Merker.
---     * R8: lebender Denk-Schalter des Chats (agent.thinking_lease) oder offene Freigabe-Karte
+--     * lebender Denk-Schalter des Chats (agent.thinking_lease) oder offene Freigabe-Karte
 --       (agent.fn_get_hitl_pending_state) -> heute nicht (naechster Lauf).
---     * R7: heute schon ein Gruss-Vorschlag (ein next_step_day-Merker aus core.fn_next_step_offer_keys belegt) -> nicht.
+--     * heute schon ein Gruss-Vorschlag (ein next_step_day-Merker aus core.fn_next_step_offer_keys belegt) -> nicht.
 --       Nur lesend: der Versand schreibt nichts in die Merker des naechsten Schritts.
---     * R6: core.fn_get_next_step mit p.order/p.plan_order.
+--     * core.fn_get_next_step mit p.order/p.plan_order.
 --       - kind plan, state draft -> Entwurfs-Erinnerung fuer genau diese Domain (can_write und reif sind dort geprueft;
 --         "Angefangenes geht vor" macht das auch bei offenen Einrichtungs-Abschnitten wahr). Stufen ueber
 --         core.fn_nudge_stage: source 'advisor_resume', Merker '<pid>:<domain>:<plan_id>:1|2' (ein neuer Entwurf hat
@@ -30,7 +30,7 @@
 --       core.advisor_resume.open_tasks {n} bzw. open_task_one; Knopf [Weiter] plan:resume:<domain>:<plan_id>.
 --     Den zweiten Knopf [Nicht mehr erinnern] (rem:off:advisor_resume) setzt der Cron fest (cron_toggle_lint sucht ihn dort).
 --   VOLATILE (schreibt Merker und Budget) -> im Cron einmal in einer MATERIALIZED CTE aufrufen. INVOKER unter der
---   Host-Cred des Crons, search_path gepinnt, Body schema-qualifiziert. Kein Write-Tool: nur Merker (wie das Analog).
+--   Host-Cred des Crons, search_path gepinnt, Body schema-qualifiziert. Kein Write-Tool: nur Merker.
 --   Tests: tests/db/core/test_fn_advisor_resume_due.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_resume_due(p jsonb DEFAULT '{}'::jsonb)

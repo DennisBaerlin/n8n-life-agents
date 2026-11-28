@@ -2,7 +2,7 @@
 -- fn_book_savings_reservation (ATOMIC WRITE) — Zweckbindung vorhandenen Geldes fuer ein Sparziel
 --   Bucht den Anteil eines Kontos an einer Sparziel-Reserve als eine Zeile ins append-only Journal
 --   (finance.savings_goal_reserve_entries), ohne Geldbewegung. Gilt fuer jedes zuordenbare Konto
---   (fn_goal_earmark_account_types: cash/Tagesgeld, Festgeld, P2P, Depots).
+--   (fn_goal_earmark_account_types).
 --   `book_` (nicht `set_`), weil append-only = eine Reserve-Bewegung buchen (Praezedenz fn_book_savings_goal_transfer);
 --   Tier `owner_info` im approval_matrix-Block des finance-Manifests.
 --
@@ -19,8 +19,9 @@
 --
 --   Eingabe jsonb: savings_goal_id, account_id (im n8n aufgeloest), amount (>= 0, absolut, Kontowaehrung bzw. EUR)
 --   (Pflicht); intern suppress_depot_risk (nie Tool-Input), depot_risk_shown (Probelauf-Stempel).
---   Rueckgabe ok:true: {ok:true, goal_id, account_id, entry_id, delta (angehaengte Bewegung), reserved (neuer Anteil
---     dieses Ziels auf dem Konto = amount), current_amount (neuer Ziel-Stand EUR, Post-State)}
+--   chat_id (optional): Empfaenger des Merkers savings_goal_reached (core.fn_mark_told, nur bei Erhoehung, die das Ziel deckt).
+--   Rueckgabe ok:true: {ok:true, goal_id (= savings_goal_id), account_id, entry_id, delta (angehaengte Bewegung),
+--     reserved (neuer Anteil dieses Ziels auf dem Konto = amount), current_amount (neuer Ziel-Stand EUR, Post-State)}
 --     + saldo-basiert: free_balance (Saldo - aktive Anteile auf dem Konto, nach dem Append)
 --     + Depot: market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall (Depot-Deckungsluecke, depot_reserve_status)
 --     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).

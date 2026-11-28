@@ -81,7 +81,6 @@ BEGIN
     END IF;
 
     -- Skill-Luecken-Zeile der primaeren Ziel-Rolle (target_roles[0]); render-at-fetch, nichts gespeichert.
-    -- career.* + agent.* schema-qualifiziert (DEFINER-Pin pg_catalog,agent,core via fn_fetch_context, kein career).
     -- career_planning ist per_user -> p_name ist der physische, suffigierte Name (career_planning__<pid>,
     -- fn_fetch_context USING v_physical). career_profile derselben Person liegt unter demselben Suffix -> die
     -- person_id aus p_name ableiten (greedy .+ -> person_id mit eigenen '__' bleibt intakt) und career_profile__<pid>
@@ -121,8 +120,7 @@ BEGIN
     END IF;
 
     -- Stellen-Nachfrage-Zeile (Posting-Count + Trend der primaeren Rolle) via career.fn_market_trend
-    -- render-at-fetch. career.* schema-qualifiziert (DEFINER-Pin pg_catalog,
-    -- agent,core via fn_fetch_context; der Renderer laeuft als dessen Owner -> liest career.market_signals).
+    -- render-at-fetch.
     v_mtrend := career.fn_market_trend(v_facts);
     IF v_mtrend IS NOT NULL AND (v_mtrend->>'count') IS NOT NULL THEN
         v_lines := v_lines || ('Stellen-Nachfrage: ' || (v_mtrend->>'count') || ' offene Stellen'
@@ -135,9 +133,7 @@ BEGIN
 
     -- Runway-Zeile ("kann ich mir den Jobwechsel leisten?") — cross-paket finance->career, render-at-fetch.
     -- career.fn_runway doppel-guardet das optionale finance-Paket (fn_package_active + to_regprocedure) und
-    -- liefert NULL, wenn finance fehlt/inaktiv -> die Zeile entfaellt graceful (kein Crash). finance.*/core.*
-    -- in fn_runway schema-qualifiziert (DEFINER-Pin pg_catalog,agent,core via fn_fetch_context; der Renderer
-    -- laeuft als dessen Owner=Superuser -> liest finance.* ohne neuen Grant).
+    -- liefert NULL, wenn finance fehlt/inaktiv -> die Zeile entfaellt graceful (kein Crash).
     v_rw := career.fn_runway(v_facts);
     IF v_rw IS NOT NULL THEN
         v_lines := v_lines || ('Runway: '

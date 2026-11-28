@@ -24,7 +24,9 @@
 --   effective (aufgeloeste relative Daten)}.
 --   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, paid_off mit Restschuld -> code use_settle_tool (tool_settle_loan bucht die Abloese), wirksame Rate unter
 --   dem Monatszins der Restschuld -> {interest, payment}, Ursprungswerte bei frischem Kredit / Datum in der Zukunft /
---   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards, kein Wert weicht vom Bestand ab ->
+--   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards, interest_rate mit zu vielen
+--   Nachkommastellen oder zu gross (fn_rate_precision_reason), ungueltiger schedule_day_of_month (fn_schedule_dom_reason),
+--   kein Wert weicht vom Bestand ab ->
 --   {no_change:true}) -> {ok:false} ohne Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_loan(p jsonb)
@@ -67,7 +69,6 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.loan_status;
-    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

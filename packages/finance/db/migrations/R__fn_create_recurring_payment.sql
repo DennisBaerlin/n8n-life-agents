@@ -12,14 +12,18 @@
 --   Monats-Check die Zahlung per Schluessel trifft (Stufe A, auch bei schwankendem Betrag); Kartenzeile
 --   finance.note.recurring_iban_key; keine echte IBAN (fn_iban_strict) -> {ok:false} ohne Write). creditor_id + mandate_ref (opt,
 --   beide gedruckt, aus einem Kontoauszugs-Vorschlag) -> Schluessel sepa_mandate (Stufe A), schon vergeben -> still nicht.
+--   chat_id (opt, Absender; core.fn_mark_told im cashflow_coverage-Hinweis).
 --   first_payment_date wird auf den ersten Termin >= Eingabe im Raster verankert (fn_schedule_first_occurrence: passt das
 --   Datum nicht zum festen Monatstag, gilt der naechste solche Tag); valid_from ohne Angabe = dieser Termin, dann
 --   fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos). effective meldet beide wie gespeichert.
 --   Rueckgabe: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
 --   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
---   Einnahme wie Ausgabe, z. B. eine Zuwendung von aussen auf das Konto eines Sparplans). Korrigierbar
---   (direction/amount, schedule_unit unbekannt, Konto nicht buchbar [Depot/Kredit: die Faelligkeit bliebe
---   sonst ewig offen]) -> {ok:false, reason} ohne Write.
+--   Einnahme wie Ausgabe, z. B. eine Zuwendung von aussen auf das Konto eines Sparplans). cashflow_coverage
+--   (fn_cashflow_coverage_fold) ist gelatcht: core.fn_should_notify meldet nur beim Uebergang, Erholung -> fn_notify_resolve.
+--   Korrigierbar (direction/amount, schedule_unit unbekannt, Konto nicht buchbar [Depot/Kredit: die Faelligkeit bliebe
+--   sonst ewig offen], Buchungstag (fn_schedule_dom_reason)) -> {ok:false, reason} ohne Write; laufende/startende
+--   freistehende Zahlung gleichen Namens -> {ok:false, code:'duplicate_name', candidates} (fn_recurring_name_check);
+--   unaufloesbares Datum -> {ok:false, code:'invalid_date'}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
@@ -75,7 +79,6 @@ BEGIN
         RETURN v_nc;
     END IF;
     v_unit := (p->>'schedule_unit')::finance.schedule_unit;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

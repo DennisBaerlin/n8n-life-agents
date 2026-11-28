@@ -1,11 +1,13 @@
 -- ============================================================
 -- fn_setup_answer (WRITE, kein HITL) -- eine Antwort des Nutzers in der Ersteinrichtung speichern
---   Eingabe: chat_id, question_key, answer, amount, item (der offene Punkt laut fn_setup_next, bei current_balance leer).
+--   Eingabe: chat_id, question_key, answer, amount, item (der offene Punkt laut fn_setup_next, bei current_balance leer),
+--   account_id (bei confirm_account no: das abgelehnte Konto, aus fn_setup_next).
 --   question_key: current_balance (answer = Stand) | confirm_account (yes|no) | Schluessel eines offenen Punkts:
 --   answer skip, accept (uebernimmt item.suggested_amount), total|per_share (nach Rueckfrage) oder amount, die Lesart klaert
 --   fn_resolve_cost_basis (item.ref_price). Einstand 0 gibt es nicht.
 --   Nicht aus der Datei ableitbare Punkte (mixed_currency, position_incomplete, merger_unclear) kennen nur skip.
---   RUECKGABE: {ok:true, saved:true} | {ok:true, saved:false, ask:{key, as_per_share, as_total}} (genau eine Rueckfrage) | {ok:false, reason}.
+--   RUECKGABE: {ok:true, saved:true} | {ok:true, saved:false, ask:{key, as_per_share, as_total}, say} (genau eine Rueckfrage)
+--   | {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_answer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

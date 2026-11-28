@@ -11,9 +11,9 @@
 -- Output-Spalten-Renames/Umsortierung (CREATE OR REPLACE kann Output-Spalten weder
 -- umbenennen noch droppen).
 -- Drop in umgekehrter, Create in normaler Dependency-Reihenfolge.
--- Inter-View-Deps: *_summary haengt an *_overview (loan_summary->loan_overview,
--- monthly_cashflow_summary->monthly_cashflow_overview); monthly_cashflow_overview und
--- parent_cashflow_overview haengen an recurring_cashflow_classified (eine Klassifikation).
+-- Inter-View-Deps: loan_summary->loan_overview; monthly_/parent_cashflow_summary->cashflow_summary_by_scope->
+-- monthly_/parent_cashflow_overview; monthly_cashflow_overview und parent_cashflow_overview haengen an
+-- recurring_cashflow_classified (eine Klassifikation); weitere Deps an den Drop-Zeilen unten.
 -- ============================================================
 
 -- --- Drops (umgekehrte Dependency-Reihenfolge; CASCADE faengt evtl. Hand-Abhaengige) ---
@@ -335,8 +335,8 @@ LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
 --                  Depot: NULL (manual = EUR, sparplan_buy = Depot-Waehrung -> nativ nicht addierbar).
 --   manual_eur   = Anteil aus Hand-Zuordnungen (kind='manual'): Startbestand/spaetere Zuordnung, kein Spartempo
 --                  (savings_goal_progress rechnet ihn aus observed_monthly_rate heraus).
--- Konsumenten: savings_goal_progress, account_reserve_status, depot_reserve_status, savings_goal_reserve_breakdown,
---   fn_goal_reserve_accounts, fn_book_savings_reservation, fn_void_transaction, fn_delete_account.
+-- Konsumenten u. a.: savings_goal_progress, account_reserve_status, depot_reserve_status, savings_goal_reserve_breakdown,
+--   fn_goal_reserve_accounts, fn_book_savings_reservation, fn_void_transaction.
 -- ============================================================
 CREATE VIEW finance.savings_goal_account_share AS
 WITH legs AS (
@@ -904,9 +904,9 @@ WHERE finance.fn_loan_is_outstanding(status);
 -- ============================================================
 -- VIEW: Gesamtvermoegen nach Anlageklasse
 -- Eine Zeile je (bucket, asset_class) mit EUR-Wert; Quelle der per-Block-Allokations-Drift
--- (finance.fn_advisor_review). bucket = Entitaets-Typ-Diskriminator -> die Drift-fn weiss, was
--- handelbar ist (Rebalancing nur Depot + liquides Cash netto; Festgeld/Immobilie/Vorsorge/p2p/Kredit nie im Drift).
--- Klassen-Herkunft (packages/finance/CLAUDE.md):
+-- (finance.fn_advisor_review). bucket = Entitaets-Typ-Diskriminator; was handelbar ist (Drift-Nenner), sagt die
+-- Spalte tradeable (Drift-Regel: packages/finance/CLAUDE.md *Advisor*).
+-- Klassen-Herkunft:
 --   * Depot-Positionen (depot_holdings, shares>0): bucket='depot', asset_class = der Tag (NULL = ungetaggt
 --     -> null_tag-Report); Wert = shares x juengstem market_prices.price (Fallback Buchwert avg, bis ein
 --     Kurs vorliegt) in EUR.

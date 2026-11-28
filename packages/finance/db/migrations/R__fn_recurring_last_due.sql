@@ -5,7 +5,7 @@
 --   Ende kein Termin liegt. Eine kuenftige Betragsaenderung (Split) ist kein Ende: der Kopf laeuft weiter.
 --   Eingabe: p_rp_id (beliebiges Glied der Kette). Rueckgabe: date.
 --   Die eine Adresse fuer "letzte Ausfuehrung" (nie valid_to - 1: ein vom Nutzer genanntes Ende liegt selten auf
---   einem Termin). Konsumenten: fn_account_funding (drawdown/inflow_ends), fn_transfer_free_end, fn_advisor_review
+--   einem Termin). Konsumenten: fn_account_funding (drawdown/inflow_ends; darueber fn_transfer_free_end), fn_advisor_review
 --   (standing_order_ending).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_last_due(p_rp_id int)

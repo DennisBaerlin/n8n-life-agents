@@ -8,9 +8,8 @@
 --   kind 'debit'    = Spar-Abfluss ohne Ziel-Konto, der kein Sparplan ist (Vorsorge-Beitrag, Sparziel-Rate ohne Topf)
 --   Nie: Kredit-Raten (Ketten-Kopf in loans, Quelle ein Kreditkonto), Sparplan-Ausfuehrungen (stehen im Abschnitt
 --   Sparplaene), Eingaenge und sonstige Lastschriften (Strom, Abo: richtet der Glaeubiger ein).
---   Bei uns anders (package-contract §8): die Klassifikation steht hier statt in recurring_cashflow_classified, weil
---   diese View nur regulaer Laufendes kennt (Start innerhalb eines Rhythmus) und die Bank-To-do auch spaeter Kommendes braucht.
---   RUECKGABE: (rp_id, head_id, kind)
+--   Bei uns anders: Klassifikation hier statt in recurring_cashflow_classified (Grund: docs/package-contract.md §8).
+--   RUECKGABE: (rp_id, head_id, kind); rp_id = recurring_payments.id (anderswo recurring_payment_id).
 --   Tests: tests/db/finance/test_fn_standing_orders.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_standing_orders()

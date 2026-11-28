@@ -9,6 +9,9 @@
 --   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig). Partial-tolerant: jedes Feld optional
 --   (Praeferenzen wachsen aus dem Feedback). Der Scorer re-injiziert diesen Kontext beim naechsten Lauf
 --   (Lernschleife).
+--   Geprueft: preferred_aspects/disliked_aspects/disliked_industries/disliked_employers je Array; salary_floor
+--   0..10000000, salary_floor_period month|year, salary_floor_basis gross|net; commute_max_km 0..2000;
+--   remote_preference remote|hybrid|onsite|any (Gross-/Kleinschreibung egal).
 --   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_preferences(p_facts jsonb)

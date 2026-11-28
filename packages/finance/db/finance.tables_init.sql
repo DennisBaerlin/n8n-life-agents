@@ -1,5 +1,5 @@
 -- ============================================================
--- Finance Package — Schema "finance" (Tabellen praefixlos; das Schema IST der Namespace)
+-- Finance Package — Schema "finance" (Tabellen praefixlos; das Schema ist der Namespace)
 -- Usage:   psql -U <user> -d <database> -f finance.tables_init.sql
 -- ============================================================
 
@@ -16,7 +16,8 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 --             Strip) -> die CREATE ... IF NOT EXISTS / CREATE TYPE (duplicate_object) unten skippen, kein
 --             Datenverlust. Owned Sequences ziehen mit ALTER TABLE SET SCHEMA automatisch um (PG-Doku).
 --   ENUMs zuerst (nur SET SCHEMA, Name bleibt), dann Tabellen (SET SCHEMA + RENAME ohne finance_-Praefix);
---   Spalten referenzieren ENUMs per OID -> Move-Reihenfolge unkritisch. Die agent.fn_*-Orphans droppt finance:V005.
+--   Spalten referenzieren ENUMs per OID -> Move-Reihenfolge unkritisch. Die agent.fn_*-Orphans droppt
+--   R__zz_drop_agent_finance_orphans.sql.
 -- ============================================================
 DO $$
 DECLARE e TEXT;
@@ -276,8 +277,8 @@ CREATE INDEX IF NOT EXISTS idx_market_prices_lookup
 
 -- ============================================================
 -- ZEIT-KONSTANTEN (die eine Adresse der Monats-Normalisierung)
--- fn_days_per_month: EIN Ort fuer den Durchschnitt 30.4375 (= 365.25/12). Genutzt von der
---   monthly_equivalent-GENERATED-Spalte und fn_set_savings_goal (Rest-Monate) -> kein Drift.
+-- fn_days_per_month: ein Ort fuer den Durchschnitt 30.4375 (= 365.25/12). Genutzt u. a. von der
+--   monthly_equivalent-GENERATED-Spalte (ueber fn_monthly_equivalent) und fn_period_months -> kein Drift.
 -- fn_monthly_equivalent: normalisiert einen Betrag je (interval, unit) auf den Monat:
 --   betrag * dpm / (interval * tage_pro_unit) mit day=1, week=7, month=dpm, year=365.25
 --   (25 EUR/Woche -> ~109/Monat).
@@ -307,7 +308,7 @@ CREATE OR REPLACE FUNCTION finance.fn_monthly_equivalent(
     SELECT finance.fn_monthly_equivalent(p_amount * GREATEST(p_per_unit, 1), p_interval, p_unit);
 $$;
 
--- fn_period_months: Monate je Periode eines Rhythmus (day/week ueber fn_days_per_month normalisiert). Die EINE Adresse
+-- fn_period_months: Monate je Periode eines Rhythmus (day/week ueber fn_days_per_month normalisiert). Die eine Adresse
 -- fuer den Zins-Faktor einer Kreditrate (fn_loan_period_months, fn_loan_balance_at) und den Jahreswert.
 CREATE OR REPLACE FUNCTION finance.fn_period_months(p_interval int, p_unit finance.schedule_unit)
 RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
@@ -347,12 +348,13 @@ CREATE OR REPLACE FUNCTION finance.fn_insurance_period_amount(
         END / 365.25, 2);
 $$;
 
--- fn_schedule_occurrences: das EINE Faelligkeitsraster eines Rhythmus -- alle Termine d mit
+-- fn_schedule_occurrences: das eine Faelligkeitsraster eines Rhythmus -- alle Termine d mit
 -- p_from <= d <= p_until und d >= Anker. Monat: Tag aus dom (-1 Monatsletzter, -2 vorletzter, NULL = Tag des Ankers mit
 -- Monatsend-Clamping gegen den Anker, sonst fester Tag) bzw. jeder Tag aus p_days (feste Monatstage). Rein und
 -- IMMUTABLE (explizite timestamp-Casts + make_interval: keine Zeitzonen-Abhaengigkeit), LANGUAGE sql ohne STRICT/SET
--- -> inlinebar. Gerufen von fn_recurring_due_open (Scheduler, Gueltigkeit/Status/gebucht dort) und fn_loan_balance_at
--- (Restschuld-Vorschau) -> Erinnerung und Vorschau rechnen dasselbe Raster. Im Init, weil Views es (indirekt) nutzen.
+-- -> inlinebar. Gerufen u. a. von fn_recurring_due_open (Scheduler, Gueltigkeit/Status/gebucht dort) und fn_loan_simulate
+-- (Restschuld-Vorschau, ueber fn_loan_balance_at) -> Erinnerung und Vorschau rechnen dasselbe Raster. Im Init,
+-- weil Views es (indirekt) nutzen.
 CREATE OR REPLACE FUNCTION finance.fn_schedule_occurrences(
     p_anchor date, p_interval int, p_unit finance.schedule_unit, p_dom smallint, p_days smallint[],
     p_from date, p_until date
@@ -445,7 +447,7 @@ $$;
 --   Rate - Zins. Faellige, noch nicht gebuchte Raten zaehlen mit; Annahme: gleicher Zins, keine Sondertilgung.
 --   RUECKGABE: Restschuld (2 Nachkommastellen), 0 sobald getilgt; NULL bei Ziel <= heute, ohne Segmente (pausiert /
 --   ohne Rate) oder ueber 2.400 Termine (Iterationsdeckel). Im Init, weil loan_overview (R__finance_views laeuft vor
---   allen R__fn_*) sie nutzt. Duenner Wrapper ueber fn_loan_simulate (EINE Simulation, auch fuer das Tilgungsende).
+--   allen R__fn_*) sie nutzt. Duenner Wrapper ueber fn_loan_simulate (eine Simulation, auch fuer das Tilgungsende).
 -- fn_loan_simulate: der gemeinsame Kern (gleiche Argumente) -> (balance, payoff_date, interest_total):
 --   balance        = wie fn_loan_balance_at;
 --   payoff_date    = Termin der Rate, die die Restschuld auf <= 0 bringt (NULL: bis p_target nicht getilgt, schon
@@ -526,7 +528,7 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
 $$;
 
 -- fn_schedule_label: der Rhythmus einer Dauerzahlung in Klartext (englisch, Modell-Text) --
--- die EINE Uebersetzung des Intervall-Trios + fester Monatstage. Ein Sparplan mit festen Ausfuehrungstagen
+-- die eine Uebersetzung des Intervall-Trios + fester Monatstage. Ein Sparplan mit festen Ausfuehrungstagen
 -- steht als month/1 + Tage; ohne Label liest der Agent nur amount und meldet den Betrag je Ausfuehrung als Monatsbetrag.
 -- Feste Tage: 4 = "weekly", 2 = "twice a month" (Nutzer-Rhythmus wie in fn_resolve_plan_schedule), sonst "n times a month";
 -- immer mit Anzahl je Monat und den Tagen, damit niemand den Monatsbetrag selbst hochrechnet. Im Init, weil
@@ -555,7 +557,7 @@ RETURNS text LANGUAGE sql IMMUTABLE AS $$
         END;
 $$;
 
--- fn_loan_monthly_interest: die EINE Zinsformel einer Kreditrate = positive Restschuld *
+-- fn_loan_monthly_interest: die eine Zinsformel einer Kreditrate = positive Restschuld *
 -- Jahreszins / 1200 * Monate der Raten-Periode (Default 1 = Monatszins), einmal auf Cent gerundet. Genutzt von
 -- der Cashflow-Klassifikation (finance.recurring_cashflow_classified: Zins = Konsum, Rest = Tilgung; monatlich),
 -- loan_overview und fn_get_loan_payment_split (HITL-Vorschau + Buchung, Perioden-Faktor der Rate) -> Uebersicht,
@@ -567,10 +569,11 @@ RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
                  * COALESCE(p_months, 1), 2);
 $$;
 
--- fn_interest_eligible_account_type: die EINE Adresse der zins-faehigen Kontotypen
+-- fn_interest_eligible_account_type: die eine Adresse der zins-faehigen Kontotypen
 -- (Allowlist cash/fixed_deposit/p2p; p2p = z. B. Bondora Go & Grow, zinstragend). Sicher-per-Default: ein
 -- kuenftiger account_type-ENUM-Wert ist ohne Eintrag hier zinslos. Genutzt von fn_interest_due_open (Filter),
--- fn_set_account_interest / fn_book_interest_occurrence ({ok:false}-Guard) und dem Backstop-Trigger
+-- fn_interest_rate_preview (speist fn_set_account_interest) / fn_book_interest_occurrence ({ok:false}-Guard),
+-- fn_create_account, fn_interest_default_convention und dem Backstop-Trigger
 -- trg_finance_reject_interest_rate_ineligible (s. u.). Im Init (nicht R__), weil der Init-Trigger
 -- und die LANGUAGE-sql-fn fn_interest_due_open sie referenzieren -> sie muss vor der R-Phase existieren
 -- (gleiches Muster wie fn_monthly_equivalent fuer die GENERATED-Spalte oben).
@@ -579,7 +582,7 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT p_type IN ('cash', 'fixed_deposit', 'p2p');
 $$;
 
--- fn_goal_pot_account_types / fn_goal_earmark_account_types: die EINE Adresse der
+-- fn_goal_pot_account_types / fn_goal_earmark_account_types: die eine Adresse der
 -- Kontotypen eines Sparziels (Allowlist, sicher-per-Default wie oben). Topf = saldo-basiertes Konto, in das eine Sparrate
 -- fliesst und dessen Saldo die Zuordnungen deckt (cash/fixed_deposit/p2p). Zuordenbar (Journal
 -- savings_goal_reserve_entries) = Topf-Typen + Depots (Marktwert = Deckung). Kredit nie. Im Init, weil die Views in
@@ -600,7 +603,7 @@ RETURNS finance.account_type[] LANGUAGE sql IMMUTABLE AS $$
     SELECT ARRAY['cash']::finance.account_type[];
 $$;
 
--- fn_loan_is_outstanding: die EINE Schulden-Definition -- ein Kredit ist offene Schuld,
+-- fn_loan_is_outstanding: die eine Schulden-Definition -- ein Kredit ist offene Schuld,
 -- solange er active oder paused ist (pausiert = Raten ausgesetzt, Restschuld besteht weiter; sonst fehlte er in
 -- loan_summary (-> Advisor debt_total) und real_estate_overview.net_equity, obwohl sein Kreditkonto im Vermoegen zaehlt).
 -- Genutzt von loan_summary, real_estate_overview, fn_liability_register, fn_sell_real_estate.
@@ -610,14 +613,16 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT p_status IN ('active', 'paused');
 $$;
 
--- fn_maintenance_reserve_rate: die EINE Rechen-Adresse fuer die empfohlene
+-- fn_maintenance_reserve_rate: die eine Rechen-Adresse fuer die empfohlene
 -- Monatsrate einer Immobilie nach II. BV § 28 Abs. 2 (https://www.gesetze-im-internet.de/bvo_2/__28.html): Satz je m2
 -- Wohnflaeche und Jahr nach dem Alter seit Bezugsfertigkeit "am Ende des Kalenderjahres" (= Kalenderjahr - year_built):
 -- unter 22 Jahre / ab 22 / ab 32 (Gesetzeskonstanten hier). Die Betraege werden alle 3 Jahre per VPI angepasst
--- (§ 26 Abs. 4) und stehen deshalb in core.config finance.maintenance_rate_{under22,from22,from32}_eur_m2 (Stand
--- 1.1.2026: 11,50 / 14,58 / 18,62; COALESCE-Defaults = dieselben Werte). Rate = Flaeche x Satz / 12, auf ganze Euro
+-- (§ 26 Abs. 4) und stehen deshalb in core.config finance.maintenance_rate_{under22,from22,from32}_eur_m2 (Werte:
+-- packages/finance/manifest.json; die COALESCE-Defaults unten muessen gleich bleiben). Rate = Flaeche x Satz / 12,
+-- auf ganze Euro
 -- aufgerundet (Untergrenze, Dauerauftrags-tauglich). Zuschlaege (Aufzug, Waermelieferung) bewusst nicht.
--- Genutzt von maintenance_reserve_status, fn_create/set_savings_goal, fn_create/set_real_estate (Karte), Advisor.
+-- Genutzt von maintenance_reserve_status, fn_create/set_savings_goal, fn_maintenance_card_lines (Karte von
+-- fn_create/set_real_estate), fn_savings_goal_funding, Advisor.
 -- Im Init, weil die View (R__finance_views sortiert vor R__fn_*) sie referenziert. STABLE (heute + Config).
 -- RUECKGABE: {ok:true, age_years, band ('under22'|'from22'|'from32'), rate_eur_m2, annual_eur, monthly_eur}
 --   | {ok:false, code:'maintenance_data_missing'|'invalid_maintenance_data', reason}.
@@ -646,7 +651,7 @@ BEGIN
         'annual_eur', round(p_area * v_rate, 2), 'monthly_eur', CEIL(p_area * v_rate / 12));
 END;
 $$;
--- Dieselbe Empfehlung fuer eine gespeicherte Immobilie (die EINE Adresse fuer den Lookup Flaeche/Baujahr; Write-fns,
+-- Dieselbe Empfehlung fuer eine gespeicherte Immobilie (die eine Adresse fuer den Lookup Flaeche/Baujahr; Write-fns,
 -- Karte). Unbekannte id -> wie fehlende Daten.
 CREATE OR REPLACE FUNCTION finance.fn_maintenance_reserve_rate(p_real_estate_id int)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -660,7 +665,7 @@ END;
 $$;
 
 -- ============================================================
--- ZINS-RASTER (die EINE Quelle der Gutschrift-Termine)
+-- ZINS-RASTER (die eine Quelle der Gutschrift-Termine)
 --   fn_interest_grid_point(anchor, k, n, unit, dom) = der k-te Rasterpunkt (k >= 0) eines Zins-Regimes mit Anker
 --     anchor. fn_interest_due_open zaehlt die Vorkommen damit auf, fn_interest_period_start / fn_interest_next_period_end
 --     suchen darin -> Faelligkeit, Periodenbeginn und die "Erste Gutschrift" der Karte rechnen dasselbe Raster.
@@ -673,7 +678,7 @@ $$;
 --     dom NULL = Anker-Tag, mit festem Tag = dieser Tag im Anker-Monat + k*n, mit dom -1 und n ausserhalb {1,2,3,4,6,12}
 --     = Monatsende des Anker-Monats + k*n (Altzeilen; neue Zeilen lehnt fn_interest_schedule_reason ab).
 --   fn_interest_grid_index(anchor, d, ...) = geschaetzter Index k des Rasterpunkts bei Datum d (Suchfenster der
---     Aufrufer: idx-2 .. idx+2, der Schaetzfehler ist hoechstens 1).
+--     Aufrufer: idx-2 .. idx+2, fn_interest_next_period_end bis idx+3; der Schaetzfehler ist hoechstens 1).
 --   Init (nicht R__): die LANGUAGE-sql-fn fn_interest_due_open referenziert sie und liegt alphabetisch davor.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_grid_is_calendar(p_n int, p_unit finance.schedule_unit, p_dom int)
@@ -723,13 +728,13 @@ CREATE OR REPLACE FUNCTION finance.fn_interest_grid_index(
     END);
 $$;
 
--- fn_interest_period_start (die EINE Tiling-Quelle fuer den Perioden-START): groesster Rasterpunkt
+-- fn_interest_period_start (die eine Tiling-Quelle fuer den Perioden-Start): groesster Rasterpunkt
 -- (fn_interest_grid_point) strikt < period_end, geclamped auf den Anker. Rein Schedule-abgeleitet (nie aus gebuchten/
 -- uebersprungenen Tx) -> skip-invariant; aufeinanderfolgende Perioden kacheln lueckenlos period_start(k+1) ==
 -- period_end(k), auch fuer Teilperioden (Regime-Ende/Kadenzwechsel nicht auf dem Raster) und die erste
 -- Teilperiode eines Kalender-Rasters (Start 24.10., Quartal -> 24.10..31.12.). Grenze aus Anker + Index, nie aus dem
--- gerollten period_end subtrahiert (dom=-1-Overlap; QuantLib). Beide Zins-fns rufen sie
--- (fn_interest_due_open je Zeile, fn_interest_amount_due skalar) mit ihren Regime-Parametern; den Schutz vor
+-- gerollten period_end subtrahiert (dom=-1-Overlap; QuantLib). Beide Zins-fns rufen sie (fn_interest_due_open je Zeile
+-- direkt, fn_interest_amount_due ueber fn_interest_effective_period_start) mit ihren Regime-Parametern; den Schutz vor
 -- Doppelverzinsung nach einem Raster-Wechsel auf Bestandsdaten (GREATEST mit der juengsten erledigten Periode)
 -- traegt fn_interest_effective_period_start (die eine Regel fuer due_open und amount_due).
 CREATE OR REPLACE FUNCTION finance.fn_interest_period_start(
@@ -743,7 +748,7 @@ CREATE OR REPLACE FUNCTION finance.fn_interest_period_start(
         WHERE g.b < p_period_end));
 $$;
 
--- fn_interest_next_period_end: der erste Rasterpunkt NACH p_after (und nach dem Anker) -- die "Erste Gutschrift" der
+-- fn_interest_next_period_end: der erste Rasterpunkt nach p_after (und nach dem Anker) -- die "Erste Gutschrift" der
 -- HITL-Karte (fn_account_interest_defaults / fn_interest_rate_preview), aus demselben Raster wie die Faelligkeit.
 CREATE OR REPLACE FUNCTION finance.fn_interest_next_period_end(
     p_anchor date, p_after date, p_n int, p_unit finance.schedule_unit, p_dom int
@@ -756,7 +761,7 @@ CREATE OR REPLACE FUNCTION finance.fn_interest_next_period_end(
 $$;
 
 -- fn_interest_value_date: Gutschrift-Datum eines Periodenendes -- period_end selbst, mit posting_day_of_month
--- (Arrears) der n-te Tag im Folgemonat. EINE Formel fuer fn_interest_due_open und die Karte.
+-- (Arrears) der n-te Tag im Folgemonat. Eine Formel fuer fn_interest_due_open und die Karte.
 CREATE OR REPLACE FUNCTION finance.fn_interest_value_date(p_period_end date, p_pdom smallint)
 RETURNS date LANGUAGE sql IMMUTABLE AS $$
     SELECT CASE WHEN p_pdom IS NULL THEN p_period_end
@@ -770,7 +775,8 @@ $$;
 -- All account types in one table.
 -- fixed_deposit_* columns are only populated for account_type = 'fixed_deposit'.
 -- Depot accounts (stocks_depot, crypto_depot) have positions in depot_holdings and carry no transactions;
--- their balance is always 0. settlement_account_id links a depot to its cash settlement account.
+-- their balance is always 0. settlement_account_id links a depot to its cash settlement account; p2p and cash
+-- accounts may carry one too (CHECK finance_accounts_settlement_kind below).
 -- loan accounts carry negative balances (Restschuld), auto-maintained by trigger.
 -- ============================================================
 
@@ -780,7 +786,7 @@ CREATE TABLE IF NOT EXISTS finance.accounts (
     account_type                finance.account_type NOT NULL,
     bank                        varchar(100),
     account_number              varchar(50),            -- IBAN, depot number, P2P account ID — no format enforced
-    settlement_account_id       int REFERENCES finance.accounts(id), -- depot: Verrechnungskonto; p2p: verifiziertes Auszahlungskonto (CHECK settlement_kind)
+    settlement_account_id       int REFERENCES finance.accounts(id), -- depot: Verrechnungskonto; p2p/cash: verifiziertes Auszahlungskonto (CHECK settlement_kind)
     owner_person_id             text,                   -- Multi-Member: Eigentümer-Person, das einzige Inhaber-Feld (Slug aus family; NULL=Haushalt/gemeinsam); FK unten
     currency                    char(3) NOT NULL DEFAULT 'EUR',
     status                      finance.account_status NOT NULL DEFAULT 'active',
@@ -789,7 +795,7 @@ CREATE TABLE IF NOT EXISTS finance.accounts (
     last_reconciled_balance     numeric(12,2),          -- last user-confirmed real-world balance (reconciliation playbook)
     last_reconciled_at          date,                   -- date of that confirmation
     opening_balance_date        date,                   -- Stichtag des beim Anlegen genannten Saldos (fn_create_account); Vorkommen davor stecken im Saldo (fn_recurring_valid_from)
-    -- Nachlass-relevante Konto-Attribute (additiv nullable, Init-only, kein V).
+    -- Nachlass-relevante Konto-Attribute.
     -- ownership = rechtliche Kontoinhaberschaft: single=Einzelkonto, joint_or=Oder-Konto (Ueberlebender
     --   behaelt vollen Zugriff), joint_and=Und-Konto (nach Tod verfuegungsbeschraenkt). NULL=nicht erfasst.
     -- has_transmortal_poa = existiert eine transmortale Bankvollmacht (ueber den Tod hinaus)? Zugriffs-
@@ -810,13 +816,12 @@ CREATE TABLE IF NOT EXISTS finance.accounts (
     )
 );
 
--- Spalten auf Bestands-DBs nachziehen (additiv nullable, Init-only, kein V)
+-- Spalten auf Bestands-DBs nachziehen
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS last_reconciled_balance numeric(12,2);
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS last_reconciled_at date;
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS opening_balance_date date;
 
--- ownership + has_transmortal_poa additiv/idempotent auf Bestands-DBs (Init-only,
--- kein V — rein additiv nullable). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop.
+-- ownership + has_transmortal_poa auf Bestands-DBs. Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop.
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS ownership text;
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS has_transmortal_poa boolean;
 DO $$ BEGIN
@@ -826,7 +831,7 @@ DO $$ BEGIN
 END $$;
 
 -- Kontonummer/IBAN ist die eindeutige Zuordnung eines Kontoauszugs zum Konto.
--- fn_normalize_account_number = die EINE Normalform (Grossbuchstaben, ohne Leerzeichen, leer -> NULL); Init-Baseline-
+-- fn_normalize_account_number = die eine Normalform (Grossbuchstaben, ohne Leerzeichen, leer -> NULL); Init-Baseline-
 -- Helfer (CHECK-gekoppelt, kein R__: ein CREATE OR REPLACE einer constraint-gekoppelten fn prueft Bestand nicht neu).
 CREATE OR REPLACE FUNCTION finance.fn_normalize_account_number(p text)
 RETURNS text LANGUAGE sql IMMUTABLE AS $$
@@ -875,7 +880,7 @@ BEGIN
             CHECK (account_number IS NULL OR account_number = finance.fn_normalize_account_number(account_number));
     END IF;
 END $$;
--- Eindeutig nur unter AKTIVEN Konten (ein geschlossenes Konto gibt seine Nummer frei).
+-- Eindeutig nur unter aktiven Konten (ein geschlossenes Konto gibt seine Nummer frei).
 CREATE UNIQUE INDEX IF NOT EXISTS finance_accounts_number_active_uq
     ON finance.accounts (account_number)
     WHERE account_number IS NOT NULL AND status = 'active';
@@ -976,9 +981,9 @@ END $$;
 -- day_count_convention = Tageszaehl-Methode je Rate-Zeile (kohaesiv mit
 --   Satz+Schedule+Historie), bestimmt den taggenauen Perioden-Anteil in fn_interest_day_fraction
 --   (30E/360 deutsche Methode, ACT/365, ACT/360). posting_day_of_month gesetzt = Arrears-Gutschrift
---   (value_date = posting_day_of_month im Monat NACH dem Perioden-Ende; NULL = Gutschrift am Perioden-Ende).
+--   (value_date = posting_day_of_month im Monat nach dem Perioden-Ende; NULL = Gutschrift am Perioden-Ende).
 --   auto_post = taegliche/woechentliche Auto-Buchung im Cron ohne HITL (Default per Kadenz, pro Konto
---   ueberschreibbar). Methode/auto_post werden bei der Anlage aus dem Kontotyp/der Kadenz VORGESCHLAGEN
+--   ueberschreibbar). Methode/auto_post werden bei der Anlage aus dem Kontotyp/der Kadenz vorgeschlagen
 --   (fn_interest_default_convention / fn_interest_auto_post_default), im HITL-Gate mit Grund gezeigt.
 -- ============================================================
 
@@ -1001,8 +1006,7 @@ CREATE TABLE IF NOT EXISTS finance.account_interest_rates (
         )
 );
 
--- Die drei Zins-Spalten additiv/idempotent auf Bestands-DBs (Init-only, keine
--- V-Migration — rein additiv, nullable bzw. NOT-NULL-DEFAULT). Der day_count-CHECK ist der strukturelle
+-- Die drei Zins-Spalten auf Bestands-DBs. Der day_count-CHECK ist der strukturelle
 -- Backstop (die fn_interest_default_convention liefert einen gueltigen Wert; ein Direktzugriff mit
 -- Tippfehler scheitert hart statt still). DROP+ADD = idempotent je Apply.
 ALTER TABLE finance.account_interest_rates ADD COLUMN IF NOT EXISTS day_count_convention text NOT NULL DEFAULT '30E/360';
@@ -1015,7 +1019,7 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
--- fn_interest_regimes -- die EINE Quelle der Zins-Kadenz eines Kontos.
+-- fn_interest_regimes -- die eine Quelle der Zins-Kadenz eines Kontos.
 --   Ein Regime = zusammenhaengender Lauf von account_interest_rates-Zeilen mit gleicher Kadenz (schedule_interval,
 --   schedule_unit, schedule_day_of_month); ein reiner Satzwechsel bleibt im Regime (Raster unveraendert, Satz-Mischung
 --   macht fn_interest_rate_segments). Ein Kadenzwechsel beginnt ein neues Regime mit Anker = sein Start; das alte
@@ -1024,7 +1028,8 @@ END $$;
 --   fn_interest_amount_due fail-closed (RAISE) statt still zinslos.
 --   Gelesen von fn_interest_due_open (Faelligkeiten je Regime; keine Gutschrift am Wechseltag) und
 --   fn_interest_amount_due (Regime des letzten Periodentags) -> beide nutzen dieselbe Kadenz.
---   Init (nicht R__), weil die LANGUAGE-sql-fn fn_interest_due_open sie referenziert und alphabetisch VOR ihr liegt.
+--   Spalten: n = schedule_interval, unit = schedule_unit, dom = schedule_day_of_month, pdom = posting_day_of_month.
+--   Init (nicht R__), weil die LANGUAGE-sql-fn fn_interest_due_open sie referenziert und alphabetisch vor ihr liegt.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_regimes(p_account_id int)
 RETURNS TABLE(regime_start date, regime_end date, anchor date, n smallint, unit finance.schedule_unit,
@@ -1058,7 +1063,7 @@ $$;
 
 -- fn_interest_last_done(account, before): Ende der juengsten erledigten Zinsperiode (Scheduler-Zinsbuchung mit
 --   interest_period_end oder interest_skips) -- mit p_before nur Perioden, die vor diesem Tag enden; NULL = keine.
---   Die EINE Definition von "erledigt" fuer fn_interest_effective_period_start, fn_interest_due_open (offen nur danach) und
+--   Die eine Definition von "erledigt" fuer fn_interest_effective_period_start, fn_interest_due_open (offen nur danach) und
 --   fn_interest_rate_preview (kein Wechsel vor bereits Verzinstem). Generische Zinsen (interest_period_end NULL) zaehlen nie.
 --   plpgsql: transactions/interest_skips entstehen weiter unten in dieser Datei.
 CREATE OR REPLACE FUNCTION finance.fn_interest_last_done(p_account_id int, p_before date DEFAULT NULL)
@@ -1075,7 +1080,7 @@ END;
 $$;
 
 -- fn_interest_effective_period_start(account, period_end): der wirksame Beginn der Zinsperiode, die an period_end endet
---   -- EINE Regel fuer fn_interest_due_open (Faelligkeit/Karte) und fn_interest_amount_due (Betrag):
+--   -- eine Regel fuer fn_interest_due_open (Faelligkeit/Karte) und fn_interest_amount_due (Betrag):
 --   1. Raster-Beginn im Regime des letzten Periodentags (fn_interest_period_start, geclamped auf dessen Anker).
 --   2. Erste Periode eines Folge-Regimes (Raster-Beginn = Anker): ein Rhythmuswechsel loest keine eigene Gutschrift am
 --      Wechseltag aus (sonst Cent-Karten fuer einen einzelnen Tag bei einer am Folgetag korrigierten
@@ -1119,7 +1124,7 @@ $$;
 -- RECURRING PAYMENTS
 -- Income and expenses with validity periods in one table.
 -- For changed amounts (e.g. Elternzeit), add a new row with new valid_from.
--- Validity is HALF-OPEN [valid_from, valid_to): valid_to is the first day NO LONGER valid (stored exclusive;
+-- Validity is half-open [valid_from, valid_to): valid_to is the first day no longer valid (stored exclusive;
 -- the set/create fns convert the user's inclusive "last day" +1). Views, close_*, the split helper and
 -- fn_recurring_due_open all read it this way. first_payment_date is only the rhythm anchor.
 --
@@ -1179,7 +1184,7 @@ END $$;
 -- Feste Monatstage (ein Broker fuehrt "woechentlich" an festen Monatstagen aus = mehrmals im Monat, nicht
 -- alle 7 Tage). schedule_days_of_month ersetzt bei unit=month den Einzeltag; CHECK = Gesetz (Tage nur bei month, nie
 -- zusammen mit schedule_day_of_month, >= 2 -- ein Einzeltag gehoert in schedule_day_of_month: eine Schreibweise).
--- Additiv/nullable -> Init-only. monthly_equivalent zaehlt die Tage (4-arg fn_monthly_equivalent): Bestands-DBs
+-- monthly_equivalent zaehlt die Tage (4-arg fn_monthly_equivalent): Bestands-DBs
 -- stellen die GENERATED-Expression per SET EXPRESSION (PG 17) um -- kein DROP+ADD CASCADE, das die abhaengigen
 -- R__-Views auf Bestands-DBs verloere (der Treiber faehrt R__ nur bei geaenderter Pruefsumme neu). Guard auf die
 -- neue Expression (der LIKE-Guard oben passt auch auf die alte Formel).
@@ -1204,8 +1209,7 @@ DO $$ BEGIN
     END IF;
 END $$;
 
--- target_account_id auf Bestands-DBs + FK + No-Self-Transfer-CHECK.
--- Additiv/nullable -> Init-only (Muster asset_class/person_id, keine V-Migration). target_account_id
+-- target_account_id auf Bestands-DBs + FK + No-Self-Transfer-CHECK. target_account_id
 -- IS NOT NULL markiert eine rp als internen Transfer (account_id=Quelle/Soll, target=Ziel/Haben) ->
 -- recurring_cashflow_classified fuehrt sie als 'transfer' (cashflow-neutral, kein Doppelzaehlen) bzw. als
 -- Sparziel-Rate in einen Topf als 'saving'. Der
@@ -1223,11 +1227,11 @@ END $$;
 
 -- Vorgaenger-Kette (Lineage). Ein Validity-Split (fn_split_recurring_payment) oder ein
 -- Reopen nach Soft-Close (fn_reopen_recurring_payment) legt eine Folge-rp an; predecessor_id zeigt auf die
--- Vorgaengerin. Besitzer-Entitaeten (Kredit/Sparplan/Sparziel/Versicherung/Vorsorge) zeigen immer auf den KOPF
+-- Vorgaengerin. Besitzer-Entitaeten (Kredit/Sparplan/Sparziel/Versicherung/Vorsorge) zeigen immer auf den Kopf
 -- der Kette (fn_repoint_recurring_owners); alte Vorkommen/Historie findet fn_recurring_lineage. DB-Gesetz:
 -- lineare Kette (partieller UNIQUE = hoechstens ein Nachfolger) + FK NO ACTION (kein Mittelglied still
--- herausloeschbar; NO ACTION statt RESTRICT, damit eine ganze buchungsfreie Kette in EINEM Statement geloescht
--- werden kann). Additiv/nullable -> Init-only; der Bestands-Backfill ist einmalig -> V014.
+-- herausloeschbar; NO ACTION statt RESTRICT, damit eine ganze buchungsfreie Kette in einem Statement geloescht
+-- werden kann). Der Bestands-Backfill ist einmalig -> V014.
 ALTER TABLE finance.recurring_payments ADD COLUMN IF NOT EXISTS predecessor_id int;
 DO $$ BEGIN
     ALTER TABLE finance.recurring_payments DROP CONSTRAINT IF EXISTS finance_recurring_payments_predecessor_fk;
@@ -1244,10 +1248,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_recurring_payments_predecessor_uq
 -- der Bank des Nutzers, 'manual' = der Nutzer ueberweist selbst (z. B. Auszahlung beim P2P-Anbieter). NULL = nicht angegeben.
 -- Reine Nutzerangabe, gar nicht ableitbar (ob bei einem Giro ein Dauerauftrag besteht, steht nirgends in unseren Daten; keine
 -- Ausnahme (a)-(c) der Regel „keine ableitbaren Spalten" noetig). Bewusst kein Buchungsschalter: gebucht wird nie von der App
--- selbst (Kontoauszug-Abgleich oder Zuruf), die Spalte steuert nur Hinweise. Der Standard je Kontoart (P2P/Depot/Festgeld/
--- Kredit -> manual, Geld-Konto -> unknown) steckt allein in finance.fn_transfer_executed_by; hier wird kein Standard
+-- selbst (Kontoauszug-Abgleich oder Zuruf), die Spalte steuert nur Hinweise. Den Standard je Kontoart liefert allein
+-- finance.fn_transfer_executed_by; hier wird kein Standard
 -- festgeschrieben (kein Backfill, NULL bleibt NULL). Nur an Uebertraegen (target_account_id gesetzt). Split/Reopen erben.
--- Additiv/nullable -> Init-only; DROP+ADD CONSTRAINT = idempotent je Apply.
 ALTER TABLE finance.recurring_payments ADD COLUMN IF NOT EXISTS executed_by text;
 DO $$ BEGIN
     ALTER TABLE finance.recurring_payments DROP CONSTRAINT IF EXISTS finance_recurring_payments_executed_by_chk;
@@ -1261,7 +1264,7 @@ COMMENT ON COLUMN finance.recurring_payments.executed_by IS
     'Nutzerangabe zu einem Uebertrag: bank = Dauerauftrag bei der Bank, manual = der Nutzer ueberweist selbst, NULL = nicht angegeben. Nicht ableitbar, kein Buchungsschalter. Aufgeloest (mit Kontoart-Standard) nur ueber finance.fn_transfer_executed_by.';
 
 -- fn_recurring_lineage: ids aller Glieder der Kette von p_rp_id (Vorgaenger und Nachfolger, inkl. sich selbst).
--- EINE Adresse fuer "gehoert dieses Vorkommen zu einem Sparplan/Kredit/..." (Besitzer zeigen auf den Kopf),
+-- Eine Adresse fuer "gehoert dieses Vorkommen zu einem Sparplan/Kredit/..." (Besitzer zeigen auf den Kopf),
 -- Historie ueber alle Glieder und Doppel-Pruefung ueber die Kette. Im Init (nicht R__), weil Views
 -- (R__finance_views.sql sortiert vor R__fn_*) sie lesen. Unbekannte id -> leere Menge.
 CREATE OR REPLACE FUNCTION finance.fn_recurring_lineage(p_rp_id int)
@@ -1280,7 +1283,7 @@ RETURNS SETOF int LANGUAGE sql STABLE AS $$
     SELECT id FROM down;
 $$;
 
--- fn_recurring_lineage_head: der KOPF (neuestes Glied, ohne Nachfolger) der Kette von p_rp_id — die rp, auf die
+-- fn_recurring_lineage_head: der Kopf (neuestes Glied, ohne Nachfolger) der Kette von p_rp_id — die rp, auf die
 -- Besitzer-Entitaeten zeigen (Richtung alt -> neu). Unbekannte id -> NULL. Im Init aus demselben Grund wie oben.
 CREATE OR REPLACE FUNCTION finance.fn_recurring_lineage_head(p_rp_id int)
 RETURNS int LANGUAGE sql STABLE AS $$
@@ -1336,7 +1339,7 @@ RETURNS date LANGUAGE sql STABLE AS $$
 $$;
 
 -- fn_recurring_effective (READ, STABLE): das massgebliche Glied einer Raten-Kette fuer „laeuft oder kommt"
---   = (1) das am Tag p_on gueltige aktive Glied ([valid_from, valid_to)), (2) das NAECHSTE startende aktive Glied (Kette noch
+--   = (1) das am Tag p_on gueltige aktive Glied ([valid_from, valid_to)), (2) das naechste startende aktive Glied (Kette noch
 --   nicht gestartet, Luecke zwischen zwei Gliedern, pausiert mit aktivem Nachfolger „laeuft wieder ab ..."), nicht der Kopf ->
 --   eine kuenftige Kette mit geplanter Aenderung zeigt den Startbetrag, (3) das heute gueltige Glied gleich welchen Status,
 --   (4) das naechste startende, (5) der Kopf (beendete Kette; Aufrufer filtern status und valid_to). Leere Glieder [d,d)
@@ -1378,7 +1381,7 @@ RETURNS date LANGUAGE sql STABLE AS $$
     LIMIT 1;
 $$;
 
--- fn_recurring_starts_within_cycle (READ, IMMUTABLE): die EINE Regel „zaehlt schon regulaer".
+-- fn_recurring_starts_within_cycle (READ, IMMUTABLE): die eine Regel „zaehlt schon regulaer".
 --   Wer eine laufende Zahlung erfasst, nennt ihren naechsten Termin; der wird valid_from. Liegt er innerhalb eines eigenen
 --   Rhythmus, wartet die Zahlung nur auf diesen Termin und zaehlt in der Monatsrechnung; liegt er spaeter, ist sie wirklich
 --   neu und zaehlt erst, wenn sie ins Fenster rueckt. Fenster = p_on + GREATEST(ein Rhythmus, 1 Monat) + 3 Tage: die
@@ -1419,7 +1422,7 @@ CREATE TABLE IF NOT EXISTS finance.recurring_payment_skips (
 -- (source='statement') oder vom Nutzer genannt (source='user'). key_value ist normalisiert (Grossbuchstaben, ohne
 -- Leerzeichen). Haengt an einem beliebigen Glied der Vorgaenger-Kette; Aufloesung ueber fn_recurring_lineage
 -- (split-/reopen-fest, kein Repoint). Anbieterwechsel = neuer Schluessel, der alte bleibt Historie.
---   sepa_mandate      = '<Glaeubiger-ID>|<Mandatsreferenz>' -> identifiziert genau EINEN Vertrag -> global UNIQUE.
+--   sepa_mandate      = '<Glaeubiger-ID>|<Mandatsreferenz>' -> identifiziert genau einen Vertrag -> global UNIQUE.
 --   counterparty_iban = Gegen-IBAN -> nicht global eindeutig (Gehalt + Bonus vom selben Arbeitgeber, Miete +
 --                       Stellplatz beim selben Vermieter) -> je Dauerauftrag eindeutig; Matching filtert damit und
 --                       entscheidet ueber die Betragsnaehe.
@@ -1444,10 +1447,10 @@ CREATE INDEX IF NOT EXISTS idx_recurring_payment_keys_value ON finance.recurring
 
 -- ============================================================
 -- BANK STATEMENTS (Monats-Check)
--- EIN Aggregat je eingespieltem Kontoauszug — bewusst keine Umsatzzeilen (Einzelumsaetze werden
--- nicht gespeichert; zugeordnete Zahlungen landen als Buchungen ihres Dauerauftrags, der Rest als EINE
+-- Ein Aggregat je eingespieltem Kontoauszug — bewusst keine Umsatzzeilen (Einzelumsaetze werden
+-- nicht gespeichert; zugeordnete Zahlungen landen als Buchungen ihres Dauerauftrags, der Rest als eine
 -- Abgleichsbuchung). Zweck: Doppel-Einspiel-Sperre (UNIQUE je Konto + Zeitraum-Ende), Takt der Erinnerung,
--- Alltagsausgaben-Schaetzung der Deckungs-Vorschau (unmatched_out/in je Tag) und die Ruecknahme des LETZTEN Auszugs
+-- Alltagsausgaben-Schaetzung der Deckungs-Vorschau (unmatched_out/in je Tag) und die Ruecknahme des letzten Auszugs
 -- (Provenienz: prev_last_reconciled_* = Abgleichsstand davor; Buchungen tragen transactions.bank_statement_id;
 -- skipped = die beim Abgleich geschlossenen Vorkommen, learned_key_ids = die gelernten Schluessel). Fehlende Vorkommen
 -- SIND Skips (recurring_payment_skips) — skipped haelt nur fest, welche dieser Lauf gesetzt hat.
@@ -1583,7 +1586,7 @@ CREATE TABLE IF NOT EXISTS finance.pension (
 );
 
 -- ============================================================
--- PENSION STATEMENTS (Standmitteilungen) — datierte Snapshots als CHILD der EINEN Pension-Zeile.
+-- PENSION STATEMENTS (Standmitteilungen) — datierte Snapshots als Child der einen Pension-Zeile.
 -- Renteninformation (DRV), bAV-/Riester-/Rürup-Standmitteilungen, auslaendische Rentenbescheide: jaehrliche
 -- Beobachtungen desselben Anspruchs, keine neuen Anwartschaften — deshalb nie eigene
 -- pension-Rows (wuerden Net-Worth doppelt zaehlen, fn_resolve_pension brechen,
@@ -1682,7 +1685,7 @@ CREATE TABLE IF NOT EXISTS finance.loans (
     real_estate_id            int REFERENCES finance.real_estate(id),
     recurring_payment_id      int REFERENCES finance.recurring_payments(id),
     notes                     text,
-    settled_from              jsonb,                     -- Zustand vor fn_settle_loan {status, rp_status, rp_valid_to}; fn_void_transaction stellt ihn exakt wieder her
+    settled_from              jsonb,                     -- Zustand vor dem Abschluss {status, chain:[{id,status,valid_to}], paid_off_on} (fn_mark_loan_paid_off); fn_void_transaction stellt ihn exakt wieder her
     created_at                timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE finance.loans ADD COLUMN IF NOT EXISTS settled_from jsonb;
@@ -1690,9 +1693,6 @@ ALTER TABLE finance.loans ADD COLUMN IF NOT EXISTS settled_from jsonb;
 ALTER TABLE finance.loans ALTER COLUMN original_amount DROP NOT NULL;
 ALTER TABLE finance.loans ALTER COLUMN disbursement_date DROP NOT NULL;
 
--- Der Rename payout_account_id -> disbursement_account_id lebt als versionierte
--- Migration packages/finance/db/migrations/V001__rename_loan_payout_to_disbursement.sql (laeuft nach den Inits,
--- vor den R__-View-Repeatables). CREATE TABLE oben traegt den Endzustand disbursement_account_id.
 
 ALTER TABLE finance.loans ADD COLUMN IF NOT EXISTS term_end_date date;
 
@@ -1737,7 +1737,7 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
     valid_from            date NOT NULL,                 -- Vertragsbeginn
     status                finance.insurance_status NOT NULL DEFAULT 'active',
     recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette (NULL = Beitrag fehlt noch)
-    -- Nachlass-relevante Policen-Attribute (additiv nullable, Init-only, kein V).
+    -- Nachlass-relevante Policen-Attribute.
     -- insurance_type = grobe Policen-Klasse (geschlossene Liste, s. CHECK; life/accident tragen Todesfall-
     --   Meldefristen); beneficiary = benannter Bezugsberechtigter (schlaegt das Testament, Bezugsrecht-Falle);
     -- coverage_amount = Versicherungssumme in EUR; claim_deadline_hours = die AVB-Meldefrist je Police
@@ -1760,8 +1760,7 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
     CONSTRAINT finance_insurances_claim_deadline_hours_chk CHECK (claim_deadline_hours IS NULL OR claim_deadline_hours > 0)
 );
 
--- Die vier Nachlass-Felder additiv/idempotent auf Bestands-DBs (Init-only, kein V
--- — rein additiv nullable). Die CHECKs (geschlossene insurance_type-Liste + Wert-Grenzen) sind der Backstop.
+-- Die vier Nachlass-Felder auf Bestands-DBs.
 ALTER TABLE finance.insurances ADD COLUMN IF NOT EXISTS insurance_type text;
 ALTER TABLE finance.insurances ADD COLUMN IF NOT EXISTS beneficiary text;
 ALTER TABLE finance.insurances ADD COLUMN IF NOT EXISTS coverage_amount numeric(14,2);
@@ -1869,8 +1868,7 @@ CREATE TABLE IF NOT EXISTS finance.savings_goals (
 
 -- Instandhaltungsruecklage: ein Sparziel mit real_estate_id ist eine dauerhafte Ruecklage ohne Zielbetrag
 -- und Zieldatum (Sinking Fund, Muster YNAB-"Monthly Savings Builder"/Firefly-Piggy ohne Ziel); Form-CHECK
--- finance_savings_goals_shape + Partial-UNIQUE unten. Bestands-DBs:
--- NOT NULL fallen lassen (idempotent), die Spalte nachruesten.
+-- finance_savings_goals_shape + Partial-UNIQUE unten.
 ALTER TABLE finance.savings_goals ALTER COLUMN target_amount DROP NOT NULL;
 ALTER TABLE finance.savings_goals ALTER COLUMN target_date DROP NOT NULL;
 ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS real_estate_id int REFERENCES finance.real_estate(id);
@@ -1891,10 +1889,9 @@ ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS target_months numeric
 UPDATE finance.savings_goals SET kind = 'maintenance_reserve'
  WHERE real_estate_id IS NOT NULL AND kind <> 'maintenance_reserve';
 
--- priority — additiv/nullable -> Init-only (Muster asset_class/savings_goal_id/owner_person_id,
--- keine V-Migration). Engpass-Reihung der Ziele: target_date ASC, priority ASC NULLS LAST (kleiner = wichtiger,
+-- priority — Engpass-Reihung der Ziele: target_date ASC, priority ASC NULLS LAST (kleiner = wichtiger,
 -- NULL = unpriorisiert ans Ende). Reine Anzeige-/Reasoning-Hilfe (kein Constraint) -> der Advisor reasoned
--- darueber, die DB rechnet nichts daraus ab. ADD COLUMN deckt Bestands-DBs; die CREATE TABLE oben deckt frische.
+-- darueber, die DB rechnet nichts daraus ab.
 ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS priority smallint;
 
 -- ============================================================
@@ -1917,9 +1914,10 @@ ALTER TABLE finance.savings_goals ADD COLUMN IF NOT EXISTS priority smallint;
 --     (manual). Pinnt den Kurs deterministisch -> die Depot-Reserve driftet nicht bei spaeteren Kurs-Revisionen und
 --     bleibt zum getaggten Cash-Bein (das am transaction_date konvertiert) exakt gegengleich.
 --   * kind: 'sparplan_buy' (goal-verknuepfter Kauf, source_tx_id gesetzt), 'manual' (Hand-Zuordnung
---     via fn_book_savings_reservation), 'derisk' (Absichern/Verkauf -> Reserve senken), 'void' (Gegenzeile, s. u.). CHECK = Backstop.
---   * source_tx_id: Herkunfts-Buchung (Sparplan-Kauf); NULL bei manueller Zuordnung. ON DELETE SET
---     NULL — eine spaeter stornierte Kauf-Tx soll das Journal nicht blocken (Provenance-Link entfaellt, Zahl bleibt).
+--     via fn_book_savings_reservation), 'derisk' (Umschichten beim Verkauf, fn_book_stock_sell: Depot -m,
+--     Verrechnungskonto +m, Summe 0), 'void' (Gegenzeile, s. u.). CHECK = Backstop.
+--   * source_tx_id: Herkunfts-Buchung (Kauf bei sparplan_buy, Verkauf bei derisk); NULL bei manual und void. ON DELETE SET
+--     NULL — eine spaeter stornierte Herkunfts-Tx soll das Journal nicht blocken (Provenance-Link entfaellt, Zahl bleibt).
 --   * account_id: das Konto, auf dem das Ziel-Geld liegt. Depot: gedeckt durch den Gesamt-Marktwert
 --     (depot_reserve_status); saldo-basiert: gedeckt durch den Saldo (account_reserve_status).
 --   * Multi-Row-Invarianten "Anteil je (Ziel, Konto) >= 0" und "Summe der aktiven Anteile <= Saldo" (saldo-basiert)
@@ -1935,11 +1933,11 @@ CREATE TABLE IF NOT EXISTS finance.savings_goal_reserve_entries (
     delta_native    numeric(14,2) NOT NULL CHECK (delta_native <> 0),             -- vorzeichenbehaftete Bewegung in der `currency`-Waehrung
     currency        char(3)       NOT NULL DEFAULT 'EUR',  -- FK (currency, currency_kind) -> currencies unten (Metall-Sperre). Waehrung von delta_native (Depot: Depot-Waehrung bei sparplan_buy, EUR bei manual; saldo-basiert: Kontowaehrung)
     value_date      date          NOT NULL DEFAULT current_date,                  -- FX-Umrechnungsdatum (= Kauf-transaction_date bzw. CURRENT_DATE)
-    source_tx_id    int,          -- Kauf-Tx; NULL bei manual. FK -> finance.transactions UNTEN (die Tabelle entsteht erst spaeter in dieser Datei -> Constraint nachgezogen).
+    source_tx_id    int,          -- Herkunfts-Tx: Kauf (sparplan_buy) oder Verkauf (derisk); NULL bei manual und void. FK -> finance.transactions UNTEN (die Tabelle entsteht erst spaeter in dieser Datei -> Constraint nachgezogen).
     kind            text          NOT NULL CHECK (kind IN ('sparplan_buy', 'manual', 'derisk', 'void')),
     created_at      timestamptz   NOT NULL DEFAULT now()
 );
--- 'void' = Gegenzeile, die fn_void_transaction anhaengt, wenn eine Kauf-Tx mit Journal-Zeile
+-- 'void' = Gegenzeile, die fn_void_transaction anhaengt, wenn eine Kauf- oder Verkaufs-Tx mit Journal-Zeile
 -- (source_tx_id) storniert wird (delta = -original, gleiche currency/value_date -> exakt gegengleich).
 -- Append-only bleibt gewahrt: die Ursprungszeile wird nie geloescht/geaendert. DROP+ADD = Bestands-DBs.
 DO $$ BEGIN
@@ -2012,12 +2010,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS finance_savings_plans_name_uq
 
 -- savings_goal_id — ein Sparplan gehoert zu einem Sparziel (Quellen-Verknuepfung).
 -- Ein goal-verknuepfter Sparplan-Kauf speist den Depot-Anteil der Ziel-Reserve (Zwei-Schritt-Auto-Journal in
--- fn_book_stock_buy: Cash-Soll-Bein getaggt + savings_goal_reserve_entries-Zeile kind='sparplan_buy'). Additiv/
--- nullable (NULL = freistehender Sparplan, kein Ziel) -> Init-only (Muster asset_class/savings_goal_id/person_id,
--- keine V-Migration). ON DELETE SET NULL ist Pflicht: sonst blockt ein verknuepfter Sparplan den Ziel-Hard-
+-- fn_book_stock_buy: Cash-Soll-Bein getaggt + savings_goal_reserve_entries-Zeile kind='sparplan_buy'). NULL =
+-- freistehender Sparplan, kein Ziel. ON DELETE SET NULL ist Pflicht: sonst blockt ein verknuepfter Sparplan den Ziel-Hard-
 -- Delete (fn_close_savings_goal DELETE savings_goals bei tx_count=0) -> ein geloeschtes Ziel laesst den Sparplan
--- entkoppelt stehen (der Plan selbst bleibt immer). DROP+ADD CONSTRAINT idempotent; ADD COLUMN IF NOT EXISTS
--- deckt Bestands-DBs, die CREATE TABLE oben deckt frische.
+-- entkoppelt stehen (der Plan selbst bleibt immer).
 ALTER TABLE finance.savings_plans ADD COLUMN IF NOT EXISTS savings_goal_id int;
 DO $$ BEGIN
     ALTER TABLE finance.savings_plans DROP CONSTRAINT IF EXISTS finance_savings_plans_savings_goal_id_fk;
@@ -2030,10 +2026,8 @@ CREATE INDEX IF NOT EXISTS finance_savings_plans_savings_goal_idx
 -- asset_class — Anlageklasse-Tag des Sparplans (== depot_holdings.asset_class-Format, ein
 -- user-definierter target_allocation.blocks[].key). Bei Plan-Anlage erfasst (Agent schlägt vor), an jede
 -- Ausführung vererbt (fn_book_savings_plan_execution → fn_book_stock_buy) → goal-/manuell-getaggte Positionen,
--- nie ein leerer Tag aus dem Sparplan-Cron. Additiv/nullable (NULL = ungetaggt, periodische null_tag-Meldung
--- als Netz) → Init-only (Muster asset_class/savings_goal_id/person_id, keine V-Migration). Format-CHECK = der
--- strukturelle Backstop (lowercase snake, kein FK — referenziert einen Plan-Sidecar-key); DROP+ADD idempotent.
--- ADD COLUMN IF NOT EXISTS deckt Bestands-DBs, die CREATE TABLE oben deckt frische.
+-- nie ein leerer Tag aus dem Sparplan-Cron. NULL = ungetaggt (periodische null_tag-Meldung als Netz).
+-- Format-CHECK = der strukturelle Backstop (lowercase snake, kein FK — referenziert einen Plan-Sidecar-key).
 ALTER TABLE finance.savings_plans ADD COLUMN IF NOT EXISTS asset_class varchar(40);
 DO $$ BEGIN
     ALTER TABLE finance.savings_plans DROP CONSTRAINT IF EXISTS finance_savings_plans_asset_class_fmt;
@@ -2045,7 +2039,7 @@ END $$;
 --   NULL = unbekannt (fn_resolve_plan_schedule fragt bei woechentlich/zweimal monatlich einmal nach bzw. belegt
 --   bekannte Banken per fn_broker_plan_days vor), '{}' = kein fester Kalender (echte 7-/14-Tage-Abstaende),
 --   sonst die Tage (kanonisch, fn_valid_schedule_days). Gelernt im Sparplan-Write, gilt fuer alle weiteren Plaene
---   des Depots. Nur Depots (CHECK). Additiv/nullable -> Init-only; steht hier beim Sparplan-Block, weil es
+--   des Depots. Nur Depots (CHECK). Steht hier beim Sparplan-Block, weil es
 --   ausschliesslich der Sparplan-Ableitung dient.
 ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS plan_execution_days smallint[];
 DO $$ BEGIN
@@ -2058,8 +2052,7 @@ END $$;
 
 -- ============================================================
 -- MULTI-MEMBER PERSON-SCOPING — additive person_id-Spalten + FK auf agent.persons.
--- Additiv/nullable (NULL = Haushalt/gemeinsam) -> Init-only (Muster asset_class/origin/package,
--- keine V-Migration). Der FK ON DELETE RESTRICT ist der strukturelle Verwaisungs-Schutz: eine
+-- NULL = Haushalt/gemeinsam. Der FK ON DELETE RESTRICT ist der strukturelle Verwaisungs-Schutz: eine
 -- noch referenzierte Person ist aus `family` nicht entfernbar (der Reconcile-DELETE in
 -- agent.fn_project_persons blockt -> der family-Write rollt atomar zurueck). agent.persons
 -- existiert sicher (agent.persons_init.sql laeuft alphabetisch vor finance.tables_init.sql).
@@ -2067,8 +2060,6 @@ END $$;
 -- policyholder/borrower) gibt es nicht (finance:V006 droppt sie auf Bestands-DBs). NULL=Haushalt/gemeinsam
 -- (Joint-Konvention; kein M2M noetig). Getaggt wird ueber die create_*/set_*-Tools (Personen-NAME ->
 -- core.fn_resolve_person -> Slug); kein Auto-Backfill (Freitext-Name ist kein verlaesslicher Person-Key).
--- DROP+ADD CONSTRAINT = idempotent je Apply; ADD COLUMN IF NOT EXISTS deckt Bestands-DBs
--- (die CREATE TABLEs oben tragen den Endzustand fuer frische DBs).
 -- ============================================================
 DO $$
 DECLARE
@@ -2747,8 +2738,8 @@ CREATE TRIGGER trg_finance_reject_account_type_txn
 
 -- ============================================================
 -- TRIGGER: Reject interest-rate rows on non-interest-bearing account types
--- Backstop: nur cash/fixed_deposit/p2p duerfen eine account_interest_rates-Zeile tragen
--- (= finance.fn_interest_eligible_account_type, die EINE Adresse der Allowlist). Die fn-Guards in
+-- Backstop: nur zins-faehige Kontotypen (Allowlist: finance.fn_interest_eligible_account_type) duerfen eine
+-- account_interest_rates-Zeile tragen. Die fn-Guards in
 -- fn_set_account_interest / fn_book_interest_occurrence liefern die freundliche {ok:false}-Meldung VOR
 -- diesem Trigger; der Trigger faengt jeden Nicht-fn-Schreibpfad (inkl. fn_create_account, das kein
 -- ok-Feld hat). Sicher als reiner BEFORE-INSERT-Trigger, weil account_type immutable ist (fn_set_account
@@ -2938,7 +2929,8 @@ WHERE EXISTS (SELECT 1 FROM finance.transactions t WHERE t.holding_id = h.id)
 -- eine Grenze braucht (Waechter), prueft as_of selbst. Zwei LIMIT-1-Teilabfragen statt ORDER BY (as_of <= x) DESC,
 -- damit beide als Index-Zugriff ueber idx_fx_rates_lookup laufen (die Tabelle waechst um alle Feed-Waehrungen je Tag).
 -- Rueckgabe: (rate = Einheiten der Waehrung je 1 EUR, as_of der gefundenen Zeile); EUR -> (1, NULL), ohne jede
--- Zeile -> keine Zeile. Nutzer: fn_to_eur_unrounded (Betrag), fn_fx_rate (Paar samt Datum), fn_fx_rate_map (Plausi-Karte).
+-- Zeile -> keine Zeile. Nutzer u. a.: fn_to_eur_unrounded (Betrag), fn_fx_rate (Paar samt Datum), fn_fx_rate_map
+-- (Plausi-Karte), fn_app_fx_footer, fn_monitor_acquire_fx_rate.
 -- Inline-Baseline VOR fn_to_eur_unrounded (deren sql-Body ruft sie).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_fx_eur_row(
@@ -2969,7 +2961,8 @@ $$;
 -- ============================================================
 -- FUNCTION: fn_to_eur_unrounded — wie fn_to_eur, aber ohne Cent-Rundung
 -- Fuer Einheitswerte: Stueckpreis in Fremdwaehrung -> EUR (fn_statement_prepare), Puffer-Umrechnung
--- (fn_account_outlook), EUR-Zwischenwert einer Waehrungs-Ueberweisung (fn_book_recurring_transfer, rundet
+-- (fn_account_outlook ueber fn_config_eur_in_currency), EUR-Zwischenwert einer Waehrungs-Ueberweisung
+-- (fn_book_recurring_transfer, rundet
 -- danach EINMAL). Kurs aus fn_fx_eur_row (EINE Kurs-Suche; fn_to_eur rundet nur dieses Ergebnis).
 -- EUR -> unveraendert; fehlt jeder Kurs -> NULL. Inline-Baseline VOR fn_to_eur (deren sql-Body ruft sie).
 -- ============================================================
@@ -3009,8 +3002,8 @@ CREATE OR REPLACE FUNCTION finance.fn_to_eur(
 $$;
 
 -- ============================================================
--- KURS-FEED-HELFER -- im Init, weil depot_holdings_overview (R__finance_views, laeuft
--- alphabetisch VOR allen R__fn_*) sie beim CREATE VIEW braucht.
+-- KURS-FEED-HELFER -- im Init, weil depot_holdings_overview (R__finance_views, laeuft alphabetisch vor allen
+-- R__fn_*) fn_price_status beim CREATE VIEW braucht; fn_feed_symbol rufen nur R__-fns und der Kurs-Cron.
 --   fn_feed_symbol(isin, symbol, provider_symbol): das bei Yahoo angefragte Symbol. Aktie/ETF (ISIN vorhanden) =
 --     COALESCE(provider_symbol, symbol); Krypto (ISIN NULL) = COALESCE(provider_symbol, symbol||'-EUR') (Yahoos
 --     TICKER-FIAT). EINE Adresse fuer den Kurs-Cron (Get held symbols) und die Kurs-Status-Anzeige.
@@ -3048,8 +3041,9 @@ $$;
 -- R__finance_views laeuft vor allen R__fn_*), hier am Ende, weil sie transactions/account_balances lesen.
 --   fn_recurring_last_done(rp): juengster erledigter (gebuchter oder uebersprungener) Faelligkeitstermin der ganzen
 --     Kette ("gebucht" keyt auf recurring_due_date). NULL = noch keiner.
---   fn_recurring_segments(rp): die AKTIVEN Glieder der Kette als Segment-Liste fuer fn_loan_balance_at
---     (Rhythmus, Gueltigkeit [valid_from, valid_to), Betrag positiv).
+--   fn_recurring_segments(rp): die aktiven Glieder der Kette als Segment-Liste (p_segments von fn_loan_balance_at/
+--     fn_loan_simulate; Schluessel anchor/interval/unit/dom/days = first_payment_date/schedule_interval/_unit/
+--     _day_of_month/_days_of_month; Gueltigkeit [valid_from, valid_to), Betrag positiv).
 --   fn_loan_projected_balance(loan, target, today): voraussichtliche Restschuld zum Zieldatum (bei gleichem Zins, ohne
 --     Sondertilgung) -- NULL bei pausiertem/abgeschlossenem Kredit, ohne Rate oder Ziel <= heute.
 --   fn_loan_projected_payoff(loan, today) -> (payoff_date, interest_total): voraussichtliches Tilgungsende + Zinsen bis

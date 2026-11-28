@@ -3,7 +3,8 @@
 --   Eingabe: Wert, Stueck, Referenzkurs (historischer Kurs am Buchungstag, sonst aktueller). Band 0,2 bis 5 wie die
 --   grobe Plausi in sub_resolve_yahoo_symbol. Genau eine Lesart plausibel -> uebernehmen. Stueck nahe 1 -> beide
 --   Lesarten sind gleich, keine Frage. Beide oder keine plausibel, oder kein Referenzkurs -> kind 'ask'.
---   RUECKGABE: {kind:'total'|'per_share'|'ask', cost_total (NULL bei ask), as_per_share, as_total}.
+--   RUECKGABE: {kind:'total'|'per_share'|'ask', cost_total (NULL bei ask), as_per_share, as_total}; Wert oder Stueck
+--   leer/<= 0 -> nur {kind:'ask', cost_total:null}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_cost_basis(p_value numeric, p_shares numeric, p_ref numeric)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$

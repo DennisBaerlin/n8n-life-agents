@@ -5,7 +5,10 @@
 -- Zweck: der Knopf „📊 Übersicht“ (setChatMenuButton je Chat) soll einer Kopplung, einem Entkoppeln, einem Rollen- oder
 --   Sprachwechsel und einem Wechsel von app.enabled/app.audience nach etwa einer Minute folgen, ohne `lifeagents update`.
 --   Aendert sich, was den Knopf einer Person bestimmt (family: Kopplung/Rolle/Sprache/Personen; core.config
---   app.enabled/audience; core.app_screens), zaehlt der DEFINER-Trigger requested_gen hoch. Jeder Menue-Lauf
+--   app.enabled/audience; core.app_screens), zaehlt der DEFINER-Trigger requested_gen hoch; ebenso
+--   core.fn_menu_refresh_request (SECURITY DEFINER, EXECUTE je Paket-Rolle via core.fn_provision_package_roles), gerufen
+--   von core.fn_set_onboarding_section (household-Bereich kippt offen<->fertig) und core.fn_reset_onboarding_state.
+--   Jeder Menue-Lauf
 --   (provisioning/lib/deploy_workflows.sh _set_bot_menu_buttons: Install, Update, Pairing, Paket-Wechsel und der
 --   minuetliche root-Runner `update --run-requested`) uebernimmt die Generation vorher (core.fn_menu_refresh_claim) und
 --   schliesst sie nur, wenn kein Telegram-Aufruf scheiterte (core.fn_menu_refresh_finish; sonst retry_after 10 Min).
@@ -31,7 +34,8 @@ CREATE TABLE IF NOT EXISTS core.menu_refresh (
     CONSTRAINT menu_refresh_gen_order CHECK (done_gen <= requested_gen),
     CONSTRAINT menu_refresh_failures_range CHECK (failures BETWEEN 0 AND 3)
 );
--- Rechte wie core.update_requests: schreiben nur der DEFINER-Trigger und der Superuser (claim/finish); core_ro liest
+-- Rechte wie core.update_requests: schreiben nur der DEFINER-Trigger, core.fn_menu_refresh_request und der Superuser
+-- (claim/finish); core_ro liest
 -- sie nicht (nicht auf der Erlaubnisliste in util_create_core_ro.sql).
 
 -- Was den Knopf einer Person bestimmt (Projektion der family-Fakten, Reihenfolge-unabhaengig). Trigger-gekoppelt ->

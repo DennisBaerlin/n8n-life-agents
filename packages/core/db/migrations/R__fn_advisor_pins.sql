@@ -17,7 +17,7 @@
 --                         Frage kapert das Routing nicht.
 --   Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM), optional chat_id (ohne -> open_prompt_agent null).
 --   Rueckgabe jsonb genau { interview_advisor, paused_advisor, open_prompt_agent } (text|null); wirft nie (Fehler -> alle null).
---   STABLE, INVOKER, nur Host-Cred (wie der heutige Knoten): person_id und role kommen vom Aufrufer, ein core_ro-Grant
+--   STABLE, INVOKER, nur Host-Cred: person_id und role kommen vom Aufrufer, ein core_ro-Grant
 --   liesse jede freie core_ro-Abfrage (guide/monitor postgres_select) fremde Entwuerfe erfragen. search_path gepinnt.
 --   Tests: tests/db/core/test_fn_advisor_pins.sql, tests/db/cross/test_role_permissions.sql (core_ro abgewiesen)
 -- ============================================================

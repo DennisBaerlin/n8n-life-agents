@@ -16,7 +16,6 @@
 --   R__finance_views: deren DROP ... CASCADE wuerde diese View sonst still mitreissen (Repeatables laufen nur bei
 --   eigener Checksum-Aenderung). Das Aktiv-Praedikat von active_recurring_payments ist deshalb hier nicht noetig:
 --   status kommt aus dem Plan (eine Quelle fuer pausiert/aktiv, fn_set_savings_plan kaskadiert auf die rp).
---   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
 --   chain ist MATERIALIZED: inline eingesetzt stand next_from (mit fn_recurring_last_done) in jeder
 --   Zeilen-Bedingung des Rasters von fn_schedule_occurrences und lief je Rasterzeile neu (~0,25 s je Plan statt ms).
 -- ============================================================

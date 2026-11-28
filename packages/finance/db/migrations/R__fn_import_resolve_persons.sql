@@ -1,8 +1,6 @@
 -- ============================================================
 -- fn_import_resolve_persons (read-only) — Personen-Feld einer Import-Zeile wie im Einzel-Tool aufloesen
---   Je entity_type genau ein Personen-Feld (gleiche Namen wie die create_*-Tools):
---     account/real_estate/pension -> owner_person, insurance -> policyholder_person,
---     loan -> borrower_person, savings_goal -> beneficiary_person; alle anderen Typen: keins.
+--   Je entity_type hoechstens ein Personen-Feld (fn_import_person_field; gleiche Namen wie die create_*-Tools).
 --   Der Name wird ueber core.fn_resolve_person (publiziertes DEFINER-Fenster, unter finance_rw aufrufbar)
 --   zum Slug aufgeloest und als <feld>_id in den Payload gelegt — genau das Feld, das die fn_create_* lesen.
 --   Leer = Haushalt (kein Feld). Fremde/alte Personen-Keys (owner, account_holder, policyholder, borrower,

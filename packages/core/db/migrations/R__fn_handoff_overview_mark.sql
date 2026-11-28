@@ -2,7 +2,9 @@
 -- core.fn_handoff_overview_mark(p) — merkt die erfolgreich gesendete Uebergabe-Liste fuer die Abfolge
 --   Gerufen von agent.tool_send_handoff_overview nach dem Send, damit Schritt 1 sie im selben Lauf nicht noch einmal schickt.
 --   p: {domain, chat_id, max_task_id}. Schluessel aus core.fn_handoff_latch_key (traegt die Version des gueltigen Plans: eine
---   Liste mitten im Entwurf haelt die Liste nach dem Veroeffentlichen nicht zurueck). Rueckgabe {ok, marked}. Nie RAISE.
+--   Liste mitten im Entwurf haelt die Liste nach dem Veroeffentlichen nicht zurueck). Schreibt den Merker in
+--   core.notification_state (source plan_rollout, ohne Frist, festgeschrieben ueber fn_should_notify + fn_notify_commit).
+--   Rueckgabe {ok, marked}. Nie RAISE.
 --   Tests: tests/db/core/test_fn_handoff_overview_mark.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_handoff_overview_mark(p jsonb)

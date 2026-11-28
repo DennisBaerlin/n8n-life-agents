@@ -8,7 +8,8 @@
 --   finance.fn_depot_performance (Rendite je Depot, „Alle Depots" ohne Kinder) — dieselbe Auswahl, damit „Alle Depots"
 --   und der Depotwert-Hero nie auseinanderlaufen.
 --   INVOKER, PUBLIC-EXECUTE (liest finance.accounts + das publizierte Fenster core.fn_household_persons).
---   Tests: tests/db/finance/test_fn_app_screen_depot.sql, tests/db/finance/test_fn_depot_performance.sql
+--   Tests (indirekt ueber die Konsumenten): tests/db/finance/test_fn_app_screen_depot.sql,
+--   tests/db/finance/test_fn_depot_performance.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_visible_depots(p_household boolean, p_person_id text)
 RETURNS TABLE (id int, name text, owner_person_id text, kid boolean)

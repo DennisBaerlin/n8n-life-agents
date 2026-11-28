@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_recurring_name_check (READ, STABLE — Namenssperre neuer Dauerzahlungen)
---   Gerufen nur von den oeffentlichen fn_create_recurring_payment / fn_create_recurring_transfer — nicht von der
+--   Gerufen von fn_create_recurring_payment / fn_create_recurring_transfer und fn_import_stage_recurring — nicht von der
 --   geteilten fn_add_recurring_payment (Versicherung, Kredit, Sparziel, Rente, Sparplan, Split, Reopen legen dort
 --   legitim gleichnamige Zeilen an). Praedikat "gibt es schon" = finance.active_recurring_payments (laeuft) plus
 --   finance.upcoming_recurring_payments (startet noch: sonst Dublette, solange der erste Termin aussteht).

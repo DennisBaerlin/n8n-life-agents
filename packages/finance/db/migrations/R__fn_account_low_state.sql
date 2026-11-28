@@ -17,7 +17,7 @@
 --   p_alert_only = true (probe beim App-Start): fn_account_funding rechnet nur das alert-Fenster.
 --   Liefert keine Namen (next_income_name, Vorschlag): die Sichtbarkeit je Person bleibt im Handler.
 --   Rueckgabe: {ok, account_id, currency, source, state, verdict, amount, low_date, on_date, month, buffer,
---   has_outflow, gap, monthly_in, monthly_out, short_by, horizon_end} | {ok:false} (unbekannt, Kredit-/Depotkonto)
+--   has_outflow, gap, monthly_in, monthly_out, short_by, horizon_end, statement_date} | {ok:false} (unbekannt, Kredit-/Depotkonto)
 --   on_date = Datum zum Urteil (buffer: Tag des Tiefs, goals: erster Tag unter dem Ziel-Geld), month = dessen Monat.
 --   horizon_end = letzter gerechneter Tag der Spar-Deckung (nur source funding): die Konten-Zeile „Reicht bis" sagt
 --   ohne Lauf-Ende „ueber <Monat> hinaus".

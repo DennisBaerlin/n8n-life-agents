@@ -57,4 +57,3 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION career.fn_read_job_matches(text, int) FROM public;
--- EXECUTE an career_rw: core.fn_provision_package_roles (GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA career).

@@ -9,6 +9,7 @@
 --     interest_rate (% p.a., optional), interest_credit_unit (day/week/month/year, Pflicht mit Satz -- nie angenommen),
 --     interest_credit_interval (optional -> 1), interest_credit_day_of_month (month: Pflicht, -1 = Ende des Monats/
 --     Quartals/Halbjahres oder 1-28; year: leer = Jahrestag / -1 = 31.12.; day/week: leer),
+--     (interest_credit_unit/_interval/_day_of_month = account_interest_rates.schedule_unit/_interval/_day_of_month),
 --     interest_day_count_convention (optional Override; sonst Vorschlag aus fn_account_interest_defaults),
 --     interest_posting_day_of_month (optional; gesetzt = Arrears-Gutschrift im Folgemonat),
 --     interest_auto_post (optional Override; sonst Vorschlag aus fn_account_interest_defaults = Karten-Wert),
@@ -22,11 +23,12 @@
 --   angelegt werden, zaehlen erst ab diesem Stichtag, bei vergangenem Stichtag (Auszugsende) ab dem Folgetag
 --   (fn_recurring_valid_from) — fruehere Vorkommen stecken im Saldo;
 --   der Monats-Check schneidet dort ab (derselbe Auszug -> already_covered, der naechste schliesst ohne Abweichung an).
---   settlement_id ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
+--   settlement_id (= Spalte settlement_account_id) ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
 --   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (Depot, P2P, Boersen-Geldkonto; P2P/Geldkonto -> Girokonto).
 --   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
 --   emoji (optional, Listen-Zeichen, VS16 wird bereinigt; leer = Zeichen der Kontoart): sonst {ok:false, code:'invalid_emoji'};
 --   name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}, vor der Namens-Dublette.
+--   Fremdwaehrung: fn_ensure_currency traegt einen fehlenden gueltigen Code in finance.currencies ein.
 --   Rueckgabe: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency, emoji (wirksam), label,
 --   effective, card_lines} (currency = abgeleitete Kontowaehrung: genannt, sonst die des Verrechnungskontos, sonst EUR - die
 --   Karte liest sie von hier; balance = Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen;
@@ -40,7 +42,8 @@
 --   Pruefziffer); Namens-Dublette unter aktiven Konten in Normalform core.fn_name_key (code duplicate_name, candidates, existing_names,
 --   suggested_name); ok:true traegt existing_names, similar_names;
 --   account_type fehlt/unbekannt; Verrechnungskonto nicht buchbar (Depot/Kredit);
---   Zinssatz auf nicht verzinsbarem Kontotyp; Zins-Konditionen ungueltig
+--   Zinssatz mit mehr als 4 Nachkommastellen (fn_rate_precision_reason) oder auf nicht verzinsbarem Kontotyp;
+--   Kadenzfeld (interval/day_of_month/posting_day_of_month) keine ganze Zahl; Zins-Konditionen ungueltig
 --   (fn_interest_terms_reason: Rhythmus, Buchungstag, Gutschrift-Tag, Konvention); Zins ohne
 --   Rhythmus bzw. Tag unpassend zum Rhythmus (fn_interest_schedule_reason, code missing_required; sonst stuende still
 --   'year'); Festgeld ohne Zins/Faelligkeit (fn_fixed_deposit_reason, code missing_required).

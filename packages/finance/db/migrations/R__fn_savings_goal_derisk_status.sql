@@ -4,6 +4,8 @@
 --   Ablaufmanagement von Rentenvertraegen): je aktivem Sparziel (kind='goal'; Ruecklagen haben eigene, harte
 --   Konto-Regeln) mit Depot-Anteil (savings_goal_account_share, Depot-Typen, EUR) oder aktivem Sparplan darf im Fenster
 --   vor dem Zieldatum linear immer weniger im Depot liegen, am Zieldatum 0:
+--     goal_id, name, target_date, target_amount = Stammdaten des Ziels; depot_share_eur = Depot-Anteil (Cent)
+--     window_months     = Fenster (Config, mindestens 1)
 --     months_left       = Kalendermonate von heute bis zum Zieldatum (>= 0)
 --     allowed_depot_eur = Ziel * min(months_left / Fenster, 1)
 --     excess_eur        = max(Depot-Anteil - erlaubt, 0)   (= Vorschlagsbetrag zum Umschichten)
@@ -11,7 +13,7 @@
 --     breach            = in_window und Depot-Anteil > erlaubt + Toleranz (pp des Ziels)
 --     active_plan       = ein aktiver Sparplan finanziert das Ziel (kauft weiter ins Depot)
 --   Bewusste Ausnahme (Tabelle finance.savings_goal_risk_decisions, letzter Eintrag zaehlt):
---     final_check_date   = Zieldatum - advisor.derisk_accepted_final_months (12): Ablauf einer Entscheidung = der
+--     final_check_date   = Zieldatum - advisor.derisk_accepted_final_months: Ablauf einer Entscheidung = der
 --                          letzte Check (eine Erinnerung im letzten Jahr, kein zweiter Mechanismus)
 --     accepted           = letzter Eintrag 'accept' und Zieldatum >= Snapshot-Datum und Depot-Anteil <= limit_eur
 --                          (eingezahlte EUR, nie Marktwert: Kurse heben die Entscheidung nie auf) und (heute vor dem
@@ -28,7 +30,7 @@
 --                          Entscheidung festhalten (needs_acceptance false, der Fold zeigt nur einen Hinweis)
 --   p_goal (opt): nur dieses Ziel (Fold-Bedingung "billig": eine Zeile im Schreib-Pfad); NULL = alle.
 --   Fenster/Toleranz/Ablauf/Stress aus core.config advisor.derisk_window_months / derisk_tolerance_pp /
---   derisk_accepted_final_months / derisk_stress_pct (COALESCE 60 / 10 / 12 / 30). Bewusst eine fn, keine View
+--   derisk_accepted_final_months / derisk_stress_pct (Defaults: packages/core/manifest.json). Bewusst eine fn, keine View
 --   (Config zur Laufzeit); INVOKER genuegt: finance_ro darf core.fn_config_get (test_role_permissions).
 --   Konsumenten: fn_advisor_review (2b'), fn_goal_depot_risk_fold, fn_advisor_snapshot (depot_risk), Buchhalter
 --   (headroom_eur_whole nach "Abbrechen", postgres_select).

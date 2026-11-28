@@ -36,6 +36,8 @@
 --                      current_balance* (Restschuld heute, 0 < x <= original), Ursprungswerte dann optional, borrower_person,
 --                      lender, schedule_day_of_month, disbursement_account (Name; nur frischer Kredit, + disbursement_date),
 --                      real_estate (Name), interest_rate_fixed_until, term_end_date, notes
+--   pension_statement: pension (Name) oder pension_id, statement_date, reached_claim, projection, scenario_1pct/_2pct,
+--                      em_monthly, earning_points, regular_retirement_date, notes (Felder: fn_import_allowed_keys)
 --   Personen-Felder: Name aus dem Haushalt (fn_import_resolve_persons), leer = Haushalt.
 --
 -- Usage:   db_apply.ps1 -File packages\finance\db\finance.import_init.sql

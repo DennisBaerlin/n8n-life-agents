@@ -11,7 +11,8 @@
 --   first_period_end / first_credit_date = erstes Periodenende bzw. Gutschrift-Datum ab valid_from aus demselben Raster
 --   wie die Faelligkeit (fn_interest_next_period_end / fn_interest_value_date) -- die Karte zeigt "Erste Gutschrift"
 --   und macht so das Kalender-Raster sichtbar; NULL ohne Rhythmus.
---   Leere Strings = nicht genannt (Einzel-Tool). Eingabe jsonb wie fn_create_account.
+--   Leere Strings = nicht genannt (Einzel-Tool). Eingabe jsonb wie fn_create_account; gelesen werden nur account_type und
+--   die interest_*-Keys oben, alle optional.
 --   Rueckgabe {unit, interval, dom, pdom, conv, conv_reason, auto_post, valid_from, first_period_end, first_credit_date}.
 --   STABLE (core.fn_today(): Karte und Write lesen "heute" je zu ihrem Zeitpunkt — eine Karte vor Mitternacht,
 --   bestaetigt danach, bekommt den neuen Tag; bewusst, Wartegrenze 10 Min).

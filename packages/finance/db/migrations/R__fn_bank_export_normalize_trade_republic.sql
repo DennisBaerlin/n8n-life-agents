@@ -5,6 +5,7 @@
 --   (Zeilen nach der Kopfzeile), header_row_no}. Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor: Datum = Spalte date (Buchungstag), sonst die
 --   ersten 10 Zeichen von datetime; cash_amount = amount + fee + tax (alle signiert, gerundet auf Cent) = Wirkung aufs
 --   Cashkonto; isin = symbol (bei asset_class CRYPTO NULL, symbol bleibt der Ticker).
+--   counterparty = counterparty_name, purpose = description + payment_reference.
 --   kind: buy/sell (TRADING BUY/SELL mit Stueck), dividend (DIVIDEND/DISTRIBUTION/DIVIDEND_EQUIVALENT_PAYMENT,
 --   INTEREST_PAYMENT mit Wertpapier), interest (INTEREST_PAYMENT ohne Wertpapier), tax (TAX, TAX_OPTIMIZATION,
 --   PRE_DETERMINED_TAX_BASE, SEC_ACCOUNT, EARNINGS mit Abfluss), fee (FEE, CARD_ORDERING_FEE), corporate

@@ -2,7 +2,7 @@
 -- finance.fn_plan_section_facts(p_section_key, p_chat_id) — "Stand heute" je Teil des Finanzplans (READ, STABLE)
 --   Ist-Fakten gehoeren nicht in den Plan-Text (sie veralten), sondern werden bei jeder Anzeige frisch gezeigt: Kopf der
 --   Themen-Karte (core.fn_render_prompt ueber core.advisors.section_facts_fn). Quellen sind dieselben Views/fns wie finance.fn_advisor_snapshot; die fn rechnet nichts Neues.
---   Je Teil hoechstens sechs Zeilen {label, value, kind (money|count|text)}, fertig in der Sprache der Person des Chats
+--   Je Teil hoechstens sechs Zeilen {label, value, kind (money|count)}, fertig in der Sprache der Person des Chats
 --   (agent.fn_person_lang, Betraege core.fn_fmt_money, Daten core.fn_ui_date):
 --     household_basics  Personen (Erwachsene, Kinder), Einnahmen, feste Ausgaben, frei im Monat (monthly_cashflow_summary)
 --     risk_protection   je aktive Versicherung: Beitrag im Monat

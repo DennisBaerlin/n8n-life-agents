@@ -8,8 +8,9 @@
 --   Dispatcher iteriert core.package_registry ∪ core.schema_version (faengt auch --keep-data-Deinstallierte),
 --   ruft je Paket mit eigenem Schema den Hook und merged die Zaehler flach. Paket mit Schema ohne Hook -> RAISE
 --   (Vertragsbruch laut statt still uebersprungen; contract_lint Check 17 faengt es schon beim Commit).
---   Selbst raeumt er nur die host-eigenen agent.*-Zeilen (Advisor-Plaene/-Docs, Plan-Aufgaben, Monitor-Trigger, Lern-Loop-State,
---   Test-Chat-Memory aller Agenten).
+--   Selbst raeumt er die host-eigenen agent.*-Zeilen (Advisor-Plaene/-Docs, Plan-Aufgaben, agent.plan_reminder_declines,
+--   Monitor-Trigger, Lern-Loop-State, Test-Chat-Memory aller Agenten) und leert core.proactive_budget +
+--   core.proactive_deferred ganz (ohne Sentinel-Filter).
 --
 --   GUARD 2 (Post-Assertion, agent-Teil): keine Sentinel-Zeile darf zurueckbleiben (die Paket-Hooks pruefen ihren
 --   eigenen Teil selbst). Sentinel-Pattern escaped die Underscores ('\_' = literaler Underscore in LIKE).

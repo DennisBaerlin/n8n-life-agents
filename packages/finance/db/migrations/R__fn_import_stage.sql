@@ -11,6 +11,9 @@
 --   chat_id (opt, Absender): ein Personenfeld, das genau ein Selbstbezug ist ("ich", "me"), wird zum vollen Namen
 --   der Person, die gerade chattet. Gesetzliche Rente: hat die Person schon eine aktive, entfaellt die neue
 --   'statutory'-Zeile und die Renteninformation des Batches haengt sich an die vorhandene.
+--   Namens-Aufbau: fuehrt ein anderes Haushaltsmitglied den Eintrag derselben Art mit Personen-Zusatz
+--   (fn_entity_name_report.needs_person), wird name der neuen Zeile (und der pension-Verweis ihrer Renteninformation)
+--   auf suggested_name gesetzt; nur hier, nie in fn_import_update_row.
 --   Rueckgabe: {ok:true, batch_id, staged, total, valid, invalid, errors:[{row_no, entity_type, error, row}]}
 --   (row = Kennfelder der Zeile, fn_import_validate)
 --   Korrigierbar (rows fehlt/leer, unbekannte source, unbekannter entity_type, batch_id keine UUID, committeter
@@ -99,8 +102,8 @@ BEGIN
     END LOOP;
 
     -- Selbstbezug: ein Personenfeld "ich"/"mein"/"me"/"나" meint die Person, die
-    -- gerade chattet. Erkannt ohne eigene Wortliste: der Resolver loest den Wert nur mit chat_id auf (core.fn_resolve_person,
-    -- core:V033). Ersetzt durch den vollen Namen -> Validate/Commit brauchen den Absender nie (Batch kennt ihn nicht).
+    -- gerade chattet. Erkannt ohne eigene Wortliste: der Resolver loest den Wert nur mit chat_id auf (core.fn_resolve_person).
+    -- Ersetzt durch den vollen Namen -> Validate/Commit brauchen den Absender nie (Batch kennt ihn nicht).
     IF v_chat IS NOT NULL THEN
         FOR v_srow IN SELECT s.id, s.entity_type, s.payload FROM finance.import_staging s
                       WHERE s.batch_id = v_batch AND s.row_no >= v_first LOOP

@@ -11,7 +11,6 @@
 --   frueheste, meist vor den Dauerauftraegen eingelesen) -> Schaetzung vorlaeufig, eher zu hoch.
 --   Eine Signatur-Aenderung der fn braucht DROP ... CASCADE dieser View (Neuanlage steht hier).
 --   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
---   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
 -- ============================================================
 DROP VIEW IF EXISTS finance.account_everyday_spending CASCADE;
 CREATE VIEW finance.account_everyday_spending AS

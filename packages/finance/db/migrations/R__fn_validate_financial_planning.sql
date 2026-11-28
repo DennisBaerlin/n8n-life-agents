@@ -3,10 +3,16 @@
 --   Strukturvalidierung des paket-besessenen 'financial_planning'-Plan-Fakten-Sidecars
 --   (metadata.facts: goal / risk_profile / target_allocation / glidepath / _meta). emergency_reserve wird
 --   abgewiesen (Notreserve = Ruecklage kind emergency_reserve, fn_emergency_reserve_status).
+--   goal: hoechstens zwei von target_income_eur_month, withdrawal_rate_pct, target_portfolio_eur; withdrawal_rate_pct (0,10];
+--   inflation_pct [0,10]; target_portfolio_basis investment|net_worth.
 --   risk_profile = {risk_tolerance, risk_capacity (low|medium|high), as_of (DATE, nicht Zukunft)}.
+--   glidepath.phases[]: equity_pct 0..100, age_from > age_to der vorigen Phase, age_to >= age_from;
+--   _meta.last_confirmed_at gueltiges DATE, nicht Zukunft.
 --   Jeder target_allocation.blocks[]-Eintrag traegt einen stabilen Maschinen-`key`
 --   (lowercase snake, == depot_holdings.asset_class-Format) neben dem Anzeige-`name` — Pflicht je Block,
---   Format-geprueft + eindeutig (der stabile Drift-Join-Key, ueberlebt name-Renames; Praezedenz Nautobot key/label).
+--   Format-geprueft + eindeutig (der stabile Drift-Join-Key, ueberlebt name-Renames), nicht 'outside_plan' (reserviert);
+--   target_pct Zahl 0..100, optional corridor [lo,hi] mit 0<=lo<=target_pct<=hi<=100, Summe der target_pct 100 +-0,5;
+--   target_allocation.rebalance_drift_pp > 0.
 --   Gebunden ueber advisors.finance.plan_validate_fn im Manifest (core.advisors); agent.fn_validate_context_facts
 --   ruft sie als dritten Anlauf (Core-Trigger und Vorpruefung in agent.fn_advisor_publish_plan). Bewusst keine
 --   context_validators-Zeile: die machte den Plan zugleich zum Fakten-Kontext (Reset, Lern-Ziel, Frische-Waechter).
@@ -52,7 +58,7 @@ BEGIN
     END IF;
 
     -- Notreserve: kein Plan-Fakt, sondern eine Ruecklage (Sparziel kind emergency_reserve) — ein
-    -- Fakt, eine Adresse. Alt-Bloecke raeumt finance:V033 aus den gespeicherten Plaenen.
+    -- Fakt, eine Adresse.
     IF p_facts ? 'emergency_reserve' THEN
         RETURN 'emergency_reserve is no longer a plan block - the emergency reserve is kept as a reserve goal (the '
             || 'bookkeeper creates it with tool_create_savings_goal kind emergency_reserve); describe the strategy in the '
@@ -82,12 +88,7 @@ BEGIN
                 RETURN format('goal.inflation_pct %s out of range [0,10]', p_facts->'goal'->>'inflation_pct');
             END IF;
         END IF;
-        -- target_portfolio_basis = wie der Review-Drift den FIRE-Topf misst.
-        --   'investment' (Default) = Depot + Cash + Festgeld + P2P (brutto, kein Netting der Sparziel-Reserven), ohne Hypothek/Haus/Rente
-        --     (Bengen/Trinity/Big-ERN: der 4%-Entnahme-Topf; Haus+Hypothek heben sich auf, bleiben aussen).
-        --   'net_worth' = investierbar + Immobilien + alle Kredite (Haus und Hypothek heben sich auf;
-        --   eine herausfallende Immobilie nimmt ihren Kredit mit). Der Review honoriert es per
-        --   COALESCE(...,'investment') mit ELSE-Fail-Safe -> hier nur die Enum-Integritaet (Backstop).
+        -- target_portfolio_basis: Semantik in fn_advisor_review (FIRE-Topf-Semantik); hier nur die Enum-Integritaet (Backstop).
         IF (p_facts->'goal') ? 'target_portfolio_basis'
            AND (p_facts->'goal'->>'target_portfolio_basis') NOT IN ('investment', 'net_worth') THEN
             RETURN format('goal.target_portfolio_basis %s invalid (expected investment|net_worth)',
@@ -107,10 +108,7 @@ BEGIN
            AND jsonb_array_length(v_alloc->'blocks') > 0 THEN
             v_sum := 0;
             FOR v_blk IN SELECT * FROM jsonb_array_elements(v_alloc->'blocks') LOOP
-                -- jeder Block traegt einen stabilen Maschinen-`key`
-                -- (lowercase snake, == depot_holdings.asset_class-Tag-Format) neben dem Anzeige-`name`.
-                -- Der key ist der stabile Join-Key der Drift (ueberlebt name-Renames); Pflicht je Block +
-                -- Format + eindeutig (Praezedenz Nautobot key/label, Ghostfolio enum+UI, PP uuid+name).
+                -- key: stabiler Join-Key der Drift (Pflicht, Format, eindeutig; s. Kopf)
                 IF jsonb_typeof(v_blk->'key') IS DISTINCT FROM 'string'
                    OR (v_blk->>'key') !~ '^[a-z0-9_]+$' THEN
                     RETURN 'each target_allocation.blocks[] needs a key matching ^[a-z0-9_]+$ (lowercase machine key, e.g. sp500)';

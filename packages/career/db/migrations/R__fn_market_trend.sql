@@ -6,16 +6,14 @@
 --   (DB rechnet, Render liest); genutzt von fn_render_career_planning -> Markt-Zeile im Plan.
 --   Eingabe: p_plan_facts (career_planning-Fakten; braucht target_roles[0].title, optional target_locations[0]).
 --
---   Schema-qualifiziert durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft via
---   core.fn_fetch_context (DEFINER, search_path pg_catalog,agent,core ohne career; der Renderer laeuft als
---   dessen Owner = Superuser und liest career.* trotz context_ro-Binding). Kein SECURITY DEFINER noetig
---   (plain wie fn_skill_gap); der Render-unter-context_ro-Test (test_fn_render_career_planning) deckt die
---   Rollen-Perspektiv-Pflicht.
+--   Schema-qualifiziert durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft unter dem search_path-Pin
+--   von core.fn_fetch_context (ohne career) als dessen Owner, daher kein SECURITY DEFINER noetig.
+--   Test: test_fn_render_career_planning (Render unter dem search_path-Pin).
 --
 --   RAISE-frei: kein Cast auf Junk, Division durch 0 geguarded, fehlende Rolle/Zahlen/Cache-Zeilen -> NULL.
 --   Rueckgabe jsonb (oder NULL, wenn keine Daten):
 --     { role, location, count, prev_count, trend_pct, direction, as_of }
---     trend_pct/direction nur bei >= 2 Messungen (sonst trend_pct null, direction 'flat').
+--     trend_pct/direction nur bei >= 2 Messungen und prev_count > 0 (sonst trend_pct null, direction 'flat').
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_market_trend(p_plan_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

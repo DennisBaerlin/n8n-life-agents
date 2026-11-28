@@ -2,7 +2,7 @@
 -- fn_set_router_memory_signal (ATOMIC WRITE — Router-Gedaechtnis nach woertlichem Weiterreichen)
 --   Der Orchestrator reicht Spezialisten-Antworten woertlich weiter (Relay compose); vom Router verlangt er danach nur
 --   das Signal FRAME/NOFRAME. Schreibt der Router doch eine eigene Fassung, sieht der Nutzer sie nie -- das
---   memoryPostgresChat-Gedaechtnis speichert aber genau sie, und die Folge-Turns ahmen sie nach
+--   memoryPostgresChat-Gedaechtnis (agent.orchestrator_chat_memory) speichert aber genau sie, die Folge-Turns ahmen sie nach
 --   (Umformulierung statt Signal, selbstverstaerkend). Diese fn ersetzt sie durch das Signal; die Antwort,
 --   die der Nutzer sah, steht direkt davor woertlich als tool-Zeile im Gedaechtnis.
 --   Nur die juengste ai-Zeile des Chats, deren Text exakt dem Router-Output entspricht (keine fremde Zeile bei

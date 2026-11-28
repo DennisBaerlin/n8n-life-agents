@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_savings_squeeze_fold (INTERNAL HELPER — Event-Fold, nicht tool-facing)
---   Der eine savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns fn_create_savings_goal, fn_set_savings_goal und
---   fn_set_savings_plan (Muster fn_cashflow_coverage_fold). Liest den Post-State nach dem Write aus
+--   Der eine savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns fn_create_savings_goal, fn_set_savings_goal,
+--   fn_create_savings_plan und fn_set_savings_plan (Muster fn_cashflow_coverage_fold). Liest den Post-State nach dem Write aus
 --   finance.monthly_cashflow_summary: bei monthly_income > 0 und monthly_account_change < 0 uebersteigen die
 --   Sparraten (Sparplan + Sparziel-Raten + Vorsorge) das frei Verfuegbare -> das Girokonto schrumpft. Bei schon
 --   negativem monthly_free eigener Text (die Raten vertiefen ein bestehendes Pflicht-Defizit).

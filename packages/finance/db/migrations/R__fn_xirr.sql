@@ -12,8 +12,9 @@
 --   Klammer naechst y = 1, d. h. die Loesung naechst 0 %), dann Bisektion (geometrisch) bis die Klammer eng ist, dann
 --   Newton mit Rueckfall auf Bisektion, wenn ein Schritt die Klammer verlaesst (wie PP IRR.java: Bisektions-Start +
 --   Newton). Abbruch bei relativer Schrittweite < 1e-12 in y (Satz damit genauer als 1e-8) oder nach 200 Schritten.
---   Gleiche Tage werden summiert. NULL bei: ungleich langen/leeren Arrays, NULL-Element, Zeitspanne 0, nicht mindestens
---   einem positiven und einem negativen (Tages-)Fluss, keinem Vorzeichenwechsel im Raster.
+--   Gleiche Tage werden summiert. NULL bei: NULL-Array, ungleich langen Arrays oder weniger als zwei Eintraegen,
+--   NULL-Element, Zeitspanne 0, nicht mindestens einem positiven und einem negativen (Tages-)Fluss, keinem
+--   Vorzeichenwechsel im Raster.
 --   Quellen: Microsoft XIRR https://support.microsoft.com/en-us/office/xirr-function-de1242ec-6477-445b-b11b-a303ad9adc9d ·
 --   Portfolio Performance NPVFunction/IRR https://github.com/portfolio-performance/portfolio/blob/master/name.abuchen.portfolio/src/name/abuchen/portfolio/math/NPVFunction.java
 --   und https://github.com/portfolio-performance/portfolio/blob/master/name.abuchen.portfolio/src/name/abuchen/portfolio/math/IRR.java ·

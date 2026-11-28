@@ -5,7 +5,8 @@
 --     cash (Tagesgeld/Giro)      -> 'ACT/365'  (taggenau, Tagesgeld-Standard)
 --     fixed_deposit (Festgeld)   -> '30E/360'  (deutsche kaufmaennische Methode)
 --     sonst (z. B. p2p)          -> 'ACT/365'  (sicherer Fallback; zins-faehige Typen: fn_interest_eligible_account_type)
---   Die eine Adresse fuer den Default -> fn_create_account und fn_set_account_interest rufen sie (kein Drift).
+--   Die eine Adresse fuer den Default (kein Drift); Aufrufer: fn_account_interest_defaults (fn_create_account) und
+--   fn_interest_rate_preview (fn_set_account_interest).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_default_convention(p_account_type finance.account_type)
 RETURNS text LANGUAGE sql IMMUTABLE AS $$

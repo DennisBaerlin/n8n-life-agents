@@ -2,7 +2,8 @@
 -- fn_period_reminder_date (READ-ONLY, rein rechnend)
 --   Eingabe: p_period text, p_on date (optional).
 --   Rechnet eine ungenaue Zeitangabe in einen festen Erinnerungstag um, damit der Berater keinen Tag erfindet.
---   Formen: next_year, next_quarter (1. des zweiten Monats im Zeitraum), next_month (15. des naechsten Monats),
+--   Formen: next_year (1. Februar des Folgejahres), next_quarter (1. des zweiten Monats im Zeitraum), next_month
+--   (15. des naechsten Monats),
 --   this_year (1. des naechsten Monats; liegt der im naechsten Jahr: NULL), in_<N>_months. Unbekannt: NULL.
 --   p_on = Bezugstag (saved_at des Texts); NULL = heute, im Rumpf, weil ein DEFAULT auf core.fn_today das frische Apply braeche.
 --   Rueckgabe: date oder NULL. Tests: tests/db/core/test_fn_period_reminder_date.sql

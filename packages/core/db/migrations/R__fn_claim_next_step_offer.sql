@@ -3,7 +3,8 @@
 --   Am Sendepunkt des Orchestrators gerufen, erst wenn der Knopf feststeht; das Gegenstueck zum lesenden Feld offer von
 --   core.fn_get_next_step (gleiche Keys ueber core.fn_next_step_offer_keys).
 --   Eingabe p: { chat_id, callback, state, generation, smalltalk }.
---     smalltalk nicht greeting/ping (eine ausdrueckliche Frage wie "und jetzt?") -> true, ohne Pruefung und ohne Zaehlen.
+--     smalltalk nicht greeting/ping (eine ausdrueckliche Frage wie "und jetzt?") -> true, sobald chat_id numerisch und
+--     callback gesetzt ist; ohne Grenzen-Pruefung und ohne Zaehlen.
 --   Ablauf: Advisory-Lock je Person; dann beide Grenzen nur lesen (core.fn_notify_told); nur wenn beide einen freien Key
 --     haben, beide per core.fn_should_notify setzen. So wird nie ein Latch verbraucht, ohne dass ein Knopf rausgeht.
 --   Aufraeumen im selben Lauf (core.fn_notify_forget_before): Tag-Keys aelter als 2 Tage (der Kalendertag im Key macht

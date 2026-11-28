@@ -14,7 +14,8 @@
 --   kein stilles Falschtagging; direction ist explizit (kein emergentes from/to-Vorzeichen).
 --   Eingabe jsonb: savings_goal_id, direction (deposit|withdrawal|relocate|reassign), amount (> 0, roh) (Pflicht);
 --     from_account_id|from_account_name, to_account_id|to_account_name (je optional), transaction_date (leer =
---     heute), purpose (optional), to_amount (optional, Cross-Currency).
+--     heute), purpose (optional), to_amount (optional, Cross-Currency), chat_id (optional: Empfaenger des Merkers
+--     savings_goal_reached, core.fn_mark_told, nur bei deposit, der das Ziel erreicht).
 --   Konten: Namen loest die fn auf (fn_resolve_cash_account: nur cash/Festgeld, Depot -> depot_not_allowed).
 --     Reserve = Topf (Zielkonto der Sparrate) + jedes Konto mit getaggtem Geld des Ziels
 --     (fn_goal_reserve_accounts). Fehlende Konten leitet sie ab: deposit An = Topf (Altziel ohne Rate: das eine
@@ -24,7 +25,8 @@
 --   Rueckgabe: ok:true -> {ok:true, debit_tx_id, credit_tx_id, savings_goal_id, direction, current_amount
 --     (neuer Ziel-Stand), from_balance, to_balance, effective (Konten id/Name/Waehrung + Datum fuer die
 --     Karte), card_lines (Hinweise aus fn_book_transfer, z. B. moegliche Doppelbuchung; zieht der Topf um, der Bank-Hinweis
---     fn_bank_setup_note 'bank_change' fuer die Sparrate), savings_goal_reached?}.
+--     fn_bank_note_recorded 'bank_change' fuer die Sparrate, legt/aendert den offenen Punkt in finance.bank_todos),
+--     savings_goal_reached?}.
 --   ok:false ohne Write und ohne RAISE: {code?, reason, candidates?} bei amount <= 0, direction nicht im Enum,
 --     Ziel nicht gefunden, not_found/ambiguous/depot_not_allowed (Kontoname), no_reserve, not_reserve,
 --     insufficient_share, missing_from/missing_to, use_relocate, invalid_reserve, from==to, oder einer Ablehnung des

@@ -2,7 +2,7 @@
 -- fn_get_recurring_candidates (READ, STABLE) -- wiederkehrende Zahlungen aus Zeilen erkennen (Export oder Kontoauszug)
 --   Die eine Adresse fuer Rhythmus-Messung, Tageswahl, Reife-Regel ("sicher"), Startdatum und Bekannt-Filter
 --   (fn_recurring_known). Konsumenten: fn_get_recurring_suggestions (mode export), fn_import_stage_recurring und
---   fn_get_recurring_suggestion_queue (mode statement; die Queue misst die gespeicherten Termine einer Vorschlagszeile neu).
+--   fn_recurring_suggestion_measure (mode statement; misst fuer die Queue die Termine einer Vorschlagszeile neu).
 --   mode export (Zeilen von fn_bank_export_load): nur kind cash, Betrag <> 0, kein legacy_return; Schluessel je Vorzeichen
 --   Gegenkonto (Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos bzw. Bondora-Ein-/Auszahlung ->
 --   Verrechnungskonto), sonst Gegen-IBAN (fn_iban_strict), sonst Name (die ersten zwei Woerter ohne Ziffern, klein); Name im
@@ -11,10 +11,10 @@
 --   ohne; mehrere Reihen auf einer IBAN (Zahlungsdienst) -> die IBAN ist kein Schluessel. Reihen unter 2 Terminen,
 --   ohne Rhythmus, unter 80 % Treffern oder unreif fallen weg.
 --   mode statement (Zeilen des Lese-Modells mit recurring_kind, series, rhythm_hint): zuerst fn_statement_lines_merge;
---   Kategorie-Regel fn_recurring_kind_policy (nie card_purchase/cash/fee_interest; insurance/loan nur als hints);
+--   Kategorie-Regel allein in fn_recurring_kind_policy (proposable, min_lines, confirm_ok; hint_area -> nur hints);
 --   Schluessel = series (klein) + Gegen-IBAN (unterschiedliche IBANs trennen die Reihe); ohne series einmalig = kein
 --   Vorschlag. Kein Betrags-Cluster (das Modell gruppiert), keine geteilte IBAN. Reif nach der Export-Regel -> confidence
---   sure; sonst confirm, wenn die Kategorie es erlaubt (other nie): ab 2 Terminen der gemessene Rhythmus, bei einem Termin
+--   sure; sonst confirm, wenn die Kategorie es erlaubt (confirm_ok): ab 2 Terminen der gemessene Rhythmus, bei einem Termin
 --   (oder nicht messbarem Abstand) der rhythm_hint des Modells (Standard monatlich) mit Tag fn_recurring_plausible_day und
 --   rhythm_assumed true.
 --   Rhythmus aus dem Median-Abstand: week 1/2, month 1/3/6, year 1. Jede Zeile zaehlt zum naechsten Faelligkeitstag des
@@ -27,6 +27,8 @@
 --   plpgsql (late-bound): ruft alphabetisch spaetere fn_iban_strict, fn_match_household_holder, fn_recurring_*,
 --   fn_statement_lines_merge.
 --   Eingabe p: {account_id (Pflicht), mode (export|statement, def export), period_last (def juengste Zeile), lines[]}.
+--   lines[] export: {date, kind, cash_amount, sub_kind, counterparty, purpose, name, counterparty_iban}; statement: {date,
+--   amount, recurring_kind, series, rhythm_hint, counterparty, counterparty_iban, creditor_id, mandate_ref}.
 --   RAISE nur bei unbekanntem mode oder Konto.
 --   Rueckgabe: {suggestions:[{name, kind, direction, counterparty_iban?, from_account?, to_account?, from_account_id?,
 --   to_account_id?, amount, average_amount, amount_varies, schedule_unit, schedule_interval, schedule_day_of_month,

@@ -10,6 +10,9 @@
 --   nicht installiert), entfaellt der career-Anteil still (graceful degradation).
 --   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig). Partial-tolerant: jedes Feld optional;
 --   geprueft wird nur, was vorhanden ist (Profil waechst konversationell).
+--   Geprueft: career_start_date/last_job_change_date (YYYY|YYYY-MM|YYYY-MM-DD, nicht in der Zukunft), skills[]
+--   {name Pflicht, level beginner|intermediate|advanced|expert, since wie die Daten oben}, as_of (DATE, nicht in der
+--   Zukunft); experience_years und skills[].years_experience werden abgelehnt.
 --   Rueckgabe: NULL = gueltig, sonst Fehlertext (der Trigger uebersetzt ihn in RAISE; der freundliche
 --   {ok:false}-Pfad liegt im HITL-Tool/fn_set_context_facts).
 -- ============================================================
@@ -25,7 +28,7 @@ BEGIN
     END IF;
 
     -- Berufserfahrung als Startdatum (roh, Genauigkeit der Angabe), nie als Jahreszahl ("12 Jahre" ist naechstes
-    -- Jahr falsch). experience_years wird darum abgelehnt (Bestand umgerechnet in career:V007).
+    -- Jahr falsch). experience_years wird darum abgelehnt.
     IF p_facts ? 'experience_years' THEN
         RETURN 'career_profile.experience_years is no longer stored (it is wrong a year later) — pass career_start_date '
             || 'instead: the year or date the person started working (e.g. 2014), or relative as stated (e.g. -12 years)';

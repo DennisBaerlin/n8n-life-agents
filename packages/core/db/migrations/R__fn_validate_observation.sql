@@ -3,7 +3,7 @@
 --   Die eine Quelle der Wert-Validierung fuer beschaffte Observations — genutzt von
 --   fn_monitor_evaluate (Cron) und fn_monitor_probe (Test-Abruf vor dem HITL-Gate).
 --   Eingabe: p_obs jsonb {ok, value, unit, as_of, source_url, reason}, p_method, p_expected_unit, p_min, p_max, p_jump_pct, p_last.
---   Kaskade (Stufen 2-4; Stufe 1 = struktureller JSON-Parse im Workflow-Code-Node):
+--   Kaskade (vorgelagert: struktureller JSON-Parse im Workflow-Code-Node):
 --     (0) input ok=false wird durchgereicht (Beschaffung selbst schlug fehl)
 --     (1) value muss numerisch sein (LLM-Prosa wie "ca. 4000" -> dirty)
 --     (2) Unit-Echo: nur web_search + expected_unit gesetzt — geliefertes unit muss

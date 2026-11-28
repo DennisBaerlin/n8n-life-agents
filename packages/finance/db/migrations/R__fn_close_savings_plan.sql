@@ -3,12 +3,13 @@
 --   Smart-Close-Guard (analog fn_close_account): zaehlt Transaktionen auf allen rps der Vorgaenger-Kette des
 --   Plans (fn_recurring_lineage; nach einem Betrags-Split truege die aktuelle rp allein keine Historie mehr).
 --   v_tx_count = 0 -> Hard-DELETE: Plan + alle rps der Kette entfernt (Karteileiche, keine Historie).
---   Soft-Close beendet alle noch laufenden Glieder der Kette (fn_end_recurring_chain).
+--   Beide Zweige beenden vorher alle noch laufenden Glieder der Kette (fn_end_recurring_chain).
 --   v_tx_count > 0 -> Soft-Close: RP.valid_to = CURRENT_DATE, plan.status = 'paused'
 --   (Buchungshistorie bleibt erhalten; Plan taucht nicht mehr in fn_recurring_due_open auf).
 --   Eingabe jsonb: savings_plan_name.
---   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count, card_lines (Broker-Hinweis fn_bank_setup_note 'bank_stop';
---   der Plan bleibt sonst beim Broker aktiv, eine Erinnerung kommt nicht: die Kette ist pausiert)}
+--   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count, card_lines (Broker-Hinweis 'bank_stop' ueber
+--   fn_bank_note_recorded, das dazu einen offenen Punkt in finance.bank_todos eintraegt (Hard-DELETE: per CASCADE mit der
+--   Kette weg); der Plan bleibt sonst beim Broker aktiv, eine Erinnerung kommt nicht: die Kette ist pausiert)}
 --   | {ok:false, code:'not_found'|'ambiguous', reason, candidates}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_savings_plan(p jsonb)

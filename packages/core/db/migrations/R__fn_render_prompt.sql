@@ -3,10 +3,11 @@
 --   Rendert die Karten-Spezifikation agent.chat_prompts.card beim Senden (nie beim Anlegen): Spezifikations-Zeilen
 --   {kind, text} | {kind, key, params} | {kind:'expand', title|title_key, text} | {kind:'facts', domain, section_key}.
 --     text-Zeilen laufen durch core.fn_render_plan_text, key-Zeilen durch core.fn_ui_text (Sprache der Person des Chats);
---     facts = "Stand heute" der Paket-fn core.advisors.section_facts_fn(section_key, chat_id) als Zitat-Zeilen mit
---     Kopfzeile core.prompt.facts_head; fehlt die fn, wirft sie oder liefert sie nichts -> keine Zeilen (die Karte bleibt).
---   Knoepfe aus options [{key, label | label_key}] mit callback_data q:<id>:<key>; alle in einer Reihe, wenn es hoechstens
---   drei sind und ihre Beschriftungen zusammen hoechstens 36 Zeichen haben, sonst einer je Reihe.
+--     facts = "Stand heute" der Paket-fn core.advisors.section_facts_fn(section_key, chat_id) als hoechstens 6 Zitat-
+--     Zeilen mit Kopfzeile core.prompt.facts_head; fehlt die fn, wirft sie oder liefert sie nichts -> keine Zeilen
+--     (die Karte bleibt).
+--   Knoepfe aus options [{key, label | label_key}] mit data (= callback_data) q:<id>:<key>; alle in einer Reihe, wenn es
+--   hoechstens drei sind und ihre Beschriftungen zusammen hoechstens 36 Zeichen haben, sonst einer je Reihe.
 --   Rueckgabe {card:{lines:[{kind, text[, title]}]}, buttons:[[{text, data}]]} | NULL (unbekannte id). Klartext: Escaping
 --   und Telegram-Format macht der Renderer im Orchestrator (Vertrag der Zeilenarten: head, quote, label, text, expand, row,
 --   total, warning, hint).

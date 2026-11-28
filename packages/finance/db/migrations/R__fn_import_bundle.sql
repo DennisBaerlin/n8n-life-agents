@@ -6,6 +6,8 @@
 --   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy) -> pension_statement/reward.
 --   reward (Staking-Ertrag der Ersteinrichtung): eine reward-Buchung (amount 0) auf dem Verrechnungskonto, Position
 --   wird bei Bedarf angelegt (fn_book_reward); nach den Kaeufen, damit deren Uebernahme-Guard den Stand vor dem Batch sieht.
+--   pension_statement: ohne fn_*, direkter INSERT in finance.pension_statements (created.id = dessen id); ein zweiter
+--   Bescheid desselben statement_date je Rente (unique_violation) = Zeilenfehler.
 --   Namen->ID-Aufloesung passiert hier (Staging traegt rohe Namen): zuerst gegen die in
 --   diesem Lauf erzeugten Konten (In-Batch-Referenzen), sonst fn_resolve_* (0/>1 = Fehler).
 --

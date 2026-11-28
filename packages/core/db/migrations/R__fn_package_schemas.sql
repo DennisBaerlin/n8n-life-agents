@@ -6,7 +6,7 @@
 --   in format('%I…')), nur wenn das Schema existiert. Bewusst nicht nach status='active' gefiltert (anders als
 --   fn_onboarding_pending_packages): ein Reset/Cleanup muss auch Daten inaktiver Pakete erfassen.
 --   Eingabe: keine. Rueckgabe: SETOF text, alphabetisch (deterministische Reihenfolge der Hooks/TRUNCATEs).
---   Tests: tests/db/core/test_fn_reset_user_data.sql, tests/db/core/test_core_only.sql
+--   Tests: tests/db/core/test_fn_package_schemas.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_package_schemas()
 RETURNS SETOF text LANGUAGE sql STABLE

@@ -8,7 +8,7 @@
 --   Eingabe: p_kind, p_primary, p_secondary (alle NULL-tolerant, NULL = ''). Format
 --   `<kind>:<slug(primary)>:<slug(secondary)>`; aktuell nur kind='postings' -> primary=Rollen-Titel,
 --   secondary=Ort (Jobsuche maxErgebnisse = Posting-Count).
---   Rueckgabe: text (kein ok-Objekt). Slug = lower(trim) + Nicht-Alphanumerisches -> "-" (gestrippt am Rand):
+--   Rueckgabe: text (kein ok-Objekt). Slug = lower(trim) + alles ausser [a-z0-9] (auch Umlaute) -> "-" (gestrippt am Rand):
 --   Data Analyst -> data-analyst, Leipzig -> leipzig. IMMUTABLE (kein Tabellen-Read; Muster fn_skill_level_rank).
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_market_scope_key(p_kind text, p_primary text, p_secondary text)

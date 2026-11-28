@@ -41,9 +41,9 @@ $$;
 
 -- ------------------------------------------------------------
 -- core.package_registry — eine Zeile je installiertem Paket.
---   status-Lebenszyklus: installing -> installed -> active <-> inactive.
---     installing = Migration/Deploy laeuft (Teil-Install sichtbar, R7);
---     installed  = DB/Workflows da, aber nicht verdrahtet;
+--   status-Lebenszyklus: installing -> active <-> inactive.
+--     installing = Migration/Deploy laeuft (Teil-Install sichtbar);
+--     installed  = im CHECK erlaubt, aber von keinem Schreiber gesetzt (toter Wert);
 --     active      = verdrahtet + geroutet;
 --     inactive    = deaktiviert (Daten bleiben! nur Pre-Router-Gate kappt).
 --   `active` wird immer zuletzt gesetzt (atomarer Konvergenz-Deploy).

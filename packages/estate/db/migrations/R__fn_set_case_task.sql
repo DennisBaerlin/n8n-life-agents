@@ -4,7 +4,8 @@
 --   dem Tipp als Write (Karte nur bei Abhaken); der est:-Callback ist selbst ein menschlicher
 --   Tipp. adults_only-DB-Backstop (Kind -> {ok:false}). Die Task muss zu einem offenen Fall
 --   gehoeren (Tasks abgeschlossener/abgebrochener/superseded Faelle sind eingefroren). done -> done_at
---   materialisiert. Der Auto-Complete-Trigger kann den Fall danach auf 'completed' kippen -> der
+--   materialisiert; setzt status_source='user' (der Reconcile in fn_instantiate_case_tasks fasst die Task nie wieder an).
+--   Der Auto-Complete-Trigger kann den Fall danach auf 'completed' kippen -> der
 --   Post-State liest den Fall-Status frisch (nach dem Trigger, in derselben Tx).
 --   Wird von zwei Aufrufern genutzt: dem Tool (unter estate_rw) und dem est:-Callback-Handler
 --   (fn_handle_case_task_callback, unter dem Host-RW-Credential) — beide erreichen die core-Windows.

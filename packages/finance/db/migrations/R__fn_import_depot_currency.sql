@@ -4,8 +4,9 @@
 --   gegen bestehende Konten mit Fallback EUR gaebe einem im selben Batch angelegten USD-Depot still ein EUR-Listing,
 --   darum dieselbe Aufloesung wie fn_import_bundle/fn_import_resolve_account: (1) Konto-Zeile dieses Batches
 --   (case-insensitiv) mit ihrer Waehrung, sonst der Waehrung ihres Verrechnungskontos (Batch-Zeile oder bestehendes
---   Konto; wie fn_create_account), (2) sonst ein bestehendes Konto (fn_resolve_account: exakter Name, nur eindeutige
---   Treffer), (3) sonst EUR (ein unaufloesbares Depot meldet ohnehin der Probelauf).
+--   Konto; wie fn_create_account), (2) sonst ein bestehendes aktives Konto (fn_resolve_account: exakt, sonst ohne Gross-/
+--   Kleinschreibung, sonst ohne Listen-Zeichen; nur ein eindeutiger Treffer), (3) sonst EUR (ein unaufloesbares Depot meldet
+--   ohnehin der Probelauf).
 --   Eingabe: p_batch, p_depot (Depot-Name). Rueckgabe: Waehrungscode (text).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_depot_currency(p_batch uuid, p_depot text)

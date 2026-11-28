@@ -18,7 +18,7 @@
 --     Durchgang ab dem zweiten core.prompt.check_last_pass), dann je Punkt eine Zeile in der Reihenfolge contradiction -> missing ->
 --     missing_part -> open_point (Kopf core.prompt.finding_head {k, n, kind}; Zitate mit Herkunft; Vorschlag bzw. Frage;
 --     Knoepfe accept (nur mit Vorschlag) / keep / note). payload je Punkt: {pass, category, text (<= 300, fuer die
---     Version), ref_a, quote_a, ref_b, quote_b, proposal, question, label}.
+--     Version), ref_a, quote_a, ref_b, quote_b, proposal, question, section_key, open_point_id, label}.
 --   Rueckgabe {ok:true, pass, last_pass, counts {contradiction, missing, missing_part, open_point}, prompt_ids} |
 --     {ok:false, code, reason[, index | max]}; codes invalid_input, no_permission, no_draft, invalid_finding, quote_not_found,
 --     proposal_rejected, check_passes_exhausted {max}.

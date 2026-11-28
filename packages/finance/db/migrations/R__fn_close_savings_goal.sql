@@ -81,10 +81,7 @@ BEGIN
     -- Rate-Tx und getaggte Reserve-Bewegungen zaehlen. Bei recurring_payment_id IS NULL faellt der erste Zweig auf
     -- false -> nur der savings_goal_id-Zweig zaehlt.
     -- COUNT zaehlt Zeilen: die Raten-Haben-Tx traegt beide Felder -> wird einmal gezaehlt (keine Doppelzaehlung).
-    -- Rate-Tx ueber die ganze Vorgaenger-Kette (nach Reaktivierung liegt die Historie auf der alten rp).
-    -- Journal-Zeilen echter Geldbewegungen (sparplan_buy/derisk/void; Sparplan-Kaeufe tragen kein Ziel-Tag) sind
-    -- immer Historie; bei erfuellt auch reine Zuordnungen (manual) -> weich schliessen statt verschwinden. Ein
-    -- abgebrochenes Ziel nur mit Zuordnungen bleibt Hard-DELETE (es floss kein Geld; die Zuordnung faellt per CASCADE).
+    -- Zaehlregel im Kopf; Sparplan-Kaeufe tragen kein Ziel-Tag, daher die Journal-Zeilen als zweite Quelle.
     v_chain := ARRAY(SELECT finance.fn_recurring_lineage(v_goal.recurring_payment_id));
     SELECT COUNT(*) INTO v_tx_count
     FROM finance.transactions
@@ -109,9 +106,7 @@ BEGIN
             PERFORM finance.fn_end_recurring_chain(v_goal.recurring_payment_id, CURRENT_DATE);
         END IF;
 
-        -- Abgebrochen: Zuordnungen freigeben (Historie bleibt) -> der Betrag ist reassignbar. Bei erfuellt
-        -- bleiben Tags/Sparplaene als Erfuellungs-Historie. Das append-only Journal wird nicht mutiert (der
-        -- status<>'active'-Filter der Deckungs-Views entkoppelt die Depot-Reserve ohnehin).
+        -- Abgebrochen: Zuordnungen freigeben (Regel im Kopf); das append-only Journal bleibt unberuehrt.
         IF NOT v_completed THEN
             UPDATE finance.transactions SET savings_goal_id = NULL WHERE savings_goal_id = v_goal.id;
             UPDATE finance.savings_plans SET savings_goal_id = NULL WHERE savings_goal_id = v_goal.id;

@@ -5,7 +5,8 @@
 --   TRUE  nur wenn chat_id numerisch ∧ agent.fn_resolve_sender(chat_id) found:true ∧ role <> 'owner'.
 --   FALSE (durchlassen) bei: role='owner' · nicht in family (found:false, anomal/Bootstrap) ·
 --          nicht-numerischer chat_id (E2E-Sentinel — der Resolver wird nie mit ::bigint gerufen) · NULL/leer.
---   Die owner_only-Schreib-fns (fn_advisor_save_section/_publish_plan/fn_set_context_facts) rufen das
+--   Direkte Aufrufer: agent.fn_check_write_permission (Stufe owner_only, z. B. fn_advisor_save_section/_publish_plan),
+--   fn_set_context_facts (family), fn_append/fn_remove_context_note, fn_approve/fn_reject_learn_candidate. Sie rufen das
 --   Praedikat vor jedem Write und lehnen ein Mitglied mit {ok:false, reason:'owner_only'} ab (RAISE-frei,
 --   kein Owner-Alert). Identitaets-Quelle = die deterministische, nicht-spoofbare chat_id (nicht LLM-Werte) —
 --   spiegelt das tool_invite_household_member-Muster. Konsistent mit dem Gate-Zweig "is_member".

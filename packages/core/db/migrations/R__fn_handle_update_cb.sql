@@ -10,7 +10,7 @@
 --     * retry -> nur, wenn core.fn_update_retry_allowed(<tag>) (die eine Wiederholungs-Regel);
 --     * schon ein offener Auftrag -> Toast "laeuft schon" (Unique-Index ist das Gesetz, hier nur freundlich); ein seit
 --       ueber 4 h 30 min uebernommener gilt als haengend und wird vorher als interrupted geschlossen (Meldung faellig).
---   Eingabe p: { data, chat_id (from.id), chat_type }
+--   Eingabe p: { data, chat_id (from.id) }
 --   Rueckgabe: {ok:true, toast, request_id} | {ok:false, reason:'owner_only'|'invalid'|'unknown_release'|
 --              'already_open'|'no_retry', toast}. Toasts in der Sprache des Tippenden (core.update.toast.*). Nie RAISE.
 --   SECURITY INVOKER (Host-Cred des Dispatchers, die core.* schreibt), search_path gepinnt.

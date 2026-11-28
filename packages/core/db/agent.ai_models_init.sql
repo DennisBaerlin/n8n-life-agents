@@ -55,8 +55,9 @@ ALTER TABLE agent.ai_models ADD CONSTRAINT ai_models_mode_selector_check
 ALTER TABLE agent.ai_models DROP CONSTRAINT IF EXISTS ai_models_n8n_model_id_key;
 ALTER TABLE agent.ai_models ADD CONSTRAINT ai_models_n8n_model_id_key UNIQUE (n8n_model_id);
 
--- Preise je Modell (USD je Million Tokens, Quelle ai_models.json). Einziger DB-Leser ist
--- core.fn_get_llm_cost_report. NULL = unbepreist (Embeddings, Bestands-DB vor dem Seed) -> der Report zaehlt die
+-- Preise je Modell (USD je Million Tokens, Quelle ai_models.json). Einziger DB-Leser ist die View
+-- core.v_llm_usage_cost (Basis von core.fn_get_llm_cost_report). NULL = unbepreist (Embeddings, Bestands-DB vor
+-- dem Seed) -> der Report zaehlt die
 -- Zeilen als "ohne Preis". Form-Pruefung im Helfer unten (CHECK-gekoppelt, deshalb Init statt R__).
 ALTER TABLE agent.ai_models ADD COLUMN IF NOT EXISTS pricing_usd_per_mtok jsonb;
 

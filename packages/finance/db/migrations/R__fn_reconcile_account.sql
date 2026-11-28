@@ -21,8 +21,8 @@
 --   geschlossener Vorkommen), skipped (Handles: [{recurring_payment_id, due_date} | {interest_period_end}] — die
 --   Ruecknahme eines Kontoauszugs hebt genau diese wieder auf), effective (aufgeloeste relative Datumsangaben +
 --   reconciliation_date)}.
---   Seiteneffekte: sperrt die Saldo-Zeile; setzt last_reconciled_*; Korrekturbuchung (Trigger pflegt den Saldo);
---   Skip-Zeilen in recurring_payment_skips/interest_skips.
+--   Seiteneffekte: sperrt die Saldo-Zeile (keine Saldo-Zeile -> RAISE); setzt last_reconciled_*; Korrekturbuchung
+--   (Trigger pflegt den Saldo); Skip-Zeilen in recurring_payment_skips/interest_skips.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

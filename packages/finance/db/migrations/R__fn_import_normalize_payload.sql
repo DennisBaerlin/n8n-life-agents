@@ -18,6 +18,8 @@
 --     das LLM rechnet nie), wenn kein Stueckpreis gedruckt ist. Beide Eingabe-Keys werden danach entfernt (die
 --     Karte zeigt den Stueckpreis; fn_import_allowed_keys kennt sie nicht).
 --   * provider_symbol (Kurs-Feed-Symbol) und provider_currency in Grossbuchstaben (VWCE.DE).
+--   * shares (stock_buy) wird auf 8 Nachkommastellen gerundet (Spaltenpraezision numeric(18,8); die Karte zeigt den
+--     gerundeten Wert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_normalize_payload(p_type text, p jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$

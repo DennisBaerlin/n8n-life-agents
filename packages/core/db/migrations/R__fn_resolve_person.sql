@@ -6,6 +6,7 @@
 --   "first_name last_name" oder einen Alias. Rueckgabe wie alle Resolver:
 --   (person_id, full_name, hit_count, candidates) — 0/>1 Treffer => person_id NULL, der Aufrufer fragt nach.
 --   Bei 0 Treffern (genannter Name) sind candidates alle Haushaltsmitglieder (Auswahl statt Nachname-Rueckfrage).
+--   candidates-Element: {person_id, full_name, role}; ein Selbstbezug-Treffer liefert candidates [].
 --
 --   Konsument: die finance create_*/set_*-Write-Tools (Person-Zuordnung) unter finance_rw —
 --   plus finance_ro fuer Reads. Diese engen Paket-Rollen erreichen agent.* nicht direkt
@@ -20,8 +21,6 @@
 --   Chat = telegram_user_id) -> agent.fn_resolve_sender. Nur der ganze Wert ("meine Frau" bleibt Name/Alias); ohne,
 --   kaputte oder unbekannte chat_id -> 0 Treffer wie ein unbekannter Name. In einer Frei-SQL-Sitzung
 --   (core.fn_is_free_sql_session) setzt das LLM die chat_id selbst -> dort nie der Absender (fail closed).
---   Der Vorgaenger agent.fn_resolve_member wird von core:V010 gedroppt (Rename, kein CREATE-OR-REPLACE); die
---   1-Arg-Form droppt core:V033.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_resolve_person(p_name text, p_chat_id text DEFAULT NULL)
 RETURNS TABLE (

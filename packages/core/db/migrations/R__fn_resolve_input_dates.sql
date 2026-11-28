@@ -6,7 +6,8 @@
 --   core.fn_resolve_date (Tag genau, Haushalts-Zeitzone; ISO bleibt -> idempotent).
 --   Ergebnis:
 --     {ok:true, p:<p mit ISO-Werten>, resolved:{<key>:'YYYY-MM-DD',…}}
---     {ok:false, code:'invalid_date', reason:'<key> must be …'}   (erster nicht aufloesbarer Key; kein RAISE)
+--     {ok:false, code:'invalid_date', reason:'<key> "<wert>" is not a date the database can read …'}
+--       (erster nicht aufloesbarer Key; kein RAISE)
 --   Fehlende Keys, '' und JSON-null bleiben unberuehrt (die fn des Aufrufers setzt ihren Default). Ein Nicht-String
 --   (z. B. eine Zahl) unter einem Datums-Key ist ungueltig.
 --   Aufruf-Muster (erste Anweisung im Body, Datums-Casts erst danach — nie im DECLARE):

@@ -7,13 +7,14 @@
 --   (Pflicht); category (optional, Default 'other'; erlaubt nur other|fee|interest -- Kauf/Verkauf/Kredit/Abgleich/
 --   transfer brauchen ihr eigenes Tool, sonst CHECK-RAISE mit Owner-Alarm bzw. ein einbeiniger "transfer"),
 --   interest_correction (optional, nur intern: erlaubt interest als outflow fuer die Zinskorrektur des Kontoauszugs),
+--   chat_id (optional: Empfaenger des Merkers reserve_breach, core.fn_should_notify/fn_mark_told bei Outflow),
 --   description (optional, sonst Auto), transaction_date (ISO oder relativ, core.fn_resolve_input_dates; leer =
 --   heute). Die Richtung bestimmt das Vorzeichen (outflow = -, inflow = +); der Saldo wird danach per
 --   trg_finance_balance_update gepflegt. Der Betrag wird vor dem Buchen auf die Waehrungseinheit des Kontos
 --   gerundet (currencies.minor_unit), damit die Rueckgabe dem gespeicherten Wert entspricht.
---   Rueckgabe: ok:true -> {ok:true, tx_id, amount (signiert, gerundet wie gespeichert), account_balance (neuer
---   Saldo, nach dem Trigger gelesen), effective, card_lines (moegliche Doppelbuchung)}; bei Outflow zusaetzlich
---   reserve_breach, wenn die Belastung den Saldo unter die fuer Sparziele reservierte Summe drueckt.
+--   Rueckgabe: ok:true -> {ok:true, tx_id (= transaction_id), amount (signiert, gerundet wie gespeichert),
+--   account_balance (neuer Saldo, nach dem Trigger gelesen), effective, card_lines (moegliche Doppelbuchung)}; bei
+--   Outflow zusaetzlich reserve_breach, wenn die Belastung den Saldo unter die fuer Sparziele reservierte Summe drueckt.
 --   ok:false ohne Write und ohne RAISE: {reason} bei ungueltiger direction, Kategorie ausserhalb der Allowlist,
 --   amount <= 0, fee als inflow, interest als outflow (Strafzins = fee) oder Depot-/Kreditkonto
 --   (finance.fn_bookable_account_reason; Backstop trg_finance_reject_account_type_txn); {code:'invalid_date'}.

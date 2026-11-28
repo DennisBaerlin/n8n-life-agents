@@ -87,9 +87,6 @@ BEGIN
             END LOOP;
         END IF;
       EXCEPTION WHEN insufficient_privilege THEN
-            -- Frei-SQL-Pfad unter estate_ro: schema finance ist gesperrt (schon der
-            -- to_regprocedure-Lookup wirft) -> ehrlich degradieren; der volle Blick laeuft
-            -- ueber load_context('estate_overview') (DEFINER-Renderer mit Owner-Rechten).
             v_fin_state := 'not_readable_on_this_path';
             v_fin := '[]'::jsonb;
       END;

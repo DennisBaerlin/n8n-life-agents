@@ -12,7 +12,7 @@
 --     - Zubringer: Transfer in das Verrechnungskonto eines aktiven Sparplans oder den Topf eines aktiven Sparziels
 --       -> code 'feeds_savings', ausser confirm_feeds_savings=true
 --     - >=1 gebuchte Transaktion (recurring_payment_id, RESTRICT) -> reason + transaction_count (erst voiden)
---   Seiteneffekt: finance_recurring_payment_skips gehen per ON DELETE CASCADE mit.
+--   Seiteneffekt: recurring_payment_skips, recurring_payment_keys und bank_todos (head_id) gehen per ON DELETE CASCADE mit.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_recurring_payment(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

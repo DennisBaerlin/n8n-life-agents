@@ -10,11 +10,11 @@
 --   "sepa-banküberweisung", "abheben auf bankkonto" (Belege: Portfolio-Performance-Forum, deutsche Bondora-Auszuege).
 --   Zeilen: Datum M/D/YYYY, TT.MM.JJJJ oder ISO (Excel-Datumszelle), Zahlen ungerundet (Float-Artefakte) -> auf Cent gerundet;
 --   cash_amount = In - Out (das Vorzeichen kommt nie aus dem Typ-Text).
---   Typen (Kleinschreibung): "go & grow returns" -> kind interest; "sepa payment" unter small_inflow_max (Profil) ->
---   cash/legacy_return (Rueckfluesse alter Bondora-Kredite ausserhalb Go&Grow), sonst
---   cash/deposit; "withdrawal to bank account" -> cash/withdrawal mit transfer_fee = withdrawal_fee (Profil, hoechstens
---   der Betrag); "unallocated balance..." -> Info-Zeile (aendert den Saldo nicht, fehlt in "Payments in"): nicht in rows,
---   nur info_count; alles andere -> unknown (nie still verworfen).
+--   Typen (Kleinschreibung): "go & grow returns" -> kind interest; "sepa payment" (nur mit Out 0) unter small_inflow_max
+--   (Profil) -> cash/legacy_return (Rueckfluesse alter Bondora-Kredite ausserhalb Go&Grow), sonst
+--   cash/deposit; "withdrawal to bank account" (nur mit In 0) -> cash/withdrawal mit transfer_fee = withdrawal_fee (Profil;
+--   NULL, wenn die Auszahlung die Gebuehr nicht uebersteigt); "unallocated balance..." -> Info-Zeile (aendert den Saldo
+--   nicht, fehlt in "Payments in"): nicht in rows, nur info_count; alles andere -> unknown (nie still verworfen).
 --   Pruefungen (sonst export_invalid mit row_no): laufender Saldo je Zeile (vorige Balance bzw. Opening + cash = Balance;
 --   Info-Zeile: Balance unveraendert), Opening + Summe = Closing, Summe In/Out = Payments in/out. Absteigend sortierte
 --   Dateien werden in Datumsfolge geprueft.

@@ -4,7 +4,8 @@
 --   und Person (0 ohne gueltigen Plan), Person nur bei per_user (core.fn_handoff_person). Damit gilt "einmal je
 --   veroeffentlichter Version": eine Liste, die waehrend eines Entwurfs gezeigt wurde, haelt die Liste nach dem
 --   Veroeffentlichen nicht zurueck. Die eine Adresse fuer core.fn_handoff_overview (latch_key), core.fn_handoff_overview_mark
---   und core.fn_advisor_resume_due. NULL bei leerer Domain, fehlendem max oder unaufgeloester per_user-Person. Nur lesend.
+--   und (ueber dieses Feld) core.fn_plan_rollout_next. NULL bei leerer Domain, fehlendem max oder unaufgeloester
+--   per_user-Person. Nur lesend.
 --   Tests: tests/db/core/test_fn_handoff_overview_mark.sql, tests/db/core/test_fn_plan_rollout_next.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_handoff_latch_key(p_domain text, p_chat_id text, p_max int)

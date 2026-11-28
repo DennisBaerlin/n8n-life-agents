@@ -5,7 +5,8 @@
 --   owner_person_id (Slug, NULL=Haushalt),
 --   status, notes, living_area_m2, year_built (beide optional, fuer die Instandhaltungsruecklage).
 --   Rueckgabe: {ok:true, real_estate_id, card_lines (aehnlicher Eintrag + fn_maintenance_card_lines: Empfehlung nach
---   II. BV / "noch keine Ruecklage")}. Korrigierbar (Wert unlesbar, unbekannter status, Flaeche <= 0, Baujahr in der Zukunft oder
+--   II. BV / "noch keine Ruecklage"), effective (aufgeloestes value_updated_at)}; unaufloesbares Datum -> code invalid_date.
+--   Korrigierbar (Wert unlesbar, unbekannter status, Flaeche <= 0, Baujahr in der Zukunft oder
 --   ausserhalb 1800-2200) -> {ok:false, reason}. Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name. ok:true traegt existing_names, similar_names.
 --   Ungueltiger owner_person_id-Slug -> FK-Backstop (RAISE); der Normalfall ist im Tool-Resolve
 --   (core.fn_resolve_person) vorvalidiert.

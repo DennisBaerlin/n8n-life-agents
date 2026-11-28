@@ -3,7 +3,8 @@
 --   Eingabe: p_batch_id (Staging-Batch).
 --   Je valider Staging-Zeile (row_no-Reihenfolge) {row_no, entity_type, name, p, x}: p = roher Payload, x = die
 --   abgeleiteten Werte, die das Einzel-Tool vor seiner Karte aus denselben fn_* holt (Post-State-Vertrag):
---     person          Name der Person (fn_import_person_field + core.fn_resolve_person; NULL = Haushalt)
+--     person          Name der Person (fn_import_person_field + core.fn_resolve_person; NULL = Haushalt); Sparziel ohne
+--                     Person: Inhaber des Spartopfs (Batch-Konto owner_person, sonst fn_default_beneficiary)
 --     ccy             Zeilen-Waehrung: Konto/Dauerauftrag = fn_import_ref_currency, Depot-Position = quote_currency
 --                     (fn_normalize_currency, wie fn_book_stock_buy) sonst die des Depots, Rest EUR nach Modell
 --     interest        Konto: fn_account_interest_defaults (= was fn_create_account schreibt)
@@ -15,8 +16,9 @@
 --     depot_number_to_store Depot-Position: gedruckte Depotnummer, die der Commit am Depot nachtraegt
 --                     (fn_import_depot_number_to_store, dieselbe Bedingung wie fn_import_bundle), sonst NULL
 --     period_amount   Versicherung: Rate je Abbuchung (fn_insurance_period_amount, wie fn_create_insurance)
+--     annual_premium  Versicherung: Jahresbeitrag (fn_insurance_fields, wie fn_create_insurance)
 --     valid_from      Versicherung: Vertragsbeginn wie gespeichert (genannt, sonst erste Abbuchung, sonst heute)
---     schedule        Sparziel: fn_savings_rate_schedule (wie fn_create_savings_goal)
+--     schedule        Sparziel: fn_savings_goal_funding (wie fn_create_savings_goal; ruft fn_savings_rate_schedule)
 --     running         Kredit: laufend (Restschuld zum Stichtag heute) wie fn_create_loan, sonst frisch
 --     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
 --                     wie fn_create_loan first_rate_interest/_principal)

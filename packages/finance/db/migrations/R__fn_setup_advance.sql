@@ -2,7 +2,10 @@
 -- fn_setup_advance (WRITE, kein HITL) -- ein Schritt der Ersteinrichtung: Antwort speichern, Konto binden, Positionen einstellen
 --   Eingabe: chat_id, table:{rows}, action (continue|cancel), question_key, answer, amount, historic_price (opt).
 --   cancel beendet den Lauf (bestaetigte Daten bleiben). done schliesst ihn. Bei Schritt positions stellt sie die Zeilen ein.
---   RUECKGABE: fn_setup_next + {batch_id, staged, invalid, card}, {closed:true} oder die Rueckfrage/Ablehnung von fn_setup_answer.
+--   account_id (fn_setup_next) = setup_session.cash_account_id: ein neu gefundenes Konto schreibt sie dort fest.
+--   RUECKGABE: fn_setup_next + {batch_id, staged, invalid, errors, card} (Schritt positions; positions = Anzahl, nicht die
+--   Liste), + {closed:true} bei done, {ok:true, closed, phase:'cancelled', say} bei cancel, sonst die Rueckfrage/Ablehnung
+--   von fn_setup_answer; ok:false von fn_setup_next und fn_import_positions_from_export unveraendert.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_advance(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

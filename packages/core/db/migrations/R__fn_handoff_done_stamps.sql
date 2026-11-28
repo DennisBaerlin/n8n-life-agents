@@ -1,6 +1,6 @@
 -- ============================================================
 -- core.fn_handoff_done_stamps (Lesefenster fuer Paket-Rollen)
---   closed_at aller erledigten Uebergabe-Aufgaben einer Domain. Rueckfall fuer Bank-Punkte von vor dem Verweis
+--   closed_at aller erledigten Uebergabe-Aufgaben einer Domain. Rueckfall fuer Bank-Punkte ohne Verweis
 --   finance.bank_todos.handoff_task_id: ein Bank-Punkt aus demselben Durchgehen traegt denselben Zeitstempel, weil Write und
 --   Abschluss in einer Transaktion laufen (now()). Eingabe: p_domain. Rueckgabe: setof timestamptz.
 --   SECURITY DEFINER: <pkg>_rw sieht agent.handoff_tasks nicht; EXECUTE in fn_provision_package_roles.

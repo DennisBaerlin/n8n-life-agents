@@ -10,7 +10,8 @@
 --   Eingabe jsonb: method (Pflicht), spec (gespeicherte acquisition_spec), since (optional, Datum: Reihe ab hier),
 --     current_value + current_as_of (optional: der Probe-Wert vor der Karte).
 --   Rueckgabe: {ok:true, value, as_of, since, basis: history|current|none};
---     {ok:false, reason} wenn history_query kein einzelnes SELECT ist oder nicht (Datum, Wert) liefert.
+--     {ok:false, reason} wenn since kein Datum oder current_value keine Zahl ist, history_query kein einzelnes SELECT ist
+--     oder nicht (Datum, Wert) liefert.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_monitor_drawdown_reference(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

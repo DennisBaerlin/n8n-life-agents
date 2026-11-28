@@ -4,8 +4,8 @@
 --   wird in amount gefaltet (Anschaffungskosten) und separat in order_fee gespeichert; shares
 --   und average_purchase_price pflegt die DB per Trigger (gleitender Durchschnitt, fn_holding_avg_cost).
 --   Eingabe jsonb:
---   depot_id, settlement_id (im n8n aufgeloest), isin, symbol (optional bei ISIN -- fn_holding_symbol: ohne Ticker ist die
---   ISIN die Kennung), name (optional, Default = Kennung), shares, price_per_share,
+--   depot_id, settlement_id (= settlement_account_id; im n8n aufgeloest), isin, symbol (optional bei ISIN -- fn_holding_symbol:
+--   ohne Ticker ist die ISIN die Kennung), name (optional, Default = Kennung), shares, price_per_share,
 --   order_fee, transaction_date (ISO oder relativ, leer = heute), asset_class (optional -- Allokations-Block-key, lowercase snake; Auto-Tag,
 --   nur beim Anlegen der Holding gesetzt, Format-Verstoss -> {ok:false}),
 --   provider_symbol (optional -- Markt-Daten-Feed-Symbol-Override, z. B. VWCE.DE; nur beim Anlegen),
@@ -24,9 +24,9 @@
 --   recurring_payment_id (Sparplan-Ausfuehrung ist echter Geldfluss); Holding hat bereits Stueck > 0 (ein
 --   erneuter Depotauszug wuerde die Position verdoppeln -> Korrektur ueber fn_replace_holding_lots / tool_replace_holding_lots).
 --   Backstop der Gegenbuchungs-Form: CHECK finance_transactions_position_takeover_shape. Das Paar schreibt allein
---   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (optional, ohne price_per_share): bei Uebernahme
---   der Gesamt-Einstand, beim echten Kauf der abgebuchte Betrag inkl. Gebuehr (= Buchungsbetrag) -> Stueckpreis rechnet
---   fn_unit_price_from_total (das LLM teilt nie selbst).
+--   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (optional; zusammen mit price_per_share
+--   nur, wenn beide uebereinstimmen, sonst {ok:false}): bei Uebernahme der Gesamt-Einstand, beim echten Kauf der abgebuchte
+--   Betrag inkl. Gebuehr (= Buchungsbetrag) -> Stueckpreis rechnet fn_unit_price_from_total (das LLM teilt nie selbst).
 --   Kurswaehrung (genannt, sonst gespeicherte Notierung der Position, sonst listing_currency) != Verrechnungskonto bei echtem Kauf
 --   ohne Betrag -> {ok:false, code:'price_currency_mismatch', price_currency, settlement_currency}; keine davon bekannt ->
 --   {ok:false, code:'price_currency_missing'}. effective.total_debited = abgebuchter Betrag (Karte).
@@ -45,12 +45,11 @@
 --   Rueckgabe: ok:true -> {ok:true, holding_id, buy_tx_id, settlement_balance, settlement_change,
 --   total_shares, avg_purchase_price, group_id, effective} (Post-State: Trigger-gepflegte shares/avg +
 --   neuer Verrechnungskonto-Saldo, nach den Triggern gelesen; group_id = Handle der Uebernahme-Gruppe (sonst NULL);
---   settlement_change = Saldo nachher - vorher, DB-Delta: Bestandsuebernahme 0, normaler Kauf -Kaufbetrag; ohne die
---   Zahl erfand das Modell eine Kontobewegung).
---   ok:false ohne Write und ohne RAISE ({reason}; das Tool reicht reason an den Agenten): Depot-Typ-Mismatch (mit
---   depot_type), nicht-positive Werte, negative order_fee, > 8 Stueck-Nachkommastellen oder Betrag < 1 Cent via
---   fn_trade_amount_reason, Kurswaehrung (s. o.), {code:'already_booked'} (Sparplan-Ausfuehrung schon gebucht),
---   {code:'reconciled'}, {code:'invalid_date'}.
+--   settlement_change = Saldo nachher - vorher, DB-Delta: Bestandsuebernahme 0, normaler Kauf -Kaufbetrag).
+--   ok:false ohne Write und ohne RAISE ({reason}; das Tool reicht reason an den Agenten): ohne Ticker/ISIN, Depot-Typ-
+--   Mismatch (mit depot_type), nicht-positive Werte, negative order_fee, cost_basis_total unlesbar/<= 0/<= order_fee
+--   (echter Kauf) oder abweichend vom price_per_share, Stueckzahl/Betrag-Regel fn_trade_amount_reason, Kurswaehrung (s. o.),
+--   {code:'already_booked'} (Sparplan-Ausfuehrung schon gebucht), {code:'reconciled'}, {code:'invalid_date'}.
 --   Ist die resultierende Holding ungetaggt (asset_class IS NULL -- neu ohne Tag oder bestehend
 --   untagged), faltet die fn eine null_tag-Fallback-Note in den {ok:true}-Envelope (kein Extra-SQL, der Post-State-
 --   SELECT liest asset_class mit). Nur der interaktive Agent surfaced sie (Sparplan-Ausfuehrung/Import bauen

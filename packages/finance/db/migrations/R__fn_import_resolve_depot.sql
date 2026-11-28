@@ -13,8 +13,9 @@
 --        aktives Depot passenden Typs dieser Person im Bestand, dessen gespeicherte Nummer fehlt oder zur gedruckten
 --        passt (ein Depot mit anderer Nummer waere sofort ein Widerspruch)
 --     4. sonst NULL (der extrahierte bzw. vom Nutzer genannte Name bleibt)
---   Nur fn_import_stage ruft sie (beim Einlesen), nie fn_import_update_row: eine Depot-Korrektur des Nutzers wird
---   nicht still zurueckgedreht. Widersprueche meldet fn_import_depot_conflict als Zeilenfehler.
+--   Aufrufer: fn_import_stage (beim Einlesen) und fn_import_balance_targets (Salden-Zeilen); nie fn_import_update_row:
+--   eine Depot-Korrektur des Nutzers wird nicht still zurueckgedreht. Widersprueche meldet fn_import_depot_conflict
+--   als Zeilenfehler.
 --   Rueckgabe: jsonb {depot, source: number|holder} | NULL (= Name bleibt).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_resolve_depot(p_batch_id uuid, p jsonb)

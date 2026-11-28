@@ -30,7 +30,8 @@
 --   Eingabe p: das volle Callback-Payload { data:<callback_data>, chat_id, callback_id, ... }. Prefix = split_part(data,':',1).
 --   Die Handler-fn(jsonb)->jsonb bekommt dasselbe p und gibt { ok, toast?, message? } zurueck.
 --   Rueckgabe: das Handler-Ergebnis (Passthrough) | {ok:false, reason[, toast]} bei leerem/unbekanntem Prefix,
---   fehlender Handler-fn, unaufgeloestem Sender oder owner-only-Callback (kein RAISE -> kein Owner-Alert; der
+--   fehlender Handler-fn, unaufgeloestem Sender, owner-only-Callback oder NULL vom Handler (handler_returned_null)
+--   (kein RAISE -> kein Owner-Alert; der
 --   Orchestrator quittiert generisch mit result.toast || Fallback). Die Gate-Toasts kommen aus dem Textkatalog
 --   (core.toast.*) in der Sprache des Tippenden; jeder Handler liefert seinen Toast genauso (Muster
 --   agent.fn_set_person_language).

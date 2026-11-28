@@ -8,7 +8,8 @@
 --   Tagesstaende (networth_snapshots) der Sentinel-Objekte gehen mit, ebenso Kurs-Fixtures (fx_rates mit source = Marker).
 --   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
 --   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE).
---   Eingabe: p_runid (optional); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Ausnahme: finance.setup_session mit chat_id 'test_%' wird immer geloescht (unabhaengig von p_runid, ohne Zaehler).
+--   Eingabe: p_runid (optional, nur [a-z0-9], sonst RAISE); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
 --   Rueckgabe: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
 --     real_estate, pension, networth_snapshots, recurring_payments, interest_rates, balances, import_staging, fx_rates}
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql

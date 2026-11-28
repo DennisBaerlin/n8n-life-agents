@@ -2,7 +2,7 @@
 -- core.fn_handle_llm_cb (ATOMIC WRITE) — Knoepfe der KI-Pause (Callback-Registry-Prefix 'llm', member_permeable)
 --   data = llm:<aktion>:<incident_id>; der Dispatcher core.fn_dispatch_callback laesst nur aufgeloeste Absender durch, die fn
 --   loest ihn fuer Rolle und Sprache selbst noch einmal auf (agent.fn_resolve_sender).
---   Nur Privatchat. Aktionen:
+--   Eingabe p: {data, chat_id, chat_type}; nur Privatchat (chat_type 'private'). Aktionen:
 --     guide  (Owner): owner_choice raise, Nachschau spaetestens in 10 Min; reply = Anleitung (Limit bzw. Guthaben) mit
 --            [Erledigt – jetzt nachschauen]; edit keep_text (Knoepfe der Karte weg). Schluessel/Stoerung -> Toast.
 --     wait   (Owner, nur spend_limit mit Datum): owner_choice wait, Nachschau resume_at + 1 Min; reply mit [Limit erhoehen].

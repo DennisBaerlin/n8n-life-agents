@@ -12,8 +12,8 @@
 --   am Kauf, transactions.cost_origin). p_with_counter=false = echter Kauf ohne Gegenbuchung (Cash-Abfluss), nur
 --   fn_replace_takeover_with_lots (ueber fn_replace_takeover_apply) fuer Einzelkaeufe nach dem bestaetigten
 --   Kontostand-Tag (der Stand davon enthaelt sie noch nicht).
---   Rueckgabe: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, > 8 Stueck-
---   Stellen / Betrag < 1 Cent via fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet.
+--   Rueckgabe: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, Stueckzahl/Betrag-
+--   Regel fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet.
 --   Backstop der Gegenbuchungs-Form: CHECK finance_transactions_position_takeover_shape.
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text);

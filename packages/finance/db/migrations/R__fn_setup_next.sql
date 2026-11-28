@@ -4,8 +4,10 @@
 --   zurueck auf den Konto-Schritt. Eingabe: chat_id, table:{rows}, historic_price (opt, Schlusskurs fuer den offenen Punkt).
 --   phase: confirm_account | cash_account | reanchor | depot | crypto_depot | positions | open_items | statement | done.
 --   RUECKGABE (einheitlich): {ok, phase, say (Anweisung an den Agenten, Englisch), ask?:{key, type, ...}, card?:{tool, params}, done?,
---   account_id, account_name, file_id, profile, interest_source, notes[], held[]} | {ok:false, code:'no_open_setup', reason}.
---   ask.suggested_amount = Stueck x historic_price (estimated:true), die fn rechnet.
+--   account_id, account_name, file_id, profile, currency, bank, interest_source, notes[]/held[] (nur Broker-Profil),
+--   positions[] (phase positions), open_count (phase open_items)} | {ok:false, code:'no_open_setup', reason} | ok:false
+--   von fn_bank_export_normalize unveraendert.
+--   ask.suggested_amount = Stueck x historic_price (estimated:true, ref_price = historic_price), die fn rechnet.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_next(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

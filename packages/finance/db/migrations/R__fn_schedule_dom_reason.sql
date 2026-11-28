@@ -5,7 +5,8 @@
 --   Eingabe: p_dom int.
 --   Aufrufer: fn_create_{insurance,pension,loan,savings_plan,savings_goal,recurring_transfer,recurring_payment},
 --   fn_set_{loan,insurance,recurring_payment}, fn_interest_terms_reason.
---   plpgsql: alle Aufrufer liegen alphabetisch davor (late-bound); ruft selbst fn_valid_schedule_dom (spaeter, late-bound).
+--   plpgsql: fn_create_* und fn_interest_terms_reason liegen alphabetisch davor, fn_set_* dahinter (late-bound); ruft
+--   selbst fn_valid_schedule_dom (spaeter, late-bound).
 --   Test: tests/db/finance/test_schedule_dom_domain.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_schedule_dom_reason(p_dom int)

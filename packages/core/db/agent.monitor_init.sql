@@ -12,7 +12,9 @@
 --          finance_advisor bindet nur create mit fixem domain='finance').
 --
 -- Lifecycle: armed -> fired (One-Shot-Latch, nur fn_monitor_evaluate) -> Re-Arm/disabled
---            (nur via set-Tool, HITL). recurring_info latcht nie (feuert jede faellige Runde).
+--            (via set-Tool, HITL). recurring_info latcht nie (feuert jede faellige Runde).
+--            Ohne HITL zurueck auf armed: agent.fn_monitor_reset_unsent (Fehlerweg von Send alerts im
+--            Heartbeat-Cron, Ausloesung ohne zugestellte Nachricht).
 --
 -- Invarianten (DB-Gesetz, nicht Prompt):
 --   * Typ x Feld-Konsistenz als CHECK (date braucht due_date, threshold braucht comparator+

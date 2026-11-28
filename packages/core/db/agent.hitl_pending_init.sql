@@ -16,7 +16,7 @@
 --   (die Executions-API filtert `waiting` ohne Chat-Bezug). Effizienz-Lock, kein Schreibschutz:
 --   expires_at ist die Wahrheit (TTL-Lease, kein Fencing noetig), jeder Fehler ist fail-open.
 --
--- DB-Gesetze: PK (chat_id, execution_id) -> mehrere offene Karten je Chat erlaubt (live lagen 3);
+-- DB-Gesetze: PK (chat_id, execution_id) -> mehrere offene Karten je Chat erlaubt;
 --   own_card = die Karte liegt im Ursprungs-Chat selbst (false = Freigabe durch jemand anderen, z. B.
 --   Owner-Stufe im Vier-Augen-Pfad -> anderer Hinweistext). CHECK expires_at > opened_at.
 --   Ephemer: nicht im Backup, kein Reset-Eintrag noetig (TTL raeumt).

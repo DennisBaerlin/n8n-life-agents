@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_onboarding_progress_event (WRITE)
 --   Die Einmal-Ereignisse nach einem Onboarding-Schritt. Aufgerufen von jedem tool_set_onboarding_section (geteilter
---   Build-Schwanz New-OnboardingProgressTail) direkt nach core.fn_set_onboarding_section. Entscheidet deterministisch,
+--   Build-Schwanz New-OnboardingProgressCallNode) direkt nach core.fn_set_onboarding_section. Entscheidet deterministisch,
 --   welche Karten der Schritt ausloest:
 --     * send_all_done    — der Schritt hat den letzten fuer die Person offenen Bereich geschlossen ("alles
 --                          eingerichtet"); genau einmal je Person (Latch source 'onboarding', key 'all_done:<pid>'),
@@ -18,11 +18,14 @@
 --   "Fuer die Person relevant" = genau die Sicht von core.fn_onboarding_overview(chat_id): Owner = alle Sektionen,
 --   Mitglied = nur per_user-Sektionen (Haushalts-Bereiche richtet der Owner ein). Ohne relevante Sektion nie all_done.
 --   RUECKGABE: {ok:true, all_complete, household_ready, send_all_done, send_learn_offer, member_chats[], members_have_areas}
---     Unaufgeloester Sender -> {ok:true, ... alles false/leer} (fail-closed: keine Karte an Unbekannte). Nie RAISE.
+--     Unaufgeloester Sender -> {ok:true, all_complete/send_*:false, member_chats:[], household_ready und
+--     members_have_areas wie berechnet} (fail-closed: keine Karte an Unbekannte). Nie RAISE, ausser area_completed_now
+--     ist kein boolean-Text (Cast).
 --
 --   D10 / Auth: SECURITY DEFINER, gerufen nur von core.sub_onboarding_progress unter der Core-Cred (kein Paket-Grant:
 --   die Paket-Tools rufen den Core-Dienst, nicht die fn). Liest agent.* (Personen, Haushalt), core.notification_state
---   (ueber die Latch-fns) und ueber fn_onboarding_overview alle <pkg>.onboarding_state. search_path gepinnt, Body
+--   (ueber die Latch-fns, fuer den all_done-Re-Arm auch direkt) und ueber fn_onboarding_overview alle
+--   <pkg>.onboarding_state. search_path gepinnt, Body
 --   schema-qualifiziert, kein Caller-Input in dynamischem SQL; person_id nur aus agent.fn_resolve_sender (nie LLM).
 --   Tests: tests/db/core/test_fn_onboarding_progress_event.sql
 -- ============================================================

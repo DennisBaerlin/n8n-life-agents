@@ -4,7 +4,7 @@
 --   sofort verfuegbar, einlagengesichert) und kein Kinderkonto (Haushalts-Notreserve, Eltern-Blick wie
 --   fn_liquidity_snapshot). Der Buchhalter-Prompt ist nur Komfort, das Gesetz steht hier und in jeder Write-fn, die es fragt.
 --   Eingabe: p_account_id. Rueckgabe: boolean (unbekanntes Konto -> false).
---   Konsumenten: fn_emergency_reserve_covered (Deckung), fn_emergency_reserve_status (candidates),
+--   Konsumenten: fn_emergency_reserve_covered (Deckung), fn_emergency_reserve_candidates,
 --   fn_create_savings_goal / fn_set_savings_goal / fn_book_savings_reservation (Ablehnung als {ok:false}).
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================

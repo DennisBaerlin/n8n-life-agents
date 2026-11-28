@@ -4,7 +4,8 @@
 --   Zuordnung eines Ziels wechselt das Konto. Zwei Journal-Zeilen
 --   kind='manual' ueber fn_book_savings_reservation (die eine Regel fuer Kontoarten, Ruecklagen-Arten und den
 --   Freier-Saldo-Guard): erst das Ziel-Konto erhoehen (geguardet, darf {ok:false} liefern, noch kein Write), dann die
---   Quelle senken (Senken ist immer erlaubt). Netto-EUR 0 -> Fortschritt und Spartempo unveraendert.
+--   Quelle senken (Senken ist immer erlaubt; scheitert es doch -> RAISE, Rollback). Netto-EUR 0 -> Fortschritt und
+--   Spartempo unveraendert.
 --   Ziel-Konto Depot: Zuordnung in EUR, Deckung = Marktwert (kein harter Block, shortfall im Post-State, wie die
 --   Reservierung); ohne Kurs -> no_price. Ziel kurz vor dem Termin: kein Verbot, sondern die Warnkarte aus
 --   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown; nach dem Tipp der Stempel
@@ -14,6 +15,7 @@
 --   Rueckgaengig = reassign zurueck (das Journal ist append-only, kein Void).
 --   Eingabe jsonb: savings_goal_id, from_account_id|from_account_name (opt: leer = das eine Konto mit Geld des Ziels;
 --   bei mehreren missing_from + candidates), to_account_id|to_account_name, amount (opt). to_amount gilt hier nicht.
+--   depot_risk_shown (opt, Probelauf-Stempel der Warnkarte; nur Ziel-Konto Depot).
 --   Rueckgabe ok:true: {ok:true, savings_goal_id, direction:'reassign', amount (umgezogen, Quell-Waehrung; abgeleitet
 --     bei leerem amount), from_share, to_share (neue Anteile, Kontowaehrung bzw. EUR beim Depot), current_amount,
 --     from_free_balance | (Depot-Quelle) -, to_free_balance (saldo-basiert) | market_value + shortfall (Depot),

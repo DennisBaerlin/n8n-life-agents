@@ -15,9 +15,8 @@ RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at := NOW(); RETURN NEW
 
 -- ============================================================
 -- ONBOARDING-FORTSCHRITT — paket-besessene Daten
---   Homogenes Spalten-Muster zur Core-Referenzform agent.guide_onboarding_state: je Sektion ein Tri-State
---   ('unknown'/'completed'/'skipped' als text+CHECK, kein geteilter Cross-Schema-ENUM).
---   `completed` und `skipped` zaehlen als bewusst aufgeloest.
+--   Spalten-Muster wie die Core-Referenzform agent.guide_onboarding_state (Tri-State-Regel: packages/core/CLAUDE.md
+--   *Onboarding-Zustand*).
 --   * person_id: wholly-per-person. Jedes Familienmitglied pflegt sein eigenes Career-Onboarding (niemand
 --     sieht das eines anderen), darum person_id NOT NULL + composite-PK (section_key, person_id). Anders als die
 --     Haushalts-onboarding_state von finance/guide (PK nur section_key). Der FK -> agent.persons
@@ -25,8 +24,8 @@ RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at := NOW(); RETURN NEW
 --   Die Sektionen kommen aus packages/career/onboarding/sections.json (Host-Seeder _seed_onboarding_sections
 --   seedet je Owner-Zeile; Nicht-Owner-Zeilen materialisiert core.fn_ensure_onboarding_person lazy beim ersten
 --   Zugriff der Person). Gelesen/geschrieben ueber die geteilten Core-Onboarding-fns
---   core.fn_onboarding_status / fn_onboarding_overview / fn_set_onboarding_section (Scope per_user aus
---   core.context_scopes, Person aus chat_id via fn_resolve_sender, nie LLM, fail-closed). Reset:
+--   core.fn_onboarding_status / fn_onboarding_overview / fn_set_onboarding_section (Person-Scoping: packages/core/
+--   CLAUDE.md *Onboarding-Zustand*). Reset:
 --   packages/core/db/util/util_reset_onboarding_state.sql.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS career.onboarding_state (
@@ -38,8 +37,8 @@ CREATE TABLE IF NOT EXISTS career.onboarding_state (
     person_id   text NOT NULL,   -- wholly-per-person (wie job_matches); FK -> agent.persons in V004 (guarded, Cross-Schema)
     PRIMARY KEY (section_key, person_id)
 );
--- Nachfassen: Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
--- (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
+-- Nachfassen: Zeitpunkt der letzten Status-Aenderung, gesetzt von core.fn_set_onboarding_section und
+-- core.fn_reset_onboarding_state (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
 ALTER TABLE career.onboarding_state ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
 -- Fuer welche Rollen der Abschnitt gilt (NULL = alle). Einzige Werte-Quelle: sections.json "for_roles" -> Host-Seeder
 -- _seed_onboarding_sections; gelesen von core.fn_onboarding_overview. Bestand: career:V008 (gleiche Spalte, gleicher CHECK).

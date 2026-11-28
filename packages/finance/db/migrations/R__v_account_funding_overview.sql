@@ -9,7 +9,7 @@
 --   drawdown_* = gewollter Abbau durch endende Uebertraege (Umschichtung mit Enddatum, fasst kein Ziel-Geld an: letzter
 --   Termin, Betrag je Monat, Ziel-Konto); inflow_ends = letzter Termin eines endenden Zubringers, danach reicht es nicht.
 --   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
---   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles); die fns sind INVOKER.
+--   Die fns sind INVOKER.
 --   Kosten: je Konto eine Projektion (~0,1 s) — fn_account_funding als Funktions-Scan im FROM; eine Unterabfrage ohne FROM
 --   zoege der Planer hoch (STABLE) und riefe die Projektion je referenzierter Spalte neu. Nur auf Nachfrage gelesen.
 -- ============================================================

@@ -3,7 +3,7 @@
 --   Eingabe: chat_id, table:{rows}. Je verbliebenem Kauf eine datierte Zeile mit cost_origin (Tranchen in fn_import_bundle), je
 --   Ertrags-Tag eine reward-Zeile (Stueck ohne Kosten), Depot des Verrechnungskontos nach Art (Aktie/ETF oder Krypto). Ein
 --   unbestaetigter Stapel desselben Laufs wird ersetzt.
---   Karte und Write sind danach tool_commit_import.
+--   Haengt den neuen Stapel an die Setup-Session (setup_session.batch_id). Karte und Write sind danach tool_commit_import.
 --   Rueckgabe: {ok:true, batch_id, staged, invalid, errors, positions (Anzahl)} | {ok:false, reason} (Setup ohne Phase
 --   'positions' oder Fehler aus fn_import_stage).
 -- ============================================================

@@ -16,8 +16,7 @@
 --
 --   Eingabe: p_name (Name der Context-Zeile).
 --   Rueckgabe: Header-Text (mehrzeilig) oder NULL, wenn die Zeile keinen facts-Sidecar und keine Luecken traegt
---   (dann rendert die Engine nur die Prosa). Anwenden via:
---     db_apply.ps1 -File packages\finance\db\migrations\R__fn_render_plan_facts.sql
+--   (dann rendert die Engine nur die Prosa).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_render_plan_facts(p_name text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

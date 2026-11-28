@@ -36,7 +36,6 @@
 --   true, wenn ein aktives Cash-Konto mit Guthaben in einer Fremdwaehrung ohne FX-Kurs liegt (balance_eur IS NULL ->
 --   still 0) oder ein laufender Dauerauftrag bzw. eine Alltags-Schaetzung ohne Kurs in der Pflicht-Basis fehlt.
 --   career.fn_runway reicht das Flag durch, der Renderer warnt.
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_liquidity_snapshot.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_liquidity_snapshot()
 RETURNS jsonb LANGUAGE sql STABLE AS $$

@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_advisor_review_read (vollstaendige Lage ohne Merker)
---   Registry-Dispatch wie core.fn_advisor_review_evaluate, schreibt aber nie: Quartals-Rueckblick und die spaetere
---   Antwort auf "Was jetzt?" duerfen die Melde-Logik des Waechters nicht beruehren.
+--   Registry-Dispatch wie core.fn_advisor_review_evaluate, schreibt aber nie: Quartals-Rueckblick und der Knopf
+--   plan:drift (core.fn_handle_plan_cb) duerfen die Melde-Logik des Waechters nicht beruehren.
 --   Eingaben: p_domain, p_person_id (optional), p_observations (optional).
 --   Rueckgabe: {ok:true, alerts, digest} | {ok:false, error:'unknown_advisor_domain'|'review_fn_missing', alerts:[]}.
 --   SECURITY INVOKER (Haupt-RW bzw. Host-Cred), review_fn kommt aus der Registry, nie vom Modell.

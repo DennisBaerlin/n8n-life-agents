@@ -12,7 +12,8 @@
 --   fruehere Lage ergibt neue Keys, die Ruhe endet also nicht nur beim Schrittwechsel.
 --   Grenzen aus core.config (core/next_step/offer_per_day, offer_max_repeats); unlesbar/negativ -> Default 1 bzw. 3; 0 = aus
 --   (leeres Array = keine Grenze).
---   RUECKGABE jsonb: { day:[key…], repeat:[key…] }. STABLE, INVOKER (nur Aufrufer sind die beiden DEFINER-fns).
+--   RUECKGABE jsonb: { day:[key…], repeat:[key…] }. STABLE, INVOKER (Aufrufer: core.fn_get_next_step,
+--   core.fn_claim_next_step_offer, core.fn_check_next_step_tap, core.fn_advisor_resume_due).
 --   Tests: tests/db/core/test_fn_claim_next_step_offer.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_next_step_offer_keys(p_person_id text, p_callback text, p_state text, p_generation bigint)

@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_split_recurring_payment (INTERNAL HELPER — not tool-facing)
 --   Der eine history-erhaltende Validity-Split einer recurring_payment. Gerufen von
---   fn_set_recurring_payment und fn_set_savings_plan.
+--   fn_set_recurring_payment, fn_set_savings_plan, fn_change_owned_recurring und fn_apply_bank_statement (Plan-Anpassung).
 --   Alte Zeile endet zum Stichtag (valid_to = p_eff_from, exklusiv); neue Zeile gilt ab p_eff_from und erbt
 --   von der alten: account_id, target_account_id (Transfer bleibt Transfer), status (pausiert bleibt
 --   pausiert), das bisherige Ende (wenn kein neues), den Rhythmus-Anker first_payment_date (bei gleicher
@@ -17,7 +17,8 @@
 --   Korrigierbar (kein Write) -> {ok:false, reason, ...}: Stichtag nicht nach valid_from (current_valid_from); alte Zeile
 --   vor dem Stichtag schon beendet (last_valid_day); Stichtag nicht nach der letzten gebuchten/uebersprungenen Rate
 --   (last_booked; sonst gaelten Vorkommen doppelt; "gebucht" keyt auf die Faelligkeit recurring_due_date, nicht aufs
---   Buchungsdatum); neues Ende nicht nach dem Stichtag. RAISE nur bei unbekannter p_rp_id.
+--   Buchungsdatum); neues Ende nicht nach dem Stichtag; neuer Buchungstag laege vor dem Start der Zeile (code
+--   day_before_start, current_valid_from). RAISE nur bei unbekannter p_rp_id.
 --   executed_by (Nutzerangabe: Dauerauftrag bei der Bank oder selbst ueberwiesen, NULL = nicht angegeben) erbt die neue Zeile.
 --   Feste Monatstage p_days (optional, letzter Parameter): NULL = von der alten Zeile erben, solange die Einheit
 --   'month' bleibt und kein neuer Einzeltag p_dom kommt; '{}' = leeren; sonst die neuen Tage (der Einzeltag wird

@@ -2,8 +2,8 @@
 -- fn_set_router_button_turn (ATOMIC WRITE — Knopf-Lauf im Router-Gedaechtnis nachtragen)
 --   Ein Knopf startet einen Agenten am Router vorbei, das memoryPostgresChat-Gedaechtnis sieht den Lauf also nicht. Stand
 --   dort zuletzt die Frage eines anderen Spezialisten, ging die Antwort an diesen, auch mit Folge-Bindung; eine
---   schaerfere Prompt-Regel half nicht, der Lauf im Verlauf schon. Nach dem Relay schreibt
---   diese fn den Lauf in der Zeilenform eines normalen Router-Turns: Mensch, Tool-Aufruf, Tool-Ergebnis, Signal.
+--   schaerfere Prompt-Regel half nicht, der Lauf im Verlauf schon. Nach dem Relay schreibt diese fn den Lauf in
+--   agent.orchestrator_chat_memory, in der Zeilenform eines normalen Router-Turns: Mensch, Tool-Aufruf, Tool-Ergebnis, Signal.
 --   Tabelle fehlt (frische DB, n8n legt sie beim ersten Gebrauch an) / kein Privatchat / Agent ungueltig / Antwort leer =
 --   no-op. Nie RAISE (der Relay ist schon gelaufen).
 --   p: { chat_id, agent ('agent.<name>', build-fix aus dem Arm, nie LLM), output (die weitergereichte Antwort) }

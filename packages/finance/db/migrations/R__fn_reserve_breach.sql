@@ -15,7 +15,6 @@
 --     Deckungs-Read laeuft direkt ueber depot_reserve_status in fn_advisor_review (Deckungs-Dialog).
 --   LANGUAGE sql STABLE, SECURITY INVOKER (Default): laeuft unter finance_rw, das die View ueber den schema-
 --     weiten GRANT liest. Kein DEFINER -> kein search_path-Pin/REVOKE-Gate (Catalog matcht nur DEFINER).
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_reserve_breach.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reserve_breach(p_account_id int)
 RETURNS jsonb LANGUAGE sql STABLE AS $$

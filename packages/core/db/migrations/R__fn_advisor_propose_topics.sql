@@ -7,7 +7,7 @@
 --   offene Punkte, Schriftzeichen, Aufgaben, Rechte) und wird danach vollstaendig zurueckgerollt (auch ein neu angelegter
 --   Entwurf). Die erste Ablehnung kommt unveraendert mit topic_index (1-basiert) zurueck, es entsteht keine Zeile.
 --   Eingabe p: {domain, chat_id (Identitaet, nie LLM), section_key, topics (Array oder JSON-String, 1..8 Objekte je {topic,
---     content, why?, open_points?, resolves?, replaces_topic?, handoff_tasks?, section_data?} — die Felder von
+--     content|section_content, why?, open_points?, resolves?, replaces_topic?, handoff_tasks?, section_data?} — die Felder von
 --     fn_advisor_save_section), one_card (bool: alle Themen in einer Karte, z. B. Bestandsplan "Stimmt so"), more_in_part (bool:
 --     im selben Teil folgen weitere Themen; der Auftrag nach dem letzten Tipp lautet dann "weitere Themen dieses Teils")}.
 --   Karten: ohne one_card je Thema eine Zeile (ein Stapel, ord), sonst eine; Spezifikation Kopf core.prompt.topic_head {k, m,

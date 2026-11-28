@@ -11,6 +11,7 @@
 --   depot_execution_days (opt -- rohe Nutzer-Antwort nach needs_calendar: Monatstage oder 'none'),
 --   asset_class (opt -- Allokations-Block-key, lowercase snake; an jede Ausfuehrung vererbt;
 --     Format-Verstoss -> {ok:false}).
+--   chat_id (opt, Absender; core.fn_mark_told im savings_squeeze-Hinweis).
 --   Rhythmus: der genannte Rhythmus (z. B. week/1) wird ueber den Depot-Kalender abgeleitet
 --     (fn_resolve_plan_schedule: Broker mit festen Monatstagen -> month + schedule_days_of_month); ein neu
 --     gelernter/vorbelegter Kalender wird im selben Write am Depot gespeichert (accounts.plan_execution_days).
@@ -18,13 +19,17 @@
 --   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons), monthly_amount (Betrag je Monat,
 --   positiv, aus der GENERATED-Spalte), schedule_unit/schedule_interval/schedule_day_of_month (gespeichert),
 --   schedule_days ("2, 9, 16, 23" oder null), calendar_learned (nur wenn der Depot-Kalender neu gesetzt wurde),
---   effective {beneficiary_person_id}} + optional savings_squeeze (fn_savings_squeeze_fold; erster Abbuchungstag
+--   effective {beneficiary_person_id, first_payment_date, aufgeloeste Datumsfelder}} + optional savings_squeeze
+--   (fn_savings_squeeze_fold, gelatcht ueber core.fn_should_notify; erster Abbuchungstag
 --   ausserhalb fn_recurring_starts_within_cycle -> erst der Cron) + optional savings_funding (fn_savings_funding_fold: Deckung des Abbuchungskontos
 --   nach dem Write, Frage nach der Geldquelle bei einer Luecke); card_lines um die Zeile „Danach ..." ergaenzt.
---   card_lines: aehnlicher Sparplan, Bank-Hinweis (fn_bank_setup_note 'bank_setup': beim Broker selbst einrichten).
---   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0, asset_class-Format, Rhythmus passt nicht
---   zum Depot-Kalender (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} OHNE Write
---   (kein RAISE -> kein Owner-Alert).
+--   card_lines: aehnlicher Sparplan, Bank-Hinweis (fn_bank_note_recorded 'bank_setup': beim Broker selbst einrichten;
+--   schreibt dazu einen offenen Punkt in finance.bank_todos). Die Geldquellen-Frage ist gelatcht
+--   (core.fn_should_notify 'savings_funding:<konto>:<reicht-bis>').
+--   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Depot ohne Verrechnungskonto, weder Symbol noch ISIN, Duplikat,
+--   amount<=0, asset_class-Format, Buchungstag (fn_schedule_dom_reason), Rhythmus passt nicht zum Depot-Kalender
+--   (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} ohne Write (kein RAISE -> kein
+--   Owner-Alert); unaufloesbares Datum -> {ok:false, code:'invalid_date'}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
@@ -63,7 +68,6 @@ BEGIN
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_first := (p->>'first_payment_date')::date;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

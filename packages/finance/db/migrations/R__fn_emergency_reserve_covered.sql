@@ -9,6 +9,7 @@
 --   als verfuegbar). Keine Eingabe.
 --   Rueckgabe: (account_id, account_name, share_eur, covered_eur, fx_gap) je Konto mit Notreserve-Anteil > 0 oder mit einem
 --   Notreserve-Anteil ohne Wechselkurs (fx_gap; sonst fiele das Konto still heraus und der Status meldete warn statt neutral)
+--   fx_gap ist auch wahr, wenn der Saldo des Kontos keinen EUR-Wert hat (account_overview.balance_eur NULL, Saldo <> 0).
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_emergency_reserve_covered()

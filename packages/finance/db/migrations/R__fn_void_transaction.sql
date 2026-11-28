@@ -2,6 +2,7 @@
 -- fn_void_transaction (ATOMIC WRITE) -- Hard-DELETE einer Fehlbuchung
 --   Loescht eine Transaktion; die Trigger rechnen Saldo, holding.shares, holding.average_purchase_price
 --   und die Kredit-Restschuld (= Saldo des Kreditkontos) danach korrekt aus den verbleibenden Zeilen neu.
+--   Schreibt je geloeschter Zeile den Voll-Payload nach finance.transaction_audit (gleiche Transaktion).
 --   Identifikation per transaction_id (Agent liest die letzte(n) Buchung(en) via postgres_select).
 --
 --   Kontext-Schutz (damit kein Entitaets-Status kaputtgeht):
@@ -26,6 +27,7 @@
 --   RUECKGABE: {ok:true, deleted_count, transaction_ids, reverted_loans, reverted_real_estate,
 --   accounts:[{account_id, name, balance, change}], holdings:[{holding_id, symbol, shares, avg_purchase_price}], card_lines}
 --   (Name/Symbol als Handle fuer die Antwort: der Agent nennt nie interne ids).
+--   avg_purchase_price = depot_holdings.average_purchase_price.
 --   Post-State (ohne Zahl erfaende das Modell nach dem Void einer Bestandsuebernahme eine
 --   "Gutschrift"): je beruehrtem Konto der neue Saldo und change = Saldo nachher - vorher (DB-Delta; Kauf + Gegen-
 --   buchung einer Uebernahme -> 0), je beruehrter Position Stueck/Einstand nach dem Trigger. card_lines = dieselbe
@@ -57,11 +59,7 @@ BEGIN
         RAISE EXCEPTION 'Transaction % not found.', v_id;
     END IF;
 
-    -- 1. Logische Gruppe bestimmen (so tief wie moeglich -> strukturell, nicht heuristisch):
-    --    (a) group_id = der neue Standard: transfer- + loan-Beine teilen eine group_id (von der
-    --        jeweiligen Write-fn gestempelt) -> die ganze Gruppe atomar entfernen,
-    --    (b) Fallback fuer Altbestand ohne group_id: Kredit-Event ueber (loan_id, transaction_date),
-    --    (c) sonst nur diese eine Tx.
+    -- 1. Logische Gruppe bestimmen (group_id, Fallback fuer Altbestand: s. Kopf Punkt 1).
     IF v_tx.group_id IS NOT NULL THEN
         SELECT array_agg(id) INTO v_ids
         FROM finance.transactions WHERE group_id = v_tx.group_id;

@@ -6,7 +6,7 @@
 --   Gegenpart (ohne Gross-/Kleinschreibung, nicht leer), hoechstens 14 Tage auseinander -> beide Zeilen raus, jede Zeile
 --   hoechstens in einem Paar (fruehestes Gegenstueck zuerst). Nur fuer die Erkennung; der Monats-Check sieht alle Zeilen.
 --   Eingabe: jsonb-Array der Zeilen (date, amount, counterparty, counterparty_iban, mandate_ref, purpose, ...).
---   RUECKGABE: jsonb-Array (Reihenfolge nach Datum).
+--   RUECKGABE: jsonb-Array (Reihenfolge nach Datum); Zeilen ohne date oder amount entfallen still, ein Nicht-Array ergibt [].
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_statement_lines_merge(p_lines jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$

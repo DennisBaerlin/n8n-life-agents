@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS estate.storage_places (
     name            text NOT NULL,
     kind            text NOT NULL CHECK (kind IN ('safe', 'bank_deposit_box', 'folder', 'digital', 'other')),
     location        text,            -- wo (Raum/Filiale/Pfad)
-    access_hint     text,            -- Zugangs-Hinweis OHNE Codes/PINs (nur Verweis)
+    access_hint     text,            -- Zugangs-Hinweis ohne Codes/PINs (nur Verweis)
     notes           text,
     created_at      timestamptz NOT NULL DEFAULT now(),
     updated_at      timestamptz NOT NULL DEFAULT now()
@@ -265,11 +265,11 @@ CREATE TRIGGER trg_funeral_preferences_touch BEFORE UPDATE ON estate.funeral_pre
 
 -- ============================================================
 -- SPECIAL_ASSETS — Sonderfall-Stubs (erkennen + ehrlich verweisen).
---   Geschlossene asset_type-Liste: jeder Typ mappt auf eine Checklisten-Condition des
---   Ereignisfalls (task_templates.condition_key) + einen Verweis-Baustein (Notar/Anwalt/StB,
+--   Geschlossene asset_type-Liste: jeder Typ mappt ueber task_templates.fan_out auf eine Aufgabe je Stub des
+--   Ereignisfalls (incapacity: nur business_interest) + einen Verweis-Baustein (Notar/Anwalt/StB,
 --   RDG-Disclaimer): vehicle (Umschreibung/Versicherung), business_interest (GmbH-Anteile ->
 --   Gesellschaftsvertrag vor Erbrecht), firearm (§ 20 WaffG: 1 Monat!), pet (Versorgung).
---   Bewusst kein 'other' — ein offener Typ haette keine Condition und wuerde still nichts ausloesen.
+--   Bewusst kein 'other' — ein offener Typ haette keine fan_out-Vorlage und wuerde still nichts ausloesen.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.special_assets (
     id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -299,8 +299,8 @@ CREATE TABLE IF NOT EXISTS estate.onboarding_state (
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
--- Nachfassen: Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
--- (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
+-- Nachfassen: Zeitpunkt der letzten Status-Aenderung, gesetzt von core.fn_set_onboarding_section und
+-- core.fn_reset_onboarding_state (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
 ALTER TABLE estate.onboarding_state ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
 
 DROP TRIGGER IF EXISTS trg_onboarding_state_touch ON estate.onboarding_state;
@@ -328,15 +328,17 @@ CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON estate.onboarding_sta
 --       faellig). unit business_day = § 28 PStG (Sa/So/Feiertage zaehlen nicht); day/week/month
 --       kalendarisch (§§ 187/188 BGB). Paarungs-CHECK: beide gesetzt oder beide NULL.
 --     * condition_key: NULL = gilt immer; sonst ein Praedikat, das fn_case_template_rows auswertet
---       (derived: adult_subject/finance_absent/minor_children; sonst ein case.flags-Schluessel, den
---       der Agent im Intake erfragt: tenant/employed/pension_relevant/has_will/no_poa/abroad_or_work_accident).
+--       (derived: adult_subject/finance_absent/minor_children; sonst ein Intake-Merkmal tenant/employed/
+--       pension_relevant/has_will/no_poa/abroad_or_work_accident: wirksam = estate.fn_case_register_flags (aus dem
+--       Register) || cases.flags (ausdrueckliche Fall-Angabe schlaegt das Register)).
 --       Condition FALSE -> die Task wird als 'not_applicable' sichtbar instanziiert (nicht still
 --       weggelassen — der Nutzer sieht, dass sie geprueft wurde).
 --     * fan_out: NULL = eine Task; sonst ein special_assets.asset_type — je passendem Sonderfall-Stub
 --       (Fahrzeug/Waffe/Firma/Haustier des Subjekts oder Haushalts) eine eigene Task (subject_ref='asset:<id>').
 --     * hardness: critical (zeitkritisch/rechtlich hart) / recommended / optional — Sortier-/Render-Prio.
 --     * retired: Soft-Delete (Muster active_*) — ein ueberholtes Template wird nie geloescht (bestehende
---       case_tasks referenzieren es per FK), nur retired=true -> es instanziiert nicht mehr.
+--       case_tasks referenzieren es per FK); retired=true -> es instanziiert nicht mehr. Der Seed-INSERT unten fuehrt
+--       retired nicht in der Spaltenliste, sein ON CONFLICT setzt retired daher bei jedem Apply auf false zurueck.
 --   Titel und Erklaerung je Vorlage stehen nur im Textkatalog (estate.task.<template_key>.title|.detail, ohne
 --   .detail-Key keine Erklaerung); fn_case_template_rows rendert sie in der Haushalts-Sprache.
 --   Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types):
@@ -423,14 +425,15 @@ ON CONFLICT (template_key) DO UPDATE SET
 --   * bundesland = 16-Laender-Slug (Feiertage der Werktags-Berechnung). Fail-closed erzwingt die fn
 --     (weder Config estate.bundesland noch Parameter -> {ok:false}); die geschlossene Liste ist der
 --     DB-Backstop (unbekannter Slug -> CHECK-RAISE; die fn faengt ihn vorher freundlich ab).
---   * flags jsonb = Intake-Antworten des Agenten (tenant/employed/pension_relevant/has_will/no_poa/
---     abroad_or_work_accident ...), die condition_key-Praedikate auswerten. {} = keine gesetzt.
+--   * flags jsonb = ausdrueckliche Nutzer-Angaben zu den Intake-Merkmalen (tenant/employed/pension_relevant/has_will/
+--     no_poa/abroad_or_work_accident ...); sie schlagen die Register-Ableitung estate.fn_case_register_flags, beide
+--     zusammen speisen die condition_key-Praedikate. {} = keine gesetzt.
 --   * status open|completed|cancelled|superseded, closed_at materialisiert (Auto-Complete-Trigger auf
 --     case_tasks kippt open->completed, wenn die letzte Task done/n.a. ist; cancel/supersede setzen es
 --     ebenfalls). CHECK: open <=> closed_at IS NULL.
 --   * partial UNIQUE(subject_person_id) WHERE status='open' = hoechstens ein offener Fall je Person
 --     (Multi-Row-Invariante strukturell, kein Gate-Trigger). fn_create_case(death) supersedet einen
---     offenen incapacity-Fall derselben Person in EINER Tx, bevor es einfuegt (sonst blockte der Index).
+--     offenen incapacity-Fall derselben Person in einer Tx, bevor es einfuegt (sonst blockte der Index).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.cases (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -504,7 +507,8 @@ CREATE TRIGGER trg_case_tasks_touch BEFORE UPDATE ON estate.case_tasks
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- AUTO-COMPLETE-STATUS-MASCHINE (DB-Gesetz, Trigger — kein Tool pflegt cases.status selbst).
+-- AUTO-COMPLETE-STATUS-MASCHINE (DB-Gesetz, Trigger — kein Tool setzt open/completed selbst; cancelled/superseded
+--   setzen fn_cancel_case und fn_create_case).
 --   Sobald die letzte offene Task eines Falls done/not_applicable wird, kippt der Fall auf
 --   'completed' (closed_at=now()). Umgekehrt: wird eine Task eines faelschlich completed Falls wieder
 --   'open', kippt der Fall zurueck auf 'open' (defensiv — der Tool-Pfad editiert nur Tasks offener
@@ -539,7 +543,7 @@ CREATE TRIGGER trg_case_tasks_autocomplete AFTER UPDATE OF status ON estate.case
 -- ============================================================
 -- =============  SYSTEM-STECKBRIEF  ==============
 -- SYSTEM_PROFILE — genau eine Haushalts-Zeile (Singleton): der System-Steckbrief + der Fundort der
---   Offline-Kopie des core.backup_key (docs/package-contract.md §3.6 nennt die Offline-Kopie explizit
+--   Offline-Kopie des core.backup_key (docs/package-contract.md §3.7 nennt die Offline-Kopie explizit
 --   als DR-Pflicht). Geheimnisse nie — ausschliesslich Fundort-Verweise (Grenzregel wie
 --   digital_accounts.seed_backup_location; Tool-Description + Instructions tragen "nur Verweis, nie das
 --   Geheimnis"). Deckt den DR-Fall "beide Partner betroffen / System aus": der Hinterbliebene findet damit

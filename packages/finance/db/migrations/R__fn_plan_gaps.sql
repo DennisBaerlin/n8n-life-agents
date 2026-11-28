@@ -25,7 +25,6 @@
 --   STABLE/INVOKER, keine Paket-Rollen-Grants (Muster fn_render_plan_facts): einziger Aufrufer ist
 --   finance.fn_render_plan_facts innerhalb von core.fn_fetch_context (SECURITY DEFINER) -> liest agent.advisor_plans
 --   mit dessen Rechten.
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_plan_gaps.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_plan_gaps(p_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

@@ -25,7 +25,8 @@
 --   Karten-Hinweise (card_lines): aehnliches Ziel, "gedeckt, Rate 0", Sparplan-Betrag vs. noetige Rate, und bei
 --   Depot-Topf/Sparplan die Regel fn_goal_depot_risk_fold (Ziel kurz vor dem Termin: Warnkarte mit Knopf "Risiko
 --   eingehen" + Stempel nach dem Tipp, card_approve_key, effective.depot_risk_shown, depot_risk; sonst weicher Hinweis).
---   Eine neue Rate in den Topf (nicht fortgefuehrt) bekommt den Bank-Hinweis (fn_bank_setup_note 'bank_setup').
+--   Eine neue Rate in den Topf (nicht fortgefuehrt) bekommt den Bank-Hinweis 'bank_setup' und einen offenen Punkt in
+--   finance.bank_todos (fn_bank_note_recorded); beim Import (_import=true) nur den Hinweis (fn_bank_setup_note).
 --   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt), already_saved (opt),
 --   savings_plan (opt), replace_transfer (opt, true|false), account_id (Abbuchungskonto, in n8n aufgeloest; nur fuer
 --   eine Rate), reserve_account_id
@@ -33,6 +34,7 @@
 --   Startbestand/Sparplan), schedule_day_of_month, first_payment_date (opt, leer = naechster Termin ab heute laut
 --   fn_savings_rate_schedule), priority (opt, kleiner = wichtiger), notes,
 --   beneficiary_person_id (opt, Slug; leer = Inhaber des Spartopfs, fn_default_beneficiary; Topf ohne Inhaber -> NULL).
+--   _import (opt bool, Import-Pfad), chat_id (opt, Absender; core.fn_mark_told im savings_squeeze-Hinweis).
 --   Instandhaltungsruecklage: real_estate_name (opt) gesetzt -> dauerhafte Ruecklage der Immobilie
 --   (fn_resolve_real_estate, nur aktive; not_found/ambiguous -> {ok:false, code, candidates}): ohne target_amount und
 --   target_date (genannt -> {ok:false}), ohne Sparplan, Topf saldo-basiert (kein Depot), hoechstens eine aktive je
@@ -55,8 +57,11 @@
 --   Startbestand, EUR), savings_plan_id (erster verknuepfter Plan, sonst NULL), savings_plan_ids (alle),
 --   replaced_transfer_id (fortgefuehrter Dauerauftrag), required_monthly_rate + plan_monthly_amount (Summe; nur mit
 --   Sparplan), card_lines, beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons), effective
---   {beneficiary_person_id, first_payment_date, reserve_currency}}
---   + optional savings_squeeze (fn_savings_squeeze_fold).
+--   {aufgeloeste Datumsfelder, beneficiary_person_id, first_payment_date, first_payment_defaulted, reserve_currency;
+--   fortgefuehrter Dauerauftrag: account_name, schedule_day_of_month; Ruecklage/Notreserve: name, goal_name (= name,
+--   Feldname des Einzel-Tools); Instandhaltung: monthly_savings_rate; + effective aus fn_goal_depot_risk_fold}}
+--   + Notreserve: emergency_reserve (fn_emergency_reserve_status ohne month_options)
+--   + optional savings_squeeze (fn_savings_squeeze_fold, gelatcht ueber core.fn_should_notify).
 --   Korrigierbar (Topf fehlt/ungeeignet, Zielbetrag<=0, Startbestand<0 oder mehr als frei, weder Datum noch Rate,
 --   Datum vor first_payment, Rate ohne Abbuchungskonto, Rate in ein Depot, Sparplan nicht gefunden/mehrdeutig/schon
 --   gebunden) -> {ok:false, reason} ohne Write (kein RAISE -> kein Owner-Alert). Namens-Regel fn_entity_name_report in allen
@@ -120,7 +125,6 @@ BEGIN
     v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date', 'first_payment_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

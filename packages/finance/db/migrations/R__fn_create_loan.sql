@@ -10,9 +10,10 @@
 --     first_payment_date (echtes erstes/naechstes Ratendatum; Pflicht, sobald monthly_annuity gesetzt ist), notes,
 --     disbursement_account_id (im n8n aufgeloest; NULL = keine Auszahlungsbuchung),
 --     debit_account_id (Rate; im n8n aufgeloest), real_estate_id (optional)
---   Eine Quelle (finance:V026): Rate, Rhythmus und Abbuchungstag stehen nur an der Raten-Kette; die Kredit-Zeile
+--   Eine Quelle: Rate, Rhythmus und Abbuchungstag stehen nur an der Raten-Kette; die Kredit-Zeile
 --   traegt keine Kopie. Die "anfaengliche Tilgung" wird nicht erfasst (loan_overview.initial_principal_rate leitet
 --   sie aus Kreditbetrag + erster Rate ab).
+--   Ohne monthly_annuity entsteht der Kredit mit status 'paused' (CHECK aktiv <=> Raten-Kette).
 --   Frisch vs. Eroeffnung zum Stichtag heute ("die Rate ist die Wahrheit"):
 --     * frisch mit Auszahlungsbuchung bzw. mit genanntem Auszahlungsdatum: original_amount Pflicht; die Eroeffnung
 --       (-original_amount) bucht zum disbursement_date; ein Auszahlungskonto braucht Betrag und Datum.
@@ -34,8 +35,9 @@
 --   (DB-gerechnete Aufteilung der 1. Rate aus der Restschuld: fn_loan_monthly_interest, Tilgung = Rate - Zins; ohne
 --   Rate NULL), initial_principal_rate, balance_at_fixed_until, balance_at_term_end (aus loan_overview: rechnerische
 --   anfaengliche Tilgung; voraussichtliche Restschuld zum Zinsbindungs-/Laufzeitende bei gleichem Zins, ohne
---   Sondertilgung), card_lines} | {ok:false, reason}
---   ohne Write: Buchungstag, Zinssatz fehlt/negativ, Restschuld fehlt/<= 0/> original_amount, Betrag <= 0,
+--   Sondertilgung), card_lines, effective {aufgeloeste Datumsfelder + first_payment_date (Anker)}} | {ok:false, reason}
+--   ohne Write (code invalid_date bei unaufloesbarem Datum): Buchungstag, Zinssatz fehlt/negativ/> 4 Nachkommastellen,
+--   Restschuld fehlt/<= 0/> original_amount, Betrag <= 0,
 --   Auszahlungsdatum in der Zukunft, Auszahlungskonto ohne Betrag/Datum oder bei laufendem Kredit, Laufzeitende vor
 --   Auszahlung oder vor dem Zinsbindungsende, Rate <= 0, Rate ohne first_payment_date, Rate unter dem Monatszins der
 --   Restschuld ({interest, payment}; jede Buchung scheiterte sonst an fn_get_loan_payment_split), Konto nicht EUR,
@@ -81,7 +83,6 @@ BEGIN
     v_fixed    := NULLIF(p->>'interest_rate_fixed_until', '')::date;
     v_term_end := NULLIF(p->>'term_end_date', '')::date;
     v_first    := NULLIF(p->>'first_payment_date', '')::date;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -178,7 +179,7 @@ BEGIN
        AND (l.original_amount = v_amount OR (v_amount IS NULL AND abs(rc.amount) = v_annuity))
      ORDER BY l.id LIMIT 1;
 
-    -- 2. Raten-Kette (nur bei vorhandener Rate) vor dem Kredit: CHECK "aktiv <=> Raten-Kette" (finance:V026)
+    -- 2. Raten-Kette (nur bei vorhandener Rate) vor dem Kredit: CHECK "aktiv <=> Raten-Kette"
     IF v_annuity IS NOT NULL THEN
         -- Gueltig ab dem spaeteren Stichtag von Abbuchungs- und Kreditkonto (die eine Regel fn_recurring_valid_from).
         v_from := COALESCE(v_disb, v_today);

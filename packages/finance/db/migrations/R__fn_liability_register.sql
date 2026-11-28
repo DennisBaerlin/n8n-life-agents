@@ -18,7 +18,6 @@
 --   original_amount, current_remaining_debt_eur, currency, status }. current_remaining_debt_eur ist der Betrag der
 --   Schuld (positiv; loan_overview bleibt vorzeichenbehaftet, negativer Saldo). NULL = Restschuld in Fremdwaehrung
 --   ohne Kurs (estate laesst die Zahl weg).
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_liability_register.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_liability_register()
 RETURNS jsonb LANGUAGE sql STABLE AS $$

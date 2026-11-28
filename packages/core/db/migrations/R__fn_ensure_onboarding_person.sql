@@ -27,7 +27,7 @@ AS $$
 DECLARE
     v_rel text;
 BEGIN
-    -- Nur per_user-Pakete (career) materialisieren; core (Host-Sonderfall) + unbekannt/leer -> No-Op.
+    -- per_user prueft der Aufrufer (core.fn_set_onboarding_section); hier core (Host-Sonderfall) + unbekannt/leer -> No-Op.
     IF p_pid IS NULL OR p_package IS NULL OR p_package = 'core' OR p_package !~ '^[a-z][a-z0-9_]*$' THEN
         RETURN;
     END IF;

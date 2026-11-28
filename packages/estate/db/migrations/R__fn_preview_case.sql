@@ -30,7 +30,7 @@
 --       Platzhalter-Ref 'new:<n>'); geschrieben wird hier nichts.
 --   Rueckgabe ok:true: case_type, subject_person_id, event_date, knowledge_date, bundesland, phase_counts, total_open,
 --     intake_facts, unknown_flags, special_assets (die neu anzulegenden Stubs [{asset_type, description}], fuer die
---     Karte und fn_create_case), supersede_case_id. ok:false: reason (+ code bundesland_required / subject_is_sender).
+--     Karte und fn_create_case), supersede_case_id. ok:false: reason (+ code bundesland_required / Flag subject_is_sender).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_preview_case(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

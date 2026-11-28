@@ -2,16 +2,17 @@
 -- fn_depot_cover_state (READ-ONLY Helfer) — deckt der Marktwert eines Depots das Ziel-Geld darin?
 --   Die eine Regel fuer die Depot-Deckung: Mini-App (Ziele, Pille an der Sparziel-Zeile) und Berater-Alert
 --   reserve_coverage_depot (fn_advisor_review) lesen beide hier. Der Ziel-Stand bleibt das Gesparte (Marktwert =
---   Deckung, nie Reserve, finance:V008); eine kleine Kursdelle ist keine Luecke (erst bei heftigen Kursschwankungen gelb).
+--   Deckung, nie Reserve); eine kleine Kursdelle ist keine Luecke (erst bei heftigen Kursschwankungen gelb).
 --   Eingabe: p_account_id (Depot-Konto).
 --   Rueckgabe {state, gap, reserved, market_value}:
 --     unknown = Marktwert nicht ermittelbar: depot_reserve_status.fx_missing, eine Position ohne Marktwert
---               (depot_holdings_overview.market_value_eur NULL) oder ein aktiver Ziel-Anteil ohne Wechselkurs
+--               (depot_holdings_overview.market_value_eur NULL; nur wenn Ziel-Geld im Depot liegt, reserved > 0) oder ein
+--               aktiver Ziel-Anteil ohne Wechselkurs
 --               (savings_goal_account_share.has_fx_gap) -> nie gruen, gap NULL
 --     dip     = Marktwert < Reserve, Fehlbetrag < finance.depot_cover_warn_pct % der Reserve (Kursdelle)
 --     short   = Fehlbetrag ab dieser Schwelle (echte Luecke)
 --     ok      = gedeckt oder keine Reserve (gap 0)
---   gap = depot_reserve_status.shortfall (EUR). Schwelle zur Laufzeit per core.fn_config_get (Default 10).
+--   gap = depot_reserve_status.shortfall (EUR). Schwelle zur Laufzeit per core.fn_config_get (Default: manifest.json).
 --   LANGUAGE plpgsql STABLE, SECURITY INVOKER: nur aus DEFINER-Handlern (fn_app_screen_goals) und fn_advisor_review
 --     gerufen; kein eigener Rollen-Vertrag.
 --   Tests: tests/db/finance/test_fn_depot_cover_state.sql

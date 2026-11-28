@@ -10,8 +10,9 @@
 --   debit_account_id (opt, n8n-
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
 --   (opt bei monatlichem Beitrag, sonst Pflicht), notes.
---   Rueckgabe: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
---   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
+--   Rueckgabe: Erfolg -> {ok:true, pension_id, recurring_payment_id, effective {aufgeloeste Datumsfelder +
+--   first_payment_date bei Beitrag}}; unaufloesbares Datum -> code invalid_date. Korrigierbar (unbekannter
+--   pension_type/Rhythmus, Buchungstag, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
 --   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
 --   -> {ok:false, reason}. Namens-Regel fn_entity_name_report: Dublette derselben Art -> {ok:false, code:'duplicate_name', candidates, existing_names, suggested_name}; ein anderes Haushaltsmitglied hat denselben Eintrag mit Personen-Zusatz -> code name_needs_person + suggested_name.
 --   ok:true traegt zusaetzlich existing_names, similar_names und card_lines (aehnlicher Name -> finance.note.similar_entry).
@@ -59,7 +60,6 @@ BEGIN
             'reason', 'The payment interval (schedule_interval) must be a whole number of at least 1, got "' || (p->>'schedule_interval') || '".');
     END IF;
     v_interval := COALESCE(NULLIF(btrim(p->>'schedule_interval'), ''), '1')::smallint;
-    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

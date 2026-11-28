@@ -4,7 +4,7 @@
 --   (core.fn_handoff_person) und working ist (per [Jetzt eintragen] beansprucht) oder in dieser Runde wieder freigegeben wurde
 --   (open mit Claim juenger als advisor.handoff_claim_ttl_minutes: Karte nicht bestaetigt, core.fn_reopen_handoff_task, oder uebersprungen, core.fn_cancel_handoff_task skipped; so traegt ein "doch
 --   eintragen" im selben Gespraech ohne neuen Tipp auf die Liste ein; ebenso die Folge-Aufgabe einer in dieser Runde
---   beanspruchten). Erfolg {ok:true, task_id, kind, text, part:false}.
+--   beanspruchten). Erfolg {ok:true, task_id (= handoff_task_id), kind, text, part:false}.
 --   Weiterer Teil: eine Vormerkung kann mehrere Eintraege brauchen (zwei jaehrliche Uebertraege fuer eine Vereinbarung);
 --   eine in dieser Runde erledigte Aufgabe (done, Abschluss nach dem Claim und juenger als advisor.handoff_claim_ttl_minutes)
 --   gilt deshalb weiter -> {ok:true, …, part:true}, ausser ihr Rest ist schon als Folge-Aufgabe abgespalten (die Ablehnung

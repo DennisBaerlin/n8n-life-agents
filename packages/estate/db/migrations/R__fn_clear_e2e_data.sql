@@ -7,8 +7,10 @@
 --   funeral_preferences keyen auf reale Personen -> nur zeilen-genau ueber den Sentinel in notes/wishes.
 --   Ereignisfall (cases/case_tasks) traegt keinen Sentinel-Namen; in der ephemeren Container-DB gibt es keinen
 --   Nicht-Test-Produzenten eines Falls (nur der E2E-Tier APPROVEt create_case) -> wholesale (case_tasks vor cases).
---   Post-Assertion: keine Sentinel-Zeile darf bleiben (sonst RAISE).
---   Eingabe: p_runid optional (nur [a-z0-9], sonst RAISE): NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Post-Assertion (sonst RAISE): keine Sentinel-Zeile in directives (notes/location_note), provider_contracts,
+--   digital_accounts, contacts, special_assets, storage_places (Namensspalte); person_records/funeral_preferences nicht.
+--   Eingabe: p_runid optional (nur [a-z0-9], sonst RAISE): NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'
+--   (gilt fuer die Register; cases/case_tasks immer komplett).
 --   Rueckgabe: {estate_rows} (Summe ueber alle Register)
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================

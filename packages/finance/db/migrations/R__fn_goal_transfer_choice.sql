@@ -7,7 +7,7 @@
 --     false              -> {ok:true, transfer:null} (zusaetzliche Rate)
 --     true  + genau einer, monatlich -> {ok:true, transfer:<Kandidat>} (die Ziel-Rate fuehrt ihn fort)
 --     true  + keiner -> {ok:false}; true + mehrere -> {ok:false, code:'existing_transfer'} (Abbuchungskonto nennen);
---     true  + nicht monatlich -> {ok:false, code:'transfer_not_monthly'}
+--     true  + nicht monatlich oder ohne offenen Termin (next_due NULL) -> {ok:false, code:'transfer_not_monthly'}
 --   Keine Kandidaten und keine Antwort -> {ok:true, transfer:null}. Eingabe: p_pot, p_debit (NULL = jedes), p_replace.
 --   plpgsql (late-bound, Kandidaten-fn sortiert spaeter). Schreibt nie.
 -- ============================================================

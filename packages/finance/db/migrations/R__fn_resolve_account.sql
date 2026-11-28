@@ -4,7 +4,7 @@
 --   damit Helper bei hit_count > 1 dem Nutzer die Treffer praesentieren koennen.
 --   Rueckgabe: TABLE(id, hit_count, candidates, currency, label); id nur bei genau einem Treffer.
 --   p_types: optional Filter als TEXT[], z. B. ARRAY['stocks_depot','crypto_depot']
---            (intern auf finance.account_type gecastet)
+--            (verglichen mit account_type::text)
 --   p_active_only: wenn TRUE, nur status='active'
 --   currency: Kontowaehrung des eindeutigen Treffers (NULL bei 0/>1) — die eine Quelle fuer HITL-Karten, die einen
 --   Betrag in der Waehrung des aufgeloesten Kontos zeigen (statt eines Subselects je Tool).

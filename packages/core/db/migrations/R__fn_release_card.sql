@@ -14,7 +14,8 @@
 --   sonst outside_window ohne zu latchen; ohne scheduled (Handaufruf, Folge-Check nach einem Update) sofort.
 --   p: {installed, releases:[{tag, draft, prerelease, body, html_url, assets:[name]}], require_signature?, scheduled?,
 --       at? (nur Test: Zeitpunkt fuer den Fenster-Test)}
---   Rueckgabe: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'|'notified'|'outside_window'}
+--   Rueckgabe: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'}
+--            | {due:false, reason:'notified'|'outside_window', tag}
 --            | {due:true, tag, text, keyboard:[[{text,callback_data}],[{text,url}]]}
 --   Nie RAISE. INVOKER (Aufrufer = root ueber runuser postgres; db_test als Superuser).
 --   Tests: tests/db/core/test_fn_release_card.sql

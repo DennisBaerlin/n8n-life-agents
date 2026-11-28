@@ -1,6 +1,6 @@
 -- ============================================================
 -- core.fn_fetch_context (READ — die eine gemeinsame Stelle des Lazy-Fetch)
---   Ersetzt das direkte SELECT der inline load_context-postgresTool-Bindings:
+--   Aufruf der inline load_context-postgresTool-Bindings:
 --     SELECT content FROM core.fn_fetch_context('<name>'[, '<chat_id>'])
 --   Eingabe: p_name (Basis-Name des Kontexts), p_chat_id (optional). Rueckgabe: Tabelle content (0 oder 1 Zeile).
 --
@@ -36,13 +36,11 @@
 --   SECURITY DEFINER (publiziertes Lesefenster, Muster fn_advisor_read_plan): die fn liest core.context_
 --   renderers + core.context_scopes (Registry-Dispatch) + agent.fn_resolve_sender (family). Die Agenten
 --   binden load_context unter der engen Rolle context_ro (kein core-Zugriff) -> als Invoker brach jeder
---   load_context-Call mit "permission denied for schema core" ab. DEFINER +
---   gepinnter search_path (pg_catalog,agent,core sind nicht nutzer-schreibbar, CVE-2018-1058) + REVOKE ALL
---   FROM PUBLIC; render_fn-Wert nur aus der host-geseedeten Registry (to_regprocedure-Guard) -> keine
---   Eskalation. Keine neue Datenexposition (context_ro hat ohnehin SELECT auf core_contexts).
+--   load_context-Call mit "permission denied for schema core" ab. Haertung: DEFINER-Checkliste (.claude/rules/sql.md),
+--   search_path mit agent,core (nicht nutzer-schreibbar); render_fn-Wert nur aus der host-geseedeten Registry
+--   (to_regprocedure-Guard) -> keine Eskalation. Keine neue Datenexposition (context_ro hat ohnehin SELECT auf core_contexts).
 --   Schema core (nicht agent): publizierte cross-schema-Lesefenster gehoeren per Konvention nach `core` (zu
 --   fn_advisor_read_plan/fn_config_get/fn_package_active/…) -> eine auditierbare Stelle aller Grenzuebertritte.
---   Signatur 2-Arg: core:V013 droppt die alte core.fn_fetch_context(text).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_fetch_context(p_name text, p_chat_id text DEFAULT NULL)
 RETURNS TABLE (content text)

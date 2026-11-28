@@ -4,7 +4,8 @@
 --   'rejected'. Die Ablehnung bleibt liegen (der TTL-Cleanup raeumt nur pending->expired),
 --   und agent.fn_record_learn_candidates unterdrueckt denselben slot_key < learn_context.expiry_days erneut
 --   vorzuschlagen -> "einmal abgelehnt, nicht wieder nerven". owner_only-Backstop.
---   Gelesene p-Keys: { candidate_id (Pflicht), chat_id (Pflicht) }. INVOKER, search_path-Pin + REVOKE.
+--   Gelesene p-Keys: { candidate_id (Pflicht), chat_id (owner_only-Backstop ueber agent.fn_sender_is_member; fehlend
+--   oder nicht-numerisch -> nicht gesperrt) }. INVOKER, search_path-Pin + REVOKE.
 --   Rueckgabe: {ok:true, candidate_id} | {ok:false, reason: owner_only | 'candidate_id required' | 'candidate not found or not pending'}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_reject_learn_candidate(p jsonb)

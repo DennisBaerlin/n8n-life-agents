@@ -1,9 +1,8 @@
 -- ============================================================
 -- career.v_job_matches (schlanke Read-Overview der Job-Treffer)
---   Kuratierter Read-Pfad fuer den career_advisor (postgres_select, Rolle career_ro) + das publizierte
---   read_surface.preferred_views (Aufsichtsfenster core_ro). Schmale, stabile Spaltenmenge (kein raw-jsonb).
---   Keine eigene Sortierung; der Advisor liest die "zuletzt bewertete Stelle" per ORDER BY feedback_at
---   fuer den Freitext-Grund-Loop. Idempotent (CREATE OR REPLACE VIEW).
+--   Schmale, stabile Spaltenmenge der Job-Treffer (kein raw-jsonb). Person-privat: fuer career_ro/core_ro gesperrt
+--   (core.fn_provision_package_roles), nicht in read_surface.preferred_views; der Advisor liest seine Treffer ueber
+--   career.fn_read_job_matches. Keine eigene Sortierung. Idempotent (CREATE OR REPLACE VIEW).
 -- ============================================================
 CREATE OR REPLACE VIEW career.v_job_matches AS
 SELECT

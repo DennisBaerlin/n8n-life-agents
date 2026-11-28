@@ -1,9 +1,8 @@
 -- ============================================================
 -- estate.v_directive_gaps (Gap-View — Vorsorge-Dokumente: Soll vs. Register)
---   Erwartungsmenge: directive_types mit recommendation
---   essential|recommended je erwachsenem Haushaltsmitglied (owner|partner) — Minderjaehrigen-
---   Gap-Nudges waeren rechtlich unsinnig; 'situational' wird nie genudgt.
---   Eine Zeile = ein offener Dokument-Gap: status 'missing' (kein Registereintrag) |
+--   Erwartungsmenge: directive_types mit recommendation essential|recommended je erwachsenem Haushaltsmitglied
+--   (owner|partner); Regel: estate.directive_types (estate.tables_init.sql).
+--   Eine Zeile = ein offener Dokument-Gap: status (= doc_status) 'missing' (kein Registereintrag) |
 --   'does_not_exist' (bewusst erfasst: gibt es nicht — ehrlicher Gap) | 'planned' (in Arbeit).
 --   'exists'-Eintraege erscheinen nicht. Eine Haushalts-Urkunde (owner_person_id NULL,
 --   z. B. Berliner Testament) deckt den Typ fuer jeden Erwachsenen (LATERAL waehlt den besten

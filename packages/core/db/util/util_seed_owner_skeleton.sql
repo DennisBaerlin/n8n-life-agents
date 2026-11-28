@@ -9,7 +9,8 @@
 --
 -- Struktur ist hier getrackt + reviewbar; die PII kommt als psql-Variable zur Laufzeit (nie ins Repo):
 --   bootstrap_owner.sh ruft:  psql -v owner_first=... -v owner_last=... -v owner_birth=YYYY-MM-DD \
---                                  [-v owner_person_id=owner] -f packages/core/db/util/util_seed_owner_skeleton.sql
+--                                  [-v owner_person_id=owner] [-v owner_language=de] [-v owner_persona=neutral] \
+--                                  -f packages/core/db/util/util_seed_owner_skeleton.sql
 --
 -- Idempotent + sicher: ON CONFLICT (name) DO NOTHING — ein vorhandener Haushalt (Re-Run, Restore)
 --   wird nie ueberschrieben. role ist fix 'owner'; telegram_user_id bleibt absichtlich NULL (Skelett).
@@ -47,7 +48,7 @@ INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, c
 VALUES ('family',
         'Household members and shared household facts (people, roles, relationships).',
         NULL, 'lazy',
-        '(Inhaber bei der Installation angelegt; weitere Personen folgen im Onboarding)',   -- = util_reset_user_data.sql
+        '(Inhaber bei der Installation angelegt; weitere Personen folgen im Onboarding)',   -- = core.fn_reset_user_data
         'agent', 'core',
         jsonb_build_object('facts', jsonb_build_object(
                              '_meta', jsonb_build_object('last_confirmed_at', to_char(current_date,'YYYY-MM-DD')),

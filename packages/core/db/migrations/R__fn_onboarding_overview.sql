@@ -28,7 +28,8 @@
 --   search_path auf pg_catalog gepinnt, alle Refs voll-qualifiziert (CVE-2018-1058). Das Suffix
 --   '.onboarding_state' ist ein Literal (nie 2. %I), der Paketname kommt ausschliesslich aus
 --   core.package_registry (kein Caller-Input) + Regex-Guard + to_regclass-Guard -> die Leseoberflaeche ist
---   strukturell auf *.onboarding_state-Fortschrittstabellen begrenzt (nur Flags section_key/label/status/ord).
+--   strukturell auf *.onboarding_state-Fortschrittstabellen begrenzt (nur section_key/label/status/ord/
+--   status_changed_at/for_roles, bei per_user zusaetzlich person_id als Filter).
 --   Muster 1:1 wie core.fn_onboarding_status / core.fn_onboarding_pending_packages.
 --
 --   Bei uns anders: Onboarding-Routing/Menue bleibt build-time-/

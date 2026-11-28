@@ -2,7 +2,7 @@
 -- finance.standing_order_overview (Lese-View)
 --   Die wiederkehrenden Ueberweisungen des Haushalts ohne Besitzer-Entitaet (finance.fn_standing_orders, dieselbe Auswahl
 --   wie die Absender-Regel von fn_funding_accounts: laufend oder erst kommend; ob der Auftrag bei der Bank liegt oder der
---   Nutzer selbst ueberweist, sagt die letzte Spalte executed_by), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
+--   Nutzer selbst ueberweist, sagt die Spalte executed_by), mit Konto-NAMEN statt ids, Betrag je Ausfuehrung,
 --   Rhythmus in Klartext (fn_schedule_label) und Monatsbetrag (recurring_payments.monthly_equivalent).
 --   kind transfer = eigenes Konto -> eigenes Konto; debit = Spar-Abfluss ohne Ziel-Konto (Vorsorge-Beitrag,
 --   Sparziel-Rate ohne Topf). starts_on = erster Termin einer erst kuenftig startenden Zahlung (fn_recurring_starts_on; sonst NULL).
@@ -10,7 +10,6 @@
 --   (fn_recurring_last_valid_day), last_execution = letzter echter Termin (fn_recurring_last_due). Bewusst kein valid_to:
 --   roh gelesen wird es als letzter Termin missverstanden (exklusives Ende).
 --   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
---   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
 -- ============================================================
 DROP VIEW IF EXISTS finance.standing_order_overview CASCADE;
 CREATE VIEW finance.standing_order_overview AS

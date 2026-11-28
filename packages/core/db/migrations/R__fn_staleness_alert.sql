@@ -20,7 +20,7 @@
 --     bzw. integer (estate r.age_days); `integer->numeric` ist ein impliziter Cast, `numeric->integer` nicht
 --     (Assignment-Cast) -> integer-Parameter wuerden die numeric-Aufrufe zur Laufzeit nicht aufloesen.
 --   Rein: keine Tabellen-Reads, kein current_date -> IMMUTABLE, kein SECURITY DEFINER/Grant noetig
---     (Default-PUBLIC-EXECUTE wie fn_monthly_equivalent). Die Text-Ueberladung (p_text text) ist seit core:V030 gedroppt.
+--     (Default-PUBLIC-EXECUTE wie fn_monthly_equivalent).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_staleness_alert(
     p_metric_key     text,

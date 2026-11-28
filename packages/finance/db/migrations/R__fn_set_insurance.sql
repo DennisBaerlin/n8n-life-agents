@@ -2,7 +2,7 @@
 -- fn_set_insurance (ATOMIC WRITE)
 --   Aendert eine bestehende Versicherung (Beitrag/Rhythmus/Kuendigung/Police). Partielles Update (leer = unveraendert;
 --   Leeren geht nicht).
---   Eine Quelle (finance:V027): Beitrag je Abbuchung, Rhythmus, Tag, Vertragsende und Konto
+--   Eine Quelle: Beitrag je Abbuchung, Rhythmus, Tag, Vertragsende und Konto
 --   stehen nur an der Beitrags-Kette.
 --     - Beitrag (premium_amount je Abbuchung oder annual_premium; fn_insurance_fields, bisheriger Rhythmus als Default),
 --       Rhythmus oder Tag geaendert -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues
@@ -26,7 +26,8 @@
 --   effective (aufgeloeste relative Daten)}.
 --   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, Konto ausser beim Nachtragen, Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
 --   nachtragen an einer nicht aktiven Police, ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
---   status/schedule_unit/insurance_type unbekannt, coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
+--   status/schedule_unit/insurance_type unbekannt, ungueltiger schedule_day_of_month (fn_schedule_dom_reason),
+--   coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
 --   Split-Guards) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_insurance(p jsonb)
@@ -64,7 +65,6 @@ BEGIN
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.insurance_status;
     v_unit   := NULLIF(p->>'schedule_unit', '')::finance.schedule_unit;
-    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

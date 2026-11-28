@@ -7,7 +7,7 @@
 --   nach dem CLI-Tausch; eine Wiederholung nach partial startet schon mit VERSION = Tag -> interrupted), sonst als
 --   interrupted — der Runner meldet beides (core.fn_update_report).
 --   report=true markiert erholte Auftraege als faellig (core.fn_update_report_due); ohne den Key meldet der Aufrufer selbst.
---   p: {installed = Inhalt von VERSION (Tag oder 'dev'; anderes -> NULL), report?}
+--   p: {installed = Inhalt von VERSION (Tag oder 'dev'; nicht [A-Za-z0-9._-]{1,64} -> NULL), report?}
 --   Rueckgabe: {recovered:[{id, tag, kind, outcome}], claimed:{id, tag, kind, from_version} | null}. Nie RAISE.
 --   Atomar (eine fn = eine TX). INVOKER (root ueber runuser postgres).
 --   Tests: tests/db/core/test_fn_update_requests.sql

@@ -28,10 +28,14 @@
 --   execution, Karte und Antwort lesen es); bei einem Uebertrag zusaetzlich
 --   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; eigenes Feld, nicht unter effective: das Gate mischt
 --   effective in den echten Write); effective (aufgeloeste relative Daten, bei until_free_money zusaetzlich das
---   berechnete Ende aus fn_transfer_free_end); die Keys von fn_cashflow_coverage_fold; card_lines = Bank-Hinweis (fn_bank_setup_note: pausieren/valid_to -> bank_stop,
---   amount/schedule_day_of_month/Fortsetzen -> bank_change; nicht bei until_free_money, Name/Notiz, executed_by manual).
+--   berechnete Ende aus fn_transfer_free_end); die Keys von fn_cashflow_coverage_fold; card_lines = Bank-Hinweis
+--   (fn_bank_note_recorded: pausieren/valid_to -> bank_stop ueber fn_bank_stop_note_told, amount/schedule_day_of_month/
+--   Fortsetzen -> bank_change; leer bei until_free_money, Name/Notiz, executed_by manual).
+--   Seiteneffekt des Bank-Hinweises: offener Bank-Punkt in finance.bank_todos (fn_bank_note_recorded, auch bei
+--   until_free_money ohne Kartenzeile), bei bank_stop zusaetzlich der Merker finance:bank_end (fn_bank_stop_note_told).
 --   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, entitaets-besessen, amount<=0, ungueltiger executed_by
 --   oder an einem Nicht-Uebertrag, until_free_money zusammen mit amount/valid_to, Ablehnung von fn_transfer_free_end,
+--   ungueltiger schedule_day_of_month (fn_schedule_dom_reason),
 --   Split-Guards des Helfers inkl. last_booked und day_before_start, neuer Tag an einem Glied mit Nachfolger: code has_successor)
 --   -> {ok:false}.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
@@ -72,7 +76,6 @@ BEGIN
     p := v_dates->'p';
     v_from := NULLIF(p->>'valid_from', '')::date;
     v_to   := NULLIF(p->>'valid_to', '')::date + 1;
-    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;

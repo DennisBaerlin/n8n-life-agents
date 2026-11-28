@@ -3,7 +3,8 @@
 --   Ist eine Beschaffungs-Methode (p_method) gerade nutzbar? Die eine Verfuegbarkeits-Regel des
 --   Trigger-Monitorings (docs/package-contract.md §3.9), genutzt
 --   von Beschaffung (fn_monitor_acquire), Parken (fn_monitor_due/fn_monitor_evaluate), Spec-Pruefung
---   (fn_monitor_validate_params) und Anlage/Aenderung (fn_create/set_monitor_trigger).
+--   (fn_monitor_validate_params) und Anlage (fn_create_monitor_trigger; Aenderung fn_set_monitor_trigger nur
+--   ueber fn_monitor_validate_params).
 --     * Core-Builtin (web_search | sql | none)                          -> {builtin:true,  available:true}
 --     * keine Registry-Zeile                                            -> {available:false, reason: unknown}
 --     * Platzhalter / fns fehlen (to_regprocedure)                      -> {available:false, reason: not installed}

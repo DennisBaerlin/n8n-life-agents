@@ -4,7 +4,8 @@
 --   Plan-Gespraechs (Haushalts-Entwurf einer Domaene mit core.advisors.hints_fn, Paket aktiv, in den letzten 2 Stunden
 --   bearbeitet wie der Interview-Pin; ein pausierter Entwurf bringt in fremden Gespraechen keine Karte) und nur fuer den, der den Plan
 --   schreiben darf (agent.fn_check_write_permission der plan_context-Regel). Je Domaene: Hinweise aus der hints_fn
---   ({key, class, text_key, params}), Merker "spaeter" (core.notification_state advisor_hint '<domain>:<key>') fuer Hinweise,
+--   ({key, class, text_key, params {amount?, currency?, date?}, pending_entry?, kind, account}; kind/account nur in
+--   der payload-summary), Merker "spaeter" (core.notification_state advisor_hint '<domain>:<key>') fuer Hinweise,
 --   die es nicht mehr gibt, werden zurueckgesetzt (core.fn_notify_resolve: der Hinweis hat sich in den Daten erledigt).
 --   Gewaehlt wird der erste Hinweis der Klasse urgent ohne Merker, zu dem es an diesem Entwurf noch keine Zeile gibt (ein
 --   Hinweis kommt in einem Gespraech nur einmal). Karte: Warnzeile text_key mit params (amount -> core.fn_fmt_money,

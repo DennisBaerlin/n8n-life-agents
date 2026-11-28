@@ -40,7 +40,7 @@
 --     {label core.label.changes, kind text, value Aenderungs-Text}, mit Gesamtcheck die Zeile
 --     core.label.final_check {n, passes, resolved, open} bzw. core.tpl.final_check_clean {passes} und je nicht geklaertem
 --     Fund (deferred, accepted) eine raw-Zeile mit seinem Text).
---   Korrigierbar (fehlendes domain, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
+--   Korrigierbar (fehlendes domain, kein Draft, leeres plan_md, Block-Kollision, ungueltige Plan-Fakten laut Core-
 --   Form oder Paket-Validator des Basis-Namens, code final_check_missing | final_check_open {index} | final_check_invalid)
 --   -> {ok:false, reason [, code]} OHNE Write.
 -- ============================================================
@@ -114,7 +114,7 @@ BEGIN
     END IF;
 
     -- plan_md setzt die DB aus den gespeicherten Themen zusammen; ein mitgeschicktes plan_md zaehlt nicht (ein ganzer Plan passt
-    -- nicht in eine Modell-Antwort: sie wurde abgeschnitten und neu angesetzt, bis zur Iterations-Grenze).
+    -- nicht in eine Modell-Antwort).
     SELECT ap.id INTO v_rows_plan FROM agent.advisor_plans ap
      WHERE ap.domain = v_domain AND ap.person_id IS NOT DISTINCT FROM v_pid AND ap.status = 'draft';
     IF v_rows_plan IS NULL THEN
@@ -241,13 +241,8 @@ BEGIN
                       ' — save at least one section first');
     END IF;
 
-    -- Naht-Backstop (vor jedem Write): Compose-on-Publish + deterministischer Block-Kollisions-Guard.
-    -- Eine section_data ist ein partielles facts-Objekt (Top-Block wie goal/target_allocation/glidepath);
-    -- `||` merged auf Block-Ebene. Der jsonb_each-Merge laeuft in Storage-/Hash-Reihenfolge
-    -- (nicht deterministisch) -> emittieren zwei verschiedene Sektionen denselben Top-Block, verloere `||` still
-    -- eine Haelfte. Darum: jeden bereits belegten Top-Block-Key tracken; Doppelung -> {ok:false, reason} ohne
-    -- Write (korrigierbar, kein RAISE). Eine Sektion mit mehreren Bloecken (wealth_building ->
-    -- target_allocation+glidepath) bleibt erlaubt.
+    -- Naht-Backstop (vor jedem Write): Compose-on-Publish + Block-Kollisions-Guard (Grund und Vertrag im Kopf).
+    -- Eine Sektion mit mehreren Bloecken (wealth_building -> target_allocation+glidepath) bleibt erlaubt.
     FOR v_sec IN SELECT value FROM jsonb_each(COALESCE(v_state, '{}'::jsonb)) LOOP
         IF jsonb_typeof(v_sec->'data') = 'object' THEN
             FOR v_blk_key IN SELECT jsonb_object_keys(v_sec->'data') LOOP
@@ -327,7 +322,6 @@ BEGIN
 
     -- 3. Context-Doc upserten: das publizierte Plan-Dokument ist das cross-agent Interface
     --    (lazy/global -> Manifest jedes Agenten; Inhalt = plan_md)
-    -- Der Advisor pflegt ein Domaenen-Plan-Doc, kein separates '<domain>_plan_current'.
     v_ctx_desc := COALESCE(NULLIF(trim(p->>'context_description'), ''),
         'Current published ' || v_domain || ' plan (v' || v_version || ') — the household master plan '
         || 'created and maintained by the advisor agent: situation, goals, recommendations, action items '

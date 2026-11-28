@@ -15,6 +15,7 @@
 --   Rueckgabe: Profil-Rueckgabe || {profile, printed_balance (Registry; dann traegt die Profil-Rueckgabe statement)}
 --   | {ok:false, code:'export_profile_unknown'|'export_invalid', reason, row_no?}.
 --   Fehlertexte nennen nie Zellinhalte des Vorspanns (dort kann der Inhabername stehen).
+--   RAISE (Programmierfehler): Profil ohne Leser im CASE; Profil mit printed_balance, dessen Leser kein statement liefert.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_normalize(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$

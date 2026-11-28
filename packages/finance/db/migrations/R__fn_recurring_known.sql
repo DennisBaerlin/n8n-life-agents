@@ -13,6 +13,7 @@
 --   (a)/(d) auf einem anderen Konto -> elsewhere = dessen Kontoname.
 --   Eingabe p: {account_id*, sign* (1|-1), amount* (positiv), iban, shared (bool), other_account_id, unit, interval, dom,
 --   tol (def 3), name, mandate}. Rueckgabe: {known:bool, elsewhere?:text}.
+--   unit/interval/dom = schedule_unit/schedule_interval/schedule_day_of_month.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_known(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

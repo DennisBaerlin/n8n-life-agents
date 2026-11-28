@@ -3,9 +3,10 @@
 --   Anwenden via: db_apply.ps1 -File packages\core\db\core.context_validators_init.sql
 --
 -- Zweck: bindet einen paket-besessenen Sidecar-Context-Namen (z. B. 'finance_profile')
---   an die Paket-Validator-fn, die seine metadata.facts-Struktur prueft. Der Core-Trigger
---   agent.trg_core_contexts_validate_facts_fn dispatcht generisch ueber diese Tabelle
---   (NEW.name -> validate_fn -> dyn. EXECUTE) — der Core nennt kein Paket hartkodiert.
+--   an die Paket-Validator-fn, die seine metadata.facts-Struktur prueft. agent.fn_validate_context_facts
+--   (gerufen vom Trigger agent.trg_core_contexts_validate_facts_fn) dispatcht generisch ueber diese Tabelle
+--   (exakter Name, dann per_user-Basisname, dann core.advisors.plan_validate_fn -> dyn. EXECUTE) — der Core
+--   nennt kein Paket hartkodiert.
 --
 -- Boundary (Deklaration vs. Ausfuehrung, docs/package-contract.md §3.3): das Paket deklariert
 --   die Bindung nur im manifest.json ("context_validators"-Block); der Host (seed_data.sh, jq)

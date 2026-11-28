@@ -296,8 +296,8 @@ CREATE TRIGGER trg_handoff_tasks_final
 -- kein direkter GRANT SELECT … TO finance_ro. core_ro liest
 -- advisor_plans nicht (nicht auf der Erlaubnisliste in util_create_core_ro); die RLS unten bleibt als zweiter
 -- Riegel fuer die Personen-Plaene stehen; den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan);
--- die Core-Advisor-Engine (core.cron_review via core.fn_advisor_review_evaluate) liest den Plan ueber das
--- DEFINER-Fenster.
+-- die Core-Advisor-Engine (agent.advisor.cron_drift_check via core.fn_advisor_review_evaluate,
+-- agent.advisor.cron_review via core.fn_advisor_review_read) liest den Plan ueber das DEFINER-Fenster.
 -- ============================================================
 
 -- Row-Level-Security ("strikt privat"): Personen-Plaene (person_id NOT NULL, per_user-

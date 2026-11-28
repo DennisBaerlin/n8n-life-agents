@@ -14,8 +14,9 @@
 --   Konto vergeben -> {ok:false, reason} ohne Write (UNIQUE-Index = Backstop). remove_account_number = true entfernt die
 --   Nummer (Korrekturweg fuer eine falsch zugeordnete bzw. gelernte IBAN, die sonst beim richtigen Konto
 --   als Dublette abgelehnt wuerde); zusammen mit account_number -> {ok:false, code:'conflicting_input'}.
---   settlement_id (im Tool aufgeloest; leer=unveraendert): Verrechnungskonto, Pruefung fn_settlement_account_reason
---   (nur Depot/P2P; P2P = das Girokonto, auf das der Anbieter auszahlt, Bank-Import-Modul) -> sonst {ok:false, reason}.
+--   settlement_id (= Spalte settlement_account_id; im Tool aufgeloest; leer=unveraendert): Verrechnungskonto, Pruefung
+--   fn_settlement_account_reason (nur Depot/P2P; P2P = das Girokonto, auf das der Anbieter auszahlt, Bank-Import-Modul)
+--   -> sonst {ok:false, reason}.
 --   Bankwechsel setzt den Depot-Kalender accounts.plan_execution_days zurueck (NULL = unbekannt): er beschreibt die
 --   Ausfuehrungstage der alten Bank (fn_resolve_plan_schedule belegt neu vor bzw. fragt einmal nach).
 --   min_balance: Puffer je Konto in Kontowaehrung fuer die Kontovorschau (fn_account_outlook);

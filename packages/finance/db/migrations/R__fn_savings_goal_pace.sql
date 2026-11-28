@@ -8,7 +8,7 @@
 --   Zustand eines aktiven Ziels, erste passende Regel gewinnt:
 --     1. unmeasurable  NOT progress_measurable (laufende Rate ohne Topf; gilt auch fuer eine Ruecklage)
 --     2. NULL          Instandhaltungsruecklage (target_amount NULL, Form-CHECK finance_savings_goals_shape)
---     3. behind        pace_drift_pp > core.config core/advisor/drift_pace_pp (Default 10), ohne Kurs-Luecke.
+--     3. behind        pace_drift_pp > core.config core/advisor/drift_pace_pp, ohne Kurs-Luecke.
 --                      Messlatte der Drift: bei Raten-Ziel der Ratenplan (was bis heute faellig war, fn_savings_goal_expected),
 --                      sonst die Kalendertage seit Anlage (Sparplan-Quelle, keine Rate, Rate pausiert/beendet)
 --        unknown       dieselbe Bedingung mit has_fx_gap: ein Anteil liegt auf einem Konto in einer Waehrung

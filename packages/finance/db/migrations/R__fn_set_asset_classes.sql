@@ -2,8 +2,8 @@
 -- fn_set_asset_classes (ATOMIC WRITE) -- Anlageklassen mehrerer Depot-Positionen in einem Schritt setzen
 --   Die Anlageklasse wird in der Finanzplanung geklaert -> der Finanzberater (und der
 --   Buchhalter) ordnet alle offenen Positionen mit einer Karte zu. Setzt nur asset_class (Stammdatum), nie Bestand,
---   Einstand oder Buchungen. Keine zweite Pruef-Logik: je Zeile fn_find_holding (Depot + Position) und
---   fn_set_holding({holding_id, asset_class}) (Format-Pruefung lowercase snake). Reservierter Key
+--   Einstand oder Buchungen. Je Zeile fn_find_holding (Depot + Position) und fn_set_holding({holding_id, asset_class});
+--   das Format (lowercase snake) prueft Pass 1 vorab selbst (Atomaritaet), fn_set_holding erneut. Reservierter Key
 --   outside_plan = "bewusst ausserhalb des Haushaltsplans" (z. B. Kinder-Depot; fn_advisor_review meldet ihn nicht).
 --   Eingabe jsonb: { assignments: [ {depot_name, position (Symbol oder ISIN), asset_class}, ... ] } (1..50)
 --   Atomar: alle Zeilen werden zuerst aufgeloest/geprueft (Position unbekannt/mehrdeutig, Format, doppelte Position)
@@ -68,7 +68,7 @@ BEGIN
                              FROM jsonb_array_elements(v_errors) e, jsonb_array_elements(COALESCE(e->'candidates', '[]'::jsonb)) c));
     END IF;
 
-    -- Pass 2: schreiben ueber die bestehende Write-fn (eine Adresse fuer Format + Update)
+    -- Pass 2: schreiben ueber die bestehende Write-fn fn_set_holding
     FOR v_x IN SELECT * FROM jsonb_array_elements(v_plan) LOOP
         v_r := finance.fn_set_holding(jsonb_build_object('holding_id', (v_x->>'holding_id')::int, 'asset_class', v_x->>'asset_class'));
         IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN

@@ -60,7 +60,8 @@
 --   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen (code topic_label_too_long), topic_required, topic_too_long,
 --     block_in_two_topics, why_too_long, open_point_too_long, handoff_why_too_long, handoff_rest_too_long, unknown_blocked_code,
 --     Ablehnungen der Vorpruefung, unknown_open_point {open}, unknown_topic {topics}, topic_exists,
---     mixed_script {word}, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
+--     mixed_script {word}, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar, kein Schreibrecht
+--     (reason aus agent.fn_check_write_permission)) -> {ok:false, reason
 --     [, code]} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_advisor_save_section(p jsonb)

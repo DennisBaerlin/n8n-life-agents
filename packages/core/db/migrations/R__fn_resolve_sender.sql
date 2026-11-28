@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_resolve_sender (read-only, Identity-Link)
 --   Telegram-User-ID -> Haushaltsmitglied (family-Facts-Sidecar). Konsument: read-only
---   Orchestrator-Step vor dem Router — injiziert sender_member ("Current user: Lena") in den
+--   Orchestrator-Knoten Resolve sender vor dem Router — injiziert sender als "Current user: <full_name> (<role>)" in den
 --   Turn (Pre-Fill, Personen-Aufloesung "mein Konto", Antwortsprache).
 --   Eindeutigkeit der telegram_user_id ueber Personen erzwingt der Validierungs-Trigger
 --   (agent.core_init.sql) — hier genuegt LIMIT 1.

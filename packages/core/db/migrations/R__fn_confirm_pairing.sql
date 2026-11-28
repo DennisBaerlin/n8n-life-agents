@@ -4,6 +4,7 @@
 --   deterministisch im Orchestrator-Handler vor diesem Aufruf (LLM entscheidet keine Auth); diese fn ist
 --   die atomare Durchsetzung. Bindet die beim Claim gestagete Member-Identitaet (claimed_uid) an die
 --   Einladungs-Person (person_id) ueber den geteilten Merge-Kern (fn_merge_member_identity).
+--   Rueckgabe-Namen: telegram_user_id = pairing_state.claimed_uid, member_chat_id = pairing_state.claimed_chat_id.
 --   Idempotent: zweites ✅ (Telegram-Retry / Doppel-Tap) findet consumed_at gesetzt ->
 --   {ok:false, resolved:true}, kein zweiter Merge, kein Owner-Alert. Schon-gepairt/Merge-Fehler reicht der
 --   Kern als freundliches {ok:false} bzw. RAISE (Rollback) durch.

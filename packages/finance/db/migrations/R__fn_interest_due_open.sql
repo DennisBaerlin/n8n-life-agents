@@ -1,8 +1,9 @@
 -- ============================================================
 -- fn_interest_due_open (READ — Zins-Faelligkeits-Kern, Spiegel zu fn_recurring_due_open)
---   Eingabe: p_until (Stichtag). Liefert je aktivem verzinsten Einlagen-Konto (cash/fixed_deposit/p2p, s.
---     fn_interest_eligible_account_type) mit laufender Zinszeile die noch offenen Zins-Vorkommen:
---     (account_id, value_date, period_start, period_end, auto_post).
+--   Eingabe: p_until (Stichtag). Liefert je aktivem verzinsten Einlagen-Konto (fn_interest_eligible_account_type) mit
+--     laufender Zinszeile die noch offenen Zins-Vorkommen: (account_id, value_date, period_start, period_end, auto_post).
+--     auto_post = auto_post des Regimes, aber false, wenn die Periode vor dem Regime-Anker beginnt (Rest des alten
+--     Rhythmus immer mit Karte).
 --   Offen = nicht gebucht (keine Scheduler-Zins-Tx mit interest_period_end = period_end) und nicht
 --   uebersprungen (kein interest_skips mit period_end = period_end) und period_end liegt nach der juengsten
 --   gebuchten/uebersprungenen Periode des Kontos (ein Raster, das schon ueberholt ist, wird nie nachtraeglich

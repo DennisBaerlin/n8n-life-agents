@@ -4,7 +4,8 @@
 --   (allowlist-geguardet) und setzt den Kandidaten auf 'rejected' -> HITL-Reversibilitaet des
 --   Prosa-Schreibpfads. Entfernt zeilen-genau (gleiche Normalisierung wie der Append: Bullet-Zeile, die den
 --   normalisierten Notiztext und den Provenienz-Marker "aus Chat" traegt) -> trifft keine fremden Bullets.
---   owner_only-Backstop. Gelesene p-Keys: { candidate_id (Pflicht), chat_id (Pflicht) }. INVOKER, search_path-Pin + REVOKE.
+--   owner_only-Backstop. Gelesene p-Keys: { candidate_id (Pflicht), chat_id (fehlt/nicht numerisch -> Pass-Through wie
+--   agent.fn_sender_is_member) }. INVOKER, search_path-Pin + REVOKE.
 --   Rueckgabe: {ok:true, context_name, removed (bool)} | {ok:false, reason: owner_only | 'candidate_id required' |
 --   'candidate not found' | 'candidate is not a note' | 'candidate is <status> (only approved notes are undoable)' |
 --   'context "<name>" is not note-appendable'}.

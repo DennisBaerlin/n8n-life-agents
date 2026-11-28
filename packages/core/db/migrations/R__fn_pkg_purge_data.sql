@@ -20,10 +20,14 @@
 --        Nicht core.ui_texts: der Textkatalog bildet die gebuendelten Dateien ab, unabhaengig vom Installationsstand
 --        (Onboarding-Menue und Vermittler nennen auch nicht installierte Pakete beim Namen); Pakete, die das Release
 --        verlassen, raeumt der Seed (seed_data.sh _seed_ui_texts).
+--        Vor core.cron_labels: agent.reminder_prefs der cron_keys des Pakets (kein FK, nicht gezaehlt).
 --     3b. agent.monitor_triggers WHERE package=<pkg> AND origin='user' — paket-erzeugte Monitor-Trigger
 --        (z. B. advisor-Plan-Trigger). Host-Tabelle, von DROP SCHEMA <pkg> nicht erreicht. `origin='user'`-
 --        Guard: ein origin='core'-Trigger blockt sonst den Protect-Trigger -> Abbruch der Purge-Transaktion.
---     3b'. agent.handoff_tasks WHERE package=<pkg> — vereinbarte Plan-Aufgaben (Uebergabe Berater -> Buchhalter).
+--     3b'. agent.handoff_tasks WHERE package=<pkg> — vereinbarte Plan-Aufgaben (Uebergabe Berater -> Buchhalter);
+--        agent.plan_reminder_declines WHERE package=<pkg>; core.notification_state unter <pkg>[:<sub>] (schon vor
+--        Schritt 1), advisor:<domain> und plan_rollout mit Key <domain>:* der Paket-Domains (core.advisors);
+--        agent.advisor_plans dieser Domains (Count advisor_plans).
 --     3c. Trigger, die eine Monitor-Methode des Pakets benutzen (acquisition_method in
 --        core.monitor_acquisition_methods WHERE package=<pkg>, origin='user'), auch die vom Core-Monitor-
 --        Agenten angelegten (package='core', daher von 3b nicht erfasst), explizit und gezaehlt; danach die

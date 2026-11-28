@@ -4,8 +4,8 @@
 --   noch nicht existiert) die Tasks, die der Fall haben soll — mit DB-berechneter due_date + Condition-
 --   ausgewertetem Status. Eine Quelle fuer beide Konsumenten: fn_instantiate_case_tasks (INSERT
 --   ... SELECT ... ON CONFLICT) und fn_preview_case (Zaehlung je Phase vor dem Gate).
---   Eingabe: p_case_type, p_subject (person_id), p_flags (explizite Fall-Angaben), p_event, p_know (Anker-Daten),
---   p_bundesland; p_extra_assets optional (siehe unten).
+--   Eingabe: p_case_type, p_subject (person_id), p_flags (explizite Fall-Angaben), p_event = event_date,
+--   p_know = knowledge_date (Anker-Daten), p_bundesland; p_extra_assets optional (siehe unten).
 --   Titel/Erklaerung in der Haushalts-Sprache aus estate.v_task_templates (Render-Regel dort).
 --   Rueckgabe: Zeilen (template_key, subject_ref, phase, title, detail, due_date, hardness, legal_source,
 --   status 'open'|'not_applicable').

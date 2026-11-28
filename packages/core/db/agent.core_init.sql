@@ -11,7 +11,7 @@
 --
 -- Lade-Logik ist fuer alle Agenten identisch und im n8n-Sub-Workflow
 -- "agent.tool_load_context" (id UpUCUpPLqNnosD5B) gekapselt: ein executeWorkflow-Call
--- mit Input { agent_name, include_manifest } liefert den fertigen system_prompt.
+-- mit Input { agent_name, include_manifest, audience? } liefert den fertigen system_prompt.
 -- Diese Assembly (Static-Concat + optionales Manifest) lebt bewusst im Workflow,
 -- nicht hier als DB-Funktion/View; diese Datei bleibt reines Schema.
 --   include_manifest = 'false' -> nur Static-Concat, kein Manifest
@@ -20,9 +20,9 @@
 -- Lazy-Content-Fetch erfolgt danach on-demand per "load_context"-Tool des Agenten.
 --
 -- Effektive Query-Muster:
---   Static:    WHERE load_strategy='static' AND (agent_name = $1 OR agent_name IS NULL)
---   Manifest:  WHERE load_strategy='lazy'   AND (agent_name = $1 OR agent_name IS NULL)
---              (nur angehaengt wenn include_manifest <> 'false')
+--   Static:    WHERE load_strategy='static' AND (agent_name IN ($1, audience) OR agent_name IS NULL)
+--   Manifest:  WHERE load_strategy='lazy'   AND (agent_name IN ($1, audience) OR agent_name IS NULL)
+--              AND NOT agent.fn_is_per_user_row(name) (nur angehaengt wenn include_manifest <> 'false')
 --   Fetch:     WHERE name = $1 AND load_strategy='lazy'
 --
 -- Die no-PII-Instruktions-Contexts kommen aus packages/<pkg>/contexts/*.md (vom Installer seed_data.sh
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS agent.core_contexts (
     package     text NOT NULL DEFAULT 'core',         -- besitzendes Paket (Lifecycle/Uninstall-Purge-Key); 'core' | '<paket>'
     managed_by  text NOT NULL DEFAULT 'seed'          -- Sync-Provenienz: wer ueberschreibt die Zeile
                     CHECK (managed_by IN ('seed', 'build', 'agent')),  -- seed=getrackte md | build=Generat | agent=Laufzeit (PII, exportiert, Seeder fasst sie nie an)
-    metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,   -- Reserve (facts-Sidecar, render_fn, embeddings-refs); Loeschschutz lebt in core.protected_contexts
+    metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,   -- facts-Sidecar (metadata.facts); Loeschschutz lebt in core.protected_contexts
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -77,8 +77,8 @@ CREATE TRIGGER trg_core_contexts_touch
 -- freien Prosa-Body (content) ein kleines jsonb-Sidecar metadata.facts nur fuer die
 -- berechenbaren/kritischen Felder (Identitaet, Daten, Zahlen):
 --   family:          {persons:[{person_id, first_name, last_name, aliases[], role(owner|partner|child),
---                     birth_date, telegram_user_id?, citizenships[]?, language?, persona?, education_status?, as_of?}],
---                     household:{shared_finances?, care_flag?, as_of?}, _meta:{last_confirmed_at}}
+--                     birth_date, telegram_user_id?, citizenships[]?, language?, persona?, employment_status?, as_of?}],
+--                     household:{shared_finances?, as_of?}, _meta:{last_confirmed_at}}
 --   finance_profile: {persons:[{person_id (muss in family existieren — Single-Writer-Referenz),
 --                     planned_retirement_age?, steuerklasse?, kirchensteuer?,
 --                     vorsorgesystem?(grv|versorgungswerk|beamtenversorgung|none),
@@ -108,15 +108,8 @@ BEGIN
     -- Das Sidecar bleibt open-world (neue Rohfakt-Keys wie pflegegrad kosten nichts), aber abgeleitete
     -- Werte duerfen nie gespeichert werden ("Rohfakt speichern, Ableitung rechnen": ein gespeichertes
     -- Alter/Jahr ist am naechsten Geburtstag still falsch). Generisch fuer family/finance_profile und die
-    -- blockstrukturierten Plan-facts (financial_planning, ohne persons[]). Geblockt: Kalenderjahr
-    -- (start_year/retirement_year/target_year), Alter (age/alter/current_age), Restzeit (years_to_*),
-    -- Projektionen (income/projected_income), Nominalwerte ('nominal' = immer aus real abgeleitet),
-    -- derived_/computed_-Prefix, die DE-Ableitungen regelaltersgrenze/kindergeld, die career-Runway
-    -- (runway/runway_months/covers/effective_burn = career.fn_runway render-at-fetch) sowie die Muster
-    -- *_year, (…_)age(_…), years_since_*, is_minor/is_adult. Erlaubt (Roh): birth_date, start_age,
-    -- planned_retirement_age, age_from/age_to (glidepath), horizon_years, target_income_eur_month,
-    -- transition.probation_months, transition.expected_gap_income_eur. Bestand mit neu gesperrten Keys
-    -- bereinigt core:V032.
+    -- blockstrukturierten Plan-facts (financial_planning, ohne persons[]). Regelliste = die Bedingung unten
+    -- ('nominal' = immer aus real abgeleitet); Kurzfassung packages/core/CLAUDE.md *Haushalts-Fakten-Schicht*.
     IF p_facts IS NOT NULL AND jsonb_typeof(p_facts) = 'object' THEN
         WITH RECURSIVE nodes(j) AS (
             SELECT p_facts

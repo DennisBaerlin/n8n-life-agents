@@ -137,7 +137,7 @@ DO $$ BEGIN
 END $$;
 
 
--- EXECUTE auf das kombinierte Onboarding-Lesefenster core.fn_onboarding_status(text)
+-- EXECUTE auf das kombinierte Onboarding-Lesefenster core.fn_onboarding_status(text, text)
 -- fuer core_ro. Der Guide (Core-Agent, core_ro) zeigt die frische Wiedereinstiegs-Checkliste ueber diese
 -- eine fn (statt eines rohen UNION ueber agent.guide_onboarding_state + finance.onboarding_state) —
 -- zentralisiert die Paket-Absenz-to_regclass-Logik. Das DEFINER-Fenster REVOKEt

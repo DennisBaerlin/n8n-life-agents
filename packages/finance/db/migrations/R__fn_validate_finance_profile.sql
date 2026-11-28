@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_validate_finance_profile (READ HELPER, STABLE)
 --   Strukturvalidierung des paket-besessenen 'finance_profile'-Sidecars (Steuerklasse/
---   Vorsorgesystem/geplantes Renteneintrittsalter + Single-Writer-Referenz auf family).
+--   Vorsorgesystem/geplantes Renteneintrittsalter).
 --   Der Core-Trigger trg_core_contexts_validate_facts_fn dispatcht generisch ueber die Registry
 --   core.context_validators hierher (NEW.name -> validate_fn -> dyn. EXECUTE, kein hartkodierter
 --   finance-Name im Core) -> fehlt die Registry-Zeile (Paket nicht installiert/deinstalliert),

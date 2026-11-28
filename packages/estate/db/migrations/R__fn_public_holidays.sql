@@ -4,7 +4,7 @@
 --   Werktags-Berechnung (fn_add_business_days) fuer § 28 PStG (Sterbefallanzeige am 3. Werktag).
 --   IMMUTABLE, weil keine Tabelle gelesen wird (sobald eine Fristen-fn eine Tabelle
 --   liest -> STABLE): Gauss'sche Osterformel (Gregorianisch, mit den zwei Korrektur-Ausnahmen) +
---   geschlossene 16-Laender-CASE. Bundesweite Feiertage + landesspezifische (Heilige Drei Koenige,
+--   geschlossene 16-Laender-IF-Kette. Bundesweite Feiertage + landesspezifische (Heilige Drei Koenige,
 --   Frauentag, Fronleichnam, Mariae Himmelfahrt, Weltkindertag, Reformationstag, Allerheiligen,
 --   Buss- und Bettag). Konservativ: nur landesweite Feiertage — kommunale (z. B. Mariae
 --   Himmelfahrt in Teilen Bayerns) werden bewusst nicht gezaehlt (weniger Feiertage -> Werktage

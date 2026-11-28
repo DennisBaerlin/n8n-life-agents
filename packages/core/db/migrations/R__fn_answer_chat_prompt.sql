@@ -1,6 +1,7 @@
 -- ============================================================
 -- core.fn_answer_chat_prompt(p) — Registry-Handler des Callback-Prefix 'q' (member_permeable): Tipp auf eine offene Frage
 --   callback_data q:<id>:<key>. Prueft, dann fuehrt die answer_fn der Art (core.prompt_kinds) aus und schliesst die Zeile.
+--   Eingabe p: {data (callback_data q:<id>:<key>), chat_id, chat_type}.
 --   Regeln (vor jedem Write, Toast in der Sprache des Tippenden):
 --     * nur Privatchat (not_private_chat); bei offener Bestaetigungs-Karte im Chat gilt deren Sperre (card_open);
 --     * Zeile fehlt -> unknown_prompt; Chat der Zeile <> Chat des Tippenden -> not_yours; Zeile nicht open -> outdated;

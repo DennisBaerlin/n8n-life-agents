@@ -10,12 +10,18 @@
 --     * <pkg>_rw: SELECT/INSERT/UPDATE/DELETE + Sequenzen + EXECUTE nur im Schema <pkg>.
 --       Kein CREATE/DDL (ein Paket darf kein Schema-/Core-DDL) — die Tabellen legt
 --       der Installer als Superuser an, die Rolle bucht nur Daten.
---     * <pkg>_ro: nur SELECT im Schema <pkg> + default_transaction_read_only.
+--     * <pkg>_ro: nur SELECT im Schema <pkg> + default_transaction_read_only, statement_timeout 15s,
+--       idle_in_transaction_session_timeout 30s.
 --     * Beide: USAGE auf core (um die publizierten SECURITY-DEFINER-Read-fns aufzurufen)
---       + EXECUTE auf genau diese Read-fns — aber kein SELECT/USAGE auf core-Tabellen,
+--       + EXECUTE auf genau diese Read-fns — aber kein SELECT/USAGE auf core-Tabellen (Ausnahme: _rw liest
+--       core.context_scopes fuer fn_set_onboarding_section),
 --       agent.* oder Nachbar-Paket-Schemas. Ein `JOIN <pkg>.x agent.y` scheitert mit
 --       "permission denied for schema agent"; `SELECT core.config` mit "permission denied
 --       for table config". Core-Daten erreicht das Paket nur ueber die Read-fns.
+--     * core_ro (falls vorhanden): USAGE + SELECT auf alle Tabellen/Views von <pkg> samt Default-Privileges,
+--       danach core.fn_sync_role_search_paths('core_ro').
+--     * per_user (Flag oder core.fn_package_is_per_user): REVOKE ALL von <pkg>_ro und core_ro auf jeder Tabelle mit
+--       person_id NOT NULL und jeder davon abhaengigen View.
 --
 --   Diese fn ist privilegiert (CREATE/ALTER/GRANT ROLE = Superuser noetig); sie laeuft
 --   als der aufrufende Superuser (postgres, via apply_schema/CLI). Bewusst SECURITY
@@ -175,7 +181,7 @@ BEGIN
     -- Neue Read-fns hier ergaenzen, wenn sie zur publizierten Contract-Oberflaeche kommen.
     -- core.fn_advisor_read_plan: advisor_plans bleibt in `agent`, die engen finance_ro/career_ro erreichen es nur
     -- ueber dieses Fenster. Signatur (text, text) (chat_id-Arg fuer den Person-Scope): Guard und Grant muessen auf
-    -- sie ziehen, sonst wird nach dem core:V014-DROP der 1-Arg-Form still uebersprungen -> Laufzeit-"permission denied".
+    -- sie ziehen (die 1-Arg-Form gibt es nicht mehr), sonst wird still uebersprungen -> Laufzeit-"permission denied".
     EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_core_api_version() TO %I, %I', v_rw, v_ro);
     IF to_regprocedure('core.fn_advisor_read_plan(text, text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_read_plan(text, text) TO %I, %I', v_rw, v_ro);
@@ -278,7 +284,7 @@ BEGIN
     -- (Vorname/voll/Alias) gegen die family-Facts zu einem person_id-Slug auf (fuer den *_person_id-FK
     -- und die HITL-Summary), bevor sie schreiben. Die engen Paket-Rollen erreichen agent.core_contexts
     -- nicht direkt -> ueber dieses core-Fenster. Read an beide Rollen (finance_ro nutzt es auch lesend).
-    -- (text, text): zweites Argument = chat_id des Absenders fuer Selbstbezuege (core:V033).
+    -- (text, text): zweites Argument = chat_id des Absenders fuer Selbstbezuege.
     IF to_regprocedure('core.fn_resolve_person(text, text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_resolve_person(text, text) TO %I, %I', v_rw, v_ro);
     END IF;

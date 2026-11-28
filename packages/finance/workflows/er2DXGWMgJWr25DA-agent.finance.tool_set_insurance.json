@@ -81,7 +81,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_insurance(($1::jsonb)-\u003e\u003e\u0027insurance_name\u0027, TRUE);",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_insurance(($1::jsonb)-\u003e\u003e\u0027insurance_name\u0027, NULL);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ insurance_name: $(\u0027Start\u0027).item.json.insurance_name }) }}"
                                                      }

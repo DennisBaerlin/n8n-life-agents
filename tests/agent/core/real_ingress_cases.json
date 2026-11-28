@@ -1693,4 +1693,42 @@
     ],
     "notes": "n8n wiederholt 529 selbst (gemessen 7 Versuche, ~81 s) -> timeout_s 240. Der Owner-Tipp auf check ist nur der Ausloeser der Nachschau (sonst Cron alle 2 Min); er bekommt nur die Quittung, keine Nachricht (Owner-Entscheidung: Stoerung nie an den Owner)."
   }
+  ,
+  {
+    "id": "ri118",
+    "name": "Uebergabe-Liste: Knopf-Send scheitert -> kein Merker, die Liste gilt nicht als gesendet",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Listen-Test Fehlerweg: zeig mir bitte die vereinbarten Eintraege.",
+    "fail_tg": { "method": "sendMessage", "markup": true },
+    "expected_sub": "agent.tool_send_handoff_overview",
+    "expected_node": "Send overview",
+    "expected_not_ran": ["Mark overview"],
+    "pre_sql": "INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) SELECT 'finance', 'finance', agent.fn_owner_person_id(), 'goals_triggers', 'savings_goal', '__E2E__ RI Liste Sparziel 500 Euro';",
+    "check_sql": "SELECT NOT EXISTS (SELECT 1 FROM core.notification_state n WHERE n.source = 'plan_rollout' AND n.state = 'fired' AND n.expires_at IS NULL AND n.key LIKE 'finance:%:handoff:' || (SELECT max(id) FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro'))",
+    "post_sql": "DELETE FROM core.notification_state n WHERE n.source = 'plan_rollout' AND n.key LIKE 'finance:%:handoff:' || (SELECT max(id) FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro'); DELETE FROM agent.handoff_tasks WHERE text = '__E2E__ RI Liste Sparziel 500 Euro';",
+    "notes": "Mock-Telegram lehnt nur den Send mit Knopf ab (fail_tg markup). agent.tool_send_handoff_overview darf den Merker der Abfolge (core.fn_handoff_overview_mark, Schluessel core.fn_handoff_latch_key) nur nach gelungenem Versand setzen: sonst gilt die Liste als gezeigt und die gefuehrte Abfolge schickt sie nie. Mock: Szenario 'Listen-Test Fehlerweg' (Router -> Berater -> tool_send_handoff_overview)."
+  },
+  {
+    "id": "ri119",
+    "name": "Antwort-Knoepfe: Berater-Antwort mit CHOICES geht mit Knoepfen raus, der Tagesgruss bleibt unverbraucht",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Knopf-Test Notgroschen: wie viele Monate empfiehlst du?",
+    "persona_person": "owner",
+    "persona_before": "butler",
+    "expected_node": "Send due prompt",
+    "expected_not_node": "Send a text message",
+    "expect_texts": ["Ich empfehle drei Monatsausgaben als Notgroschen.", "6 Monate"],
+    "forbid_texts": ["CHOICES", "FRAME"],
+    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_greet'; DELETE FROM agent.chat_prompts WHERE chat_id = '880055071' AND kind = 'choice';",
+    "check_sql": "SELECT NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'persona_greet') AND EXISTS (SELECT 1 FROM agent.chat_prompts WHERE chat_id = '880055071' AND kind = 'choice' AND status = 'open' AND sent_at IS NOT NULL)",
+    "post_sql": "DELETE FROM agent.chat_prompts WHERE chat_id = '880055071' AND kind = 'choice'; DELETE FROM core.notification_state WHERE source = 'persona_greet';",
+    "notes": "Hauptweg der Antwort-Knoepfe ueber den echten Eingang: Relay compose -> Choice prompt (core.fn_create_choice_prompt) -> Relay final -> Send due prompt sendet Text + Knoepfe, die Relay-Kette nichts. Dann darf Claim expression keinen Rahmensatz beanspruchen: der Tagesgruss (Latch persona_greet) waere verbraucht, ohne dass ihn jemand sieht. Mock: Szenario 'Knopf-Test Notgroschen' (Router -> Berater, final mit CHOICES-Zeile, final_router FRAME)."
+  }
+
 ]

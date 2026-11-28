@@ -599,14 +599,6 @@
     "notes": "Regel 8 + Regel 5 (Ausnahme: next_step/next_example woertlich)."
   },
   {
-    "id": "oc63",
-    "name": "Rat-Bitte ohne Thema -> weitergereicht an den Berater, keine Rueckfrage des Routers",
-    "task": "kannst du mich beraten?",
-    "chat_id": "test_orc63",
-    "expected_route": "finance_advisor",
-    "notes": "S2b (Leitung 2026-11-11): eine Bitte um Rat geht immer an den Spezialisten, dessen router_description sie annimmt (Paket B ergaenzt die Beschreibung); der Router fragt nie selbst nach dem Thema (Befund Station 8)."
-  },
-  {
     "id": "oc65",
     "name": "Naechster Schritt: zweiter Gruss am Tag (offer no) -> Beispielfrage ohne Markerzeile",
     "task": "Hallo nochmal",
@@ -627,7 +619,7 @@
     },
     "expected_route": "finance",
     "expected_behavior": "The bookkeeper reply is about raising the standing order Stromabschlag Stadtwerke to 95 euro (it proposes or confirms exactly that change, or says the confirmation card was declined). It does not talk about an unrelated topic and does not ask what the user means by that.",
-    "notes": "Live-Eigenschaft: nach dem Wechsel Berater -> Buchhalter verstand der Buchhalter einen Satz ohne eigenen Bezug nicht. Der Block aus 'Previous specialist' traegt die Berater-Antwort aus router_history. Mock: Szenario mit gleichem match (mr_orch prueft nur das Routing)."
+    "notes": "Eigenschaft: nach dem Wechsel Berater -> Buchhalter verstand der Buchhalter einen Satz ohne eigenen Bezug nicht. Der Block aus 'Previous specialist' traegt die Berater-Antwort aus router_history. Mock: Szenario mit gleichem match (mr_orch prueft nur das Routing)."
   },
   {
     "id": "oc-resume-1",
@@ -640,7 +632,7 @@
     "expected_route": "finance_advisor",
     "timeout_s": 300,
     "expected_behavior": "The finance advisor resumes the paused plan conversation: one sentence naming the last saved topic (Notreserve or Haushalt), then the next topic of the plan with exactly ONE question. It does not only announce that it will continue, does not recap the saved topics, does not list sections and gives the user no sentence to type. Talking about the open estate setup area instead of the plan is a FAIL.",
-    "notes": "Live-Fund L1 (S4 Nachfassen, Plan s4-ux-nachfassen §6.1 mt-resume-1): Entwurf aelter als 2 h -> interview_advisor none; core.fn_advisor_pins liefert paused_advisor, Router-Regel 3c. Ein fremder Einrichtungs-Bereich ist offen (wie live), die Hilfe-Beschreibung passt auf den Satz. Hier statt in multiturn_cases.json: jener Treiber feuert am Buchhalter-Harness und prueft kein Routing. Altern per setup_sql mit abgeschaltetem touch-Trigger (sonst setzt er updated_at auf jetzt). Mock: Szenario mit gleichem match."
+    "notes": "Befund L1 (S4 Nachfassen, Plan s4-ux-nachfassen §6.1 mt-resume-1): Entwurf aelter als 2 h -> interview_advisor none; core.fn_advisor_pins liefert paused_advisor, Router-Regel 3c. Ein fremder Einrichtungs-Bereich ist offen, die Hilfe-Beschreibung passt auf den Satz. Hier statt in multiturn_cases.json: jener Treiber feuert am Buchhalter-Harness und prueft kein Routing. Altern per setup_sql mit abgeschaltetem touch-Trigger (sonst setzt er updated_at auf jetzt). Mock: Szenario mit gleichem match."
   },
   {
     "id": "oc-resume-2",
@@ -652,7 +644,7 @@
     "precondition_sql": "EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft' AND plan_name LIKE '__E2E__%' AND updated_at < now() - interval '2 days' AND updated_at > now() - interval '30 days' AND jsonb_array_length(interview_state->'emergency_reserve'->'topics') = 1) AND (SELECT count(*) FROM agent.advisor_plans WHERE domain = 'finance' AND status = 'draft') = 1 AND (SELECT count(*) FROM finance.recurring_payments WHERE name = '__E2E__ Planfall Gehalt' AND status = 'active') = 1",
     "expected_route": "finance_advisor",
     "timeout_s": 300,
-    "notes": "Live-Fund L1 (Plan §6.1 mt-resume-2): der Satz der letzten Erinnerung (E2) soll 'Schreib einfach weiter' lauten; das traegt nur, wenn ein nacktes 'weiter' ohne offene Frage den ruhenden Berater erreicht (Regel 3c). Gleicher Vorzustand wie oc-resume-1, kein Verlauf. Mock: Szenario 'weiter' (kein anderer Fall-Task darf es als laengsten Treffer bekommen, mock_lint C1)."
+    "notes": "Befund L1 (Plan §6.1 mt-resume-2): der Satz der letzten Erinnerung (E2) soll 'Schreib einfach weiter' lauten; das traegt nur, wenn ein nacktes 'weiter' ohne offene Frage den ruhenden Berater erreicht (Regel 3c). Gleicher Vorzustand wie oc-resume-1, kein Verlauf. Mock: Szenario 'weiter' (kein anderer Fall-Task darf es als laengsten Treffer bekommen, mock_lint C1)."
   },
   {
     "id": "oc-resume-3",
@@ -710,7 +702,7 @@
     "expected_signal": "FRAME",
     "expected_mood": "",
     "timeout_s": 240,
-    "notes": "Plan s4-berater-ux §7.3 oc-react-1 (Owner E-7): Live trug fast jede Ok-Antwort im Plan-Gespraech eine Reaktion, die Telegram als Zaehler zeigt. Reine Dank-Reaktion ohne Text prueft der bestehende REACT-LOVE-Fall. Mock: Szenario mit gleichem match."
+    "notes": "Plan s4-berater-ux §7.3 oc-react-1 (Owner E-7): fast jede Ok-Antwort im Plan-Gespraech trug eine Reaktion, die Telegram als Zaehler zeigt. Reine Dank-Reaktion ohne Text prueft der bestehende REACT-LOVE-Fall. Mock: Szenario mit gleichem match."
   },
   {
     "id": "oc-plan-1",

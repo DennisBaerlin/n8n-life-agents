@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
+# Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_book_savings_reservation (Zweckbindung: vorhandenes Geld eines Kontos einem Sparziel zuordnen, append-only Journal) ---
 function Build-BookSavingsReservation {
@@ -9,7 +9,7 @@ function Build-BookSavingsReservation {
 
     $stickyOverview = Build-Sticky 'Überblick tool_book_savings_reservation' @(-40, -260) `
         'Geld einem Sparziel zuordnen (Zweckbindung ohne Überweisung)' `
-        'Ordnet einen ABSOLUTEN Betrag eines Kontos einem Sparziel zu, ohne Geld zu bewegen (YNAB-Assign/Firefly-Piggy). Konten: Giro/Tagesgeld, Festgeld, P2P (Betrag in Kontowährung) und Depots (Betrag in EUR) — finance.fn_goal_earmark_account_types. Eingänge: savings_goal_name, account_name, amount. Ablauf: Resolve Ziel + Konto -> Probelauf (Dry run, ohne Karte bei Ablehnung) -> HITL-Gate -> atomarer Write via fn_book_savings_reservation (delta = amount - aktueller Anteil inkl. eingezahltem Geld, EINE Journal-Zeile -> append-only, driftfrei). Saldo-Konto: die fn lehnt ab, wenn mehr zugeordnet würde als frei auf dem Konto liegt. Depot: Marktwert ist nur Deckung. Ausgang {ok:true, entry_id, delta, reserved, current_amount, free_balance | market_value+shortfall} bzw. {ok:false} (korrigierbar) / {cancelled} (Decline).' 260 500
+        'Ordnet einen ABSOLUTEN Betrag eines Kontos einem Sparziel zu, ohne Geld zu bewegen (YNAB-Assign/Firefly-Piggy). Konten: Giro/Tagesgeld, Festgeld, P2P (Betrag in Kontowährung) und Depots (Betrag in EUR) — finance.fn_goal_earmark_account_types. Eingänge: savings_goal_name, account_name, amount. Ablauf: Resolve Goal + Resolve Account -> Probelauf (Dry run, ohne Karte bei Ablehnung) -> HITL-Gate -> atomarer Write via fn_book_savings_reservation (delta = amount - aktueller Anteil inkl. eingezahltem Geld, EINE Journal-Zeile -> append-only, driftfrei). Saldo-Konto: die fn lehnt ab, wenn mehr zugeordnet würde als frei auf dem Konto liegt. Depot: Marktwert ist nur Deckung. Ausgang {ok:true, entry_id, delta, reserved, current_amount, free_balance | market_value+shortfall} bzw. {ok:false} (korrigierbar) / {cancelled} (Decline).' 260 500
 
     $resGoal = Build-Pg 'Resolve Goal' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'savings_goal_name', TRUE);" `

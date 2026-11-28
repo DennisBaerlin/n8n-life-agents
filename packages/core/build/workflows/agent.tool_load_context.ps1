@@ -9,7 +9,7 @@
 # State referenziert ($LoadContextId, kein ID-Literal). Die Assembly-SQL lebt hier im Workflow,
 # nicht in der DB (Verweis in packages/core/db/agent.core_init.sql).
 #
-# Start traegt nur agent_name + include_manifest (kein chat_id) -> Build-Trigger passt nicht (das
+# Start traegt nur agent_name, include_manifest und audience (kein chat_id) -> Build-Trigger passt nicht (das
 # wuerde chat_id erzwingen); der Trigger wird inline konstruiert.
 function Build-AgentToolLoadContext {
     $start = [ordered]@{
@@ -78,7 +78,7 @@ SELECT COALESCE((SELECT static_part FROM static_docs), '')
 
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-40, -180) -Header 'Ablauf' `
         'agent.tool_load_context' `
-        ("Gemeinsamer Sub-Workflow, KEIN LLM: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest. Aufruf durch jeden Agent-Workflow VOR dem AI-Node.`n" +
+        ("Gemeinsamer Sub-Workflow, KEIN LLM: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest, audience (optional). Aufruf durch jeden Agent-Workflow VOR dem AI-Node.`n" +
          "EINE Postgres-Query: Static-Docs aus agent.core_contexts, sortiert global_instructions, dann die Docs der Zielgruppe (optionaler Eingang audience, z. B. advisor = gemeinsame Gesprächsregeln aller Berater), dann die Docs dieses Agenten, dann die übrigen agentlosen Docs (je nach Name); danach optional das Lazy-Manifest (Name + Description der lazy-Contexts; ohne die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen, agent.fn_is_per_user_row — gelesen wird per Basisname + eigener chat_id). Rückgabe: system_prompt.`n" +
          "Sichtbarkeit = load_strategy x agent_name (Frontmatter-Schema: docs/package-contract.md §3.1).") `
         -Height 240 -Width 420

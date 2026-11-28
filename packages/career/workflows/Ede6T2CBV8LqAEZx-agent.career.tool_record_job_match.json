@@ -176,7 +176,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027job_match_id\u0027)::bigint AS job_match_id, (r-\u003e\u003e\u0027created\u0027)::boolean AS created FROM career.fn_record_job_match($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027forwarded\u0027, title: $(\u0027Start\u0027).item.json.title, employer: $(\u0027Start\u0027).item.json.employer, location: $(\u0027Start\u0027).item.json.location, url: $(\u0027Start\u0027).item.json.url, external_id: $(\u0027Start\u0027).item.json.external_id }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ source: \u0027forwarded\u0027, title: $(\u0027Start\u0027).item.json.title, employer: $(\u0027Start\u0027).item.json.employer, location: $(\u0027Start\u0027).item.json.location, url: $(\u0027Start\u0027).item.json.url, external_id: $(\u0027Start\u0027).item.json.external_id, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -398,7 +398,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**career.fn_record_job_match (atomar, source=forwarded)**\n\nSchreibt career.fn_record_job_match atomar: UPSERT auf den partial-UNIQUE-Index external_id (Re-Forward derselben external_id aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -\u003e {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit source=bundesagentur + score.",
+                                         "content":  "## DB-Automatik\n**career.fn_record_job_match (atomar, source=forwarded)**\n\nSchreibt career.fn_record_job_match atomar: Der Eintrag gehört der Person des Absenders (chat_id; ohne sie dem Owner). UPSERT auf den partial-UNIQUE-Index (source, external_id, person_id) (Re-Forward derselben external_id durch dieselbe Person aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -\u003e {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit der Quelle des Abrufs + score.",
                                          "height":  220,
                                          "width":  420,
                                          "color":  4

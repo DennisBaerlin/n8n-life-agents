@@ -909,7 +909,7 @@ $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -340) -Header 'Ablauf'
     'agent.finance — Buchhalter (Sub-Workflow)' `
     ("Eingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).`n" +
      "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Find table marker -> (nur mit Tabellen-Datei) Read bank export facts -> Build Agent Input -> Finance Agent.`n" +
-     "CQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.") `
+     "CQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via finance.fn_*). Antwort geht zurück an den Orchestrator.") `
     -Height 250 -Width 560
 
 $stickyTable = Build-Sticky 'Doc: Tabellen-Datei vorab' @(-1060, -620) -Header 'Ablauf' `
@@ -944,7 +944,7 @@ $stickyMemory = Build-Sticky 'Doc: Chat-Memory' @(-1380, 416) -Header 'Ablauf' `
 
 $stickyTools = Build-Sticky 'Doc: Tools (CQRS)' @(150, 100) -Header 'Ablauf' `
     'Tools: Writes nur über tool_*, Reads frei' `
-    ("Jedes tool_* ist ein toolWorkflow-Node (Name = Tool-Name, Bau über New-ToolWorkflowNode); die Liste ist der Canvas, die Verben stehen in packages/CLAUDE.md *Verb-Taxonomie*. Jedes Write-Tool hat ein HITL-Gate und schreibt atomar über eine agent.fn_*-Function.`n`n" +
+    ("Jedes tool_* ist ein toolWorkflow-Node (Name = Tool-Name, Bau über New-ToolWorkflowNode); die Liste ist der Canvas, die Verben stehen in packages/CLAUDE.md *Verb-Taxonomie*. Jedes Write-Tool hat ein HITL-Gate und schreibt atomar über eine finance.fn_*-Function.`n`n" +
      "Datumsfelder: das Modell gibt relative Angaben roh weiter (Text = Get-DateParamHint), die Write-fn löst sie auf (core.fn_resolve_input_dates); unlesbar -> ok:false invalid_date, keine Karte. Die Karte zeigt das aufgelöste Datum aus dem Probelauf.`n" +
      "transfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (ein Bein). set_* ändert nur Bestehendes (partielles UPDATE, Auflösung per Name).`n" +
      "Reads: postgres_select (Views bevorzugt; geteilter Builder New-PostgresSelectToolNode: onError=continueRegularOutput gibt den DB-Fehler an den Agenten zurück, fehlt das query-Argument, liefert der Guard {ok:false, error}) + load_context (lazy) + web_search (nur öffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eingetragen wird erst nach dem Chat-Ja über set_account_interest).") `

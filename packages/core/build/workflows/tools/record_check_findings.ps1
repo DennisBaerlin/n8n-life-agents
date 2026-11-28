@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_record_check_findings (CROSS-AGENT, ohne Gate) ------------------------------------------------------
-# Schlussprüfung (Plan s4-berater-ux §5.4): der Berater liest den Entwurf einmal je Durchgang und legt alle echten Funde ab;
+# Schlussprüfung: der Berater liest den Entwurf einmal je Durchgang und legt alle echten Funde ab;
 # die DB ergaenzt ihre eigenen Punkte (noch offen, Teil fehlt), baut den Stapel (Übersicht + je Punkt eine Karte) und führt
 # Punkt für Punkt. Arbeitsnotiz, ändert den Plan nicht -> kein HITL-Gate (ein Vorschlag wird erst beim Tipp gespeichert).
 # domain ist beim Aufrufer fixer Binding-Input, chat_id die Identitaet.

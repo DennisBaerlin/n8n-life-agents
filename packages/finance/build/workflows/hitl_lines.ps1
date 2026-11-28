@@ -33,15 +33,6 @@ function Get-FinanceMonthEndKey([string]$Dom) {
     "(String($Dom ?? '') === '-2' ? 'finance.value.second_to_last_day_of_month' : 'finance.value.last_day_of_month')"
 }
 
-# Zins-Kadenz in Klartext (keine Codes wie "ACT/365" oder "-1" auf der Karte) — eine Definition
-# fuer die Konto-Karte (Einzel-Tool + Import) und die Karte von tool_set_account_interest. Werte als JS-Ausdruecke:
-# Unit/Interval/Dom/Pdom = die Kadenz, die der Write schreibt (Konto: Eingabe, von fn_create_account unveraendert
-# uebernommen; Satzwechsel: wirksame Werte aus fn_interest_rate_preview); FirstCredit = erste Gutschrift aus derselben
-# fn (fn_interest_next_period_end, Kalender-Raster) — die Karte rechnet nichts, sie waehlt nur den Text:
-#   Rhythmus  taeglich/woechentlich/monatlich/vierteljaehrlich/halbjaehrlich/jaehrlich, sonst "alle n <Einheit>"
-#   Gutschrift  dom -1 -> zum Monats-/Quartals-/Halbjahres-/Jahresende | fester Tag -> am n. | leer: year -> am
-#               Jahrestag, month (Altzeile) -> am Tag des Starts, day/week -> laufend
-#   Methode   Katalog-Enum finance.enum.day_count.<code> (der Renderer macht aus ACT/365 den Key act_365)
 # Rhythmus in Klartext (nie "alle 1 Jahr(e)") — eine Definition fuer Zins-Kadenz und
 # Zahlungs-Rhythmus: Intervall 1 bzw. 3/6/12 Monate -> ein Wort (jaehrlich, vierteljaehrlich ...), sonst "alle n <Einheit>".
 # Interval/Unit = JS-Ausdruecke der gespeicherten Werte (Default der Einheit traegt der Aufrufer im Ausdruck).
@@ -57,6 +48,15 @@ function Get-FinanceRhythmLine {
         unit     = (New-HitlValue -Kind enum -Value $u -Enum 'finance.enum.schedule_unit') }
 }
 
+# Zins-Kadenz in Klartext (keine Codes wie "ACT/365" oder "-1" auf der Karte) — eine Definition
+# fuer die Konto-Karte (Einzel-Tool + Import) und die Karte von tool_set_account_interest. Werte als JS-Ausdruecke:
+# Unit/Interval/Dom/Pdom = die Kadenz, die der Write schreibt (Konto: Eingabe, von fn_create_account unveraendert
+# uebernommen; Satzwechsel: wirksame Werte aus fn_interest_rate_preview); FirstCredit = erste Gutschrift aus derselben
+# fn (fn_interest_next_period_end, Kalender-Raster) — die Karte rechnet nichts, sie waehlt nur den Text:
+#   Rhythmus  taeglich/woechentlich/monatlich/vierteljaehrlich/halbjaehrlich/jaehrlich, sonst "alle n <Einheit>"
+#   Gutschrift  dom -1 -> zum Monats-/Quartals-/Halbjahres-/Jahresende | fester Tag -> am n. | leer: year -> am
+#               Jahrestag, month (Altzeile) -> am Tag des Starts, day/week -> laufend
+#   Methode   Katalog-Enum finance.enum.day_count.<code> (der Renderer macht aus ACT/365 den Key act_365)
 function Get-FinanceInterestScheduleLines {
     param([Parameter(Mandatory)][string]$Unit, [Parameter(Mandatory)][string]$Interval, [Parameter(Mandatory)][string]$Dom,
           [Parameter(Mandatory)][string]$Pdom, [Parameter(Mandatory)][string]$FirstCredit,

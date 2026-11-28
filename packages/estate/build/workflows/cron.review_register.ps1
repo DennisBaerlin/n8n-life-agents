@@ -13,7 +13,7 @@
 # still nie. Daher ein schlanker Eigen-Cron (Skelett wie cron.remind_case_tasks: F9-Gate -> Eval -> Build ->
 # Anything? -> Phrase/Choose/Send), der nur die estate-Domaene evaluiert (household -> person_id NULL, keine
 # Get-AdvisorFanoutCte noetig). New-AdvisorCron ist nicht wiederverwendbar: dessen Gate/Schedule-Lookup ist
-# hart auf das Paket 'core' verdrahtet und es traegt einen Abschalten-Button (cron_off, den estate nicht will).
+# hart auf das Paket 'core' verdrahtet.
 # Der Phrase/Choose/Model-Schwanz ist der geteilte New-AdvisorPhrasingTail (lib/build_helpers.ps1, wie New-AdvisorCron;
 # model.advisor_review bei jedem Lauf aus core.config).
 #
@@ -87,7 +87,7 @@ return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.
 
     $stickyEngine = Build-Sticky 'Doc Engine' @(-480, -360) `
         'estate.fn_advisor_review (Registry-Dispatch + Latch, off-canvas)' `
-        'estate.fn_advisor_review meldet: (A) Register-Staleness je Erwachsenem (person_records.last_reviewed_at > advisor.estate_review_days=365; fn_confirm_review re-armt), (B) fehlende Vorsorge-Dokumente je Erwachsenem (v_directive_gaps, essential+recommended), (C) finance-Nachlass-Feld-Gaps [Singleton, GUARDED via estate.fn_gap_report doppel-guard -> finance absent = kein Alert, kein Crash). Jeder Alert trägt ein deutsches text-Feld -> der Cron kennt keine estate-Felder, joint nur text; das LLM formuliert um. household -> estate_overview hat KEINE context_scopes-Zeile -> agent.fn_context_persons leer -> person_id NULL (byte-gleich advisor:estate). RAISE-FREI (eine Exception kippt sonst auch den finance-/career-Lauf des geteilten Drift-Crons).' 360 780
+        'estate.fn_advisor_review meldet: (A) Register-Staleness je Erwachsenem (person_records.last_reviewed_at älter als advisor.estate_review_days; fn_confirm_review re-armt), (B) fehlende Vorsorge-Dokumente je Erwachsenem (v_directive_gaps, essential+recommended), (C) finance-Nachlass-Feld-Gaps [Singleton, GUARDED via estate.fn_gap_report doppel-guard -> finance absent = kein Alert, kein Crash). Jeder Alert trägt msg (Text-Struktur mit Katalog-Schlüsseln) -> der Cron kennt keine estate-Felder, rendert sie in der Sprache des Owners und fügt sie zusammen; das LLM formuliert um. household -> estate_overview hat KEINE context_scopes-Zeile -> agent.fn_context_persons leer -> person_id NULL (byte-gleich advisor:estate). RAISE-FREI (eine Exception kippt sonst auch den finance-/career-Lauf des geteilten Drift-Crons).' 360 780
 
     $nodes = @($trig, $gate, $ifEnabled, $off, $tail.LoadNode, $evaluate, $build, $ifReport, $quiet) +
              @($tail.Nodes) + @($send, $stickyOverview, $stickyEngine)

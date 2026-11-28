@@ -3,7 +3,8 @@
 
 # --- agent.career.tool_record_job_match -------------------------------
 # Merkt eine manuell weitergeleitete Stelle vor (source='forwarded'). Verb record_: idempotenter
-# Tracking-Eintrag, UPSERT auf external_id -> bewusst nicht create_ (dessen lokaler Vertrag
+# Tracking-Eintrag der Person des Absenders (chat_id -> career.fn_record_job_match; ohne chat_id fiele er an den Owner),
+# UPSERT auf (source, external_id, person_id) -> bewusst nicht create_ (dessen lokaler Vertrag
 # "nur Neues + Pflicht-Dubletten-Node" widerspricht UPSERT) und nicht book_ (Finanz).
 # HITL owner_info (additiv, kein Identitaets-/Plan-Write). Cred = Haupt-RW (nur finance nutzt finance_rw).
 # Nach dem Write: Zero-Spam-Angebot, den werktaeglichen Job-Scan zu aktivieren (rem:on:score_jobs = nur
@@ -36,6 +37,7 @@ function Build-RecordJobMatch {
             location = '$(''Start'').item.json.location'
             url      = '$(''Start'').item.json.url'
             external_id    = '$(''Start'').item.json.external_id'
+            chat_id  = "String(`$('Start').item.json.chat_id || '')"
         })
 
     $ifWriteOk = Build-If 'Write ok?' @(1300, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
@@ -68,7 +70,7 @@ function Build-RecordJobMatch {
 
     $stickyBalance = Build-Sticky 'DB-Automatik (UPSERT)' @(1080, -220) `
         'career.fn_record_job_match (atomar, source=forwarded)' `
-        'Schreibt career.fn_record_job_match atomar: UPSERT auf den partial-UNIQUE-Index external_id (Re-Forward derselben external_id aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -> {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit source=bundesagentur + score.' 220 420
+        'Schreibt career.fn_record_job_match atomar: Der Eintrag gehört der Person des Absenders (chat_id; ohne sie dem Owner). UPSERT auf den partial-UNIQUE-Index (source, external_id, person_id) (Re-Forward derselben external_id durch dieselbe Person aktualisiert; forwarded OHNE external_id = reiner INSERT, kein Dedup). updated_at pflegt der Trigger career.touch_updated_at. Korrigierbare Ablehnung (leerer Titel) -> {ok:false, reason} (kein RAISE/Owner-Alert). source ist FIX forwarded (nie $fromAI); der Cron-Pfad nutzt dieselbe fn mit der Quelle des Abrufs + score.' 220 420
 
     $stickyOffer = Build-Sticky 'Doc Job-Scan-Angebot (rem:on)' @(1740, -360) `
         'Angebot an den Absender nach Write (Seitenkanal-Ausnahme, Muster publish_plan)' `

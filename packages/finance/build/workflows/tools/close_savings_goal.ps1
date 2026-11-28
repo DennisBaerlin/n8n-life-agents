@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
+# Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_close_savings_goal (Sparziel beenden: Smart-Close wie close_savings_plan) ---
 function Build-CloseSavingsGoal {

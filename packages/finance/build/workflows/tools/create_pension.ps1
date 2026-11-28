@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
+# Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_create_pension (Altersvorsorge als Net-Worth-Asset) ---
 function Build-CreatePension {
@@ -70,7 +70,6 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     # --- HITL approval gate ---
     # Betraege in EUR-Konvention (entity-Werte in EUR erfasst).
-    $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1): Beitrag -> Abbuchungskonto/erste Abbuchung/Tag
     # als vollstaendige Folgegruppe.

@@ -23,7 +23,7 @@ function Build-AgentCareerAdvisor {
     $CONFIG_FIELD  = 'model.career_advisor'
     $MEMORY_TABLE  = 'agent.career_advisor_chat_memory'
     $START_NODE    = 'Start agent.career_advisor'
-    # e2e-Domain-Switch: test_e2e-chat_ids schreiben die Plan-Kette (save/publish) unter Sentinel-Domain
+    # e2e-Domain-Switch: test_e2e-chat_ids schreiben die Plan-Kette (propose/record/publish) unter Sentinel-Domain
     # '__e2e_career__' (die echte career-Plan-Kette bleibt unberuehrt; fn_clear_e2e_data raeumt 'e2e').
     # tool_set_profile_facts schreibt career_profile direkt — kein domain-Switch, daher kein Profil-e2e-Case
     # (braeuchte einen registrierten Sentinel-Context).

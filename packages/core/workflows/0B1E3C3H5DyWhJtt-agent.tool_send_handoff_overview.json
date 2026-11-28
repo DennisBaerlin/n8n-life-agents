@@ -141,6 +141,40 @@
                   },
                   {
                       "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "2ce51286-f710-56b5-9d1d-8c7effa34125",
+                                                                                   "leftValue":  "={{ !$json.error }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       770,
+                                       -100
+                                   ],
+                      "id":  "1f746a0e-fd0e-5bc6-b04f-9c59f5ed2c33",
+                      "name":  "Sent?"
+                  },
+                  {
+                      "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_handoff_overview_mark($1::jsonb) AS r;",
                                          "options":  {
@@ -150,8 +184,8 @@
                       "type":  "n8n-nodes-base.postgres",
                       "typeVersion":  2.6,
                       "position":  [
-                                       770,
-                                       -100
+                                       880,
+                                       -200
                                    ],
                       "id":  "ffd8b6f2-5b99-58a3-8267-ec13c399b893",
                       "name":  "Mark overview",
@@ -176,7 +210,7 @@
                                                                                  {
                                                                                      "id":  "15ee8177-9303-5956-8c30-cdce6e1c7b5f",
                                                                                      "name":  "sent",
-                                                                                     "value":  "={{ !$json.error }}",
+                                                                                     "value":  "true",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
@@ -194,11 +228,54 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       990,
-                                       -100
+                                       1100,
+                                       -200
                                    ],
                       "id":  "fec6102d-b8ae-5ecf-9b6a-155008b88004",
                       "name":  "Return sent"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8157c76b-b306-58ef-b98a-fb0514a1c74a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5574ea0c-ffa7-5b46-bdb8-7c9feda88763",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a58f9c92-323c-57e2-ac4c-2d8326e5ea38",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "={{ Number(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).count || 0) }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cdd3df1f-205b-5885-b525-7aecca8193ac",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "send_failed",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "6cb5d9c2-3a74-57fb-9a0d-19c4498f20ee",
+                      "name":  "Return not sent"
                   },
                   {
                       "parameters":  {
@@ -239,7 +316,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)**\n\nRead overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -\u003e Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O (wie das Wächter-Angebot in agent.tool_publish_plan): reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue. Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt.",
+                                         "content":  "## DB-Automatik\n**Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)**\n\nRead overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM; dieselbe Text-Struktur wie Schritt 1 der geführten Abfolge) und die Texte in der Sprache des Empfängers. Nichts offen -\u003e Return nothing open (sent false). Sonst Render overview (gemeinsamer Renderer) und Send overview: nummerierte Liste der Sätze und der Knopf Jetzt eintragen = handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O: reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue -\u003e Sent? (kam die Nachricht an): ja -\u003e Mark overview setzt den Merker von Schritt 1, damit die Abfolge dieselbe Liste nicht noch einmal schickt -\u003e Return sent; nein -\u003e Return not sent (sent false, reason send_failed, open_count bleibt), kein Merker: die Liste gilt nicht als gezeigt, Schritt 1 der Abfolge schickt sie nach dem Veröffentlichen.",
                                          "height":  340,
                                          "width":  600,
                                          "color":  4
@@ -311,12 +388,30 @@
                                                            [
                                                                {
                                                                    "index":  0,
-                                                                   "node":  "Mark overview",
+                                                                   "node":  "Sent?",
                                                                    "type":  "main"
                                                                }
                                                            ]
                                                        ]
                                           },
+                        "Sent?":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Mark overview",
+                                                           "type":  "main"
+                                                       }
+                                                   ],
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Return not sent",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
                         "Mark overview":  {
                                               "main":  [
                                                            [

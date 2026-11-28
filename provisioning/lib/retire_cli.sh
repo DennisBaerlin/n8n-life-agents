@@ -206,9 +206,9 @@ TXT
 
 # _ret_publish <staging> <ziel> — Dateien in den Umzugs-Ordner: klassisch ein Ordner hier (0700, Dateien 0600, je Datei .part ->
 #   umbenannt), im Verbund ein Ordner auf dem Rechner (rt_host_put prueft je Datei die Pruefsumme).
-#   Reste eines frueheren Laufs (seine Sicherung, ein alter Gedaechtnis-Abzug) wuerden sonst mit eingespielt: geloescht werden genau
-#   die Sicherung, die das alte move.manifest nennt, und memory.dump — nie andere Sicherungen im Ordner (--out kann der normale
-#   Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit Sicherungen (Verbund) ohne move.manifest bricht ab.
+#   Die Sicherung eines frueheren Laufs wuerde sonst mit eingespielt: geloescht wird genau die, die das alte move.manifest nennt —
+#   nie andere Sicherungen im Ordner (--out kann der normale Sicherungs-Ordner sein). Ein Ordner mit Inhalt (klassisch) bzw. mit
+#   Sicherungen (Verbund) ohne move.manifest bricht ab.
 _ret_publish() {
   local st="$1" out="$2" f hd old=''
   if rt_is_compose; then
@@ -216,8 +216,7 @@ _ret_publish() {
     if rt_host_get "$hd" move.manifest > "$st/.alt.manifest" 2>/dev/null; then
       old="$(read_env_value "$st/.alt.manifest" BACKUP_FILE 2>/dev/null || true)"
       case "$old" in */*|*\\*) old='' ;; esac
-      # shellcheck disable=SC2086  # $old ist leer oder genau ein Dateiname ohne Leerzeichen (Namensmuster der Sicherung)
-      rt_host_rm "$hd" memory.dump $old || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
+      [ -z "$old" ] || rt_host_rm "$hd" "$old" || die "Reste im Umzugs-Ordner '${out}' ließen sich nicht entfernen."
     elif [ -n "$(rt_host_ls "$hd" 2>/dev/null)" ]; then
       die "Im Ordner '${out}' liegen Sicherungen, er ist aber kein Umzugs-Ordner — einen eigenen wählen: lifeagents retire --out <ordner>"
     fi
@@ -229,7 +228,6 @@ _ret_publish() {
     [ -e "$out/move.manifest" ] || die "Ordner ${out} ist nicht leer und kein Umzugs-Ordner — einen anderen wählen: lifeagents retire --out <ordner>"
     old="$(read_env_value "$out/move.manifest" BACKUP_FILE 2>/dev/null || true)"
     case "$old" in ''|*/*) ;; *) rm -f -- "${out:?}/${old}" ;; esac
-    rm -f -- "$out/memory.dump"
   fi
   ( umask 077; mkdir -p "$out" ) || die "Umzugs-Ordner ${out} ließ sich nicht anlegen."
   chmod 0700 "$out"

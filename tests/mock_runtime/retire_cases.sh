@@ -276,14 +276,12 @@ for _c in "household add" "backup restore x.nla.enc"; do
   # shellcheck disable=SC2086  # bewusst in Woerter zerlegt
   case "$(_cli $_c; echo "rc=$?")" in *stillgelegt*rc=1) pass "RT-P.gesperrt-${_c// /-}" ;; *) fail "RT-P.gesperrt-${_c// /-}" "$(_cli $_c | tail -n2)" ;; esac
 done
-# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, und ein alter Gedaechtnis-Abzug (frueherer Stand) fliegen
-# raus; eine
-# andere Sicherung im Ordner bleibt (--out kann der normale Sicherungs-Ordner sein); fremder Ordner -> Abbruch.
+# Wiederverwendeter Umzugs-Ordner: die Sicherung, die das alte Manifest nennt, fliegt raus; eine andere Sicherung im Ordner bleibt
+# (--out kann der normale Sicherungs-Ordner sein); fremder Ordner -> Abbruch.
 _rt_reset; _rt_env; mkdir -p "$W/ret_out"
-printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"; printf 'alt' > "$W/ret_out/memory.dump"
+printf 'FORMAT=1\nBACKUP_FILE=lifeagents-backup-1-k0-v9.0.0.nla.enc\n' > "$W/ret_out/move.manifest"
 printf 'alt' > "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc"; printf 'taeglich' > "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc"
 ( _rr --out "$W/ret_out" ) >/dev/null 2>"$W/ret.err"
-[ ! -e "$W/ret_out/memory.dump" ] && pass RT-P.alter-abzug-weg || fail RT-P.alter-abzug-weg "liegt noch"
 [ ! -e "$W/ret_out/lifeagents-backup-1-k0-v9.0.0.nla.enc" ] && pass RT-P.alte-move-sicherung-weg || fail RT-P.alte-move-sicherung-weg "liegt noch"
 [ -e "$W/ret_out/lifeagents-backup-2-k0-v9.0.0.nla.enc" ] && pass RT-P.andere-sicherung-bleibt || fail RT-P.andere-sicherung-bleibt "geloescht"
 eq RT-P.neue-sicherung-da 1 "$(find "$W/ret_out" -name '*-v9.1.0.nla.enc' | wc -l)"

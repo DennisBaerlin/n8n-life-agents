@@ -221,7 +221,7 @@ function cursor() {
 // Texte aus dem Textkatalog der Pakete (packages/<pkg>/locales/<lang>.json, locale_lint prüft Vollständigkeit und
 // Platzhalter): <pkg>.wizard.* (eigene Texte für das Fenster der App, „Rechner“ statt „Server“, ohne Terminal-Befehle),
 // <pkg>.package.name/summary, core.persona.name.*. Fehlt ein Key, gilt Deutsch, dann der CLI-Text der Frage.
-const PKG_DIR = process.env.WIZARD_PKG_DIR || path.join(__dirname, '..', '..', 'packages');
+const PKG_DIR = path.join(__dirname, '..', '..', 'packages');
 // Sticker des Charakters fürs Handy-Bild: genau die Datei, die der Bot in Telegram schickt (install_llm_gateway kopiert sie
 // aus demselben Ordner), ohne Kopie im Wizard. Abgesichert von tests/wizard/durchlauf.test.js (Auslieferung byte-gleich).
 function stickerFile(code) {
@@ -577,8 +577,8 @@ function finishBackupMode() {
 }
 let domainSearching = null;
 // dnsLookup — öffentliche Auflösung (nicht der Resolver des Heimnetzes, der eine MyFRITZ-Adresse auf die Box selbst biegen
-//   kann): WIZARD_DNS_SERVERS, sonst zwei öffentliche Resolver. Fehler = keine Adresse.
-const DNS_SERVERS = (process.env.WIZARD_DNS_SERVERS || '1.1.1.1,9.9.9.9').split(',').filter(Boolean);
+//   kann): zwei öffentliche Resolver. Fehler = keine Adresse.
+const DNS_SERVERS = ['1.1.1.1', '9.9.9.9'];
 function dnsLookup(name) {
   // Nur Tests: WIZARD_FAKE_DNS = „name=ipv4,name=ipv4“ (deterministisch, ohne Netz).
   if (process.env.WIZARD_FAKE_DNS !== undefined) {

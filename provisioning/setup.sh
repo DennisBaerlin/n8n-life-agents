@@ -201,7 +201,7 @@ IMAGE="${IMAGE_ARG:-$MASTER_IMAGE_PIN}"
 if [ -z "$IMAGE" ] && [ "$UNINSTALL" = 1 ]; then IMAGE="$(master_image)"; fi
 [ -n "$IMAGE" ] || die "Dieses setup.sh trägt keinen Abbild-Pin (Entwicklungsstand). Mit --image <abbild> starten oder das Release-Asset laden."
 if docker inspect "$P-core" >/dev/null 2>&1; then
-  die "Ein anderer Lauf ist aktiv oder hat einen Rest hinterlassen (Container $P-core). Warten oder: docker rm -f $P-core"
+  die "Ein anderer Lauf ist aktiv oder hat einen Rest hinterlassen (Container $P-core). Warten oder: docker rm -fv $P-core"
 fi
 
 OUT="$(mktemp)"; trap 'rm -f "$OUT"' EXIT

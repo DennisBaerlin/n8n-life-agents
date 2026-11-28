@@ -60,8 +60,8 @@ foreach ($f in $files) {
 }
 
 # --- (D) `exec` ohne Programm: nur Deskriptoren ab 3 ---
-$rxExec  = [regex]'(?:^|[;&|(]|\bthen\b|\bdo\b)\s*exec((?:\s+(?:\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|\S+))+)\s*(?:$|[;&|)#])'
-$rxRedir = [regex]'(?:^|\s)(\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|\S+)'
+$rxExec  = [regex]'(?:^|[;&|({!]|\b(?:then|do|if|elif|else|while|until)\b)\s*exec((?:\s+(?:\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|''[^'']*''|[^\s;&|)}]+))+)\s*(?:$|[;&|)}#])'
+$rxRedir = [regex]'(?:^|\s)(\d+|\{\w+\})?(?:<>|>>|>&|<&|&>>?|>\||<|>)\s*(?:"[^"]*"|''[^'']*''|[^\s;&|)}]+)'
 foreach ($f in $files) {
     $rel = Rel $f.FullName
     $lines = [System.IO.File]::ReadAllLines($f.FullName, $u8)

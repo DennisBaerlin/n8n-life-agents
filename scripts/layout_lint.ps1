@@ -91,8 +91,8 @@ $L9Allow = @{
     'core|manifest|load_context'                  = 'Def liegt als agent.tool_load_context.ps1 neben den Agenten, nicht unter tools/'
     'finance|manifest|set_onboarding_section'     = 'Def heisst finance_set_onboarding_section.ps1 (core hat eine Def gleichen Werkzeug-Namens)'
     'finance|file|finance_set_onboarding_section' = 'Werkzeug-Name im Manifest: set_onboarding_section'
-    'finance|file|book_savings_goal_transfer'     = 'steht nicht in provides.tools'
-    'finance|file|book_savings_reservation'       = 'steht nicht in provides.tools'
+    'finance|file|book_savings_goal_transfer'     = 'am Buchhalter verdrahtet, fehlt in provides.tools des Manifests'
+    'finance|file|book_savings_reservation'       = 'am Buchhalter verdrahtet, fehlt in provides.tools des Manifests'
 }
 # L9: Abweichungen eines Pakets als Schluessel '<pkg>|manifest|<name>' (nur im Manifest) bzw. '<pkg>|file|<name>' (nur als Datei).
 function Get-L9Gaps([string]$Pkg, [string[]]$Declared, [string[]]$Defs) {

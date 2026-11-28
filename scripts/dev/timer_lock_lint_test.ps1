@@ -56,6 +56,13 @@ Test-Case 'exec schliesst die Sperre und verbiegt dabei stderr der Shell: rot' @
 Test-Case 'exec leitet stdout der Shell um: rot' @{
     "$P/lib/other.sh" = "exec >>`"`$LOG`" 2>&1`n"
 } $true 'other.sh:1'
+Test-Case 'exec in einer einzeiligen Funktion: rot' @{
+    "$P/lib/other.sh" = "unlock() { exec 9>&- 2>/dev/null || true; }`n"
+} $true 'other.sh:1'
+Test-Case 'exec hinter if ! und hinter else: rot' @{
+    "$P/lib/a.sh" = "if ! exec 9>>`"`$LOCK`" 2>/dev/null; then return 0; fi`n"
+    "$P/lib/b.sh" = "if x; then :`nelse exec 2>'/tmp/a b'`nfi`n"
+} $true 'b.sh:2'
 Test-Case 'exec nur mit Deskriptoren ab 3 ist gruen' @{
     "$P/lib/other.sh" = "exec 9>>`"`$LOCK`" || return 0`nexec 9>&-`nexec 3>&2`nexec {OUT}>&1 {IN}<&0`n"
 } $false ''

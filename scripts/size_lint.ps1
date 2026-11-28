@@ -18,11 +18,14 @@
 #   (5) Regel ohne id, include oder Grenze.
 # Die Decken sinken nur. Eine Decke anzuheben oder einen Eintrag neu anzulegen ist eine Entscheidung des Owners, kein Ausweg aus
 # (1) und (2). Gemessen wird nach Umwandlung von CRLF in LF (gleiche Zahlen unter Windows und Linux); bytes = UTF-8 ohne BOM.
-# Aufruf: .\scripts\size_lint.ps1 [-Baseline] [-Root <Baum>]
-#   -Baseline  druckt files, agents und stickies mit den heutigen Werten als JSON (Geruest fuer size_budget.json) und endet mit 0.
+# Aufruf: .\scripts\size_lint.ps1 [-Update] [-Root <Baum>]
+#   -Update    schreibt size_budget.json neu: Decken, die nicht mehr passen, bekommen den gemessenen Wert, Eintraege ohne Anlass
+#              entfallen, fehlende kommen dazu; endet mit 0. Das hebt auch Decken an: nur nach dem Zusammenfuehren von Zweigen
+#              (ihr gemeinsamer Stand ist der neue Bestand) oder nach einer Owner-Entscheidung, nie um ein Rot im eigenen Zweig
+#              zu beseitigen. Das Ergebnis mit git diff lesen.
 #   -Root      prueft einen anderen Baum und nimmt dort alle Dateien statt der git-getrackten (nur scripts/dev/size_lint_test.ps1).
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Docker.
-param([switch]$Baseline, [string]$Root)
+param([switch]$Update, [string]$Root)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $u8 = New-Object System.Text.UTF8Encoding($false)
@@ -40,6 +43,7 @@ if ($Root) {
     $relFiles = @(git -C $Root -c core.quotepath=off ls-files)
 }
 
+. (Join-Path $PSScriptRoot 'lib\ordinal.ps1')   # Sort-Ordinal: gleiche Reihenfolge der Meldungen und der Datei auf jedem Rechner
 $FileDims  = @('lines', 'bytes', 'line_chars')
 $AgentDims = @('tools', 'description_chars', 'longest_description')
 
@@ -97,7 +101,7 @@ $headroom = if ($budget.PSObject.Properties['headroom_pct']) { [int]$budget.head
 $stickyLimit = if ($budget.PSObject.Properties['sticky_chars']) { [int]$budget.sticky_chars } else { 0 }   # 0 = Sticky-Notes ohne Grenze
 function Get-MaxCap([int]$Value) { return [int][math]::Floor($Value * (100 + $headroom) / 100) }
 
-$rules = @(foreach ($r in @($budget.rules)) {
+$rules = @(foreach ($r in @($budget.rules | Where-Object { $_ })) {
     $limits = @{}
     foreach ($d in $FileDims) { if ($r.PSObject.Properties[$d]) { $limits[$d] = [int]$r.$d } }
     if (-not $r.id -or -not $r.include -or $limits.Count -eq 0) { Fail "rules: Regel '$($r.id)' braucht id, include und mindestens eine Grenze (lines|bytes|line_chars)"; continue }
@@ -116,30 +120,72 @@ foreach ($rel in $relFiles) {
     $measured[$rel] = $m
 }
 Read-BuiltWorkflows
-$longStickies = @($stickies.Keys | Where-Object { $stickyLimit -gt 0 -and $stickies[$_] -gt $stickyLimit } | Sort-Object)
+$longStickies = @(Sort-Ordinal @($stickies.Keys | Where-Object { $stickyLimit -gt 0 -and $stickies[$_] -gt $stickyLimit }))
 
-if ($Baseline) {
-    $files = @(foreach ($rel in ($measured.Keys | Sort-Object)) {
+if ($Update) {
+    # Eine gueltige Decke bleibt stehen (Wert <= Decke <= Wert + headroom_pct); sonst gilt der gemessene Wert. Eintraege ohne Anlass
+    # entfallen. Geschrieben wird die ganze Datei, ein Eintrag je Zeile.
+    function Get-KeptCap($Entry, [string]$Dim, [int]$Value, [int]$MaxCap) {
+        if ($Entry -and $Entry.PSObject.Properties[$Dim]) { $cap = [int]$Entry.$Dim; if ($Value -le $cap -and $cap -le $MaxCap) { return $cap } }
+        return $Value
+    }
+    # Eigener Schreiber statt ConvertTo-Json: der maskiert in Windows PowerShell 5.1 auch < > & ' und in pwsh 7 nicht; die Datei
+    # soll unter beiden gleich aussehen.
+    function ConvertTo-JsonValue($Value) {
+        if ($Value -is [bool]) { return "$Value".ToLowerInvariant() }
+        if ($Value -isnot [string]) { return [string]$Value }
+        return '"' + $Value.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n').Replace("`t", '\t') + '"'
+    }
+    function ConvertTo-JsonRow($Row) {
+        return '    { ' + (@($Row.Keys | ForEach-Object { '"' + $_ + '": ' + (ConvertTo-JsonValue $Row[$_]) }) -join ', ') + ' }'
+    }
+    $old = @{ files = (New-OrdinalMap); agents = (New-OrdinalMap); stickies = (New-OrdinalMap) }
+    foreach ($e in @($budget.files | Where-Object { $_ }))    { $old.files[[string]$e.path] = $e }
+    foreach ($e in @($budget.agents | Where-Object { $_ }))   { $old.agents[[string]$e.agent] = $e }
+    foreach ($e in @($budget.stickies | Where-Object { $_ })) { $old.stickies[[string]$e.sticky] = $e }
+    $ruleRows = @(foreach ($r in @($budget.rules | Where-Object { $_ })) { $row = [ordered]@{}; foreach ($p in $r.PSObject.Properties) { $row[$p.Name] = $p.Value }; ConvertTo-JsonRow $row })
+    $fileRows = @(foreach ($rel in (Sort-Ordinal @($measured.Keys))) {
         $m = $measured[$rel]; $row = [ordered]@{ path = $rel }
-        foreach ($d in $FileDims) { if ($m.Rule.Limits.ContainsKey($d) -and $m[$d] -gt $m.Rule.Limits[$d]) { $row[$d] = $m[$d] } }
-        if ($row.Count -gt 1) { $row }
+        foreach ($d in $FileDims) { if ($m.Rule.Limits.ContainsKey($d) -and $m[$d] -gt $m.Rule.Limits[$d]) { $row[$d] = Get-KeptCap $old.files[$rel] $d $m[$d] (Get-MaxCap $m[$d]) } }
+        if ($row.Count -gt 1) { ConvertTo-JsonRow $row }
     })
-    $agents = @(foreach ($k in ($loads.Keys | Sort-Object)) { $row = [ordered]@{ agent = $k }; foreach ($d in $AgentDims) { $row[$d] = $loads[$k][$d] }; $row })
-    $notes = @(foreach ($k in $longStickies) { [ordered]@{ sticky = $k; chars = $stickies[$k] } })
-    [ordered]@{ files = $files; agents = $agents; stickies = $notes } | ConvertTo-Json -Depth 5
+    $agentRows = @(foreach ($k in (Sort-Ordinal @($loads.Keys))) {
+        $row = [ordered]@{ agent = $k }
+        foreach ($d in $AgentDims) { $v = $loads[$k][$d]; $row[$d] = Get-KeptCap $old.agents[$k] $d $v $(if ($d -eq 'tools') { $v } else { Get-MaxCap $v }) }
+        ConvertTo-JsonRow $row
+    })
+    $stickyRows = @(foreach ($k in $longStickies) { ConvertTo-JsonRow ([ordered]@{ sticky = $k; chars = (Get-KeptCap $old.stickies[$k] 'chars' $stickies[$k] (Get-MaxCap $stickies[$k])) }) })
+    $out = New-Object System.Collections.Generic.List[string]
+    $out.Add('{')
+    foreach ($p in $budget.PSObject.Properties) {
+        if ($p.Name -in 'rules', 'files', 'agents', 'stickies') { continue }
+        $out.Add('  "' + $p.Name + '": ' + (ConvertTo-JsonValue $p.Value) + ',')
+    }
+    $sections = [ordered]@{ rules = $ruleRows; files = $fileRows; agents = $agentRows; stickies = $stickyRows }
+    $names = @($sections.Keys)
+    for ($i = 0; $i -lt $names.Count; $i++) {
+        $rows = @($sections[$names[$i]]); $tail = if ($i -lt $names.Count - 1) { ',' } else { '' }
+        if ($rows.Count -eq 0) { $out.Add('  "' + $names[$i] + '": []' + $tail); continue }
+        $out.Add('  "' + $names[$i] + '": [')
+        $out.Add($rows -join ",`n")
+        $out.Add('  ]' + $tail)
+    }
+    $out.Add('}')
+    [System.IO.File]::WriteAllText($budgetPath, (($out -join "`n") + "`n"), $u8)
+    Write-Host "size_lint -Update: scripts/build/size_budget.json neu geschrieben ($($fileRows.Count) Datei(en), $($agentRows.Count) Agent(en), $($stickyRows.Count) Sticky-Note(s)); Aenderungen mit git diff pruefen." -ForegroundColor Yellow
     exit 0
 }
 
 # --- Dateien ---
 $entries = New-OrdinalMap
-foreach ($e in @($budget.files)) {
+foreach ($e in @($budget.files | Where-Object { $_ })) {
     $path = [string]$e.path
     if ($entries.ContainsKey($path)) { Fail "files: '$path' steht doppelt"; continue }
     $entries[$path] = $e
     if (-not $measured.ContainsKey($path)) { Fail "files: '$path' gibt es nicht oder passt auf keine Regel -- Eintrag streichen"; continue }
     if (@($FileDims | Where-Object { $e.PSObject.Properties[$_] }).Count -eq 0) { Fail "files: '$path' nennt keine Decke -- Eintrag streichen" }
 }
-foreach ($rel in ($measured.Keys | Sort-Object)) {
+foreach ($rel in (Sort-Ordinal @($measured.Keys))) {
     $m = $measured[$rel]; $e = $entries[$rel]; $id = $m.Rule.Id
     foreach ($d in $FileDims) {
         $has = [bool]($e -and $e.PSObject.Properties[$d])
@@ -161,13 +207,13 @@ foreach ($rel in ($measured.Keys | Sort-Object)) {
 
 # --- Agenten ---
 $agentEntries = New-OrdinalMap
-foreach ($e in @($budget.agents)) {
+foreach ($e in @($budget.agents | Where-Object { $_ })) {
     $key = [string]$e.agent
     if ($agentEntries.ContainsKey($key)) { Fail "agents: '$key' steht doppelt"; continue }
     $agentEntries[$key] = $e
     if (-not $loads.ContainsKey($key)) { Fail "agents: '$key' gibt es in den gebauten Workflows nicht -- Eintrag streichen" }
 }
-foreach ($key in ($loads.Keys | Sort-Object)) {
+foreach ($key in (Sort-Ordinal @($loads.Keys))) {
     $load = $loads[$key]; $e = $agentEntries[$key]
     if (-not $e) { Fail "agents: '$key' hat keinen Eintrag (tools $($load.tools), description_chars $($load.description_chars), longest_description $($load.longest_description)) -- eintragen"; continue }
     foreach ($d in $AgentDims) {
@@ -181,7 +227,7 @@ foreach ($key in ($loads.Keys | Sort-Object)) {
 
 # --- Sticky-Notes ---
 $stickyEntries = New-OrdinalMap
-foreach ($e in @($budget.stickies)) {
+foreach ($e in @($budget.stickies | Where-Object { $_ })) {
     $key = [string]$e.sticky
     if ($stickyEntries.ContainsKey($key)) { Fail "stickies: '$key' steht doppelt"; continue }
     $stickyEntries[$key] = $e

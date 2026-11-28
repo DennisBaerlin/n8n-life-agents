@@ -72,6 +72,23 @@ Test-Case 'gewachsene Sticky-Note ist rot' @{ $B = (New-Budget -Stickies $note);
 Test-Case 'Decke fuer eine kurze Sticky-Note ist rot' @{ $B = (New-Budget -Stickies $note); $Wf = (New-StickyWorkflow 'kurz') } $true 'unter der Grenze 10'
 Test-Case 'Decke fuer eine Sticky-Note, die es nicht gibt, ist rot' @{ $B = (New-Budget -Stickies $note); $Def = $Three } $true 'gibt es in den gebauten Workflows nicht'
 
-if ($fails -eq 0)
- { Write-Host 'size_lint_test: alle Faelle bestanden.' -ForegroundColor Green } else { Write-Host "size_lint_test: $fails Fehler." -ForegroundColor Red }
+# -Update: eine zu niedrige Decke bekommt den Wert, eine gueltige bleibt, ein Eintrag ohne Datei entfaellt, der Agent kommt dazu;
+# danach ist der Lint gruen.
+$twenty = (('x' + "`n") * 20)
+$root = New-TestTree @{
+    $B = (New-Budget ('{ "path": "' + $Def + '", "lines": 4 }, { "path": "' + "$P/x/build/b.ps1" + '", "lines": 21 }, { "path": "' + "$P/x/build/weg.ps1" + '", "lines": 9 }'))
+    $Def = $Five; "$P/x/build/b.ps1" = $twenty; $Wf = (New-Workflow 't1', 'tool')
+} 'lt'
+try {
+    $shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $null = & $shell -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root -Update
+    $null = & $shell -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root
+    $green = ($LASTEXITCODE -eq 0)
+    $txt = [System.IO.File]::ReadAllText((Join-Path $root $B))
+    if ($green -and $txt -match 'a\.ps1", "lines": 5 ' -and $txt -match 'b\.ps1", "lines": 21 ' -and $txt -notmatch 'weg\.ps1' -and $txt -match '"tools": 2, "description_chars": 6') {
+        Write-Host '  PASS -Update zieht die Decken nach und laesst gueltige stehen' -ForegroundColor Green
+    } else { Write-Host "  FAIL -Update (gruen danach: $green): $txt" -ForegroundColor Red; $fails++ }
+} finally { Remove-Item -Recurse -Force $root }
+
+if ($fails -eq 0) { Write-Host 'size_lint_test: alle Faelle bestanden.' -ForegroundColor Green } else { Write-Host "size_lint_test: $fails Fehler." -ForegroundColor Red }
 exit $fails

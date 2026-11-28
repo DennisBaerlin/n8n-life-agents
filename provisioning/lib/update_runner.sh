@@ -179,7 +179,7 @@ _ur_report() {
 }
 
 # _ur_lock_release — Update-Sperre abgeben: Telegram-Aufrufe duerfen ein Terminal-Update nie aufhalten (es wartet nur 30 s).
-_ur_lock_release() { exec 9>&- 2>/dev/null || true; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
+_ur_lock_release() { exec 9>&-; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
 
 # _ur_reports_flush [auftrag] — offene Ergebnis-Meldungen zustellen. Der erste Aufruf fragt n8n nicht (Leerlauf jede Minute).
 #   Ohne die Faellig-fn (neuer master bricht beim Umstieg vor dem Schema-Schritt ab) geht <auftrag> direkt hinaus. Immer rc 0.

@@ -154,7 +154,7 @@ repos:
       # Voller Baumlauf (L4/L8 ueber alle getrackten Dateien): der Commit-Hook oben prueft sie nur auf den gestagten Dateien. CI faehrt den
       # Commit-Hook auf sauberem Checkout (nichts gestagt = voller Lauf); vor dem Push laeuft er hier.
       - id: layout-lint-full
-        name: layout_lint (full tree, L1-L8 over all tracked files)
+        name: layout_lint (full tree, all rules over all tracked files)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/layout_lint.ps1
         pass_filenames: false
@@ -527,7 +527,7 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/size_lint_test.ps1
         pass_filenames: false
-        files: ^scripts/(size_lint|dev/size_lint_test|lib/test_common)\.ps1$
+        files: ^scripts/(size_lint|dev/size_lint_test|lib/(test_common|ordinal))\.ps1$
 
       - id: timer-lock-lint
         name: timer_lock_lint (only the minute runner takes or probes the update lock without waiting; every timer template is registered; exec without a program redirects only descriptors from 3 up; every executable installer script exports LANG and LC_ALL)

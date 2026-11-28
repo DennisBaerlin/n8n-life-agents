@@ -18,6 +18,7 @@
 #              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile; packages/*/build/**/*.ps1 mit
 #              mindestens zwei Kopfzeilen; provisioning/lib/*.sh mit erster Zeile "<datei> — <Zweck>" und wer sie sourct;
 #              provisioning/*.sh mit Aufruf und Exit-Code. "Dot-gesourct von <datei>.ps1" im Kopf verlangt, dass es die Datei gibt.
+#              Dazu in jeder R__fn_*.sql: liest eine neue oder geaenderte Zeile einen Eingabe-Key aus p, steht er in einem Kommentar.
 # Ausnahme je Zeile: "comment-lint: ok <Grund>" im selben Kommentar (Lint-Marker, bleibt stehen).
 # Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), node_modules/, jsCode in Build-Defs
 # (liegt in PowerShell-Here-Strings).
@@ -204,7 +205,8 @@ $verlaufRx = [regex]::new(("(?i:\b(Befund|Fund)\s+$dateRx)|(?i:\bneu\s+(seit|ab)
 $workMarkRx = [regex]::new(("(?i:\b(Owner|Owner-\w+|Abnahme|Entscheid\w*|decision|Lauf)\s+$dateRx)|\bOwner-(Runde|Wunsch)\b|\b(Probelauf|Live)-(Fund|Befund)\b|" +
     '\(([^()]*,\s*)?Paket\s+[A-Z]?\d+[a-z]?\)|\bPaket\s+\d+/\d+\b|\bEinwand\s+\d+\b|\bPr(ü|ue)fliste\s+Nr\.?\s*\d+|' +
     '\bBug\s+[A-Z]\d+\b|\bPlan\s+([a-z0-9]+(-[a-z0-9]+)+|\*[^*]+\*)|\.claude/plans/|\.local/(handover|plans?)/'), $ropt::Compiled)
-# Nummern einer Abnahme-Liste wie "(P5)" oder "(B10)"; neben einem Test-Verweis ist "(P5)" die Eigenschaft im Test, also eine Adresse.  comment-lint: ok Regeltext
+# Nummern einer Abnahme-Liste wie "(P5)" oder "(B10)". Neben einem Test-Verweis ist "(P5)" die Eigenschaft im Test und in Dateien  comment-lint: ok Regeltext
+# unter tests/ die Nummer eines Pruefschritts: beides Adressen, kein Treffer.
 $listNoRx = [regex]::new('\((P|B)\d{1,2}\)', $ropt::Compiled)
 # Auskommentierter Code: nur eindeutige Formen. Ein Beispiel im Kommentar ist eingerueckt (ab drei Leerzeichen) und trifft nicht,
 # ebenso eine Parameter-Beschreibung "$Name = Prosa".
@@ -218,12 +220,16 @@ $todoRx = [regex]::new('(?<![''"])\b(TODO|FIXME)\b(?![''"])', $ropt::Compiled)
 $todoOkRx = [regex]::new('\b(TODO|FIXME)\s*(\(\S[^)]*\)|:?\s*(wenn|sobald|nach|falls|bei)\b)', $ropt::Compiled)
 $capsRx = [regex]::new('(?<![A-Za-zÄÖÜäöüß_-])(NIE|NIEMALS|NICHT|IMMER|MUSS|MÜSSEN|MUESSEN|KEIN|KEINE|KEINEN|NUR|ACHTUNG|WICHTIG|VORSICHT|ZUERST|SOFORT|OHNE|EXAKT|GENAU|DARF|DÜRFEN|DUERFEN|SOLL|BEWUSST|PFLICHT|VERBOTEN|JEDE|JEDER|JEDES|ALLE|NEVER|ALWAYS|MUST|IMPORTANT)(?![A-Za-zÄÖÜäöüß_-])', $ropt::Compiled)
 $okRx = [regex]::new('comment-lint:\s*ok\s+\S', $ropt::Compiled)   # ohne Grund gilt die Ausnahme nicht
+# Key-Zugriff auf das Eingabe-Objekt p der ersten Ebene; p->'a'->>'b' nennt nur a. Gilt nur in Dateien, deren fn einen Parameter
+# "p jsonb" hat: sonst ist p ein Zeilen-Alias oder eine Schleifen-Variable.
+$fnInputRx = [regex]::new('(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b[^;]*?\((?:[^)]*,)?\s*(?:IN\s+)?p\s+jsonb\b', $ropt::Compiled)
+$fnKeyRx = [regex]::new('(?<![A-Za-z0-9_.])p\s*(?:->>?|\?)\s*''([a-z_][a-z_0-9]*)''', $ropt::Compiled)
 
-function Get-LineRules([string]$Lang, $C) {
+function Get-LineRules([string]$Lang, $C, [string]$Path = '') {
     $t = $C.Text
     if ($okRx.IsMatch($t)) { return @() }
     $r = @()
-    if ($verlaufRx.IsMatch($t) -or $workMarkRx.IsMatch($t) -or ($listNoRx.IsMatch($t) -and $t -notmatch 'tests?[/_]')) { $r += 'verlauf' }
+    if ($verlaufRx.IsMatch($t) -or $workMarkRx.IsMatch($t) -or ($listNoRx.IsMatch($t) -and $t -notmatch 'tests?[/_]' -and $Path -notmatch '(^|/)tests/')) { $r += 'verlauf' }
     if (-not $C.Head -and $codeRx[$Lang].IsMatch($t)) { $r += 'code' }
     if ($todoRx.IsMatch($t) -and -not $todoOkRx.IsMatch($t)) { $r += 'todo' }
     if ($capsRx.IsMatch($t)) { $r += 'caps' }
@@ -366,10 +372,26 @@ foreach ($p in @($targets.Keys)) {
     $comments = @(Get-Comments $lang $src)
     foreach ($c in $comments) {
         if ($null -ne $set -and -not $set.Contains($c.Line)) { continue }
-        foreach ($rule in (Get-LineRules $lang $c)) { $findings.Add([pscustomobject]@{ File = $rel; Line = $c.Line; Rule = $rule; Text = $c.Text.Trim() }) }
+        foreach ($rule in (Get-LineRules $lang $c $rel)) { $findings.Add([pscustomobject]@{ File = $rel; Line = $c.Line; Rule = $rule; Text = $c.Text.Trim() }) }
     }
     if ($mode -eq 'files' -or $added.ContainsKey($rel)) {
         foreach ($g in (Get-HeadGaps $rel $lang $comments)) { $findings.Add([pscustomobject]@{ File = $rel; Line = 1; Rule = 'kopf'; Text = "fehlt: $g" }) }
+    }
+    # fn-Kopf nennt die Eingabe-Keys: liest eine neue oder geaenderte Zeile einer R__fn-Datei p->>'x', p->'x' oder p ? 'x', muss x in
+    # einem Kommentar der Datei stehen (der Kopf ist der Katalog-Eintrag; ein ungenannter Key ist fuer Aufrufer unsichtbar).
+    if ($lang -eq 'sql' -and $rel -match '/R__fn_[A-Za-z0-9_]+\.sql$' -and $fnInputRx.IsMatch($src)) {
+        $commentText = ($comments | ForEach-Object { $_.Text }) -join "`n"
+        $srcLines = $src -split "`r?`n"
+        $missing = [ordered]@{}
+        for ($n = 1; $n -le $srcLines.Count; $n++) {
+            if ($null -ne $set -and -not $set.Contains($n)) { continue }
+            if ($okRx.IsMatch($srcLines[$n - 1])) { continue }
+            foreach ($m in $fnKeyRx.Matches(($srcLines[$n - 1] -replace '--.*$', ''))) {
+                $key = $m.Groups[1].Value
+                if (-not $missing.Contains($key) -and $commentText -notmatch ('(?<![A-Za-z0-9_])' + [regex]::Escape($key) + '(?![A-Za-z0-9_])')) { $missing[$key] = $n }
+            }
+        }
+        foreach ($key in $missing.Keys) { $findings.Add([pscustomobject]@{ File = $rel; Line = $missing[$key]; Rule = 'kopf'; Text = "Eingabe-Key '$key' steht in keinem Kommentar der Datei (fn-Kopf: Eingabe-Keys, Pflicht/optional)" }) }
     }
 }
 

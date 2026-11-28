@@ -212,7 +212,7 @@ try {
     }
     # Pflicht-Koepfe: neue Skripte unter scripts/ (ohne lib/) und neue R__fn_*-Dateien. Pfad zusammengesetzt, sonst haelt doc_lint
     # die erfundenen Dateinamen fuer tote Verweise.
-    $sd = 'scripts'; $pk = 'packages'; $pv = 'provisioning'
+    $sd = 'scripts'; $pk = 'packages'; $pv = 'provisioning'; $tt = 'tests'
     $heads = @(
         @{ id = 'kopf-skript';       rel = "$sd/neu.ps1";      want = 'kopf'; src = "# Macht X.`n`$a = 1`n" }
         @{ id = 'kopf-skript-ok';    rel = "$sd/gut.ps1";      want = '';     src = "# Macht X.`n# Aufruf: .\scripts\gut.ps1`n# Exit-Code 0 = ok.`n`$a = 1`n" }
@@ -220,6 +220,13 @@ try {
         @{ id = 'kopf-fn';           rel = 'm/R__fn_neu.sql';      want = 'kopf'; src = "-- Liefert etwas.`nSELECT 1;`n" }
         @{ id = 'kopf-fn-ok';        rel = 'm/R__fn_gut.sql';      want = '';     src = "-- ====`n-- core.fn_gut (READ)`n--   Liefert etwas.`nSELECT 1;`n" }
         @{ id = 'kopf-fn-ohne-text'; rel = 'm/R__fn_kurz.sql';     want = 'kopf'; src = "-- fn_kurz (READ)`nSELECT 1;`n" }
+        # fn-Kopf nennt jeden Eingabe-Key, den der Rumpf aus p liest (p->'a'->>'b' nennt nur a; p_facts ist ein anderes Objekt).
+        @{ id = 'kopf-fn-keys';      rel = 'm/R__fn_keys.sql';     want = 'kopf'; src = "-- fn_keys (WRITE)`n--   Eingabe: amount (Pflicht).`nCREATE FUNCTION x.fn_keys(p jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'amount', p->>'note', p ? 'flag' `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-ok';   rel = 'm/R__fn_keysok.sql';   want = '';     src = "-- fn_keysok (WRITE)`n--   Eingabe: amount (Pflicht), note, flag, plan (Objekt).`nCREATE FUNCTION x.fn_keysok(p jsonb, p_facts jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'amount', p->>'note', p ? 'flag', p->'plan'->>'tief', p_facts->>'fremd', v.p->>'spalte' -- p->>'im_kommentar'`n `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-alias'; rel = 'm/R__fn_alias.sql';   want = '';     src = "-- fn_alias (READ)`n--   Liefert Namen.`nCREATE FUNCTION x.fn_alias(p_confirm text) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT jsonb_agg(p->>'first_name') FROM jsonb_array_elements('[]'::jsonb) p `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-marke'; rel = 'm/R__fn_marke.sql';   want = '';     src = "-- fn_marke (WRITE)`n--   Schreibt etwas.`nCREATE FUNCTION x.fn_marke(p_id int, p jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'intern' -- comment-lint: ok kein Eingabe-Key, Feld der Zwischenzeile`n `$f`$;`n" }
+        # Nummern von Pruefschritten in Test-Dateien sind Adressen, keine Arbeits-Marken.
+        @{ id = 'marke-test-datei';  rel = "$tt/db/x/test_iso.sql"; want = '';    src = "-- (B1) x darf lesen`nSELECT 1;`n" }
         # Build-Defs, Installer-Bibliotheken und Top-Skripte des Installers; "Dot-gesourct von" nur mit vorhandener Datei.
         @{ id = 'kopf-def';          rel = "$pk/x/build/workflows/neu.ps1";  want = 'kopf'; src = "# Baut X.`nfunction Build-X { 1 }`n" }
         @{ id = 'kopf-def-ok';       rel = "$pk/x/build/workflows/gut.ps1";  want = '';     src = "# Baut X: Ausloeser Y, Ausgang {ok}.`n# Dot-gesourct von build.ps1.`nfunction Build-X { 1 }`n" }

@@ -6,9 +6,10 @@
 #   F  Funnel: erkannt nur fuer <name>:443 -> 127.0.0.1:8088; Einschalten ruft `tailscale funnel --bg` genau dann.
 #   S  reach_status_json je Weg und Zustand (Format, Telegram-Webhook ours/foreign/none/unknown, Ports belegt).
 #   P  Installer-Haken: REACH_MODE pruefen und merken, Tunnel-Adresse als DOMAIN nur bei fertigem Tunnel, FritzBox-Weg
-#      startet wan nur bei freien Ports und ueberschreibt nichts, ungueltige Adresse = Abbruch.
+#      startet wan nur bei freien Ports und ueberschreibt nichts, ungueltige Adresse = Abbruch; eigener Proxy (Hintertuer)
+#      startet lan nur bei freiem Port, ohne Zertifikat.
 #   C  Rand-Konfiguration: die oeffentlichen Pfade in compose.yml = die der CLI (templates/Caddyfile.tpl), Editor/Wizard
-#      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
+#      aus dem eigenen Namensraum gesperrt, wan und lan reichen nur an edge:8088.
 #   D  DS-Lite automatisch (reach_dslite): UPnP der FritzBox zuerst, dann MyFRITZ!; kein Wert in der Ausgabe.
 #   N  Tailscale-Rechnername: Wortliste, Pruefwerte der Zieh-Regel (auch fuer die Start-App), einmal ziehen, Bestand bleibt.
 #   K  Anmeldeschluessel TS_AUTHKEY im Verbund: per stdin in den laufenden Container, nie compose.yml/Stack-.env, nur bei
@@ -80,7 +81,7 @@ reach_funnel_configured bot.tail-fantasy.ts.net '' && fail F_empty "leer" || pas
 
 # --- Attrappen fuer S/P ----------------------------------------------------------------------------------------------
 LOG="$W/calls.log"; : > "$LOG"
-A_TS_UP=1; A_WAN_UP=0; A_TS_JSON=''; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=0; A_PORTS_FREE=1; A_TG=''
+A_TS_UP=1; A_WAN_UP=0; A_LAN_UP=0; A_TS_JSON=''; rm -f "$W/funnel.json"; A_FUNNEL_JSON='{}'; A_FUNNEL_ALLOWED=0; A_PORTS_FREE=1; A_TG=''
 # Attrappe der beiden SOAP-Aufrufe an die FritzBox (Gruppe D): A_UP_STATUS = NewConnectionStatus, A_UP_IP =
 # NewExternalIPAddress (Wert '-' = Tag fehlt), A_UP_DOWN=1 = keine Antwort (kein fritz.box, UPnP-Status aus).
 A_UP_DOWN=1; A_UP_STATUS=Connected; A_UP_IP=''
@@ -94,11 +95,11 @@ _reach_upnp() {
       else upx GetExternalIPAddress "<NewExternalIPAddress>$A_UP_IP</NewExternalIPAddress>"; fi ;;
   esac
 }
-rt_edge_active() { case "$1" in tailscale) [ "$A_TS_UP" = 1 ] ;; wan) [ "$A_WAN_UP" = 1 ] ;; *) return 2 ;; esac; }
+rt_edge_active() { case "$1" in tailscale) [ "$A_TS_UP" = 1 ] ;; wan) [ "$A_WAN_UP" = 1 ] ;; lan) [ "$A_LAN_UP" = 1 ] ;; *) return 2 ;; esac; }
 rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
-rt_edge_stop() { printf 'stop %s\n' "$1" >> "$LOG"; case "$1" in tailscale) A_TS_UP=0 ;; wan) A_WAN_UP=0 ;; esac; }
+rt_edge_stop() { printf 'stop %s\n' "$1" >> "$LOG"; case "$1" in tailscale) A_TS_UP=0 ;; wan) A_WAN_UP=0 ;; lan) A_LAN_UP=0 ;; esac; }
 rt_edge_logs_hint() { printf 'logs %s' "$1"; }
-rt_stack_up() { printf 'up %s\n' "$*" >> "$LOG"; case "$*" in *wan*) A_WAN_UP=1 ;; esac; }
+rt_stack_up() { printf 'up %s\n' "$*" >> "$LOG"; case "$*" in *wan*) A_WAN_UP=1 ;; *lan*) A_LAN_UP=1 ;; esac; }
 rt_host_port_free() { printf 'portprobe %s\n' "$1" >> "$LOG"; [ "$A_PORTS_FREE" = 1 ]; }
 rt_edge_exec() {
   [ "$1" = tailscale ] || return 2; shift
@@ -174,6 +175,22 @@ A_WAN_UP=1; A_TG="$(tg_url 'https://meinproxy.deine-domain.myfritz.net/webhook/a
 eq S_fb_ready "ready|ours|meinproxy.deine-domain.myfritz.net" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
 A_TG="$(tg_url '')"; out="$(js)"
 eq S_fb_pending "pending_activation|none" "$(field "$out" state)|$(field "$out" webhook)"
+A_WAN_UP=0
+
+# Eigener Proxy (Hintertuer): Zustaende wie beim FritzBox-Weg, Dienst lan statt wan.
+cfg REACH_MODE=proxy TELEGRAM_BOT_TOKEN=123:fantasy
+out="$(js)"
+eq S_px_no_domain "proxy|unavailable|no_domain" "$(field "$out" mode)|$(field "$out" state)|$(field "$out" reason)"
+cfg REACH_MODE=proxy TELEGRAM_BOT_TOKEN=123:fantasy DOMAIN=bot.example.org
+A_LAN_UP=0; mkdir -p "$REACH_CONF_DIR"; : > "$REACH_CONF_DIR/ports-busy"; : > "$LOG"; out="$(js)"
+eq S_px_ports_busy "ports_busy" "$(field "$out" state)"
+rm -f "$REACH_CONF_DIR/ports-busy"; out="$(js)"
+eq S_px_not_started "starting|not_started" "$(field "$out" state)|$(field "$out" reason)"
+A_LAN_UP=1; A_TG="$(tg_url 'https://bot.example.org/webhook/abc/webhook')"; out="$(js)"
+eq S_px_ready "ready|ours|bot.example.org" "$(field "$out" state)|$(field "$out" webhook)|$(field "$out" dns_name)"
+A_TG="$(tg_url '')"; out="$(js)"
+eq S_px_pending "pending_activation|none" "$(field "$out" state)|$(field "$out" webhook)"
+A_LAN_UP=0; A_TG=''
 
 # --- P: Installer-Haken --------------------------------------------------------------------------------------------
 # hand-injected: kurze Fristen nur fuer die Attrappe (Standard 30/60 s); die echten Fristen decken scripts/dev/tailscale_authkey_test.ps1 und tailscale_login_wait_test.ps1
@@ -248,6 +265,35 @@ eq P_fb_lowercase "zweiter.deine-domain.myfritz.net|" "$(cat "$REACH_CONF_DIR/do
 cfg REACH_MODE=tunnel; : > "$LOG"; DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
 grep -qE '^(up|stop|restart) ' "$LOG" && fail P_tunnel_converge_noop "$(tr '\n' ';' < "$LOG")" || pass P_tunnel_converge_noop   # liest nur den Tailscale-Stand
 
+# reach_converge (eigener Proxy): lan nur bei freiem Port, danach die Dienste der anderen Wege anhalten; nichts mit Zertifikat.
+cfg TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"; A_TS_UP=0
+REACH_MODE=proxy reach_prepare >/dev/null 2>&1
+eq P_px_mode_saved proxy "$(read_env_value "$REACH_CORE_ENV" REACH_MODE)"
+[ -s "$LOG" ] && fail P_px_prepare_quiet "$(tr '\n' ';' < "$LOG")" || pass P_px_prepare_quiet
+cfg REACH_MODE=proxy TELEGRAM_BOT_TOKEN=123:fantasy; rm -rf "$REACH_CONF_DIR"; : > "$LOG"; A_TS_UP=1; A_WAN_UP=1; A_LAN_UP=0; A_PORTS_FREE=0
+DOMAIN=bot.example.org reach_converge >/dev/null 2>&1
+grep -qE '^(up|stop) ' "$LOG" && fail P_px_busy_no_start "$(tr '\n' ';' < "$LOG")" || pass P_px_busy_no_start
+[ -e "$REACH_CONF_DIR/ports-busy" ] && pass P_px_busy_marked || fail P_px_busy_marked "Marke ports-busy fehlt"
+eq P_px_probe_port "portprobe $REACH_LAN_PORT" "$(grep '^portprobe' "$LOG" | sort -u | paste -sd'|')"
+A_PORTS_FREE=1; : > "$LOG"
+DOMAIN=bot.example.org reach_converge >/dev/null 2>&1
+eq P_px_lan_then_stop_others 'up --no-deps lan|stop tailscale|stop wan' "$(grep -E '^(up|stop)' "$LOG" | paste -sd'|')"
+[ -e "$REACH_CONF_DIR/ports-busy" ] && fail P_px_busy_cleared "Marke nach freiem Start noch da" || pass P_px_busy_cleared
+[ -e "$REACH_CONF_DIR/domain" ] && fail P_px_no_wan_domain "Adresse fuer wan geschrieben" || pass P_px_no_wan_domain
+: > "$LOG"; DOMAIN=bot.example.org reach_converge >/dev/null 2>&1
+grep -qE '^(up|stop|restart) ' "$LOG" && fail P_px_second_run_noop "$(tr '\n' ';' < "$LOG")" || pass P_px_second_run_noop
+cfg REACH_MODE=proxy TELEGRAM_BOT_TOKEN=123:fantasy; A_LAN_UP=0; : > "$LOG"
+DOMAIN='' reach_converge >/dev/null 2>&1
+grep -q '^up' "$LOG" && fail P_px_no_domain_no_start "ohne Adresse gestartet" || pass P_px_no_domain_no_start
+# Wechsel weg vom Proxy: lan haelt an, sobald der neue Weg steht.
+cfg REACH_MODE=fritzbox TELEGRAM_BOT_TOKEN=123:fantasy; rm -rf "$REACH_CONF_DIR"; : > "$LOG"; A_TS_UP=0; A_WAN_UP=0; A_LAN_UP=1; A_PORTS_FREE=1
+DOMAIN=meinproxy.deine-domain.myfritz.net reach_converge >/dev/null 2>&1
+eq P_fb_stops_lan 'up --no-deps wan|stop lan' "$(grep -E '^(up|stop)' "$LOG" | paste -sd'|')"
+cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy; : > "$LOG"; A_WAN_UP=0; A_LAN_UP=1; A_TS_UP=1; A_TS_JSON="$(ts_json Running '' '["https","funnel"]')"
+DOMAIN=bot.tail-fantasy.ts.net reach_converge >/dev/null 2>&1
+grep -qx 'stop lan' "$LOG" && pass P_tunnel_ready_stops_lan || fail P_tunnel_ready_stops_lan "$(tr '\n' ';' < "$LOG")"
+A_LAN_UP=0; A_WAN_UP=0; A_PORTS_FREE=1; A_TS_JSON=''; DOMAIN=''
+
 # Wrapper-Grenze (echter runtime.sh-Code, nicht die Attrappe): nur edge|tailscale|wan.
 ( unset -f rt_edge_exec; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_exec postgres true ) >/dev/null 2>&1
 eq P_wrapper_fixed_list 2 "$?"
@@ -255,6 +301,7 @@ eq P_wrapper_fixed_list 2 "$?"
 eq P_stop_fixed_list 2 "$?"
 ( unset -f rt_edge_stop; . "$ROOT/provisioning/lib/runtime.sh"; rt_edge_stop edge ) >/dev/null 2>&1
 eq P_stop_never_edge 2 "$?"
+eq P_lan_in_list t-lan "$( ( . "$ROOT/provisioning/lib/runtime.sh"; _rt_edge_container lan ) 2>/dev/null)"
 
 # --- K: Anmeldeschluessel aus der Antwort-Datei (TS_AUTHKEY) im Verbund -----------------------------------------------
 # Geprueft: Wert nur per stdin an `tailscale up --auth-key=file:/dev/stdin` im laufenden Container, nie in compose.yml/
@@ -357,7 +404,14 @@ eq C_cli_paths "$LA_PUBLIC_PATHS" "$cli"
 reach_edge_public_write && fail C_edge_block_noop "Zweitlauf schrieb neu" || pass C_edge_block_noop
 grep -q '@lifeagents path' "$CY" && fail C_no_second_list "compose.yml traegt eine eigene Liste" || pass C_no_second_list
 [ "$(grep -c 'abort @own_netns' "$CY")" = 2 ] && pass C_editor_wizard_netns_blocked || fail C_editor_wizard_netns_blocked "erwartet 2 Sperren (8080, 8081)"
-[ "$(grep -cE '^[[:space:]]+admin off$' "$CY")" = 2 ] && pass C_admin_off || fail C_admin_off "edge und wan brauchen admin off"
+[ "$(grep -cE '^[[:space:]]+admin off$' "$CY")" = 3 ] && pass C_admin_off || fail C_admin_off "edge, wan und lan brauchen admin off"
+# lan (Hintertuer eigener Proxy): nur Profil proxy, veroeffentlicht genau REACH_LAN_PORT, reicht nur an edge:8088, ohne TLS.
+CYL="$(sed -n '/^  lan:/,/^[a-z]/p' "$CY")"
+case "$CYL" in *'profiles: [proxy]'*) pass C_lan_profile ;; *) fail C_lan_profile "Dienst lan fehlt oder ohne Profil proxy" ;; esac
+eq C_lan_port "\"${REACH_LAN_PORT}:${REACH_LAN_PORT}\"" "$(printf '%s\n' "$CYL" | sed -n 's/^[[:space:]]*- \("[0-9]*:[0-9]*"\)$/\1/p' | paste -sd' ')"
+printf '%s' "$CYL" | grep -q 'reverse_proxy edge:8088' && ! printf '%s' "$CYL" | grep -qE 'reverse_proxy edge:(8080|8081)' \
+  && pass C_lan_only_public || fail C_lan_only_public "lan muss nur an edge:8088"
+printf '%s' "$CYL" | grep -q 'auto_https off' && pass C_lan_no_tls || fail C_lan_no_tls "lan ohne auto_https off"
 grep -q 'reverse_proxy edge:8088' "$CY" && ! grep -qE 'reverse_proxy edge:(8080|8081)' "$CY" && pass C_wan_only_public || fail C_wan_only_public "wan muss nur an edge:8088"
 grep -q "REACH_PUBLIC_TARGET='http://127.0.0.1:8088'" "$ROOT/provisioning/lib/reach.sh" && pass C_funnel_target || fail C_funnel_target "Funnel-Ziel nicht :8088"
 
@@ -504,7 +558,7 @@ eq N_status_hostname_bad ''     "$(LA_TS_HOSTNAME='x;rm -rf /' reach_status_json
 eq N_status_hostname_unset ''   "$(unset LA_TS_HOSTNAME; reach_status_json | jq -r .ts_hostname)"
 
 
-# --- L: LAN-Antwort des FritzBox-Wegs (doctor, reach_lan_doctor) ------------------------------------------------------
+# --- L: LAN-Antwort des FritzBox-Wegs bzw. Heimnetz-Eingang des eigenen Proxys (doctor, reach_lan_doctor) ---------
 # Antwortet wan am Rechner nicht (Docker-Neustart, Port-Weiterleitung weg), merkt es sonst nur der Nutzer. doctor misst
 # TCP 443 ueber die LAN-Adresse (Hinweis der Start-App) bzw. den Docker-Zugang des Rechners, startet bei Ausbleiben wan
 # einmal neu und misst erneut. Attrappen: Messfolge in L_SEQ (1 = antwortet, 0 = Port zu, E = Probe lief nicht; danach bleibt der letzte Wert).
@@ -525,6 +579,12 @@ mkdir -p "$REACH_CONF_DIR"; rm -f "$REACH_CONF_DIR/ports-busy"; printf 'bot.exam
 rm -f "$REACH_HINTS_FILE"; A_WAN_UP=1
 
 cfg REACH_MODE=tunnel; eq L_tunnel_silent '' "$(lan 0)"
+# Eigener Proxy: lan muss laufen (sonst bekommt der Proxy keine Antwort); belegter Port = Hinweis.
+cfg REACH_MODE=proxy DOMAIN=bot.example.org; A_LAN_UP=0; out="$(lan 1)"; eq L_px_lan_down_red red "$(lvl "$out")"
+: > "$REACH_CONF_DIR/ports-busy"; out="$(lan 1)"; eq L_px_ports_busy_warn warn "$(lvl "$out")"; rm -f "$REACH_CONF_DIR/ports-busy"
+A_LAN_UP=1; out="$(lan 1)"; eq L_px_lan_up_pass pass "$(lvl "$out")"
+case "$out" in *"$REACH_LAN_PORT"*) pass L_px_names_port ;; *) fail L_px_names_port "$out" ;; esac
+A_LAN_UP=0
 cfg REACH_MODE=fritzbox; rm -f "$REACH_CONF_DIR/domain"; eq L_no_domain_silent '' "$(lan 0)"
 printf 'bot.example.org\n' > "$REACH_CONF_DIR/domain"
 

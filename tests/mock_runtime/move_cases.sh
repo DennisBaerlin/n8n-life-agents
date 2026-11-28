@@ -316,9 +316,18 @@ _ua brandneu >/dev/null 2>&1; eq MV.unbekanntes-verb-rc 1 "$?"
 
 # Review-Funde: Schutz „Maschine frisch“ geht bei DB-Fehler zu (nie auf), Tunnel-Modus, Loeschfehler, Latch-Fehler, Ausweg `abort`.
 _mv_run true; ( OWNER_QFAIL=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.owner-abfrage-scheitert-rc 1 "$?"; _mv_nothing owner-abfrage-scheitert 'Datenbank'
-_mv_run true; ( RT=compose REACH_MODE_T=fritzbox REACH='starting' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.nicht-tunnel-rc 1 "$?"
-_mv_nothing nicht-tunnel 'fritzbox'
-eq MV.nicht-tunnel-wartet-nicht 1 "$(wc -l < "$W/mv.reach")"
+# Ohne Weg nach aussen (Einrichtung ohne die Antwort-Datei des Umzugs): kein Warten, gleich der Grund.
+_mv_run true; ( RT=compose REACH_MODE_T=none REACH='unavailable' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.ohne-weg-rc 1 "$?"
+_mv_nothing ohne-weg 'move.env'
+eq MV.ohne-weg-wartet-nicht 1 "$(wc -l < "$W/mv.reach")"
+# Eigener Reverse Proxy (Antwort-Datei traegt REACH_MODE=proxy): warten, bis lan laeuft und der Webhook hier ist; belegter Port -> Satz.
+_mv_run true; ( RT=compose TUNNEL_WAIT=5 REACH_MODE_T=proxy REACH='starting ready' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.proxy-wartet-rc 0 "$?"
+eq MV.proxy-ohne-aktivierung 0 "$(_mv_log | grep -c '^activate')"
+eq MV.proxy-stufe applied "$(_mv_state STAGE)"
+_mv_run true; ( RT=compose TUNNEL_WAIT=2 REACH_MODE_T=proxy REACH='ports_busy' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.proxy-port-belegt-rc 1 "$?"
+_mv_nothing proxy-port-belegt '5678'
+grep -q 'login.tailscale.com' "$W/mv.err" && fail MV.proxy-kein-tailscale-text "$(tail -n3 "$W/mv.err")" || pass MV.proxy-kein-tailscale-text
+_mv_run true; ( RT=compose TUNNEL_WAIT=5 REACH_MODE_T=fritzbox REACH='starting ready' _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.fritzbox-wartet-rc 0 "$?"
 # Geheimnis-Dateien liessen sich nicht loeschen: kein „eingespielt“, der naechste Lauf versucht nur das Loeschen noch einmal.
 _mv_run true; ( RT=compose RM_FAIL=1 _ua apply "$MI" ) >/dev/null 2>"$W/mv.err"; eq MV.loeschen-scheitert-rc 1 "$?"
 eq MV.loeschen-scheitert-stufe finalized "$(_mv_state STAGE)"

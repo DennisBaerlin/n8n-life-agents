@@ -618,7 +618,7 @@ rt_host_rm() {
   _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'cd /out && for f in "$@"; do rm -f -- "$f"; done' _ "${@:2}"
 }
 # rt_stack_down — Container + Netze dieses Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
-#   Volumes (Daten) und alle Images bleiben. Dienste aus Profilen (tailscale, wan) sind fuer Compose keine Waisen: `down`
+#   Volumes (Daten) und alle Images bleiben. Dienste aus Profilen (tailscale, wan, lan) sind fuer Compose keine Waisen: `down`
 #   erfasst sie nur, wenn ihr Profil aktiv ist -> alle Profile aus compose.yml aktivieren. --remove-orphans erfasst nur
 #   Container mit unserem Compose-Projekt, nie fremde.
 rt_stack_down() {
@@ -636,9 +636,9 @@ rt_volume_rm_own() {
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
   err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }
-# --- Rand (lib/reach.sh): edge, tailscale, wan --------------------------------------------------------------------------
+# --- Rand (lib/reach.sh): edge, tailscale, wan, lan --------------------------------------------------------------------
 # Feste Dienstliste ausserhalb des Pods, Container <projekt>-<dienst>; jeder andere Name = rc 2 (nie ein fremder Container).
-_rt_edge_container() { case "$1" in edge|tailscale|wan) printf '%s-%s' "$LA_PROJECT" "$1" ;; *) return 2 ;; esac; }
+_rt_edge_container() { case "$1" in edge|tailscale|wan|lan) printf '%s-%s' "$LA_PROJECT" "$1" ;; *) return 2 ;; esac; }
 # rt_edge_active <dienst> — 0 = Container laeuft.
 rt_edge_active() {
   local c; c="$(_rt_edge_container "$1")" || return 2
@@ -651,11 +651,11 @@ rt_edge_restart() {
   docker restart "$c" >/dev/null
 }
 # rt_edge_stop <dienst> — Rand-Dienst anhalten, wenn der Weg nach aussen wechselt (tailscale samt Funnel bzw. wan auf 80/443
-#   blieben sonst oeffentlich). `compose stop` mit allen Profilen (COMPOSE_PROFILES wie rt_stack_start; tailscale/wan haengen
+#   bzw. lan auf 5678 blieben sonst offen). `compose stop` mit allen Profilen (COMPOSE_PROFILES wie rt_stack_start; tailscale/wan/lan haengen
 #   an Profilen); der Container bleibt angelegt, `restart: unless-stopped` startet ihn nach einem Docker-Neustart nicht
 #   wieder, rt_stack_up beim Zurueckwechseln schon.
 rt_edge_stop() {
-  case "$1" in tailscale|wan) : ;; *) return 2 ;; esac   # nie edge: ohne ihn waeren Editor, Wizard und alle Pfade weg
+  case "$1" in tailscale|wan|lan) : ;; *) return 2 ;; esac   # nie edge: ohne ihn waeren Editor, Wizard und alle Pfade weg
   local profiles
   profiles="$(_rt_all_profiles)" || return 1
   COMPOSE_PROFILES="$profiles" _rt_compose stop "$1" >/dev/null
@@ -717,7 +717,7 @@ rt_host_gateway() {
 # --- Erneuern der Dienste ausserhalb des Installer-Schritts (Rand, Gateway) --------------------------------------------
 # rt_container_id <container> -> Kennung (leer = es gibt ihn nicht).
 rt_container_id() { docker inspect -f '{{.Id}}' "$1" 2>/dev/null; }
-# rt_stack_refresh — edge, gateway und die laufenden Profil-Dienste (wan, tailscale) auf den Stand dieser compose.yml bringen:
+# rt_stack_refresh — edge, gateway und die laufenden Profil-Dienste (wan, lan, tailscale) auf den Stand dieser compose.yml bringen:
 #   `up -d --no-deps` legt nur neu an, was sich geaendert hat (z. B. ein neuer Pin nach einem Update), sonst no-op. Das Gateway
 #   startet der Installer nur per `docker restart` neu (enable_start_unit), ein neuer Pin kaeme so nie an. anchor nie: seine
 #   Neuanlage risse den Pod ab. tailscale haengt im Namensraum von edge; die Compose-Pruefsumme sieht nur `service:edge`, nicht
@@ -727,6 +727,7 @@ rt_stack_refresh() {
   before="$(rt_container_id "${LA_PROJECT}-edge")"
   rt_container_running "${LA_PROJECT}-tailscale" && ts=1
   rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  rt_container_running "${LA_PROJECT}-lan" && svcs+=(lan)
   _rt_compose up -d --no-deps "${svcs[@]}" >&2 || rc=1
   if [ "$ts" -eq 1 ]; then
     after="$(rt_container_id "${LA_PROJECT}-edge")"
@@ -750,7 +751,7 @@ rt_app_db_mb() {
 
 # rt_target_precheck <compose-datei> <master-image> — was ein Update abbrechen kann, gegen die Datei des Ziel-Stands pruefen,
 #   bevor der master gewechselt wird (lib/master_swap.sh; danach stuende der neue master auf dem alten Verbund):
-#   PostgreSQL-Hauptversion des neuen Pins = die der Daten, Abbilder der Dienste ladbar (tailscale/wan nur, wenn sie laufen).
+#   PostgreSQL-Hauptversion des neuen Pins = die der Daten, Abbilder der Dienste ladbar (tailscale/wan/lan nur, wenn sie laufen).
 #   Abbruch per die_because pg_major|net, nichts geaendert. Unlesbarer Pin oder Datenstand = keine Aussage (wie upgrade_detect).
 # shellcheck disable=SC2030,SC2031  # bewusst nur in der Teilschale: Ziel-Datei + Ziel-Image fuer genau diese Aufrufe
 rt_target_precheck() {
@@ -763,6 +764,7 @@ rt_target_precheck() {
   fi
   rt_container_running "${LA_PROJECT}-tailscale" && svcs+=(tailscale)
   rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
+  rt_container_running "${LA_PROJECT}-lan" && svcs+=(lan)
   ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; rt_stack_pull "${svcs[@]}" ) \
     || die_because net "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
 }

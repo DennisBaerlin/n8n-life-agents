@@ -171,8 +171,14 @@ _mv_plan() {
 #   den Webhook): compose/reach_ctl.sh activate, dessen einziger Nutzer der Umzug ist (der Wizard meldet vor der Installation an).
 _mv_reach_activate() { bash "$(lifeagents_runtime_dir)/provisioning/compose/reach_ctl.sh" activate >&2; }
 
-# _mv_tunnel_text <zustand> <link> — was der Owner jetzt tun muss.
+# _mv_tunnel_text <zustand> <link> [weg] — was der Owner jetzt tun muss.
 _mv_tunnel_text() {
+  case "${3:-tunnel}:$1" in
+    proxy:ports_busy) printf 'Port %s ist auf dieser Maschine belegt — der Eingang für den eigenen Reverse Proxy startet nicht. Den Port freimachen, dann dasselbe Kommando noch einmal.\n' "$REACH_LAN_PORT"; return 0 ;;
+    proxy:*) printf 'Der Eingang für den eigenen Reverse Proxy (Port %s) startet noch ...\n' "$REACH_LAN_PORT"; return 0 ;;
+    fritzbox:ports_busy) printf 'Port 80 oder 443 ist auf dieser Maschine belegt — der FritzBox-Weg startet nicht.\n'; return 0 ;;
+    fritzbox:*) printf 'Der FritzBox-Weg startet noch ...\n'; return 0 ;;
+  esac
   case "$1" in
     needs_login|key_expired)
       printf 'Diese Maschine muss sich bei Tailscale anmelden. Link im Browser öffnen (Konto mit Google, Apple, Microsoft oder GitHub):\n  %s\n' "${2:-—}" ;;
@@ -183,7 +189,7 @@ _mv_tunnel_text() {
   esac
 }
 
-# _mv_tunnel — nur Docker-Verbund (klassisch gibt es den Tunnel dieses Verbunds nicht): wartet, bis der Weg nach aussen steht; zeigt den
+# _mv_tunnel — nur Docker-Verbund (klassisch gibt es diese Wege nicht): wartet, bis der Weg nach aussen (Tunnel, FritzBox, eigener Proxy) steht; zeigt den
 #   Anmelde- bzw. Freigabe-Link (der unbeaufsichtigte Installer zeigt ihn nicht). Bei Ablauf der Wartezeit Abbruch ohne Aenderung.
 _mv_tunnel() {
   rt_is_compose || return 0
@@ -193,20 +199,23 @@ _mv_tunnel() {
     state="$(printf '%s' "$js" | jq -r '.state // "unavailable"' 2>/dev/null || printf unavailable)"
     url="$(printf '%s' "$js" | jq -r '.url // ""' 2>/dev/null || true)"
     printf '%s' "$url" | grep -qE "$REACH_LOGIN_RE" || url=''
-    # Der Umzug setzt REACH_MODE=tunnel (Antwort-Datei). Ein anderer Weg waere kein Warten wert: die Ursache gleich nennen.
+    # Die Antwort-Datei des Umzugs setzt den Weg (retire_cli.sh _ret_reach_mode: tunnel oder proxy). Ohne Weg wurde ohne sie
+    # eingerichtet: kein Warten wert, die Ursache gleich nennen.
     mode="$(printf '%s' "$js" | jq -r '.mode // ""' 2>/dev/null || true)"
-    [ -z "$js" ] || [ "$mode" = tunnel ] \
-      || die "Der Weg nach außen ist hier nicht der Tunnel (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt REACH_MODE='tunnel'. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/move.env.gpg"
+    case "${js:+x}:$mode" in
+      :*|x:tunnel|x:fritzbox|x:proxy) : ;;
+      *) die "Hier ist kein Weg nach außen eingerichtet (Modus ${mode:-keiner}) — die Antwort-Datei des Umzugs setzt ihn. Es wurde nichts geändert; mit der Datei aus dem Umzugs-Ordner neu einrichten: bash setup.sh --answers <ordner>/move.env.gpg" ;;
+    esac
     case "$state" in
       ready) return 0 ;;
       pending_activation)
         if [ "$activated" = 0 ]; then
-          activated=1; log "Der Tunnel steht — die Adresse wird übernommen und der Bot umgestellt ..."
+          activated=1; log "Der Weg nach außen steht — die Adresse wird übernommen und der Bot umgestellt ..."
           _mv_reach_activate || die "Die Adresse ließ sich nicht übernehmen (Ausgabe oben). Es wurde nichts eingespielt; noch einmal: lifeagents move apply"
           continue
         fi ;;
     esac
-    txt="$(_mv_tunnel_text "$state" "$url")"
+    txt="$(_mv_tunnel_text "$state" "$url" "$mode")"
     if [ "$state:$url" != "$last" ]; then warn "Der Weg nach außen ist noch nicht fertig:"; printf '%s\n' "$txt" >&2; last="$state:$url"; fi
     left=$((left - MOVE_TUNNEL_POLL_SECS))
     [ "$left" -gt 0 ] || die "Der Weg nach außen wurde in der Wartezeit nicht fertig. Es wurde nichts eingespielt — nach der Anmeldung dasselbe Kommando noch einmal."

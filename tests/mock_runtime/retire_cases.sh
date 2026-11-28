@@ -110,7 +110,7 @@ _rr() (
 )
 _rt_env() {
   { printf "OWNER_FIRST_NAME=Erika\nOWNER_LAST_NAME=Muster'mann\nOWNER_BIRTH_DATE=1980-01-01\nTELEGRAM_BOT_TOKEN=123:abc\n"
-    printf 'ANTHROPIC_API_KEY=sk-test\nREACH_MODE=proxy\nDOMAIN=bot.example.org\nTRUSTED_PROXIES=192.0.2.10\n'
+    printf 'ANTHROPIC_API_KEY=sk-test\nREACH_MODE=tunnel\nDOMAIN=bot.example.org\nTRUSTED_PROXIES=192.0.2.10\n'
     printf 'TELEGRAM_WEBHOOK_TAKEOVER=1\nN8N_DB_PASSWORD=geheim\nHOUSEHOLD_TIMEZONE=Europe/Berlin\nOWNER_LANGUAGE=de\nGOOGLE_API_KEY=\n'
     printf 'BACKUP_HOST_DIR=/srv/hd\n'; } > "$W/ret_etc/core.env"
   printf 'ADZUNA_APP_ID=app 1\nADZUNA_APP_KEY=k2\nCAREER_RW_PASSWORD=x\n' > "$W/ret_etc/career.env"
@@ -335,3 +335,36 @@ case "$(_cli brandneu; echo "rc=$?")" in *stillgelegt*rc=1) pass RT-P.neues-verb
 # n8n-Unit: startet nicht, solange die Datei liegt (gilt auch fuer Neustart, Restart=on-failure, systemctl von Hand).
 _unit="$(cd "$ROOT/provisioning" && render_template templates/n8n.service.tpl N8N_USER=n8n N8N_ENV_FILE=/e N8N_OWNER_ENV_FILE=/o N8N_BIN=/b N8N_HOME=/h RETIRED_FILE=/var/lib/lifeagents/retired 2>/dev/null)"
 case "$_unit" in *'ConditionPathExists=!/var/lib/lifeagents/retired'*) pass RT-P.unit-bedingung ;; *) fail RT-P.unit-bedingung "fehlt" ;; esac
+
+# ---------------------------------------------------------------------------- RT-R: Weg nach aussen in der Antwort-Datei
+# Eigener Reverse Proxy zieht mit (REACH_MODE, DOMAIN, TRUSTED_PROXIES: der Verbund pinnt damit die Knopf-Probe, reach.sh Kopf);
+# jeder andere Weg wird der Tunnel. Geprueft an _ret_write_answers direkt (unabhaengig davon, wie der Ordner die Datei ablegt).
+_ra() (  # _ra <core.env-Zeilen…> -> Inhalt der Antwort-Datei
+  export LIFEAGENTS_DIR="$W/ra_etc"; rm -rf "$LIFEAGENTS_DIR"; mkdir -p "$LIFEAGENTS_DIR"
+  lifeagents_env_file() { printf '%s/%s.env' "$LIFEAGENTS_DIR" "$1"; }
+  { printf 'TELEGRAM_BOT_TOKEN=123:abc\nOWNER_FIRST_NAME=Erika\n'; printf '%s\n' "$@"; } > "$LIFEAGENTS_DIR/core.env"
+  _ret_write_answers "$W/ra.env" v9.1.0 && cat "$W/ra.env"
+)
+_rk() { printf '%s\n' "$1" | grep -E '^(REACH_MODE|DOMAIN|TRUSTED_PROXIES)=' | sort | paste -sd' '; }
+eq RT-R.proxy-zieht-mit "DOMAIN='bot.example.org' REACH_MODE='proxy' TRUSTED_PROXIES='192.0.2.10'" \
+  "$(_rk "$(_ra REACH_MODE=proxy DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10)")"
+eq RT-R.proxy-abgeleitet "DOMAIN='bot.example.org' REACH_MODE='proxy' TRUSTED_PROXIES='192.0.2.10'" \
+  "$(_rk "$(_ra DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10)")"
+eq RT-R.tunnel-ohne-adresse "REACH_MODE='tunnel'" "$(_rk "$(_ra REACH_MODE=tunnel DOMAIN=x.tail-fantasy.ts.net TRUSTED_PROXIES=127.0.0.1)")"
+eq RT-R.fritzbox-wird-tunnel "REACH_MODE='tunnel'" "$(_rk "$(_ra REACH_MODE=fritzbox DOMAIN=box.deine-domain.myfritz.net)")"
+eq RT-R.ohne-weg-tunnel "REACH_MODE='tunnel'" "$(_rk "$(_ra)")"
+_ra REACH_MODE=proxy DOMAIN=bot.example.org TRUSTED_PROXIES=192.0.2.10 > "$W/ra.out"
+_back="$( ( unset REACH_MODE DOMAIN TRUSTED_PROXIES; install_answers_load "$W/ra.out" 2>"$W/ra.load"; printf '%s|%s|%s' "$REACH_MODE" "$DOMAIN" "$TRUSTED_PROXIES" ) )"
+eq RT-R.proxy-liest-sich-zurueck "proxy|bot.example.org|192.0.2.10" "$_back"
+eq RT-R.proxy-ohne-warnung '' "$(cat "$W/ra.load")"
+# Vorpruefung: ein Proxy auf dieser Maschine (nur 127.0.0.1) oder ohne Adresse zieht nicht mit -> rot, nichts geaendert.
+for _tp in 127.0.0.1 ''; do
+  _rt_reset; _rt_env; sed -i "s/^REACH_MODE=.*/REACH_MODE=proxy/; s/^TRUSTED_PROXIES=.*/TRUSTED_PROXIES=${_tp}/" "$W/ret_etc/core.env"
+  ( _rr --check ) >/dev/null 2>"$W/ret.err"; _rc=$?
+  eq "RT-R.proxy-lokal-rot-${_tp:-leer}" 1 "$_rc"
+  grep -q 'Reverse Proxy' "$W/ret.err" && pass "RT-R.proxy-lokal-satz-${_tp:-leer}" || fail "RT-R.proxy-lokal-satz-${_tp:-leer}" "$(tail -n2 "$W/ret.err")"
+done
+_rt_reset; _rt_env; sed -i 's/^REACH_MODE=.*/REACH_MODE=proxy/' "$W/ret_etc/core.env"
+( _rr --check ) >/dev/null 2>&1; eq RT-R.proxy-fremder-rechner-gruen 0 "$?"
+_rt_reset; _rt_env; sed -i 's/^REACH_MODE=.*/REACH_MODE=proxy/; /^DOMAIN=/d' "$W/ret_etc/core.env"
+( _rr --check ) >/dev/null 2>"$W/ret.err"; eq RT-R.proxy-ohne-adresse-rot 1 "$?"

@@ -101,6 +101,22 @@ retire_checks() {
     || printf 'backup\tDie letzte gelungene Sicherung ist älter als 26 Stunden — erst lifeagents backup auto.\n'
   local key; key="$(_bkp_key 2>/dev/null || true)"
   [ "${#key}" -ge 16 ] || printf 'key\tSicherungs-Schlüssel fehlt — ohne ihn lässt sich die Sicherung nicht öffnen.\n'
+  _ret_check_proxy
+  return 0
+}
+
+# _ret_check_proxy — Proxy-Weg: zieht nur mit, wenn der Reverse Proxy auf einem anderen Rechner laeuft und eine Adresse hat (ein Proxy
+#   auf dieser Maschine oder nur 127.0.0.1 gaebe es nach dem Umzug nicht mehr). Gibt eine rote Zeile aus oder nichts.
+_ret_check_proxy() {
+  local core d tp t far=0
+  [ "$(_ret_reach_mode)" = proxy ] || return 0
+  core="$(lifeagents_env_file core)"
+  d="$(read_env_value "$core" DOMAIN 2>/dev/null || true)"
+  tp="$(read_env_value "$core" TRUSTED_PROXIES 2>/dev/null || true)"
+  for t in ${tp//,/ }; do case "$t" in 127.*|::1|localhost) ;; *) far=1 ;; esac; done
+  if [ -z "$d" ] || [ "$far" = 0 ]; then
+    printf 'proxy\tDer Reverse Proxy läuft auf dieser Maschine (oder ohne Internet-Adresse) und zieht nicht mit — vorher den Weg ins Internet umstellen: lifeagents reconfigure\n'
+  fi
   return 0
 }
 
@@ -147,12 +163,26 @@ _ret_verify_drained() {
 # _ret_q <wert> -> 'wert' fuer eine .env-Antwort-Datei (install_answers_load liest '…' woertlich, ' als '\'').
 _ret_q() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
-# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) ohne Proxy-Werte und die
-#   Haushalts-Zeitzone. Die Zugaenge der Pakete reisen in der Sicherung (access.json, backup_cli.sh), nicht hier.
+# _ret_reach_mode -> Weg nach aussen fuer die neue Maschine: proxy (eigener Reverse Proxy zieht mit, im Verbund die Hintertuer
+#   `lan`, lib/reach.sh) oder tunnel (alles andere: FritzBox der CLI-Installation braucht ebenfalls einen eigenen Proxy, der Tunnel
+#   ist der Weg ohne Router-Einstellung). Ohne REACH_MODE, aber mit DOMAIN = proxy (dieselbe Ableitung wie reach_cli_mode).
+_ret_reach_mode() {
+  local core m d; core="$(lifeagents_env_file core)"
+  m="$(read_env_value "$core" REACH_MODE 2>/dev/null || true)"
+  d="$(read_env_value "$core" DOMAIN 2>/dev/null || true)"
+  if [ "$m" = proxy ] || { [ -z "$m" ] && [ -n "$d" ]; }; then printf proxy; else printf tunnel; fi
+}
+
+# _ret_answer_keys -> "datei\tschluessel" je Antwort, die mitgeht: Host-Fragen (_INSTALL_ENV_KEYS) und die Haushalts-Zeitzone;
+#   Adresse und Proxy-Rechner nur beim Proxy-Weg (beim Tunnel kommt die Adresse von Tailscale). Die Zugaenge der Pakete reisen in
+#   der Sicherung (access.json, backup_cli.sh), nicht hier.
 _ret_answer_keys() {
-  local k core; core="$(lifeagents_env_file core)"
+  local k core reach; core="$(lifeagents_env_file core)"; reach="$(_ret_reach_mode)"
   for k in $_INSTALL_ENV_KEYS HOUSEHOLD_TIMEZONE; do
-    case "$k" in REACH_MODE|DOMAIN|TRUSTED_PROXIES) continue ;; esac
+    case "$k" in
+      REACH_MODE) continue ;;
+      DOMAIN|TRUSTED_PROXIES) [ "$reach" = proxy ] || continue ;;
+    esac
     printf '%s\t%s\n' "$core" "$k"
   done
 }
@@ -162,7 +192,7 @@ _ret_write_answers() {
   local out="$1" f k v
   {
     printf '# lifeagents-move %s %s — Antworten für setup.sh --answers. Enthält Schlüssel: nur direkt alt -> neu kopieren.\n' "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'REACH_MODE=%s\n' "$(_ret_q tunnel)"
+    printf 'REACH_MODE=%s\n' "$(_ret_q "$(_ret_reach_mode)")"
     [ -z "${3:-}" ] || printf 'BACKUP_PARENT_DIR=%s\n' "$(_ret_q "$3")"
     while IFS=$'\t' read -r f k; do
       [ -n "$k" ] || continue

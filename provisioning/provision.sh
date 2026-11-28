@@ -843,7 +843,7 @@ EOF
 #   erneut, doctor und der Chat-Hinweis melden es).
 _setup_backup_folder() {
   local cli="${LIFEAGENTS_BIN:-/usr/local/bin/lifeagents}"
-  ui_step 'Sicherung einrichten' backup
+  ui_step 'Sicherung einrichten' backup_dir   # eigener Code: 'backup' ist die Update-Sicherung vor dem Versionswechsel
   if "$cli" backup host-dir "$BACKUP_PARENT_DIR" --create </dev/null && "$cli" backup export </dev/null; then
     ui_step_done
   else

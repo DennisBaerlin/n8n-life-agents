@@ -77,6 +77,7 @@ DECLARE
         {"code":"workflows", "pct":77, "key":"core.update.stage.workflows"},
         {"code":"packages",  "pct":85, "key":"core.update.stage.packages"},
         {"code":"cli",       "pct":92, "key":"core.update.stage.cli"},
+        {"code":"backup_dir","pct":93, "key":"core.update.stage.backup_dir"},
         {"code":"final",     "pct":95, "key":"core.update.stage.final"}]'::jsonb;
 BEGIN
     BEGIN

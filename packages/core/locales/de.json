@@ -1087,6 +1087,7 @@
   "core.update.stage.workflows": "Agenten und Workflows",
   "core.update.stage.packages": "Pakete",
   "core.update.stage.cli": "Verwaltungsbefehl",
+  "core.update.stage.backup_dir": "Sicherungsordner",
   "core.update.stage.final": "Abschlussprüfung",
   "core.update.stage.unknown": "unbekannt",
   "core.update.button.retry": "Erneut versuchen",

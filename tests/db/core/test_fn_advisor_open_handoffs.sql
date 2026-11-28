@@ -51,6 +51,12 @@ BEGIN
               WHERE k NOT IN ('kind', 'text', 'topic', 'section_key', 'status', 'open_since')) THEN
     RAISE EXCEPTION 'FAIL [1 nur Lese-Felder, kein payload/person_id/id]: %', r; END IF;
   RAISE NOTICE 'PASS [1 offene Vormerkungen der Domain]';
+  -- ein abgelaufener Claim (Lauf abgebrochen, niemand arbeitet daran) zaehlt als offen, wie in Uebersicht und Knopf
+  UPDATE agent.handoff_tasks SET claimed_at = now() - make_interval(mins => core.fn_handoff_claim_ttl() + 1) WHERE status = 'working';
+  r := core.fn_advisor_open_handoffs('finance');
+  IF r->1->>'status' IS DISTINCT FROM 'open' THEN RAISE EXCEPTION 'FAIL [1b abgelaufener Claim gilt als working]: %', r->1; END IF;
+  UPDATE agent.handoff_tasks SET claimed_at = now() WHERE status = 'working';
+  RAISE NOTICE 'PASS [1b abgelaufener Claim -> open]';
 
   -- ---------- 2) Domain ohne offene Aufgabe -> [] ----------
   IF core.fn_advisor_open_handoffs('unknown_domain') <> '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [2 leer]'; END IF;

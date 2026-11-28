@@ -68,7 +68,6 @@ DECLARE
     v_live    boolean;
     v_fix     jsonb;
     v_reg     jsonb;
-    v_ttl     int := core.fn_handoff_claim_ttl();
 BEGIN
     SELECT * INTO v_adv FROM core.advisors a WHERE a.domain = p_domain;
     IF NOT FOUND THEN RETURN jsonb_build_object('step', NULL, 'messages', '[]'::jsonb); END IF;
@@ -117,7 +116,7 @@ BEGIN
     -- Claims (sonst liefe die Abfolge waehrend des Durchgehens weiter); Liste, Knopf und Schluessel (latch_key) kommen aus
     -- core.fn_handoff_overview wie beim Berater-Tool, damit dessen Merker denselben Schluessel trifft.
     SELECT count(*),
-           COALESCE(bool_or(t.status = 'working' AND t.claimed_at > now() - make_interval(mins => v_ttl)), false)
+           COALESCE(bool_or(core.fn_handoff_status_now(t.status, t.claimed_at) = 'working'), false)
       INTO v_cnt, v_live
       FROM agent.handoff_tasks t
      WHERE t.domain = p_domain AND t.person_id = p_person AND t.status IN ('open', 'working');

@@ -4,7 +4,7 @@
 --   traegt es als open_handoffs, damit der Berater vor einem Loesungsvorschlag zu einer Warnung sieht, was schon vereinbart
 --   ist. Eingabe p_domain (Plan-Domain). Rueckgabe jsonb-Array [{kind, text, topic, section_key, status, open_since}] in
 --   Anlage-Reihenfolge, hoechstens 50; status open = wartet auf [Jetzt eintragen], working = per [Jetzt eintragen] gerade beansprucht
---   (auch ein abgelaufener Claim: eingetragen ist es erst bei done); deferred = zurueckgestellt, weil es technisch noch nicht
+--   (ein abgelaufener Claim zaehlt als open, core.fn_handoff_status_now); deferred = zurueckgestellt, weil es technisch noch nicht
 --   eintragbar ist (der Berater schlaegt es nicht neu vor); open_since = Anlagetag (core.fn_today). Kein payload,
 --   keine Person, keine id: der Berater braucht nur den Inhalt; das Eintragen laeuft ueber tool_send_handoff_overview.
 --   Leer ([]) bei per_user-Plan-Kontext (der Snapshot kennt keinen Absender, fail-closed wie core.fn_advisor_read_plan in
@@ -32,7 +32,8 @@ BEGIN
         RETURN '[]'::jsonb;
     END IF;
     RETURN (SELECT COALESCE(jsonb_agg(jsonb_build_object('kind', t.kind, 'text', t.text, 'topic', t.topic,
-                                                         'section_key', t.section_key, 'status', t.status,
+                                                         'section_key', t.section_key,
+                                                         'status', core.fn_handoff_status_now(t.status, t.claimed_at),
                                                          'open_since', core.fn_today(t.created_at)) ORDER BY t.id), '[]'::jsonb)
               FROM (SELECT * FROM agent.handoff_tasks h
                      WHERE h.domain = p_domain AND h.status IN ('open', 'working', 'deferred')

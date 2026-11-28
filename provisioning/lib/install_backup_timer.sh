@@ -5,7 +5,7 @@
 # Im Docker-Verbund ersetzt der Tick im master den Timer (update_runner.sh update_tick) — dort ist alles hier ein no-op.
 # Idempotent, Zweitlauf = no-op. Den Service nie (neu) starten, nur den Timer (wie install_update_timers.sh).
 #
-# Reads globals: TEMPLATE_DIR, TIMEZONE (provision.sh resolve_timezone), PROVISION_REPO_SLUG, BACKUP_AUTO_AT (common.sh).
+# Reads globals: TEMPLATE_DIR, TIMEZONE (provision.sh resolve_household_timezone), PROVISION_REPO_SLUG, BACKUP_AUTO_AT (common.sh).
 
 BACKUP_TIMER_UNIT=lifeagents-backup
 SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"   # Test-Haken: die Units in einen Wegwerf-Ordner legen

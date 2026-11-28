@@ -247,11 +247,14 @@ mark_pulled() {
   install -m 0755 -d "$STATE_DIR"
   printf '%s\n' "$IMAGE" > "$PULLED_FILE"
 }
-# put_managed <datei> <modus> — Inhalt von stdin; 0 = geschrieben, 1 = war schon gleich.
+# put_managed <datei> <modus> — Inhalt von stdin; 0 = geschrieben, 1 = war schon gleich, 2 = liess sich nicht schreiben.
+#   Jeder Schritt meldet seinen Fehler selbst: die Aufrufer fangen den Rueckgabewert mit `||` ab, und dort bricht `set -e`
+#   innerhalb der Funktion nichts ab (ein gescheitertes install bliebe sonst unbemerkt).
 put_managed() {
   local tmp rc=1
-  tmp="$(mktemp)"; cat > "$tmp"
-  if [ ! -e "$1" ] || ! cmp -s "$tmp" "$1"; then install -m "$2" "$tmp" "$1"; rc=0; fi
+  tmp="$(mktemp)" || return 2
+  cat > "$tmp" || { rm -f "$tmp"; return 2; }
+  if [ ! -e "$1" ] || ! cmp -s "$tmp" "$1"; then install -m "$2" "$tmp" "$1" || { rm -f "$tmp"; return 2; }; rc=0; fi
   rm -f "$tmp"
   return "$rc"
 }
@@ -304,7 +307,8 @@ version="$(jq -r '.version // "?"' <<<"$RES")"
 
 # Rechner-Befehl: wizard-url und boot-start sind eigene Verben, alles andere geht in den master. boot-start nimmt das Abbild
 # des vorhandenen master (nach Updates der aktuelle Stand, auch wenn er gestoppt ist), sonst das von diesem Lauf.
-sed -e "s|@P@|$P|g" -e "s|@IMG@|$IMAGE|g" -e "s|@MARK@|$MARK|g" <<'TXT' | { put_managed "$CMD_FILE" 0755 || true; }
+# Erst rendern, dann schreiben: in einer Pipe gaelte ein gescheitertes sed (Exit 1) als „war schon gleich“.
+cmd_text="$(sed -e "s|@P@|$P|g" -e "s|@IMG@|$IMAGE|g" -e "s|@MARK@|$MARK|g" <<'TXT'
 #!/usr/bin/env bash
 # @MARK@ — Befehl lifeagents auf dem Rechner (Verbund in Docker). Entfernen: setup.sh --uninstall.
 set -euo pipefail
@@ -327,10 +331,13 @@ case "${1:-}" in
     exec docker exec "$t" "$P-master" lifeagents "$@" ;;
 esac
 TXT
+)"
+pm=0; printf '%s\n' "$cmd_text" | put_managed "$CMD_FILE" 0755 || pm=$?
+[ "$pm" -le 1 ] || die "Der Befehl $CMD_FILE ließ sich nicht schreiben (Platz und Rechte prüfen). Der Verbund läuft; danach setup.sh noch einmal starten."
 
 if [ -d "$R/run/systemd/system" ]; then
-  unit_new=0
-  put_managed "$UNIT_FILE" 0644 <<TXT && unit_new=1
+  unit_new=0 pm=0
+  put_managed "$UNIT_FILE" 0644 <<TXT || pm=$?
 # $MARK
 [Unit]
 Description=Life Agents: start the stack once after Docker is up
@@ -347,6 +354,11 @@ ExecStart=/usr/local/bin/lifeagents boot-start
 [Install]
 WantedBy=multi-user.target
 TXT
+  case "$pm" in
+    0) unit_new=1 ;;
+    1) ;;
+    *) die "Die Einheit $UNIT_FILE ließ sich nicht schreiben (Platz und Rechte prüfen). Der Verbund läuft; danach setup.sh noch einmal starten." ;;
+  esac
   [ "$unit_new" = 0 ] || systemctl daemon-reload >&2
   # Sofort starten (--now): Nur eine aktive Einheit (RemainAfterExit) startet mit, wenn Docker allein neu startet (PartOf);
   # eine inaktive bliebe nach `systemctl restart docker` aus.

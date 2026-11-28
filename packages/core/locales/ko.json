@@ -1090,6 +1090,7 @@
   "core.update.stage.workflows": "에이전트와 워크플로",
   "core.update.stage.packages": "패키지",
   "core.update.stage.cli": "관리 명령",
+  "core.update.stage.backup_dir": "백업 폴더",
   "core.update.stage.final": "최종 점검",
   "core.update.stage.unknown": "알 수 없음",
   "core.update.button.retry": "다시 시도",

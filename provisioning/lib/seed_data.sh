@@ -165,7 +165,7 @@ _seed_fm_value() {
 #   package = besitzendes Paket (Lifecycle-/Uninstall-Purge-Key) und managed_by = Sync-Provenienz
 #   (seed|build|agent) sind typisierte Spalten auf agent.core_contexts.
 #   metadata wird hier auf '{}' gesetzt; das Loeschschutz-Flag
-#   (protected) stempelt util_protect_contexts danach additiv ein (s. _seed_contexts).
+#   (protected) stempelt _seed_protected_contexts danach additiv ein.
 _seed_context_md() {
   local file="$1" managed="$2" pkg="${3:-core}"
   [ -f "$file" ] || return 0

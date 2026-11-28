@@ -320,6 +320,11 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
     assert.equal(fn.ts, null, 'ein Wert, der kein gewürfelter Name sein kann, kommt nie ins Bild');
+    // Ein erlaubter Link, der nicht in den QR-Code passt: die Seite kommt trotzdem (ohne Code), der Knopf bleibt.
+    const langerLink = 'https://login.tailscale.com/a/' + 'x'.repeat(280);
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_login', url: langerLink }));
+    const lang = await waitFor(async () => { const p = await page(w); return p && p.link && p.link.href === langerLink ? p : null; });
+    assert.equal(lang.qr, null, 'kein QR-Code, wenn der Link nicht hineinpasst');
     // Tunnel steht (Telegram zeigt noch nicht darauf = pending_activation): jetzt die Installation, gleich mit der Adresse.
     // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Übersicht, ohne neue Anmeldung.
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
@@ -332,7 +337,13 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     fs.rmSync(path.join(w.fake, 'fail_stage'));
     await expectOk(await post(w, '/api/action', { name: 'retry' }));
     assert.equal((await page(w)).id, 'review');
+    // „Sicherung einrichten“ (Schritt backup_dir, nach cli) gehört zur Gruppe „Assistent“: die Liste springt dort nicht zurück.
+    fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'backup_dir');
     await expectOk(await answer(w, 'review', null));
+    await waitFor(async () => (await page(w)).kind === 'install');   // erst die Tunnel-Prüfung, dann startet die Installation
+    await new Promise((r) => setTimeout(r, 2500));                    // die Attrappe hält bei backup_dir
+    assert.deepEqual((await page(w)).items.map((i) => i.state), ['ok', 'ok', 'ok', 'ok', 'run', '']);
+    fs.rmSync(path.join(w.fake, 'hold_stage'));
     await waitFor(async () => !!(await page(w)).qr);
     assert.equal(fs.readFileSync(path.join(w.fake, 'runs'), 'utf8').trim(), '2');
     const parsed = JSON.parse(fs.readFileSync(path.join(w.fake, 'parsed.json'), 'utf8'));

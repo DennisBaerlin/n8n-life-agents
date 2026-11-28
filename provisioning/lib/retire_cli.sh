@@ -12,7 +12,7 @@
 # Umzugs-Ordner (0700, Dateien 0600): Sicherung (*.nla.enc; traegt auch Gespraeche, geaenderte Einstellungen und Paket-Zugaenge),
 #   move.env (Antworten fuer setup.sh --answers), vorher.txt (move_snapshot),
 #   move.manifest (Kopf: Format, Release, Sicherungs-Datei), SO-GEHT-ES-WEITER.txt. move_snapshot nutzt auch
-#   `lifeagents move` (B2); es fuehrt auf backup_cli.sh backup_fingerprint.
+#   `lifeagents move`; es fuehrt auf backup_cli.sh backup_fingerprint.
 #
 # Exit: 0 ok; 1 Abbruch (Grund auf stderr, nichts weiter geaendert); --status: 0 nicht stillgelegt, 10 mitten drin, 11 fertig.
 
@@ -55,14 +55,7 @@ _ret_set() {
 }
 _ret_stage() { [ -e "$(la_retired_file)" ] || return 0; _ret_get STAGE; }
 # _ret_reached <stufe> — 0, wenn die gespeicherte Stufe <stufe> oder eine spaetere ist.
-_ret_reached() {
-  local cur s seen=0; cur="$(_ret_stage)"; [ -n "$cur" ] || return 1
-  for s in $RETIRE_STAGES; do
-    [ "$s" = "$1" ] && seen=1
-    if [ "$s" = "$cur" ]; then [ "$seen" = 1 ]; return; fi
-  done
-  return 1
-}
+_ret_reached() { la_stage_reached "$RETIRE_STAGES" "$(_ret_stage)" "$1"; }
 
 _ret_sql() { _bkp_psql_scalar "$1"; }
 _ret_release() { _bkp_release_tag; }
@@ -314,7 +307,9 @@ _ret_fetch_dir() {
   # shellcheck disable=SC2064  # bewusst jetzt expandieren: $st ist local
   trap "rm -rf -- '$st'" EXIT
   rt_host_get "$(_bkp_hd "$src")" move.manifest > "$st/move.manifest" 2>/dev/null || die "In '${src}' liegt kein Umzugs-Ordner (move.manifest fehlt)."
-  f="$(read_env_value "$st/move.manifest" BACKUP_FILE)"
+  # Der Name kommt aus einer Datei des Ordners und wird hier zum Pfad: erst pruefen, dann holen.
+  f="$(read_env_value "$st/move.manifest" BACKUP_FILE || true)"
+  case "$f" in ''|.|..|*/*) die "move.manifest nennt keine Sicherung." ;; esac
   for f in "$f" vorher.txt; do
     rt_host_get "$(_bkp_hd "$src")" "$f" > "$st/$f" 2>/dev/null || rm -f "$st/$f"
   done
@@ -324,7 +319,7 @@ _ret_fetch_dir() {
 _ret_restore_from() {
   local d="$1" f rel plan prel
   f="$(read_env_value "$d/move.manifest" BACKUP_FILE 2>/dev/null || true)"
-  case "$f" in ''|*/*) die "move.manifest nennt keine Sicherung." ;; esac
+  case "$f" in ''|.|..|*/*) die "move.manifest nennt keine Sicherung." ;; esac
   [ -r "$d/$f" ] || die "Sicherung ${f} fehlt im Umzugs-Ordner."
   rel="$(_ret_release)"
   # Erst pruefen (aendert nichts): Release der Sicherung = installierte; sonst Abbruch vor jeder Aenderung.

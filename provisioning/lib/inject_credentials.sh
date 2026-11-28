@@ -16,7 +16,7 @@
 #
 # Warum CLI statt REST: `import:credentials` ist der id-stabile Upsert-Pfad (PATCH /credentials/{id} [PR #18082]
 # waere eine gleichwertige Alternative, bewusst nicht gebaut). Gleiche Mechanik wie das Schwester-
-# `deploy_workflows.sh::import:workflow`: `runuser -u $N8N_USER` mit gesourcter n8n.env (N8N_ENCRYPTION_KEY).
+# `deploy_workflows.sh::import:workflow`: `n8n_cli_env` (runtime.sh: als n8n-Nutzer mit geladener n8n.env, N8N_ENCRYPTION_KEY).
 # Kein --userId noetig — n8n weist CLI-Importe dem Instanz-Owner zu (getProject()/GLOBAL_OWNER_ROLE). n8n liest
 # Creds per-Execution aus Postgres → ein Wert-Update ist ohne Neustart live. Die id-Discovery laeuft per REST-GET
 # (fail-closed).
@@ -70,7 +70,6 @@ _cred_pkg_placeholder_names() {
 }
 
 _EXISTING_CREDS_JSON='[]'
-_N8N_BIN=''            # in-Modul aufgeloest (Standalone-lifeagents-package-Pfad reicht n8n_bin NICHT durch)
 _CRED_ITEMS='[]'       # Sammel-Array {id,name,type,data} je inject-Aufruf
 _CRED_TEST_IDS=''      # "id<TAB>name"-Zeilen fuer die Post-Import-Validierung
 
@@ -190,8 +189,7 @@ _inject_preflight() {
   [ -n "${N8N_USER:-}" ] || die "N8N_USER nicht gesetzt (CLI-Import als n8n-User)."
   [ -n "${N8N_ENV_FILE:-}" ] || die "N8N_ENV_FILE nicht gesetzt (n8n.env fuer den CLI-Import / N8N_ENCRYPTION_KEY)."
   require_cmd jq; require_cmd curl; require_su_tools
-  _N8N_BIN="$(n8n_bin_path)"
-  [ -n "$_N8N_BIN" ] || die "n8n-Binary nicht im PATH (install_n8n muss vorher laufen)."
+  [ -n "$(n8n_bin_path)" ] || die "n8n-Binary nicht im PATH (install_n8n muss vorher laufen)."
   # Fail-closed: eine fehlgeschlagene Discovery darf nicht als Erstinstall durchgehen (sonst id-Regen fuer
   # existierende Creds → Dublette + Geister-Cron). Erfolg-mit-leer = echter Erstinstall (rc 0, leeres Array).
   _EXISTING_CREDS_JSON="$(_list_existing_creds)" \

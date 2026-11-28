@@ -536,4 +536,14 @@ su_run env STUB_URL_JSON='{"v":1,"type":"result","verb":"wizard-url","ok":true,"
 eq SU.link-ohne-port-exit-1 1 "$SU_RC"
 su_not SU.link-ohne-port-kein-ssh "$(cat "$SUD/out")" 'ssh -L'
 
+# Laesst sich der Befehl bzw. die Einheit nicht schreiben, endet der Lauf mit Satz und Exit 1 statt mit einer Erfolgsmeldung ohne Datei.
+su_root debian 12 bookworm; rm -rf "$SUR/usr/local/bin"
+sux --yes --image "$IMG"
+eq SU.befehl-nicht-schreibbar-exit 1 "$SU_RC"
+su_has SU.befehl-nicht-schreibbar-satz "$(cat "$SUD/err")" 'ließ sich nicht schreiben'
+su_root debian 12 bookworm; rm -rf "$SUR/etc/systemd/system"
+sux --yes --image "$IMG"
+eq SU.einheit-nicht-schreibbar-exit 1 "$SU_RC"
+su_has SU.einheit-nicht-schreibbar-satz "$(cat "$SUD/err")" 'ließ sich nicht schreiben'
+
 if [ -n "${SU_STANDALONE:-}" ]; then exit "$fails"; fi

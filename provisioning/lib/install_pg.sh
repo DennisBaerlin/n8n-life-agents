@@ -8,8 +8,7 @@ PG_LIST="/etc/apt/sources.list.d/pgdg.list"
 # Long-lived PGDG signing key (id ACCC4CF8) — ASCII-armored, dearmored once by add_apt_key.
 PG_KEY_URL="https://www.postgresql.org/media/keys/ACCC4CF8.asc"
 
-# Run a command as the postgres superuser. runuser (util-linux) is always present; avoids
-# a hard dependency on sudo on a minimal image.
+# Ein Programm als Postgres-Superuser (pg_su_exec, runtime.sh: runuser bzw. docker exec im Verbund).
 _pg_super() { pg_su_exec "$@"; }
 
 # require_utf8_db — UTF-8 ist Gesetz (provisioning/CLAUDE.md): eine bestehende Nicht-UTF8-App-DB (angelegt auf einem
@@ -68,10 +67,9 @@ install_pg_packages() {
   # --- repo (idempotent: key dearmored once, source line written if changed) ---
   log "PGDG-Repo einrichten ..."
   add_apt_key "$PG_KEY_URL" "$PG_KEYRING"
-  if add_apt_source "$PG_LIST" \
-      "deb [signed-by=${PG_KEYRING}] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main"; then
-    : # changed → force_apt_update below picks it up
-  fi
+  # rc 1 heisst hier nur „Schluesselbund fehlt“ (die Quelle bleibt dann weg); den Abbruch bringt der Paket-Install.
+  add_apt_source "$PG_LIST" \
+      "deb [signed-by=${PG_KEYRING}] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" || true
   force_apt_update
 
   # --- UTF-8 ist Gesetz (provisioning/CLAUDE.md) ---
@@ -129,12 +127,8 @@ install_postgres() {
     pg_restart_if_stale
   fi
 
-  # Wait until the cluster accepts connections (fresh install can lag a beat).
-  for _ in $(seq 1 30); do
-    if _pg_super pg_isready -q; then break; fi
-    sleep 1
-  done
-  _pg_super pg_isready -q || die "PostgreSQL-Cluster nimmt keine Verbindungen an."
+  # Eine frische Installation braucht einen Moment, bis der Cluster Verbindungen annimmt.
+  pg_wait_ready 30 || die "PostgreSQL-Cluster nimmt keine Verbindungen an."
 
   # --- role + database (guarded). Passwort nur ueber die 600-Treiberdatei als psql-Variable (nie im argv, quoting-sicher). ---
   log "n8n-DB-Rolle/Datenbank sicherstellen ..."

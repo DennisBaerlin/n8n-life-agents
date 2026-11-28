@@ -1090,6 +1090,7 @@
   "core.update.stage.workflows": "Agents and workflows",
   "core.update.stage.packages": "Packages",
   "core.update.stage.cli": "Management command",
+  "core.update.stage.backup_dir": "Backup folder",
   "core.update.stage.final": "Final check",
   "core.update.stage.unknown": "unknown",
   "core.update.button.retry": "Try again",

@@ -1,17 +1,17 @@
-// wizard/server.js — der Einrichtungs-Wizard im Docker-Betrieb (Plan „Docker-Installer für Freunde“, Paket 4).
+// wizard/server.js — der Einrichtungs-Wizard im Docker-Betrieb.
 //
 // WAS: sammelt im Fenster der Start-App die Antworten, die die CLI im Terminal fragt, und fährt danach den vorhandenen
 //   Installer `provision.sh --unattended`. Er ersetzt keine Installer-Logik: Fragen und Prüfregeln kommen über
 //   bridge.sh aus derselben Quelle wie die CLI (release_inputs.sh, Manifeste), der Ablauf steht in flow.js.
-// SCHUTZ (Plan *Wizard-Sicherheit*): Er läuft im `master`, im selben Netz-Namensraum wie n8n. Darum
+// Schutz: Er läuft im `master`, im selben Netz-Namensraum wie n8n. Darum
 //   - Einmal-Wert nur im Arbeitsspeicher, ausgestellt über einen Unix-Socket, den nur root im master erreicht
 //     (`node ctl.js issue`, die App ruft das per `docker exec`); jeder neue Wert macht den alten ungültig;
 //   - strenge Host- und Origin-Prüfung (gegen DNS-Rebinding und fremde Seiten), Sitzungs-Cookie HttpOnly +
 //     SameSite=Lax (Live-Fund Mac: Strict hielt die Sitzung nach dem Sprung aus der Start-App nicht), CSRF-Wert in einem eigenen Kopf, nur JSON-Anfragen, Sec-Fetch-Site muss same-origin sein;
 //   - CSP ohne Inline-Skript, kein Referrer, kein Caching, kein Einbetten;
 //   - Fortschritt im Volume, Geheimnisse dort nur AES-256-GCM-verschlüsselt (Schlüssel getrennt, 0600 root);
-//   - die Antwort-Datei für den Installer entsteht erst nach der zweiten Bestätigung (Prüfliste Nr. 14), flüchtig unter
-//     /run, und wird nach dem Lauf gelöscht; ihr Format (KEY=wert roh, Positivliste) liest Paket 1 ohne Ausführen;
+//   - die Antwort-Datei für den Installer entsteht erst beim Start der Installation (startInstall, nach der Übersicht), flüchtig
+//     unter /run, und wird nach dem Lauf gelöscht; ihr Format (KEY=wert roh, Positivliste) liest release_inputs.sh ohne Ausführen;
 //   - der Fehlerbericht entsteht aus festen Feldern (Positivliste) und dem gefilterten Abschluss-Protokoll, nie aus anderem Log-Text;
 //   - nach „Fertig“ (`ctl.js finish`) löscht er Fortschritt und Schlüssel und beendet sich.
 // Bewusst dependency-frei (nur Node-Core) wie das LLM-Gateway: kein npm install, keine Lieferkette.
@@ -45,7 +45,7 @@ const KEY_FILE = process.env.WIZARD_KEY_FILE || '/etc/lifeagents/wizard.key';
 const BRIDGE = process.env.WIZARD_BRIDGE || path.join(__dirname, 'bridge.sh');
 const PROVISION = process.env.LA_PROVISION || path.join(__dirname, '..', 'provision.sh');
 const LA_CLI = process.env.LA_CLI || 'lifeagents';
-// Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app, Paket 8).
+// Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app).
 const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html#start-app';
 // Telegram-App für Leute ohne Telegram (Seite „Warum Telegram?“). Offizielle Links von telegram.org/apps: /dl leitet je Gerät
 // weiter (iPhone → App Store, Android → Google-Play-Seite), daher ein QR-Code für beide Handys; für den Rechner die Seiten für
@@ -118,6 +118,8 @@ function run(cmd, args, opts = {}) {
     p.stdout.on('data', (d) => { if (out.length < 1 << 20) out += d; });
     p.on('error', () => { done = true; clearTimeout(t); resolve({ code: 127, out: '' }); });
     p.on('close', (code) => { done = true; clearTimeout(t); resolve({ code: code ?? 1, out }); });
+    // Endet das Kind, bevor es liest, kommt EPIPE als error-Ereignis; ohne Zuhörer beendete das den Wizard. Das Ergebnis liefert close.
+    p.stdin.on('error', () => {});
     p.stdin.end(opts.input || '');
   });
 }
@@ -464,7 +466,7 @@ function pageFor(id) {
   }
 }
 
-// Paperless-Adresse finden (Owner-Runden 2026-11-06), nur auf deren Seite und nur, wenn das Modul Dokumente gewählt ist:
+// Paperless-Adresse finden, nur auf deren Seite und nur, wenn das Modul Dokumente gewählt ist:
 //   1) dieser Rechner: Paperless-Container mit veröffentlichtem Port (bridge.sh paperless-ports) + LA_HOST_IP aus hints.env;
 //   2) sonst das eigene Heimnetz (scan.js: /24, typische Ports, Anmeldeseite als Erkennung).
 //   Ein Treffer = vorausgefüllt, mehrere = Auswahl, keiner = leeres Feld. Die Live-Prüfung beim Weiter bleibt wie bisher.
@@ -586,7 +588,7 @@ function dnsLookup(name) {
   try { r.setServers(DNS_SERVERS); } catch (_) { /* Standard-Resolver */ }
   return r.resolve4(name).catch(() => []);
 }
-// publicIp — öffentliche IPv4 des Anschlusses von Paket 3 (bridge public-ip); leer = unbekannt, dann wird nichts vorgeschlagen.
+// publicIp — öffentliche IPv4 des Anschlusses (bridge public-ip); leer = unbekannt, dann wird nichts vorgeschlagen.
 async function publicIp() {
   const r = await bridge(['public-ip'], { timeoutMs: 20000 });
   return r && typeof r.ip === 'string' ? r.ip : '';
@@ -681,7 +683,7 @@ const STAGE_GROUPS = [
   ['programs', ['base', 'n8n', 'gateway']],
   ['database', ['backup', 'postgres', 'schema']],
   ['access', ['access']],
-  ['bot', ['workflows', 'packages', 'cli', 'backup']],   // backup = Sicherungsordner + erste Sicherung (provision.sh)
+  ['bot', ['workflows', 'packages', 'cli', 'backup_dir']],   // backup_dir = Sicherungsordner + erste Sicherung (provision.sh _setup_backup_folder)
   ['final', ['final']],
 ];
 function installView() {
@@ -698,7 +700,7 @@ function installView() {
 }
 
 // Tunnel-Anmeldung vor der Installation (tunnelView) und Verbinden danach (connectView: Zustand des Wegs, dann Pairing per QR-Code).
-// Texte je Zustand des Tunnels (Paket 3, Katalog core.wizard.reach.*). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
+// Texte je Zustand des Tunnels (Katalog core.wizard.reach.*). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
 // art = Bild zum Zustand (page.art, ui/art/art.js); Zustände ohne art zeigen kein Bild.
 const REACH_TEXT = {
   starting: { title: 'starting_title', help: 'starting_help', wait: 'starting_wait' },
@@ -709,10 +711,10 @@ const REACH_TEXT = {
   ports_busy: { title: 'ports_busy_title', help: 'ports_busy_help', note: 'ports_busy_note', retry: true },
 };
 // keyExpiryNote — Tunnel: Tailscale meldet Geräte nach einer Frist ab (Standard 180 Tage), dann schweigt der Bot. Unter 30
-//   Tagen (Paket 3: key_days_left) ein Hinweis, wie man den Ablauf abschaltet.
+//   Tagen (key_days_left) ein Hinweis, wie man den Ablauf abschaltet.
 function keyExpiryNote() {
   const t = P.notes.connect && P.notes.connect.tunnel;
-  if (!t || t.days === null || t.days === undefined || t.days >= 30 || flow.reachMode(P.A) !== 'tunnel') return null;
+  if (!t || t.days === null || t.days === undefined || t.days < 0 || t.days >= 30 || flow.reachMode(P.A) !== 'tunnel') return null;
   return { kind: 'warn', text: T('core.wizard.connect.key_expiry', { days: t.days }) };
 }
 // webhookNote — Zustellfehler verständlich erklären, mit dem nächsten Schritt je Weg, statt still zu warten.
@@ -723,17 +725,22 @@ function webhookNote(c) {
   if (!w.error) return null;
   return { kind: 'warn', text: T(flow.reachMode(P.A) === 'fritzbox' ? 'core.wizard.webhook.fritzbox' : 'core.wizard.webhook.tunnel') };
 }
+// qrSvg(text) -> SVG oder null, wenn der Text nicht in den Code passt (qr.encode wirft dann; TS_URL erlaubt längere Links,
+//   als ein Code trägt): die Seite kommt dann ohne QR-Code, der Link-Knopf bleibt.
+function qrSvg(text) { try { return qr.toSvg(qr.encode(text)); } catch (_) { return null; } }
 // reachView(v, tunnel, R) — Seite zu einem Tunnel-Zustand (REACH_TEXT), vor der Installation (tunnelView) wie danach
 //   (connectView). Der Anmelde-Link kommt zusätzlich als QR-Code fürs Handy.
 function reachView(v, tun, R) {
   const t = (k) => (R[k] ? T(`core.wizard.reach.${R[k]}`) : null);
-  // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
+  // Geräte-Freigabe: reach_status_json liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
   const href = tun.url || (tun.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
   const login = href && R.link === 'login_link';
+  const code = login ? qrSvg(href) : null;
   return Object.assign(v, { title: t('title'),
     // Zweiter Satz: am Rechner mit dem Hinweis auf den Code, am Handy (Code ausgeblendet) ohne; app.css blendet je einen aus.
-    help: [{ p: t('help') }].concat(login ? [{ p: T('core.wizard.tunnel.login_qr'), desk: true }, { p: T('core.wizard.tunnel.login_more'), phone: true }] : []),
-    qr: login ? qr.toSvg(qr.encode(href)) : null, qrDesk: login,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
+    help: [{ p: t('help') }].concat(!login ? [] : code ? [{ p: T('core.wizard.tunnel.login_qr'), desk: true }, { p: T('core.wizard.tunnel.login_more'), phone: true }]
+      : [{ p: T('core.wizard.tunnel.login_more') }]),
+    qr: code, qrDesk: !!code,   // nur am Rechner-Bildschirm; am Handy bleibt der Knopf
     note: R.note ? { kind: 'warn', text: t('note') } : null,
     link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && tun.host ? { host: tun.host } : null,
     wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
@@ -826,7 +833,7 @@ async function answer(id, raw, skip) {
       if (r.rc === 1) return { error: r.problem && uiLang() === 'de' ? r.problem + '.' : T('core.wizard.msg.invalid') };
       if (r.rc === 2) note = T('core.wizard.msg.offline');
       if (typeof r.value === 'string' && r.value !== '') v = r.value;
-      // Paperless (Plan *Die Module wie in der CLI*): Adresse, Version und Zugang live prüfen.
+      // Paperless: Adresse, Version und Zugang live prüfen.
       if (q.pkg === 'paperless') {
         const url = q.setting === 'general.paperless_url' ? v : (P.A.CONFIG_GENERAL_PAPERLESS_URL || '');
         const token = q.cred ? v : (SECRETS.PAPERLESS_API_TOKEN || '');   // neue Adresse: vorhandenen Zugang gleich mitprüfen
@@ -883,8 +890,8 @@ async function answer(id, raw, skip) {
       P.A.__reach = raw;
       if (raw === 'fritzbox') {
         delete P.A.__ports;   // jede FritzBox-Wahl misst neu (ein beendetes Programm gibt die Ports frei); beim Tunnel bleibt die Messung für den Störungs-Hinweis
-        // Prüfliste Nr. 13: Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
-        // Zugleich DS-Lite (Paket 3 reach_dslite, beim ersten Mal bis ~6 s): sicher erkannt ersetzt die Handfrage.
+        // Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
+        // Zugleich DS-Lite (reach_dslite, beim ersten Mal bis ~6 s): sicher erkannt ersetzt die Handfrage.
         const [r, d] = await Promise.all([bridge(['reach-ports'], { timeoutMs: 20000 }), bridge(['dslite'], { timeoutMs: 15000 })]);
         if (r && r.state === 'busy') P.A.__ports = 'busy';
         const ds = d && ['yes', 'no'].includes(d.dslite) ? d.dslite : '';
@@ -1049,7 +1056,7 @@ const TS_URL = /^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.%:-]{1,300}$/;
 const REACH_STATES = ['unavailable', 'starting', 'needs_login', 'needs_machine_auth', 'needs_funnel', 'key_expired', 'ports_busy',
   'pending_activation', 'ready'];
 const REACH = process.env.LA_REACH || path.join(__dirname, '..', 'compose', 'reach_ctl.sh');
-// readReach(r) -> {state, url, days, host}: Antwort von `bridge.sh reach-status` (Paket 3, reach_status_json), streng
+// readReach(r) -> {state, url, days, host}: Antwort von `bridge.sh reach-status` (reach_status_json), streng
 //   geprüft: nur bekannte Zustände, Links nur von login.tailscale.com, als Name nur ein gewürfelter Tailscale-Name (fürs Bild).
 function readReach(r) {
   return { state: r && REACH_STATES.includes(r.state) ? r.state : 'unavailable', url: r && TS_URL.test(r.url || '') ? r.url : '',
@@ -1135,7 +1142,7 @@ async function connectTick(force) {
   lastConnect = Date.now();
   const c = P.notes.connect || (P.notes.connect = {});
   try {
-    // Zustand des Wegs zu Telegram (Paket 3, reach_status_json): Tunnel-Anmeldung/-Freigabe, belegte Ports.
+    // Zustand des Wegs zu Telegram (reach_status_json): Tunnel-Anmeldung/-Freigabe, belegte Ports.
     if (!(c.tunnel && c.tunnel.state === 'ready')) {
       c.tunnel = readReach(await bridge(['reach-status'], { timeoutMs: 20000 }));
       const state = c.tunnel.state;
@@ -1164,7 +1171,7 @@ async function connectTick(force) {
       if (Date.now() - PAIR.armed > TOKEN_TTL_MS) { c.expired = true; PAIR = null; save(); return; }
       const st = await laCli('status');
       if (st && st.ok && st.connected) c.connected = true;
-      // Selbsttest (Leitung, Format Paket 3): kommt Telegram bei diesem Rechner an? Alle 10 s den Webhook-Zustand lesen.
+      // Selbsttest: kommt Telegram bei diesem Rechner an? Alle 10 s den Webhook-Zustand lesen.
       if (!c.connected && (!c.webhookAt || Date.now() - c.webhookAt > 10000)) {
         c.webhookAt = Date.now();
         const r = await bridge(['reach-status'], { timeoutMs: 20000 });

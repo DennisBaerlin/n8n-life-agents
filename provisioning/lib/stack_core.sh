@@ -37,7 +37,6 @@ SC_FOREIGN_FILE='core-foreign-images'
 SC_TEST_SWITCHES="LIFEAGENTS_TELEGRAM_API LIFEAGENTS_LLM_UPSTREAM"
 SC_ANSWERS=/run/lifeagents-wizard/answers.env
 SC_HINTS=/run/lifeagents-wizard/hints.env
-SC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SC_JSON=0 SC_VERB='' SC_DONE=0 SC_SELF='' SC_LASTF=''
 SC_ARGS=() SC_IMAGES=()
@@ -212,7 +211,6 @@ sc_lock() {
     return 0
   fi
   [ "$rc" = 0 ] || sc_fail busy "Der Zustand eines Updates liess sich nicht lesen — danach erneut versuchen. Nichts geaendert."
-  [ -n "$st" ] || return 0
   if [ "$SC_VERB" = uninstall ]; then
     phase="$(sed -n 's/^PHASE=//p' <<<"$st" | head -n1)"
     started="$(sed -n 's/^STARTED=//p' <<<"$st" | head -n1)"
@@ -297,10 +295,6 @@ sc_values_read() {
     case " $SC_VALUE_KEYS " in *" $k "*) [ -n "${SV[$k]:-}" ] || SV[$k]="$v" ;; esac
   done <<<"$src"
 }
-_sc_ts_draw() {
-  jq -r --argjson a "$RANDOM" --argjson b "$RANDOM" '(.adjectives | .[$a % length]) + "-" + (.nouns | .[$b % length])' \
-    "$SC_LIB_DIR/ts_names.json"
-}
 _sc_port_pick() {   # <anderer belegter Wert> -> freier Port der Spanne
   local p
   for p in $(seq "$SC_PORT_FIRST" "$SC_PORT_LAST"); do
@@ -326,7 +320,7 @@ sc_values_complete() {
     k=0; rt_volume_label "${LA_PROJECT}_ts_state" >/dev/null || k=$?
     case "$k" in
       0) SV[LA_TS_HOSTNAME]=bot ;;
-      1) SV[LA_TS_HOSTNAME]="$(_sc_ts_draw)" ;;
+      1) SV[LA_TS_HOSTNAME]="$(ts_name_new)" ;;   # die eine Zieh-Regel (lib/reach.sh, an vectors geprueft)
       *) sc_fail internal "Volume ${LA_PROJECT}_ts_state liess sich nicht pruefen — nichts geaendert." ;;
     esac
   fi

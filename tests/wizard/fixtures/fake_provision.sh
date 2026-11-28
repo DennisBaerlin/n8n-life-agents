@@ -24,7 +24,7 @@ while IFS= read -r l || [ -n "$l" ]; do
 done < "$f"
 printf '%s' "$json" > "$D/parsed.json"
 n="$(cat "$D/runs" 2>/dev/null || echo 0)"; echo $((n + 1)) > "$D/runs"
-for s in preflight base postgres n8n gateway schema access workflows packages cli final; do
+for s in preflight base postgres n8n gateway schema access workflows packages cli backup_dir final; do
   printf 'status=running\nstage=%s\n' "$s" > "$LIFEAGENTS_RESULT_FILE"
   while [ "$(cat "$D/hold_stage" 2>/dev/null || true)" = "$s" ]; do sleep 0.05; done   # Vorschau: Stufe anhalten
   fail="$(cat "$D/fail_stage" 2>/dev/null || true)"

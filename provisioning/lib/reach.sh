@@ -16,8 +16,8 @@
 #            uebernimmt ihn als DOMAIN, n8n setzt beim Aktivieren des Telegram-Ausloesers den Webhook darauf. Ein Tailscale
 #            auf dem Rechner selbst bleibt unberuehrt (eigener Knoten, eigener Namensraum); nie `tailscale reset`/`logout`.
 #   fritzbox Dienst `wan` (Caddy, Profil fritzbox) veroeffentlicht 80/443 am Rechner, holt das Zertifikat fuer DOMAIN
-#            (MyFRITZ!-Adresse) selbst und reicht an edge:8088 weiter. Vorher muessen 80 und 443 frei sein (Pruefliste
-#            Nr. 13); sonst startet nichts und der Status raet zum Tunnel — nie etwas ueberschreiben.
+#            (MyFRITZ!-Adresse) selbst und reicht an edge:8088 weiter. Vorher muessen 80 und 443 frei sein
+#            (reach_ports_free); sonst startet nichts und der Status raet zum Tunnel — nie etwas ueberschreiben.
 # Den Weg waehlt der Wizard (REACH_MODE in der Antwort-Datei); gespeichert in core.env, damit ein Update ihn behaelt.
 
 REACH_CORE_ENV="${LIFEAGENTS_DIR:-/etc/lifeagents}/core.env"
@@ -432,7 +432,7 @@ reach_edge_public_write() {
 }
 
 # --- FritzBox (wan) -------------------------------------------------------------------------------------------------
-# reach_ports_free -> 0, wenn 80 und 443 am Rechner frei sind (rt_host_port_free: Kurzlauf-Container, Pruefliste Nr. 13).
+# reach_ports_free -> 0, wenn 80 und 443 am Rechner frei sind (rt_host_port_free: Kurzlauf-Container).
 reach_ports_free() { rt_host_port_free 80 && rt_host_port_free 443; }
 
 # reach_wan_write_domain <domain> -> 0 = Datei geaendert (wan muss neu starten), 1 = unveraendert. Nur geprueft gueltige

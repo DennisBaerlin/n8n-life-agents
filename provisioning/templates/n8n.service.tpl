@@ -12,8 +12,7 @@ Type=simple
 User=@@N8N_USER@@
 Group=@@N8N_USER@@
 EnvironmentFile=@@N8N_ENV_FILE@@
-# Optional owner/identity overlay, written by bootstrap_owner.sh (Phase 4). The leading
-# '-' makes it tolerated-if-absent, so a schema-only Phase 1/2 install still boots.
+# Host- und Owner-Werte aus core.env. Das fuehrende '-' duldet eine fehlende Datei: vor dem Owner-Bootstrap gibt es sie nicht.
 EnvironmentFile=-@@N8N_OWNER_ENV_FILE@@
 WorkingDirectory=@@N8N_HOME@@
 # Outbound calls (Telegram, Anthropic) prefer IPv4: n8n resolves hostnames through its own SSRF lookup, which

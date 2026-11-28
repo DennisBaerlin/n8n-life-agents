@@ -179,7 +179,9 @@ _ur_report() {
 }
 
 # _ur_lock_release — Update-Sperre abgeben: Telegram-Aufrufe duerfen ein Terminal-Update nie aufhalten (es wartet nur 30 s).
-_ur_lock_release() { exec 9>&- 2>/dev/null || true; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
+#   Nur fd 9 schliessen: jede weitere Umleitung an einem `exec` ohne Befehl gilt fuer den Rest des Prozesses (ein `2>/dev/null`
+#   hier naehme dem Runner alle spaeteren Meldungen; Test tests/mock_runtime/shell_trap_cases.sh SH-B).
+_ur_lock_release() { exec 9>&-; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
 
 # _ur_reports_flush [auftrag] — offene Ergebnis-Meldungen zustellen. Der erste Aufruf fragt n8n nicht (Leerlauf jede Minute).
 #   Ohne die Faellig-fn (neuer master bricht beim Umstieg vor dem Schema-Schritt ab) geht <auftrag> direkt hinaus. Immer rc 0.
@@ -565,10 +567,7 @@ UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
 UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 UPDATE_CHECK_RETRY_S="${UPDATE_CHECK_RETRY_S:-900}"    # Neuversuch nach einem Check ohne Entscheidung (GitHub anonym: 60 Abfragen/h)
 BACKUP_RETRY_EVERY_S="${BACKUP_RETRY_EVERY_S:-3600}"   # Abstand der Sicherungs-Laeufe (stuendlich wie der Timer)
-# Zeitgrenzen je Schritt = TimeoutStartSec der drei Units (templates/lifeagents-update-run|update-check|backup.service.tpl).
-UPDATE_RUN_TIMEOUT_S="${UPDATE_RUN_TIMEOUT_S:-7200}"
-UPDATE_CHECK_TIMEOUT_S="${UPDATE_CHECK_TIMEOUT_S:-300}"
-BACKUP_TIMEOUT_S="${BACKUP_TIMEOUT_S:-1800}"
+# Zeitgrenzen je Schritt: UPDATE_RUN_TIMEOUT_S, UPDATE_CHECK_TIMEOUT_S, BACKUP_TIMEOUT_S (common.sh, auch doctor liest sie).
 UPDATE_STEP_KILL_S="${UPDATE_STEP_KILL_S:-60}"          # nach TERM so lange warten, dann KILL (systemd: TimeoutStopSec 90 s)
 
 # _ur_cli -> Pfad der CLI (vor der ersten Installation zeigt der Link im master-Image ins Leere).

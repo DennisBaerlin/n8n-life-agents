@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # provision.sh — interner Applier des Provisioning-Kerns (PostgreSQL + n8n + Schema + Seeds +
 # Owner-Bootstrap + Workflows/Credentials). Faehrt die Schritte auf einem bereits vorliegenden Baum:
-# kein Fetch, kein --version, kein Endnutzer-Einstieg. Der HTTPS-Reverse-Proxy (Ingress) wird nicht
-# mitinstalliert: der Nutzer bringt seinen eigenen (NPM/Traefik/nginx/Caddy); der Installer gibt am Ende
-# ein fertiges Caddyfile + die Anforderungen aus.
+# kein Fetch, kein --version, kein Endnutzer-Einstieg. Den Weg nach aussen waehlt REACH_MODE (Tunnel,
+# FritzBox, eigener Reverse Proxy: lib/reach.sh, lib/reach_cli.sh); nur beim eigenen Proxy richtet der Lauf keinen Ingress
+# ein und gibt am Ende ein fertiges Caddyfile + die Anforderungen aus.
 #
 # Aufruf: `bash provision.sh [--profile dev|release] [--unattended <env-file>] [--domain <fqdn>] ...`
 # (alle Flags: `--help`). Voraussetzung: root (`require_root`; `--uninstall` prueft root in `uninstall()`). Nimmt
@@ -21,8 +21,7 @@
 # Code des gescheiterten Befehls (der ERR-Trap nennt Zeile und Code). Der Chat-Runner liest das Ergebnis aus der
 # Ergebnis-Datei (`result_set`), nicht aus dem Exit-Code.
 #
-# Idempotent: jeder Schritt ist guarded, ein Zweitlauf ist no-op. `set -euo pipefail` lebt nur hier
-# (dem Top-Script dieses Laufs); die gesourcten lib/*.sh erben diesen Error-Mode.
+# Regeln (Idempotenz, Error-Mode nur im Top-Script): provisioning/CLAUDE.md *Harte Regeln (bash-Kern)*.
 set -euo pipefail
 # UTF-8 unabhaengig von der System-Locale (Proxmox-Vorlagen: LANG="C"). C.UTF-8 ist unter Debian 12 immer
 # vorhanden; fuer ASCII verhaelt es sich wie C (Code-Punkt-Sortierung), Parser-Stellen mit eigenem
@@ -110,18 +109,18 @@ APPLY_NETWORK=0          # --apply-network: NUR Bind + Firewall aus core.env neu
 DOMAIN="${DOMAIN:-}"
 TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"   # --trusted-proxies: Reverse Proxy auf ANDEREM Rechner (IPv4/CIDR-Liste)
 
-# Version pins (the whole point of reproducible provisioning).
+# Versions-Pins: die eine Adresse; compose.yml, master.Dockerfile und Doku folgen (contract_lint 33, doc_lint 11b).
 PG_VERSION="${PG_VERSION:-17}"
 N8N_VERSION="${N8N_VERSION:-2.45.7}"
 NODE_MAJOR="${NODE_MAJOR:-24}"
 
-# Fixed paths / identities.
+# Feste Pfade und Namen.
 N8N_USER="n8n"
 N8N_HOME="/var/lib/n8n"
 if rt_is_compose; then N8N_HOME="/home/node"; fi   # Verbund: Home des Image-Nutzers "node" (Volume n8n_home)
 N8N_USER_FOLDER="${N8N_HOME}/.n8n"
 N8N_ENV_FILE="/etc/n8n/n8n.env"           # n8ns eigene Config (n8n liest sie), bleibt /etc/n8n
-# Secret-Modell §3.0a: Installer-Namespace /etc/lifeagents/. core.env = Host/Core-Secrets (API-Key,
+# Installer-Namespace /etc/lifeagents/: core.env = Host/Core-Secrets (API-Key,
 # core_ro/context_ro-PW) + Nutzer-Eingaben (Domain/Owner/LLM) — beide Schreiber (bootstrap_owner +
 # release_inputs) upserten per Key (env_upsert), kein Clobber. Paket-Secrets -> /etc/lifeagents/<pkg>.env.
 N8N_OWNER_ENV_FILE="${LIFEAGENTS_DIR:-/etc/lifeagents}/core.env"   # Host/Core-Secrets + API key (bootstrap_owner.sh)
@@ -458,7 +457,7 @@ main() {
   fi
   # Erst nach der Uebersicht: DOMAIN kann sich dort noch aendern (die abgeleiteten Werte liest erst prepare_n8n_env).
   derive_network_config
-  # Pruefliste Nr. 10: hoert der Bot schon woanders zu? Nach den Fragen, vor der ersten Aenderung (fragt bzw. bricht ab).
+  # Hoert der Bot schon woanders zu? Nach den Fragen, vor der ersten Aenderung (fragt bzw. bricht ab).
   telegram_webhook_preflight
   # Domain gewechselt (egal ob per reconfigure, Uebersicht, --domain oder Hand-Edit): der abgeleitete Ist-Zustand
   # WEBHOOK_URL in n8n.env (vor prepare_n8n_env) ist die eine Quelle -> das gefuehrte Ende prueft Handy/Laptop dann
@@ -527,13 +526,11 @@ main() {
   # danach ist ein normaler, wiederholbarer Schritt; ein Abbruch vor hier laesst den Merkzettel stehen (naechster Lauf setzt fort).
   upgrade_finish
   ui_step_done
-  # Der HTTPS-Reverse-Proxy ist bring-your-own; das fertige Caddyfile + die Anforderungen zeigt das
-  # gefuehrte Ende (owner_connect_guided) bei Bedarf.
 
   # --- Core-Install (bare; lokales psql, kein API-Key noetig) — Bundle = Metapackage ----
   # Erst den Core bare, dann jedes gebuendelte Paket ueber denselben per-Paket-Installpfad (pkg_install_one).
   ui_step 'Datenbank vorbereiten' schema
-  ensure_lifeagents_dir  # /etc/lifeagents 750 root:n8n (Installer-Secret-Namespace, Secret-Modell §3.0a)
+  ensure_lifeagents_dir  # /etc/lifeagents 750 root:n8n (Installer-Secret-Namespace)
   apply_schema core      # bare Core: Schema (Flyway 3-Phasen) + Hardening/RO-Rollen + Owner-Grants agent,core
   SEED_PKG=core seed_data   # Core-Daten: ai_models + core.config + Core-Instruktions-Contexts (no-PII)
   register_package core active   # Core registriert+active (Routing-Status-Gate liest es)
@@ -705,9 +702,8 @@ _recap_skipped_pkg_keys() {
 
 # display_install_recap — End-Recap, nur im Release-Profil (beim Test wird der Container/LXC verworfen).
 # Terminal via ui_box (im Quiet-Modus nur fd3, nie ins Log — die Box traegt generierte Passwoerter).
-# Gliederung: Installiert · Uebersprungen (je Schluessel + exakter Nachtrag-Befehl) · Generierte Zugaenge
-# (einmalig) · Noch zu tun (nur wenn offen — Proxy/Pairing spaeter). Selbst eingegebene Secrets erscheinen
-# nie; das n8n-Login-Passwort nur, wenn es generiert wurde (N8N_OWNER_PASSWORD leer -> OWNER_PLAINTEXT).
+# Selbst eingegebene Secrets erscheinen nie; das n8n-Login-Passwort nur, wenn es generiert wurde (N8N_OWNER_PASSWORD
+# leer -> OWNER_PLAINTEXT).
 display_install_recap() {
   [ "$PROFILE" = "release" ] || return 0
   local _pw_line='' _skipped _todo='' _n=1
@@ -847,7 +843,7 @@ EOF
 #   erneut, doctor und der Chat-Hinweis melden es).
 _setup_backup_folder() {
   local cli="${LIFEAGENTS_BIN:-/usr/local/bin/lifeagents}"
-  ui_step 'Sicherung einrichten' backup
+  ui_step 'Sicherung einrichten' backup_dir   # eigener Code: 'backup' ist die Update-Sicherung vor dem Versionswechsel
   if "$cli" backup host-dir "$BACKUP_PARENT_DIR" --create </dev/null && "$cli" backup export </dev/null; then
     ui_step_done
   else
@@ -882,7 +878,7 @@ _recap_backup_kit() {
 # install_cli — die `lifeagents`-Admin-CLI nach /usr/local/bin legen (Verbund: <Baum>/bin im Volume rt_tree) + den
 # Runtime-Baum nach lifeagents_runtime_dir (Standard /usr/local/lib/lifeagents) spiegeln, damit
 # `lifeagents update/doctor/uninstall` ohne Netz laufen. Gespiegelt wird der gesamte provisioning/-Baum ohne
-# install.sh (der Wegwerf-Bootstrap gehoert nicht in die Runtime) + packages/ (REPO_ROOT-relativ, damit der
+# install.sh und setup.sh (die Bootstrap-Einrichter gehoeren nicht in die Runtime) + packages/ (REPO_ROOT-relativ, damit der
 # gespiegelte provision.sh self-contained bleibt) + der Marker VERSION. Die CLI schreibt write_if_changed nur
 # bei Aenderung; der Baum wird je Lauf frisch gespiegelt (atomarer Swap je Top-Eintrag).
 install_cli() {

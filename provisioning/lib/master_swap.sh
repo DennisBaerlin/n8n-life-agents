@@ -1,5 +1,6 @@
 # master_swap.sh — Update im Docker-Verbund = Wechsel des master-Images ueber einen kurzlebigen Helfer.
-# Gesourct (kein Shebang, kein set -e) von fetch_release.sh, update_runner.sh, upgrade_guard.sh und compose/swap_helper.sh.
+# Gesourct (kein Shebang, kein set -e) von fetch_release.sh, provision.sh und compose/swap_helper.sh; update_runner.sh und
+# upgrade_guard.sh rufen die Funktionen. Braucht common.sh (die_because, result_set, write_file, update_lock_acquire) und runtime.sh (rt_*).
 #
 # Warum: Im Verbund bringt ein Release ein neues master-Image (Werkzeuge + Installer-Baum + compose.yml mit den Pins von n8n,
 # Postgres & Co.). Der master kann sich nicht selbst ersetzen: `compose up master` aus ihm heraus beendet genau den Prozess,
@@ -139,7 +140,8 @@ master_swap_resolve() {
   esac
 }
 
-# master_swap_close — Zustand abschliessen: Zustandsdatei weg, compose.old.yml bleibt als compose.prev.yml (Rueckweg).
+# master_swap_close — Zustand abschliessen: Zustandsdatei weg, compose.old.yml bleibt als compose.prev.yml. Einziger Leser ist die
+#   Behalten-Liste der Abbilder (images_cli.sh); der Rueckweg nimmt die Kopie neben der Sicherung (upgrade_guard.sh _upg_record_master_from).
 master_swap_close() {
   [ -f "$SWAP_DIR/compose.old.yml" ] && mv -f "$SWAP_DIR/compose.old.yml" "$SWAP_DIR/compose.prev.yml"
   rm -f "$SWAP_STATE" "$SWAP_DIR/compose.new.yml" "$SWAP_DIR/stack.env"

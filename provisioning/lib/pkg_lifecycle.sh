@@ -103,7 +103,7 @@ _pkg_gate_install() {
   local pkg="$1"
   _pkg_name_ok "$pkg" || { err "Ungueltiger Paketname (erwarte ^[a-z][a-z0-9_]*$): $pkg"; return 1; }
 
-  # Prereq: der Core muss vollstaendig + aktiv sein (DEP1).
+  # Voraussetzung: der Core muss vollstaendig + aktiv sein.
   local core_status
   core_status="$(_pkg_psql_scalar "SELECT status FROM core.package_registry WHERE package = 'core'" || true)"
   if [ "$core_status" != "active" ]; then
@@ -111,7 +111,7 @@ _pkg_gate_install() {
     return 1
   fi
 
-  # Manifest-getriebene Dep-/core_api-Pruefung (DEP2/DEP3) via core.fn_pkg_check_deps.
+  # Manifest-getriebene Dep-/core_api-Pruefung via core.fn_pkg_check_deps.
   local core_api requires_json
   core_api="$(_pkg_manifest_field "$pkg" '.core_api')"
   requires_json="$(_pkg_manifest_field "$pkg" '.requires')"
@@ -179,7 +179,7 @@ _pkg_validator_fn() {
 # _pkg_migrate_legacy_env <pkg> <envf>  — Einmal-Migration: Paket-Secret-Keys, die noch im
 #   Host-Store core.env liegen (_INSTALL_ENV_KEYS-Aera). Generisch fuer jeden
 #   deklarierten env-Key: non-empty in core.env + noch keine Zeile in <pkg>.env -> Wert uebernehmen
-#   + aus core.env entfernen (ein Schreiber pro Datei, Secret-Modell §3.0a). Schliesst den Silent-Loss-Pfad.
+#   + aus core.env entfernen (ein Schreiber pro Datei). Schliesst den Silent-Loss-Pfad.
 _pkg_migrate_legacy_env() {
   local pkg="$1" envf="$2" coreenv="${INSTALL_ENV_FILE:-/etc/lifeagents/core.env}"
   [ -f "$coreenv" ] || return 0
@@ -1142,7 +1142,7 @@ BEGIN
   PERFORM core.fn_pkg_remove(jsonb_build_object('package','${esc}'));
 END
 \$do\$;"; then
-      # Secret-Modell §3.0a: die per-Paket-env-Datei mit-loeschen (rm) — spiegelt DROP SCHEMA/ROLE,
+      # Die per-Paket-env-Datei mit-loeschen (rm) — spiegelt DROP SCHEMA/ROLE,
       # kein chirurgisches Heraus-Editieren (ein Schreiber pro Datei). --keep-data laesst sie stehen
       # (Re-Install reused das Passwort override-first).
       local _penv; _penv="$(lifeagents_env_file "$pkg")"

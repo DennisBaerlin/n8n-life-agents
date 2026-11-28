@@ -209,13 +209,13 @@ BEGIN
   IF r#>>'{done,text}' IS DISTINCT FROM 'D v0.15.0 ########## 100' THEN RAISE EXCEPTION 'FAIL [9b done]: %', r; END IF;
   IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(r->'stages') k) IS DISTINCT FROM
      (SELECT array_agg(k ORDER BY k) FROM unnest(ARRAY['download','verify','preflight','base','backup','postgres','n8n','gateway',
-                                                       'schema','access','workflows','packages','cli','final']) k)
+                                                       'schema','access','workflows','packages','cli','backup_dir','final']) k)
   THEN RAISE EXCEPTION 'FAIL [9c jeder Schritt-Code hat ein Gewicht]: %', r->'stages'; END IF;
   DECLARE
     v_prev int := 0; v_pct int; v_code text;
   BEGIN
     FOREACH v_code IN ARRAY ARRAY['download','verify','preflight','base','backup','postgres','n8n','gateway',
-                                  'schema','access','workflows','packages','cli','final'] LOOP
+                                  'schema','access','workflows','packages','cli','backup_dir','final'] LOOP
       v_pct := (r->'stages'->v_code->>'pct')::int;
       IF v_pct <= v_prev OR v_pct >= 100 THEN RAISE EXCEPTION 'FAIL [9d % steigt nicht: % nach %]', v_code, v_pct, v_prev; END IF;
       v_prev := v_pct;

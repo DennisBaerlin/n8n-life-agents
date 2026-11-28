@@ -98,7 +98,7 @@ _ingress_id_map() {
 
 # _WF_OWN_TRIGGER_JQ — jq-Funktion `own_trigger`: hat der Workflow einen EIGENEN Ausloeser, den n8n beim Aktivieren
 #   im laufenden Prozess registriert (Cron/Webhook/Telegram/Error-Trigger)? executeWorkflowTrigger zaehlt nicht
-#   (reiner Sub-Workflow-Eingang). Geteilt von retire_workflows (Neustart noetig?) und _deactivate_live_triggers.
+#   (reiner Sub-Workflow-Eingang). Geteilt von _retire_workflow_entries (Neustart noetig?) und _deactivate_live_triggers.
 _WF_OWN_TRIGGER_JQ='def own_trigger: [.nodes[]?.type | select((test("Trigger$") and (. != "n8n-nodes-base.executeWorkflowTrigger")) or . == "n8n-nodes-base.webhook")] | length > 0;'
 
 # _schedule_placeholder_map — {"__CFG_SCHEDULE_<KEY>__": "<cron>", …} aus core.config (category 'schedule'; die DB

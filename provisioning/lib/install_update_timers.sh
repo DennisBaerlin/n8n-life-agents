@@ -9,7 +9,7 @@
 #   Service (neu) starten, nur die Timer. Eine geaenderte Service-Unit greift per daemon-reload beim naechsten
 #   Timer-Lauf; der laufende oneshot-Prozess bleibt unberuehrt.
 #
-# Reads globals: TEMPLATE_DIR, TIMEZONE (provision.sh resolve_timezone), PROVISION_REPO_SLUG (common.sh).
+# Reads globals: TEMPLATE_DIR, TIMEZONE (provision.sh resolve_household_timezone), PROVISION_REPO_SLUG (common.sh).
 
 UPDATE_TIMER_UNITS=(lifeagents-update-check lifeagents-update-run)
 UPDATE_CLI_BIN="${UPDATE_CLI_BIN:-/usr/local/bin/lifeagents}"

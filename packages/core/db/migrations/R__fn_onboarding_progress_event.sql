@@ -38,7 +38,7 @@ AS $$
 DECLARE
     v_chat        text    := NULLIF(p->>'chat_id', '');
     v_pkg         text    := COALESCE(NULLIF(p->>'package', ''), 'core');
-    v_now         boolean := lower(COALESCE(p->>'area_completed_now', '')) IN ('true', 't', '1');
+    v_now         boolean := lower(btrim(COALESCE(p->>'area_completed_now', ''))) IN ('true', 't', '1', 'yes', 'y', 'on');
     v_sender      jsonb;
     v_pid         text;
     v_owner       boolean;

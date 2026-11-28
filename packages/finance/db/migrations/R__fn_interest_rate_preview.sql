@@ -18,7 +18,7 @@
 --   (fn_rate_precision_reason); valid_from nicht nach der offenen Zeile (+ current_valid_from); valid_from vor dem Ende
 --   der juengsten gebuchten/uebersprungenen Zinsperiode (+ credited_until; ein rueckdatierter Kadenzwechsel verankerte
 --   ein Raster ueber schon verzinste Tage); ungueltiges valid_from -> code 'invalid_date'.
---   Eingabe jsonb wie fn_set_account_interest. Rueckgabe {ok:true, schedule_interval, schedule_unit,
+--   Eingabe jsonb wie fn_set_account_interest. Rueckgabe {ok:true, annual_rate (gelesener Satz, auch "2,5"), schedule_interval, schedule_unit,
 --   schedule_day_of_month, posting_day_of_month, auto_post, day_count_convention, conv_reason, valid_from,
 --   closes_previous, first_period_end, first_credit_date}. RAISE bei unbekanntem Konto und bei nicht castbarer Eingabe
 --   (account_id, auto_post); keine Zahl in annual_rate, schedule_interval, schedule_day_of_month, posting_day_of_month ->
@@ -141,6 +141,7 @@ BEGIN
         ELSE 'default' END;
 
     RETURN jsonb_build_object('ok', true,
+        'annual_rate',           v_rate,
         'schedule_interval',     v_interval,
         'schedule_unit',         v_unit,
         'schedule_day_of_month', v_dom,

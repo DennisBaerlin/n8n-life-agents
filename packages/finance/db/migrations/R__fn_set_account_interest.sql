@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION finance.fn_set_account_interest(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_acct     INT      := (p->>'account_id')::int;
-    v_rate     NUMERIC  := NULLIF(p->>'annual_rate', '')::numeric;
+    v_rate     NUMERIC;   -- aus dem Probelauf: dort geprueft und gelesen (Komma, Tippfehler)
     v_pre      JSONB;
     v_from     DATE;
     v_closed   BOOLEAN;
@@ -30,6 +30,7 @@ BEGIN
     IF (v_pre->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_pre;
     END IF;
+    v_rate := (v_pre->>'annual_rate')::numeric;
     v_from   := (v_pre->>'valid_from')::date;
     v_closed := (v_pre->>'closes_previous')::boolean;
 

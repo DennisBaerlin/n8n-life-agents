@@ -40,9 +40,9 @@ BEGIN
   -- jede distinkte valide (^[A-Z]{3}$) gefetchte Waehrung registrieren -> FK-Schutz fuer market_prices.currency
   -- (idempotent, ON CONFLICT DO NOTHING in fn_ensure_currency). Pence ('GBp') normalisiert bereits der Cron.
   PERFORM finance.fn_ensure_currency(c)
-  FROM (SELECT DISTINCT value AS c
+  FROM (SELECT DISTINCT btrim(value) AS c
         FROM jsonb_each_text(COALESCE(p->'currencies', '{}'::jsonb))
-        WHERE value ~ '^[A-Z]{3}$') s;
+        WHERE btrim(value) ~ '^[A-Z]{3}$') s;
 
   WITH held AS (
     SELECT symbol, min(COALESCE(quote_currency, currency, 'EUR')) AS currency, min(isin) AS isin
@@ -62,7 +62,7 @@ BEGIN
     FROM held h
     WHERE (p->'prices') ? h.symbol
       AND (NULLIF(btrim((p->'currencies')->>h.symbol), '') IS NULL
-           OR (((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$' AND NOT finance.fn_is_metal((p->'currencies')->>h.symbol)))
+           OR (btrim((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$' AND NOT finance.fn_is_metal(btrim((p->'currencies')->>h.symbol))))
       -- numerisch inkl. wissenschaftlicher Notation (JSON.stringify liefert z. B. '1e-7' fuer
       -- sub-microcent-Krypto -> sonst still verworfen). Leading-Zero ist in JSON immer vorhanden.
       -- Erst das Format, dann die Zahl (CASE haelt die Reihenfolge). Grenzen = Spalte numeric(20,8): darunter wuerde der

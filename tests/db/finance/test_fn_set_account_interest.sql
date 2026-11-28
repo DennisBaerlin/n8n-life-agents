@@ -256,6 +256,13 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_interval%' THEN RAISE EXCEPTION 'FAIL [Intervall keine Zahl]: %', r; END IF;
   r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 2, 'schedule_unit', 'month', 'schedule_day_of_month', 'letzter'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_day_of_month%' THEN RAISE EXCEPTION 'FAIL [Tag keine Zahl]: %', r; END IF;
+  -- derselbe Weg im Write: Tippfehler -> ok:false, "2,5" wird als 2.5 gespeichert (Karte = Buchung)
+  r := finance.fn_set_account_interest(jsonb_build_object('account_id', v_acc, 'annual_rate', 'zwei', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [Write Satz keine Zahl]: %', r; END IF;
+  r := finance.fn_set_account_interest(jsonb_build_object('account_id', v_acc, 'annual_rate', '2,5', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR (SELECT annual_rate FROM finance.account_interest_rates WHERE account_id = v_acc AND valid_to IS NULL) IS DISTINCT FROM 2.5 THEN
+    RAISE EXCEPTION 'FAIL [Write Satz mit Komma]: %', r; END IF;
   RAISE NOTICE 'PASS preview [Tippfehler in Zahl-Feldern -> ok:false]';
 END $$;
 

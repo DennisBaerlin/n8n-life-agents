@@ -16,7 +16,7 @@
 # (oder 'latest'). Ohne eigenes --profile wird `--profile release` angehaengt; alle uebrigen Flags
 # (--profile/--domain/--unattended/--uninstall/...) laufen unveraendert an provision.sh durch.
 # Voraussetzungen: root (`require_root`); curl, jq, tar, sha256sum werden bei Bedarf per apt nachinstalliert
-# (`_ensure_deps`). Env-Overrides: PROVISION_REPO_SLUG, PROVISION_GH_API (nur Test-Mock),
+# (`_ensure_deps`); gpgv und base64 muessen da sein (ohne gpgv Abbruch vor dem Entpacken). Env-Overrides: PROVISION_REPO_SLUG, PROVISION_GH_API (nur Test-Mock),
 # LIFEAGENTS_RELEASE_KEYRING (Schluesselbund, Standard /etc/lifeagents/release-signing.gpg).
 # Exit: 0 bei --help; 1 bei jedem `die` (Download-/Verifikations-/Entpackfehler, kein root); sonst der
 # Exit-Code von provision.sh (exec). Der ERR-Trap meldet unerwartete Abbrueche mit Zeile.
@@ -56,8 +56,8 @@ require_root() { [ "$(id -u)" -eq 0 ] || die "Bootstrap muss als root laufen (su
 
 PROVISION_REPO_SLUG="${PROVISION_REPO_SLUG:-DennisBaerlin/n8n-life-agents}"
 PROVISION_ASSET_BASENAME="n8n-life-agents"
-# >>> release-key — oeffentlicher Release-Signierschluessel = base64 von provisioning/keys/release-signing.gpg (leer = das
-#     Projekt signiert noch nicht). Gesetzt von scripts/new_release_key.ps1; contract_lint haelt beides gleich.
+# >>> release-key — oeffentlicher Release-Signierschluessel = base64 von provisioning/keys/release-signing.gpg (leer nur in
+#     einem beschaedigten install.sh: der Lauf bricht dann ab). Gesetzt von scripts/new_release_key.ps1; contract_lint haelt beides gleich.
 RELEASE_KEY_B64='mDMEaty8sBYJKwYBBAHaRw8BAQdAAXd8PoJJuAW9uSfcz2xqLliN3wipRDi2HnekKE8vUIq0H244bi1saWZlLWFnZW50cyByZWxlYXNlIHNpZ25pbmeIkAQTFgoAOBYhBDEpRdgjdAMch/AiWMZPrPTgh6C/BQJq3LywAhsDBQsJCAcCBhUKCQgLAgQWAgMBAh4BAheAAAoJEMZPrPTgh6C/kwEA/06eB0lK8gJ4c6ZUpPUHxQsYPHR7y/RbNLz4of11aTlYAQCCurwiXXbHiNVe110Bv3uvz4Rxa0jrSBM36S12tfkaCQ=='
 # <<< release-key
 PROVISION_GH_API="${PROVISION_GH_API:-https://api.github.com}"   # Override nur Test (Mock)

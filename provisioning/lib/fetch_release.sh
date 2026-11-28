@@ -247,7 +247,6 @@ _release_workdir_new() {
 # _exec_applier <provision.sh> <tag> [provision-args...] — der geteilte exec-Schwanz von `update` und `reconfigure`:
 #   RELEASE_TAG exportieren -> install_cli schreibt es in die lifeagents-VERSION-Datei (`lifeagents version`), dann den
 #   provision.sh des vorbereiteten Baums exec'en (re-spiegelt CLI + Baum). Kehrt nie zurueck.
-#   Leeres Array unter set -u: `"${arr[@]}"` expandiert in bash 4.4+ (Debian 12 = 5.2) zu NULL Args.
 _exec_applier() {
   local applier="$1" tag="$2"
   shift 2

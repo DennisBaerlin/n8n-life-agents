@@ -74,7 +74,7 @@ preflight() {
   _upg_n8n_version >/dev/null   # n8n-Version einmal im Eltern-Prozess lesen (der CLI-Start dauert Sekunden) -> alle
                                 # spaeteren $(…)-Aufrufe vor dem Tausch erben den Cache (upgrade_guard.sh)
 
-  # OS: Debian (the only supported target — LXC base image).
+  # Betriebssystem: Debian (Ubuntu laeuft mit Warnung).
   [ -r /etc/os-release ] || die "/etc/os-release fehlt — kein unterstütztes System."
   # shellcheck disable=SC1091
   . /etc/os-release
@@ -122,7 +122,7 @@ preflight() {
     if [ "$vol_need" -gt 0 ]; then ok "Freier Speicher für die Sicherung (${UPGRADE_STATE_DIR}): ${vol_mb:-?} MB (nötig: ${vol_need} MB)"; fi
   fi
 
-  # Outbound network (apt.postgresql.org / cloudsmith / npm / deb.nodesource).
+  # Ausgehendes HTTPS (Stichprobe: deb.debian.org).
   if ! curl -fsS --max-time 10 -o /dev/null https://deb.debian.org 2>/dev/null; then
     warn "Kein HTTPS zu deb.debian.org erreichbar — apt/npm-Downloads könnten scheitern."
   fi

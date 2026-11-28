@@ -8,10 +8,10 @@
 # und Zertifikat) liegt AUSSERHALB des Pods:
 # nur er veroeffentlicht Ports (Port-Wechsel ohne neuen anchor) und erreicht den Pod nur ueber das interne Netz
 # `internal` (Docker veroeffentlicht an einem internal-Netz keine Ports, darum zusaetzlich `edge_public`). n8n lauscht im
-# Pod auf 0.0.0.0 und ist so fuer den Rand erreichbar, Postgres/Gateway nicht (Probe edge-probe). Die eine Liste
+# Pod auf 0.0.0.0 und ist so fuer den Rand erreichbar, Postgres/Gateway nicht (Probe: rt_probe_internal, doctor _doctor_compose_pod). Die eine Liste
 # oeffentlicher Pfade, die Sperre aus dem Tailnet und beide Wege nach aussen: Kopf von lib/reach.sh.
 #
-# SCHUTZ FUER NACHBARN (Paperless & Co., Plan *Wenn Docker schon da ist*): fester Projektname, alle Namen mit Vorsatz
+# SCHUTZ FUER NACHBARN (Paperless & Co.): fester Projektname, alle Namen mit Vorsatz
 # ${LA_PROJECT}, alles traegt das Label io.lifeagents.install, alle Images per Digest (ein Pull verschiebt nie ein Tag des
 # Nachbarn), mem_limit je Dienst. Alle zustandsfuehrenden Volumes sind `external` (lib/runtime.sh LA_STATE_VOLUMES,
 # angelegt von rt_volumes_ensure): `compose down` loescht sie nie, auch nicht den Schluessel in etc_n8n.
@@ -52,7 +52,7 @@ x-pod: &pod
   depends_on:
     anchor:
       condition: service_started
-      restart: true   # wirkt nur bei `docker compose restart anchor`, nicht bei `docker restart` (Einwand 17, doctor prueft)
+      restart: true   # wirkt nur bei `docker compose restart anchor`, nicht bei `docker restart` (doctor prueft den Namensraum: _doctor_compose_pod)
 
 services:
   anchor:
@@ -118,7 +118,7 @@ services:
       - shared:/shared:ro
       # n8n-Korrektur 'memory-all-tool-rounds' (lib/n8n_patches.sh): der master legt eine Kopie des Original-Verzeichnisses samt
       # korrigierter Datei ins Volume n8n_patches (<id>/); hier liegt sie per Unterpfad schreibgeschuetzt ueber dem Original.
-      # Verzeichnis statt Datei: einen Datei-Unterpfad lehnt Docker Engine unter Linux ab. Kein eigenes Image (Einwand 5).
+      # Verzeichnis statt Datei: einen Datei-Unterpfad lehnt Docker Engine unter Linux ab. Kein eigenes Image.
       # Ziel = echter pnpm-Pfad im Image (der npm-Pfad aus n8n_patches.sh ist dort ein Symlink); contract_lint 33.
       - type: volume
         source: n8n_patches
@@ -189,13 +189,13 @@ services:
         condition: service_started
         restart: true
       postgres:
-        condition: service_healthy   # nie gegen eine halb initialisierte Datenbank installieren (Probelauf-Fund)
+        condition: service_healthy   # nie gegen eine halb initialisierte Datenbank installieren
     environment:
       LIFEAGENTS_RUNTIME: compose
       LA_PROJECT: ${LA_PROJECT:-lifeagents}
       LA_EDGE_PORT: ${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}
       LA_WIZARD_PORT: ${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}
-      # Gleicher Tailscale-Name wie beim Start durch die App (der master startet den Dienst tailscale, lib/reach.sh).
+      # Derselbe Tailscale-Name, den der Kern gezogen hat (der master startet den Dienst tailscale, lib/reach.sh).
       LA_TS_HOSTNAME: ${LA_TS_HOSTNAME:-bot}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
       LA_MASTER_IMAGE: *img_master
@@ -295,7 +295,7 @@ services:
 
   tailscale:
     # Nur beim Tunnel-Weg (Profil tunnel; der master startet ihn gezielt: `up --no-deps tailscale`, lib/reach.sh). Teilt den
-    # Namensraum des Rands, nie den des Pods (Plan *Der Rand*): Funnel -> 127.0.0.1:8088 = die Pfad-Liste des Rands.
+    # Namensraum des Rands, nie den des Pods: Funnel -> 127.0.0.1:8088 = die Pfad-Liste des Rands.
     # Startet tailscaled direkt, nicht das Start-Programm des Images (containerboot): das gibt ohne Schluessel nach 60 s
     # auf, der Container startet neu und der Anmelde-Link verfaellt (scripts/dev/tailscale_login_wait_test.ps1). Die
     # Anmeldung stoesst der master an (lib/reach.sh reach_login_start, Rechnername LA_TS_HOSTNAME); danach bleibt der Knoten
@@ -308,8 +308,8 @@ services:
     labels: *labels
     mem_limit: 128m
     network_mode: "service:edge"
-    # Haengt am Namensraum von edge: wird edge neu angelegt (z. B. anderer LA_EDGE_PORT), muss tailscale mit (Einwand 17,
-    # wie die Pod-Dienste am anchor); `restart: true` deckt nur Compose-Laeufe ab, die tailscale mit anfassen.
+    # Haengt am Namensraum von edge: wird edge neu angelegt (z. B. anderer LA_EDGE_PORT), muss tailscale mit (wie die
+    # Pod-Dienste am anchor); `restart: true` deckt nur Compose-Laeufe ab, die tailscale mit anfassen.
     depends_on:
       edge:
         condition: service_started

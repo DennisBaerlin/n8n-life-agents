@@ -2,7 +2,7 @@
 # Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
 # Aufruf: `lifeagents household <verb> [args]` (die CLI sourct diese Datei + common.sh).
-# DB-Zugriff: postgres-Superuser via runuser/Peer-Auth am lokalen Socket (host-vermittelt, wie
+# DB-Zugriff: postgres-Superuser via pg_su_psql (runtime.sh: Peer-Auth am lokalen Socket bzw. docker exec; host-vermittelt, wie
 # config_cli.sh/pkg_lifecycle.sh). Die Autorisierung ist der OS-/SSH-Root-Zugang — diese seltenen
 # Wartungs-/Defense-Ereignisse laufen bewusst nicht ueber das LLM/den Chat (deterministisch).
 #

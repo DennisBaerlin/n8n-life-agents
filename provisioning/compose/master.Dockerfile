@@ -11,7 +11,7 @@ FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961
 RUN apt-get update \
  && apt-get install -y --no-install-recommends bash jq curl gnupg ca-certificates openssl util-linux procps iproute2 \
  && rm -rf /var/lib/apt/lists/*
-# Node (glibc-Build, Hauptversion 24 = NODE_MAJOR-Pin) fuer die n8n-Korrektur und die DNS-Probe; Docker-CLI ist statisch.
+# Node (glibc-Build, Hauptversion 24 = NODE_MAJOR-Pin) fuer die n8n-Korrektur, die DNS-Probe und den Wizard (wizard/server.js); Docker-CLI ist statisch.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose

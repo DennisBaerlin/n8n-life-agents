@@ -13,7 +13,7 @@
 #   4. Hardening + drei DB-Rollen + Laufzeit-Grants (packages/core/db/util/util_*.sql) — laufen immer, nach den
 #      R__-Repeatables (GRANT SELECT ON ALL TABLES deckt die Views, GRANT EXECUTE die R__-Functions).
 #
-# Laeuft als postgres-Superuser (runuser, peer-Auth am lokalen Socket): CREATE ROLE
+# Laeuft als postgres-Superuser (pg_su_psql, runtime.sh: Peer-Auth am lokalen Socket bzw. docker exec im Verbund): CREATE ROLE
 # (core_ro/context_ro + per-Paket finance_rw/finance_ro via fn_provision_package_roles),
 # CREATE EXTENSION pgcrypto und REVOKE auf schema public brauchen Superuser. Alles in einer psql-Session,
 # ON_ERROR_STOP=1 (Fail-fast, identische Semantik zum PowerShell-Pendant).

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1111  # deutsche Anführungszeichen in Meldungen sind gewollt
-# bridge.sh — die Brücke zwischen dem Wizard (server.js) und der EINEN Quelle der CLI-Fragen (Plan „Docker-Installer für
-# Freunde“, Paket 4). Der Wizard hat keine eigene Kopie der Fragen oder Prüfregeln: er fragt hier nach und lässt hier
+# bridge.sh — die Brücke zwischen dem Wizard (server.js) und der einen Quelle der CLI-Fragen. Der Wizard hat keine eigene Kopie der Fragen oder Prüfregeln: er fragt hier nach und lässt hier
 # prüfen. Dieselben Funktionen nutzt die Installation im Terminal (release_inputs.sh, pkg_lifecycle.sh, common.sh) —
 # CLI und Wizard können darum nicht auseinanderlaufen.
 #
@@ -13,10 +12,12 @@
 #   bash bridge.sh validate cfg:<pkg>:<cat>.<key>
 #   bash bridge.sh paperless-check               -> stdin: Zeile 1 Adresse, Zeile 2 Zugangstoken (optional);
 #                                                   JSON {"ok":…,"reason":…,"version":…}
-#   bash bridge.sh tg-check                      -> Token in Env TELEGRAM_BOT_TOKEN; Prüfliste Nr. 10 (s. tg_check_json)
-#   bash bridge.sh reach-status                  -> Zustand des Tunnels (Schnittstelle zu Paket 3, s. reach_status_json)
-#   bash bridge.sh public-ip                     -> öffentliche IPv4 des Anschlusses (Paket 3, reach_public_ipv4)
-#   bash bridge.sh dslite                        -> eigene öffentliche IPv4? {"dslite":"yes|no|unknown"} (Paket 3, reach_dslite_json)
+#   bash bridge.sh tg-check                      -> Token in Env TELEGRAM_BOT_TOKEN; hört der Bot schon woanders? (br_tg_check)
+#   bash bridge.sh reach-status                  -> Zustand des Tunnels (reach_status_json)
+#   bash bridge.sh public-ip                     -> öffentliche IPv4 des Anschlusses (reach_public_ipv4)
+#   bash bridge.sh dslite                        -> eigene öffentliche IPv4? {"dslite":"yes|no|unknown"} (reach_dslite_json)
+#   bash bridge.sh reach-ports                   -> Port 80 und 443 auf diesem Rechner frei? {"state":"free|busy|unknown"}
+#   bash bridge.sh paperless-ports               -> veröffentlichte Paperless-Ports dieses Rechners {"ports":[{"ip":…,"port":…}]}
 #   bash bridge.sh backup-dir                    -> stdin: Eltern-Ordner der Sicherungen; {"problem":…,"folder":…,"foreign":…}
 #
 # Geheimnisse nur über stdin/Env, nie im argv (die Prozessliste ist für jeden lesbar). Ausgabe immer genau eine JSON-Zeile
@@ -44,7 +45,7 @@ PROFILE=release
 # runtime.sh (Docker-Wrapper) und reach.sh (Weg nach außen) lädt common.sh mit.
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
-# erzeugt sie), der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3) und der Weg (REACH_MODE: eigene Seite
+# erzeugt sie), der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand) und der Weg (REACH_MODE: eigene Seite
 # des Wizards, Werte tunnel|fritzbox). DOMAIN fragt der Wizard nur beim FritzBox-Weg.
 _BR_SKIP_KEYS=" REACH_MODE N8N_OWNER_EMAIL N8N_OWNER_PASSWORD TRUSTED_PROXIES "
 
@@ -166,7 +167,7 @@ _br_http() {
   printf '%s' "${code:-000}"
 }
 
-# paperless-check — Live-Prüfung der Paperless-Anbindung (Plan *Die Module wie in der CLI*): Adresse, Version (3.0 oder
+# paperless-check — Live-Prüfung der Paperless-Anbindung: Adresse, Version (3.0 oder
 #   neuer), Zugang. localhost/127.x/::1 meint im Docker-Betrieb den Container selbst -> mit Erklärung abgelehnt. Ohne Token
 #   lässt sich nur „antwortet wie Paperless“ prüfen (die Version zeigt Paperless erst angemeldet, Kopfzeile X-Version).
 #   reason: localhost | invalid | unreachable | not_paperless | token_rejected | too_old.
@@ -204,8 +205,8 @@ br_paperless_check() {
   jq -nc --arg v "$ver" '{ok:true, reason:"ok", version:$v}'
 }
 
-# tg-check — Prüfliste Nr. 10, VOR der Installation: ist der Bot schon woanders verbunden? Dieselben Abfragen wie die
-#   Sperre des Installers (telegram_webhook_preflight, Paket 1, bricht eine unbeaufsichtigte Erstinstallation ohne
+# tg-check — vor der Installation: ist der Bot schon woanders verbunden? Dieselben Abfragen wie die
+#   Sperre des Installers (telegram_webhook_preflight, bricht eine unbeaufsichtigte Erstinstallation ohne
 #   TELEGRAM_WEBHOOK_TAKEOVER=1 ab): getWebhookInfo, bei leerer Adresse getUpdates?timeout=0&limit=1 (409 = anderer
 #   Abnehmer). Nur lesen, nie setWebhook/deleteWebhook, nie offset, nie drop_pending_updates. Der Wizard fragt so vorher
 #   selbst und schreibt die Übernahme nur nach ausdrücklicher Wahl.
@@ -232,7 +233,7 @@ br_tg_check() {
 # reach-status — Zustand des Weges nach außen für die Anzeige im Wizard, Format von reach_status_json (lib/reach.sh).
 br_reach_status() { reach_status_json; }
 
-# reach-ports — Prüfliste Nr. 13 (FritzBox-Weg): sind Port 80 und 443 auf diesem Rechner frei? {"state":"free|busy|unknown"};
+# reach-ports — FritzBox-Weg: sind Port 80 und 443 auf diesem Rechner frei? {"state":"free|busy|unknown"};
 #   der Wizard empfiehlt bei „busy“ den Tunnel und löscht nie etwas. rt_host_port_free (lib/runtime.sh) misst per
 #   Docker-Kurzlauf und scheitert auch ohne Docker oder Probe-Image: das ist „unknown“, nicht „busy“.
 br_reach_ports() {
@@ -240,8 +241,8 @@ br_reach_ports() {
   if rt_host_port_free 80 && rt_host_port_free 443; then jq -nc '{state:"free"}'; else jq -nc '{state:"busy"}'; fi
 }
 
-# paperless-ports — veröffentlichte Ports der Paperless-Container auf DIESEM Rechner (Vorausfüllung der Adresse, Owner-Runde
-#   2026-11-06; kein Abtasten des Heimnetzes). Docker-Abfragen nur über runtime.sh (contract_lint 32):
+# paperless-ports — veröffentlichte Ports der Paperless-Container auf diesem Rechner (Vorausfüllung der Adresse; kein Abtasten
+#   des Heimnetzes). Docker-Abfragen nur über runtime.sh (contract_lint 32):
 #   rt_published_ports_json <image-teil> <container-port> -> [{"ip":"0.0.0.0","port":8010}, …]; ohne Docker oder bei
 #   einem Fehler keine Ausgabe und rc 1.
 #   Ausgabe {"ports":[…]}; die Entscheidung (genau ein erreichbarer Treffer) trifft flow.paperlessGuess.
@@ -262,7 +263,7 @@ br_public_ip() {
   jq -nc --arg ip "$ip" '{ip:$ip}'
 }
 
-# dslite — hat der Anschluss eine eigene öffentliche IPv4? Paket 3 reach_dslite_json -> {"dslite":"yes|no|unknown",
+# dslite — hat der Anschluss eine eigene öffentliche IPv4? reach_dslite_json -> {"dslite":"yes|no|unknown",
 #   "source":…}; yes = keine eigene (DS-Lite, Carrier-NAT) -> Tunnel, no = FritzBox-Weg ohne Handfrage. Fehler, fremde
 #   Ausgabe oder fehlende Funktion = unknown (der Wizard fragt von Hand).
 br_dslite() {

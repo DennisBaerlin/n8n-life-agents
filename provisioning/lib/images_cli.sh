@@ -50,7 +50,8 @@ _img_pairs() {
 }
 
 # images_keep [--plain] — JSON {"ok":true,"images":[{"ref","sources":[…]}]} (nach ref sortiert, jede ref einmal) bzw. mit
-#   --plain eine ref je Zeile. Klassisch {"ok":false,"reason":"not_compose"}, rc 1 (dort gibt es keine Abbilder).
+#   --plain eine ref je Zeile. Klassisch {"ok":false,"reason":"not_compose"}, rc 1 (dort gibt es keine Abbilder);
+#   unbekannte Angabe {"ok":false,"reason":"bad_argument"}, rc 2.
 images_keep() {
   local plain=0
   # Fehler als JSON wie der Erfolg: die Start-App liest nur stdout.

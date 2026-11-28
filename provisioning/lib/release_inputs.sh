@@ -3,10 +3,10 @@
 # Gesourct von provision.sh (und von der lifeagents-CLI fuer reconfigure/package/config/…). Definiert
 # load_install_env() + collect_release_inputs().
 #
-# Zwei Quellen, env-override-first (`${VAR:-$(prompt_if_tty)}`):
+# Drei Quellen, env-override-first (`${VAR:-$(prompt_if_tty)}`):
 #   1. Prozess-Env (Dev/Test injiziert den .env-Test-Block; ein Re-Run mit gepinnten Werten).
 #   2. /etc/lifeagents/core.env (unser Merge-Store = INSTALL_ENV_FILE, dieselbe Datei wie die Host/
-#      Core-Secrets, per-Key gemergt; Secret-Modell §3.0a) — ein zweiter Lauf laedt die Werte des
+#      Core-Secrets, per-Key gemergt) — ein zweiter Lauf laedt die Werte des
 #      ersten zurueck => kein erneutes Prompten = idempotent (Coolify-.env-Merge-Muster).
 #   3. Sonst (nur Release + TTY): interaktiv per /dev/tty fragen. Unter `curl … | bash` ist stdin
 #      die Pipe -> read muss aus /dev/tty lesen (sonst verschluckt es das Skript selbst).
@@ -1451,7 +1451,7 @@ install_answers_load() {
   return 0
 }
 
-# --- Telegram: hoert der Bot schon woanders zu? (Pruefliste Nr. 10, beide Wege) ------------------------------------------
+# --- Telegram: hoert der Bot schon woanders zu? (beide Wege) ------------------------------------------
 # Den produktiven Webhook setzt n8n beim Aktivieren des Telegram-Triggers selbst (bootstrap_owner.sh) und ueberschreibt
 # damit still einen fremden Abnehmer (anderes System, Bastel-Skript). Darum vor jeder Aenderung: getWebhookInfo; ohne
 # Webhook zusaetzlich getUpdates (409 = ein anderes Programm holt Nachrichten per Long-Polling ab). Nie ein Offset, nie

@@ -126,7 +126,7 @@ _owner_setup() {
 
 # Den n8n-API-Key in /etc/lifeagents/core.env persistieren (640 root:n8n) — per-Key-Upsert (env_upsert),
 # damit die Nutzer-Eingaben von release_inputs in derselben Datei nicht geclobbert werden (ein Schreiber
-# je Key, kein Whole-File-Write; Secret-Modell §3.0a). Die RO-Rollen-Passwoerter persistiert
+# je Key, kein Whole-File-Write). Die RO-Rollen-Passwoerter persistiert
 # provision_role_password selbst. core.env ist keine n8n-Config (n8n ignoriert die Keys); EnvironmentFile=-
 # der Unit toleriert unbekannte Keys.
 _persist_owner_env() {
@@ -135,7 +135,7 @@ _persist_owner_env() {
   if [ ! -f "$envf" ]; then
     mkdir -p "$(dirname "$envf")"
     {
-      printf '# Managed by lifeagents provisioning — Host/Core-Secrets + Nutzer-Eingaben (Secret-Modell §3.0a).\n'
+      printf '# Managed by lifeagents provisioning — Host/Core-Secrets + Nutzer-Eingaben.\n'
       printf '# Keine n8n-Config; idempotenter Reuse via read_env_value. chmod 640 root:%s, nie ins Repo.\n' "$N8N_USER"
     } > "$envf"
     chmod 0640 "$envf" 2>/dev/null || true; chown "root:${N8N_USER}" "$envf" 2>/dev/null || true
@@ -168,7 +168,7 @@ _load_owner_env_state() {
 # 127.0.0.1 + scram nutzen kann (peer-Auth gilt nur am Unix-Socket fuer postgres). apply_schema legt
 # sie als LOGIN ohne Passwort an -> hier wird es gesetzt (Superuser, generischer common-Helfer) und in
 # /etc/lifeagents/core.env persistiert + als CORE_RO_PASSWORD/CONTEXT_RO_PASSWORD an inject_credentials
-# gereicht. Nur Host-Rollen (Secret-Modell §3.0a): die Paket-Rollen <pkg>_rw/_ro mintet der per-Paket-Install
+# gereicht. Nur Host-Rollen: die Paket-Rollen <pkg>_rw/_ro mintet der per-Paket-Install
 # selbst (pkg_lifecycle Stufe 4, eigene /etc/lifeagents/<pkg>.env) — vor der Rollen-Anlage gibt es sie noch nicht.
 # Ohne diesen Schritt verweisen die Core-Postgres-Nodes (Pairing-Pre-Router, Frei-SQL-Lesepfad der
 # Core-Agenten unter core_ro, load_context unter context_ro) auf eine nicht existente Credential.
@@ -238,7 +238,7 @@ _mint_api_key() {
   fi
   resp=""   # die Roh-Antwort enthaelt den Key -> nie loggen
   N8N_API_KEY="$key"; export N8N_API_KEY
-  # Persistenz zentral via _persist_owner_env (zusammen mit den RO-Passwoertern).
+  # Persistenz: _persist_owner_env (Aufruf in bootstrap_owner).
   ok "n8n-API-Key geminted."
 }
 
@@ -418,7 +418,7 @@ bootstrap_owner() {
   _provision_ro_secrets    # RO-Rollen-Passwoerter setzen + fuer inject_credentials exportieren
   _ensure_backup_secret    # core.backup_key Backup-Key (idempotent, nie ueberschrieben)
   _mint_api_key || true
-  _persist_owner_env       # kohaerent persistieren (API-Key + RO-Passwoerter)
+  _persist_owner_env       # N8N_API_KEY nach core.env (die RO-Passwoerter schreibt provision_role_password)
   _ensure_ingress_id_key   # geheime Telegram-Eingangs-ids je Instanz (deploy_workflows)
   _wire_telegram
   _seed_owner_skeleton

@@ -8,7 +8,7 @@
 --   current_value (Betrag, auch deutsch geschrieben), value_updated_at, owner_person_id (Slug; leer=unveraendert),
 --   status ('active'; 'sold' nur, wenn schon verkauft -- ein Verkauf laeuft ueber fn_sell_real_estate), notes,
 --   living_area_m2, year_built (Instandhaltungsruecklage; leer=unveraendert).
---   RUECKGABE: {ok:true, real_estate_id, effective, card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
+--   RUECKGABE: {ok:true, real_estate_id, effective (mit current_value auch das gespeicherte value_updated_at), card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
 --   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, current_value<0 oder unlesbar, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false};
 --   status sold auf einer aktiven Immobilie -> {ok:false, code:'use_sell_tool'}.
 -- ============================================================
@@ -65,7 +65,10 @@ BEGIN
         year_built       = COALESCE(NULLIF(p->>'year_built', '')::smallint, year_built)
     WHERE id = v_id;
 
-    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'effective', v_dates->'resolved')
+    RETURN jsonb_build_object('ok', true, 'real_estate_id', v_id, 'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+               || CASE WHEN v_cv IS NOT NULL
+                       THEN jsonb_build_object('value_updated_at', (SELECT value_updated_at FROM finance.real_estate WHERE id = v_id))
+                       ELSE '{}'::jsonb END)
         || CASE WHEN NULLIF(p->>'living_area_m2', '') IS NOT NULL OR NULLIF(p->>'year_built', '') IS NOT NULL
                 THEN jsonb_build_object('card_lines', finance.fn_maintenance_card_lines(v_id)) ELSE '{}'::jsonb END;
 END;

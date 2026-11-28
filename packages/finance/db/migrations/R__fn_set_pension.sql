@@ -22,7 +22,7 @@
 --   retirement_start_date, status ('active'|'paused'|'paid_out'), notes, contribution_amount, effective_from,
 --   schedule_interval, schedule_unit, debit_account_id (nur beim ersten Beitrag).
 --   RUECKGABE: {ok:true, pension_id, recurring_payment_id (Kopf der Beitrags-Kette, nach einem Reaktivieren die Folge-Zeile),
---   effective (aufgeloeste relative Daten)}; nur bei geaendertem oder erstem Beitrag zusaetzlich split, previous_id (nur Split),
+--   effective (aufgeloeste relative Daten; mit current_value auch das gespeicherte value_updated_at)}; nur bei geaendertem oder erstem Beitrag zusaetzlich split, previous_id (nur Split),
 --   first_due (erster Termin mit dem neuen Beitrag), contribution_amount (je Abbuchung), monthly_contribution (Monatswert),
 --   previous_contribution_amount (Beitrag davor am Stichtag; fehlt beim ersten Beitrag).
 --   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, current_value<0, unbekannter status/Rhythmus,
@@ -230,6 +230,9 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'pension_id', v_id, 'recurring_payment_id', v_rp) || v_post
-        || jsonb_build_object('effective', v_dates->'resolved');
+        || jsonb_build_object('effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+               || CASE WHEN v_cv IS NOT NULL
+                       THEN jsonb_build_object('value_updated_at', (SELECT value_updated_at FROM finance.pension WHERE id = v_id))
+                       ELSE '{}'::jsonb END);
 END;
 $$;

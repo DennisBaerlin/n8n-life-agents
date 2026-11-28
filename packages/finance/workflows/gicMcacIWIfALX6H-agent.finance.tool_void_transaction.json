@@ -222,7 +222,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027deleted_count\u0027)::int AS deleted_count, r-\u003e\u0027accounts\u0027 AS accounts, r-\u003e\u0027holdings\u0027 AS holdings FROM finance.fn_void_transaction(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027deleted_count\u0027)::int AS deleted_count, r-\u003e\u0027accounts\u0027 AS accounts, r-\u003e\u0027holdings\u0027 AS holdings, r-\u003e\u0027reverted_loans\u0027 AS reverted_loans, r-\u003e\u0027reverted_real_estate\u0027 AS reverted_real_estate FROM finance.fn_void_transaction(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ transaction_id: $(\u0027Start\u0027).item.json.transaction_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -468,6 +468,18 @@
                                                                                      "id":  "8d37835a-2ff1-5846-9747-02d05f737e4c",
                                                                                      "name":  "holdings",
                                                                                      "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.holdings }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "70dcb291-3f52-523c-9167-1e651ac96a55",
+                                                                                     "name":  "reverted_loans",
+                                                                                     "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.reverted_loans }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5eafd76a-cd2f-537c-9837-377941d458e4",
+                                                                                     "name":  "reverted_real_estate",
+                                                                                     "value":  "={{ $(\u0027Void (atomic)\u0027).item.json.reverted_real_estate }}",
                                                                                      "type":  "array"
                                                                                  }
                                                                              ]

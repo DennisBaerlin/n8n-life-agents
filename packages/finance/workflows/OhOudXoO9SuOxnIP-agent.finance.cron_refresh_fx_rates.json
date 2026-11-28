@@ -419,7 +419,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT finance.fn_import_sweep(7) AS deleted",
+                                         "query":  "SELECT finance.fn_import_sweep() AS deleted",
                                          "options":  {
 
                                                      }
@@ -442,7 +442,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf heute noch fällig ist (ein Nachhol-Lauf kann ihn schon erledigt haben): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
+                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf heute noch fällig ist (ein Nachhol-Lauf kann ihn schon erledigt haben): finance.fn_import_sweep() löscht nicht übernommene Import-Zeilen und Dauerauftrags-Vorschlags-Stapel nach der Frist der fn (Default des Parameters, gerechnet ab dem letzten Ergänzen). Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
                                          "height":  260,
                                          "width":  200,
                                          "color":  4

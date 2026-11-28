@@ -366,7 +366,7 @@
     "task": "Test",
     "chat_id": "test_orc44",
     "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own (no specialist is called). It is one short German sentence that confirms the bot is there with one concrete suggestion from the system (then a separate last line NEXT_STEP) or one quoted example question, addresses the user informally with 'du' if at all, asks no question back, lists no topics and never contains the words FRAME or NOFRAME.",
+    "expected_behavior": "The reply is the orchestrator's own (no specialist is called). It is one short German sentence that confirms the bot is there with one concrete suggestion from the system (the system turns it into a button; the judged text is only the sentence) or one quoted example question, addresses the user informally with 'du' if at all, asks no question back, lists no topics and never contains the words FRAME or NOFRAME.",
     "notes": "Befund 2026-11-02: 'Test' ging ueber die Sticky-Regel an Finanzen, die daraus eine Onboarding-Frage machte. Orchestrator-Regel 2: inhaltsleere Nachricht ist keine Fortsetzung."
   },
   {
@@ -568,17 +568,8 @@
     "task": "Hallo",
     "chat_id": "test_orc59",
     "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own (no specialist call). It is ONE short German sentence (a greeting is fine) that either suggests exactly one concrete next step and then ends with a separate last line NEXT_STEP, or invites the user to just write and gives one example question in quotes (then no NEXT_STEP line). It asks no open question like 'Was kann ich für dich tun?', lists no topics, and names no agent.",
+    "expected_behavior": "The reply is the orchestrator's own (no specialist call). It is ONE short German sentence (a greeting is fine) that either suggests exactly one concrete next step (the system adds the button; the judged text is only the sentence), or invites the user to just write and gives one example question in quotes. It asks no open question like 'Was kann ich für dich tun?', lists no topics, and names no agent.",
     "notes": "Router-Regel 8 (Owner-Entscheid 2026-11-11). Welche Variante kommt, entscheiden die Laufzeit-Flags next_step/offer aus core.fn_get_next_step (Fixture-Stand des Substrats); die Rubric akzeptiert beide, verlangt aber Form und Kuerze."
-  },
-  {
-    "id": "oc60",
-    "name": "Naechster Schritt: Lebenszeichen 'Test' -> ein Satz, keine Themenliste, nicht weitergereicht",
-    "task": "Test",
-    "chat_id": "test_orc60",
-    "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own (no specialist call): one short German sentence with one concrete suggestion (followed by a last line NEXT_STEP) or one quoted example question. It contains no list of topics and no question back.",
-    "notes": "Ersetzt die bisherige Ein-Satz-Regel 'Ich bin da, schreib mir einfach' (Regel 2 verweist jetzt auf Regel 8), kein Zusatz."
   },
   {
     "id": "oc61",
@@ -586,7 +577,7 @@
     "task": "und jetzt?",
     "chat_id": "test_orc61",
     "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own: one short German sentence with exactly one suggestion taken from the system (then a last line NEXT_STEP) or one quoted example question. No topic list, no command list, no '/onboarding' when nothing is open.",
+    "expected_behavior": "The reply is the orchestrator's own: one short German sentence with exactly one suggestion taken from the system (the system adds the button; the judged text is only the sentence) or one quoted example question. No topic list, no command list, no '/onboarding' when nothing is open.",
     "notes": "Regel 8; frueher improvisierte der Router eine Themenliste (Befund Station 4)."
   },
   {
@@ -604,7 +595,7 @@
     "task": "Hallo nochmal",
     "chat_id": "test_orc65",
     "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own, one short German sentence. When the system flag offer is no it must not end with NEXT_STEP; it invites the user to write, with one quoted example question.",
+    "expected_behavior": "The reply is the orchestrator's own, one short German sentence. The system flag offer is no, so no button follows: the sentence invites the user to write, with one quoted example question, and does not announce a button or a next step to tap.",
     "notes": "Laeuft sinnvoll direkt nach oc59 im selben Lauf (Tagesgrenze schon verbraucht); allein entspricht er oc62."
   },
   {

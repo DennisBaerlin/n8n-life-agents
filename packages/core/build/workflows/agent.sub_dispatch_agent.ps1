@@ -23,7 +23,7 @@
 # Laufzeit in der Sprache des Absenders (chat_id -> Person -> agent.fn_person_lang; unbekannt -> Owner-Sprache);
 # der Aufrufer reicht nur die Paket-id durch.
 function Build-AgentSubDispatchAgent {
-    $start = Build-Trigger @('workflow_id', 'package', 'task', 'call_depth', 'thinking', 'audience') @(-900, 300)
+    $start = Build-Trigger @('workflow_id', 'package', 'task', 'call_depth', 'thinking', 'audience', 'empty_ok') @(-900, 300)
 
     $dispatchKeys = @('core.dispatch.no_answer', 'core.dispatch.unavailable', 'core.dispatch.inactive',
                       'core.dispatch.incomplete', 'core.dispatch.not_installed', 'core.dispatch.household_only')
@@ -98,10 +98,14 @@ function Build-AgentSubDispatchAgent {
 // Ergebnis aus 'Run agent' selbst (davor liegt 'Close thinking lease', dessen Ausgabe die DB-Antwort ist).
 const T = ($('Package status').first().json || {}).t || {};
 const NO_ANSWER = T['core.dispatch.no_answer'] || 'core.dispatch.no_answer';
+const EMPTY_OK = String($('Start').first().json.empty_ok || '') === 'true';
 const out = [];
 for (const item of $('Run agent').all()) {
   const j = item.json || {};
   if (typeof j.output === 'string' && j.output.trim() !== '') { out.push({ json: j }); continue; }
+  // Berater (empty_ok): eine leere Antwort ohne Fehler ist gewollt (Karte vorgeschlagen); der Orchestrator sendet die Karte
+  // am Laufende bzw. den festen Hinweis, wenn keine kam. Ein Fehler-Objekt bekommt weiter den freundlichen Text.
+  if (EMPTY_OK && typeof j.output === 'string' && !j.error && j.ok !== false) { out.push({ json: Object.assign({}, j, { output: '' }) }); continue; }
   out.push({ json: Object.assign({}, j, { output: NO_ANSWER }) });
 }
 return out.length ? out : [{ json: { output: NO_ANSWER } }];
@@ -131,10 +135,10 @@ return out.length ? out : [{ json: { output: NO_ANSWER } }];
     $sticky = Build-Sticky 'Doc: Überblick' @(-900, -60) 'agent.sub_dispatch_agent — Core-Vermittler zu Paket-Agenten' (@'
 Der Verteiler (agent.orchestrator.main_route) ruft Paket-Agenten und den Haushalts-Knopf (agent.guide, package core) NUR hierueber. Der Fehler-Durchlass an Run agent ist tragend: ohne ihn stuerzt der Knoten ab, sobald der Agent auf eine Freigabe wartet. Grund: n8n aktiviert einen Workflow nur, wenn alle FEST eingetragenen Execute-Workflow-Ziele existieren -> ohne installiertes Paket war der Bot taub.
 
-**Eingaben (fest vom Aufrufer, Build-Zeit):** workflow_id, package + task, chat_id, call_depth, thinking ('loop' = Paket-Befehle/-Onboarding-Tipps ohne eigene Anzeige; leer = KI-Weg, dort zeigt der Orchestrator die Anzeige). Anzeigename + Hinweise aus dem Textkatalog in der Sprache des Absenders (Package status).
+**Eingaben (fest vom Aufrufer, Build-Zeit):** workflow_id, package + task, chat_id, call_depth, empty_ok, thinking ('loop' = Paket-Befehle/-Onboarding-Tipps ohne eigene Anzeige; leer = KI-Weg, dort zeigt der Orchestrator die Anzeige). Anzeigename + Hinweise aus dem Textkatalog in der Sprache des Absenders (Package status).
 **Ablauf:** core.fn_package_status -> aktiv? [thinking='loop' + privater Chat: Open thinking lease (agent.thinking_lease) -> Show thinking (core.sub_show_thinking, fire-and-forget, Erneuerung alle 5 s)] + Run agent (AUSDRUCKS-ID = keine Aktivierungspruefung) -> Close thinking lease (Schalter weg + Draft-Fenster abwarten, VOR der Rückgabe = vor der Antwort; ohne Schalter No-op) -> Ensure output. Sonst Not available: Owner sieht `lifeagents package install|activate <pkg>`, Mitglieder "nicht verfügbar".
 **Kinder-Sicht:** feste Eingabe audience (Manifest provides.agents[].audience, fehlt = adults). Audience ok? laesst bei all jeden durch, sonst nur, wenn core.fn_sender_sees_household(chat_id) true ist (owner/partner, Regel der Mini-App); sonst Household only = {ok:false, error:household_only, output = core.dispatch.household_only} ohne Agent-Lauf. Fail-closed: ein DB-Fehler im Package status sperrt hier auch Erwachsene.
-**Rueckgabe:** immer ein Item mit .output (Relays + Router-Modell lesen es).
+**Rueckgabe:** immer ein Item mit .output (Relays + Router-Modell lesen es). Ensure output fuellt ein fehlendes oder leeres .output mit core.dispatch.no_answer; Ausnahme empty_ok='true' (der Aufrufer setzt es fuer Berater): eine leere Antwort ohne Fehler bleibt leer, weil der Berater eine Karte vorgeschlagen hat (der Orchestrator sendet sie am Laufende, sonst den festen Hinweis).
 **Anti-Loop:** Sub, kein Agent; call_depth nur durchgereicht. Naht-Lint: kein Core-Workflow traegt eine literale Paket-Workflow-ID.
 '@) 300 520 'Ablauf'
 

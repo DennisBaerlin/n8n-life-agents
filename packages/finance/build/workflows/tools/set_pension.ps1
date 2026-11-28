@@ -89,7 +89,7 @@ function Build-SetPension {
         (New-HitlLine 'finance.label.value'         "'finance.tpl.change'" -Kind tpl -If "$S.current_value" -Params @{
             from = (New-HitlValue -Kind money -Value "$R.current_value" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$S.current_value" -EurByModel) })
-        (New-HitlLine 'finance.label.valuation_date' (Get-DryEffectiveExpr 'value_updated_at') -Kind date -If "$S.value_updated_at")
+        (New-HitlLine 'finance.label.valuation_date' (Get-DryEffectiveExpr 'value_updated_at') -Kind date -If "($S.value_updated_at || (`$('Dry run').item.json.r.effective || {}).value_updated_at)")   # nur ein Wert genannt: die fn stempelt das Datum und meldet es in effective
         (New-HitlLine 'finance.label.guaranteed_monthly_pension' "$S.guaranteed_monthly_pension" -Kind money -EurByModel -If "$S.guaranteed_monthly_pension")
         (New-HitlLine 'finance.label.retirement_start' (Get-DryEffectiveExpr 'retirement_start_date') -Kind date -If "$S.retirement_start_date")
         (New-HitlLine 'finance.label.provider'      "$S.provider" -If "$S.provider")

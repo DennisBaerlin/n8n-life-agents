@@ -124,7 +124,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name = (($1::jsonb)-\u003e\u003e\u0027real_estate_name\u0027) ORDER BY re.id LIMIT 1;",
+                                         "query":  "=SELECT CASE WHEN r.hit_count \u003e 0 THEN r.hit_count END AS hits, re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.fn_resolve_real_estate(($1::jsonb)-\u003e\u003e\u0027real_estate_name\u0027, FALSE) r LEFT JOIN finance.real_estate re ON re.id = r.id LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ real_estate_name: $(\u0027Start\u0027).item.json.real_estate_name }) }}"
                                                      }
@@ -156,7 +156,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "54e82710-9cd8-5c4d-8b90-93552901866f",
-                                                                                   "leftValue":  "={{ $json.re_status !== undefined \u0026\u0026 $json.re_status !== null }}",
+                                                                                   "leftValue":  "={{ $json.hits !== undefined \u0026\u0026 $json.hits !== null }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",

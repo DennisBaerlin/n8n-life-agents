@@ -20,7 +20,7 @@ function Build-VoidTransaction {
     # ISO aus der DB; Kategorie als lesbarer Begriff.
     $wg = New-FnWriteGate -Fn 'finance.fn_void_transaction' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Void (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'deleted_count')::int AS deleted_count, r->'accounts' AS accounts, r->'holdings' AS holdings" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'deleted_count')::int AS deleted_count, r->'accounts' AS accounts, r->'holdings' AS holdings, r->'reverted_loans' AS reverted_loans, r->'reverted_real_estate' AS reverted_real_estate" `
         -Params ([ordered]@{ transaction_id = '$(''Start'').item.json.transaction_id' })
 
     $T = "`$('Read Tx').item.json"
@@ -53,6 +53,8 @@ function Build-VoidTransaction {
         ,@('deleted_count', "={{ `$('Void (atomic)').item.json.deleted_count }}", 'number')
         ,@('accounts', "={{ `$('Void (atomic)').item.json.accounts }}", 'array')
         ,@('holdings', "={{ `$('Void (atomic)').item.json.holdings }}", 'array')
+        ,@('reverted_loans', "={{ `$('Void (atomic)').item.json.reverted_loans }}", 'array')
+        ,@('reverted_real_estate', "={{ `$('Void (atomic)').item.json.reverted_real_estate }}", 'array')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `

@@ -17,10 +17,11 @@ function Build-SellRealEstate {
         "=Proceeds account '{{ `$('Start').item.json.proceeds_account_name }}' resolves to {{ `$('Resolve Proceeds Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Proceeds Account').item.json.candidates) }}. Ask the user which exact account to use."
 
     $readRe = Build-Pg 'Read Property' @(660, 0) `
-        "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name = ((`$1::jsonb)->>'real_estate_name') ORDER BY re.id LIMIT 1;" `
+        "=SELECT CASE WHEN r.hit_count > 0 THEN r.hit_count END AS hits, re.current_value, rep.full_name AS owner, re.status::text AS re_status FROM finance.fn_resolve_real_estate((`$1::jsonb)->>'real_estate_name', FALSE) r LEFT JOIN finance.real_estate re ON re.id = r.id LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id;" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
-    $found = New-RequiredRowGate -Read $readRe -KeyField 're_status' -IfName 'Property found?' -ErrName 'Property not found' `
+    # Derselbe Auflöser wie fn_sell_real_estate (erst exakt, dann ohne Groß-/Kleinschreibung). Unbekannter Name -> Tool-Fehler
+    # (New-RequiredRowGate); mehrdeutig meldet der Probelauf mit Kandidaten.
+    $found = New-RequiredRowGate -Read $readRe -KeyField 'hits' -IfName 'Property found?' -ErrName 'Property not found' `
         -IfPos @(770, -160) -ErrPos @(880, 240) `
         -NotFoundExpr "=No property named '{{ `$('Start').item.json.real_estate_name }}' exists. List them via postgres_select on finance.real_estate_overview and ask the user which one is meant."
 

@@ -5,7 +5,7 @@
 # Onboarding-Bereiche; die Paket-Bereiche onboardet jeder Paket-Agent selbst mit seinen eigenen Tools
 # (keine Guide->Paket-Delegation, packages/core/CLAUDE.md *Onboarding-Zustand*). Reads: postgres_select
 # (core_ro) + load_context (context_ro). Writes (HITL): tool_set_household_facts; tool_set_onboarding_section
-# ist nur der Fortschritts-Marker (kein Gate). Nicht gebunden: tool_save_plan_section und alle Paket-Schreib-Tools.
+# ist nur der Fortschritts-Marker (kein Gate). Nicht gebunden: Plan-Schreib-Tools und alle Paket-Schreib-Tools.
 
 # New-AdvisorToolNode (scripts/build/lib/build_helpers.ps1): der Guide bindet keine FixedInputs ->
 # die Calls uebergeben $null an dieser Stelle + -StartNode 'Start agent.guide' (pflicht).

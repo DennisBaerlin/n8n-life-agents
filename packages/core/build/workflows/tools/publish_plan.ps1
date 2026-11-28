@@ -45,7 +45,7 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
         "=No draft plan exists for domain '{{ `$('Start').item.json.domain }}'. Propose the topics of at least one part with tool_propose_plan_topics; the user saves them by tapping the topic card. Publish only after that."
 
     # "DB ist das Gesetz": agent.fn_advisor_publish_plan laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem
-    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab (Muster tool_save_plan_section).
+    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab.
     $wg = New-FnWriteGate -Fn 'agent.fn_advisor_publish_plan' -DryPos @(660, 0) -WritePos @(1760, 0) `
         -WriteName 'Publish plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'plan_id')::int AS plan_id, (r->>'version')::int AS version, (r->>'superseded_plan_id')::int AS superseded_plan_id, r->>'context_name' AS context_name, (r->>'section_count')::int AS section_count, r->'sync' AS sync" `

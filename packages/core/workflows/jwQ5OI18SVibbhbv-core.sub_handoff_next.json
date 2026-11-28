@@ -1,0 +1,386 @@
+{
+    "id":  "jwQ5OI18SVibbhbv",
+    "name":  "core.sub_handoff_next",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "task_ids"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "tasks"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "last_output"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "task_prefix"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "task_suffix"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "workflow_id"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "package"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "thinking"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "audience"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "empty_ok"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -1100,
+                                       0
+                                   ],
+                      "id":  "d74a09ea-ec21-5861-af65-5310ca609001",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_handoff_tasks_read(ARRAY(SELECT jsonb_array_elements_text(COALESCE(($1::jsonb)-\u003e\u0027ids\u0027, \u0027[]\u0027::jsonb))::int)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ ids: (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).first().json.task_ids || \u0027[]\u0027); } catch (e) { return []; } })() }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -880,
+                                       0
+                                   ],
+                      "id":  "02bda49c-8741-5318-9942-b365735d7230",
+                      "name":  "Handoff state",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const parse = (s, d) =\u003e { try { return typeof s === \u0027string\u0027 ? JSON.parse(s || \u0027null\u0027) ?? d : (s ?? d); } catch (e) { return d; } };\nconst rows = parse($(\u0027Handoff state\u0027).first().json.r, []);\nconst status = new Map((Array.isArray(rows) ? rows : []).map((t) =\u003e [Number(t.id), String(t.status || \u0027\u0027)]));\nconst looped = $(\u0027Run next\u0027).isExecuted;\nconst prev = looped ? ($(\u0027Handoff next\u0027).first().json.tasks || []) : parse($(\u0027Start\u0027).first().json.tasks, []);\n// Frage-Test auf dem Text ohne Markerzeilen (wie Reply text), sonst versteckte eine angehaengte Markerzeile die Frage.\nconst out = String((looped ? $(\u0027Run next\u0027).first(0).json.output : $(\u0027Start\u0027).first().json.last_output) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim();\nconst question = /[?？]\\s*$/.test(out);\nconst list = Array.isArray(prev) ? prev : [];\nconst tasks = list.slice(1).filter((t) =\u003e status.get(Number(t \u0026\u0026 t.id)) === \u0027working\u0027);\n// Freigabe am Ende: alles noch working; nach einer Frage bleibt nur der fragende Eintrag (der erste der Liste) beansprucht.\nconst current = list.length ? Number(list[0] \u0026\u0026 list[0].id) : null;\nconst release_ids = Array.from(status).filter(([, st]) =\u003e st === \u0027working\u0027).map(([id]) =\u003e id).filter((id) =\u003e !(question \u0026\u0026 id === current));\nreturn [{ json: { more: tasks.length \u003e 0 \u0026\u0026 out !== \u0027\u0027 \u0026\u0026 !question, tasks, release_ids } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -660,
+                                       0
+                                   ],
+                      "id":  "f3c84cb5-ae59-5de6-a136-0c028510cf61",
+                      "name":  "Handoff next"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7c8cee72-df44-5e7c-880e-22e339f08849",
+                                                                                   "leftValue":  "={{ $json.more === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -440,
+                                       0
+                                   ],
+                      "id":  "931e75e8-1ca0-518c-8e90-7abd5802c0b0",
+                      "name":  "More?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "vouYE8U4Nd3ivmtQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/vouYE8U4Nd3ivmtQ",
+                                                            "cachedResultName":  "agent.sub_dispatch_agent"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "task":  "={{ String($(\u0027Start\u0027).first().json.task_prefix || \u0027\u0027) + JSON.stringify($(\u0027Handoff next\u0027).first().json.tasks || []) + String($(\u0027Start\u0027).first().json.task_suffix || \u0027\u0027) }}",
+                                                                              "chat_id":  "={{ String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }}",
+                                                                              "call_depth":  "1",
+                                                                              "workflow_id":  "={{ String($(\u0027Start\u0027).first().json.workflow_id || \u0027\u0027) }}",
+                                                                              "package":  "={{ String($(\u0027Start\u0027).first().json.package || \u0027\u0027) }}",
+                                                                              "thinking":  "={{ String($(\u0027Start\u0027).first().json.thinking || \u0027\u0027) }}",
+                                                                              "audience":  "={{ String($(\u0027Start\u0027).first().json.audience || \u0027\u0027) }}",
+                                                                              "empty_ok":  "={{ String($(\u0027Start\u0027).first().json.empty_ok || \u0027\u0027) }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -220,
+                                       -160
+                                   ],
+                      "id":  "061e7774-7823-5479-805a-c7c007be3503",
+                      "name":  "Run next",
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "return [{ json: { text: String($(\u0027Run next\u0027).first(0).json.output || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l) \u0026\u0026 !/^\\s*[*_]*\\s*(?:CHOICES|(?:Choices|choices)(?=[^|]*\\|))[*_]*\\s*:?\\s+(.*?)\\s*$/.test(l) \u0026\u0026 !/^\\s*HANDOVER\\s*$/i.test(l)).join(\u0027\\n\u0027).trim() } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       0,
+                                       -160
+                                   ],
+                      "id":  "91c9d610-a471-594f-a387-6c7bacc9d4c7",
+                      "name":  "Reply text"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }}",
+                                         "text":  "={{ ($json.text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       -160
+                                   ],
+                      "id":  "56313dae-4aad-5910-bfdd-3ffb15e0d06d",
+                      "name":  "Send reply",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_release_handoff_tasks($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ task_ids: (($(\u0027Run next\u0027).isExecuted \u0026\u0026 (() =\u003e { try { return $(\u0027Run next\u0027).all(0).length === 0; } catch (e) { return true; } })()) ? (() =\u003e { try { return JSON.parse($(\u0027Start\u0027).first().json.task_ids || \u0027[]\u0027); } catch (e) { return []; } })() : ($(\u0027Handoff next\u0027).first(0).json.release_ids || [])) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       0,
+                                       160
+                                   ],
+                      "id":  "b78a7557-35f4-5294-96d0-be971b2cb493",
+                      "name":  "Release open",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4fb15191-e8c9-5424-8cfc-05f6e3a2be98",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ $(\u0027Run next\u0027).isExecuted ? String((($(\u0027Run next\u0027).first(0) || {}).json || {}).output || \u0027\u0027) : String($(\u0027Start\u0027).first().json.last_output || \u0027\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       440,
+                                       160
+                                   ],
+                      "id":  "ea0afb9c-c69d-5b6a-9090-4edbf15307c0",
+                      "name":  "Result",
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Vereinbarte Einträge: der nächste kommt von selbst**\n\nGerufen vom Orchestrator nach dem ersten Buchhalter-Lauf von [Jetzt eintragen] (Run handoff chain \u003cdomain\u003e). Der Buchhalter erledigt je Lauf genau einen Eintrag mit eigener Karte und endet. Handoff state (core.fn_handoff_tasks_read der beanspruchten ids) -\u003e Handoff next: Rest = Liste des letzten Laufs ohne ihren ersten Eintrag, nur noch working; endet die Antwort mit einer Frage (der Buchhalter braucht einen Rohwert), ist Schluss. More? -\u003e Run next (agent.sub_dispatch_agent, derselbe feste Auftrag mit dem Rest) -\u003e Reply text -\u003e Send reply -\u003e zurück zu Handoff state. Die Liste schrumpft je Runde, eine Endlosschleife gibt es nicht. Send reply statt der Relay-Kette: deren Schleifen-Knoten (splitInBatches) startet im Kreis nicht neu. Ende -\u003e Release open (core.fn_release_handoff_tasks): was noch working ist (abgebrochene Karte), ist wieder offen und steht auf der Liste; nach einer Frage bleibt nur der fragende Eintrag beansprucht, nach einem Lauf-Fehler wird alles frei; eingetragene bleiben done. Result.output = zuletzt gesendete Antwort (Folge-Bindung im Orchestrator).",
+                                         "height":  420,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1140,
+                                       -440
+                                   ],
+                      "id":  "6953d7e8-4990-50fc-a362-e9ad72acace0",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Handoff state",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Handoff state":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Handoff next",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Handoff next":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "More?",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "More?":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Run next",
+                                                           "type":  "main"
+                                                       }
+                                                   ],
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Release open",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Run next":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Reply text",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Release open",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Reply text":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Send reply",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Send reply":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Handoff state",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Release open":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Result",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -27,6 +27,7 @@
 //     (Anzahl bereits emittierter assistant-tool_use-Turns in DIESER Konversation = k).
 //   - Szenario-Auswahl: der Task-Text (alle user-text-Parts) gegen scenarios.json `match`
 //     (case-insensitive substring). Mehrere Treffer -> der laengste `match` gewinnt (spezifischster).
+//     Szenario `per_run: true`: match und Turn-Zaehlung nur ueber den aktuellen Lauf (ab der letzten Nutzer-Nachricht).
 //   - Namespace-aware (Multi-Agent): Orchestrator-Calls bieten Tools wie "Call 'agent.finance'",
 //     Agent-Calls bieten "tool_*". Der Stub filtert scenario.calls auf die im Request ANGEBOTENEN Tools
 //     und emittiert davon den k-ten -> derselbe Szenario-Eintrag treibt Orchestrator UND Sub-Agent.
@@ -187,11 +188,13 @@ function isJson(s) {
   try { JSON.parse(s); return true; } catch (e) { return false; }
 }
 
-function pickScenario(scenarios, task) {
+// per_run-Szenarien matchen nur gegen die Nutzer-Texte des aktuellen Laufs (taskRun), nicht gegen das Gedaechtnis.
+function pickScenario(scenarios, task, taskRun) {
   const t = (task || '').toLowerCase();
+  const tr = (taskRun === undefined ? task : taskRun || '').toLowerCase();
   let best = null;
   for (const s of scenarios) {
-    if (s && typeof s.match === 'string' && t.indexOf(s.match.toLowerCase()) !== -1) {
+    if (s && typeof s.match === 'string' && (s.per_run === true ? tr : t).indexOf(s.match.toLowerCase()) !== -1) {
       if (!best || s.match.length > best.match.length) best = s;
     }
   }
@@ -255,15 +258,15 @@ function currentRun(messages) {
 }
 
 // ---- Response-Builder ---------------------------------------------------------------------------
-// thinking (Default an, Szenario `thinking: false` schaltet ab): ein Denkblock VOR jedem tool_use, wie ihn die
+// thinking: ein Denkblock VOR jedem tool_use, wie ihn die
 // 5.5-Modelle von sich aus senden. n8n spielt den Aufruf danach ueber einen anderen Weg zurueck (buildSteps:
 // Anthropic-Inhaltsbloecke statt tool_calls) -- genau dort gingen bis n8n 2.44 die Angaben verloren (n8n-Fix
-// #41241 ab 2.45, Regressionswache). Default an = jeder Mock-Tier faehrt den Live-Weg.
+// #41241 ab 2.45, Regressionswache). Immer an = jeder Mock-Tier faehrt den Live-Weg.
 // calls: ein Aufruf je Turn, oder bei `parallel: true` alle Aufrufe des Szenarios als mehrere tool_use-Bloecke unter EINEM
 // gemeinsamen Denkblock (die Form, die das Modell bei zwei Buchungen in einer Nachricht ohne disable_parallel_tool_use schickt).
-function anthropicToolUse(calls, k, thinking, signature) {
+function anthropicToolUse(calls, k, signature) {
   const blocks = calls.map((call, i) => ({ type: 'tool_use', id: 'toolu_' + k + (i ? '_' + i : ''), name: call.tool, input: call.args || {} }));
-  if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: signature || 'mock-signature-' + k });
+  blocks.unshift({ type: 'thinking', thinking: '', signature: signature || 'mock-signature-' + k });
   return { id: 'msg_' + k, type: 'message', role: 'assistant', model: 'claude-mock',
     content: blocks, stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
 }
@@ -361,9 +364,11 @@ function decide(body) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const offered = anthropicOffered(body);
   const task = anthropicTaskText(messages);
-  const scenario = pickScenario(scenarios, task);
+  const scenario = pickScenario(scenarios, task, anthropicTaskText(currentRun(messages)));
   const bound = !!(scenario && scenario.thinking_binding === true);
-  const run = bound ? currentRun(messages) : messages;
+  // per_run: nur die Werkzeug-Runden seit der letzten Nutzer-Nachricht zaehlen (ein zweiter Lauf desselben Agenten traegt die
+  // erste Runde im Gedaechtnis mit und riefe sonst kein Werkzeug mehr, z. B. die Uebergabe-Kette real_ingress ri123).
+  const run = (bound || (scenario && scenario.per_run === true)) ? currentRun(messages) : messages;
   const k = anthropicPriorTurns(run);
   if (bound && hasUnboundThinking(messages)) {
     return { payload: anthropicText('unused'), why: 'thinking-binding-400', offered, task, http_status: 400 };
@@ -387,7 +392,7 @@ function decide(body) {
   const turns = parallel ? Math.min(eligible.length, 1) : eligible.length;
   if (k < turns) {
     const calls = parallel ? eligible : [eligible[k]];
-    return { payload: anthropicToolUse(calls, k, scenario.thinking !== false, bound ? promptPrefixHash(messages) : null),
+    return { payload: anthropicToolUse(calls, k, bound ? promptPrefixHash(messages) : null),
       why: 'tool-call:' + calls.map((c) => c.tool).join('+') + ' turn=' + k, offered, task, delay, replay_lost };
   }
   // Woertliches Weiterreichen (Orchestrator-Relay): nach einem Spezialisten-Aufruf antwortet der Router nur mit dem

@@ -530,7 +530,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027loan_id\u0027 AS loan_id, r-\u003e\u003e\u0027loan_account_id\u0027 AS loan_account_id, r-\u003e\u003e\u0027debit_account_id\u0027 AS debit_account_id, r-\u003e\u003e\u0027recurring_payment_id\u0027 AS recurring_payment_id, (r-\u003e\u003e\u0027balance_at_fixed_until\u0027)::numeric AS balance_at_fixed_until, (r-\u003e\u003e\u0027balance_at_term_end\u0027)::numeric AS balance_at_term_end FROM finance.fn_create_loan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027loan_id\u0027 AS loan_id, r-\u003e\u003e\u0027loan_account_id\u0027 AS loan_account_id, r-\u003e\u003e\u0027debit_account_id\u0027 AS debit_account_id, r-\u003e\u003e\u0027recurring_payment_id\u0027 AS recurring_payment_id, (r-\u003e\u003e\u0027balance_at_fixed_until\u0027)::numeric AS balance_at_fixed_until, (r-\u003e\u003e\u0027balance_at_term_end\u0027)::numeric AS balance_at_term_end, (r-\u003e\u003e\u0027remaining_debt\u0027)::numeric AS remaining_debt, (r-\u003e\u003e\u0027disbursement_balance\u0027)::numeric AS disbursement_balance FROM finance.fn_create_loan(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ name: $(\u0027Start\u0027).item.json.name, lender: $(\u0027Start\u0027).item.json.lender, borrower_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, original_amount: $(\u0027Start\u0027).item.json.original_amount, current_balance: $(\u0027Start\u0027).item.json.current_balance, disbursement_date: $(\u0027Start\u0027).item.json.disbursement_date, interest_rate: $(\u0027Start\u0027).item.json.interest_rate, interest_rate_fixed_until: $(\u0027Start\u0027).item.json.interest_rate_fixed_until, term_end_date: $(\u0027Start\u0027).item.json.term_end_date, monthly_annuity: $(\u0027Start\u0027).item.json.monthly_annuity, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, first_payment_date: $(\u0027Start\u0027).item.json.first_payment_date, disbursement_account_id: $(\u0027Resolve Disbursement Account\u0027).item.json.disbursement_id, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id, real_estate_id: $(\u0027Start\u0027).item.json.real_estate_id, notes: $(\u0027Start\u0027).item.json.notes, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -794,6 +794,18 @@
                                                                                      "id":  "f10709d4-069d-5811-88dd-1d5d44924325",
                                                                                      "name":  "balance_at_term_end",
                                                                                      "value":  "={{ $(\u0027Create loan (atomic)\u0027).item.json.balance_at_term_end }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ec3e05dc-0b77-54e8-a737-54892c67a4b5",
+                                                                                     "name":  "remaining_debt",
+                                                                                     "value":  "={{ $(\u0027Create loan (atomic)\u0027).item.json.remaining_debt }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d04b591a-45e2-55eb-8d32-20bd9a56bd97",
+                                                                                     "name":  "disbursement_balance",
+                                                                                     "value":  "={{ $(\u0027Create loan (atomic)\u0027).item.json.disbursement_balance }}",
                                                                                      "type":  "number"
                                                                                  }
                                                                              ]

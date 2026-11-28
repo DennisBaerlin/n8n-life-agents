@@ -240,7 +240,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_dividend(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, amount: $(\u0027Start\u0027).item.json.amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, holding_id: $(\u0027Resolve Holding\u0027).item.json.id, description: \"Dividende ISIN \" + $(\u0027Start\u0027).item.json.isin }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, amount: $(\u0027Start\u0027).item.json.amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, holding_id: $(\u0027Resolve Holding\u0027).item.json.id, description: \"Dividende \" + ($(\u0027Start\u0027).item.json.isin ? \"ISIN \" + $(\u0027Start\u0027).item.json.isin : $(\u0027Start\u0027).item.json.symbol) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -346,7 +346,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027transaction_id\u0027)::int AS transaction_id, (r-\u003e\u003e\u0027account_balance\u0027)::numeric AS account_balance FROM finance.fn_book_dividend(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, amount: $(\u0027Start\u0027).item.json.amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, holding_id: $(\u0027Resolve Holding\u0027).item.json.id, description: \"Dividende ISIN \" + $(\u0027Start\u0027).item.json.isin, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Get Settlement Account\u0027).item.json.settlement_account_id, amount: $(\u0027Start\u0027).item.json.amount, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, holding_id: $(\u0027Resolve Holding\u0027).item.json.id, description: \"Dividende \" + ($(\u0027Start\u0027).item.json.isin ? \"ISIN \" + $(\u0027Start\u0027).item.json.isin : $(\u0027Start\u0027).item.json.symbol), _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

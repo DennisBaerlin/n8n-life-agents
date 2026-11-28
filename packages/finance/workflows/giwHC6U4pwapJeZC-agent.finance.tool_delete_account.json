@@ -27,7 +27,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance FROM finance.accounts a LEFT JOIN finance.account_balances bal ON bal.account_id=a.id WHERE a.name ILIKE (($1::jsonb)-\u003e\u003e\u0027account_name\u0027) LIMIT 1;",
+                                         "query":  "=SELECT CASE WHEN r.hit_count \u003e 0 THEN r.hit_count END AS hits, a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027, NULL, FALSE) r LEFT JOIN finance.accounts a ON a.id = r.id LEFT JOIN finance.account_balances bal ON bal.account_id = a.id;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
                                                      }
@@ -59,7 +59,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "874c9950-ae61-5560-88fa-fdc0ed25d72f",
-                                                                                   "leftValue":  "={{ $json.acc_status !== undefined \u0026\u0026 $json.acc_status !== null }}",
+                                                                                   "leftValue":  "={{ $json.hits !== undefined \u0026\u0026 $json.hits !== null }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",

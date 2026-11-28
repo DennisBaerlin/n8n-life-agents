@@ -39,7 +39,8 @@ function Build-BookDividend {
             amount           = '$(''Start'').item.json.amount'
             transaction_date = '$(''Start'').item.json.transaction_date'
             holding_id       = '$(''Resolve Holding'').item.json.id'
-            description      = '"Dividende ISIN " + $(''Start'').item.json.isin'
+            # Nur ein Symbol genannt -> ohne ISIN-Zusatz (sonst gespeichert: "Dividende ISIN undefined").
+            description      = '"Dividende " + ($(''Start'').item.json.isin ? "ISIN " + $(''Start'').item.json.isin : $(''Start'').item.json.symbol)'
         })
 
     # --- HITL approval gate (before the write) ---

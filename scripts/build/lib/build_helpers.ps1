@@ -1689,10 +1689,10 @@ function New-TelegramSendNode {
 function New-TelegramRelayChain {
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$TextJs,
           [Parameter(Mandatory)][string]$ChatIdExpr, [string]$FallbackJs = "''", [string]$DoneTo)
-    # Markerzeilen NEXT_STEP (Router-/Hilfe-Agent-Grammatik, core.fn_get_next_step) und CHOICES (Antwort-Knoepfe) nie roh senden: jeder Sendeweg
-    # laeuft hier durch, auch die, deren Text 'Relay compose' nie sieht (Onboarding-Tipp, Befehle, Paket-Arme).
+    # Markerzeilen NEXT_STEP (Router-/Hilfe-Agent-Grammatik, core.fn_get_next_step), CHOICES (Antwort-Knoepfe) und HANDOVER (Abgabe an einen
+    # anderen Spezialisten) nie roh senden: jeder Sendeweg laeuft hier durch, auch die, deren Text 'Relay compose' nie sieht (Onboarding-Tipp, Befehle, Paket-Arme).
     $js = @"
-const body = String(($TextJs) || ($FallbackJs) || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l)).join('\n').trim();
+const body = String(($TextJs) || ($FallbackJs) || '').split('\n').filter((l) => !/$($script:NextStepMarkerPattern)/.test(l) && !/$($script:ChoicesMarkerPattern)/.test(l) && !/^\s*HANDOVER\s*`$/i.test(l)).join('\n').trim();
 const LIMIT = 3500;
 const chunks = [];
 let cur = '';

@@ -4,7 +4,7 @@
 # --- agent.guide.tool_set_onboarding_section ------
 # Fortschritts-Marker des Onboardings: setzt eine Sektion auf completed/skipped/unknown.
 # Kein HITL (kein Finanz-Write, nur ein Status-Flag); die eigentlichen Onboarding-Writes laufen
-# ueber die gebundenen HITL-Tools (tool_set_household_facts, tool_commit_import, tool_save_plan_section).
+# ueber die gebundenen HITL-Tools (tool_set_household_facts, tool_commit_import, tool_publish_plan).
 # 'skipped' = bewusst uebersprungen und zaehlt fuers Gate als aufgeloest.
 function Build-SetOnboardingSection {
     # chat_id: owner_only-Riegel der fn (Mitglied darf household nicht setzen) + Ziel der Weiter-Karte (core.sub_onboarding_progress).

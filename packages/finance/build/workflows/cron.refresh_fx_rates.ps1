@@ -86,11 +86,11 @@ function Build-CronRefreshFxRates {
         })
     $importMetal['onError'] = 'continueRegularOutput'
 
-    # Huckepack: der taegliche Lauf raeumt auch verfallene Import- und Vorschlags-Stapel auf (finance.fn_import_sweep, 7 Tage);
+    # Huckepack: der taegliche Lauf raeumt auch verfallene Import- und Vorschlags-Stapel auf (finance.fn_import_sweep mit ihrer eigenen Frist);
     # nicht fatal, damit ein Aufraeum-Fehler nie den Kurs-Abruf aufhaelt.
-    $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep(7) AS deleted'
+    $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep() AS deleted'
     $sweep['onError'] = 'continueRegularOutput'
-    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf heute noch fällig ist (ein Nachhol-Lauf kann ihn schon erledigt haben): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
+    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf heute noch fällig ist (ein Nachhol-Lauf kann ihn schon erledigt haben): finance.fn_import_sweep() löscht nicht übernommene Import-Zeilen und Dauerauftrags-Vorschlags-Stapel nach der Frist der fn (Default des Parameters, gerechnet ab dem letzten Ergänzen). Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (kein LLM, alle Währungen)' `

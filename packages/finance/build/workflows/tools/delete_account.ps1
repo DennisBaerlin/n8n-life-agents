@@ -8,10 +8,11 @@ function Build-DeleteAccount {
     $trig = Build-Trigger @('account_name')
 
     $readAcc = Build-Pg 'Read Account' @(220, 0) `
-        "=SELECT a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance FROM finance.accounts a LEFT JOIN finance.account_balances bal ON bal.account_id=a.id WHERE a.name ILIKE ((`$1::jsonb)->>'account_name') LIMIT 1;" `
+        "=SELECT CASE WHEN r.hit_count > 0 THEN r.hit_count END AS hits, a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, FALSE) r LEFT JOIN finance.accounts a ON a.id = r.id LEFT JOIN finance.account_balances bal ON bal.account_id = a.id;" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
-    $found = New-RequiredRowGate -Read $readAcc -KeyField 'acc_status' -IfName 'Account found?' -ErrName 'Account not found' `
+    # Derselbe Auflöser wie fn_delete_account (auch geschlossene Konten): sonst zeigte die Karte ein anderes Konto als das, das
+    # gelöscht wird. Unbekannter Name -> Tool-Fehler (New-RequiredRowGate); mehrdeutig meldet der Probelauf mit Kandidaten.
+    $found = New-RequiredRowGate -Read $readAcc -KeyField 'hits' -IfName 'Account found?' -ErrName 'Account not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No account named '{{ `$('Start').item.json.account_name }}' exists. List them via postgres_select on finance.account_overview and ask the user which one is meant."
 

@@ -3,22 +3,23 @@
 #
 # --- core.sub_send_chat_prompt (offene Frage: Karte senden, getippte Karte aendern) ----------------------------------
 # Die eine Stelle, die Karten der offenen Frage (agent.chat_prompts) an Telegram gibt. Gerufen
-# vom Orchestrator am Ende jedes Laufs (send_next, replied, run_started_at; bei Antwort-Knoepfen choice_json) und im
+# vom Orchestrator am Ende jedes Laufs (send_next, replied, run_started_at, agent = wer den Lauf beantwortet hat; bei Antwort-Knoepfen choice_json) und im
 # Knopf-Arm q: (edit_* = getippte Karte aendern, note_text = Rueckfrage mit Eingabefeld, send_next = naechste Zeile des
 # Stapels ohne Modell-Lauf). Ausgang: { sent } (eine Karte oder Antwort mit Knoepfen ist rausgegangen).
 function Build-CoreSubSendChatPrompt {
-    $trig = Build-Trigger @('replied', 'run_started_at', 'send_next', 'edit_message_id', 'edit_json', 'note_text', 'choice_json') @(-1100, 0)
+    $trig = Build-Trigger @('replied', 'run_started_at', 'send_next', 'edit_message_id', 'edit_json', 'note_text', 'choice_json', 'agent') @(-1100, 0)
 
     # core.fn_next_chat_prompt aendert den Zustand (queued -> open, Sweep) -> Schreib-Cred. Die Karte kommt aus core.fn_render_prompt
     # schon in der Sprache des Chats. Fehlt die fn oder scheitert sie -> onError continue: nichts gesendet, die Antwort davor kam.
     $read = Build-Pg 'Read prompt' @(-880, 0) `
         ("=SELECT (CASE WHEN (`$1::jsonb)->>'send_next' = 'true' THEN core.fn_next_chat_prompt(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', " +
-         "'replied', (`$1::jsonb)->>'replied' = 'true', 'run_started_at', NULLIF((`$1::jsonb)->>'run_started_at', ''))) ELSE jsonb_build_object('send', false) END)::text AS r;") `
+         "'replied', (`$1::jsonb)->>'replied' = 'true', 'run_started_at', NULLIF((`$1::jsonb)->>'run_started_at', ''), 'agent', NULLIF((`$1::jsonb)->>'agent', ''))) ELSE jsonb_build_object('send', false) END)::text AS r;") `
         ([ordered]@{
             chat_id        = "String(`$('Start').first().json.chat_id || '')"
             replied        = "String(`$('Start').first().json.replied || '')"
             run_started_at = "String(`$('Start').first().json.run_started_at || '')"
             send_next      = "String(`$('Start').first().json.send_next || '')"
+            agent          = "String(`$('Start').first().json.agent || '')"
         }) -ContinueOnError
 
     $buildJs = (Get-CardRenderJs) + @'
@@ -92,7 +93,7 @@ return { json: {
 
     $sticky = Build-Sticky 'Überblick' @(-1140, -500) -Header 'Ablauf' 'Offene Frage: Karte senden und getippte Karte ändern' `
         ('Die eine Stelle, die Karten der offenen Frage (agent.chat_prompts) sendet; der Orchestrator ruft sie am Ende jedes Laufs und im Knopf-Arm q:. ' +
-         'Read prompt: core.fn_next_chat_prompt (nur bei send_next; eine wartende Zeile wird offen und gesendet, eine offene nach einer Antwort dieses Laufs erneut, damit die offene Frage unten steht). Die Karte (core.fn_render_prompt) kommt fertig übersetzt als Zeilen. ' +
+         'Read prompt: core.fn_next_chat_prompt (nur bei send_next; agent = wer den Lauf beantwortet hat, ein pausierter Stapel kommt erst nach einem Lauf desselben Beraters; eine wartende Zeile wird offen und gesendet, eine offene nach einer Antwort dieses Laufs erneut, damit die offene Frage unten steht; eine Auswahl-Frage, deren Senden nie bestätigt wurde, ersetzt sie nach 10 Minuten, damit die Schlange weiterläuft). Die Karte (core.fn_render_prompt) kommt fertig übersetzt als Zeilen. ' +
          'Build prompt: der gemeinsame Renderer (Get-CardRenderJs) macht daraus Telegram-HTML und escapt jeden Wert. Hat der Berater Antwort-Knöpfe geschrieben (choice_json aus core.fn_create_choice_prompt), geht seine Antwort selbst mit den Knöpfen raus. ' +
          'Reihenfolge: getippte Karte ändern (Text samt Formatierung aus der Telegram-Nachricht, Zusatz wie „✓ Übernommen“, Knöpfe weg) -> Rückfrage „Was soll anders sein?“ mit Eingabefeld (ForceReply) -> neue Karte; die Knopf-Form (1 bis 3 in einer Reihe oder je einer pro Reihe) wählt den passenden Send-Knoten, weil die n8n-Tastatur feste Plätze hat -> Record message (core.fn_chat_prompt_sent merkt die Nachricht) -> Clear stale buttons: alte Nachrichten mit veralteten Knöpfen ohne Knöpfe neu zeichnen. ' +
          'Jeder Knoten onError continue: ein Fehler hier kostet nur die Karte, nie die Antwort davor. Result.sent sagt dem Orchestrator, ob etwas rausging (sonst sendet er bei leerer Berater-Antwort den festen Hinweis).') 420 620

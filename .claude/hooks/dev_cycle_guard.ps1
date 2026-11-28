@@ -142,12 +142,17 @@ foreach ($tc in $tagCalls) {
 }
 # Nur ein echter Aufruf zaehlt: 'git [-C dir] push' am Anfang eines Befehls-Segments (nicht der Text in einem
 # Argument, z. B. einer sed-Ersetzung oder Commit-Message). Geprueft wird das tatsaechliche Ziel: Remote + Refspecs
-# aus dem Befehl (ohne Refspec: HEAD), mit --tags/--follow-tags/--all/--mirror zusaetzlich jeder lokale Tag, der dem
-# Remote fehlt.
+# aus dem Befehl (ohne Refspec: HEAD), mit --tags/--follow-tags zusaetzlich jeder lokale Tag, der dem Remote fehlt.
+# Jeder Aufruf des Befehls zaehlt (a; b / a && b), nicht nur der erste.
 # Vor 'push' beliebig viele globale Optionen (-C/-c <arg>, --opt[=wert]) und Bash-Env-Praefixe (X=1 git ...): sonst
 # liefe ein `git -c credential.helper= push` ungeprueft durch (fail-open).
-$push = [regex]::Match($cmd, '(?:^|[;&|(]|\r?\n)\s*(?:[A-Za-z_]\w*=\S*\s+)*git(?:\.exe)?((?:\s+(?:-[Cc]\s+(?:"[^"]+"|''[^'']+''|\S+)|--[\w-]+(?:=\S*)?))*)\s+push\b([^;&|\r\n]*)')
-if ($push.Success) {
+$pushes = [regex]::Matches($cmd, '(?:^|[;&|(]|\r?\n)\s*(?:[A-Za-z_]\w*=\S*\s+)*git(?:\.exe)?((?:\s+(?:-[Cc]\s+(?:"[^"]+"|''[^'']+''|\S+)|--[\w-]+(?:=\S*)?))*)\s+push\b([^;&|\r\n]*)')
+$fails = @()
+$stampFails = @()
+$pinFails = @()
+$mainFails = @()
+$remote = 'origin'
+foreach ($push in $pushes) {
   $gitDir = [regex]::Match($push.Groups[1].Value, '-C\s+("[^"]+"|''[^'']+''|\S+)')
   $gitC = if ($gitDir.Success) { @('-C', $gitDir.Groups[1].Value.Trim('"', "'")) } else { @() }
   # Ausgabe-Umleitungen (2>$null, *>&1, > log.txt, 2>> x) gehoeren zur Shell, nicht zu git: vorher entfernen, sonst
@@ -155,16 +160,16 @@ if ($push.Success) {
   $pRest = [regex]::Replace($push.Groups[2].Value, '(?:\d|\*)?>>?(?:&\d|\s*(?:"[^"]*"|''[^'']*''|[^\s;&|]+))?', ' ')
   $pArgs = @($pRest.Trim() -split '\s+' | Where-Object { $_ })
   $pos = @($pArgs | Where-Object { $_ -notmatch '^-' } | ForEach-Object { $_.Trim('"', "'") })
-  $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags|all|mirror)$' })
+  $allTags = [bool]($pArgs | Where-Object { $_ -match '^--(tags|follow-tags)$' })
   $remote = if ($pos.Count -ge 1) { $pos[0] } else { 'origin' }
   $specs = if ($pos.Count -ge 2) { @($pos[1..($pos.Count - 1)]) } else { @('HEAD') }
+  # --all/--branches/--mirror nennen die Ziele nicht: der Befehl truege jeden lokalen Branch hinaus (auch main), geprueft wuerde
+  # nur HEAD. Darum gesperrt; die Ziele einzeln nennen.
+  $bulk = @($pArgs | Where-Object { $_ -match '^--(all|branches|mirror)$' })
+  if ($bulk.Count -gt 0) { $fails += "[FAIL] $($bulk[0]) nennt die Ziele nicht -> Branches und Tags einzeln pushen (git push <remote> <branch>)"; continue }
   # 'git push origin --delete <ref>' (bzw. -d) loescht nur, veroeffentlicht nichts -- wie ':ziel' unten (sonst galt
   # der Ref-Name als zu pruefender Refspec -> "nicht aufloesbar" -> deny).
   if ($pArgs | Where-Object { $_ -match '^(--delete|-d)$' }) { $specs = @() }
-  $fails = @()
-  $stampFails = @()
-  $pinFails = @()
-  $mainFails = @()
   try {
     foreach ($spec in $specs) {
       $src = ($spec -split ':')[0].TrimStart('+')
@@ -186,16 +191,16 @@ if ($push.Success) {
       if ($why) { $stampFails += $why }
     }
   } catch { $fails += "[FAIL] Hook-Fehler: $($_.Exception.Message)" }
-  if ($pinFails.Count -gt 0) { Out-Decision 'deny' ($pinDeny -f (@($pinFails | Sort-Object -Unique) -join '; ')) }
-  if ($fails.Count -gt 0) {
-    $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
-    Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
-  }
-  if ($mainFails.Count -gt 0) {
-    Out-Decision 'deny' "MAIN-PUSH GESPERRT (Skill /coordinate Abschnitt 3 *Push-Regeln*): $(@($mainFails | Sort-Object -Unique) -join '; '). Nicht umgehen; ist GitHub nicht abrufbar, pusht nur der Owner im Terminal."
-  }
-  if ($stampFails.Count -gt 0) {
-    Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$remote'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."
-  }
+}
+if ($pinFails.Count -gt 0) { Out-Decision 'deny' ($pinDeny -f (@($pinFails | Sort-Object -Unique) -join '; ')) }
+if ($fails.Count -gt 0) {
+  $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
+  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."
+}
+if ($mainFails.Count -gt 0) {
+  Out-Decision 'deny' "MAIN-PUSH GESPERRT (Skill /coordinate Abschnitt 3 *Push-Regeln*): $(@($mainFails | Sort-Object -Unique) -join '; '). Nicht umgehen; ist GitHub nicht abrufbar, pusht nur der Owner im Terminal."
+}
+if ($stampFails.Count -gt 0) {
+  Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, Modell-Pruefung, Ziel '$remote'): $($stampFails -join '; '). Nicht umgehen, nie --no-verify."
 }
 exit 0

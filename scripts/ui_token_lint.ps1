@@ -110,7 +110,7 @@ foreach ($s in $surfaces) {
     if (-not (Test-Path $abs)) { Fail "Block '$($s.Name)': Datei fehlt: $($s.File)"; continue }
     $m = (Get-UiBlockRegex $s.Name).Match([System.IO.File]::ReadAllText($abs, $u8))
     if (-not $m.Success) { Fail "Block '$($s.Name)': keine Marker in $($s.File)"; continue }
-    if ($m.Value -cne (Get-UiBlockText $tokens $s)) { Fail "Block '$($s.Name)' in $($s.File) ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
+    if (-not [string]::Equals($m.Value, (Get-UiBlockText $tokens $s), [System.StringComparison]::Ordinal)) { Fail "Block '$($s.Name)' in $($s.File) ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
 }
 # Geteilte Bausteine: jede Kopie wortgleich mit ihrer Quelle
 $copies = @(Get-UiCopies)
@@ -123,7 +123,7 @@ foreach ($c in $copies) {
         if (-not (Test-Path $abs)) { Fail "Baustein '$name': Datei fehlt: $f"; continue }
         $m = (Get-UiCopyRegex $name).Match([System.IO.File]::ReadAllText($abs, $u8))
         if (-not $m.Success) { Fail "Baustein '$name': keine Marker in $f"; continue }
-        if ($m.Value -cne (Get-UiCopyText $RepoRoot $c)) { Fail "Baustein '$name' in $f ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
+        if (-not [string]::Equals($m.Value, (Get-UiCopyText $RepoRoot $c), [System.StringComparison]::Ordinal)) { Fail "Baustein '$name' in $f ist veraltet oder von Hand geaendert -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
     }
 }
 # Texte aus dem Katalog: Block gleich dem aktuellen Katalog
@@ -133,7 +133,7 @@ foreach ($b in (Get-UiLocaleBlocks)) {
     if (-not (Test-Path $abs)) { Fail "Texte '$($b.Name)': Datei fehlt: $($b.File)"; continue }
     $m = (Get-UiLocaleRegex $b.Name).Match([System.IO.File]::ReadAllText($abs, $u8))
     if (-not $m.Success) { Fail "Texte '$($b.Name)': keine Marker in $($b.File)"; continue }
-    if ($m.Value -cne (Get-UiLocaleText $RepoRoot $b)) { Fail "Texte '$($b.Name)' in $($b.File) passen nicht zum Katalog packages/core/locales -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
+    if (-not [string]::Equals($m.Value, (Get-UiLocaleText $RepoRoot $b), [System.StringComparison]::Ordinal)) { Fail "Texte '$($b.Name)' in $($b.File) passen nicht zum Katalog packages/core/locales -- .\scripts\build_ui_tokens.ps1 laufen lassen" }
 }
 
 # --- (4) Literale -----------------------------------------------------------------------------------------------
@@ -203,7 +203,7 @@ foreach ($f in $tracked) {
 # --- (7) Zeichen ------------------------------------------------------------------------------------------------
 $markPartial = Join-Path $RepoRoot (Get-UiMarkPartialPath)
 if (-not (Test-Path $markPartial)) { Fail "Zeichen: Partial fehlt: $(Get-UiMarkPartialPath) -- .\scripts\build_ui_tokens.ps1" }
-elseif ([System.IO.File]::ReadAllText($markPartial, $u8) -cne (Get-UiMarkPartialText $markPaths)) {
+elseif (-not [string]::Equals([System.IO.File]::ReadAllText($markPartial, $u8), (Get-UiMarkPartialText $markPaths), [System.StringComparison]::Ordinal)) {
     Fail "Zeichen: $(Get-UiMarkPartialPath) passt nicht zu $(Get-UiMarkSourcePath) (Partial ist erzeugt, nicht von Hand zu aendern) -- .\scripts\build_ui_tokens.ps1, danach .\scripts\build_site.ps1"
 }
 
@@ -226,7 +226,7 @@ if ($artOut.Count -eq 0) { Fail 'Erklaer-Bilder: Generator liefert nichts -- Pru
 $artWant = @{}; foreach ($o in $artOut) { $artWant[$o.Path] = $o.Text }
 foreach ($o in $artOut) {
     if ($tracked -notcontains $o.Path) { Fail "Erklaer-Bild fehlt im Repo: $($o.Path) -- .\scripts\build_ui_tokens.ps1 und mitcommitten"; continue }
-    if ([System.IO.File]::ReadAllText((Join-Path $RepoRoot $o.Path), $u8) -cne $o.Text) { Fail "Erklaer-Bild $($o.Path) passt nicht zur Quelle (erzeugt, nicht von Hand aendern) -- .\scripts\build_ui_tokens.ps1" }
+    if (-not [string]::Equals([System.IO.File]::ReadAllText((Join-Path $RepoRoot $o.Path), $u8), $o.Text, [System.StringComparison]::Ordinal)) { Fail "Erklaer-Bild $($o.Path) passt nicht zur Quelle (erzeugt, nicht von Hand aendern) -- .\scripts\build_ui_tokens.ps1" }
 }
 foreach ($dir in (Get-UiArtDirs).Values) {
     foreach ($f in ($tracked | Where-Object { $_.StartsWith("$dir/", [StringComparison]::Ordinal) })) {

@@ -165,7 +165,7 @@ function Test-MasterRevision([string]$RepoRoot, [string]$Revision, [string]$Tag)
     if ($changed -contains $MasterComposeRel) {
         $a = (& git -C $RepoRoot show "${Revision}:$MasterComposeRel") -join "`n"
         $b = (& git -C $RepoRoot show "${Tag}:$MasterComposeRel") -join "`n"
-        if ((Set-MasterPin $a) -cne (Set-MasterPin $b)) { $iss.Add("compose.yml weicht seit dem Image-Bau nicht nur in der Pin-Zeile ab — Image neu bauen.") }
+        if (-not [string]::Equals((Set-MasterPin $a), (Set-MasterPin $b), [System.StringComparison]::Ordinal)) { $iss.Add("compose.yml weicht seit dem Image-Bau nicht nur in der Pin-Zeile ab — Image neu bauen.") }
     }
     return , $iss
 }
@@ -246,7 +246,7 @@ function Test-ReleaseSetup([string]$RepoRoot, [string]$Tag, [string]$SetupFile) 
         if ($pin.Form -ne 'pinned') { $iss.Add('compose.yml des Tags traegt keinen Release-Pin.'); return , $iss }
         $want = Set-SetupPin ((($tagSetup -join "`n")) + "`n") "$($pin.Ref)@$($pin.Digest)"
         $have = [System.IO.File]::ReadAllText($SetupFile, $u8)
-        if ($have -cne $want) { $iss.Add("setup.sh im Release weicht ab: erwartet $SetupRel des Tags mit dem Pin $($pin.Ref)@$($pin.Digest), sonst nichts.") }
+        if (-not [string]::Equals($have, $want, [System.StringComparison]::Ordinal)) { $iss.Add("setup.sh im Release weicht ab: erwartet $SetupRel des Tags mit dem Pin $($pin.Ref)@$($pin.Digest), sonst nichts.") }
     } catch { $iss.Add($_.Exception.Message) }
     return , $iss
 }

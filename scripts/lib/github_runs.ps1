@@ -15,12 +15,14 @@ function Get-GitHubToken {
     return $null
 }
 
-function Get-WorkflowRuns([string]$Query) {
+# Get-WorkflowRuns <query> [-Workflow <datei.yml>] -> Laeufe aller Workflows bzw. nur die eines Workflows (Dateiname).
+function Get-WorkflowRuns([string]$Query, [string]$Workflow) {
     $remote = (git -C $PSScriptRoot remote get-url origin).Trim()
     if ($remote -notmatch 'github\.com[:/]([^/]+)/([^/.]+)') { throw "kein GitHub-Remote: $remote" }
     $slug = "$($Matches[1])/$($Matches[2])"
     $tok = Get-GitHubToken
     if (-not $tok) { throw 'kein GitHub-Token im Git-Credential-Store' }
-    return (Invoke-RestMethod -Uri "https://api.github.com/repos/$slug/actions/runs?$Query" -TimeoutSec 8 `
+    $path = if ($Workflow) { "actions/workflows/$Workflow/runs" } else { 'actions/runs' }
+    return (Invoke-RestMethod -Uri "https://api.github.com/repos/$slug/${path}?$Query" -TimeoutSec 8 `
         -Headers @{ Authorization = "Bearer $tok"; Accept = 'application/vnd.github+json'; 'User-Agent' = 'lifeagents-ci-check' }).workflow_runs
 }

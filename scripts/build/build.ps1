@@ -456,10 +456,10 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
             foreach ($u in $missingTexts) { Write-Host "    - $u" -ForegroundColor Red }
             $fail = 1
         }
-        # Per-Fragment-Drift (nennt Paket + Sprache) ...
+        # Per-Fragment-Drift (nennt Paket + Sprache) ... Ordinal wie Save-WorkflowFile: -ne uebergeht Gross-/Kleinschreibung und Zeichen ohne Gewicht.
         foreach ($f in $fragments) {
             $onDisk = if (Test-Path $f.Path) { (([System.IO.File]::ReadAllText($f.Path, $Utf8NoBom)) -replace "`r`n","`n").TrimEnd() + "`n" } else { '' }
-            if ($onDisk -ne $f.Body) {
+            if (-not [string]::Equals($onDisk, $f.Body, [System.StringComparison]::Ordinal)) {
                 Write-Host "DRIFT: Fragment packages/$($f.Package)/seed/capabilities_catalog/$($f.Lang).fragment.md != frisch generiert. 'build.ps1' (voll) + commit." -ForegroundColor Red
                 $fail = 1
             }
@@ -467,7 +467,7 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
         # ... und Compose-Integritaet je Sprache (komponierte .md == compose(on-disk-Fragmente)).
         foreach ($c in $composed) {
             $onDiskCat = if (Test-Path $c.Path) { (([System.IO.File]::ReadAllText($c.Path, $Utf8NoBom)) -replace "`r`n","`n").TrimEnd() + "`n" } else { '' }
-            if ($onDiskCat -ne $c.Md) {
+            if (-not [string]::Equals($onDiskCat, $c.Md, [System.StringComparison]::Ordinal)) {
                 Write-Host "DRIFT: packages/core/seed/capabilities_catalog/$($c.Lang).md != compose(Fragmente). 'build.ps1' (voll) + commit." -ForegroundColor Red
                 $fail = 1
             }

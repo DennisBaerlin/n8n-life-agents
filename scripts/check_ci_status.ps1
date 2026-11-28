@@ -2,15 +2,14 @@
 # check_ci_status.ps1 — CI-Ampel: ist der letzte Lauf jedes GitHub-Workflows auf main (Release: der letzte Tag-Lauf)
 # gruen? Ein Handstart mit Suiten-Auswahl zaehlt nicht (Test-CiPartialRun, scripts/lib/ci_wait.ps1). Genutzt vom
 # SessionStart-Hook .claude/hooks/check_ci_status.ps1 (-Hook: knapper Kontext-Text, still bei gruen/Fehler) und manuell. Read-only gegen die GitHub-API; Token aus dem Git-Credential-Store (GCM,
-# derselbe Weg wie git push), nie interaktiv. Exit-Code = Anzahl roter Workflows (Fehler beim Abfragen -> 0 + Hinweis).
-#
+# derselbe Weg wie git push), nie interaktiv. Exit-Code ohne -Wait = Anzahl roter Workflows (Fehler beim Abfragen -> 0 + Hinweis).
 #
 # -Wait <workflow> wartet auf den Lauf dieses Workflows auf einem Stand (-Sha, sonst HEAD) und endet laut: Exit 0 gruen,
 # 1 rot, 2 nicht entschieden (Zeitgrenze -TimeoutMin, kein Lauf nach 10 Minuten, GitHub mehrfach nicht abrufbar). Als
 # Hintergrund-Befehl gedacht: das Ende weckt die wartende Session, auch bei Gruen.
 #
 # Usage:  .\scripts\check_ci_status.ps1 [-Hook]
-#         .\scripts\check_ci_status.ps1 -Wait genericity [-Sha <hash>] [-TimeoutMin 90]
+#         .\scripts\check_ci_status.ps1 -Wait genericity [-Sha <hash>] [-TimeoutMin 90] [-PollSeconds 30]
 param([switch]$Hook, [string]$Wait, [string]$Sha, [int]$TimeoutMin = 90, [int]$PollSeconds = 30)
 
 $ErrorActionPreference = 'Stop'
@@ -36,8 +35,8 @@ if ($Wait) {
         if ($v) {
             $line = Format-CiWaitLine $v
             if ($line -ne $last) { Write-Host $line; $last = $line }
-            if ($v.verdict -eq 'green') { Write-Host "GRUEN: $Wait" -ForegroundColor Green; exit 0 }
-            if ($v.verdict -eq 'red') { Write-Host "ROT: $Wait (Logs: gh run view $(([long]$v.run.id).ToString()) --log-failed)" -ForegroundColor Red; exit 1 }
+            if ($v.verdict -eq 'green') { Write-Host "GRUEN: $Wait" -ForegroundColor Green; exit (Get-CiWaitExitCode $v.verdict) }
+            if ($v.verdict -eq 'red') { Write-Host "ROT: $Wait (Logs: gh run view $(([long]$v.run.id).ToString()) --log-failed)" -ForegroundColor Red; exit (Get-CiWaitExitCode $v.verdict) }
             if ($v.verdict -eq 'none' -and ((Get-Date) - $start).TotalMinutes -ge 10) {
                 Write-Host "NICHT ENTSCHIEDEN: nach 10 Minuten kein Lauf von '$Wait' auf diesem Stand (Name oder Hash falsch, oder der Workflow laeuft hier nicht von selbst; ein Handstart mit Suiten-Auswahl zaehlt nie als Lauf des Stands)" -ForegroundColor Yellow; exit 2
             }
@@ -48,28 +47,28 @@ if ($Wait) {
 }
 
 try {
-    $runs = Get-WorkflowRuns 'per_page=60'
+    # Gezielt statt "die juengsten Laeufe aller Branches": in einer gemischten Liste verdraengen Branch- und PR-Laeufe den letzten
+    # main-Lauf eines Workflows, und ein roter Stand fiele still aus der Ampel. Release-Laeufe haengen am Tag, darum eigens.
+    $runs = @(Get-WorkflowRuns 'per_page=100&branch=main') + @(Get-WorkflowRuns 'per_page=20' -Workflow 'release.yml')
 } catch {
     if (-not $Hook) { Write-Host "CI-Status nicht abrufbar: $($_.Exception.Message)" -ForegroundColor Yellow }
     exit 0
 }
 
-# Je Workflow der juengste abgeschlossene Lauf: Push-Workflows auf main, release auf einem Tag (v*).
+# Je Workflow-Datei der juengste abgeschlossene Lauf (Get-CiLatestMainRuns; ohne Dependabot-Hintergrundlaeufe, die keine Datei haben).
 $red = @()
-foreach ($g in ($runs | Where-Object { "$($_.path)" -like '.github/workflows/*' } | Group-Object name)) {   # ohne Dependabot-Hintergrundlaeufe
-    $latest = $g.Group | Where-Object { $_.status -eq 'completed' -and -not (Test-CiPartialRun $_) -and ($_.head_branch -eq 'main' -or ($_.name -eq 'release' -and $_.head_branch -like 'v*')) } |
-        Sort-Object { [datetime]$_.created_at } -Descending | Select-Object -First 1
-    if (-not $latest) { continue }
-    $ok = $latest.conclusion -in @('success', 'skipped', 'neutral')
+foreach ($row in @(Get-CiLatestMainRuns $runs)) {
+    $latest = $row.Run
+    $title = ("$($latest.display_title)" -split "`r?`n")[0]   # ein Lauf-Titel aus der Commit-Message kann mehrzeilig sein
     if (-not $Hook) {
-        $c = if ($ok) { 'Green' } else { 'Red' }
-        Write-Host ("{0,-12} {1,-9} {2} {3}  {4}" -f $g.Name, $latest.conclusion, $latest.head_sha.Substring(0, 7), ([datetime]$latest.created_at).ToLocalTime().ToString('dd.MM. HH:mm'), $latest.display_title) -ForegroundColor $c
+        $c = if ($row.Ok) { 'Green' } else { 'Red' }
+        Write-Host ("{0,-18} {1,-9} {2} {3}  {4}" -f $row.Workflow, $latest.conclusion, $latest.head_sha.Substring(0, 7), ([datetime]$latest.created_at).ToLocalTime().ToString('dd.MM. HH:mm'), $title) -ForegroundColor $c
     }
-    if (-not $ok) { $red += $latest }
+    if (-not $row.Ok) { $red += [pscustomobject]@{ Workflow = $row.Workflow; Run = $latest; Title = $title } }
 }
 
 if ($Hook -and $red.Count) {
-    $parts = $red | ForEach-Object { "$($_.name) ($($_.conclusion), $($_.head_sha.Substring(0,7)) '$($_.display_title)', Run $($_.id))" }
+    $parts = $red | ForEach-Object { "$($_.Workflow) ($($_.Run.conclusion), $($_.Run.head_sha.Substring(0,7)) '$($_.Title)', Run $(([long]$_.Run.id).ToString()))" }
     $ctx = 'CI ROT auf GitHub: ' + ($parts -join '; ') + '. Zuerst die Ursache klaeren und beheben, bevor neue Arbeit gepusht wird ' +
            '(Logs: gh run view <Run> --log-failed, GH_TOKEN aus git credential fill). Dem Owner in einem Satz melden.'
     Write-Output (@{ hookSpecificOutput = @{ hookEventName = 'SessionStart'; additionalContext = $ctx } } | ConvertTo-Json -Compress -Depth 5)

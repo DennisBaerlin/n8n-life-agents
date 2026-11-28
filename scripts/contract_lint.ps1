@@ -1990,7 +1990,7 @@ foreach ($f in 'provisioning/install.sh', 'provisioning/lib/fetch_release.sh') {
     $b = if (Test-Path $p) { Get-GhDownloadBlock ([System.IO.File]::ReadAllText($p, $Utf8NoBom)) } else { $null }
     if ($null -eq $b) { $errors.Add("GH-DOWNLOAD-SPIEGEL: $f -- Block '# >>> gh-download' ... '# <<< gh-download' fehlt.") } else { $ghBlocks[$f] = $b }
 }
-if ($ghBlocks.Count -eq 2 -and $ghBlocks['provisioning/install.sh'] -cne $ghBlocks['provisioning/lib/fetch_release.sh']) {
+if ($ghBlocks.Count -eq 2 -and -not [string]::Equals($ghBlocks['provisioning/install.sh'], $ghBlocks['provisioning/lib/fetch_release.sh'], [System.StringComparison]::Ordinal)) {
     $errors.Add("GH-DOWNLOAD-SPIEGEL: der gh-download-Block in provisioning/install.sh und provisioning/lib/fetch_release.sh weicht ab -- beide Kopien byte-gleich halten (Aenderung in beide uebernehmen).")
 }
 foreach ($sc in @(

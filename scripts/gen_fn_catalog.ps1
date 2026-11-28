@@ -158,12 +158,13 @@ if ($Verify) {
     if (Test-Path $OutPath) {
         $onDisk = (([System.IO.File]::ReadAllText($OutPath, $Utf8NoBom)) -replace "`r`n", "`n").TrimEnd() + "`n"
     }
-    if ($onDisk -cne $md) {
+    # Ordinal: -cne uebergeht Zeichen ohne Gewicht (weicher Trennstrich, U+FEFF), ein solcher Hand-Eingriff bliebe gruen.
+    if (-not [string]::Equals($onDisk, $md, [System.StringComparison]::Ordinal)) {
         Write-Host "DRIFT: docs/fn_catalog.md != frisch generiert ($($files.Count) fn-Dateien)." -ForegroundColor Red
         $a = $md -split "`n"; $b = $onDisk -split "`n"
         $max = [Math]::Min($a.Count, $b.Count)
         for ($i = 0; $i -lt $max; $i++) {
-            if ($a[$i] -cne $b[$i]) {
+            if (-not [string]::Equals($a[$i], $b[$i], [System.StringComparison]::Ordinal)) {
                 Write-Host ("  Zeile {0}:`n    generiert: {1}`n    tracked:   {2}" -f ($i + 1), $a[$i], $b[$i]) -ForegroundColor Yellow
                 break
             }

@@ -108,8 +108,8 @@ function Invoke-Guard([string[]]$ScriptArgs) {
     finally { $ErrorActionPreference = $prev }
 }
 function Assert-Exit([string]$Name, [int]$Expect, [int]$Got) { Assert-True $Name ($Got -eq $Expect) "(erwartet Exit $Expect, got $Got)" }
-# Hook-Entscheidung: 'main' (main-Push-Sperre), 'deny' (andere Sperre, z. B. Pruefstempel), 'free'.
-function Get-HookVerdict([string]$Command) {
+# Rohe Ausgabe des Hooks (Entscheidung als JSON, leer = keine).
+function Get-HookOutput([string]$Command) {
     $payload = @{ tool_name = 'Bash'; tool_input = @{ command = $Command }; cwd = $sandbox } | ConvertTo-Json -Compress -Depth 5
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'powershell'
@@ -119,6 +119,11 @@ function Get-HookVerdict([string]$Command) {
     $p = [System.Diagnostics.Process]::Start($psi)
     $p.StandardInput.Write($payload); $p.StandardInput.Close()
     $out = $p.StandardOutput.ReadToEnd(); $p.WaitForExit()
+    return $out
+}
+# Hook-Entscheidung: 'main' (main-Push-Sperre), 'deny' (andere Sperre, z. B. Pruefstempel), 'free'.
+function Get-HookVerdict([string]$Command) {
+    $out = Get-HookOutput $Command
     if ($out -match '"permissionDecision":"deny"' -and $out -match 'MAIN-PUSH GESPERRT') { return 'main' }
     if ($out -match '"permissionDecision":"deny"') { return 'deny' }
     return 'free'
@@ -222,6 +227,12 @@ try {
     $env:MAIN_PUSH_GUARD_RUNS_FILE = $runsFile
     Assert-Hook 'main-Push ohne Lauf gesperrt'        $true  "$publish code:main"
     Assert-Hook 'Branch-Push: keine main-Sperre'      $false "$publish code"
+    Assert-Hook 'zwei Pushes in einem Befehl (;): der zweite nach main wird geprueft'  $true "$publish code; $publish code:main"
+    Assert-Hook 'zwei Pushes in einem Befehl (&&): der zweite nach main wird geprueft' $true "$publish code && $publish code:main"
+    foreach ($sw in '--all', '--mirror', '--branches') {
+        $o = Get-HookOutput "$publish $sw"
+        Assert-True "$sw nennt die Ziele nicht: gesperrt mit Hinweis" ($o -match '"permissionDecision":"deny"' -and $o -match 'einzeln') $o
+    }
     Set-Runs (New-Runs $code $all)
     Assert-Hook 'main-Push mit gruenen Laeufen: keine main-Sperre' $false "$publish code:main"
 

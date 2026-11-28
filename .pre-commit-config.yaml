@@ -767,7 +767,16 @@ repos:
         name: secret_stdin_lint (no password or token goes to a program through a PowerShell pipe - it appends a newline and, in 5.1, a BOM; PowerShell parser)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/secret_stdin_lint.ps1
+        # ls-files-ok: das Skript prueft alle getrackten .ps1; der Filter \.ps1$ loest bei jeder geaenderten .ps1 aus, Loeschungen deckt der Zwilling
         files: \.ps1$
+
+      - id: secret-stdin-lint-full
+        name: secret_stdin_lint (full run before push)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/secret_stdin_lint.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: secret-stdin-lint-test
         name: secret_stdin_lint_test (a piped secret turns secret_stdin_lint red, harmless pipes and the helper stay green; no Docker)

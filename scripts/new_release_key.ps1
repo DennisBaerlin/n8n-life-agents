@@ -3,8 +3,8 @@
 # (Offline-Schluessel + gpgv, Muster Debian SecureApt).
 #
 # Was passiert:
-#   1. gpg (aus Git for Windows) erzeugt einen Ed25519-Signierschluessel mit Passwort (fragt dieses Skript ab, geht per
-#      stdin an gpg — nie ins argv). Der private Schluessel bleibt im gpg-Speicher dieses PCs.
+#   1. gpg (aus Git for Windows) erzeugt einen Ed25519-Signierschluessel mit Passwort (fragt dieses Skript ab, geht byte-genau
+#      per stdin an gpg — nie ins argv, nie per Pipe; scripts/lib/native_process.ps1). Der private Schluessel bleibt im gpg-Speicher dieses PCs.
 #   2. Der oeffentliche Schluessel landet als Schluesselbund in provisioning/keys/release-signing.gpg und base64-
 #      eingebettet in provisioning/install.sh (RELEASE_KEY_B64; contract_lint 24 haelt beides gleich).
 #   3. Ab dem naechsten Release legt die CI das Release als Entwurf an; veroeffentlicht wird es erst nach
@@ -23,8 +23,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false)   # stdin an gpg (Passwort) als UTF-8, nicht ASCII (PS 5.1)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'lib\native_process.ps1')
 $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 function Get-GpgExe {
@@ -77,8 +77,8 @@ if ($listRc -eq 0) { throw "Im gpg-Speicher gibt es schon einen Schluessel '$uid
 
 Write-Host "Erzeuge den Ed25519-Signierschluessel '$uid' ..." -ForegroundColor Cyan
 $pass = Read-Passphrase
-$pass | & $gpg --batch --pinentry-mode loopback --passphrase-fd 0 --quick-generate-key $uid ed25519 sign never
-if ($LASTEXITCODE -ne 0) { throw 'Schluessel-Erzeugung fehlgeschlagen.' }
+$genRc = Invoke-GpgPassphrase -Gpg $gpg -Passphrase $pass -Arguments @('--quick-generate-key', $uid, 'ed25519', 'sign', 'never')
+if ($genRc -ne 0) { throw 'Schluessel-Erzeugung fehlgeschlagen.' }
 $pass = $null
 
 $fpr = ((& $gpg --batch --with-colons --list-keys $uid) | Where-Object { $_ -like 'fpr:*' } | Select-Object -First 1).Split(':')[9]

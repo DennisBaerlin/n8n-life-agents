@@ -604,6 +604,26 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/native_process_test.ps1
         pass_filenames: false
         files: ^scripts/(lib/native_process|dev/native_process_test)\.ps1$
+
+      - id: secret-stdin-lint
+        name: secret_stdin_lint (no password or token goes to a program through a PowerShell pipe - it appends a newline and, in 5.1, a BOM; PowerShell parser)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/secret_stdin_lint.ps1
+        files: \.ps1$
+
+      - id: secret-stdin-lint-test
+        name: secret_stdin_lint_test (a piped secret turns secret_stdin_lint red, harmless pipes and the helper stay green; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/secret_stdin_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(secret_stdin_lint|dev/secret_stdin_lint_test|lib/test_common)\.ps1$
+
+      - id: secret-stdin-test
+        name: secret_stdin_test (passwords and tokens reach gpg, git and the bootstrap teardown byte-exact; throwaway gpg keys, docker stand-in, no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/secret_stdin_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/(native_process|git_sandbox)|new_release_key|sign_release|dev/(secret_stdin_test|bootstrap_test_n8n))\.ps1$
       - id: hook-autoload-lint
         name: hook_autoload_lint (hook scripts use no command that Windows PowerShell 5.1 autoloads from a module - Get-FileHash, Expand-Archive ... - it is missing under pwsh 7 in CI)
         language: system

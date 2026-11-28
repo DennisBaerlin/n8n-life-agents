@@ -21,18 +21,20 @@
 --   Eingabe jsonb wie fn_set_account_interest. Rueckgabe {ok:true, schedule_interval, schedule_unit,
 --   schedule_day_of_month, posting_day_of_month, auto_post, day_count_convention, conv_reason, valid_from,
 --   closes_previous, first_period_end, first_credit_date}. RAISE bei unbekanntem Konto und bei nicht castbarer Eingabe
---   (account_id, annual_rate, schedule_interval, schedule_day_of_month, posting_day_of_month, auto_post).
+--   (account_id, auto_post); keine Zahl in annual_rate, schedule_interval, schedule_day_of_month, posting_day_of_month ->
+--   {ok:false, reason} mit dem Feldnamen.
 --   Tests: tests/db/finance/test_fn_set_account_interest.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_rate_preview(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_acct      INT      := (p->>'account_id')::int;
-    v_rate      NUMERIC  := NULLIF(p->>'annual_rate', '')::numeric;
-    v_interval  SMALLINT := NULLIF(p->>'schedule_interval', '')::smallint;
+    v_rate      NUMERIC;    -- Casts erst nach der Pruefung unten (Tippfehler -> ok:false statt Abbruch)
+    v_interval  SMALLINT;
     v_unit      finance.schedule_unit;   -- Cast erst nach dem Guard
-    v_dom       SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
-    v_pdom      SMALLINT := NULLIF(p->>'posting_day_of_month', '')::smallint;
+    v_dom       SMALLINT;
+    v_pdom      SMALLINT;
+    v_f         TEXT;
     v_from      DATE;
     v_acct_type finance.account_type;
     v_open      finance.account_interest_rates%ROWTYPE;
@@ -45,6 +47,18 @@ DECLARE
     v_first_pe  DATE;
     v_dates     JSONB;
 BEGIN
+    IF NULLIF(btrim(COALESCE(p->>'annual_rate', '')), '') IS NOT NULL AND btrim(p->>'annual_rate') !~ '^-?[0-9]+([.,][0-9]+)?$' THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'annual_rate must be a number (e.g. 2.5), got: ' || (p->>'annual_rate'));
+    END IF;
+    FOREACH v_f IN ARRAY ARRAY['schedule_interval', 'schedule_day_of_month', 'posting_day_of_month'] LOOP
+        IF NULLIF(btrim(COALESCE(p->>v_f, '')), '') IS NOT NULL AND btrim(p->>v_f) !~ '^-?[0-9]{1,4}$' THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_f || ' must be a whole number, got: ' || (p->>v_f));
+        END IF;
+    END LOOP;
+    v_rate     := replace(NULLIF(btrim(COALESCE(p->>'annual_rate', '')), ''), ',', '.')::numeric;
+    v_interval := NULLIF(btrim(COALESCE(p->>'schedule_interval', '')), '')::smallint;
+    v_dom      := NULLIF(btrim(COALESCE(p->>'schedule_day_of_month', '')), '')::smallint;
+    v_pdom     := NULLIF(btrim(COALESCE(p->>'posting_day_of_month', '')), '')::smallint;
     -- relative Datumsangabe ("next monday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
     -- Leer = heute in der Haushalts-Zeitzone (core.fn_today, nicht CURRENT_DATE = Server-Zeitzone).
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);

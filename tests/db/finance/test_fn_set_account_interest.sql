@@ -245,4 +245,18 @@ BEGIN
   RAISE NOTICE 'PASS preview [Satz 0 gueltig, gleicher Starttag abgelehnt, Start am Verzinst-bis-Tag gueltig]';
 END $$;
 
+-- Tippfehler in Zahl-Feldern (Satz, Intervall, Tage) -> Ablehnung mit Grund statt Cast-Abbruch (ein Abbruch weckte den Owner-Alert)
+DO $$
+DECLARE r jsonb; v_acc int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_irp_cast__', 'cash', 'EUR', 'active') RETURNING id INTO v_acc;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 'zwei', 'schedule_unit', 'month', 'schedule_day_of_month', -1));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%annual_rate%' THEN RAISE EXCEPTION 'FAIL [Satz kein Zahl]: %', r; END IF;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 2, 'schedule_unit', 'month', 'schedule_interval', 'x'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_interval%' THEN RAISE EXCEPTION 'FAIL [Intervall keine Zahl]: %', r; END IF;
+  r := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_acc, 'annual_rate', 2, 'schedule_unit', 'month', 'schedule_day_of_month', 'letzter'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' NOT LIKE '%schedule_day_of_month%' THEN RAISE EXCEPTION 'FAIL [Tag keine Zahl]: %', r; END IF;
+  RAISE NOTICE 'PASS preview [Tippfehler in Zahl-Feldern -> ok:false]';
+END $$;
+
 ROLLBACK;

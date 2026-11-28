@@ -155,8 +155,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [gefetchte Yahoo-Waehrung gewinnt + wird registriert]';
 
-  -- TEST 9: eine invalide gefetchte Waehrung (kein ^[A-Z]{3}$) faellt defensiv auf h.currency
-  -- zurueck statt FK-RAISE im Cron. Holding BADC: currency=EUR; Fetch currencies={BADC:'gbp'} (lowercase = invalid).
+  -- TEST 9: eine invalide gefetchte Waehrung (kein ^[A-Z]{3}$) ueberspringt das Symbol: der Kurs gilt in einer Waehrung, die
+  -- wir nicht kennen, und darf nicht in h.currency umetikettiert werden (Luecke meldet der Kurs-Hinweis). Kein FK-RAISE.
+  -- Holding BADC: currency=EUR; Fetch currencies={BADC:'gbp'} (lowercase = invalid).
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
   VALUES (v_depot, 'XX0000000BAD', 'BADC', 'Bad Fetched Ccy', 2, 'EUR');
   SELECT finance.fn_upsert_market_prices(jsonb_build_object(
@@ -164,13 +165,14 @@ BEGIN
     'currencies', jsonb_build_object('BADC', 'gbp')
   )) INTO v_result;
   SELECT currency INTO v_ccy FROM finance.market_prices WHERE symbol = 'BADC' AND as_of = v_as_of;
-  IF v_ccy IS DISTINCT FROM 'EUR' THEN
-    RAISE EXCEPTION 'FAIL [9]: invalide gefetchte Waehrung muss auf h.currency=EUR zurueckfallen (kein FK-RAISE), got % (result=%)', v_ccy, v_result;
+  IF v_ccy IS NOT NULL OR (v_result->>'ok')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'FAIL [9]: invalide gefetchte Waehrung muss das Symbol ueberspringen (kein FK-RAISE), got % (result=%)', v_ccy, v_result;
   END IF;
-  RAISE NOTICE 'PASS fn_upsert_market_prices [invalide gefetchte Waehrung -> Fallback h.currency, kein FK-RAISE]';
+  RAISE NOTICE 'PASS fn_upsert_market_prices [invalide gefetchte Waehrung -> Symbol uebersprungen, kein FK-RAISE]';
 
   -- TEST 10: ein Edelmetall-Code als gefetchte Waehrung (XAU, finance.currencies.kind metal) ist keine Kurs-Waehrung ->
-  -- Fallback h.currency, der Lauf bricht nicht per FK-Sperre ab (die anderen Symbole bleiben geschrieben).
+  -- Symbol uebersprungen (0,01 XAU sind nicht 0,01 EUR), der Lauf bricht nicht per FK-Sperre ab (die anderen Symbole
+  -- bleiben geschrieben).
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
   VALUES (v_depot, 'XX0000000GLD', 'GLDC', 'Metal Fetched Ccy', 1, 'EUR');
   SELECT finance.fn_upsert_market_prices(jsonb_build_object(
@@ -178,11 +180,11 @@ BEGIN
     'currencies', jsonb_build_object('GLDC', 'XAU')
   )) INTO v_result;
   SELECT currency INTO v_ccy FROM finance.market_prices WHERE symbol = 'GLDC' AND as_of = v_as_of;
-  IF v_ccy IS DISTINCT FROM 'EUR'
+  IF v_ccy IS NOT NULL
      OR (SELECT price FROM finance.market_prices WHERE symbol = 'BADC' AND as_of = v_as_of) IS DISTINCT FROM 11.00 THEN
-    RAISE EXCEPTION 'FAIL [10]: Metall-Code als Kurs-Waehrung muss auf h.currency=EUR zurueckfallen, got % (result=%)', v_ccy, v_result;
+    RAISE EXCEPTION 'FAIL [10]: Metall-Code als Kurs-Waehrung muss das Symbol ueberspringen, got % (result=%)', v_ccy, v_result;
   END IF;
-  RAISE NOTICE 'PASS fn_upsert_market_prices [Metall-Code als gefetchte Waehrung -> Fallback, kein FK-Abbruch]';
+  RAISE NOTICE 'PASS fn_upsert_market_prices [Metall-Code als gefetchte Waehrung -> Symbol uebersprungen, kein FK-Abbruch]';
 
 END $$;
 

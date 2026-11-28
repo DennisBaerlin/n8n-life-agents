@@ -99,6 +99,13 @@ BEGIN
          'valid_to', (a + interval '3 months')::date::text));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'end_separately' THEN
     RAISE EXCEPTION 'FAIL [6 Status + Ende]: %', r; END IF;
+  -- Betrag aendern und pausieren in einem Aufruf -> eigener Schritt (die Pause fiele sonst still weg)
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan__','new_amount',150,'status','paused'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'status_separately' THEN
+    RAISE EXCEPTION 'FAIL [6 Betrag + Status]: %', r; END IF;
+  -- unbekannter Status -> Ablehnung statt Abbruch
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan__','status','ruhend'));
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [6 unbekannter Status]: %', r; END IF;
   RAISE NOTICE 'PASS [6] eigener Schritt';
 
   -- [7] Probelauf schreibt nichts, nennt aber die letzte Ausfuehrung
@@ -223,6 +230,18 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'no_execution_before_end' THEN
     RAISE EXCEPTION 'FAIL [18 heute erledigt]: %', r; END IF;
   RAISE NOTICE 'PASS [18] letzte Ausfuehrung heute';
+
+  -- [19] pausierter Plan bekommt das Ende, aber kein Erinnerungs-Versprechen (fn_bank_end_due meldet nur aktive Koepfe)
+  r := finance.fn_create_savings_plan(jsonb_build_object('name','__spe_plan_e__','depot_name','__spe_depot__',
+         'isin','IE00B3RBWM25','symbol','VWCE','security_name','Test ETF','amount',50,
+         'schedule_interval',1,'schedule_unit','month','first_payment_date', a::text));
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan_e__','status','paused'));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'SETUP FAIL [19 pausieren]: %', r; END IF;
+  r := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__spe_plan_e__','valid_to', (a + interval '3 months')::date::text));
+  IF (r->>'ok')::boolean IS NOT TRUE
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') e WHERE e->>'value' = 'finance.note.savings_plan_end_reminder') THEN
+    RAISE EXCEPTION 'FAIL [19 pausiert mit Erinnerung]: %', r; END IF;
+  RAISE NOTICE 'PASS [19] pausierter Plan ohne Erinnerung';
 END $$;
 
 ROLLBACK;

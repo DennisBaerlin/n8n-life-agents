@@ -300,6 +300,13 @@ BEGIN
          'ref_type', 'pension', 'ref_name', '__t_h14_gibtsnicht'));
   IF r->>'code' IS DISTINCT FROM 'nothing_to_tick' OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN
     RAISE EXCEPTION 'FAIL [14 nicht gefunden]: %', r; END IF;
+  -- zwei Sachen gleichen Namens -> Rueckfrage mit Kandidaten, Aufgabe bleibt working
+  INSERT INTO finance.pension (name, pension_type) VALUES ('__t_h14_doppelt', 'occupational'), ('__t_h14_doppelt', 'private');
+  r := finance.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111', 'reason', 'done_elsewhere',
+         'ref_type', 'pension', 'ref_name', '__t_h14_doppelt'));
+  IF r->>'code' IS DISTINCT FROM 'handoff_ref_ambiguous' OR jsonb_array_length(r->'candidates') <> 2
+     OR (SELECT status FROM agent.handoff_tasks WHERE id = v_t) <> 'working' THEN
+    RAISE EXCEPTION 'FAIL [14 mehrdeutig]: %', r; END IF;
   -- gefunden: Karte im Probelauf mit "Steht im System" (Name aus den Daten) und "Bleibt offen" (Rest)
   r := core.fn_dry_run('finance.fn_cancel_handoff_task(jsonb)'::regprocedure, jsonb_build_object('handoff_task_id', v_t, 'chat_id', '111',
          'reason', 'done_elsewhere', 'ref_type', 'pension', 'ref_name', '__T_H14_BRENTE'));

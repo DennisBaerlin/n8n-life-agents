@@ -20,7 +20,8 @@
 --       call = das Soll, soweit baubar (wird als wanted gespeichert und im recheck erneut geprueft; bei
 --       goal_irregular_payments mit schedule_unit/schedule_interval).
 --     {ok:false, code:'handoff_ref_ambiguous', field, candidates:[{id, label}], reason}
---     {ok:false, code:'handoff_not_enterable', missing:[…] | unknown:[…], reason} (missing 'change' = Aenderung ohne Feld)
+--     {ok:false, code:'handoff_not_enterable', missing:[…] | unknown:[…], reason} (missing 'change' = Aenderung ohne Feld;
+--       missing until_amount = kein positiver Gesamtbetrag, auch 0)
 --     {ok:false, code:'handoff_choice_needed', options:[{key, label_key, params, calls, recommended, reason_key}], reason} mit
 --       genau einer empfohlenen; erneut mit option:<key>.
 --   Namen: finance.fn_handoff_resolve_ref. Tests: tests/db/finance/test_fn_handoff_precheck.sql
@@ -249,12 +250,17 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'call', jsonb_build_object('tool', v_tool, 'input', v_in)) || v_gone;
     END IF;
 
+    -- "bis 0" ist ein Tippfehler, keine technische Grenze: abgelehnt wie ein unlesbarer Betrag, nicht zurueckgestellt
+    IF v_until <= 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'handoff_not_enterable', 'missing', jsonb_build_array('until_amount'),
+            'reason', 'until_amount must be a positive number.');
+    END IF;
     -- Raten bis zu einem Gesamtbetrag: die DB rechnet Anzahl, Ende und Rest
     v_amt   := CASE WHEN (v_in->>'amount') ~ '^[0-9]+(\.[0-9]+)?$' THEN (v_in->>'amount')::numeric END;
     v_first := core.fn_resolve_date(v_in->>'first_payment_date');
     IF v_tool NOT IN ('create_recurring_transfer', 'create_recurring_payment')
        OR lower(COALESCE(v_in->>'schedule_unit', '')) <> 'month' OR COALESCE(v_in->>'schedule_interval', '1') <> '1'
-       OR v_amt IS NULL OR v_amt <= 0 OR v_until <= 0 OR v_first IS NULL THEN
+       OR v_amt IS NULL OR v_amt <= 0 OR v_first IS NULL THEN
         RETURN jsonb_build_object('ok', true, 'unsupported', true, 'blocked_code', 'pay_until_amount',
             'reason', 'Payments up to a total can only be split for a new monthly payment with an amount and a start date.');
     END IF;

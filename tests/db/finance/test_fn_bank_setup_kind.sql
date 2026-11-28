@@ -77,6 +77,13 @@ BEGIN
   IF finance.fn_bank_setup_note(v_rp_man, 'statement_never_seen') <> '[]'::jsonb
      OR finance.fn_bank_setup_note(v_rp_debit, 'statement_never_seen') <> '[]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [3d] kein Hinweis bei manual/Lastschrift'; END IF;
+  -- Tippfehler im Anlass faellt auch dann auf, wenn die Kette gar keinen Hinweis braucht (Art NULL)
+  BEGIN
+    PERFORM finance.fn_bank_setup_note(v_rp_man, 'statment_never_seen');
+    RAISE EXCEPTION 'FAIL [3e] unbekannter Anlass bei Art NULL still';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
+  END;
   RAISE NOTICE 'PASS [3] Notiz: Institut beim Namen, sonst _generic, sonst keine';
 
   -- [4] never_ran: frisch -> true; eine Buchung an einem Glied der Kette -> false

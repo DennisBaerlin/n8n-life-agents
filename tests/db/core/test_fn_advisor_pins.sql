@@ -56,6 +56,15 @@ BEGIN
   v := core.fn_advisor_pins(jsonb_build_object('person_id', 'erika', 'role', 'owner'));
   IF v->>'paused_advisor' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [3 Grenze aus core.config]: %', v; END IF;
   DELETE FROM core.config WHERE category = 'advisor' AND key = 'rollout_draft_stale_days';
+  -- Grenze "heiss" aus core.config advisor.draft_hot_minutes: 300 Minuten -> ein 3 Stunden alter Entwurf laeuft noch
+  DELETE FROM core.config WHERE category = 'advisor' AND key = 'draft_hot_minutes';
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'advisor', 'draft_hot_minutes', '300');
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '3 hours' WHERE domain = 'finance';
+  v := core.fn_advisor_pins(jsonb_build_object('person_id', 'erika', 'role', 'owner'));
+  IF v->>'interview_advisor' IS DISTINCT FROM 'agent.finance_advisor' OR v->>'paused_advisor' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [3 heiss-Grenze aus core.config]: %', v; END IF;
+  DELETE FROM core.config WHERE category = 'advisor' AND key = 'draft_hot_minutes';
+  UPDATE agent.advisor_plans SET updated_at = now() - interval '3 days' WHERE domain = 'finance';
 
   -- ---------- (4) Haushalts-Entwurf fuer ein Mitglied -> leer (nur der Owner) ----------
   v := core.fn_advisor_pins(jsonb_build_object('person_id', 'lena', 'role', 'partner'));

@@ -16,6 +16,12 @@ BEGIN
   IF career.fn_market_scope_key('postings','C++  Developer!','Bad Oeynhausen') <> 'postings:c-developer:bad-oeynhausen' THEN
     RAISE EXCEPTION 'FAIL [slug edge]: %', career.fn_market_scope_key('postings','C++  Developer!','Bad Oeynhausen'); END IF;
 
+  -- Umlaute und Akzente werden lesbar umschrieben (sonst "k-ln"), Grossbuchstaben wie Kleinbuchstaben
+  IF career.fn_market_scope_key('postings','Prüferin','KÖLN') <> 'postings:prueferin:koeln'
+     OR career.fn_market_scope_key('postings','Straßenbauer','Düsseldorf') <> 'postings:strassenbauer:duesseldorf'
+     OR career.fn_market_scope_key('postings','Café-Leitung','Zürich') <> 'postings:cafe-leitung:zuerich' THEN
+    RAISE EXCEPTION 'FAIL [Umlaute]: %', career.fn_market_scope_key('postings','Prüferin','KÖLN'); END IF;
+
   -- Determinismus (gleiche Eingabe -> gleicher Key; sonst nie ein Trend-/Gap-Match)
   IF career.fn_market_scope_key('salary','43412','1') <> career.fn_market_scope_key('salary','43412','1') THEN
     RAISE EXCEPTION 'FAIL [determinism]'; END IF;

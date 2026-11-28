@@ -180,6 +180,25 @@ foo();
 // Grenzfall: leerer Body liefert 400, Regel (k) im Lint
 '@ }
 )
+# Arbeits-Marken und Plan-Verweise: je Zeile ein eigener Fall (jedes Muster muss allein treffen bzw. still bleiben).
+$marks = @(
+    'Karte nur einmal senden (Owner 2026-10-22)', 'Trenner wie im Datum (Abnahme 2026-10-31)', 'Owner-Entscheid 2026-10-24: Text bleibt',
+    'so gewuenscht in der Owner-Runde', 'CR bricht bash ab (Probelauf-Fund)', 'Start-App bauen (Plan docker-freunde, Paket 6)',
+    'Laufzeit im Verbund (Paket 2)', 'Paket 3/5 des Umbaus', 'siehe Einwand 4', 'Pruefliste Nr. 7 deckt das',
+    'Rollen je Paket (P5)', 'leeres Konto entfaellt (B10)', 'Bug B4: doppelte Zeile',
+    'Karten der offenen Frage, Plan s4-berater-ux', 'Regel aus Plan *Wenn Docker schon da ist*', 'Details in .claude/plans/umbau.md',
+    'Brief unter .local/handover/brief.md'
+)
+$noMarks = @(
+    'Zustandsdatei .local/n8ntest_state.<container>.json im Haupt-Checkout', 'je Paket 1 Datei, Paket 2 folgt dem Muster nicht',
+    'Owner tippt einmal; Rate am 31.01.2027 faellig', 'Plan-Schritt des Beraters, Plan des Haushalts', '(B) von Hand mitgegebene Werte',
+    'Migration core:V012 legt die Spalte an', 'Spalte fehlt seit core:V012, core:V017 droppt sie', 'Pruefung (P) und (B) im Lint',
+    'Tests: tests/db/x/test_prop_a.sql (P5)', 'sonst der Knoten (Plan route?)', 'entscheidet die fn (Plan und Sperre in der DB)'
+)
+$i = 0
+foreach ($line in $marks)   { $i++; $cases += @{ id = "marke-$i";       ext = 'ps1'; want = 'verlauf'; src = "`$a = 1`n# $line`n" } }
+$i = 0
+foreach ($line in $noMarks) { $i++; $cases += @{ id = "marke-nicht-$i"; ext = 'ps1'; want = '';        src = "`$a = 1`n# $line`n" } }
 
 # --- Regel-Faelle: alle Dateien in einem Lint-Lauf ---------------------------------------------------------------
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('cl_' + [guid]::NewGuid().ToString('N'))
@@ -193,7 +212,7 @@ try {
     }
     # Pflicht-Koepfe: neue Skripte unter scripts/ (ohne lib/) und neue R__fn_*-Dateien. Pfad zusammengesetzt, sonst haelt doc_lint
     # die erfundenen Dateinamen fuer tote Verweise.
-    $sd = 'scripts'
+    $sd = 'scripts'; $pk = 'packages'; $pv = 'provisioning'; $tt = 'tests'
     $heads = @(
         @{ id = 'kopf-skript';       rel = "$sd/neu.ps1";      want = 'kopf'; src = "# Macht X.`n`$a = 1`n" }
         @{ id = 'kopf-skript-ok';    rel = "$sd/gut.ps1";      want = '';     src = "# Macht X.`n# Aufruf: .\scripts\gut.ps1`n# Exit-Code 0 = ok.`n`$a = 1`n" }
@@ -201,6 +220,21 @@ try {
         @{ id = 'kopf-fn';           rel = 'm/R__fn_neu.sql';      want = 'kopf'; src = "-- Liefert etwas.`nSELECT 1;`n" }
         @{ id = 'kopf-fn-ok';        rel = 'm/R__fn_gut.sql';      want = '';     src = "-- ====`n-- core.fn_gut (READ)`n--   Liefert etwas.`nSELECT 1;`n" }
         @{ id = 'kopf-fn-ohne-text'; rel = 'm/R__fn_kurz.sql';     want = 'kopf'; src = "-- fn_kurz (READ)`nSELECT 1;`n" }
+        # fn-Kopf nennt jeden Eingabe-Key, den der Rumpf aus p liest (p->'a'->>'b' nennt nur a; p_facts ist ein anderes Objekt).
+        @{ id = 'kopf-fn-keys';      rel = 'm/R__fn_keys.sql';     want = 'kopf'; src = "-- fn_keys (WRITE)`n--   Eingabe: amount (Pflicht).`nCREATE FUNCTION x.fn_keys(p jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'amount', p->>'note', p ? 'flag' `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-ok';   rel = 'm/R__fn_keysok.sql';   want = '';     src = "-- fn_keysok (WRITE)`n--   Eingabe: amount (Pflicht), note, flag, plan (Objekt).`nCREATE FUNCTION x.fn_keysok(p jsonb, p_facts jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'amount', p->>'note', p ? 'flag', p->'plan'->>'tief', p_facts->>'fremd', v.p->>'spalte' -- p->>'im_kommentar'`n `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-alias'; rel = 'm/R__fn_alias.sql';   want = '';     src = "-- fn_alias (READ)`n--   Liefert Namen.`nCREATE FUNCTION x.fn_alias(p_confirm text) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT jsonb_agg(p->>'first_name') FROM jsonb_array_elements('[]'::jsonb) p `$f`$;`n" }
+        @{ id = 'kopf-fn-keys-marke'; rel = 'm/R__fn_marke.sql';   want = '';     src = "-- fn_marke (WRITE)`n--   Schreibt etwas.`nCREATE FUNCTION x.fn_marke(p_id int, p jsonb) RETURNS jsonb LANGUAGE sql AS `$f`$ SELECT p->>'intern' -- comment-lint: ok kein Eingabe-Key, Feld der Zwischenzeile`n `$f`$;`n" }
+        # Nummern von Pruefschritten in Test-Dateien sind Adressen, keine Arbeits-Marken.
+        @{ id = 'marke-test-datei';  rel = "$tt/db/x/test_iso.sql"; want = '';    src = "-- (B1) x darf lesen`nSELECT 1;`n" }
+        # Build-Defs, Installer-Bibliotheken und Top-Skripte des Installers; "Dot-gesourct von" nur mit vorhandener Datei.
+        @{ id = 'kopf-def';          rel = "$pk/x/build/workflows/neu.ps1";  want = 'kopf'; src = "# Baut X.`nfunction Build-X { 1 }`n" }
+        @{ id = 'kopf-def-ok';       rel = "$pk/x/build/workflows/gut.ps1";  want = '';     src = "# Baut X: Ausloeser Y, Ausgang {ok}.`n# Dot-gesourct von build.ps1.`nfunction Build-X { 1 }`n" }
+        @{ id = 'kopf-def-quelle';   rel = "$pk/x/build/workflows/tot.ps1";  want = 'kopf'; src = "# Baut X: Ausloeser Y, Ausgang {ok}.`n# Dot-gesourct von gibt_es_nicht_helfer.ps1.`nfunction Build-X { 1 }`n" }
+        @{ id = 'kopf-lib-sh';       rel = "$pv/lib/neu.sh";     want = 'kopf'; src = "# Helfer fuer X.`nfoo() { :; }`n" }
+        @{ id = 'kopf-lib-sh-ok';    rel = "$pv/lib/gut.sh";     want = '';     src = "# shellcheck disable=SC2034  # Grund`n# gut.sh $([char]0x2014) Helfer fuer X.`n# Gesourct von provision.sh.`nfoo() { :; }`n" }
+        @{ id = 'kopf-top-sh';       rel = "$pv/neu_top.sh";     want = 'kopf'; src = "#!/usr/bin/env bash`n# Macht X.`necho x`n" }
+        @{ id = 'kopf-top-sh-ok';    rel = "$pv/gut_top.sh";     want = '';     src = "#!/usr/bin/env bash`n# Macht X.`n# Aufruf: bash gut_top.sh`n# Exit 0 = ok.`necho x`n" }
     )
     foreach ($h in $heads) {
         $f = Join-Path $dir $h.rel

@@ -2,7 +2,7 @@
 # gate_wiring_lint.ps1 -- jeder Test in scripts/dev (*_test.ps1) haengt an einem Gate oder sagt im Kopf, warum nicht (hartes Gate).
 # Ein Test, den nichts ausfuehrt, bleibt gruen und beweist nichts: er driftet unbemerkt, bis ihn jemand von Hand startet.
 #   Gate   = der Dateiname steht in .pre-commit-config.yaml (Commit/Push), in scripts/dev/run_free_gates.ps1 (freie Suiten,
-#            daraus baut die CI ihre Matrix) oder in einem Workflow unter .github/workflows.
+#            daraus baut die CI ihre Matrix) oder in einem Workflow unter .github/workflows; eine Nennung im Kommentar zaehlt nicht.
 #   Marker = in den ersten 40 Zeilen eine Zeile `# gate: manual (<Grund>)`: der Test laeuft nur auf Zuruf (echte Schluessel,
 #            eigener Docker-Verbund, bezahlte Dienste). Der Grund ist Pflicht und steht dort, wo man den Test oeffnet.
 #   Marker UND Gate ist ein Fehler: der Marker waere veraltet und verschwiege, dass der Test laeuft.
@@ -27,7 +27,9 @@ $wf = Join-Path $Root '.github/workflows'
 if (Test-Path $wf) {
     foreach ($f in Get-ChildItem $wf -File | Where-Object { $_.Extension -in '.yml', '.yaml' }) { $carriers.Add([System.IO.File]::ReadAllText($f.FullName, $u8)) }
 }
-$gateText = $carriers -join "`n"
+# Kommentare der Traeger zaehlen nicht (YAML und PowerShell: `#` am Zeilenanfang oder nach Leerraum): ein Verweis wie
+# "lokal dasselbe: <test>" fuehrt nichts aus. Trifft der Schnitt einmal ein `#` in einem Befehl, wird der Lint rot statt still gruen.
+$gateText = (($carriers -join "`n") -split "`r?`n" | ForEach-Object { $_ -replace '(^|\s)#.*$', '' }) -join "`n"
 
 $dev = Join-Path $Root 'scripts/dev'
 $tests = @()

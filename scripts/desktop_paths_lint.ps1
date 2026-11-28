@@ -8,6 +8,8 @@
 #       desktop-build.yml (plus $ImplicitInputs) steht in push UND pull_request;
 #   (B) beide Workflow-Dateien stehen in beiden Listen;
 #   (C) push und pull_request nennen dieselben Muster (eine Liste, zwei Ausloeser: sonst baut der PR nicht, was der Push baut).
+#   Ausserdem rot: ein include auf eine fehlende Datei, ein Glob-Muster in bundle.resources, ein Ausloeser ohne paths:-Block
+#   (Block-Form erwartet).
 # Grenze: Der Lint sieht nur Pfade, die als Text dastehen. Was ein Skript selbst nachlaedt (Read-UiTokens), steht in
 # $ImplicitInputs und ist von Hand zu pflegen.
 # Nicht aufgenommen: Shell-Skripte unter provisioning/lib, die die App nur ueber `docker run ... lifeagents <verb>` im master

@@ -3,22 +3,24 @@
 # Prüft: genau eine Rollout-Nachricht nach der Antwort, keine bei offener Karte oder Rückfrage, Antwort kommt auch bei Fehler im Sub,
 # Übergabe-Liste nicht doppelt, Bestandsplan bekommt Schritt 0, Wortlaut der Liste samt Folge-Zeile aus dem Textkatalog, stilles
 # Warten auf offene Einträge (zurückgestellte halten nicht auf). Laufzeit-Szenarien (Repo-scenarios bleibt unberührt).
-# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1. Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1]. Exit = Anzahl roter Fälle.
+# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1; liest .env.
+# Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1] [-Timeout 120]. Exit = Anzahl roter Fälle.
+# Seiteneffekte im Substrat: leert finance-Übergaben und -Pläne (agent.handoff_tasks, agent.advisor_plans), agent.hitl_pending und die
+# plan_rollout-Merker, schaltet cron_enable plan_rollout am Ende aus; ersetzt kurz core.advisors.entry_effects_fn und scenarios.json
+# der Mock-LLM (danach zurück).
 param([string[]]$Id, [string]$ForceAbortId, [int]$Timeout = 120)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables (Join-Path $RepoRoot '.env')
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection; $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Container = $conn.Container
 $state = Get-TestN8nState
 if (-not $state.mock_llm -or -not $state.mock_telegram) { throw 'Mock-LLM und Mock-Telegram aktivieren.' }
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
-$Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 function Invoke-Sql([string]$Sql) { Invoke-SqlViaTempFile -Container $Container -Sql $Sql }
@@ -116,7 +118,7 @@ $Cases = @(
     try { Send-Text 'ROLLOUTPING vier' } finally { Invoke-Sql 'ALTER FUNCTION core.fn_plan_rollout_claim_off(jsonb) RENAME TO fn_plan_rollout_claim;' | Out-Null }
     if (-not (Has-Answer 'Alles klar')) { throw 'Antwort fehlt' }
     Assert-Equal @(Get-Rollout).Count 0 'Rollout-Nachrichten'
-    # Messung errorWorkflow: Claim laeuft mit onError continue, also ohne Fehler-Workflow.
+    # errorWorkflow greift hier nicht: Claim laeuft mit onError continue, also ohne Fehler-Workflow.
     Assert-Equal @(Get-Sends | Where-Object { [string]$_.body.text -match 'core.sub_plan_rollout_next' }).Count 0 'Owner-Alarm'
  } }
  @{ id = 'rr5'; name = 'Uebergabe-Liste schon gesendet: kein Doppel'; run = {
@@ -161,6 +163,9 @@ $Cases = @(
 )
 $failed = 0; $ran = 0
 try {
+    # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf (wie scripts/infra_test.ps1).
+    $missing = @($Id | Where-Object { $_ -notin @($Cases | ForEach-Object { $_.id }) })
+    if ($missing.Count) { throw "Testfall nicht gefunden: $($missing -join ', ')." }
     foreach ($c in $Cases) {
         if ($Id.Count -and $Id -notcontains $c.id) { continue }
         $ran++

@@ -17,6 +17,8 @@
 #      R__fn_provision_package_roles.sql (TO %I, %I == (v_rw, v_ro)). Single %I == v_rw -> kein Read-Role-
 #      Grant, exclude (fn_set_onboarding_section/fn_check_write_permission/fn_should_notify/fn_notify_resolve).
 #      Ignoriert: (i) Blanket GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA; (ii) jeder GRANT SELECT/USAGE.
+#      Eine per-fn GRANT-EXECUTE-Zeile, die der Parser nicht liest, ist ein Fehler (bewusst dynamische Form: Marker
+#      'lint-ignore: role-test-lint' in der Zeile).
 #
 # Match: schema-qualifizierter Name (core.fn_x) in mind. einem SET-LOCAL-ROLE...RESET-ROLE-Segment (nur
 # der Name, nie die Signatur: der Grant traegt arg-Typen, der Test arg-Werte). No-arg-fns per Name
@@ -31,8 +33,10 @@
 # Zweig (D): jede fn, die ein Workflow unter einer engen Rolle aufruft (auch _rw), hat einen SET-ROLE-Test in tests/db oder
 # steht in scripts/build/role_test_gap_allowlist.json (schrumpfend, Orphan = Fehler); die Rolle/fn-Paare stehen erzeugt in
 # tests/db/cross/test_role_catalog_exec.sql (Ausfuehrungsrechte samt Helfern) und test_role_call_probe.sql (Aufruf unter der
-# Rolle, Tabellenrechte im Koerper), -WriteCatalog schreibt sie neu.
+# Rolle, Tabellenrechte im Koerper); eine veraltete Paar-Liste ist ein Fehler, -WriteCatalog schreibt sie neu (nur ohne andere
+# Fehler).
 #
+# Parser-Selbst-Asserts: 0 fns im Scope, 0 Rollen-Segmente, 0 REVOKE-FROM-public-fns oder 0 Workflow-Aufrufe sind ein Fehler.
 # Aufruf: .\scripts\role_test_lint.ps1 [-Verbose] [-WriteCatalog]
 # Kein LLM, kein Netz, kein Substrat. Exit-Code = Anzahl Fehler.
 param([switch]$Verbose, [switch]$WriteCatalog)

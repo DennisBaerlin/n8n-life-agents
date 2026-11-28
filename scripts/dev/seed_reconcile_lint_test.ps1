@@ -6,8 +6,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $lint = Join-Path $PSScriptRoot '..\seed_reconcile_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
 
 # Pfade zusammengesetzt: doc_lint liest ausgeschriebene Repo-Pfade als Verweise auf echte Dateien.
 $SEED = 'provisioning/lib/seed_data.sh'
@@ -16,19 +16,7 @@ function Seed([string[]]$Calls) { "_seed_reconcile() {`n  :`n}`n# _seed_reconcil
 function Sql([string[]]$Tabs) { "DECLARE`n  v_tabs REGCLASS[] := ARRAY[" + (($Tabs | ForEach-Object { "'$_'" }) -join ', ') + "]::regclass[];`n" }
 
 function Test-Case([string]$Name, [string[]]$Calls, [string[]]$Tabs, [bool]$ExpectRed, [string]$ExpectText) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('srl_' + [guid]::NewGuid().ToString('N'))
-    try {
-        foreach ($p in @(@($SEED, (Seed $Calls)), @($TEST, (Sql $Tabs)))) {
-            $f = Join-Path $root $p[0]
-            New-Item -ItemType Directory -Path (Split-Path $f) -Force | Out-Null
-            [System.IO.File]::WriteAllText($f, $p[1], $u8)
-        }
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { if (Test-Path $root) { Remove-Item -Recurse -Force $root } }
+    Test-LintCase -Lint $lint -Name $Name -Files @{ $SEED = (Seed $Calls); $TEST = (Sql $Tabs) } -ExpectRed $ExpectRed -ExpectText $ExpectText
 }
 
 Test-Case 'gleiche Mengen sind gruen' @('core.a_tab', 'core.b_tab') @('core.b_tab', 'core.a_tab') $false ''

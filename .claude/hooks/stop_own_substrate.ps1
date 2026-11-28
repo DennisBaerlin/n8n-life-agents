@@ -1,6 +1,6 @@
-# SessionEnd-Hook: raeumt das n8n-Test-Substrat DIESES Worktrees ab (nie im Haupt-Checkout), wenn die Session endet (je Substrat 1-1,5 GB
-# RAM; liegengebliebene Substrate liessen den 16-GB-Host auslagern). Trifft NUR Container mit den Labels
-# lifeagents.substrate=n8n UND lifeagents.worktree=<dieser Checkout> (gesetzt von bootstrap_test_n8n.ps1) ->
+# SessionEnd-Hook: raeumt das n8n-Test-Substrat dieses Worktrees ab (nie im Haupt-Checkout), wenn die Session endet
+# (liegengebliebene Substrate fressen RAM). Trifft nur Container mit den Labels
+# lifeagents.substrate=n8n und lifeagents.worktree=<dieser Checkout> (gesetzt von bootstrap_test_n8n.ps1) ->
 # nie das Substrat einer anderen Session, nie Alt-Container ohne Label. db_test-Container bleiben (je ~50 MB).
 # Docker-Verbund: scripts/lib/substrate_reservations.ps1 (Get-WorktreeComposeTargets), Test scripts/dev/substrate_reservation_test.ps1.
 # Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1 (z. B. Owner-Fenster-Suiten nach Session-Ende).
@@ -21,9 +21,13 @@ try {
     $common = "$(git -C $cwd rev-parse --path-format=absolute --git-common-dir 2>$null)".Trim()
     if (-not $gitDir -or $gitDir -eq $common) { exit 0 }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { exit 0 }
+    # 'Continue' um die Docker-Aufrufe: unter 'Stop' macht PowerShell 5.1 aus einer stderr-Zeile trotz 2>$null einen Abbruch, und das
+    # aeussere catch uebersprange die uebrigen Container, die Zustandsdateien und den Verbund-Abbau.
+    $ErrorActionPreference = 'Continue'
     $names = @(docker ps -a --format '{{.Names}}' --filter 'label=lifeagents.substrate=n8n' --filter "label=lifeagents.worktree=$repo" 2>$null | Where-Object { $_ })
     # -v: das Image deklariert VOLUME; ohne -v bliebe je Container ein namenloses Volume verwaist liegen.
     foreach ($n in $names) { docker rm -fv $n 2>$null | Out-Null }
+    $ErrorActionPreference = 'Stop'
     # Zustandsdatei je Container liegt im Haupt-Checkout (scripts/lib/n8ntest_state_file.ps1) und wird von allen Worktrees
     # geteilt: nur die der eben abgebauten Container loeschen, nie per Muster.
     $mainLocal = Join-Path (Split-Path $common -Parent) '.local'

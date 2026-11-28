@@ -33,6 +33,10 @@
 #                                                          (Mehr-Tool-Runden im Gedaechtnis wieder einlesen)
 #
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 + .env TEST_HARNESS_SECRET.
+# Je Lauf zusaetzlich feste Faelle (nicht bei -Discover): mit Orchestrator-Ziel draft-fail, memory-thinking, step-limit,
+# thinking-keepalive (~40 s), thinking-loop-end; mit Agent-Ziel, das postgres_select hat, sql-guard.
+# Seiteneffekte in der Container-DB: Fixtures und Owner-Pairing, je Fall Onboarding-Zustand, Chat-Gedaechtnis und __E2E__-Daten;
+# wartende Gate-Executions des Ziels werden gestoppt.
 # Exit-Code = Anzahl Fehler.
 #   ... -Id oc01,oc02                                      # mehrere Faelle (unbekannte id = Abbruch vor dem Lauf)
 #   ... -ForceAbortId oc01                                 # Testschalter: wirft am Anfang dieses Falls (oder von draft-fail) eine
@@ -66,9 +70,7 @@ $WriteTools = @($WriteTools | ForEach-Object { $_ -split ',' } | ForEach-Object 
 $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ebenso -Id "a,b"
 
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables "$RepoRoot\.env"
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn        = Get-TestN8nConnection
 $N8N_URL     = $conn.Url
@@ -374,8 +376,8 @@ foreach ($tc in $cases) {
     }
 }
 
-# Die Zusatzfaelle unten setzen keinen Onboarding-Vorzustand: ohne Ruecksetzen erbten sie den des letzten Falls (ein Fall mit
-# "onboarding": "unknown" am Ende -> der Buchhalter antwortet mit "erst Haushalt", memory-thinking sah 0 Antworten).
+# Die Zusatzfaelle unten setzen keinen Onboarding-Vorzustand: ohne Ruecksetzen erbten sie den des letzten Falls (z. B.
+# "onboarding": "unknown" -> der Agent antwortet nur mit "erst Haushalt").
 if (@($cases).Count -gt 0 -and -not $Discover) {
     Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
     Set-TestPackageOnboarding -Container $Container -Sections $null

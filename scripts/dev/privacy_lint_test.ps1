@@ -1,6 +1,8 @@
 ﻿#Requires -Version 5.1
-# privacy_lint_test.ps1 -- Regressionstest fuer scripts/privacy_lint.ps1 in einem Wegwerf-Repo (mit Worktree). Alle Werte
-# sind erfunden. Kein Substrat, kein Netz, kein LLM; prek startet ihn, sobald das Lint oder dieser Test sich aendert.
+# privacy_lint_test.ps1 -- Regressionstest fuer scripts/privacy_lint.ps1 und scripts/owner_fact_lint.ps1 in einem Wegwerf-Repo
+# (mit Worktree), dazu die Schreibweisen aus lib/privacy_terms.ps1 und die Pruefsumme der finance:V019-Reparatur in
+# core.schema_version_init.sql (liest beide echten Dateien). Alle Werte sind erfunden. Kein Substrat, kein Netz, kein LLM;
+# prek startet ihn, sobald eine dieser Dateien sich aendert.
 # Usage:  .\scripts\dev\privacy_lint_test.ps1
 # Exit-Code = Anzahl Fehler.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -256,7 +258,7 @@ if ($expected -ceq $actual) { $passed++; Write-Host '  [PASS] Reparatur nennt di
 else { $failed++; Write-Host '  [FAIL] Reparatur nennt nicht die Summe der Datei' -ForegroundColor Red }
 
 Write-Host 'privacy_lint_test: Baum-Modus, gebuendeltes Regex gegen Einzel-Teilstring (gleiche Funde auf einem Korpus)'
-# (7b) Der Baum-Modus sucht per git grep -P mit EINEM Regex statt je Begriff per -F; Schutz = dieselben Funde. Alle Begriffe erfunden.
+# (7b) Der Baum-Modus sucht per git grep -P mit einem Regex statt je Begriff per -F; Schutz = dieselben Funde. Alle Begriffe erfunden.
 $uml = [char]0xFC; $ae = [char]0xE4; $euro = [char]0x20AC; $dash = [char]0x2013
 $corpusTerms = @('Zauberwort', "Gr${uml}nfink", 'ab-cd 12', 'x@probe.test', '12345.67', "K${ae}se$euro", 'Kleinst')
 $corpusFiles = [ordered]@{

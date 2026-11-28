@@ -12,6 +12,8 @@
 # Danach: die beiden geaenderten Dateien committen (Leitung/Release-Ablauf) und den privaten Schluessel offline sichern
 # (USB-Stick oder Passwort-Manager, Befehl steht am Ende). Geht er verloren, lassen sich keine Updates mehr ausliefern.
 # Voraussetzung: gpg (PATH oder Git for Windows). Existiert schon ein Schluessel (Datei oder gpg-Speicher), bricht das Skript mit throw ab.
+# Mit dem gpg aus Git for Windows wird vorab 'use-keyboxd' in common.conf des gpg-Home (GNUPGHOME, sonst %USERPROFILE%\.gnupg)
+# auskommentiert (keyboxd startet dort nicht).
 #
 # Usage: .\scripts\new_release_key.ps1 [-Name 'n8n-life-agents release signing'] [-Email <adresse>]
 # Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.

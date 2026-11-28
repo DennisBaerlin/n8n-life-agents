@@ -1,8 +1,9 @@
 ﻿#Requires -Version 5.1
 # Bausteine von scripts/prop_test_lint.ps1 (dot-sourced, auch vom Selbsttest scripts/dev/prop_test_lint_test.ps1):
 # welche fn aendert eine Tabelle, aus der Termine, Fristen oder Betraege abgeleitet werden, und welche davon ruft ein
-# Eigenschafts-Test (tests/db/**/test_prop_*.sql) auf. Alle Funktionen nehmen -Root, damit der Selbsttest sie in
-# einem Wegwerf-Baum fahren kann.
+# Eigenschafts-Test (tests/db/**/test_prop_*.sql) auf; dazu Get-FnDefinitionDuplicates (derselbe fn-Name in mehreren
+# SQL-Dateien, die nicht immer zusammen laufen). Alle Funktionen nehmen -Root, damit der Selbsttest sie in einem
+# Wegwerf-Baum fahren kann.
 
 # Tabellen, deren Zeilen eine lesende Sicht in Termine, Fristen oder Summen umrechnet. Eine fn, die eine davon per
 # UPDATE aendert, kann fuer sich richtig schreiben und trotzdem die Vorschau verfaelschen.

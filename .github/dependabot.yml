@@ -1,8 +1,8 @@
-# Dependabot — automated dependency PRs. github-actions is our ONLY dependency surface:
-# the workflows pin third-party actions by SHA (ci.yml / release.yml), and a pinned SHA never
-# auto-updates — Dependabot is what keeps those pins current (with the CVE/changelog in the PR).
-# No npm/pip/cargo/go ecosystems: prek bootstraps all linter toolchains in isolation, nothing is
-# declared as a project dependency. Supply-chain posture: grouped (one PR, less churn) + a cooldown
+# Dependabot — automated dependency PRs, for github-actions only: the workflows pin third-party
+# actions by SHA, and a pinned SHA never auto-updates — Dependabot is what keeps those pins current
+# (with the CVE/changelog in the PR). Not listed here, so without version-update PRs from this file:
+# cargo (provisioning/desktop), npm (tests/install) and the base images in the Dockerfiles. The linter
+# toolchains need no entry: prek bootstraps them in isolation. Supply-chain posture: grouped (one PR, less churn) + a cooldown
 # so a freshly published (possibly compromised) action version is not proposed on day zero.
 version: 2
 updates:

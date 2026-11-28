@@ -1,4 +1,4 @@
-# PreToolUse-Hook (Bash|PowerShell): Solange .claude/no_push.txt im Haupt-Checkout liegt, geht nichts aus einer Claude-Session
+# PreToolUse-Hook (Bash|PowerShell): Solange .claude/no_push.txt im eigenen oder im Haupt-Checkout liegt, geht nichts aus einer Claude-Session
 # nach GitHub (Owner-Entscheid). Hart per 'deny', damit gar keine Freigabe-Karte beim Owner ankommt.
 #
 # Geprueft wird (Text-Abgleich, im Zweifel den Befehl trennen):

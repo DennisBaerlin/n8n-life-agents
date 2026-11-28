@@ -1,11 +1,11 @@
-# Linux-Einstieg auf frischem Debian 12 (Paket L2): ein Debian-Cloud-Image laeuft als KVM-VM auf dem ubuntu-24.04-Runner, mit LANG=C wie
+# Linux-Einstieg auf frischem Debian 12: ein Debian-Cloud-Image laeuft als KVM-VM auf dem ubuntu-24.04-Runner, mit LANG=C wie
 # eine Proxmox-Vorlage und ohne vorinstalliertes Docker. Darin laeuft der echte Einstieg provisioning/setup.sh. Zwei Jobs, ein Skript
 # (tests/install/debian_vm.sh, dort Ablauf und Grenzen):
 #   klick   - Fragebogen im Browser (Playwright) mit erfundenen Werten, Telegram-Attrappe; keine Secrets, kein Environment.
 #   answers - Antwort-Datei-Weg ohne Fragebogen mit den echten Test-Zugaengen: Tailscale-Tunnel (Funnel), Test-Bot, Anthropic-Schluessel;
 #             prueft Tunnel ready, getWebhookInfo, oeffentlichen Pfad, Kosten 0; danach Zweitlauf, Abbau, Abmelden.
 # Secrets nur ueber das Environment install-test (Branch-Regel main), nur im env: des einen Schritts "answers", nur bei
-# schedule/workflow_dispatch (der Aufruf vor dem Release folgt mit dem Release-Paket), kein Artefakt-Upload. Schnittstelle:
+# schedule/workflow_dispatch, kein Artefakt-Upload. Schnittstelle:
 # docs/reference/tests.md *Test-Zugaenge*.
 # Rot ohne /dev/kvm = Runner-Ausfall (Meldung im Schritt "KVM"), Lauf wiederholen. Kein Required Check.
 name: linux-setup-debian

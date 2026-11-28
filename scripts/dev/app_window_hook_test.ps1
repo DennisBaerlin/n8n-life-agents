@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Test des Hooks .claude/hooks/enforce_app_window.ps1 (Mini-App nur mit Zustimmung des Owners): fuettert ihn mit Tool-Aufrufen
-# wie Claude Code (JSON auf stdin) und prueft deny/allow. Kein Substrat, keine Kosten, schreibt nur app_grant.txt in einen
-# eigenen Temp-Klon des Hook-Ordners (nie ins echte .claude/).
+# wie Claude Code (JSON auf stdin) und prueft deny/allow. Kein Substrat, keine Kosten, braucht git. Legt unter $env:TEMP eine
+# Sandbox an (Hook-Kopie, app_grant.txt, Wegwerf-Repos und -Worktree mit Testdateien) und loescht sie am Ende; nie ins echte .claude/.
 # Usage:  .\scripts\dev\app_window_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

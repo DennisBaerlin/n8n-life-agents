@@ -1,7 +1,8 @@
 # CI — the unavoidable second enforcement point (the local prek gate is the first). Runs the
-# SAME commit-stage hooks as the developer's machine via the SAME runner OS (Windows → `powershell`
+# same commit-stage hooks as the developer's machine via the same runner OS (Windows → `powershell`
 # resolves; our domain linters are PowerShell). Live/LAN hooks (db_test/infra_test) are pre-push
 # stage and excluded here — no VM is reachable from CI. Pinned prek + SHA-pinned actions (zizmor).
+# Further jobs: gitleaks (full history), wizard (provisioning/wizard tests), comment-lint (new comment lines of the PR).
 name: ci
 
 on:
@@ -37,7 +38,7 @@ jobs:
           "$env:RUNNER_TEMP\prek" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       # The `squawk` hook is language: system on a prebuilt binary (prek can't fetch a Rust binary —
-      # j178/prek#681). Unlike dotenv-linter (local-only) we DO gate migrations in CI, so put the
+      # j178/prek#681). Unlike dotenv-linter (local-only) we do gate migrations in CI, so put the
       # pinned squawk.exe on PATH here. Single bare .exe asset — no archive to expand.
       - name: Install squawk (pinned)
         shell: pwsh
@@ -56,7 +57,7 @@ jobs:
       # The ps-lint hook is a `language: system` hook that invokes `powershell` (Windows PowerShell
       # 5.1) and imports PSScriptAnalyzer. The runner image preinstalls PSScriptAnalyzer, but does not
       # document that it is visible to the 5.1 host (vs pwsh 7 only). Guard it deterministically in the
-      # SAME 5.1 host the hook uses: install only if the module isn't already importable there.
+      # same 5.1 host the hook uses: install only if the module isn't already importable there.
       - name: Ensure PSScriptAnalyzer for the ps-lint hook (Windows PowerShell 5.1)
         shell: powershell
         run: |
@@ -71,13 +72,13 @@ jobs:
           # Two hooks are skipped here, each with a dedicated alternative:
           #  - dotenv-linter: local-only style hook (prebuilt binary on the dev PATH; prek can't pull
           #    a prebuilt Rust binary — issue j178/prek#681). Substantive .env invariants live in
-          #    doc_lint, which DOES run above.
-          #  - gitleaks: the prek hook scans the STAGED diff (`--staged`), which is empty on a fresh
+          #    doc_lint, which does run above.
+          #  - gitleaks: the prek hook scans the staged diff (`--staged`), which is empty on a fresh
           #    CI checkout. The dedicated `gitleaks` job below scans the full history + tree instead.
           SKIP: dotenv-linter,gitleaks
         run: prek run --all-files --hook-stage pre-commit --show-diff-on-failure
 
-  # Secret scan — the unavoidable CI net beside the local prek hook. Runs over the FULL git history
+  # Secret scan — the unavoidable CI net beside the local prek hook. Runs over the full git history
   # (fetch-depth: 0), not just the tree, so a secret added-then-removed within a PR is still caught.
   # Pinned prebuilt binary (no third-party action to trust); ubuntu is fine + fast for a pure scan.
   gitleaks:

@@ -5,26 +5,28 @@
 # hand-gepflegten Namenslisten (sonst driftet das Lint selbst).
 #
 # Checks (die Nummern sind stabile IDs, keine Lesereihenfolge; im Code liegt Block 6 vor Block 5):
-#   1) Backtick-Tokens mit Pfad-Gestalt in **/CLAUDE.md -> muessen auf Platte existieren.
-#   2) Bare Dateinamen-Tokens (*.ps1/*.sql) in der Doku -> muessen irgendwo unter scripts/db/tests/packages/docs liegen.
+#   1) Backtick-Tokens mit Pfad-Gestalt (scripts|tests|packages|docs|.claude) im Doku-Korpus (CLAUDE.md, SKILL.md,
+#      docs/reference/*.md, .claude/rules/**/*.md) -> muessen existieren (gitignorte Pfade ausgenommen).
+#   2) Bare Dateinamen-Tokens (*.ps1/*.sql) in der Doku -> muessen irgendwo unter scripts/tests/packages/docs liegen.
 #   3) Harte Case-Counts / ID-Ranges im gesamten Doku-Korpus -> Verstoss (Counts via .Count verifizieren).
 #   3b) Gezaehlte Agenten ("sieben Spezialisten") in Doku-Korpus, README/AGENTS/CONTRIBUTING und Site-Quellen.
 #   4) Set-Gleichheit: Write-Tools-Tabelle (korpusweit aus allen CLAUDE.mds extrahiert, mit
 #      Fehlt-Guard statt Crash) <-> packages/*/build/workflows/tools/*.ps1
 #      (Ausnahmen = Core-Host-Tools + als intern markierte Tools, siehe $InternalToolMarker).
 #   5) Pfad-Literale in scripts/**/*.ps1 + packages/*/build/**/*.ps1 (gequotete Strings/Anker-Regexes auf
-#      scripts|db|tests|packages|docs) -> muessen existieren.
+#      scripts|db|tests|packages|docs) -> muessen existieren (ausgenommen doc_lint.ps1, layout_lint.ps1 und Kommentarzeilen).
 #   6) Fixture-Single-Source: fixtures.json subset util_seed_test_fixtures.sql.
-#   7) Env-Template-Konvention (genau .env.example; envMap-Keys TEST_-praefixt + dokumentiert).
+#   7) Env-Template-Konvention (genau .env.example; envMap-Keys TEST_-praefixt + dokumentiert; jeder credentials.*.env-Key
+#      eines Manifests steht als TEST_<key> in Get-TestInstallEnvMap).
 #   8) Sektions-Anker: Prosa-Pointer `datei.md` *Sektion* (Datei-Token auch als Markdown-Link
 #      [x](datei.md), Separator auch '->') -> Ziel-Datei existiert und traegt eine Ueberschrift/
 #      einen Fett-Lead, der die Sektion (normalisiert, an Wort-/Kompositum-Grenze) enthaelt;
 #      Nested-Form *A -> B* segment-weise. 8b) interne Anker (s./siehe/-> *X*, *X* oben|unten)
-#      -> Sektion in derselben Datei. Korpus fuer 8/8b zusaetzlich README/AGENTS/CONTRIBUTING/SECURITY/docs (ohne
-#      generierte Kataloge) + .claude/skills/*/SKILL.md. Selbst-Asserts vor dem Scan (synthetische
+#      -> Sektion in derselben Datei. Korpus fuer 8/8b zusaetzlich README/AGENTS/CONTRIBUTING/SECURITY und docs/*.md
+#      (nicht rekursiv, ohne fn_catalog.md) + .claude/skills/*/SKILL.md. Selbst-Asserts vor dem Scan (synthetische
 #      Positiv-/Negativ-Beispiele) gegen stilles Sterben der Extraktion: schlagen sie fehl, bricht das Lint hart ab.
 #   9) Laengen-Gate fuer jede CLAUDE.md (hart > 200 Zeilen oder > 14 KB; Root > 10 KB; Hinweis Root > 150 Zeilen).
-#   9b) SKILL.md hart > 10 KB; description hart > 300 Zeichen.
+#   9b) SKILL.md hart > 10 KB; description hart > 300 Zeichen; kein SKILL.md oder keine description-Zeile ist ebenfalls ein Fehler.
 #  10) Site-Befehls-Paritaet: Befehls-Tabelle der Showcase-Site
 #      (docs/site/content/docs/befehle.md) <-> Manifest-commands (packages/*/manifest.json
 #      .commands.list[].cmd) + Hidden-Allowlist (extrahiert aus scripts/command_lint.ps1 $hidden,

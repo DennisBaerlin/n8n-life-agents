@@ -4,7 +4,8 @@
 # (Headless-Chrome, sonst Edge; Muster render_stickers.ps1). Die MP4-Dateien (H.264, ohne Ton, 720 x 1120) sind committet; Telegram sendAnimation nimmt sie an.
 # Knopf-Text = core.app.menu_button (dieselbe Quelle wie der echte Knopf), Titel = core.app.intro_title.
 # -PreviewTitles: JSON-Datei {"<sprache>":"<Titel>"} fuer eine Vorschau, solange der Key noch nicht im Katalog steht.
-# Prueft: MP4-Kopf (ftyp), avc1, Breite/Hoehe 720 x 1120, unter 2 MB (Telegram erlaubt 50 MB). Kein Netz, keine DB, kein Container.
+# Prueft: MP4-Kopf (ftyp), avc1, Breite 720 (die Hoehe ungeprueft), unter 2 MB (Telegram erlaubt 50 MB). Kein Netz, keine DB, kein
+# Container; fuer den Rueckkanal der Seite lauscht ein HttpListener auf 127.0.0.1 (Zufalls-Port ab 58400).
 #   .\scripts\dev\render_app_intro.ps1 [-PreviewTitles .local\titel.json]
 # Exit 0, sonst Abbruch mit Grund.
 param([string]$PreviewTitles)

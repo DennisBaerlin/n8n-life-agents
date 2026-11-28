@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Selbsttest des -Suites-Filters von run_free_gates.ps1: ein Filter fahren nur die genannten Suiten (frueher liefen trotz Filter alle).
+# Selbsttest von run_free_gates.ps1: ein -Suites-Filter faehrt nur die genannten Suiten, die CI-Matrix (-ListJobs) traegt jede Suite genau einmal, und der Grund einer abgebrochenen Suite steht lesbar im Log.
 # Kein Substrat, keine Kosten: -ListPlan gibt den Plan aus, ohne etwas zu starten.
 # Usage:  .\scripts\dev\run_free_gates_filter_test.ps1
 # Exit-Code = Anzahl Fehler.
@@ -11,7 +11,7 @@ $failed = 0
 function Assert-That([bool]$Cond, [string]$Name) {
     if ($Cond) { Write-Host "  [PASS] $Name" -ForegroundColor Green } else { Write-Host "  [FAIL] $Name" -ForegroundColor Red; $script:failed++ }
 }
-# PS 5.1: ConvertFrom-Json gibt ein JSON-Array als EIN Objekt in die Pipeline -> erst zuweisen.
+# PS 5.1: ConvertFrom-Json gibt ein JSON-Array als ein Objekt in die Pipeline -> erst zuweisen.
 function ConvertFrom-JsonList([string]$t) { $o = $t.Trim() | ConvertFrom-Json; @($o) }
 function Get-Plan([hashtable]$Splat) { ConvertFrom-JsonList (& $gates -ListPlan @Splat | Out-String) }
 
@@ -40,4 +40,22 @@ $threw = $false; try { [void](& $gates -ListPlan -Suites nope) } catch { $threw 
 Assert-That $threw 'unbekannte Suite wirft'
 $threw = $false; try { [void](& $gates -ListPlan -Suites infra -Parallel) } catch { $threw = $true }
 Assert-That $threw '-Suites mit -Parallel wirft'
+
+# Bricht eine Suite mit throw ab, muss der Grund lesbar im Suite-Log stehen (Windows PowerShell 5.1 ohne Profil schreibt `*>` als
+# UTF-16; ein Anhang in anderer Kodierung waere Zeichensalat). Invoke-Gate kommt aus dem Skript selbst (AST), ohne dass es laeuft.
+$u8 = New-Object System.Text.UTF8Encoding($true)
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($gates, [ref]$null, [ref]$null)
+$fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq 'Invoke-Gate' }, $true)
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('rfg_' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+try {
+    [System.IO.File]::WriteAllText((Join-Path $tmp 'boom.ps1'), "Write-Host 'Zeile davor'`nthrow 'Substrat nicht erreichbar'`n", $u8)
+    $child = "`$ErrorActionPreference = 'Stop'`n`$RepoRoot = '$tmp'`n`$env:TEMP = '$tmp'`n`$results = New-Object System.Collections.Generic.List[object]`n" +
+        $fn.Extent.Text + "`nInvoke-Gate 'boom' 'boom.ps1'`nexit `$results[-1].Exit`n"
+    [System.IO.File]::WriteAllText((Join-Path $tmp 'child.ps1'), $child, $u8)
+    $null = & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File (Join-Path $tmp 'child.ps1')
+    Assert-That ($LASTEXITCODE -eq 99) 'Suite mit throw: Exit 99'
+    $log = Join-Path $tmp 'free_gate_rfg-filter-test_boom.log'
+    Assert-That ([bool](Select-String -Path $log -Pattern 'Substrat nicht erreichbar' -ErrorAction SilentlyContinue)) 'Suite mit throw: Grund steht lesbar im Log'
+} finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 exit $failed

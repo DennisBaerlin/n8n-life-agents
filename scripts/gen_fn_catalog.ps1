@@ -11,6 +11,8 @@
 #   .\scripts\gen_fn_catalog.ps1 -Verify    # kein Write; Exit 1 wenn getrackt != frisch generiert
 #                                           #   (hartes Gate: prek-Hook `fn-catalog`)
 # Exit-Code: 0 = ok/geschrieben, 1 = Drift (-Verify) oder DEFINER-Hygiene-Verstoss; unerwartete Fehler brechen mit Exception ab.
+# Hygiene-Gate vor jedem Schreiben/Vergleichen: jede SECURITY-DEFINER-fn pinnt search_path (pg_temp zuletzt) und hat
+# REVOKE ... FROM PUBLIC, sonst Exit 1 ohne Katalog-Write.
 param([switch]$Verify)
 
 $ErrorActionPreference = 'Stop'
@@ -24,13 +26,7 @@ $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 $FnGlobs   = @((Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_*.sql'))
 $OutPath   = Join-Path $RepoRoot 'docs\fn_catalog.md'
 
-# Ordinal-Sort: kulturunabhaengig, damit der Drift-Vergleich auf jeder Culture stabil bleibt
-function Sort-Ordinal([string[]]$Items) {
-    if ($null -eq $Items -or $Items.Count -eq 0) { return @() }
-    $a = [string[]]$Items
-    [Array]::Sort($a, [System.StringComparer]::Ordinal)
-    return $a
-}
+. (Join-Path $PSScriptRoot 'lib\ordinal.ps1')   # Sort-Ordinal: Reihenfolge ohne Kultur, sonst driftet der Katalog je Rechner
 
 # --- Eine fn-Datei parsen: Header (Titel-Tag + Beschreibung), Signaturen, jsonb-Reads ---
 function ConvertFrom-FnFile([string]$Path) {
@@ -158,12 +154,13 @@ if ($Verify) {
     if (Test-Path $OutPath) {
         $onDisk = (([System.IO.File]::ReadAllText($OutPath, $Utf8NoBom)) -replace "`r`n", "`n").TrimEnd() + "`n"
     }
-    if ($onDisk -cne $md) {
+    # Ordinal: -cne uebergeht Zeichen ohne Gewicht (weicher Trennstrich, U+FEFF), ein solcher Hand-Eingriff bliebe gruen.
+    if (-not [string]::Equals($onDisk, $md, [System.StringComparison]::Ordinal)) {
         Write-Host "DRIFT: docs/fn_catalog.md != frisch generiert ($($files.Count) fn-Dateien)." -ForegroundColor Red
         $a = $md -split "`n"; $b = $onDisk -split "`n"
         $max = [Math]::Min($a.Count, $b.Count)
         for ($i = 0; $i -lt $max; $i++) {
-            if ($a[$i] -cne $b[$i]) {
+            if (-not [string]::Equals($a[$i], $b[$i], [System.StringComparison]::Ordinal)) {
                 Write-Host ("  Zeile {0}:`n    generiert: {1}`n    tracked:   {2}" -f ($i + 1), $a[$i], $b[$i]) -ForegroundColor Yellow
                 break
             }

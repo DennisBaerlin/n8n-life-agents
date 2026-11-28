@@ -19,8 +19,9 @@
 # Bestaetigen im Chat: alle Faelle laufen in beiden Knopf-Modi (Link = signierte Resume-URL per GET; Chat =
 # callback_data -> das callback_query-Update per POST an /webhook-waiting-telegram, wie der Orchestrator-Trigger es
 # weiterreicht). Sendet das Substrat Chat-Knoepfe (bootstrap_test_n8n.ps1 -HitlChatApproval), laufen zusaetzlich
-# hitlC1-3: fremder Tipper + gefaelschte Signatur blockiert, Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht,
-# Text mit Markdown-Entity geht durch.
+# hitlC1-C6: fremder Tipper + gefaelschte Signatur blockiert, Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht,
+# Text mit Markdown-Entity geht durch, Doppel-Tipp im Cron-Dialog beantwortet die Folgefrage nicht, gescheiterte
+# Telegram-Vorpruefung (getWebhookInfo, setWebhook) endet ohne Knopf und ohne Write.
 #
 # Karte-offen-Sperre: je Send prueft der Test vor dem Tipp die Zeile in agent.hitl_pending (Ursprungs-Chat
 # des Falls, diese Execution, offen, Ablauf <= 16 Min) und nach dem Lauf, dass sie freigegeben ist (Gnadenfrist; loeschen
@@ -28,7 +29,9 @@
 #
 # Ausgang der Karte: hitlO* pruefen outcome am Gate je Pfad (Tipp und Ablauf), hitlT* den Text ans Modell je Fall ueber echte Tools.
 #
-# Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief (Mock aktiv + baseUrl umgebogen).
+# Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief (Mock aktiv + baseUrl umgebogen); .env mit TEST_HARNESS_SECRET.
+# Seiteneffekte: spielt tests/fixtures/util_seed_test_fixtures.sql ein, paart Owner und Lena (bleibt), leert agent.hitl_pending und
+# die Denk-Sperre (Clear-HitlPending, Clear-ThinkingLease) und stoppt wartende Gate-Executions.
 #
 # Fall-Abbruch: eine Ausnahme in einem Block macht nur diesen Fall rot (Grund + Skriptzeile, Aufraeumen), der Lauf geht weiter.
 # -ForceAbortId hitlR3 = Testschalter: wirft am Anfang dieses Blocks eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last); wird die id
@@ -48,9 +51,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables "$RepoRoot\.env"
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn      = Get-TestN8nConnection
 $N8nUrl    = $conn.Url
@@ -1397,7 +1398,7 @@ try {
 } catch {
     Register-Abort $_ 'hitlC0' -Extra {
         $script:chatMode = $false
-        Write-Host "    Chat-Faelle hitlC1-C4 werden uebersprungen: die Modus-Erkennung ist abgebrochen." -ForegroundColor Yellow
+        Write-Host "    Chat-Faelle hitlC1-C6 werden uebersprungen: die Modus-Erkennung ist abgebrochen." -ForegroundColor Yellow
     }
 }
 Write-Host ""

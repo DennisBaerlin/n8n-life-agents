@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # serve_wizard_preview.ps1 -- Vorschau des Einrichtungs-Wizards fuer den Browser der Claude-Desktop-App (Eintrag "wizard" in
-# .claude/launch.json). Liefert die ECHTE Seite (provisioning/wizard/ui) mit den festgehaltenen Seiten-Modellen des echten
+# .claude/launch.json). Liefert die echte Seite (provisioning/wizard/ui) mit den festgehaltenen Seiten-Modellen des echten
 # Servers (scripts/dev/lib/wizard_preview.ps1, erfundene Werte) -- kein Container noetig, solange die Sammlung existiert.
 # Jede Anfrage baut die Seite neu und liest die Sammlung frisch (Aenderung an ui/ oder neue Aufnahme -> Neuladen genuegt);
 # neue Seiten-Modelle: -Refresh (Docker, ~1 Min) oder

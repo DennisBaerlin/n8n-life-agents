@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # session_stall_check_test.ps1 -- prueft scripts/dev/session_stall_check.ps1 gegen erfundene Transkripte in einem
 # Wegwerf-Ordner: eine Session haengt an einem Werkzeug-Aufruf ohne Ergebnis (alt), eine ist frisch, eine ist alt,
-# aber ohne offenen Aufruf (ruht nur; ein frueher abgelehnter Aufruf ohne Ergebnis und die Aufruf-Kopie einer api-request-blob-Zeile zaehlen nicht), eine haengt in einem laengst geloeschten Worktree. Nur die erste darf als STEHT
-# gemeldet werden.
+# aber ohne offenen Aufruf (ruht nur; ein frueher abgelehnter Aufruf ohne Ergebnis und die Aufruf-Kopie einer api-request-blob-Zeile zaehlen nicht), eine haengt in einem laengst geloeschten Worktree, eine in einem Worktree mit Sonderzeichen im Namen.
+# Als STEHT gemeldet werden nur die erste und die letzte. Ein Skriptfehler endet mit Exit 255.
 # Usage: .\scripts\dev\session_stall_check_test.ps1   Exit-Code = Anzahl roter Faelle.
 $ErrorActionPreference = 'Stop'
 $failed = 0
@@ -24,12 +24,15 @@ try {
     New-Transcript 'haengt' @($use) 120
     New-Transcript 'frisch' @($use) 1
     New-Transcript 'ruht' @($old, $use, $res, $blob, $txt) 600
+    New-Transcript 'geloescht' @($use) 120   # Projektordner eines Worktrees, den es nicht mehr gibt (nicht in -WorktreeNames)
+    New-Transcript 'fix-x-1' @($use) 120     # Projektordner des Worktrees fix_x.1: Claude Code schreibt jedes Sonderzeichen als '-'
 
-    $out = & (Join-Path $PSScriptRoot 'session_stall_check.ps1') -ProjectsRoot $root -RepoPrefix $prefix -WorktreeNames 'haengt', 'frisch', 'ruht' -StallMinutes 30 6>&1 | Out-String
+    $out = & (Join-Path $PSScriptRoot 'session_stall_check.ps1') -ProjectsRoot $root -RepoPrefix $prefix -WorktreeNames 'haengt', 'frisch', 'ruht', 'fix_x.1' -StallMinutes 30 6>&1 | Out-String
     $rc = $LASTEXITCODE
     $cases = @(
-        @{ n = 'exit_eins';           ok = ($rc -eq 1) }
+        @{ n = 'exit_zwei';           ok = ($rc -eq 2) }
         @{ n = 'haengt_gemeldet';     ok = ($out -match 'STEHT\s+haengt.*preview_start') }
+        @{ n = 'sonderzeichen_im_namen_gemeldet'; ok = ($out -match 'STEHT\s+fix-x-1') }
         @{ n = 'frisch_nicht_steht';  ok = ($out -notmatch 'STEHT\s+frisch') }
         @{ n = 'ruht_nicht_steht';    ok = ($out -notmatch 'STEHT\s+ruht') }
         @{ n = 'geloescht_ignoriert'; ok = ($out -notmatch 'geloescht') }
@@ -38,6 +41,10 @@ try {
         if ($c.ok) { Write-Host "[PASS] $($c.n)" } else { Write-Host "[FAIL] $($c.n)"; $failed++ }
     }
     if ($failed) { Write-Host "Ausgabe (rc=$rc):"; Write-Host $out }
+
+    # Skriptfehler (hier: unmoegliche Leselaenge) ist kein Befund: eigener Exit-Code statt "eine stehende Session".
+    $rcErr = try { & (Join-Path $PSScriptRoot 'session_stall_check.ps1') -ProjectsRoot $root -RepoPrefix $prefix -WorktreeNames 'haengt' -TailBytes -5 6>&1 | Out-Null; $LASTEXITCODE } catch { 1 }
+    if ($rcErr -eq 255) { Write-Host '[PASS] skriptfehler_exit_255' } else { Write-Host "[FAIL] skriptfehler_exit_255 (rc=$rcErr)"; $failed++ }
 } finally {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }

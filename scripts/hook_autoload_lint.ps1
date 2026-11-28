@@ -3,8 +3,7 @@
 # geerbten PSModulePath fehlen (hartes Gate). In der CI startet prek unter pwsh 7 jeden Hook als `powershell -NoProfile -File ...`; 5.1 erbt
 # den PSModulePath von pwsh 7 und findet Funktionen, die erst beim ersten Aufruf aus einem Modul geladen werden, nicht mehr
 # ("The term 'Get-FileHash' is not recognized"). Betroffen sind die Funktionen der Module unter $PSHOME\Modules (Get-FileHash, Expand-Archive,
-# Test-NetConnection, ...), nicht die in den Host eingebauten Cmdlets (Select-String, ConvertFrom-Json, ...). Drei Vorfaelle: Get-FileHash in
-# release_images.ps1, in build_site.ps1 und in native_process_test.ps1.
+# Test-NetConnection, ...), nicht die in den Host eingebauten Cmdlets (Select-String, ConvertFrom-Json, ...).
 #   Hook-Umfeld = jedes Skript, das ein Eintrag `entry: powershell ... -File <skript>` in .pre-commit-config.yaml startet, und alles, was es
 #   per Dot-Sourcing (`. <pfad>.ps1`) laedt. Skripte, die ein Hook per `&` oder `-File` als Kind startet, folgt die Pruefung nicht: sie gelten
 #   erst, wenn sie selbst ein Hook-Eintrag sind oder eingebunden werden.

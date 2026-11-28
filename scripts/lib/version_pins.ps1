@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Laufzeit-Versionen (n8n, PostgreSQL, Node.js): eine Quelle = die Standardwerte in provisioning/provision.sh.
-# Get-RuntimePins <Root>      -> @{N8n; Pg; Node}; wirft, wenn ein Wert nicht lesbar ist.
+# Get-RuntimePins <Root>      -> @{N8n; Pg; Node}; wirft, wenn ein Wert nicht lesbar ist. Aufrufer u. a. workflow_lint (Node-Abbild).
 # Get-VersionPinIssues <Root> -> Meldungen (leer = alles gleich). Aufrufer: doc_lint 11b. Dot-sourcen.
 # Zwei Arten von Nennungen:
 #   Prosa (Doku: root-*.md, CLAUDE.md, .claude/rules + skills, docs ohne fn_catalog, Site-Quellen): n8n als volle Version 2.x.y,

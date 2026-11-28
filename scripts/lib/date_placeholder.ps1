@@ -10,6 +10,7 @@
 #   {{date:+30d@2}} = heute + 30 Tage, dann der naechste 2. des Monats. Ergebnis immer YYYY-MM-DD.
 # "Heute" ist das UTC-Datum: der Mock-Stub im Container rechnet in UTC, beide Seiten muessen dasselbe Datum bekommen.
 # Ein Platzhalter, der die Grammatik verfehlt, wirft (Tippfehler duerfen nicht als Text durchgehen).
+# Laedt fuer den Bezugstag bei Bedarf n8ntest_state_file.ps1 (Get-DatePlaceholderReferenceDay).
 
 # Bezugstag: der Tag, den enable_mock_llm.ps1 dem Mock gesetzt hat (State-Block mock_llm.today des aktuellen Substrats), damit
 # Harness und Mock ueber 00:00 UTC hinweg denselben Wert rechnen. Ohne Mock-Block (kein Substrat, Selbsttests) das UTC-Datum

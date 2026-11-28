@@ -1,7 +1,9 @@
 ﻿#Requires -Version 5.1
 # test_stack_test.ps1 -- die Bausteine des Test-Verbunds (scripts/lib/test_stack.ps1) ohne Docker: Projektname, Namen, Ports,
 # Daten-Volumes aus runtime.sh, Schnappschuss-Schluessel, Vertrag der Kern-Ausgabe, TEST_*-Zuordnung, Zusatz-Zeilen der
-# Antwort-Datei, Abbau-Abgleich. Den echten Weg (kalt, -Reset per Schnappschuss, -Down) beweist bootstrap_test_stack.ps1 selbst.
+# Antwort-Datei, Abbau-Abgleich, Attrappen-Weichen; dazu der Suiten-Weg (N8NTEST_RUNTIME, Wegwerf-Container, Tick-/Zeitgeber-Pause)
+# und statische Pruefungen der Suiten- und Linux-Skripte. Braucht git und bash (Syntax-Pruefung erzeugter sh-Skripte).
+# Den echten Weg (kalt, -Reset per Schnappschuss, -Down) beweist bootstrap_test_stack.ps1 selbst.
 # Usage:  .\scripts\dev\test_stack_test.ps1     Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -197,7 +199,7 @@ Assert-That (-not (@($sa | Where-Object { $_ -like 'io.lifeagents.install=*' }).
 $gh = [System.IO.File]::ReadAllText((Join-Path $repo 'tests\mock_github\cases.sh'))
 Assert-That ($gh -match '(?m)^export LIFEAGENTS_RUNTIME=systemd\b') 'mock_github/cases.sh setzt die klassische Betriebsart selbst (export LIFEAGENTS_RUNTIME=systemd)'
 Assert-That (-not ($sa -contains '-e')) 'Wegwerf-Container: keine Sonder-Umgebung, die Runner setzen ihre Betriebsart selbst'
-Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst melden die KZ-Faelle einen Zombie als lebend)'
+Assert-That ($sa -contains '--init') 'Wegwerf-Container: --init (PID 1 raeumt verwaiste Prozesse ab; sonst meldet ein Fall einen Zombie als lebend)'
 Assert-That ($sa[-2] -eq 'sleep' -and [int]$sa[-1] -gt 0) 'Wegwerf-Container: Ruhe-Befehl mit Ablauf (raeumt sich auch bei totem Skript ab)'
 
 . (Join-Path $repo 'scripts\lib\substrate_reservations.ps1')
@@ -227,7 +229,7 @@ foreach ($s in @('runtime_test', 'reachability_test', 'release_fetch_test', 'bot
     Assert-That ($res.Count -eq 1 -and $inFinally.Count -ge 1) "$s : ruft Resolve-TestSuiteContainer mit eigenem Namen und raeumt in finally mit Remove-TestSuiteScratch ab"
 }
 
-# --- Suiten im laufenden Verbund (T3b): Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------
+# --- Suiten im laufenden Verbund: Tick pausieren, Wegwerf-Einheiten neben dem echten Gateway --------------------------------
 # Die Tick-Schleife des master (compose.yml) ruft jede Minute `lifeagents update --tick` und konkurriert mit den Suiten um
 # Auftraege und die Update-Sperre. Sie ruft die CLI nur, wenn /usr/local/bin/lifeagents ausfuehrbar ist; der Runner ruft die CLI aber
 # selbst direkt auf (`command -v lifeagents`), ein `chmod a-x` bremste also auch ihn. Darum Link-Tausch: die CLI liegt waehrend der
@@ -334,6 +336,30 @@ if ($bkBlock.Length -gt 0) {
     $mm = Invoke-BackupNameBlock $mutated '[+] Backup geschrieben: irgendwo'
     Assert-That ($mutated -ne $bkBlock -and $mm.Code -eq 0 -and ($mm.Output -join "`n") -match 'FA=\s*$') 'backup/cases.sh: Gegenprobe - ohne den Guard laeuft der Block still mit leerem Namen weiter (der Test sieht den Unterschied)'
 }
+
+# --- Docker-Pruefung des Bootstraps: nur Erfolg plus "linux" gilt ------------------------------------------------------------
+Assert-That (Test-TestStackDockerLinux 0 @('linux')) 'Docker-Pruefung: Erfolg und linux = bereit'
+Assert-That (-not (Test-TestStackDockerLinux 1 @('error during connect: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.'))) 'Docker-Pruefung: Fehlermeldung mit dem Wort Linux gilt nicht als bereit'
+Assert-That (-not (Test-TestStackDockerLinux 0 @('windows'))) 'Docker-Pruefung: Windows-Container gelten nicht'
+
+# --- Schnappschuss: bricht die Kopie ab, bleibt kein Volume mit gueltigem Schluessel zurueck -------------------------------
+# Docker als Attrappe (ueberschreibt Invoke-Native, darum am Dateiende): die Kopie (`docker run`) scheitert, alles andere gelingt.
+$script:snapVols = @{}
+function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+    switch ("$($Arguments[0]) $($Arguments[1])") {
+        'volume create' { $script:snapVols[$Arguments[-1]] = $true; return [pscustomobject]@{ Code = 0; Output = @() } }
+        'volume rm' { $script:snapVols.Remove($Arguments[-1]); return [pscustomobject]@{ Code = 0; Output = @() } }
+        'volume inspect' {
+            if ($script:snapVols.ContainsKey($Arguments[-1])) { return [pscustomobject]@{ Code = 0; Output = @('{"lifeagents.snapshot-of":"s4t0","lifeagents.snapshot-key":"k1"}') } }
+            return [pscustomobject]@{ Code = 1; Output = @('Error response from daemon: get x: no such volume') }
+        }
+        default { return [pscustomobject]@{ Code = 1; Output = @('cp: write error: No space left on device') } }
+    }
+}
+$snapNames = Get-TestStackNames 's4t0'
+Assert-That (Test-Throws { New-TestStackSnapshot $snapNames @('pgdata', 'var_la') 'k1' 'C:/x' }) 'Schnappschuss: abgebrochene Kopie wirft'
+Assert-That ($script:snapVols.Count -eq 0) 'Schnappschuss: nach abgebrochener Kopie bleibt kein Volume mit Schluessel zurueck'
+Assert-That ($null -eq (Get-TestStackSnapshotKeyStored $snapNames @('pgdata', 'var_la'))) 'Schnappschuss: der naechste -Reset findet keinen passenden Schluessel'
 
 Write-Host "test_stack_test: $failed Fehler."
 exit $failed

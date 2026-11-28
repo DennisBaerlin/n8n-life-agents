@@ -5,7 +5,7 @@
 # aus denselben getrackten packages/*/db-Quellen, in der 4-Phasen-Sequenz von provisioning/lib/apply_schema.sh:
 #   1-3) db_apply.ps1  (Baseline-Inits -> V__-Migrationen -> R__-Repeatables)
 #     4) util-Haertung + Host-Read-Only-Rollen (core_ro/context_ro inkl. core.backup_key-REVOKE;
-#        + per-Paket finance_rw/finance_ro via fn_provision_package_roles, s. 3b unten)
+#        + je Nicht-Core-Paket mit manifest.json <pkg>_rw/<pkg>_ro via fn_provision_package_roles, s. 3b unten)
 #   + Config-Store-Seed (ai_models -> config; einzige harte Seed-Abhaengigkeit der db-Tests:
 #     test_config_model_selector joint core.config x agent.ai_models). Persona-Fixtures und Instruktions-
 #     Contexts braucht die Baseline-DB nicht, die db-Tests seeden selbst (BEGIN..ROLLBACK).
@@ -13,16 +13,19 @@
 # trust-Auth -> kein Passwort, Loopback-Port -> keine .env-DB-Keys. Verbindungswerte sind nicht-geheime
 # Wegwerf-Defaults (Overrides $env:DBTEST_PG_{HOST,PORT,USER,DATABASE}), identisch zu db_apply.ps1.
 #
-# Staleness-Gate: MD5 ueber das Quell-Set (packages/*/db/*.sql + V__/R__ + die 3 util-Dateien + ai_models.json + alle Manifeste)
-# in .local/dbtest_state.json. Unveraendert + DB existiert + selber Container -> Reuse (nur Container warm
-# halten). Geaendert / DB fehlt / Container neu / -Reset -> Schema neu bauen -> kein falsches Gruen.
+# Staleness-Gate: MD5 ueber das Quell-Set (packages/*/db/*.sql + V__/R__ + die 3 util-Dateien + ai_models.json + alle Manifeste + dieses Skript),
+# als Kommentar an der Datenbank selbst (COMMENT ON DATABASE). Traegt die DB den Hash dieses Baums -> Reuse (nur Container warm
+# halten). Anderer Hash / DB fehlt / -Reset -> Schema neu bauen -> kein falsches Gruen. Der Stand haengt an der DB und nicht an
+# einer Datei des Checkouts: mehrere Worktrees koennen denselben Container nutzen, und eine Datei je Worktree hielte eine DB fuer
+# aktuell, die inzwischen ein anderer Baum neu gebaut hat. Test: scripts/dev/dbtest_reuse_test.ps1.
 #
 # Usage:
 #   .\scripts\bootstrap_test_db.ps1            # Container hoch + Schema (hash-gegated; Reuse wenn aktuell)
 #   .\scripts\bootstrap_test_db.ps1 -Reset     # Container + DB verwerfen und frisch bauen
-#   .\scripts\bootstrap_test_db.ps1 -Down      # Container entfernen (Teardown), State loeschen
+#   .\scripts\bootstrap_test_db.ps1 -Down      # Container samt Test-DB entfernen, DB-Port-Reservierung freigeben
 #
-# Vorbedingung: Docker (Desktop) installiert + Daemon laeuft. db_test.ps1 ruft dieses Skript selbst.
+# Vorbedingung: Docker (Desktop) installiert + Daemon laeuft, psql-Client im PATH oder unter C:\Program Files\PostgreSQL\17\bin.
+# db_test.ps1 ruft dieses Skript selbst.
 # Eigener Container/Port je Worktree: $env:DBTEST_CONTAINER / $env:DBTEST_PG_PORT.
 # Exit: 0 = Test-DB bereit (bzw. -Down fertig); ungleich 0 = throw (Docker, Port belegt, psql, Schema, Seed).
 
@@ -49,7 +52,7 @@ $DbHost = if ($env:DBTEST_PG_HOST)     { $env:DBTEST_PG_HOST }     else { '127.0
 $DbPort = if ($env:DBTEST_PG_PORT)     { $env:DBTEST_PG_PORT }     else { '55432' }
 $DbUser = if ($env:DBTEST_PG_USER)     { $env:DBTEST_PG_USER }     else { 'postgres' }
 $DbName = if ($env:DBTEST_PG_DATABASE) { $env:DBTEST_PG_DATABASE } else { 'lifeagents_dbtest' }
-$StateFile = Join-Path $RepoRoot '.local\dbtest_state.json'
+$BuildMarker = 'lifeagents-dbtest-build:'   # + Hash des Quell-Sets, als COMMENT ON DATABASE
 
 if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
     $pgBin = 'C:\Program Files\PostgreSQL\17\bin'
@@ -57,16 +60,7 @@ if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
     else { throw "psql.exe nicht gefunden ($pgBin)." }
 }
 
-# EAP lokal 'Continue': PS 5.1 wirft native stderr unter 'Stop' + 2>&1 als terminierenden NativeCommandError.
-function Invoke-Native {
-    param([string]$Exe, [string[]]$CmdArgs)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = & $Exe @CmdArgs 2>&1
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $prev
-    return [pscustomobject]@{ Code = $code; Output = @($out) }
-}
+. (Join-Path $PSScriptRoot 'lib\test_common.ps1')   # Invoke-Native
 
 function Assert-Docker {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -97,7 +91,6 @@ if ($Down) {
     } else {
         Write-Host "Kein Container $Container vorhanden."
     }
-    if (Test-Path $StateFile) { Remove-Item $StateFile -Force }
     return
 }
 
@@ -107,16 +100,14 @@ Assert-Docker
 if ($Reset -and (Get-ContainerId)) {
     Write-Host "Verwerfe Container $Container (-Reset) ..."
     Invoke-Native docker @('rm','-fv',$Container) | Out-Null
-    if (Test-Path $StateFile) { Remove-Item $StateFile -Force }
 }
 
 if (-not (Get-ContainerId)) {
     # Port-Reservierung (scripts/lib/substrate_reservations.ps1): ein anderer Halter mit demselben Port scheitert sonst erst im docker run
     . (Join-Path $PSScriptRoot 'lib\substrate_reservations.ps1')
-    if (-not (Test-DbPortFree -Port ([int]$DbPort) -Reservations @(Read-SlotReservations) -InUse @(Get-DockerHostPorts) -Own $Container)) {
+    if (-not (Add-DbPortReservation -By $Container -Port ([int]$DbPort) -InUse @(Get-DockerHostPorts))) {
         throw "DB-Port $DbPort ist belegt oder reserviert -> freien Port holen: .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By $Container (setzt danach `$env:DBTEST_PG_PORT)."
     }
-    Add-SlotReservation -Container (Get-DbPortEntryName ([int]$DbPort)) -By $Container
     Write-Host "Starte $Image als $Container (127.0.0.1:$DbPort, trust-Auth) ..."
     $r = Invoke-Native docker @('run','-d','--name',$Container,
         '-e','POSTGRES_HOST_AUTH_METHOD=trust',
@@ -173,7 +164,6 @@ function Get-BuildHash {
     return ([System.BitConverter]::ToString($bytes) -replace '-','').ToLower()
 }
 
-$containerId = ((Invoke-Native docker @('inspect','-f','{{.Id}}',$Container)).Output -join '').Trim()
 $currentHash = Get-BuildHash
 
 $env:PGHOST = $DbHost; $env:PGPORT = $DbPort; $env:PGUSER = $DbUser
@@ -182,11 +172,9 @@ $r = Invoke-Native psql @('--no-psqlrc','-tAc',"SELECT 1 FROM pg_database WHERE 
 $dbExists = ($r.Code -eq 0 -and (($r.Output -join '').Trim() -eq '1'))
 
 $needRebuild = $true
-if (-not $Reset -and $dbExists -and (Test-Path $StateFile)) {
-    try {
-        $state = [System.IO.File]::ReadAllText($StateFile, $Utf8NoBom) | ConvertFrom-Json
-        if ($state.hash -eq $currentHash -and $state.container_id -eq $containerId) { $needRebuild = $false }
-    } catch { $needRebuild = $true }
+if (-not $Reset -and $dbExists) {
+    $r = Invoke-Native psql @('--no-psqlrc','-tAc',"SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname='$DbName'")
+    if ($r.Code -eq 0 -and [string]::Equals(($r.Output -join '').Trim(), "$BuildMarker$currentHash", [System.StringComparison]::Ordinal)) { $needRebuild = $false }
 }
 
 if (-not $needRebuild) {
@@ -304,8 +292,10 @@ COMMIT;
     Remove-Item $seedPath -Force -ErrorAction SilentlyContinue
 }
 
-New-Item -ItemType Directory -Force -Path (Split-Path $StateFile) | Out-Null
-$state = [ordered]@{ hash = $currentHash; container_id = $containerId; built_at = (Get-Date -Format 'o') }
-[System.IO.File]::WriteAllText($StateFile, ($state | ConvertTo-Json), $Utf8NoBom)
+# Erst nach dem vollstaendigen Bau: ein abgebrochener Lauf hinterlaesst keinen Vermerk und wird beim naechsten Mal neu gebaut.
+$env:PGDATABASE = 'postgres'
+$r = Invoke-Native psql @('--no-psqlrc','-v','ON_ERROR_STOP=1','-c',"COMMENT ON DATABASE $DbName IS '$BuildMarker$currentHash'")
+if ($r.Code -ne 0) { throw "Bau-Stand liess sich nicht an der Test-DB vermerken: $($r.Output -join "`n")" }
+$env:PGDATABASE = $DbName   # Aufrufer erben die Test-DB, nicht 'postgres'
 
 Write-Host "Test-DB $DbName gebaut. Bereit: $Container @ 127.0.0.1:$DbPort."

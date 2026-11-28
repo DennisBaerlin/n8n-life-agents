@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # render_app_screenshots.ps1 -- erzeugt die Beispielbilder der Mini-App fuer die Doku-Site
 # (docs/site/static/img/app-uebersicht-{hell,dunkel}.png) aus der echten Seite packages/core/build/app/index.html mit
-# dem echten Renderer (Get-UiRenderLibJs) und den Texten aus dem Katalog (packages/*/locales/de.json).
+# dem echten Renderer (Get-UiRenderLibJs) und den Texten aus dem Katalog (packages/core und packages/finance, locales/de.json).
 # Nach jeder sichtbaren Aenderung am Bildschirm Vermoegen neu laufen lassen.
 #
 # Die Seite (fetch-Stub mit dem erfundenen Datenmodell lib/app_preview_data.json, ohne Telegram-Skript) baut
@@ -21,7 +21,7 @@ $Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'lib\app_preview.ps1')
 . (Join-Path $PSScriptRoot 'lib\headless_shot.ps1')
 
-# Handybreite 390 px, Bild 780 x 1520 px (Faktor 2)
+# Handybreite 390 px, Bild 780 x 1580 px (Faktor 2)
 $W = 390; $H = 790
 $imgDir = Join-Path $RepoRoot 'docs\site\static\img'
 foreach ($shot in @(@{ Name = 'app-uebersicht-hell.png'; Scheme = 'light' }, @{ Name = 'app-uebersicht-dunkel.png'; Scheme = 'dark' })) {

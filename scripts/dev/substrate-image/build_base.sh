@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# build_base.sh — fuellt das Basis-Image des Test-Substrats (laeuft NUR im `docker build`, Dockerfile daneben).
+# build_base.sh — fuellt das Basis-Image des Test-Substrats (laeuft nur im `docker build`, Dockerfile daneben).
 #
-# WAS: die Software, die provision.sh bei jedem frischen Substrat sonst neu laedt (Basis-Pakete, PostgreSQL-Paket
-# samt UTF-8-Cluster, Node, n8n, socat fuer die Test-Bruecke) — ueber DIESELBEN Funktionen wie der Installer
+# Inhalt: die Software, die provision.sh bei jedem frischen Substrat sonst neu laedt (Basis-Pakete, PostgreSQL-Paket
+# samt UTF-8-Cluster, Node, n8n, socat fuer die Test-Bruecke) — ueber dieselben Funktionen wie der Installer
 # (gesourct aus provisioning/lib, keine Kopie). provision.sh erkennt im Container danach alles als „schon da"
 # (_node_ok, ensure_n8n_package-Versionsvergleich, install_postgres --only-upgrade-Zweig) und faehrt nur noch
 # Schema/Owner/Credentials/Workflows. Kein systemd im Build: das Dockerfile verbietet Dienst-Starts per policy-rc.d.
 #
-# Bewusst NICHT gesourct: upgrade_guard.sh — ensure_n8n_package ruft upgrade_node_switched nur, wenn n8n schon
+# Bewusst nicht gesourct: upgrade_guard.sh — ensure_n8n_package ruft upgrade_node_switched nur, wenn n8n schon
 # installiert ist; im frischen Build ist dieser Zweig unerreichbar.
 # Eingaben (Build-Args, eine Quelle = provision.sh, gelesen von bootstrap_test_n8n.ps1): PG_VERSION, N8N_VERSION,
 # NODE_MAJOR.

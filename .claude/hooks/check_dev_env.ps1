@@ -1,7 +1,7 @@
 # SessionStart-Hook: deterministische Frisch-System-Erkennung. Liest nur den Marker
 # .local/devenv_state.json + die geteilte Anforderungs-Liste (scripts/lib/devenv.ps1), keine
-# Tool-Probes (kein winget/docker/--version), daher <50 ms. Fehlt der Marker oder ist er stale
-# (Marker complete=false ODER Tool-Pins geaendert) -> Reminder, scripts/setup_dev_env.ps1 zu fahren.
+# Tool-Probes (kein winget/docker/--version), daher ohne spuerbare Wartezeit. Fehlt der Marker oder ist er stale
+# (Marker complete=false oder Tool-Pins geaendert) -> Reminder, scripts/setup_dev_env.ps1 zu fahren.
 # Dazu der Hinweis auf die Windows-Skriptsperre (Get-ExecutionPolicyHint), gesetzt wird nichts.
 # ASCII-only + Compact-JSON, damit kein BOM die stdout-JSON bricht.
 $ErrorActionPreference = 'Stop'

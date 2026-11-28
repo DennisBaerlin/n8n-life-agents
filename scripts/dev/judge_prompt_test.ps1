@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Selbsttest der Judge-Prompt-Bausteine (scripts/lib/judge_prompt.ps1): der Karten-Entscheid eines Eintrags steuert die
 # Karten-Regel im System-Text und steht im User-Text; ohne Feld bleibt es bei "abgelehnt" (n8n_test, orch_test, alte
-# Bundles). Dazu: der Weg Durchspiel -> Bundle-Datei -> Judge behaelt das Feld. Kein Substrat, kein API-Aufruf, keine Kosten.
+# Bundles). Dazu: der Weg Durchspiel -> Bundle-Datei -> Judge behaelt das Feld, und die Lese-Rueckgaben des Agenten
+# (Get-ReadToolOutput, Abschnitt READ_TOOL_OUTPUTS). Kein Substrat, kein API-Aufruf, keine Kosten.
 # Usage:  .\scripts\dev\judge_prompt_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -47,7 +48,7 @@ try {
     Check ((Get-JudgeCardDecision @($bundle)[0]) -eq 'approved') 'Bundle-Datei: card_decision approved ueberlebt Schreiben und Lesen'
 } finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 
-# Verdrahtung: das Durchspiel schreibt den Entscheid, judge_eval nutzt die Bausteine (kein Text-Duplikat mehr).
+# Verdrahtung: das Durchspiel schreibt den Entscheid, judge_eval nutzt die Bausteine (kein eigener Text).
 $conv = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\conversation_test.ps1'), (New-Object System.Text.UTF8Encoding($false)))
 Check ($conv.Contains("card_decision = `$(if (`$rd.card_decision -eq 'angenommen') { 'approved' } else { 'declined' })")) 'conversation_test schreibt card_decision je Bundle-Eintrag'
 $je = [System.IO.File]::ReadAllText((Join-Path $repo 'scripts\judge_eval.ps1'), (New-Object System.Text.UTF8Encoding($false)))

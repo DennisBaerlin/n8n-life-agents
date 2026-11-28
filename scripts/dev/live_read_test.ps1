@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # live_read_test.ps1 -- Gratis-Test des gemeinsamen Lese-Zugangs scripts/lib/live_read.ps1: Befehle je Laufzeit, lesende
-# SQL-Sitzung, Laufzeit-Erkennung (Verbund/klassisch, ssh-Fehler ist kein Urteil), stdin-Weg. Kein Docker, kein Netz; der
+# SQL-Sitzung, Laufzeit-Erkennung (Verbund/klassisch, ssh-Fehler ist kein Urteil), stdin-Weg, Zugang nur aus LIVE_INSTANCE_* der
+# .env (nie DEV_INSTANCE_*). Kein Docker, kein Netz; der
 # Lauf gegen einen echten Test-Verbund und ein klassisches Substrat steht in scripts/live_read.ps1 (-Local/-Container).
 # Usage:  .\scripts\dev\live_read_test.ps1
 # Exit-Code = Anzahl Fehler.

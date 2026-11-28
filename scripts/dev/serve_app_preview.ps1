@@ -2,8 +2,8 @@
 # serve_app_preview.ps1 -- Live-Vorschau der Mini-App fuer den Browser der Claude-Desktop-App (Vorschau-Eintrag "mini-app"
 # in .claude/launch.json). Liefert die echte Seite packages/core/build/app/index.html mit dem echten Renderer und einem
 # festen, erfundenen View-Modell (Bildschirm Vermoegen) ueber den fetch-Stub aus scripts/dev/lib/app_preview.ps1 --
-# kein Substrat, keine DB, kein Telegram. Zeigt die Seite in Handybreite (hell/dunkel) im Desktop-Browser; Stellen darin
-# lassen sich markieren.
+# kein Substrat, keine DB, kein Telegram. Die Seite hat keine feste Breite (Get-AppPreviewPage ohne -Width): Handybreite stellt
+# der Betrachter im Browser-Fenster ein; hell/dunkel per ?scheme=. Stellen darin lassen sich markieren.
 # Jede Anfrage baut die Seite neu (Aenderung an index.html, Texten oder dem Datenmodell app_preview_data.json -> Neuladen
 # genuegt); nur eine Aenderung an lib/app_preview.ps1 oder am Renderer (build_helpers.ps1) braucht einen Neustart des Servers.
 #   .\scripts\dev\serve_app_preview.ps1 [-Port 8765]

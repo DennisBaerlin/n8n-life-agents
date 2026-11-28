@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Test der Sperre vor jedem Push: .claude/hooks/dev_cycle_guard.ps1 (wie Claude Code, JSON auf stdin), scripts/privacy_outgoing.ps1 und
 # scripts/privacy_review_stamp.ps1, alle als Kopie in einem Wegwerf-Repo mit Wegwerf-Remote. Kein Substrat, keine Kosten, kein Netz.
-# Alle Werte sind erfunden. prek startet ihn, sobald eine der Dateien sich aendert.
+# Alle Werte sind erfunden. prek startet ihn, sobald eine der Dateien sich aendert. Mit prek (Resolve-Prek) zusaetzlich der echte
+# Release-Ablauf per git push gegen das Wegwerf-Remote; ohne prek entfaellt dieser Teil (skip).
 # Usage:  .\scripts\dev\privacy_review_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

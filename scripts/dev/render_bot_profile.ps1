@@ -10,7 +10,7 @@
 # DOM (--dump-dom). Kein Netz, keine DB, kein Container. Telegram nimmt fuer statische Profilbilder nur JPG an (Bot API,
 # InputProfilePhotoStatic).
 # Maße und JPEG-Kopf des committeten Bildes prueft scripts/dev/bot_profile_photo_test.ps1.
-#   .\scripts\dev\render_bot_profile.ps1 [-MarkFile <pfad>] [-OutDir <ordner>]   (Optionen nur fuer eine Vorschau: anderes Zeichen, anderer Zielordner)
+#   .\scripts\dev\render_bot_profile.ps1 [-MarkFile <pfad>] [-OutDir <ordner>] [-Verbose]   (-MarkFile/-OutDir nur fuer eine Vorschau: anderes Zeichen, anderer Zielordner)
 # Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab.
 param([string]$MarkFile, [string]$OutDir, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

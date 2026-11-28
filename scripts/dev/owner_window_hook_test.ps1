@@ -2,7 +2,8 @@
 # Test des Hooks .claude/hooks/enforce_owner_window.ps1 (bezahlte Suiten + Dev-Reset nur im Owner-Fenster): fuettert ihn mit
 # Tool-Aufrufen wie Claude Code (JSON auf stdin) und prueft deny/allow. Laeuft in einem Wegwerf-Repo mit zwei Worktrees: die
 # Grant-Dateien liegen nur dort, das echte .claude/ bleibt unberuehrt. Kein Substrat, kein Netz, keine Kosten.
-# Prueft: Suche im Haupt-Checkout, geschlossen/abgelaufen, fail-closed und die Umgehungswege (Umgebungsvariablen, Pfade im Aufruf).
+# Prueft: Suche im Haupt-Checkout, geschlossen/abgelaufen, fail-closed und die Umgehungswege (Umgebungsvariablen, Pfade im Aufruf);
+# dazu das immer gesperrte Oeffnen des Fensters selbst (Grant-Skript, Schreiben der Grant-Datei).
 # Usage:  .\scripts\dev\owner_window_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

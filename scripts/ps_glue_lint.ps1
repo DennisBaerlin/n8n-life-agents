@@ -3,6 +3,7 @@
 # steckt der Befehl der naechsten Zeile hinter dem Kommentar der vorigen: er laeuft nie, und weder der Parser noch PSScriptAnalyzer
 # merken es. Erkennung: ein Kommentar-Token, in dem ein Befehl der Form Verb-Substantiv (Write-Host, Invoke-Native ...) ohne
 # Leerzeichen an ein Wort anschliesst (Wort und Befehl ohne Leerzeichen zusammengeschrieben). Die Token kommen vom PowerShell-Parser, ein `#` in einem String zaehlt nicht.
+# Verben aus der festen Liste $verbs; als Fund zaehlt nur ein Befehl, den es gibt (eingebaut oder in einer der gelesenen Dateien definiert).
 # Aufruf: .\scripts\ps_glue_lint.ps1 [Datei ...]          ohne Dateien alle getrackten *.ps1 (git ls-files)
 #         .\scripts\ps_glue_lint.ps1 -Root <Baum>         alle *.ps1 unter dem Baum (nur fuer scripts/dev/ps_glue_lint_test.ps1)
 # Ausnahme einer Zeile: 'ps-glue-lint: ok <Grund>' im selben Kommentar.
@@ -43,7 +44,7 @@ function Test-Command([string]$Name) { return $known.Contains($Name) -or [bool](
 
 foreach ($f in $parsed) {
     foreach ($t in $f.Tokens) {
-        if ($t.Kind -ne 'Comment' -or $t.Text -match 'ps-glue-lint:\s*ok') { continue }
+        if ($t.Kind -ne 'Comment' -or $t.Text -match 'ps-glue-lint:\s*ok\s+\S') { continue }
         foreach ($m in $glue.Matches($t.Text)) {
             $cmd = $m.Value.Substring(1)
             if (-not (Test-Command $cmd)) { continue }

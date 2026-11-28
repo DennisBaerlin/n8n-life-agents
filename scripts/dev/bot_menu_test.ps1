@@ -5,7 +5,8 @@
 # LIFEAGENTS_TELEGRAM_API, nur Test) und prueft die aufgezeichneten setMyCommands-Aufrufe:
 #   - je Katalogsprache (Core-Manifest languages.list) ein Default-Menue mit language_code + ein Default ohne
 #     language_code (Fallback = Owner-Sprache); ist der Owner verbunden, dieselben vier Owner-Chat-Menues;
-#   - die Beschreibungen kommen aus dem Textkatalog der jeweiligen Sprache (<pkg>.cmd.<name>);
+#   - die Beschreibungen von /help, /onboarding, /language kommen aus dem Textkatalog der jeweiligen Sprache (core.cmd.<name>);
+#     die versteckten Befehle sprache, hilfe, start werden nicht beworben;
 #   - der Sofort-Verify (getMyCommands je Scope + Sprache; der Mock speichert wie die Bot-API) meldet jedes Menue
 #     als gesetzt;
 #   - der Mini-App-Knopf „Übersicht“ (setChatMenuButton) nur pro Chat, bei audience=owner nur fuer den Owner, Text aus
@@ -18,7 +19,9 @@
 #   - Menü einmal je Install-/Update-Lauf, ein Wiederholversuch je Telegram-Aufruf, Fehlergrund im Protokoll (menu_once_cases.sh);
 #     `lifeagents telegram release-webhook` (Schnittstelle der Start-App beim Abbau) in allen Zustaenden (release_webhook_cases.sh).
 #     `lifeagents telegram relink` (Bot wieder verbinden, doctor-Abhilfe) gegen Mock-Telegram + n8n-Attrappe (relink_cases.sh, Ports 8096/8097).
+#     Benachrichtigung bei gescheiterter Sicherung (backup_notify_cases.sh, Port 8095).
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
+# Loescht im Substrat core.notification_state app_intro und /etc/lifeagents/app-menu-chats; app.audience und Onboarding stellt es zurueck.
 # N8NTEST_RUNTIME=compose: im master des Verbunds (bootstrap_test_stack.ps1); statt des Minuten-Timers pausiert die Tick-Schleife des master.
 # Usage:  .\scripts\dev\bot_menu_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.

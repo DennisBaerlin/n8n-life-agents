@@ -2,8 +2,8 @@
 # live_read.ps1 -- der eine lesende Zugang zum Produktiv-System fuer die Routinen (/live-findings, /cost-report,
 # refresh_privacy_denylist.ps1), fuer beide Laufzeiten: klassisch (systemd, `runuser … psql`) und Docker-Verbund
 # (`docker exec <projekt>-postgres|-master`). Dot-sourcen; Befehls-Bausteine sind rein und ohne Netz testbar
-# (scripts/dev/live_read_test.ps1). Aufrufer ist scripts/live_read.ps1; Zugang (LIVE_INSTANCE_*) kommt aus der .env des
-# Haupt-Checkouts, nie ein Rueckfall auf DEV_INSTANCE_*.
+# (scripts/dev/live_read_test.ps1). Aufrufer: scripts/live_read.ps1 und scripts/refresh_privacy_denylist.ps1; laedt dotenv.ps1.
+# Zugang (LIVE_INSTANCE_*) kommt aus der .env des Haupt-Checkouts, nie ein Rueckfall auf DEV_INSTANCE_*.
 # Ziel-Arten ($Target.Kind): ssh (Produktiv-System), local (Test: derselbe Befehl in bash auf diesem Rechner, z. B. gegen einen
 # lokalen Test-Verbund), container (Test: klassisches Substrat, `docker exec <container> bash -c`).
 # Laufzeit-Erkennung: laeuft der Container <projekt>-master, ist es der Verbund, sonst klassisch; ohne Docker auf dem Ziel

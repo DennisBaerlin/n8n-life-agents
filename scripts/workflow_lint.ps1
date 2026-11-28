@@ -7,10 +7,18 @@
 # Verdrahtung kaputt), fallen alle Workflows lautlos aus, kein Alert kommt mehr an. Da der Eingang
 # ein n8n errorTrigger ist (feuert nur bei echten Fehlern, nicht via executeWorkflow ansteuerbar),
 # prueft das Lint deterministisch die Definition:
-#   (1) Struktur: erwartete Nodes/Typen + Verdrahtung On Error -> Load alert texts -> Format Message -> Send Telegram Alert
-#   (2) Send-Node: chatId gesetzt + Telegram-Credential + appendAttribution:false
-#   (3) Format-Message-Logik: der JS-Code baut aus einem synthetischen Error-Payload korrekt die
-#       Alert-Nachricht (via node ausgefuehrt: lokal installiert oder per Docker) -> faengt Code-Regressions.
+#   (1) Struktur: erwartete Nodes/Typen + Verdrahtung On Error -> Load alert texts -> Read LLM status -> Note LLM pause
+#       -> Format Message -> Send Telegram Alert; die drei Lese-Knoten laufen mit onError=continue + alwaysOutputData (der
+#       Alarm haengt nie an DB oder Gateway), Load alert texts ohne Retry
+#   (2) Send-Node: chatId gesetzt + Telegram-Credential + appendAttribution:false + Retry On Fail; der Format-Message-Code
+#       referenziert execution/workflow/error, escapt _ * ` [ und filtert Harness-Executions (Test Webhook)
+#   (3) Format-Message-Logik: der JS-Code baut aus einem synthetischen Error-Payload korrekt die Alert-Nachricht
+#       (Workflow, Fehlermeldung, Node) und unterdrueckt eine Harness-Execution (via node ausgefuehrt: lokal installiert
+#       oder per Docker) -> faengt Code-Regressions.
+#
+# Weitere Einzel-Workflows:
+#   (HITL-Gate) agent.tool_human_approval: sendAndWait-Node vorhanden, Message escapt _ * ` [ (parse_mode dort fest Markdown).
+#   (Karten-Renderer) core.sub_send_chat_prompt: Logik-Test des Codes 'Build prompt' gegen erfundene Karten (via node).
 #
 # Zusaetzlich Querschnitts-Gesetze ueber alle getrackten Workflows (Fehlerklasse "Prod-Pfad
 # crasht, alle Tests gruen"):
@@ -33,10 +41,27 @@
 #       kaputten Ausdruck beim Publish und scheitert erst zur Laufzeit mit "invalid syntax". Auch $fromAI(…)-Ausdruecke:
 #       ein "}}" im Beschreibungstext beendet den Ausdruck vorzeitig (z. B. ein JSON-Beispiel in einer Tool-Beschreibung).
 #       Ausgenommen nur Code-Nodes (eigenes jsCode).
+#   (4c) kein "prototype" in n8n-Ausdruecken (n8n 2.x sperrt es zur Laufzeit).
+#   (6) jeder Telegram-Send (ausser resource file/callback) hat appendAttribution=false und retryOnFail (sendMessageDraft ausgenommen).
+#   (7) dynamischer Telegram-Text ({{ }}) escapt _ * ` [ (Ausnahmen $tgEscapeAllow/$tgEscapeAllowLike, HTML-Plain-Fallback); kein
+#       leeres parse_mode.
+#   (8) Connections: jede Quelle/jedes Ziel ist ein Node; main = Array von Arrays (n8n-Import-Form).
+#   (9) sendAndWait mit Chat-Bestaetigung: approverIds nicht leer, kein .item-Ausdruck darin.
+#   (10) mehrere Chat-Bestaetigungs-Fragen je Workflow nur mit Doppel-Tipp-Schutz '<Frage> (tap check)' (Ausnahme $staleTapExempt).
+#   (11) sendAndWait: Wartegrenze limitWaitTime nur unter options (top-level ignoriert n8n).
+#   (12) produktive Webhooks (nicht *.test_harness): Pfad ist ein Deploy-Platzhalter __<NAME>_PATH__.
+#   (Formatter) Betraege/Daten in Telegram-Texten und in 'Build Approval Summary' ueber Fmt-MoneyJs/Fmt-DateJs; die Summary ist
+#       ein object (New-HitlSummary), kein String.
+#   (Textkatalog) sichtbare Telegram-Texte ohne Ersatz-Umlaute.
+#   (Test-Startpunkt) jeder Cron traegt 'Schedule (cron from config)' und genau einen 'Test run' (executeWorkflowTrigger) mit
+#       denselben Kanten.
+#   (Naht) kein Workflow traegt die literale workflowId eines Workflows eines fremden Nicht-Core-Pakets.
+#   (Begruessung) 'Send welcome new' im Orchestrator hat dieselben callback_data wie core.fn_render_welcome (Reihenfolge).
+#   (Frei-SQL) jedes postgresTool mit $fromAI-query traegt den Guard gegen ein fehlendes Argument.
 #
 # Usage:  .\scripts\workflow_lint.ps1 [-Verbose]
 # Voraussetzung: node lokal oder Docker (Node-Abbild in der Hauptversion NODE_MAJOR aus provision.sh, wird bei Bedarf gezogen)
-#   fuer (3) und die Ausdrucks-Syntax; fehlt beides, failt der jeweilige Check.
+#   fuer (3), den Karten-Renderer und die Ausdrucks-Syntax; fehlt beides, failt der jeweilige Check.
 # Exit-Code = Anzahl fehlgeschlagener Checks.
 param([switch]$Verbose)
 

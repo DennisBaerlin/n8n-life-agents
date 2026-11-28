@@ -11,7 +11,10 @@
 #   (2) HITL-Format-Vertrag: ri02 treibt ueber den echten Eingang ein finance-Write-Tool bis ins
 #       echte Send-and-Wait-Gate, faengt die Nachricht im Mock-Telegram ab und loest sie ueber die
 #       signierte Resume-URL auf (= Format-/Signatur-Vertrag).
-#   (3) Sender-Gate: ri03 (ungepairter Sender) muss in den Knock/Ack-Pfad laufen, nicht zum Agenten.
+#   (3) Sender-Gate: ri03 (ungepairter Sender) muss still in den Knock-Pfad laufen (Knoten 'Knock throttle', Owner-Notiz, kein Ack),
+#       nicht zum Agenten.
+#   (4) Eingangs-Geheimnis je Instanz: vor allen Faellen muss die Repo-Route des Triggers 404 und das aus dem Repo ableitbare
+#       Secret auf der Live-Route 403 liefern, sonst Abbruch.
 #
 # Gratis + deterministisch: kombiniert mit enable_mock_llm (Claude-Stub) + enable_mock_telegram
 # spricht der ganze Real-Ingress-Pfad mit Mocks (kein echtes Modell, kein echtes Telegram) -> eigener
@@ -29,7 +32,9 @@
 # Felder bei offener Karte (kind hitl): probe_card_open = zweite Nachricht in denselben Chat; expect_probe_text = Katalog-Schluessel (core, de)
 # der Antwort darauf; probe_entry_open = die Person hat waehrend des Falls einen frisch beanspruchten vereinbarten Eintrag.
 #
-# Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen.
+# Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen. Faelle: tests/agent/core/real_ingress_cases.json.
+# Seiteneffekte in der Substrat-DB: Fixture-Seed (tests/fixtures/util_seed_test_fixtures.sql), Telegram-id und Sprache der family-Personen,
+# Fall-Vorbereitungen (core.config cron_enable, agent.access_blocks, KI-Pause-Tabellen); leert Karten-Sperre, Thinking-Lease und Vorschlags-Merker.
 # Usage:  .\scripts\dev\real_ingress_test.ps1 [-Id ri01,ri02] [-Timeout 90] [-Verbose]
 #         -ForceAbortId ri01 = wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad, ohne auf echte Last zu warten).
 # Exit-Code = Anzahl Fehler.
@@ -71,7 +76,7 @@ $ApiPollMs = 300
 # Auf die neue Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).
 # Nur fuer Faelle mit genau einer neuen Execution des Workflows: die Listen-API blendet laufende Executions aus
 # (n8n executions.public.controller: excludeRunning, solange kein status=running gefiltert wird) -> "kleinste
-# sichtbare id" waere sonst eine spaetere, schon fertige (Ausreisser ri02: die Probe statt des Hauptlaufs).
+# sichtbare id" waere sonst eine spaetere, schon fertige (z. B. die Probe statt des Hauptlaufs).
 # Mehrere neue Executions -> die eigene per id bestimmen und Wait-ExecTerminal nutzen.
 function Wait-NewExecTerminal([string]$WfId, [int]$AfterId, [int]$TimeoutSec) {
     $start = Get-Date; $cand = $null
@@ -690,7 +695,7 @@ foreach ($tc in $cases) {
             }
 
             # Signierte Resume-URL (decline) ziehen, Host->Bruecke, als GET feuern. Get-HitlResumeUrl wirft,
-            # wenn das reply_markup-/approved-Format nicht stimmt -> IST der HITL-Format-/Signatur-Check.
+            # wenn das reply_markup-/approved-Format nicht stimmt -> ist der HITL-Format-/Signatur-Check.
             $approved = ($tc.gate_decision -eq 'approve')
             try {
                 $resumeUrl = Get-HitlResumeUrl -Request $msg -Approved $approved -BridgeUrl $N8nUrl
@@ -709,7 +714,7 @@ foreach ($tc in $cases) {
             }
             # Hauptlauf ueber die Eltern-Kette des Gates bestimmen, nicht als "kleinste neue id": die Probe unten ist eine
             # zweite neue Orchestrator-Execution, und die Listen-API blendet den nach dem Tipp laufenden Hauptlauf aus ->
-            # unter Last wurde die fertige Probe als Hauptlauf gewertet und die Sperre vor 'Finish card lock' geprueft.
+            # sonst gilt unter Last die fertige Probe als Hauptlauf und die Sperre wird vor 'Finish card lock' geprueft.
             $root = try { Get-ExecRoot "$gateExecId" } catch { $null }
             if (-not $root -or $root.WorkflowId -ne $OrchWfId -or $root.Id -le $orchBase) {
                 Write-Host "    [FAIL] Gate-Execution $gateExecId haengt an keinem neuen Orchestrator-Lauf (Wurzel: $($root.Id) in $($root.WorkflowId))." -ForegroundColor Red
@@ -756,7 +761,7 @@ foreach ($tc in $cases) {
             }
             $pr = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
             if ((($pr.Output -join '').Trim()) -ne '0') {
-                # Diagnose (Ausreisser ri02): Zeilen-Zustand + wann Gate-Freigabe und Orchestrator-Loeschen liefen.
+                # Diagnose: Zeilen-Zustand + wann Gate-Freigabe und Orchestrator-Loeschen liefen.
                 $extraOk = $false
                 $row = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT opened_at, released_at, expires_at, clock_timestamp() FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
                 $gateExec = try { Get-ExecDetail $gateExecId } catch { $null }

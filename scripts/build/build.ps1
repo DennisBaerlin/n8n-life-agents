@@ -24,7 +24,8 @@
 #   .\scripts\build\build.ps1 -CatalogOnly            # nur den /help-Katalog neu schreiben (packages/core/seed/capabilities_catalog/<lang>.md + Paket-Fragmente)
 #                                                       # (keine Workflow-JSONs anfassen)
 #   .\scripts\build\build.ps1 -VerifyWorkflows        # Drift-Check: getrackte packages/*/workflows/*.json == frischer Bau (byte-genau),
-#                                                       # keine Datei ohne Bau-Quelle (kein File-Write; mit -VerifyCatalog kombinierbar).
+#                                                       # keine Datei ohne Bau-Quelle (nur beim vollen Lauf ohne -Only); kein File-Write;
+#                                                       # mit -VerifyCatalog kombinierbar.
 #                                                       # Test: scripts/dev/workflow_drift_test.ps1
 param([string]$Only = '*', [switch]$VerifyCatalog, [switch]$CatalogOnly, [switch]$VerifyWorkflows)
 
@@ -40,9 +41,7 @@ if ($VerifyWorkflows) {
     # lokalen Datei (ein Wert wie 0 aus einem CI-Stummel wuerde jedes Literal "0" mit-redigieren).
     $OWNER_CHAT_ID = '909000000000001'
 } else {
-    Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
-        if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-    }
+    Import-DotEnvVariables "$RepoRoot\.env"
 }
 if ([string]::IsNullOrEmpty($OWNER_CHAT_ID))      { throw "OWNER_CHAT_ID nicht in .env" }
 $NoWrite = $VerifyCatalog -or $CatalogOnly -or $VerifyWorkflows
@@ -458,10 +457,10 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
             foreach ($u in $missingTexts) { Write-Host "    - $u" -ForegroundColor Red }
             $fail = 1
         }
-        # Per-Fragment-Drift (nennt Paket + Sprache) ...
+        # Per-Fragment-Drift (nennt Paket + Sprache) ... Ordinal wie Save-WorkflowFile: -ne uebergeht Gross-/Kleinschreibung und Zeichen ohne Gewicht.
         foreach ($f in $fragments) {
             $onDisk = if (Test-Path $f.Path) { (([System.IO.File]::ReadAllText($f.Path, $Utf8NoBom)) -replace "`r`n","`n").TrimEnd() + "`n" } else { '' }
-            if ($onDisk -ne $f.Body) {
+            if (-not [string]::Equals($onDisk, $f.Body, [System.StringComparison]::Ordinal)) {
                 Write-Host "DRIFT: Fragment packages/$($f.Package)/seed/capabilities_catalog/$($f.Lang).fragment.md != frisch generiert. 'build.ps1' (voll) + commit." -ForegroundColor Red
                 $fail = 1
             }
@@ -469,7 +468,7 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
         # ... und Compose-Integritaet je Sprache (komponierte .md == compose(on-disk-Fragmente)).
         foreach ($c in $composed) {
             $onDiskCat = if (Test-Path $c.Path) { (([System.IO.File]::ReadAllText($c.Path, $Utf8NoBom)) -replace "`r`n","`n").TrimEnd() + "`n" } else { '' }
-            if ($onDiskCat -ne $c.Md) {
+            if (-not [string]::Equals($onDiskCat, $c.Md, [System.StringComparison]::Ordinal)) {
                 Write-Host "DRIFT: packages/core/seed/capabilities_catalog/$($c.Lang).md != compose(Fragmente). 'build.ps1' (voll) + commit." -ForegroundColor Red
                 $fail = 1
             }

@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # Urteil des Warte-Modus von scripts/check_ci_status.ps1 (-Wait) an erfundenen Lauf-Listen: gruen, rot, laeuft noch,
-# kein Lauf fuer den Stand, neuer Anlauf nach rotem Lauf, grosse Lauf-Nummer bleibt ganzzahlig. Kein Netz, kein Token.
+# kein Lauf fuer den Stand, neuer Anlauf nach rotem Lauf, grosse Lauf-Nummer bleibt ganzzahlig; dazu die Ampel ohne -Wait
+# (Get-CiLatestMainRuns: juengster Lauf je Workflow-Datei auf main). Kein Netz, kein Token.
 # Usage: .\scripts\dev\ci_wait_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -22,6 +23,10 @@ $v = Get-CiWaitVerdict -Runs @(Run 'genericity' $sha 'completed' 'failure' '2026
 Check 'abgeschlossen + failure = red' ($v.verdict -eq 'red') $v.verdict
 $v = Get-CiWaitVerdict -Runs @(Run 'genericity' $sha 'completed' 'cancelled' '2026-01-01T10:00:00Z') -Workflow 'genericity' -Sha $sha
 Check 'abgebrochen = red' ($v.verdict -eq 'red') $v.verdict
+foreach ($end in 'skipped', 'neutral', 'timed_out') {
+    $v = Get-CiWaitVerdict -Runs @(Run 'ci' $sha 'completed' $end '2026-01-01T10:00:00Z') -Workflow 'ci' -Sha $sha
+    Check "abgeschlossen + $end = red (gruen ist nur success: ein uebersprungener Lauf hat nichts geprueft)" ($v.verdict -eq 'red') $v.verdict
+}
 $v = Get-CiWaitVerdict -Runs @(Run 'genericity' $sha 'in_progress' '' '2026-01-01T10:00:00Z') -Workflow 'genericity' -Sha $sha
 Check 'laeuft noch = pending' ($v.verdict -eq 'pending') $v.verdict
 $v = Get-CiWaitVerdict -Runs @(Run 'genericity' $other 'completed' 'success' '2026-01-01T10:00:00Z') -Workflow 'genericity' -Sha $sha
@@ -48,6 +53,27 @@ $pr = Run 'free-gates' $sha 'completed' 'success' '2026-01-01T12:00:00Z' 8
 $pr | Add-Member display_title 'free-gates [Auswahl] im Titel eines PR'; $pr | Add-Member event 'pull_request'
 $v = Get-CiWaitVerdict -Runs @($pr) -Workflow 'free-gates' -Sha $sha
 Check 'Merker im Titel eines PR-Laufs: voller Lauf' ($v.verdict -eq 'green') $v.verdict
+
+# Ampel (ohne -Wait): je Workflow-Datei der juengste abgeschlossene Lauf auf main. Mit run-name im Workflow traegt das Feld name den
+# Titel des Laufs (bei free-gates die Commit-Message): gruppiert wird darum nach der Datei.
+function MainRun([string]$Wf, [string]$Name, [string]$Conclusion, [string]$Created, [string]$Branch = 'main') {
+    $r = Run $Wf $sha 'completed' $Conclusion $Created; $r.name = $Name; $r | Add-Member head_branch $Branch; return $r
+}
+# PR eines Forks aus dessen eigenem main: head_branch ist ebenfalls main, der Lauf gehoert aber nicht zum Stand von main.
+$forkPr = MainRun 'ci' 'ci' 'failure' '2026-01-01T15:00:00Z'; $forkPr | Add-Member event 'pull_request'
+$rows = @(Get-CiLatestMainRuns @(
+        (MainRun 'free-gates' 'free-gates' 'success' '2026-01-01T10:00:00Z'),
+        (MainRun 'free-gates' 'fix: etwas am Installer' 'failure' '2026-01-01T12:00:00Z'),
+        (MainRun 'ci' 'ci' 'success' '2026-01-01T12:00:00Z'),
+        (MainRun 'ci' 'ci' 'failure' '2026-01-01T13:00:00Z' 'feat/x'),
+        (MainRun 'release' 'release' 'failure' '2026-01-01T09:00:00Z' 'v1.2.3'),
+        (MainRun 'release' 'release' 'success' '2026-01-01T14:00:00Z' 'feat/x'),
+        $forkPr))
+$fg = @($rows | Where-Object { $_.Workflow -eq 'free-gates' })
+Check 'Ampel: Lauf mit eigenem Titel zaehlt zu seinem Workflow (juengster free-gates-Lauf ist rot)' ($fg.Count -eq 1 -and -not $fg[0].Ok) "$($fg.Count) $($fg.Ok)"
+Check 'Ampel: je Workflow-Datei genau eine Zeile' ($rows.Count -eq 3) (($rows | ForEach-Object { $_.Workflow }) -join ',')
+Check 'Ampel: Branch-Lauf und PR-Lauf eines Forks zaehlen nicht fuer main' (@($rows | Where-Object { $_.Workflow -eq 'ci' })[0].Ok) ''
+Check 'Ampel: release zaehlt auf dem Tag, nicht auf einem Branch' (-not @($rows | Where-Object { $_.Workflow -eq 'release' })[0].Ok) ''
 
 if ($fails -eq 0) { Write-Host 'PASS ci_wait_test' -ForegroundColor Green } else { Write-Host "ci_wait_test: $fails Fehler" -ForegroundColor Red }
 exit $fails

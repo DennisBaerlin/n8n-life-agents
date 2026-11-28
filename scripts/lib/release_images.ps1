@@ -1,7 +1,8 @@
 ﻿# release_images.ps1 — eine Adresse fuer die Auslieferung des master-Images (Docker-Verbund): Release-Pathspec, die zwei Formen
-# der Pin-Zeile in provisioning/compose/compose.yml und der Blick ins Container-Register per HTTP (ohne Docker, ohne Anmeldung).
-# Dot-Sourcing: scripts/build_master_image.ps1, scripts/sign_release.ps1, scripts/release_pin_guard.ps1, scripts/contract_lint.ps1 (33),
-# scripts/layout_lint.ps1 (L6), scripts/dev/release_images_test.ps1.
+# der Pin-Zeile in provisioning/compose/compose.yml und der Blick ins Container-Register per HTTP (ohne Docker, ohne Anmeldung);
+# dazu die Herkunfts-Pruefungen im Git (Test-MasterRevision, Test-HeadIsRemoteMain, Test-MasterPinOffline), die Pruefung der
+# Release-Assets fuer sign_release (Test-ReleaseSums/-Compose/-Setup) und der Pin in provisioning/setup.sh (Get-/Set-SetupPin).
+# Laedt hash.ps1. Nutzer (Dot-Sourcing): per Grep nach release_images.ps1; layout_lint L6 liest nur $ReleasePathspec als Text.
 #
 # Pin-Zeile (x-images.master, Anker &img_master):
 #   neutral  ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}   Branches + jeder Bau-Kontext des Images
@@ -165,7 +166,7 @@ function Test-MasterRevision([string]$RepoRoot, [string]$Revision, [string]$Tag)
     if ($changed -contains $MasterComposeRel) {
         $a = (& git -C $RepoRoot show "${Revision}:$MasterComposeRel") -join "`n"
         $b = (& git -C $RepoRoot show "${Tag}:$MasterComposeRel") -join "`n"
-        if ((Set-MasterPin $a) -cne (Set-MasterPin $b)) { $iss.Add("compose.yml weicht seit dem Image-Bau nicht nur in der Pin-Zeile ab — Image neu bauen.") }
+        if (-not [string]::Equals((Set-MasterPin $a), (Set-MasterPin $b), [System.StringComparison]::Ordinal)) { $iss.Add("compose.yml weicht seit dem Image-Bau nicht nur in der Pin-Zeile ab — Image neu bauen.") }
     }
     return , $iss
 }
@@ -246,7 +247,7 @@ function Test-ReleaseSetup([string]$RepoRoot, [string]$Tag, [string]$SetupFile) 
         if ($pin.Form -ne 'pinned') { $iss.Add('compose.yml des Tags traegt keinen Release-Pin.'); return , $iss }
         $want = Set-SetupPin ((($tagSetup -join "`n")) + "`n") "$($pin.Ref)@$($pin.Digest)"
         $have = [System.IO.File]::ReadAllText($SetupFile, $u8)
-        if ($have -cne $want) { $iss.Add("setup.sh im Release weicht ab: erwartet $SetupRel des Tags mit dem Pin $($pin.Ref)@$($pin.Digest), sonst nichts.") }
+        if (-not [string]::Equals($have, $want, [System.StringComparison]::Ordinal)) { $iss.Add("setup.sh im Release weicht ab: erwartet $SetupRel des Tags mit dem Pin $($pin.Ref)@$($pin.Digest), sonst nichts.") }
     } catch { $iss.Add($_.Exception.Message) }
     return , $iss
 }

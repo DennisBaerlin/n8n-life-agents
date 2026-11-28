@@ -1,8 +1,9 @@
 ﻿#Requires -Version 5.1
 # serve_desktop_preview.ps1 -- Live-Vorschau der Start-App (provisioning/desktop/ui) im Browser der Claude-Desktop-App
-# (Vorschau-Eintrag "desktop-app" in .claude/launch.json). Liefert die ECHTEN Dateien index.html, app.css, app.js und fuegt
+# (Vorschau-Eintrag "desktop-app" in .claude/launch.json). Liefert die echten Dateien index.html, app.css, app.js und fuegt
 # davor provisioning/desktop/preview/mock.js ein, der die App-Befehle mit erfundenen Antworten ersetzt -- kein Tauri,
 # kein Docker, nichts am Rechner. Jede Anfrage liest die Dateien neu (Aenderung -> Neuladen genuegt).
+# Dazu die Bilder unter /explain/*.svg (ui/explain) und dieselbe Inhalts-Regel (CSP) wie die App, ohne die IPC-Adressen.
 #   .\scripts\dev\serve_desktop_preview.ps1 [-Port 8766]
 #   http://localhost:8766/?state=ready&theme=dark&os=win&screen=power     Faelle: Kopf von preview/mock.js
 # Strg+C (bzw. Stoppen der Vorschau) beendet den Server. Nur localhost.

@@ -15,15 +15,19 @@
 #   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
 #       core.persona.name.<code>, ausser neutral Rahmensaetze (.1 ohne {name}) und die vier Tagesgruesse
 #       core.persona.greet.<code>.<morning|day|evening|night> mit {name}; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
+#       Je Persona die vier Sticker packages/core/build/stickers/<code>_{hallo,top,hmm,yay}.webp.
+#   (7c) Konto-Zeichen: jedes Zeichen aus finance.fn_account_emoji_choices (finance.tables_init.sql) hat finance.emoji.<hex>
+#       im de-Katalog.
 #   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog
 #       (ebenso jeder Key im View-Modell-Beispiel tests/fixtures/app_view_model_v1.json).
 #   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key,
 #       eine ueberfluessige Ausnahme ist ein Fehler.
-#   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
+#   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; ausgenommen Tab-Titel und Keys, die
+#       provisioning/**/*.sh oder scripts/dev/render_app_intro.ps1 nennen).
 #   (11) Karten-Laien-Test: Texte der Bestaetigungskarten kurz, ohne interne Begriffe, Datum statt Zeitspanne (Ratchet je Key).
 #   (12) Hand-Zeichen 👉/🔔 in jedem Katalog-Text nur als Zeilenanfang mit Leerzeichen.
-# Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
-#   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.{name,frame,greet}.* — sind ausgenommen).
+# Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs, Migrationen, scripts/build/lib oder provisioning/desktop
+#   (js/rs) vorkommt; dynamisch zusammengesetzte Familien sind ausgenommen (Liste am Warn-Block).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
 param([switch]$Verbose)
 

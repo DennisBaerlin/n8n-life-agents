@@ -8,6 +8,7 @@
 # dort entscheidet je Workflow der juengste abgeschlossene Lauf (nur success), Laeufe des main-Push, die noch laufen, zaehlen nicht.
 # Aufrufer: .claude/hooks/dev_cycle_guard.ps1 (git push). Gilt nur auf der Owner-Maschine und nur fuer ein GitHub-Remote;
 # ein Push des Owners im Terminal laeuft nicht durch den Hook und bleibt frei (Ausweg, wenn GitHub nicht abrufbar ist).
+# Voraussetzung: Netz zu api.github.com und ein GitHub-Token im Git-Credential-Store (wie git push); fehlt eins, Exit 2.
 # Usage:
 #   .\scripts\main_push_guard.ps1 [-Ref <ref>] [-Remote <name>] [-DestRef <zielname>]
 #   ... -RunsFile <json>   Lauf-Liste aus einer Datei statt von GitHub (Test; auch ueber MAIN_PUSH_GUARD_RUNS_FILE,

@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Gemeinsame Node-Builder (Build-*, New-*) fuer alle Workflow-Build-Defs.
-# Wird von build.ps1 dot-gesourct (nicht &/Import-Module),
+# Wird von build.ps1 und einigen Skripten unter scripts/dev/ (per Grep nach build_helpers.ps1) dot-gesourct (nicht &/Import-Module),
 # damit Build-Pg/Build-* die Script-Scope-Creds ($CRED_POSTGRES/$CRED_TELEGRAM) sehen.
 
 . (Join-Path $PSScriptRoot '..\..\lib\next_step_marker.ps1')   # Muster der Markerzeile NEXT_STEP, vom Relay-Baustein und vom Direkt-Test geteilt
@@ -39,7 +39,7 @@ function Build-Trigger {
 # Get-GuardedJsonExpr '<JS-Ausdruck, der werfen kann (JSON.parse ...)>' -> IIFE, die den Ausdruck auswertet und bei
 # ungueltigem JSON den Nicht-Objekt-/Nicht-Array-Sentinel '__invalid_json__' liefert. Die Ziel-fn prueft den Typ
 # (jsonb_typeof IS DISTINCT FROM 'object'/'array') und lehnt mit {ok:false} ab -> Tool-Fehler als Daten statt
-# Execution-Abbruch + Owner-Alert (Regel *Tool-Fehler & Retry-Stuerme*).
+# Execution-Abbruch + Owner-Alert (packages/CLAUDE.md *Korrigierbare Ablehnung*).
 # Fuer Build-Pg-Param-Ausdruecke (roher JS-Ausdruck, ohne '={{'); die IIFE ist n8n-Expression-tauglich (s. Fmt-MoneyJs).
 $script:InvalidJsonSentinel = '__invalid_json__'
 function Get-GuardedJsonExpr([string]$Body) {
@@ -225,7 +225,8 @@ function New-RequiredRowGate {
 }
 
 # Ergebnis eines Write-Tools ohne Bestaetigung am HITL-Gate: {ok:false, cancelled:true, message}. Der Text nennt den Fall aus der
-# Gate-Ausgabe: outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. -Source = n8n-Ausdruck dieser Ausgabe,
+# Gate-Ausgabe: error (Karte nicht zustellbar), outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason; note s. unten.
+# -Source = n8n-Ausdruck dieser Ausgabe,
 # Default $json (Approved? reicht sie durch); steht ein Knoten dazwischen, den Gate-Knoten nennen, z. B.
 # $('Request Approval').item.json. Ein gleicher
 # Text fuer Abbrechen und Ablauf liesse das Modell raten (es vermutete einen Technikfehler). Unbekannter Ausgang ->
@@ -543,7 +544,7 @@ function Build-WaitSeconds {
 # ADVISOR/PAKET-AGENT-EINGANGSNAHT
 # ============================================================
 # Core-first Hard-Gate (immer-an Onboarding-Invariante, vor Load Config): kein Paket vor dem Core-Onboarding
-# (Haushalt). Eine Quelle fuer New-AdvisorGateChain und agent.finance. Liest unter der
+# (Haushalt). Baustein von New-AdvisorGateChain. Liest unter der
 # Paket-RO-Cred (publizierte DEFINER-Fenster core.fn_onboarding_status + core.fn_ui_texts_for) im SELBEN Read den
 # Status und den Umleitungs-Text in der Sprache des Absenders (chat_id; unbekannt/kaputt -> Owner-Sprache, nie ein
 # RAISE). onError=continue + IF '=== false' -> fail-open bei Lesefehler (dann fehlt auch kein Text). Redirect =
@@ -597,8 +598,8 @@ function New-OnboardingProgressCallNode {
     $n
 }
 
-# Die deterministische Eingangs-Naht, die jeder Paket-Agent vor dem LLM teilt (build-CLAUDE.md
-# *Neuer AGENT-Workflow* + *Paket-Agent ... Routing-Status-/Core-first-Gate*): Anti-Loop-Depth-Gate
+# Die deterministische Eingangs-Naht, die jeder Paket-Agent vor dem LLM teilt (packages/CLAUDE.md
+# *Workflow-Bau*, Punkt *Agent-Eingang*): Anti-Loop-Depth-Gate
 # -> Routing-Status-Gate (package active) -> Core-first-Onboarding-Gate. Strukturell
 # ueber alle Domaenen identisch; das echte Delta (Tool-Liste, Modell, Memory-
 # Tabelle, domain-Expression, der finance-spezifische feature.onboarding_gate-Zweig nach Load Config)
@@ -641,7 +642,7 @@ function New-AdvisorGateChain {
         "={{ `$('Package active read').item.json.active === false }}" 'true' 'equals' 'boolean'
     $nPkgDeny = Build-ToolError 'Package inactive' $PkgDenyPos 'package_inactive'
 
-    # Core-first Hard-Gate (geteilt mit agent.finance: New-CoreOnboardingGate).
+    # Core-first Hard-Gate (New-CoreOnboardingGate).
     $core = New-CoreOnboardingGate -StartNode $StartNode -CredPgRo $CredPgRo `
         -ReadPos $CoreReadPos -GatePos $CoreGatePos -RedirectPos $CoreRedirectPos
     $nCoreRead = $core.Read; $nCoreGate = $core.Gate; $nCoreRedirect = $core.Redirect
@@ -746,7 +747,7 @@ function Build-Http {
 # ============================================================
 # TELEGRAM-SENDER (zentral) — die "can't parse entities"-Klasse strukturell geschlossen.
 # Telegram parst legacy Markdown (sendAndWait: parse_mode hartkodiert 'Markdown'; sendMessage:
-# wirksamer Default). Regeln, die diese Helper erzwingen (Build-Gotchas #12-14):
+# wirksamer Default). Regeln, die diese Helper erzwingen (packages/CLAUDE.md *Build-Gotchas*, Punkt *Telegram nur über die Helper*):
 #   - appendAttribution=false immer (sendMessage: additionalFields, sendAndWait: options)
 #   - retryOnFail immer (transiente Telegram-Timeouts)
 #   - dynamischer Text (={{ ... }}) wird komplett escapt (die 4 Legacy-Entities _ * ` [ per
@@ -772,7 +773,7 @@ function Resolve-TgTextExpr([string]$TextExpr, [bool]$NoEscape) {
 }
 
 # Waehrungs-korrekte Formatierung von Betraegen/Daten im Locale des Empfaengers in nutzer-sichtbaren
-# Nachrichten (HITL-Summaries + Cron-Reminder, Renderer Get-UiRenderLibJs). Die eine Adresse (sonst re-implementiert jeder der ~40 Summary-Builder das Symbol/
+# Nachrichten (HITL-Summaries + Cron-Reminder, Renderer Get-UiRenderLibJs). Die eine Adresse (sonst re-implementiert jeder Summary-Builder das Symbol/
 # Zahlformat neu -> Drift, hart '€' auf USD-Konten). Beide emittieren ein plain JS-Methoden-/Ternaer-Fragment
 # (kein Function-Closure -> kein n8n-#15900-Risiko, Beleg: set_household_facts faehrt eine IIFE in einer
 # Expression), das eine bestehende n8n-Expression einsetzt. Der workflow_lint erzwingt die Nutzung (Feld-Vokabular).
@@ -1035,7 +1036,7 @@ function New-HitlSummary {
 #     lines(arr)— Zeilen (Digest): null = Leerzeile, ein Array = eine Zeile aus Teilen (msg)
 #   Betraege/Daten/Zahlen per Intl im Locale des Empfaengers (Fmt-MoneyJs/Fmt-DateJs, number: feste digits, sign;
 #   digits -1 = alle Stellen des Werts, fuer Stueckzahlen).
-#   Wirft nie bei kaputten Werten (Rohwert). Genutzt vom HITL-Gate (Get-HitlComposeJs) und den Cron-Berichten.
+#   Wirft nie bei kaputten Werten (Rohwert). Nutzer: per Grep nach Get-UiRenderLibJs (HITL-Gate, Cron-Berichte, einzelne Tools, Mini-App).
 #   Die Format-Woerter (core.fmt.*) gehoeren in jede t-Map, die den Renderer nutzt: $script:UiRenderKeys.
 $script:UiRenderKeys = @('core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes', 'core.fmt.no', 'core.fmt.removed')
 function Get-UiRenderLibJs {
@@ -1179,7 +1180,7 @@ function Get-StripChoicesJs {
     "const ok = o.length >= $($script:ChoicesMinOptions) && o.length <= $($script:ChoicesMaxOptions) && o.every((x) => x.length <= $($script:ChoicesMaxLength) && !/https?:|:\/\/|t\.me\//i.test(x)); " +
     "return { text: ls.filter((l) => !RE.test(l)).join('\n').trim(), options: ok ? o : [] }; })"
 }
-# Get-CardRenderJs — Karten der offenen Frage (agent.chat_prompts, Plan s4-berater-ux §4.2): JS-Quelltext einer Funktion
+# Get-CardRenderJs — Karten der offenen Frage (agent.chat_prompts): JS-Quelltext einer Funktion
 #   cardRender() mit { html(card), fromEntities(text, entities), esc }. card = core.fn_render_prompt {lines:[{kind,
 #   text[, title]}]}: die DB liefert Klartext in der Sprache des Chats, nie HTML; hier wird jeder Wert escapt und nur dieser
 #   Renderer setzt Tags (parse_mode HTML). Zeilenarten: head/label/total fett, quote (aufeinanderfolgende = ein Zitat-Block),
@@ -1275,8 +1276,8 @@ function cardRender() {
 }
 # Get-HitlComposeJs — der eine Renderer des HITL-Gates (Code-Knoten 'Compose messages', runOnceForEachItem).
 #   Liest 'Render texts' (core.fn_hitl_texts: Sprache/Locale/Texte je Empfaenger) + das Summary aus 'Start' und
-#   liefert je Empfaenger die fertigen Texte: owner {text, pre, stage2, stage2_pre, info, info_pre, approve, cancel,
-#   unauthorized}, member {text, pre, approve, cancel, unauthorized} (fehlt das Member-Buendel -> Owner-Texte, nie ein
+#   liefert je Empfaenger die fertigen Texte: owner {lang, text, pre, stage2, stage2_pre, info, info_pre, approve, cancel,
+#   unauthorized}, member {lang, text, pre, approve, cancel, unauthorized} (fehlt das Member-Buendel -> Owner-Texte, nie ein
 #   Absturz). *_pre = die vorderen Teile einer Karte ueber dem Telegram-Limit ("Teil n/N"), sonst []; text = der letzte.
 #   Ein String-Summary (Test-Harness) geht unveraendert durch. Wirft nie bei kaputten Werten (Rohwert).
 #   Entscheidet nie ueber Empfaenger: chatId/approverIds bleiben im Gate an Resolve sender/$OWNER_CHAT_ID gebunden.
@@ -1415,7 +1416,7 @@ return { json: {
 #     Latch-schreibenden Evaluate-Knoten (ein Ladefehler darf nie einen Hinweis als gemeldet markieren, der nie
 #     verschickt wurde); die Evaluate-SQL hat keine Eingangs-Bezuege;
 #   'Phrase message' (Basic LLM Chain, onError continue -> deterministischer Fallback) mit -PromptLead + $json.det_text;
-#   Umschalter (New-ModelSelectorBundle, .first() — zwischen Config-Knoten und Kette liegen Code-Knoten);
+#   Umschalter (New-ModelSelectorBundle mit -Effort, .first() — zwischen Config-Knoten und Kette liegen Code-Knoten);
 #   'Choose text' (LLM-Text oder der deterministische Text aus 'Build message').
 # Gate/Schedule/Evaluate/Build message/Send bleiben je Cron (belegte estate-Abweichung: eigenes Gate, kein cron_off).
 # Rueckgabe @{ LoadNode; Nodes; Connections } — Connections: Phrase -> Choose text + Umschalter-Kanten.
@@ -1463,7 +1464,7 @@ return [{ json: { message: llm.trim() ? llm.trim() : det } }];
 #   (a) Beschreibung sagt optional / leave empty, die Spec hat aber keinen Default -> das LLM muss einen Wert liefern und
 #       erfindet ihn oder fragt nach.
 #   (b) Zahlenfeld mit Default '' -> ergaebe $fromAI(..., 'number', ) = kaputte Expression.
-# Genutzt von New-AdvisorToolNode UND dem finance-lokalen New-ToolWorkflowNode (beide bauen $fromAI aus derselben Spec-Form).
+# Aufgerufen von New-AdvisorToolNode (auch ueber den finance-Wrapper New-ToolWorkflowNode).
 function Assert-FromAiSpec([array]$InputSpec, [string]$Ctx) {
     foreach ($spec in $InputSpec) {
         $name = $spec[0]; $desc = [string]$spec[1]; $type = $spec[2]
@@ -1503,8 +1504,8 @@ function New-PostgresSelectToolNode {
 }
 
 # toolWorkflow-Node fuer Cross-Agent-Tools (agent.tool_*): voller Workflow-Name + $fromAI-InputSpec +
-# optionale fixe (nicht-$fromAI) Inputs + chat_id-Durchreichung. Genutzt von agent.finance_advisor,
-# agent.career_advisor, agent.monitor, agent.guide. -StartNode ist Pflicht (kein finance-biased Default ->
+# optionale fixe (nicht-$fromAI) Inputs + chat_id-Durchreichung. Aufrufer: per Grep nach New-AdvisorToolNode.
+# -StartNode ist Pflicht (kein finance-biased Default ->
 # ein anderer Konsument kann nicht still die falsche chat_id-Quelle erben). Guide bindet keine FixedInputs
 # (uebergibt $null). Liegt in lib = Engine (kein Cross-Paket-Import, ein Name -> Scope-Kollision geloest).
 function New-AdvisorToolNode {
@@ -1648,7 +1649,7 @@ function Add-ServiceTools {
 # Regulaerer Telegram-Send (sendMessage, keine Buttons) — Form 1:1 aus core.sub_error_notify.
 #   -ParseMode: 'Markdown' | 'HTML' setzt additionalFields.parse_mode explizit. Nicht gesetzt = n8n-Default (Markdown).
 #     Es gibt kein Plain: n8n (GenericFunctions.addAdditionalFields) macht aus einem leeren parse_mode still
-#     'Markdown' -> echtes Plain = 'HTML' + HTML-escapter Text (Fallback unten).
+#     'Markdown' -> echtes Plain = 'HTML' + HTML-escapter Text.
 #   -OnError 'continueErrorOutput' schaltet den Fehler-Ausgang frei (fuer den Markdown->Plain-Fallback).
 function New-TelegramSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr,
@@ -1683,8 +1684,8 @@ function New-TelegramSendNode {
 # Runde) -> '<Name>' (Telegram, parse_mode=HTML = echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode
 # macht n8n still zu Markdown) -> zurueck zur Loop. Ein Retry wiederholt so nur den aktuellen Teil (keine Duplikate).
 # -TextJs = JS-Ausdruck im Code-Node-Kontext (nur .first(), kein .item), -FallbackJs = Text, wenn er leer ist.
-# Rueckgabe: @{ Nodes; Conns; Entry = '<Name> split'; Loop = '<Name> loop' } — der Aufrufer verdrahtet zur Entry und
-# den Done-Ausgang (Loop main[0]) zu seinem Folge-Node (AddDone).
+# Rueckgabe: @{ Nodes; Conns; Entry = '<Name> split'; Loop = '<Name> loop' } — der Aufrufer verdrahtet zur Entry.
+# -DoneTo = Folge-Node am Done-Ausgang (Loop main[0]); ohne Angabe bleibt der Ausgang leer.
 function New-TelegramRelayChain {
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$TextJs,
           [Parameter(Mandatory)][string]$ChatIdExpr, [string]$FallbackJs = "''", [string]$DoneTo)
@@ -2133,7 +2134,7 @@ function Build-Loop {
         typeVersion = 3; position = $Pos; id = (New-Id); name = $Name }
 }
 
-# Wrap a workflow definition into the n8n API payload.
+# Baut das Workflow-Objekt (name, nodes, connections, settings); Save-WorkflowFile schreibt es als Datei.
 # $Manifest (optional): per-Tool-Capability-Hashtable
 #   @{ Category='<id>' } (id einer catalog.categories[] des eigenen Pakets) bzw. @{ Internal = $true } —
 #   co-located in der Build-Funktion, damit ein neues Tool seine Capability nicht vergessen kann. Wird als
@@ -2142,7 +2143,7 @@ function Build-Loop {
 #   und Beispiele stehen im Textkatalog (<pkg>.help.<id>.*).
 function Build-Workflow {
     param([string]$Name, [array]$Nodes, $Connections, $Manifest = $null)
-    # NOTE: 'active' is intentionally omitted — n8n API treats it as read-only on POST/PUT.
+    # 'active' fehlt absichtlich: import:workflow setzt unpublished, deploy_workflows.sh publiziert danach.
     # errorWorkflow = die id von core.sub_error_notify, in build.ps1 per Name aus dem State aufgeloest
     # ($ErrorNotifyId), kein ID-Literal. core.sub_error_notify selbst ueberschreibt settings (kein
     # Self-Verweis -> keine Endlos-Alert-Schleife).
@@ -2240,7 +2241,7 @@ function Get-ModelIdMapJs {
 # die Anthropic-Credential (url) zeigt — Haltepunkte am letzten Werkzeug + System-Ende (1h) + oben (5 Min).
 # Node v1.5 (unser Pin) hat keine Caching-Option; die eingebaute Option ab n8n 2.37 (Node v1.6) setzt nur den oberen
 # Haltepunkt (kein Treffer ueber Gespraeche/Testfaelle) -> auch nach einem n8n-Update nicht einschalten (der
-# Gateway erkennt einen vorhandenen oberen Marker und laesst ihn stehen; brachte nichts zusaetzlich).
+# Gateway erkennt einen vorhandenen oberen Marker und laesst ihn stehen; die Option bringt also nichts dazu).
 function New-LmChatNode {
     param(
         [Parameter(Mandatory)][string]$ModelKey,   # model_key aus der Registry
@@ -2329,7 +2330,7 @@ function New-ModelSelectorBundle {
     $i = 0
     foreach ($m in $models) {
         $px = [int]$ModelRowPos[0] + ([int]$i * [int]$ModelDx)
-        # Jeder Modell-Node aus der einen Quelle New-LmChatNode (Thinking, Denk-Tiefe, Caching-Wiring).
+        # Jeder Modell-Node aus der einen Quelle New-LmChatNode (Thinking, Denk-Tiefe).
         $nodes += (New-LmChatNode -ModelKey $m.model_key -Name "$NamePrefix$($m.model_key)" -Position @($px, [int]$ModelRowPos[1]) `
                        -Models $models -Effort $Effort -AnthropicCred $AnthropicCred)
         # Modell-Node -> Model Selector am Eingang selector_index-1 (Array-Form via Komma-Operator).
@@ -2374,10 +2375,8 @@ function New-ModelSelectorBundle {
 
 # ============================================================
 # ANTHROPIC MESSAGES (HTTP) — die eine Quelle fuer direkte Claude-Aufrufe ohne Agent/Chain.
-# Fuer Pfade, die der lmChatAnthropic-Node nicht kann: Bild/PDF-Bloecke, Structured Output
-# (output_config.format), Server-Tool web_search. Konsumenten: tool_web_search, Monitor-Wert-
-# beschaffung (monitor_helpers.ps1), Belege-/Lebenslauf-Extraktion, Job-Scorer.
-# Warum HTTP statt nativem n8n-Anthropic-Node: scripts/build/CLAUDE.md *Modell-Node-Builder*.
+# Fuer Pfade, die der lmChatAnthropic-Node nicht kann (darum HTTP statt nativem Node): Bild/PDF-Bloecke, Structured Output
+# (output_config.format), Server-Tool web_search. Konsumenten: per Grep nach New-AnthropicMessagesNode.
 # Bewusst kein -AnthropicCred-Override (kein Konsument braucht ihn; anders als New-LmChatNode).
 # Denken: kein thinking-Parameter -> die 5.5-Generation denkt adaptiv; effort steuert die Tiefe.
 # max_tokens grosszuegig (Denken zaehlt mit). Auswertung immer ueber Get-AnthropicResultJs (stop_reason).
@@ -2412,6 +2411,7 @@ function ConvertTo-JsLiteral {
 #   -JsonSchema optional: Antwort als JSON nach Schema (output_config.format, Wurzel = object)
 #   -WebSearchMaxUses >0: Server-Tool web_search_20260209 (live verifiziert auf Haiku/Sonnet 5.5, auch zusammen mit
 #               -JsonSchema; laut Anthropic-Doku auf allen Modellen ab Claude 4.6 verfuegbar -> keine Modell-Weiche)
+#   -Effort     Pflicht, Denk-Tiefe (low|medium|high); -MaxTokens (16000, Denken zaehlt mit), -TimeoutMs (120000)
 function New-AnthropicMessagesNode {
     param(
         [Parameter(Mandatory)][string]$Name,

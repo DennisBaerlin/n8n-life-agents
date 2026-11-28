@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # refresh_privacy_denylist.ps1 -- haelt die Privacy-Liste selbst aktuell: liest Namen, Geburtsdaten, Nummern, Bestaende und
-# Stueckzahlen NUR LESEND aus einer Instanz (scripts/lib/privacy_terms.sql) und schreibt sie allein nach
+# Stueckzahlen nur lesend aus einer Instanz (scripts/lib/privacy_terms.sql) und schreibt sie allein nach
 # .local/privacy_denylist.generated.txt im Haupt-Checkout (gitignored). privacy_lint.ps1 liest die Datei zusaetzlich zur
 # handgepflegten .local/privacy_denylist.txt.
 # Die Liste waechst nur: ein frueherer Wert bleibt gesperrt, auch wenn er auf der Instanz nicht mehr steht.
-# Ausgaben nennen NIE einen Wert, nur Anzahlen je Art. Zu haeufige Woerter nimmt .local/privacy_denylist.exclude.txt heraus
+# Ausgaben nennen nie einen Wert, nur Anzahlen je Art. Zu haeufige Woerter nimmt .local/privacy_denylist.exclude.txt heraus
 # (je Zeile ein Begriff, '#' = Kommentar, Gross-/Kleinschreibung egal).
 # Ablauf: wochenweise im Skill /live-findings und in der Tiefenpruefung (Skill /privacy-deep-review).
 #
@@ -14,7 +14,8 @@
 #   .\scripts\refresh_privacy_denylist.ps1 -Container lifeagents-n8ntest-xx   # klassisches Test-Substrat statt Instanz
 #   .\scripts\refresh_privacy_denylist.ps1 -Local -Project <name>             # lokaler Test-Verbund (Projektname = Container-Praefix)
 # Die Laufzeit des Ziels (klassisch/Docker-Verbund) erkennt scripts/lib/live_read.ps1 selbst.
-# Exit-Code: 0 = ok; 1 = Quelle nicht lesbar (Liste bleibt unveraendert); bei -Preview Anzahl der Treffer-Zeilen.
+# Exit-Code: 0 = ok; 1 = Zugang fehlt, Quelle nicht lesbar oder keine Werte der Art name/date gelesen (Liste bleibt unveraendert);
+# bei -Preview Anzahl der Treffer-Zeilen.
 param(
     [switch]$Preview,
     [string]$Container,

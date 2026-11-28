@@ -6,7 +6,8 @@
 # finance-first-Default oder abzubauende Schuld). Der Lint erzwingt exakte Uebereinstimmung Found<->Allowlist je (Datei, Literal):
 #   - Found > Allowlist  -> neues Paket-Literal (FAIL: generisch bauen oder mit Begruendung allowlisten);
 #   - Found < Allowlist  -> ein Literal wurde entfernt (FAIL: Allowlist-Eintrag schrumpfen);
-#   - Allowlist-Eintrag ohne Fund -> Orphan (FAIL: entfernen).
+#   - Allowlist-Eintrag ohne Fund -> Orphan (FAIL: entfernen);
+#   - ausserdem FAIL: Allowlist-Datei fehlt, Eintrag ohne reason, doppelter Eintrag.
 # Erkannte Literal-Klassen je Nicht-Core-Paket P (aus packages/<P>/):
 #   - Quoted: exakter Wert 'P', 'P_advisor', 'agent.P', 'agent.P_advisor' (Domaenen-/Agent-/Routing-Kopplung) plus jeder in
 #     packages/<P>/manifest.json deklarierte Kontext-Name (z. B. 'finance_profile', 'financial_planning'); kein Substring
@@ -35,7 +36,7 @@
 #   (**/migrations/V*__*.sql = einmalige Daten-Backfills), generierte Dateien.
 # Aufruf: .\scripts\core_literal_lint.ps1 [-Verbose]
 #   -Baseline druckt die gefundenen (file,literal,count) als JSON-Geruest (reason:'TODO') als Start fuer die Allowlist.
-# Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
+# Exit-Code = Anzahl Fehler (-Baseline: 0). Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -241,7 +242,7 @@ if ($Baseline) {
         $p = $k -split '\|', 2
         [ordered]@{ file = $p[0]; literal = $p[1]; count = $found[$k]; reason = 'TODO' }
     }
-    [ordered]@{ _comment = 'Baseline -- Begruendung je Eintrag eintragen (default|debt:WS-0c#N|...)'; allow = @($entries) } |
+    [ordered]@{ _comment = 'Baseline -- Begruendung je Eintrag eintragen (default|debt:<was fehlt>|...)'; allow = @($entries) } |
         ConvertTo-Json -Depth 6
     exit 0
 }
@@ -266,7 +267,7 @@ foreach ($key in ($found.Keys | Sort-Object)) {
     if (-not $allow.ContainsKey($key)) {
         Fail "NEUES Core-Paket-Literal '$($p[1])' in $($p[0]) ($($found[$key])x) -- generisch bauen ODER mit Begruendung in scripts/build/core_literal_allowlist.json"
     } elseif ($allow[$key] -ne $found[$key]) {
-        Fail "Anzahl '$($p[1])' in $($p[0]): gefunden $($found[$key]), Allowlist $($allow[$key]) -- Allowlist-count anpassen (bei Entfernung schrumpfen = WS-0c-Fortschritt)"
+        Fail "Anzahl '$($p[1])' in $($p[0]): gefunden $($found[$key]), Allowlist $($allow[$key]) -- Allowlist-count anpassen (bei Entfernung schrumpfen)"
     }
 }
 foreach ($key in ($allow.Keys | Sort-Object)) {

@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # Selbsttest der Markerzeile NEXT_STEP im Direkt-Test (scripts/lib/next_step_marker.ps1). Kein Substrat, keine Kosten.
 # Haelt fest: Der Direkt-Test nimmt die Zeile wie der Relay aus dem Agententext und gibt sie als Knopf mit; das Muster ist
-# dasselbe, das der Relay-Baustein in sein JavaScript einsetzt (eine Quelle, kein zweites Regex).
+# dasselbe, das der Relay-Baustein in sein JavaScript einsetzt (eine Quelle, kein zweites Regex). Dazu die Beschriftung des
+# System-Schritts (Get-SystemNextStepLabel), NEXT_STEP_BUTTON im Judge-Prompt (lib/judge_prompt.ps1) und dessen Verdrahtung in n8n_test.ps1.
 # Usage:  .\scripts\dev\next_step_marker_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

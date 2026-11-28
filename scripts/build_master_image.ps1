@@ -13,9 +13,11 @@
 #
 # Usage:
 #   .\scripts\build_master_image.ps1 -Version v0.37.0                     # Owner: nach ghcr.io/<owner>/<repo>/master, Pin eintragen
-#   .\scripts\build_master_image.ps1 -Version v0.37.0 -Registry 127.0.0.1:5099/di5 -NoPin   # Test gegen ein lokales Register
+#   .\scripts\build_master_image.ps1 -Version v0.37.0 -Registry 127.0.0.1:5099/test -NoPin  # Test gegen ein lokales Register
 #   .\scripts\build_master_image.ps1 -Version v0.37.0 -NoPush             # nur bauen (lokaler Bild-Speicher), nichts veroeffentlichen
 #   .\scripts\build_master_image.ps1 -Version v0.37.0 -Digest sha256:<hex> # schon gepusht (z. B. nach dem Oeffentlich-Stellen): nur pruefen + Pin
+#   ... -Name <image>   Image-Name im Register statt 'master' (klein geschrieben)
+#   ... -AllowDirty     baut trotz uncommittetem Release-Baum (nur Test; das Label revision passt dann nicht zum Inhalt)
 # Push nach ghcr.io braucht vorher `docker login ghcr.io` (Token mit write:packages) und ist eine Veroeffentlichung; das Paket
 # muss danach oeffentlich sein (GitHub > Packages > master > Package settings > Change visibility), sonst scheitert die Pruefung.
 # Voraussetzungen: docker (buildx), git, origin = GitHub-Repo.

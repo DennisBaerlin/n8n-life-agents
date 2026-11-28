@@ -1,34 +1,15 @@
 ﻿#Requires -Version 5.1
 # Fehl- und Gutfaelle von scripts/timer_lock_lint.ps1 in einem Wegwerf-Baum (-Root): Sperr-Probe und Sperr-Nahme ohne
-# Wartezeit ausserhalb der erlaubten Datei und ein nicht eingetragener Zeitgeber muessen rot werden; die Gegenstuecke
-# gruen. Kein Docker, kein git.
+# Wartezeit ausserhalb der erlaubten Datei, ein nicht eingetragener Zeitgeber, ein exec ohne Programm, das stdin, stdout oder
+# stderr der Shell umleitet, und ein ausfuehrbares Skript ohne LANG/LC_ALL muessen rot werden; die Gegenstuecke gruen. Kein Docker, kein git.
 # Usage: .\scripts\dev\timer_lock_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $lint = Join-Path $PSScriptRoot '..\timer_lock_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('tll_' + [guid]::NewGuid().ToString('N'))
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
-}
-
-function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) {
-    $root = New-Tree $Files
-    try {
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
-}
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
+function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) { Test-LintCase -Lint $lint -Name $Name -Files $Files -ExpectRed $ExpectRed -ExpectText $ExpectText }
 
 # Pfade zusammengesetzt: doc_lint liest ausgeschriebene Repo-Pfade als Verweise auf echte Dateien.
 $P = 'provisioning'
@@ -66,6 +47,49 @@ Test-Case 'unbekannter Zeitgeber ist rot' @{
 } $true 'lifeagents-neu'
 Test-Case 'eingetragener Zeitgeber ist gruen' @{
     "$P/templates/lifeagents-backup.timer.tpl" = "[Timer]`nOnCalendar=*-*-* 03:30:00`n"
+} $false ''
+
+# (D) `exec` ohne Programm leitet Deskriptoren der Shell selbst um.
+Test-Case 'exec schliesst die Sperre und verbiegt dabei stderr der Shell: rot' @{
+    "$P/lib/other.sh" = "unlock() {`n  exec 9>&- 2>/dev/null || true`n}`n"
+} $true 'other.sh:2'
+Test-Case 'exec leitet stdout der Shell um: rot' @{
+    "$P/lib/other.sh" = "exec >>`"`$LOG`" 2>&1`n"
+} $true 'other.sh:1'
+Test-Case 'exec in einer einzeiligen Funktion: rot' @{
+    "$P/lib/other.sh" = "unlock() { exec 9>&- 2>/dev/null || true; }`n"
+} $true 'other.sh:1'
+Test-Case 'exec hinter if ! und hinter else: rot' @{
+    "$P/lib/a.sh" = "if ! exec 9>>`"`$LOCK`" 2>/dev/null; then return 0; fi`n"
+    "$P/lib/b.sh" = "if x; then :`nelse exec 2>'/tmp/a b'`nfi`n"
+} $true 'b.sh:2'
+Test-Case 'exec nur mit Deskriptoren ab 3 ist gruen' @{
+    "$P/lib/other.sh" = "exec 9>>`"`$LOCK`" || return 0`nexec 9>&-`nexec 3>&2`nexec {OUT}>&1 {IN}<&0`n"
+} $false ''
+Test-Case 'exec mit Programm darf dessen Ausgabe umleiten' @{
+    "$P/lib/other.sh" = "exec bash -c 'true' 2>/dev/null`n( exec sleep 1 >/dev/null 2>&1 )`n"
+} $false ''
+Test-Case 'eingetragene Umleitung des Installer-Protokolls ist gruen' @{
+    "$P/lib/common.sh" = "ui_log_begin() {`n  exec 3>&2`n  exec >>`"`$UI_LOG_FILE`" 2>&1`n  exec 0</dev/null`n}`n"
+} $false ''
+Test-Case 'exec im Kommentar zaehlt nicht' @{
+    "$P/lib/other.sh" = "# exec 2>/dev/null waere falsch`n"
+} $false ''
+
+# (E) ausfuehrbare Skripte setzen die Sprach-Umgebung selbst.
+Test-Case 'Skript mit Shebang ohne LANG/LC_ALL ist rot' @{
+    "$P/neu.sh" = "#!/usr/bin/env bash`nset -euo pipefail`necho x`n"
+} $true 'neu.sh'
+Test-Case 'Skript mit Shebang und nur LANG ist rot' @{
+    "$P/neu.sh" = "#!/usr/bin/env bash`nexport LANG=C.UTF-8`n# export LC_ALL=C.UTF-8`n"
+} $true 'neu.sh'
+Test-Case 'Skript mit Shebang und beiden Exporten ist gruen' @{
+    "$P/neu.sh"       = "#!/usr/bin/env bash`nexport LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive`n"
+    "$P/compose/a.sh" = "#!/bin/bash`nexport LANG=C.UTF-8`nexport LC_ALL=C.UTF-8`n"
+} $false ''
+Test-Case 'gesourcte Bibliothek und Start-App brauchen keinen Export' @{
+    "$P/lib/helfer.sh"  = "# helfer.sh`nfoo() { :; }`n"
+    "$P/desktop/run.sh" = "#!/usr/bin/env bash`necho x`n"
 } $false ''
 
 if ($fails -eq 0) { Write-Host 'PASS timer_lock_lint_test' -ForegroundColor Green } else { Write-Host "FAIL timer_lock_lint_test ($fails)" -ForegroundColor Red }

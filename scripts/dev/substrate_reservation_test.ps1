@@ -1,8 +1,10 @@
 ﻿#Requires -Version 5.1
 # Test der Substrat-Platz-Reservierung: scripts/lib/substrate_reservations.ps1 (Logik, wie Wait-SubstrateSlot sie nutzt) und
-# scripts/reserve_substrate_slot.ps1 (Bedienung). Kein Substrat, keine Kosten; arbeitet nur in einem Temp-Ordner.
+# scripts/reserve_substrate_slot.ps1 (Bedienung), dazu DB-Ports und Wait-SubstrateSlot. Kein Substrat, keine Kosten; Dateien nur in
+# einem Temp-Ordner.
 # Der Abschnitt "Verbund echt" legt Wegwerf-Projekte s4t5* aus busybox:latest an (nie geladen, keine Ports) und prueft Zaehlung,
 # Abbau, SessionEnd-Hook und stop_test_containers.ps1 -ComposeOnly gegen fremde Verbuende; ohne Docker oder busybox entfaellt er.
+# Unter Windows prueft eine Docker-Attrappe (docker.cmd) den SessionEnd-Hook zusaetzlich ohne Docker.
 # Usage:  .\scripts\dev\substrate_reservation_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
@@ -246,7 +248,7 @@ if (-not $haveDocker) {
         $hook = Join-Path $repo '.claude\hooks\stop_own_substrate.ps1'
         $exe = (Get-Process -Id $PID).Path
         New-Probe 's4t5h' $wtTop $mainState        # Verbund dieses Worktrees
-        # Mock wie T1: im Netz-Namensraum des anchor, Etiketten install + worktree, kein lifeagents.substrate
+        # Mock wie im Verbund: im Netz-Namensraum des anchor, Etiketten install + worktree, kein lifeagents.substrate
         [void](Invoke-D @('run', '-d', '--name', 's4t5h-mock-tg', '--network', 'container:s4t5h-anchor', '--label', 'io.lifeagents.install=s4t5h', '--label', "lifeagents.worktree=$wtTop", 'busybox:latest', 'sleep', '600'))
         Assert-That 'Probe: Mock-Container laeuft im Namensraum des anchor' (Test-DExists 'container' 's4t5h-mock-tg')
         New-Probe 's4t5i' 'C:\s4t5-fremder-worktree' $mainState
@@ -269,6 +271,32 @@ if (-not $haveDocker) {
     }
 }
 
+# Docker-Attrappe statt Docker (docker.cmd vorn im PATH, darum nur unter Windows): `ps` nennt einen Container, das Entfernen schreibt wie Docker
+# bei "removal already in progress" auf stderr. Der Haken muss danach weiterlaufen und die State-Datei des Containers loeschen.
+if ($env:OS -eq 'Windows_NT') {
+    Write-Host 'SessionEnd-Hook: Fehlertext beim Entfernen eines Containers (Docker-Attrappe):'
+    . (Join-Path $repo 'scripts\lib\git_sandbox.ps1')
+    Clear-GitEnvironment
+    $fmain = Join-Path $sandbox 'fakehook\main'; $fwt = Join-Path $sandbox 'fakehook\wt'; $fbin = Join-Path $sandbox 'fakehook\bin'
+    $savedPath = $env:PATH
+    try {
+        New-Item -ItemType Directory -Force $fmain, $fbin | Out-Null
+        Initialize-GitSandbox $fmain
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        git -C $fmain -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m init *> $null
+        git -C $fmain worktree add -q -b fwt $fwt *> $null
+        $ErrorActionPreference = $prev
+        $fake = "@echo off`r`nif `"%1`"==`"ps`" (echo fake-n8ntest& exit /b 0)`r`nif `"%1`"==`"rm`" (echo Error response from daemon: removal already in progress 1>&2& exit /b 1)`r`nexit /b 0`r`n"
+        [System.IO.File]::WriteAllText((Join-Path $fbin 'docker.cmd'), $fake, [System.Text.Encoding]::ASCII)
+        $fstate = Join-Path $fmain '.local'
+        New-Item -ItemType Directory -Force $fstate | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $fstate 'n8ntest_state.fake-n8ntest.json'), '{}', [System.Text.Encoding]::ASCII)
+        $env:PATH = "$fbin;$env:PATH"
+        (@{ cwd = $fwt } | ConvertTo-Json -Compress) | & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo '.claude\hooks\stop_own_substrate.ps1') *> $null
+        Assert-That 'Haken: Fehlertext beim Entfernen bricht den Rest nicht ab (State-Datei des Containers weg)' (-not (Test-Path (Join-Path $fstate 'n8ntest_state.fake-n8ntest.json')))
+    } finally { $env:PATH = $savedPath }
+}
+
 Write-Host 'DB-Ports:'
 Reset-File
 function PortRes($port, $by) { [pscustomobject]@{ Container = (Get-DbPortEntryName $port); Since = $t0; By = $by } }
@@ -280,6 +308,13 @@ Assert-That 'freier Port: ueberspringt belegte und reservierte' ((Find-FreeDbPor
 Assert-That 'Port-Eintraege belegen keinen Substrat-Platz' (Slot @('x') @((PortRes 55432 'db-b'))).Free
 $s2 = Slot @() @((PortRes 55432 'db-b'), (PortRes 55433 'db-c'))
 Assert-That 'Port-Eintraege tauchen nicht als Fremd-Reservierung auf' ($s2.ReservedForOthers.Count -eq 0)
+Reset-File
+$p1 = Add-DbPortReservation -File $file -By 'db-a'
+$p2 = Add-DbPortReservation -File $file -By 'db-b'
+Assert-That 'Port reservieren (ein Schritt): zwei Halter bekommen verschiedene Ports' ($p1 -eq 55432 -and $p2 -eq 55433) "$p1 $p2"
+Assert-That 'Port reservieren: fremd reservierter Port wird abgelehnt, der Eintrag bleibt beim Halter' ($null -eq (Add-DbPortReservation -File $file -By 'db-b' -Port $p1) -and @(Read-SlotReservations -File $file | Where-Object { $_.Container -eq 'dbport-55432' })[0].By -eq 'db-a')
+Assert-That 'Port reservieren: der eigene Port laesst sich erneut nehmen' ((Add-DbPortReservation -File $file -By 'db-a' -Port $p1) -eq $p1)
+Assert-That 'Port reservieren: belegter Port (docker ps) wird uebersprungen' ((Add-DbPortReservation -File $file -By 'db-c' -InUse @(55434)) -eq 55435)
 
 Write-Host 'Bedienung (reserve_substrate_slot.ps1):'
 Reset-File

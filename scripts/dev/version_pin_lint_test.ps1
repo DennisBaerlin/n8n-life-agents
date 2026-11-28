@@ -3,7 +3,8 @@
 # Rot: abweichende Version in Doku-Prosa, in einem Abbild-Namen im Code, in Workflow-YAML, Dockerfile und Installations-Pfad;
 # veraltete oder unbegruendete Ausnahme; unlesbare Quelle. Gruen: gleiche Version, Kommentarzeile im Code, begruendete Ausnahme,
 # Pruefstand in einem Kommentar, Modul-Name wie node:vm.
-# Aufruf: .\scripts\dev\version_pin_lint_test.ps1     Exit-Code = Anzahl roter Faelle. Kein Docker, kein Netz.
+# Dazu im git-Wegwerf-Repo: nur was git kennt, zaehlt (ungetrackt gruen, gestagt rot).
+# Aufruf: .\scripts\dev\version_pin_lint_test.ps1     Exit-Code = Anzahl roter Faelle. Kein Docker, kein Netz; braucht git.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\version_pins.ps1')

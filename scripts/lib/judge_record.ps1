@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dauerhafte Ablage der Bewerter-Urteile (judge_eval): eine JSONL-Datei je Lauf unter .local/judge_runs/<yyyyMMdd-HHmmss>-<suite>.jsonl.
 # Dot-sourcen:  . "$PSScriptRoot\lib\judge_record.ps1"
-# Anlass: tests/agent/judge_bundle.json ist nach dem Lauf leer (der naechste Lauf ueberschreibt es), Urteil und Begruendung waren danach nur
-# noch in alten Session-Verlaeufen zu finden. Eine Zeile je bewertetem Fall: ts, mode (bundle|calibrate), suite, case_id, verdict, reason,
-# det_pass, overall, model, commit (kurz), dirty, falls vorhanden write_tools/read_tools (Namen) und det_note (Grund der roten
-# deterministischen Pruefung); bei -Calibrate zusaetzlich human_verdict. Ein Fall ohne Urteil (Kostengrenze, Abbruch vor
+# Warum: tests/agent/judge_bundle.json ist nach dem Lauf leer (der naechste Lauf ueberschreibt es), Urteil und Begruendung staenden sonst
+# nirgends. Eine Zeile je bewertetem Fall: ts, mode (bundle|calibrate), suite, case_id, verdict, reason, model, commit (kurz),
+# dirty; bei bundle dazu det_pass, overall und, falls vorhanden, write_tools/read_tools (Namen) und det_note (Grund der roten
+# deterministischen Pruefung); bei -Calibrate statt dessen nur human_verdict. Ein Fall ohne Urteil (Kostengrenze, Abbruch vor
 # dem Aufruf) bekommt keine Zeile; ein Judge-ERROR schon.
 # Ort: .local des Haupt-Checkouts (gitignored, ueberlebt das Aufraeumen eines Worktrees); Schreibfehler stoeren den Lauf nie.
 

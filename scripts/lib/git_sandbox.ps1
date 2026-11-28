@@ -12,7 +12,7 @@ function Clear-GitEnvironment {
 
 # Legt in $Dir ein Repo an und bricht ab, wenn git danach woanders arbeitet. Weitere Schritte schreiben erst nach dieser Pruefung.
 # Gesetzte Variablen, die git auf ein anderes Repo lenken (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_COMMON_DIR, GIT_OBJECT_DIRECTORY,
-# GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE), brechen schon VOR dem `git init` ab: Die Pruefung unten kaeme zu spaet, das init
+# GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE), brechen schon vor dem `git init` ab: Die Pruefung unten kaeme zu spaet, das init
 # hat dann core.worktree in die gemeinsame Config des echten Repos geschrieben (unter prek: Worktree-Pfad, alle Worktrees treffen ihn).
 function Initialize-GitSandbox([string]$Dir) {
     $redirect = 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'

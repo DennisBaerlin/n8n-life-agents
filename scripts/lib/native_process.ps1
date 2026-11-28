@@ -4,7 +4,7 @@
 # Warum nicht ueberall Start-Process -RedirectStandardInput: Unter Windows reicht es die Datei als Handle durch (byte-genau, bewaehrt),
 # unter Linux/macOS liest PowerShell 7 sie als Text (UTF-8) und schreibt sie mit einem Zeilenende in stdin. Ein Tar (Bau-Kontext fuer
 # `docker build -`) kommt dort kaputt an: "archive/tar: invalid tar". Darum zwei Wege mit derselben Schnittstelle:
-#   Windows:       Start-Process wie bisher (nichts aendert sich).
+#   Windows:       Start-Process -RedirectStandardInput.
 #   Linux/macOS:   System.Diagnostics.Process; die Datei wird als Bytes in den Eingabestrom kopiert, stdout und stderr (wenn Dateien
 #                  genannt sind) nebenlaeufig als Bytes in ihre Dateien, damit ein Prozess mit viel Ausgabe nicht an vollem Puffer haengt.
 #                  Der Weg gilt nicht fuer Windows: dort stellt .NET Framework dem Eingabestrom bei UTF-8-Konsole ein BOM voran.

@@ -2,10 +2,12 @@
 # build_ui_tokens.ps1 -- schreibt die Farben aus config/ui.tokens.json als markierten Block in die Datei jeder Oberflaeche
 # (Liste und Begruendung: scripts/lib/ui_tokens.ps1). Nur der Block aendert sich, die Marker muessen schon in der Datei stehen.
 # Erzeugt ausserdem die Erklaer-Bilder aus config/ui.art.*.svg (scripts/lib/ui_art.ps1) und das Zeichen-Partial der Site (docs/site/layouts/partials/mark.html) aus config/ui.mark.svg.
+# Ebenso die ui-copy-Bloecke (geteilte Bausteine, Get-UiCopies) und ui-locale-Bloecke (Katalog-Texte, Get-UiLocaleBlocks) zwischen
+# ihren Markern. Ohne -Verify loescht es fremde Dateien in den Bild-Zielordnern (Get-UiArtDirs).
 # Danach bei der Doku-Seite: .\scripts\build_site.ps1 (der Hugo-Output ist getrackt). Die Pruefung im Commit macht
 # scripts/ui_token_lint.ps1.
 #   .\scripts\build_ui_tokens.ps1            Bloecke schreiben
-#   .\scripts\build_ui_tokens.ps1 -Verify    nur vergleichen, Exit-Code = Anzahl veralteter Bloecke
+#   .\scripts\build_ui_tokens.ps1 -Verify    nur vergleichen, Exit-Code = Anzahl veralteter Bloecke, Kopien und erzeugter Dateien
 param([switch]$Verify)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -22,7 +24,7 @@ foreach ($s in (Get-UiSurfaces)) {
     $m = $rx.Match($text)
     if (-not $m.Success) { throw "Keine Marker fuer '$($s.Name)' in $($s.File): Zeile '/* ui-tokens:begin $($s.Name) */' und '/* ui-tokens:end */' von Hand einsetzen (Datei geschuetzt? Dann gilt deren Freigabe)." }
     $want = Get-UiBlockText $tokens $s
-    if ($m.Value -ceq $want) { Write-Host "  [OK] $($s.Name): aktuell" -ForegroundColor Green; continue }
+    if ([string]::Equals($m.Value, $want, [System.StringComparison]::Ordinal)) { Write-Host "  [OK] $($s.Name): aktuell" -ForegroundColor Green; continue }
     if ($Verify) { Write-Host "  [FAIL] $($s.Name): Block in $($s.File) ist veraltet" -ForegroundColor Red; $fails++; continue }
     # MatchEvaluator statt Ersatz-String: im Ersatz-String waeren $-Zeichen aus dem Block Sonderzeichen
     $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
@@ -39,7 +41,7 @@ foreach ($c in (Get-UiCopies)) {
         $rx = Get-UiCopyRegex $name
         $m = $rx.Match($text)
         if (-not $m.Success) { throw "Keine Marker fuer '$name' in ${f}: Zeile '/* ui-copy:begin $name */' und '/* ui-copy:end */' von Hand einsetzen." }
-        if ($m.Value -ceq $want) { Write-Host "  [OK] ${name}: $f aktuell" -ForegroundColor Green; continue }
+        if ([string]::Equals($m.Value, $want, [System.StringComparison]::Ordinal)) { Write-Host "  [OK] ${name}: $f aktuell" -ForegroundColor Green; continue }
         if ($Verify) { Write-Host "  [FAIL] ${name}: Kopie in $f ist veraltet" -ForegroundColor Red; $fails++; continue }
         $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
         [System.IO.File]::WriteAllText($abs, $text, $u8)
@@ -54,7 +56,7 @@ foreach ($b in (Get-UiLocaleBlocks)) {
     $m = $rx.Match($text)
     if (-not $m.Success) { throw "Keine Marker fuer Texte '$($b.Name)' in $($b.File): '/* ui-locale:begin $($b.Name) */' und '/* ui-locale:end */' von Hand einsetzen." }
     $want = Get-UiLocaleText $RepoRoot $b
-    if ($m.Value -ceq $want) { Write-Host "  [OK] Texte $($b.Name): aktuell" -ForegroundColor Green; continue }
+    if ([string]::Equals($m.Value, $want, [System.StringComparison]::Ordinal)) { Write-Host "  [OK] Texte $($b.Name): aktuell" -ForegroundColor Green; continue }
     if ($Verify) { Write-Host "  [FAIL] Texte $($b.Name): Block in $($b.File) ist veraltet" -ForegroundColor Red; $fails++; continue }
     $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
     [System.IO.File]::WriteAllText($abs, $text, $u8)
@@ -66,7 +68,7 @@ if ($markPaths.Count -eq 0) { throw "Keine <path>-Zeilen in $(Get-UiMarkSourcePa
 $markAbs = Join-Path $RepoRoot (Get-UiMarkPartialPath)
 $markWant = Get-UiMarkPartialText $markPaths
 $markHave = if (Test-Path $markAbs) { [System.IO.File]::ReadAllText($markAbs, $u8) } else { '' }
-if ($markHave -ceq $markWant) { Write-Host '  [OK] mark: aktuell' -ForegroundColor Green }
+if ([string]::Equals($markHave, $markWant, [System.StringComparison]::Ordinal)) { Write-Host '  [OK] mark: aktuell' -ForegroundColor Green }
 elseif ($Verify) { Write-Host "  [FAIL] mark: $(Get-UiMarkPartialPath) ist veraltet" -ForegroundColor Red; $fails++ }
 else { [System.IO.File]::WriteAllText($markAbs, $markWant, $u8); Write-Host "  [neu] mark: $(Get-UiMarkPartialPath)" -ForegroundColor Cyan }
 # Erklaer-Bilder (ganze Dateien erzeugt; fremde Dateien in den Ziel-Ordnern werden entfernt)
@@ -84,7 +86,7 @@ $artNew = 0
 foreach ($o in $artOut) {
     $abs = Join-Path $RepoRoot $o.Path
     $have = if (Test-Path $abs) { [System.IO.File]::ReadAllText($abs, $u8) } else { '' }
-    if ($have -ceq $o.Text) { continue }
+    if ([string]::Equals($have, $o.Text, [System.StringComparison]::Ordinal)) { continue }
     if ($Verify) { Write-Host "  [FAIL] Bilder: $($o.Path) ist veraltet" -ForegroundColor Red; $fails++; continue }
     [System.IO.File]::WriteAllText($abs, $o.Text, $u8); $artNew++
 }

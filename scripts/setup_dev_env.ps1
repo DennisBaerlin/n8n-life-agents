@@ -2,7 +2,8 @@
 # setup_dev_env.ps1 -- Frisches-System-Erkennung + Ein-Befehl-Dev-Setup (idempotenter Installer + Pruefer).
 #
 # Erkennt deterministisch, was auf einem frisch aufgesetzten Windows an Dev-Voraussetzungen fehlt, und installiert es
-# mit einem Befehl, bevor das erste Entwickeln beginnt (nichts wird geraten).
+# mit einem Befehl, bevor das erste Entwickeln beginnt (nichts wird geraten). Ohne -Verify ausserdem: Git-Hooks per prek
+# verdrahten, $HOME\.local\bin in den User-PATH legen, gepinnte Binaries von github.com dorthin laden, .env aus .env.example anlegen.
 #
 #   .\scripts\setup_dev_env.ps1            # fehlende Voraussetzungen installieren (idempotent)
 #   .\scripts\setup_dev_env.ps1 -Verify    # nur pruefen, nichts aendern; Exit-Code = Anzahl fehlend
@@ -10,7 +11,7 @@
 #   .\scripts\setup_dev_env.ps1 -Full      # Abschluss-Smoke: prek run --all-files --hook-stage pre-commit
 #   -Verbose zeigt zusaetzliche Detailzeilen.
 # Exit-Code = Anzahl fehlender Pflicht-Voraussetzungen (0 = vollstaendig); Exit 1 = winget fehlt (Schritt 1).
-# Voraussetzung: winget (App Installer); Docker Desktop wird nur erkannt.
+# Voraussetzung: winget (App Installer), Netz zu github.com; Docker Desktop wird nur erkannt.
 #
 # Nicht-Ziele (bewusst): Docker nicht silent installieren (nur erkennen + Anleitung); Windows-Entwicklermodus
 # nicht setzen (nur warnen); keine Secrets ausfuellen (nur OWNER_CHAT_ID=0-Platzhalter); kein System-Python --

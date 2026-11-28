@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
 # wizard_preview.ps1 -- Vorschau des Einrichtungs-Wizards (provisioning/wizard) ohne echten Server im Browser: Verbraucher
-# build_ui_review.ps1 (-Surface wizard, Bilder fuer die Freigabe) und serve_wizard_preview.ps1 (Browser-Bereich der App).
+# build_ui_review.ps1 (-Surface wizard, Bilder fuer die Freigabe), serve_wizard_preview.ps1 (Browser-Bereich der App) und
+# wizard_test.ps1 (Get-WizardTestImage, Invoke-WizardContainer).
 # Die Seiten-Modelle kommen vom echten Server, den tests/wizard/preview_dump.js im Wegwerf-Container mit den Attrappen
 # durchlaeuft (nur erfundene Werte); die Seite selbst ist die echte ui/index.html mit ui/app.css + ui/app.js, nur API-Antworten
 # kommen aus dem festgehaltenen Modell (window.WIZARD_PREVIEW). Dot-sourcen; $RepoRoot setzt der Aufrufer.
@@ -12,7 +13,7 @@ function Get-WizardPreviewCacheFile([string]$RepoRoot) { Join-Path $RepoRoot '.l
 function Get-WizardTestImage([string]$RepoRoot) {
     $df = Join-Path $RepoRoot 'tests\wizard\Dockerfile'
     $hash = (Get-FileHash -Algorithm SHA256 $df).Hash.Substring(0, 12).ToLower()
-    # Name je Session (WIZARDTEST_CONTAINER, z. B. di4-wizardtest), damit Aufraeumen nie ein fremdes Bild trifft.
+    # Name je Session (WIZARDTEST_CONTAINER, z. B. wizardtest-xx), damit Aufraeumen nie ein fremdes Bild trifft.
     $repo = if ($env:WIZARDTEST_CONTAINER -match '^[a-z0-9][a-z0-9_.-]*$') { $env:WIZARDTEST_CONTAINER } else { 'lifeagents-wizardtest' }
     $name = "${repo}:$hash"
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -45,7 +46,8 @@ function Invoke-WizardContainer([string]$Container, [string[]]$DockerArgs) {
     } finally { $ErrorActionPreference = $prev }
 }
 
-# Get-WizardPreviewDump -- Seiten-Modelle neu erzeugen (Docker, ~1 Min) und zwischenspeichern; gibt die Liste zurueck.
+# Get-WizardPreviewDump -- Seiten-Modelle neu erzeugen (Docker) und in .local\wizard_preview_pages.json zwischenspeichern; gibt die
+#   Liste zurueck. -Cached: vorhandene Datei ohne Docker lesen; -Container: Name des Wegwerf-Containers.
 function Get-WizardPreviewDump([string]$RepoRoot, [string]$Container = '', [switch]$Cached) {
     $cache = Get-WizardPreviewCacheFile $RepoRoot
     $u8 = [System.Text.UTF8Encoding]::new($false)
@@ -94,7 +96,7 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
     })
     $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, open: m.open, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : path === '/api/check' && m.live ? { live: m.live } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }
-    # Bilder (di9, ui/art/): eingebettet wie app.*, fehlen sie, bleibt die Stelle leer
+    # Bilder (ui/art/): eingebettet wie app.*, fehlen sie, bleibt die Stelle leer
     $artCss = ''; $artJs = ''
     if (Test-Path (Join-Path $ui 'art\art.css')) { $artCss = [System.IO.File]::ReadAllText((Join-Path $ui 'art\art.css'), $u8) }
     if (Test-Path (Join-Path $ui 'art\art.js')) { $artJs = [System.IO.File]::ReadAllText((Join-Path $ui 'art\art.js'), $u8) }

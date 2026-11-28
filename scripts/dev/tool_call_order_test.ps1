@@ -2,8 +2,9 @@
 # Selbsttest von Get-ToolCall / Get-CalledTool in scripts/dev/test_n8n_state.ps1. Kein Substrat, keine Kosten.
 # Nachgebautes runData eines Agent-Laufs mit zwei Werkzeug-Aufrufen nacheinander: der n8n-Aktions-Log des Agent-Knotens
 # (metadata.subNodeExecutionData.actions) nennt nur den letzten Aufruf; die Werkzeug-Knoten selbst tragen startTime und
-# Eingabe (inputOverride.ai_tool), ein Lauf hinter einer HITL-Karte nur die Ausgabe (data.ai_tool). Erwartet: alle Aufrufe in
-# zeitlicher Reihenfolge, Get-CalledTool = der erste.
+# Eingabe (inputOverride.ai_tool), ein Lauf hinter einer HITL-Karte nur die Ausgabe (data.ai_tool). Erwartet: alle Aufrufe
+# (Lese- und Schreib-Werkzeuge) in zeitlicher Reihenfolge, Get-CalledTool = der erste Schreib-Aufruf (Test-IsWriteTool, sonst tool_*);
+# ohne Werkzeug-Knoten im runData bleibt der Aktions-Log die Quelle.
 # Usage:  .\scripts\dev\tool_call_order_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'

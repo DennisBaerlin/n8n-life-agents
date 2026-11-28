@@ -1,34 +1,16 @@
 ﻿#Requires -Version 5.1
 # Fehl- und Gutfaelle von scripts/standin_lint.ps1 in einem Wegwerf-Baum (-Root): Attrappe ohne Marker, Marker auf
 # fehlende Datei, Ausnahme ohne Grund, von Hand mitgegebener Wert ohne Begruendung muessen rot werden; die markierten
-# Gegenstuecke gruen. Kein Docker, kein git.
+# Gegenstuecke gruen. Dazu PATH-Attrappen, Dateien in tests/mock_runtime und tests/mock_reach, export NAME=Wert, die Ausnahmeliste
+# und Werte in der Form echter Anbieter-Schluessel. Kein Docker, kein git.
 # Usage: .\scripts\dev\standin_lint_test.ps1   Exit-Code = Anzahl fehlgeschlagener Faelle.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $lint = Join-Path $PSScriptRoot '..\standin_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('sil_' + [guid]::NewGuid().ToString('N'))
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
-}
-
-function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) {
-    $root = New-Tree $Files
-    try {
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
-}
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
+function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) { Test-LintCase -Lint $lint -Name $Name -Files $Files -ExpectRed $ExpectRed -ExpectText $ExpectText }
 
 # Pfade zusammengesetzt: doc_lint liest ausgeschriebene Repo-Pfade als Verweise auf echte Dateien.
 $T = 'tests'

@@ -6,30 +6,10 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $lint = Join-Path $PSScriptRoot '..\gate_wiring_lint.ps1'
-$u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 
-function New-Tree([hashtable]$Files) {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('gwl_' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $root -Force | Out-Null
-    foreach ($rel in $Files.Keys) {
-        $p = Join-Path $root $rel
-        New-Item -ItemType Directory -Path (Split-Path $p) -Force | Out-Null
-        [System.IO.File]::WriteAllText($p, $Files[$rel], $u8)
-    }
-    return $root
-}
-
-function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) {
-    $root = New-Tree $Files
-    try {
-        $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lint -Root $root) -join "`n"
-        $red = $LASTEXITCODE -ne 0
-        $ok = ($red -eq $ExpectRed) -and (-not $ExpectText -or $out -match [regex]::Escape($ExpectText))
-        if ($ok) { Write-Host "  PASS $Name" -ForegroundColor Green }
-        else { Write-Host "  FAIL $Name (Exit $LASTEXITCODE): $out" -ForegroundColor Red; $script:fails++ }
-    } finally { Remove-Item -Recurse -Force $root }
-}
+. (Join-Path $PSScriptRoot '..\lib\test_common.ps1')
+function Test-Case([string]$Name, [hashtable]$Files, [bool]$ExpectRed, [string]$ExpectText) { Test-LintCase -Lint $lint -Name $Name -Files $Files -ExpectRed $ExpectRed -ExpectText $ExpectText }
 
 # Pfade zusammengesetzt: doc_lint liest ausgeschriebene Repo-Pfade als Verweise auf echte Dateien.
 $D = 'scripts/dev'
@@ -44,6 +24,9 @@ Test-Case 'Marker ohne Grund ist rot' @{ $T = "# Kopf`n# gate: manual`n" } $true
 Test-Case 'Marker mit leerer Klammer ist rot' @{ $T = "# Kopf`n# gate: manual ()`n" } $true 'ohne Grund'
 Test-Case 'Marker neben einem Gate ist rot' @{ $T = "# gate: manual (alt)`n"; '.pre-commit-config.yaml' = $hook } $true 'Marker'
 Test-Case 'aehnlicher Name ist kein Gate' @{ $T = "# Kopf`n"; '.pre-commit-config.yaml' = "entry: $D/xneu_test.ps1`n" } $true 'neu_test.ps1'
+Test-Case 'Name nur in einer Kommentarzeile ist kein Gate' @{ $T = "# Kopf`n"; '.github/workflows/x.yml' = "jobs:`n  # Lokal dasselbe: $T`n" } $true 'neu_test.ps1'
+Test-Case 'Name nur im Kommentar hinter Code ist kein Gate' @{ $T = "# Kopf`n"; '.pre-commit-config.yaml' = "entry: powershell -File $D/anderes.ps1   # siehe $T`n" } $true 'neu_test.ps1'
+Test-Case 'Gate mit Kommentar dahinter bleibt ein Gate' @{ $T = "# Kopf`n"; '.pre-commit-config.yaml' = "entry: powershell -File $T   # Hinweis`n" } $false ''
 Test-Case 'Marker unterhalb der Kopfzeilen zaehlt nicht' @{ $T = ((1..45 | ForEach-Object { '# z' }) -join "`n") + "`n# gate: manual (zu spaet)`n" } $true 'haengt an keinem Gate'
 
 if ($fails -eq 0) { Write-Host 'PASS gate_wiring_lint_test' -ForegroundColor Green } else { Write-Host "FAIL gate_wiring_lint_test ($fails)" -ForegroundColor Red }

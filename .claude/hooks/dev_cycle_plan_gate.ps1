@@ -1,5 +1,5 @@
-# PreToolUse-Hook (ExitPlanMode): EIN deterministischer Marker, bevor der Owner einen Plan sieht.
-# Ein substanzieller Plan (> 400 Zeichen) traegt eine Zeile "Plan-Reviewer: <Verdikt>" - entweder das
+# PreToolUse-Hook (ExitPlanMode): zwei deterministische Marker, bevor der Owner einen Plan sieht.
+# Ein substanzieller Plan (ab 400 Zeichen) traegt eine Zeile "Plan-Reviewer: <Verdikt>" - entweder das
 # Verdikt eines unabhaengigen Plan-Reviews (ab Blast-Radius fn_*/Schema/Trigger/Auth/neuer Agent,
 # Skill /feature) oder "Plan-Reviewer: nicht noetig - <Grund>". Fehlt die Zeile -> deny: Claude bekommt
 # den Grund als Tool-Fehler, ergaenzt die Zeile ehrlich und legt erneut vor.

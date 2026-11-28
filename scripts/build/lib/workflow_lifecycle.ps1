@@ -231,9 +231,10 @@ function Find-StrayGuid {
     return ''
 }
 
-# Liefert das normalisierte Workflow-Objekt (neues [ordered]) mit stabilen IDs. Wirft bei doppelten Knoten-Namen
-# (n8n-Pflicht; sonst kollidierten die IDs) und bei jedem verbliebenen GUID-foermigen Wert (neue Zufallsquelle,
-# z. B. ein [guid]::NewGuid() im Builder) -> der Determinismus ist durchgesetzt, nicht nur Konvention.
+# Liefert das normalisierte Workflow-Objekt (neues [ordered]) mit stabilen IDs. Wirft bei Knoten ohne Namen, bei doppelten
+# Knoten-Namen (n8n-Pflicht; sonst kollidierten die IDs), bei fest gesetzter id/webhookId (nicht aus New-Id) und bei jedem
+# verbliebenen GUID-foermigen Wert (neue Zufallsquelle, z. B. ein [guid]::NewGuid() im Builder) -> der Determinismus ist
+# durchgesetzt, nicht nur Konvention.
 function Set-StableNodeIds {
     param([Parameter(Mandatory)]$Workflow, [Parameter(Mandatory)][string]$Name)
     $issued = New-Object 'System.Collections.Generic.HashSet[string]'

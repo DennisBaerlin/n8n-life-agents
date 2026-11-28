@@ -4,24 +4,32 @@
 # entscheidet je Sprache ein Scanner (PowerShell = echter Tokenizer; SQL, bash, JS = Zustandsautomat mit String-, Here-Doc-,
 # Dollar-Quote- und Template-Zustand), damit Text in Here-Strings und String-Literalen nie trifft.
 # Regeln (Kennung in eckigen Klammern; Pruefnummern in Lints sind Adressen und treffen nicht):
-#   [verlauf]  Herkunft und Verlauf: Befund/Fund + Datum, "neu seit",  comment-lint: ok Regeltext
-#              "seit/bis vX.Y", "(vX.Y.Z)", "KW45 Fund", "(KW45)", "Phase B", das Wort fuer "einst" als Rueckblick.  comment-lint: ok Regeltext
+#   [verlauf]  Herkunft und Verlauf: Befund/Fund + Datum, "neu seit/ab",  comment-lint: ok Regeltext
+#              "seit/bis vX.Y", "(vX.Y.Z)", "KW45 Fund/Sprint", "(KW45)", "Phase B",  comment-lint: ok Regeltext
+#              das Wort fuer "einst" (auch vormals/ehemals) als Rueckblick.
+#              Dazu Arbeits-Marken (wer, wann, welches Arbeitspaket): Owner/Abnahme/Entscheid/Lauf + Datum, "Owner-Runde",  comment-lint: ok Regeltext
+#              "Probelauf-Fund", "(Paket 3)", "Paket 2/5", "Einwand 4", "Pruefliste Nr. 7", "Bug B4", "(P5)" ohne Test-Verweis,  comment-lint: ok Regeltext
+#              und Verweise auf Plaene: "Plan <name-mit-bindestrich>", "Plan *Titel*", .claude/plans/, .local/handover/.  comment-lint: ok Regeltext
 #   [code]     auskommentierter Code: Zuweisung, Kontrollkopf mit Klammer, einzelne Klammer, SQL-Anweisung mit Semikolon.
 #              Der Kopf-Block einer Datei ist ausgenommen (Aufruf-Beispiele gehoeren hinein).
-#   [todo]     TODO/FIXME ohne Ausloeser: erlaubt sind "TODO(<Ausloeser>)" oder "TODO wenn/sobald/nach/falls ...".  comment-lint: ok Regeltext
+#   [todo]     TODO/FIXME ohne Ausloeser: erlaubt sind "TODO(<Ausloeser>)" oder "TODO wenn/sobald/nach/falls/bei ...".  comment-lint: ok Regeltext
 #   [caps]     Betonung in Grossbuchstaben (feste Wortliste; Abkuerzungen wie JSON, NULL, HITL treffen nicht).
 #   [kopf]     Pflichtteile tragender Koepfe neuer Dateien: scripts/**/*.ps1 (ohne lib/) mit Aufruf-Beispiel und Exit-Code;
-#              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile.
+#              R__fn_*.sql mit Titelzeile "-- fn_<name>" und mindestens einer Beschreibungszeile; packages/*/build/**/*.ps1 mit
+#              mindestens zwei Kopfzeilen; provisioning/lib/*.sh mit erster Zeile "<datei> — <Zweck>" und wer sie sourct;
+#              provisioning/*.sh mit Aufruf und Exit-Code. "Dot-gesourct von <datei>.ps1" im Kopf verlangt, dass es die Datei gibt.
+#              Dazu in jeder R__fn_*.sql: liest eine neue oder geaenderte Zeile einen Eingabe-Key aus p, steht er in einem Kommentar.
 # Ausnahme je Zeile: "comment-lint: ok <Grund>" im selben Kommentar (Lint-Marker, bleibt stehen).
-# Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), jsCode in Build-Defs (liegt in
-# PowerShell-Here-Strings).
+# Nicht geprueft (bewusst): generierte Dateien (packages/*/workflows/, docs/site/public/), node_modules/, jsCode in Build-Defs
+# (liegt in PowerShell-Here-Strings).
 # Aufruf:
 #   .\scripts\comment_lint.ps1                     # Arbeitsbaum gegen merge-base mit origin/main (Fallback main)
 #   .\scripts\comment_lint.ps1 -Staged             # nur der gestagte Diff (prek-Hook)
 #   .\scripts\comment_lint.ps1 -Base <rev>         # Arbeitsbaum gegen <rev> (CI: PR-Basis bzw. Vor-Push-Stand)
 #   .\scripts\comment_lint.ps1 -All [-Verbose]     # ganzer Baum, nur Bericht der Treffer je Regel, Exit 0
-#   .\scripts\comment_lint.ps1 -Files a.ps1,b.sql -Json   # alle Zeilen der genannten Dateien als JSON (Test)
-# Exit-Code = Anzahl Funde (bei -All 0). Kein LLM, kein Netz, kein Substrat. Test: scripts/dev/comment_lint_test.ps1.
+#   .\scripts\comment_lint.ps1 -Files a.ps1,b.sql -Json   # alle Kommentarzeilen der Dateien pruefen, Funde (File, Line, Rule) als JSON (Test)
+# Exit-Code = Anzahl Funde (bei -All und -Json 0); vorab laufen Selbst-Asserts der Scanner, schlagen sie fehl, deren Anzahl.
+# Kein LLM, kein Netz, kein Substrat. Test: scripts/dev/comment_lint_test.ps1.
 param([string]$Base, [switch]$Staged, [switch]$All, [string[]]$Files, [switch]$Json, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -191,6 +199,15 @@ $verlaufRx = [regex]::new(("(?i:\b(Befund|Fund)\s+$dateRx)|(?i:\bneu\s+(seit|ab)
     '\(v\d+\.\d+\.\d+\)|\bKW\s?\d{1,2}\s+(Fund|Befund|Sprint)\b|\(KW\s?\d{1,2}\)|\bPhase\s+[A-Z]\b|' +
     '(?i:\b(fr(ü|ue)her|vormals|ehemals)\s+(war|hie(ß|ss)|stand|lief|galt|gab|wurde|wurden|kam|lag|ging)\b)|' +
     '(?i:\b(war|hie(ß|ss)|stand|lief|galt|wurde)\s+(hier\s+)?fr(ü|ue)her\b)'), $ropt::Compiled)
+# Arbeits-Marken und Plan-Verweise. Andere Pfade unter .local/ sind Fakten (Zustandsdateien) und treffen nicht; "Paket <n>" trifft
+# nur in Klammern oder als "n/m", weil "je Paket 1 Datei" ein Fakt ist; "Plan" nur vor einem Namen mit Bindestrich oder in
+# Sternen, weil der Plan des Haushalts ein Fachbegriff ist. Migrations-Verweise (core:V012) sind Adressen und treffen nicht.
+$workMarkRx = [regex]::new(("(?i:\b(Owner|Owner-\w+|Abnahme|Entscheid\w*|decision|Lauf)\s+$dateRx)|\bOwner-(Runde|Wunsch)\b|\b(Probelauf|Live)-(Fund|Befund)\b|" +
+    '\(([^()]*,\s*)?Paket\s+[A-Z]?\d+[a-z]?\)|\bPaket\s+\d+/\d+\b|\bEinwand\s+\d+\b|\bPr(ü|ue)fliste\s+Nr\.?\s*\d+|' +
+    '\bBug\s+[A-Z]\d+\b|\bPlan\s+([a-z0-9]+(-[a-z0-9]+)+|\*[^*]+\*)|\.claude/plans/|\.local/(handover|plans?)/'), $ropt::Compiled)
+# Nummern einer Abnahme-Liste wie "(P5)" oder "(B10)". Neben einem Test-Verweis ist "(P5)" die Eigenschaft im Test und in Dateien  comment-lint: ok Regeltext
+# unter tests/ die Nummer eines Pruefschritts: beides Adressen, kein Treffer.
+$listNoRx = [regex]::new('\((P|B)\d{1,2}\)', $ropt::Compiled)
 # Auskommentierter Code: nur eindeutige Formen. Ein Beispiel im Kommentar ist eingerueckt (ab drei Leerzeichen) und trifft nicht,
 # ebenso eine Parameter-Beschreibung "$Name = Prosa".
 $codeRx = @{
@@ -203,16 +220,28 @@ $todoRx = [regex]::new('(?<![''"])\b(TODO|FIXME)\b(?![''"])', $ropt::Compiled)
 $todoOkRx = [regex]::new('\b(TODO|FIXME)\s*(\(\S[^)]*\)|:?\s*(wenn|sobald|nach|falls|bei)\b)', $ropt::Compiled)
 $capsRx = [regex]::new('(?<![A-Za-zÄÖÜäöüß_-])(NIE|NIEMALS|NICHT|IMMER|MUSS|MÜSSEN|MUESSEN|KEIN|KEINE|KEINEN|NUR|ACHTUNG|WICHTIG|VORSICHT|ZUERST|SOFORT|OHNE|EXAKT|GENAU|DARF|DÜRFEN|DUERFEN|SOLL|BEWUSST|PFLICHT|VERBOTEN|JEDE|JEDER|JEDES|ALLE|NEVER|ALWAYS|MUST|IMPORTANT)(?![A-Za-zÄÖÜäöüß_-])', $ropt::Compiled)
 $okRx = [regex]::new('comment-lint:\s*ok\s+\S', $ropt::Compiled)   # ohne Grund gilt die Ausnahme nicht
+# Key-Zugriff auf das Eingabe-Objekt p der ersten Ebene; p->'a'->>'b' nennt nur a. Gilt nur in Dateien, deren fn einen Parameter
+# "p jsonb" hat: sonst ist p ein Zeilen-Alias oder eine Schleifen-Variable.
+$fnInputRx = [regex]::new('(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b[^;]*?\((?:[^)]*,)?\s*(?:IN\s+)?p\s+jsonb\b', $ropt::Compiled)
+$fnKeyRx = [regex]::new('(?<![A-Za-z0-9_.])p\s*(?:->>?|\?)\s*''([a-z_][a-z_0-9]*)''', $ropt::Compiled)
 
-function Get-LineRules([string]$Lang, $C) {
+function Get-LineRules([string]$Lang, $C, [string]$Path = '') {
     $t = $C.Text
     if ($okRx.IsMatch($t)) { return @() }
     $r = @()
-    if ($verlaufRx.IsMatch($t)) { $r += 'verlauf' }
+    if ($verlaufRx.IsMatch($t) -or $workMarkRx.IsMatch($t) -or ($listNoRx.IsMatch($t) -and $t -notmatch 'tests?[/_]' -and $Path -notmatch '(^|/)tests/')) { $r += 'verlauf' }
     if (-not $C.Head -and $codeRx[$Lang].IsMatch($t)) { $r += 'code' }
     if ($todoRx.IsMatch($t) -and -not $todoOkRx.IsMatch($t)) { $r += 'todo' }
     if ($capsRx.IsMatch($t)) { $r += 'caps' }
     $r
+}
+
+# Gibt es die im Kopf genannte Quelle? Als Repo-Pfad oder als Dateiname irgendeiner getrackten .ps1.
+$script:trackedPs1 = $null
+function Test-RepoScript([string]$Name) {
+    if (Test-Path -LiteralPath (Join-Path $RepoRoot $Name) -PathType Leaf) { return $true }
+    if ($null -eq $script:trackedPs1) { $script:trackedPs1 = @{}; foreach ($p in (Invoke-Git @('ls-files', '*.ps1'))) { $script:trackedPs1[(Split-Path $p -Leaf)] = $true } }
+    return $script:trackedPs1.ContainsKey((Split-Path $Name -Leaf))
 }
 
 # Pflichtteile tragender Koepfe neuer Dateien: liefert Liste fehlender Teile.
@@ -230,6 +259,24 @@ function Get-HeadGaps([string]$Path, [string]$Lang, $Comments) {
         for ($k = 0; $k -lt $hl.Count; $k++) { if ($hl[$k] -match ('^\s*([a-z0-9_]+\.)?' + [regex]::Escape($name) + '\b')) { $ti = $k; break } }
         if ($ti -lt 0) { $gaps += "Titelzeile '-- $name'" }
         elseif ($ti + 1 -ge $hl.Count) { $gaps += 'Beschreibung unter der Titelzeile' }
+    }
+    # Inhaltszeilen des Kopfs: ohne Leerzeilen, #Requires und shellcheck-Direktiven.
+    $headLines = @($Comments | Where-Object { $_.Head } | ForEach-Object { $_.Text } | Where-Object { $_.Trim() -and $_ -notmatch '^\s*(Requires|shellcheck)\b' })
+    if ($Lang -eq 'ps' -and $Path -match '(^|/)packages/[^/]+/build/') {
+        if ($headLines.Count -lt 2) { $gaps += 'Kopf mit mindestens zwei Zeilen (was die Datei baut; Ausloeser und Ausgang)' }
+    }
+    if ($Lang -eq 'sh' -and $Path -match '(^|/)provisioning/lib/([^/]+\.sh)$') {
+        $base = $Matches[2]
+        if ($headLines.Count -eq 0 -or $headLines[0] -notmatch ('^\s*' + [regex]::Escape($base) + '\s+(—|--|-)\s+\S')) { $gaps += "erste Zeile '# $base — <Zweck>'" }
+        if ($headText -notmatch '(?i)sourc(t|ed)') { $gaps += "wer die Datei sourct ('Gesourct von ...')" }
+    }
+    if ($Lang -eq 'sh' -and $Path -match '(^|/)provisioning/[^/]+\.sh$') {
+        if ($headText -notmatch '(?i)(aufruf|usage)') { $gaps += 'Aufruf-Beispiel' }
+        if ($headText -notmatch '(?i)exit') { $gaps += 'Exit-Code' }
+    }
+    foreach ($m in [regex]::Matches($headText, '(?i)Dot-gesourct von\s+([\w./\\-]+\.ps1)')) {
+        $src = $m.Groups[1].Value.Replace('\', '/')
+        if (-not (Test-RepoScript $src)) { $gaps += "'Dot-gesourct von $src': die Datei gibt es nicht" }
     }
     $gaps
 }
@@ -325,10 +372,26 @@ foreach ($p in @($targets.Keys)) {
     $comments = @(Get-Comments $lang $src)
     foreach ($c in $comments) {
         if ($null -ne $set -and -not $set.Contains($c.Line)) { continue }
-        foreach ($rule in (Get-LineRules $lang $c)) { $findings.Add([pscustomobject]@{ File = $rel; Line = $c.Line; Rule = $rule; Text = $c.Text.Trim() }) }
+        foreach ($rule in (Get-LineRules $lang $c $rel)) { $findings.Add([pscustomobject]@{ File = $rel; Line = $c.Line; Rule = $rule; Text = $c.Text.Trim() }) }
     }
     if ($mode -eq 'files' -or $added.ContainsKey($rel)) {
         foreach ($g in (Get-HeadGaps $rel $lang $comments)) { $findings.Add([pscustomobject]@{ File = $rel; Line = 1; Rule = 'kopf'; Text = "fehlt: $g" }) }
+    }
+    # fn-Kopf nennt die Eingabe-Keys: liest eine neue oder geaenderte Zeile einer R__fn-Datei p->>'x', p->'x' oder p ? 'x', muss x in
+    # einem Kommentar der Datei stehen (der Kopf ist der Katalog-Eintrag; ein ungenannter Key ist fuer Aufrufer unsichtbar).
+    if ($lang -eq 'sql' -and $rel -match '/R__fn_[A-Za-z0-9_]+\.sql$' -and $fnInputRx.IsMatch($src)) {
+        $commentText = ($comments | ForEach-Object { $_.Text }) -join "`n"
+        $srcLines = $src -split "`r?`n"
+        $missing = [ordered]@{}
+        for ($n = 1; $n -le $srcLines.Count; $n++) {
+            if ($null -ne $set -and -not $set.Contains($n)) { continue }
+            if ($okRx.IsMatch($srcLines[$n - 1])) { continue }
+            foreach ($m in $fnKeyRx.Matches(($srcLines[$n - 1] -replace '--.*$', ''))) {
+                $key = $m.Groups[1].Value
+                if (-not $missing.Contains($key) -and $commentText -notmatch ('(?<![A-Za-z0-9_])' + [regex]::Escape($key) + '(?![A-Za-z0-9_])')) { $missing[$key] = $n }
+            }
+        }
+        foreach ($key in $missing.Keys) { $findings.Add([pscustomobject]@{ File = $rel; Line = $missing[$key]; Rule = 'kopf'; Text = "Eingabe-Key '$key' steht in keinem Kommentar der Datei (fn-Kopf: Eingabe-Keys, Pflicht/optional)" }) }
     }
 }
 

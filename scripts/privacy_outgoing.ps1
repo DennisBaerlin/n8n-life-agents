@@ -13,6 +13,7 @@
 #   ... -Check             prueft den Stempel; Exit 0 = frei, 1 = Stempel fehlt, 2 = nicht pruefbar
 #   ... -Manifest          statt des Hashs eine JSON-Zeile {hash, commits, header} fuer den Stempel (scripts/privacy_review_stamp.ps1)
 # Ohne -Ref/-Remote/-DestRef gelten PRE_COMMIT_TO_REF, PRE_COMMIT_REMOTE_NAME, PRE_COMMIT_REMOTE_BRANCH (von prek), sonst HEAD und origin.
+# -AllTags nimmt jeden lokalen Tag dazu, den das Remote noch nicht kennt (fuer push --tags).
 # -Check gilt nur auf der Owner-Maschine (Liste oder echte Chat-ID im Haupt-Checkout): Beitraege von aussen brauchen keinen Stempel.
 param(
     [string]$Ref,

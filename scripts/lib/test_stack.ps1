@@ -11,7 +11,12 @@
 # Abgebaut werden geteilte Abbilder (n8n, postgres, caddy …) nie: `stack uninstall` laeuft ohne --delete-data (das loeschte die
 # Abbilder, die dieser Verbund als erster geladen hat, auch wenn ein Nachbar-Verbund sie braucht); die Daten-Volumes entfernt
 # Remove-TestStackStateVolumes selbst, nur mit dem eigenen Install-Etikett.
-# Dot-sourcen; reine Bausteine testet scripts/dev/test_stack_test.ps1 ohne Docker.
+# Dazu fuer die Suiten: Wegwerf-Container aus dem master-Abbild (Resolve-TestSuiteContainer), Pause von Tick-Schleife bzw.
+# systemd-Timern (Suspend-/Resume-TestTimers), eigene Container statt transienter systemd-Einheiten
+# (Get-TestStackGatewayUnitArgs, Get-TestStackNodeUnitCreateArgs) und die Attrappen im Pod (Start-TestStackMocks).
+# Dot-sourcen; laedt test_install_env.ps1, test_common.ps1 und native_process.ps1. Resolve-TestSuiteContainer (classic) und
+# Assert-TestSuiteStateRuntime brauchen Funktionen aus scripts/dev/test_n8n_state.ps1, das der Aufrufer vorher dot-sourct.
+# Reine Bausteine testet scripts/dev/test_stack_test.ps1 ohne Docker.
 
 $script:TestStackUtf8 = New-Object System.Text.UTF8Encoding($false)
 
@@ -146,11 +151,11 @@ function Select-TestStackSideContainers([string[]]$Rows, [string]$Project) {
 
 # Compare-TestStackTeardown -- Abgleich der Docker-Namen (Container, Volumes, Abbilder) vor und nach dem Abbau. Zum Verbund
 # gehoeren nur die Container mit seinem Install-Etikett (-Labeled, vom Aufrufer vor dem Abbau gelesen), die Volumes <p>_* und
-# <p>snap_* und das Abbild <p>-master:wt; andere Objekte mit demselben Anfang gehoeren der Session (s4t0-dbtest …). Fehlen darf
+# <p>snap_* und das Abbild <p>-master:wt; andere Objekte mit demselben Anfang gehoeren der Session (z. B. <p>-dbtest). Fehlen darf
 # nur, was zum Verbund gehoert, und davon darf nichts bleiben. Rueckgabe = Funde @{Severity; Text}, leer = sauber.
 # Schwere: ein fehlendes fremdes Abbild (Eintrag mit @digest) und jeder eigene Rest sind Fehler; ein fehlender fremder
-# Container/Volume ist ein Hinweis, weil parallele Sessions ihre Substrate laufend abbauen (gemessen: ein Nachbar-Test
-# entfernte waehrend des Abbaus seine Objekte). Abbilder baut sonst kaum jemand ab, und genau dort lag der Schaden aus P1a.
+# Container/Volume ist ein Hinweis, weil parallele Sessions ihre Substrate laufend abbauen. Abbilder baut sonst kaum jemand ab:
+# fehlt ein fremdes, hat es der eigene Abbau geloescht.
 function Test-TestStackOwnName([string]$Project, [string]$Name, [string[]]$Labeled) {
     if ($Labeled -contains $Name) { return $true }
     $q = [regex]::Escape($Project)
@@ -184,7 +189,7 @@ function ConvertFrom-TestStackLabelResult([int]$Code, [string[]]$Output, [string
     return [string]$labels.$Label
 }
 
-# --- Docker-Schritte (bewiesen auf dem echten Weg: bootstrap_test_stack.ps1 kalt, -Reset, -Down) ----------------------------
+# --- Docker-Schritte -----------------------------------------------------------------------------------------------------
 # Kurze Aufrufe ueber Invoke-Native (scripts/lib/test_common.ps1).
 . (Join-Path $PSScriptRoot 'test_common.ps1')
 . (Join-Path $PSScriptRoot 'native_process.ps1')
@@ -228,7 +233,7 @@ function New-TestStackImage {
     & git -C $RepoRoot archive --format=tar '--mtime=@0' -o $ctx $tree @spec
     if ($LASTEXITCODE -ne 0) { throw 'git archive des Arbeitsstands fehlgeschlagen.' }
     # --provenance/--sbom aus: mit dem containerd-Speicher (Docker Desktop) ist die Abbild-ID der Digest des Index, und der
-    # Nachweis-Eintrag traegt den Bau-Zeitpunkt -> sonst je Bau eine neue ID trotz vollem Cache (gemessen).
+    # Nachweis-Eintrag traegt den Bau-Zeitpunkt -> sonst je Bau eine neue ID trotz vollem Cache.
     $r = Invoke-TestStackProcess -DockerArgs @('build', '-q', '--provenance=false', '--sbom=false', '-f', 'provisioning/compose/master.Dockerfile',
         '--build-arg', "RELEASE_TAG=dev-$($tree.Substring(0, 12))",
         '--label', 'lifeagents.substrate=n8n-image', '--label', "lifeagents.worktree=$RepoRoot",
@@ -319,8 +324,16 @@ function Wait-TestStackReady([string]$Url, [int]$TimeoutSec = 180) {
     throw "n8n unter $Url wurde nicht bereit ($TimeoutSec s, /healthz/readiness)."
 }
 
+# Test-TestStackDockerLinux <Exit-Code> <Ausgabe> von `docker version --format '{{.Server.Os}}'` -> $true nur bei Erfolg und "linux".
+# Der Exit-Code zaehlt mit: die Fehlermeldung eines nicht laufenden Docker Desktop nennt die Pipe dockerDesktopLinuxEngine und
+# enthielte das Wort ebenfalls.
+function Test-TestStackDockerLinux([int]$Code, [string[]]$Output) {
+    return ($Code -eq 0 -and (@($Output | ForEach-Object { "$_".Trim() }) -contains 'linux'))
+}
+
 function Get-TestStackApiKey($Names) {
     $r = Invoke-Native docker @('exec', $Names.Master, 'sh', '-c', "grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
+    if ($r.Code -ne 0) { return '' }   # Docker-Fehler: in Output stuende dessen Meldung, nicht der Schluessel
     return (($r.Output -join '').Trim())
 }
 
@@ -405,13 +418,24 @@ function Invoke-TestStackVolumeCopy($Names, [string[]]$Volumes, [switch]$Restore
 }
 function New-TestStackSnapshot($Names, [string[]]$Volumes, [string]$Key, [string]$RepoRoot) {
     Remove-TestStackSnapshot $Names $Volumes
-    foreach ($s in $Volumes) {
-        $r = Invoke-Native docker @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
-            '--label', "lifeagents.snapshot-of=$($Names.Project)", '--label', "lifeagents.snapshot-key=$Key",
-            '--label', "lifeagents.worktree=$RepoRoot", (& $Names.Snapshot $s))
-        if ($r.Code -ne 0) { throw "Schnappschuss-Volume $(& $Names.Snapshot $s) liess sich nicht anlegen: $($r.Output -join "`n")" }
+    # Das Schluessel-Etikett steht ab dem Anlegen am Volume (Docker setzt Etiketten nicht nachtraeglich). Bricht die Kopie ab (Fehler,
+    # Strg+C), muessen die Volumes wieder weg: sonst hielte der naechste -Reset den halben Schnappschuss fuer passend.
+    $done = $false
+    try {
+        foreach ($s in $Volumes) {
+            $r = Invoke-Native docker @('volume', 'create', '--label', 'lifeagents.substrate=n8n-snapshot',
+                '--label', "lifeagents.snapshot-of=$($Names.Project)", '--label', "lifeagents.snapshot-key=$Key",
+                '--label', "lifeagents.worktree=$RepoRoot", (& $Names.Snapshot $s))
+            if ($r.Code -ne 0) { throw "Schnappschuss-Volume $(& $Names.Snapshot $s) liess sich nicht anlegen: $($r.Output -join "`n")" }
+        }
+        Invoke-TestStackVolumeCopy $Names $Volumes -RepoRoot $RepoRoot
+        $done = $true
+    } finally {
+        if (-not $done) {
+            try { Remove-TestStackSnapshot $Names $Volumes }
+            catch { Write-Warning "Unvollstaendiger Schnappschuss von $($Names.Project) liess sich nicht entfernen ($($_.Exception.Message)); von Hand: docker volume rm <projekt>snap_<volume>." }
+        }
     }
-    Invoke-TestStackVolumeCopy $Names $Volumes -RepoRoot $RepoRoot
 }
 function Restore-TestStackSnapshot($Names, [string[]]$Volumes, [string]$RepoRoot) {
     Invoke-TestStackVolumeCopy $Names $Volumes -Restore -RepoRoot $RepoRoot
@@ -478,7 +502,7 @@ function Remove-TestStackSideContainers($Names) {
 # 8093 ...) kollidieren nie mit einem Nachbarn.
 # Suiten, die den laufenden Verbund brauchen (Datenbank, Timer, Gateway, n8n-Patches), laufen im master-Container des Verbunds (Abschnitt unten).
 
-# Get-TestSuiteRuntime -- N8NTEST_RUNTIME = classic|compose; ohne Wert classic (Standard bis zur Umschaltung der Matrix). Ein
+# Get-TestSuiteRuntime -- N8NTEST_RUNTIME = classic|compose; ohne Wert classic. Ein
 # unbekannter Wert bricht ab: der stille Rueckfall liesse die Suite auf dem falschen Unterbau laufen.
 function Get-TestSuiteRuntime {
     $r = [string]$env:N8NTEST_RUNTIME
@@ -518,7 +542,7 @@ function Resolve-TestSuiteContainer {
     if ((Get-TestSuiteRuntime) -eq 'classic') {
         return [pscustomobject]@{ Runtime = 'classic'; Container = (Get-TestN8nConnection).Container; Scratch = $false }
     }
-    if (-not $env:N8NTEST_CONTAINER) { throw 'N8NTEST_RUNTIME=compose braucht einen eigenen Projektnamen in $env:N8NTEST_CONTAINER (z. B. s4t3a, kein geteilter Standard).' }
+    if (-not $env:N8NTEST_CONTAINER) { throw 'N8NTEST_RUNTIME=compose braucht einen eigenen Projektnamen in $env:N8NTEST_CONTAINER (z. B. stack1, kein geteilter Standard).' }
     $names = Get-TestStackNames $env:N8NTEST_CONTAINER
     $logDir = Get-TestStackLogDir $names.Project
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -530,7 +554,7 @@ function Resolve-TestSuiteContainer {
     return [pscustomobject]@{ Runtime = 'compose'; Container = $c; Scratch = $true }
 }
 
-# Remove-TestSuiteScratch -- raeumt den Wegwerf-Container ab (immer `rm -fv`); fuer das klassische Substrat ein No-op.
+# Remove-TestSuiteScratch -- raeumt den Wegwerf-Container ab; fuer das klassische Substrat ein No-op.
 function Remove-TestSuiteScratch($Target) {
     if ($null -ne $Target -and $Target.Scratch) { [void](Invoke-Native docker @('rm', '-fv', $Target.Container)) }
 }

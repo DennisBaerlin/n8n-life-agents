@@ -1,9 +1,9 @@
-# PreToolUse-Hook (Agent): Die Leitung startet keinen Unteragenten, solange sie noch keine Unter-Session gestartet hat.
+# PreToolUse-Hook (Agent|Task): Die Leitung startet keinen Unteragenten, solange sie noch keine Unter-Session gestartet hat.
 # Grund: Nach jeder Unteragenten-Meldung verweigert die App start_session bis zur naechsten getippten Owner-Nachricht
 # (docs/reference/sessions.md *Start verweigert*). Hart per 'deny', weil
 # Hook-'ask' still durchgewinkt wird (siehe enforce_owner_window.ps1).
 #
-# Wer gilt als Leitung: Zeile 1 von .claude/lead_session.txt im Haupt-Checkout (gitignored, schreibt die Leitung per
+# Wer gilt als Leitung: Zeile 1 von .claude/lead_session.txt im eigenen oder im Haupt-Checkout (gitignored, schreibt die Leitung per
 # scripts/register_sub_session.ps1 -Lead beim Start), verglichen mit CLAUDE_CODE_HOST_SESSION_ID.
 # Gesperrt nur, solange .claude/sub_sessions.txt keinen Eintrag hat und lead_session.txt keine Zeile 'no-starts' traegt
 # (register_sub_session.ps1 -NoStarts fuer Sprints ohne Unter-Sessions). -Clear am Sprint-Ende loescht beide Dateien.

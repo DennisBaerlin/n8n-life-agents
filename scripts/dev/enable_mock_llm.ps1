@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # enable_mock_llm.ps1 — den Mock-LLM-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (Aufruf: .\scripts\dev\enable_mock_llm.ps1 [-Down] [-UpdateScenarios] [-Verbose]). Operiert auf einem bereits
+# (Aufruf: .\scripts\dev\enable_mock_llm.ps1 [-Down] [-UpdateScenarios]). Operiert auf einem bereits
 # hochgefahrenen Substrat (scripts/dev/bootstrap_test_n8n.ps1) — kein Provisioning-Eingriff, kleiner Blast-Radius.
 #
 # Was es tut (idempotent):
@@ -36,8 +36,7 @@
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
     [switch]$Down,
-    [switch]$UpdateScenarios,
-    [switch]$Verbose
+    [switch]$UpdateScenarios
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,8 +65,8 @@ $ScnHost    = Join-Path $RepoRoot 'tests\mock_llm\scenarios.json'
 $ServerInC  = '/opt/mock_llm/server.js'
 $ScnInC     = '/opt/mock_llm/scenarios.json'
 $StateFile  = Get-TestN8nStateFile
-# Bezugstag der Datums-Platzhalter ({{date:..}}) fuer Mock und Harness: der UTC-Tag des Starts, bis der Mock neu startet (auch
-# -UpdateScenarios startet neu). Harness liest ihn aus mock_llm.today im State (scripts/lib/date_placeholder.ps1).
+# Bezugstag der Datums-Platzhalter ({{date:..}}) fuer Mock und Harness: der UTC-Tag des Starts; er gilt, bis der Mock neu startet
+# (-UpdateScenarios startet nicht neu). Harness liest ihn aus mock_llm.today im State (scripts/lib/date_placeholder.ps1).
 $MockToday  = [datetime]::UtcNow.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
 $Headers    = @{ 'X-N8N-API-KEY' = $ApiKey }
 $Target     = Get-TestN8nTarget -Container $Container

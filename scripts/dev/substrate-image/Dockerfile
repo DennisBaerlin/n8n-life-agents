@@ -2,10 +2,10 @@
 # (BASE_IMAGE hat bewusst keinen Default: der aufgeloeste Digest kommt immer aus bootstrap_test_n8n.ps1, eine Quelle.)
 #
 # Basis-Image des n8n-Test-Substrats: jrei/systemd-debian:12 + Basis-Pakete + PostgreSQL + Node + n8n in den
-# gepinnten Versionen. Gebaut und getaggt NUR von scripts/dev/bootstrap_test_n8n.ps1 (Build-Kontext = ein
+# gepinnten Versionen + socat (Test-Bruecke). Gebaut und getaggt nur von scripts/dev/bootstrap_test_n8n.ps1 (Build-Kontext = ein
 # Temp-Verzeichnis mit dieser Datei, build_base.sh und lib/ = Kopie aus provisioning/lib). Tag = Pins + Hash
 # ueber die Build-Eingaben (Get-SubstrateBaseSpec) -> jede inhaltliche Aenderung baut neu; der jrei-Digest haengt als
-# Label lifeagents.base-digest am Image. Prod/Release und `-Cold` nutzen dieses Image NIE.
+# Label lifeagents.base-digest am Image. Prod/Release und `-Cold` nutzen dieses Image nie.
 #
 # Bekannt und fuer Wegwerf-Dev vertretbar: Snakeoil-Zertifikat und PostgreSQL-Systemidentifier sind in allen
 # Substraten aus demselben Image gleich.

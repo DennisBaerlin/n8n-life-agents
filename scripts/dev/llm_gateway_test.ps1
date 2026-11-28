@@ -7,6 +7,8 @@
 #   n8ntest-gwt       = der installierte Gateway-Code auf 127.0.0.1:8095, Upstream = der Stub
 #   n8ntest-gwt-dead  = Gateway auf 127.0.0.1:8097, Upstream = toter Port (Ausfallverhalten)
 #   n8ntest-gwt-real  = Gateway auf 127.0.0.1:8098, Upstream = api.anthropic.com (nur Fall h, count_tokens = gratis)
+#   weitere Gateways fuer einzelne Faelle: n8ntest-gwt-par 8094 (j2), n8ntest-gwt-ka 8099 (k), n8ntest-gwt-reuse 8104 (o),
+#   n8ntest-gwt-tg 8102 mit Mock-Telegram n8ntest-gwt-tgmock 8103 (m)
 #
 # Faelle: (a) Agenten-Anfrage -> 3 Haltepunkte (Werkzeug+System 1h, oben 5m) · (b1) eigene Block-Marker -> keine
 # statischen · (b2) nur oberer Marker -> statische trotzdem, oben unveraendert · (c) ohne eigene Werkzeuge (auch nur
@@ -19,7 +21,7 @@
 # (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
 # Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
-# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP), dazu eine echte 401 mit erfundenem Schluessel (kostenlos) -> Code auth. (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
+# mit TEST_ANTHROPIC_API_KEY (fehlt er oder ist er der CI-Platzhalter ci-dummy-key -> SKIP), dazu eine echte 401 mit erfundenem Schluessel (kostenlos) -> Code auth. (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
 # Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 # (o) still tote Keep-Alive-Verbindung (Attrappe schweigt auf der Verbindung): Standard frische Verbindung je Anfrage, auch direkt danach
@@ -33,6 +35,7 @@
 # bleibt unberuehrt und wird am Ende neu gestartet und auf Gesundheit und Privacy-Log geprueft (Fall n).
 #
 # Kein LLM-Credit (count_tokens ist laut Anthropic kostenlos). Exit = Anzahl FAIL.
+# Usage:  .\scripts\dev\llm_gateway_test.ps1 [-Verbose]   (-Verbose gibt am Ende das Journal des Test-Gateways aus).
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'
@@ -515,12 +518,7 @@ try {
 
     # (h) echter Upstream, gratis (count_tokens)
     Write-Host '  (h) echter Upstream: /v1/messages/count_tokens (kostenlos)'
-    $envFile = Join-Path $RepoRoot '.env'
-    $realKey = $null
-    if (Test-Path $envFile) {
-        $line = Read-DotEnvLines $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
-        if ($line) { $realKey = ($line -split '=', 2)[1].Trim() }
-    }
+    $realKey = Get-TestEnvValue 'TEST_ANTHROPIC_API_KEY'
     if (-not $realKey) { Skip 'TEST_ANTHROPIC_API_KEY fehlt in .env' }
     elseif ($realKey -eq 'ci-dummy-key') { Skip 'erfundener Schluessel (CI free-gates.yml), kein Fall gegen die echte API' }
     else {

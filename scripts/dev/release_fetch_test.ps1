@@ -10,6 +10,8 @@
 #   - Release-Signatur: die Fake-Releases sind mit einem kurzlebigen Test-Schluessel signiert (LIFEAGENTS_RELEASE_KEYRING);
 #     ohne Bund gilt das SHA256-Sidecar; der echte Projekt-Schluessel lehnt die Test-Unterschrift ab.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, jq, node, script).
+# N8NTEST_RUNTIME=compose: statt des Substrats ein Wegwerf-Container aus dem master-Abbild des Arbeitsstands (baut das Abbild;
+# $env:N8NTEST_CONTAINER = eigener Projektname ist Pflicht; Container am Ende abgebaut).
 # Usage:  .\scripts\dev\release_fetch_test.ps1 [-Port 8093] [-Verbose]   (belegt Port und Port+1; 8094-8099 + 8102-8104 = llm_gateway_test)
 # Exit-Code = Anzahl Fehler.
 param([int]$Port = 8093, [switch]$Verbose)
@@ -28,7 +30,7 @@ Write-Host "Release-Download (install.sh + lifeagents update) gegen Mock-GitHub 
 Write-Host ("-" * 64)
 
 try {
-# Frischer Stand im Container: alten Test-Baum leeren (docker cp MERGT sonst), dann provisioning/ + Mock kopieren.
+# Frischer Stand im Container: alten Test-Baum leeren (docker cp mischt sonst alt und neu), dann provisioning/ + Mock kopieren.
 $root = '/opt/release_fetch_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }

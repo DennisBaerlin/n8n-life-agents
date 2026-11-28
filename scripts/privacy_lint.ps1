@@ -8,24 +8,29 @@
 #       echten Werte (Namen, Geburtsdaten, Mail, ...) -- sie duerfen selbst nie ins Repo. Dazu kommen automatisch alle
 #       *CHAT_ID-Werte aus .env (OWNER_CHAT_ID, TEST_TELEGRAM_CHAT_ID). Treffer: Gross-/Kleinschreibung egal; Begriffe,
 #       die mit Buchstabe/Ziffer beginnen und enden, nur als ganzes Wort (sonst trifft ein kurzer Name jedes laengere Wort, das ihn enthaelt).
-#       Liste und .env kommen immer aus dem Haupt-Checkout (git-common-dir), auch im Worktree: eine Kopie wuerde veralten.
+#       Dazu .local/privacy_denylist.generated.txt (aus der Instanz erzeugt, scripts/refresh_privacy_denylist.ps1).
+#       Listen und .env kommen immer aus dem Haupt-Checkout (git-common-dir), auch im Worktree: eine Kopie wuerde veralten.
 #       Fehlt die Liste, prueft das Lint allein (A): Beitraege von aussen und CI duerfen sie nicht voraussetzen. Gesperrt wird
 #       nur mit echter Chat-ID in .env (Owner-Maschine). Ein Owner-Klon ganz ohne .env ist von einem Fremd-Klon nicht zu unterscheiden.
 # Modi (ein Fakt, eine Adresse: die Hook-Verdrahtung steht in .pre-commit-config.yaml / .claude/hooks/dev_cycle_guard.ps1):
 #   (ohne)              getrackter Baum per git grep, auch generierte Dateien (docs/site/public, workflows) -- die werden
 #                       publiziert. Ausnahmen ($exempt): nur einzeln benannte Dateien mit Grund, nie Verzeichnisse/Muster.
-#                       Binaerdateien: PDF und Excel werden als Text gelesen; Bilder kann das Lint nicht lesen, darum
+#                       Binaerdateien: PDF, Excel und Word werden als Text gegen die Denylist (B) gelesen; Bilder kann das
+#                       Lint nicht lesen, darum
 #                       duerfen Binaerdateien nur in den Ablagen von $binaryAllow liegen (deren Inhalt entsteht aus Skripten).
 #   -MessageFile <f>    commit-msg: Message (alle Zeilen bis zur Scissors-Linie von `commit -v` -- `commit -F` speichert
 #                       auch '#'-Zeilen) + Autor-/Committer-Identitaet (git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT).
 #   -TextFile <f>       beliebiger oeffentlicher Text (PR-/Issue-/Release-Body des Claude-Hooks).
+#   -ExtraTermsFile <f> weitere Begriffe (je Zeile einer) fuer diesen Lauf, in jedem Modus (Vorschau von refresh_privacy_denylist.ps1).
 #   -Outgoing           pre-push: Branch-Name, Message + Identitaeten jedes ausgehenden Commits (PRE_COMMIT_FROM_REF..PRE_COMMIT_TO_REF
 #                       von prek, sonst @{push}..HEAD; nie fremde lokale Branches paralleler Sessions) und jeder lokale
 #                       annotierte Tag (= Release-Notes), der vom gepushten Stand erreichbar ist (mit -AllTags: jeder) und
 #                       dem Remote fehlt.
 #                       Grenze: prek prueft je Push nur den ersten Ref mit neuen Commits und laesst einen reinen Tag-Push
 #                       aus -> der Claude-Hook dev_cycle_guard.ps1 ruft -Outgoing zusaetzlich vor jedem `git push`.
-# Ausgaben nennen nie den Treffer-Wert selbst, nur Quelle:Zeile (das Log soll den echten Wert nicht wiederholen).
+# Ausgaben zu (B) nennen nie den Treffer-Wert, nur Quelle:Zeile (das Log soll den echten Wert nicht wiederholen); die Funde (A)
+# im Baum-Modus zeigen die Fundzeile von git grep.
+# Selbst-Asserts pruefen vorab die Erkennung; im Baum-Modus prueft eine Selbstprobe den PCRE-Weg (sonst Rueckfall auf -F).
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Substrat; nur -Outgoing fragt das Remote (git ls-remote).
 param(
     [string]$MessageFile,

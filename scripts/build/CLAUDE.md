@@ -11,6 +11,6 @@ Die Bau-Engine (`build.ps1` + `lib/`) generiert alle n8n-Workflow-JSONs aus den 
 ## Modell-Node-Builder
 
 - **Kein Config-Wert wird beim Bauen eingebacken** (`config_test` 4): Agenten lesen ihr Modell über `Load Config`, alle anderen Verbraucher über `New-ModelConfigNode` (`Load model config`, vor dem Modell-Aufruf; Build-Fehler, wenn das Manifest den Key nicht deklariert).
-- `New-ModelSelectorBundle` ist die eine Quelle der Modell-Nodes + des Selectors; **`-Effort` (low|medium|high) ist an `New-LmChatNode` und `New-ModelSelectorBundle` Pflicht** (Default wäre `medium` + `max_tokens` 4096, das Denken zählt mit → lange Antworten still abgeschnitten); keine Sampling-Parameter (`temperature` → 400).
+- `New-ModelSelectorBundle` ist die eine Quelle der Modell-Nodes + des Selectors; **`-Effort` (low|medium|high) ist an jedem Modell-Builder Pflicht** (Mandatory; Default wäre `medium` + `max_tokens` 4096, das Denken zählt mit → lange Antworten still abgeschnitten); keine Sampling-Parameter (`temperature` → 400).
 - Selector ändern = nur den Builder ändern, dann alle Consumer neu bauen und `-Reset`; Modellwechsel braucht keinen Build (`model.<consumer>` im Manifest).
 - `New-AnthropicMessagesNode` ist die einzige Quelle für direkte Claude-Aufrufe (Vision, Structured Output, Server-Tool `web_search`); Modell nur per `-ConfigModelKey`, Auswertung nur über `Get-AnthropicResultJs`, Texte über `ConvertTo-JsLiteral`; URL = der lokale LLM-Gateway, nie direkt Anthropic.

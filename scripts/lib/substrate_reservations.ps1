@@ -1,7 +1,9 @@
 ﻿#Requires -Version 5.1
-# Reservierung von n8n-Test-Substrat-Plaetzen: Liste, Frist und Platz-Entscheidung. Dot-Sourcing-Bibliothek fuer
-# scripts/reserve_substrate_slot.ps1 (Bedienung durch die Leitung); Wait-SubstrateSlot (unten) rufen beide Bootstraps.
-# Test: scripts/dev/substrate_reservation_test.ps1.
+# Reservierung von n8n-Test-Substrat-Plaetzen: Liste, Frist und Platz-Entscheidung (Bedienung durch die Leitung:
+# scripts/reserve_substrate_slot.ps1); Wait-SubstrateSlot (unten) rufen beide Bootstraps. Ausserdem: laufende Substrate beider
+# Unterbauten zaehlen (Get-RunningSubstrates), Verbund(e) eines Worktrees abbauen (Remove-WorktreeComposeSubstrates) und
+# DB-Test-Ports als Eintraege dbport-<port> reservieren (Add-DbPortReservation). Dot-sourcen; Nutzer: per Grep nach
+# substrate_reservations.ps1. Test: scripts/dev/substrate_reservation_test.ps1.
 #
 # Warum: Wait-SubstrateSlot zaehlt nur laufende Substrate. Hat die Leitung einen Platz schon an eine wartende Session
 # zugesagt, der Container laeuft aber noch nicht, nimmt ihn eine andere Session in der Luecke weg. Die Leitung
@@ -296,7 +298,7 @@ function Get-MainLocalDir {
     return (Join-Path (Split-Path $common -Parent) '.local')
 }
 
-# Verbund(e) dieses Checkouts abbauen: Container (`rm -fv`, wie jeder Abbau hier) -> Netze -> Volumes -> State-Datei je Projekt.
+# Verbund(e) dieses Checkouts abbauen: Container -> Netze -> Volumes -> State-Datei je Projekt.
 # Fehlertolerant (Docker aus, Objekt schon weg = weiter). Liefert die Auswahl zurueck.
 function Remove-WorktreeComposeSubstrates {
     param([Parameter(Mandatory)][string]$Worktree, [string]$StateDir = (Get-MainLocalDir))
@@ -347,6 +349,21 @@ function Find-FreeDbPort {
         if (Test-DbPortFree -Port $p -Reservations $Reservations -InUse $InUse -Own $Own) { return $p }
     }
     return $null
+}
+
+# Add-DbPortReservation -By <halter> [-Port <n>] [-InUse <ports>] -> der reservierte Port, $null wenn -Port nicht frei bzw. keiner frei ist.
+# Lesen, Waehlen und Eintragen unter einer Sperre: getrennt bekaemen zwei Sessions denselben freien Port genannt, und der zweite
+# Eintrag ersetzte den ersten ohne Meldung.
+function Add-DbPortReservation {
+    param([string]$File = (Get-SlotReservationFile), [Parameter(Mandatory)][string]$By, [int]$Port, [int[]]$InUse = @(), [datetime]$Now = [datetime]::UtcNow)
+    $got = Use-SlotReservationLock {
+        $res = @(Read-SlotReservations -File $File -Now $Now)
+        $p = if (-not $Port) { Find-FreeDbPort -Reservations $res -InUse $InUse -Own $By }
+             elseif (Test-DbPortFree -Port $Port -Reservations $res -InUse $InUse -Own $By) { $Port }
+        if ($p) { Add-SlotReservation -File $File -Container (Get-DbPortEntryName $p) -By $By -Now $Now }
+        $p
+    }
+    return $got
 }
 
 # Host-Ports laufender Container (`docker ps`, nur lesend); Docker aus = leere Liste.

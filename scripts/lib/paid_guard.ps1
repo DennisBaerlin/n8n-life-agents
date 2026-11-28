@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
-# Gemeinsame Abbruch-Absicherung der bezahlten Suiten (n8n_test, orch_test, e2e_test, multiturn_test, conversation_test):
+# Gemeinsame Abbruch-Absicherung der bezahlten Suiten (n8n_test, orch_test, e2e_test, multiturn_test, conversation_test; Teile
+# nutzen auch judge_eval (Kostengrenze) und monitor_probe (Kostengrenze, Invoke-PaidRunCleanup)):
 # Kostengrenze je Lauf + sauberes Ende (laufende/wartende Executions stoppen, Karten-Sperre loesen, Kostenbericht auch beim Abbruch).
-# Dot-sourcen NACH scripts/dev/test_n8n_state.ps1 (nutzt Get-LlmUsage, Get-LlmRequestCost, Stop-Exec, Invoke-N8nGet, Clear-HitlPending).
+# Dot-sourcen nach scripts/dev/test_n8n_state.ps1 (nutzt Get-LlmUsage, Get-LlmRequestCost, Stop-Exec, Invoke-N8nGet, Clear-HitlPending).
 # Vertrag je Suite: Parameter -MaxCostUsd; vor jedem Fall/jeder Runde Test-RunCostExceeded; Fallschleife in try { } finally { Invoke-PaidRunCleanup };
 # Kostenbericht im finally, falls der Lauf nicht regulaer endete. paid_guard_test.ps1 prueft statisch, dass keine Suite das verliert.
 
@@ -27,7 +28,7 @@ function Test-CostLimitExceeded {
 # die Absicherung darf einen Lauf nicht an einem Messfehler scheitern lassen.
 function Test-RunCostExceeded {
     param([Parameter(Mandatory)][string]$Container, [string]$Cursor, [Parameter(Mandatory)][hashtable]$Prices, [Parameter(Mandatory)][double]$MaxCostUsd)
-    # Ohne Start-Marke lieferte Get-LlmUsage die Nutzung ALLER frueheren Laeufe -> falscher Abbruch. Dann gibt es keine Messung.
+    # Ohne Start-Marke lieferte Get-LlmUsage die Nutzung aller frueheren Laeufe -> falscher Abbruch. Dann gibt es keine Messung.
     if (-not $Cursor) { Write-Host "    [WARN] Keine Journal-Start-Marke - Kostengrenze nicht geprueft." -ForegroundColor Yellow; return $false }
     try { $cost = Get-UsageCostUsd -Usage (Get-LlmUsage -Container $Container -AfterCursor $Cursor) -Prices $Prices }
     catch { Write-Host "    [WARN] Kosten nicht lesbar ($($_.Exception.Message)) - Grenze nicht geprueft." -ForegroundColor Yellow; return $false }

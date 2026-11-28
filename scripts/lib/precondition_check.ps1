@@ -27,7 +27,7 @@ function Get-PreconditionFinding {
     return $out.ToArray()
 }
 
-# Get-PreconditionAllowlistStale -Cases <alle Faelle als Liste von @{File;Case}> -Allow <Hashtable> -> Fehlertexte fuer Eintraege, die entfallen koennen.
+# Get-PreconditionAllowlistStale -Entries <alle Faelle als Liste von @{File;Case}> -Allow <Hashtable> -> Fehlertexte fuer Eintraege, die entfallen koennen.
 function Get-PreconditionAllowlistStale {
     param([Parameter(Mandatory)][object[]]$Entries, [hashtable]$Allow = @{})
     $needs = @{}

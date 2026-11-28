@@ -10,8 +10,9 @@
 #   (5) Origin: null (opaker Ursprung der Sandkasten-Seite) -> CORS-Antwort-Header vorhanden;
 #   (5b) der Installer-Seed: core.app_screens == app_screens-Bloecke aller Manifeste;
 #   (6) die Repo-Adresse (Platzhalter) ist live nicht registriert (Pfad je Instanz geheim).
-# Die Adresse kommt aus dem ECHTEN Installer-Code (deploy_workflows.sh _app_path) im Container.
+# Die Adresse kommt aus dem Installer-Code (provisioning/lib/common.sh _app_path) im Container.
 # Voraussetzung: laufendes Substrat (bootstrap_test_n8n.ps1); Mock-Telegram optional (sonst entfaellt der Alert-Check).
+# Seiteneffekt: paart den Test-Owner in der Substrat-DB (agent.core_contexts 'family') und leert die Mock-Telegram-Anfragen.
 # Usage:  .\scripts\dev\app_endpoint_test.ps1 [-Verbose]
 # Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)

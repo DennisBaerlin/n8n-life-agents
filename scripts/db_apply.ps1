@@ -17,7 +17,9 @@
 # oder ein Wildcard-Glob (-> alle Treffer, sortiert) sein. Sortierung nach Name macht den
 # Ziffern-Prefix (00_schema.sql) reihenfolge-stabil vor den fn_*.sql.
 #
-# Voraussetzung: das Test-Postgres laeuft (bootstrap_test_db.ps1). Exit: 0 = alles angewandt, ungleich 0 = throw
+# Voraussetzung: das Test-Postgres laeuft (bootstrap_test_db.ps1), psql im PATH oder unter C:\Program Files\PostgreSQL\17\bin.
+# Jeder Aufruf loescht den Bau-Stand der Test-DB: nach einem Aufruf von Hand baut der naechste bootstrap_test_db.ps1/db_test.ps1 neu.
+# Exit: 0 = alles angewandt, ungleich 0 = throw
 # (psql-Fehler, Datei/Glob nicht gefunden).
 #
 # Connection: ephemeres Docker-Test-Postgres (trust-Auth, Loopback, nicht-geheime Wegwerf-Defaults;
@@ -89,6 +91,12 @@ $env:PGDATABASE      = $PG_DATABASE
 $env:PGCLIENTENCODING = 'UTF8'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Der Bau-Stand der Test-DB (bootstrap_test_db.ps1 vermerkt ihn als COMMENT ON DATABASE) gilt ab hier nicht mehr. Der Bootstrap setzt
+# ihn nach seinem eigenen Lauf neu; nach einem Aufruf von Hand baut der naechste Bootstrap neu. Sonst hielte er eine von Hand
+# veraenderte DB fuer "aus diesem Baum gebaut", sobald der Baum wieder denselben Hash hat (Aenderung zurueckgenommen, anderer Worktree).
+Invoke-Psql -q -c "COMMENT ON DATABASE $PG_DATABASE IS NULL" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Test-DB $PG_DATABASE @ ${PG_HOST}:$PG_PORT nicht erreichbar (erst scripts\bootstrap_test_db.ps1)." }
 
 # Eine in Anfuehrungszeichen uebergebene Komma-Liste ('a.sql,b.sql') kommt als ein String an -> hier aufteilen.
 $File = @($File | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })

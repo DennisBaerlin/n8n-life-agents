@@ -6,7 +6,8 @@
 # Rohantworten nur in .local/monitor_probe/<zeit>/ (gitignored), Summe ueber Wiederholungen in .local/monitor_probe/kosten.json.
 #
 # Voraussetzung: Substrat, enable_mock_llm.ps1 -Down, enable_mock_telegram.ps1 aktiv, ANTHROPIC_API_KEY in .env.
-# Usage:  $env:N8NTEST_CONTAINER='..'; $env:N8NTEST_PORT='..'; .\scripts\monitor_probe.ps1 [-Id mp01]
+# Usage:  $env:N8NTEST_CONTAINER='..'; .\scripts\monitor_probe.ps1 [-Id mp01] [-Timeout 240]
+#         -Timeout <s> (Default 240): Wartezeit je Fall auf den Cron-Lauf bzw. die API-Antwort.
 # Exit-Code = Anzahl roter Faelle; Abbruch durch die Geldgrenze zaehlt als 1.
 # Abbruch-Absicherung wie die uebrigen bezahlten Suiten (lib/paid_guard.ps1): -MaxCostUsd ist die Obergrenze der Summe ueber Wiederholungen
 # (Alias -Limit), -ForceAbortId <id> zeigt den Abbruch-Pfad ohne Kosten, finally raeumt auf und druckt den Kostenbericht auch beim Abbruch.
@@ -16,9 +17,7 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\lib\dotenv.ps1"
-Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables (Join-Path $RepoRoot '.env')
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 . "$PSScriptRoot\lib\paid_guard.ps1"
 . "$PSScriptRoot\lib\http_json.ps1"

@@ -4,8 +4,10 @@
 # Mock-Telegram, DB und runData. Web-Antworten kommen aus Laufzeit-Szenarien (Mock-LLM; die Repo-scenarios.json bleibt unberuehrt,
 # Muster cron_text_test). Faelle laufen nacheinander und nie um Minute 10 oder zum Stundenwechsel (echter Zeitplan, Fenster).
 #
-# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 (eigene N8NTEST_CONTAINER/-PORT).
-# Usage:  .\scripts\dev\monitor_probe_test.ps1 [-Id mf07,mf10] [-ForceAbortId mf01]
+# Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 (eigene N8NTEST_CONTAINER/-PORT), .env mit TEST_HARNESS_SECRET.
+# Seiteneffekte: setzt next_check_at aller Waechter ausserhalb der Sentinel-Domain auf +1 Jahr (bleibt), ueberschreibt core.config
+# reminders_from/reminders_until, leert core.proactive_budget/proactive_deferred; scenarios.json im Container wird am Ende zurueckgespielt.
+# Usage:  .\scripts\dev\monitor_probe_test.ps1 [-Id mf07,mf10] [-ForceAbortId mf01] [-Timeout 150]
 # Exit-Code = Anzahl roter Faelle.
 param([string[]]$Id, [string]$ForceAbortId, [int]$Timeout = 150)
 $ErrorActionPreference = 'Stop'
@@ -13,9 +15,7 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . "$PSScriptRoot\..\lib\dotenv.ps1"
-Read-DotEnvLines (Join-Path $RepoRoot '.env') | ForEach-Object {
-    if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
-}
+Import-DotEnvVariables (Join-Path $RepoRoot '.env')
 . "$PSScriptRoot\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection
 $N8nUrl = $conn.Url; $ApiKey = $conn.ApiKey; $Container = $conn.Container
@@ -26,7 +26,7 @@ if ([string]::IsNullOrWhiteSpace($TEST_HARNESS_SECRET)) { throw 'TEST_HARNESS_SE
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
 $MockTgPort = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { '8089' }
 $Domain = '__e2e_monitor__'
-$Id = @($Id | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . "$PSScriptRoot\..\lib\test_common.ps1"
 . "$PSScriptRoot\..\lib\probe_window.ps1"
@@ -277,6 +277,9 @@ function Reset-Case {
     Clear-Logs
 }
 try {
+    # Jede genannte id muss es geben: sonst liefe ein Tippfehler still als kleinerer, gruener Lauf (wie scripts/infra_test.ps1).
+    $missing = @($Id | Where-Object { $_ -notin @($Cases | ForEach-Object { $_.id }) })
+    if ($missing.Count) { throw "Testfall nicht gefunden: $($missing -join ', ')." }
     foreach ($c in $Cases) {
         if ($Id.Count -and $Id -notcontains $c.id) { continue }
         $ran++

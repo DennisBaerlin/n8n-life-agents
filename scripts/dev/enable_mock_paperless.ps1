@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # enable_mock_paperless.ps1 — den Mock-Paperless-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (Aufruf: .\scripts\dev\enable_mock_paperless.ps1 [-Down] [-Verbose]). Operiert auf einem bereits hochgefahrenen
+# (Aufruf: .\scripts\dev\enable_mock_paperless.ps1 [-Down]). Operiert auf einem bereits hochgefahrenen
 # Substrat (scripts/dev/bootstrap_test_n8n.ps1) — der byte-identische Install-Pfad bleibt unberuehrt.
 #
 # Was es tut (idempotent):
@@ -23,8 +23,7 @@
 # (inject_credentials legt sie nur an, wenn TEST_PAPERLESS_API_TOKEN in .env steht — beliebiger Wert genuegt).
 # Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
-    [switch]$Down,
-    [switch]$Verbose
+    [switch]$Down
 )
 
 $ErrorActionPreference = 'Stop'

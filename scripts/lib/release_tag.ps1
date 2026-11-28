@@ -1,6 +1,7 @@
 ﻿#Requires -Version 5.1
-# release_tag.ps1 -- die EINE Stelle fuer "stabiles Release oder Vorab-Release" beim Release-Bau (release.yml ueber
-# scripts/release_meta.ps1, scripts/sign_release.ps1). Ein Vorab-Tag (vX.Y.Z-<suffix>, z. B. v0.51.0-rc.1) wird auf GitHub als
+# release_tag.ps1 -- die eine Stelle fuer "stabiles Release oder Vorab-Release" beim Release-Bau (release.yml ueber
+# scripts/release_meta.ps1, scripts/sign_release.ps1, scripts/build_master_image.ps1). Ein Vorab-Tag (vX.Y.Z-<suffix>, z. B.
+# v0.51.0-rc.1) wird auf GitHub als
 # prerelease angelegt und nie als latest markiert: /releases/latest, aus dem `lifeagents update`, install.sh ohne --version,
 # setup.sh-Einstieg und der Release-Check lesen, zeigt so weiter auf das letzte stabile Release. Die Kern-Seite (welche
 # Nummern eine Installation als Version kennt) steht in provisioning/lib/common.sh. Test: scripts/dev/release_tag_test.ps1.

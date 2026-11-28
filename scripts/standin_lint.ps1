@@ -8,7 +8,10 @@
 #   (B) in .github/workflows/*.yml und tests/**/*.sh braucht `docker exec -e|--env NAME=...` sowie `NAME=... bash
 #       <...>provision.sh|install.sh` in derselben oder der Zeile davor `# hand-injected: <Grund>` (warum der echte Weg
 #       den Wert genauso liefert oder wo er getrennt geprueft ist);
-#   (C)/(D) Stubs ohne den Namen fake_ und `export NAME=<fester Wert>` (Ausnahmeliste tests/util/standin_allowlist.json);
+#   (C) Stubs ohne den Namen fake_ (tests/mock_runtime, tests/mock_reach, PATH-/chmod-Attrappen in tests/**/*.sh): Kopfzeile
+#       real-path-test wie (A); (D) `export NAME=<fester Wert>` in tests/**/*.sh (ausser LANG, LC_ALL, GUM_DISABLE, PATH und
+#       Werten mit $ oder Backtick): '# hand-injected: <Grund>' wie (B). Sonst Ausnahmeliste tests/util/standin_allowlist.json
+#       (darf nur schrumpfen; Eintrag ohne Grund oder ohne Fund ist ein Fehler);
 #   (E) kein erfundener Wert in der Form eines echten Anbieter-Schluessels (Tailscale, Telegram, Anthropic, GitHub) in
 #       tests/, scripts/, provisioning/, packages/, docs/, config/, .github/, .env.example (GitHub Secret Scanning meldet ihn;
 #       Muster unveroeffentlicht: docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns).
@@ -160,12 +163,10 @@ foreach ($d in @('tests', 'scripts', 'provisioning', 'packages', 'docs', 'config
     }
 }
 $shapeFiles += @(Get-ChildItem $Root -File -Filter '.env.example' -ErrorAction SilentlyContinue)
-$shapeHits = 0
 foreach ($f in $shapeFiles) {
     $txt = [System.IO.File]::ReadAllText($f.FullName, $u8)
     foreach ($k in $secretShapes.Keys) {
         foreach ($m in [regex]::Matches($txt, $secretShapes[$k])) {
-            $shapeHits++
             $ln = ($txt.Substring(0, $m.Index) -split "`n").Count
             Fail "$(Rel $f.FullName):${ln}: Wert in der Form eines echten $k-Schluessels (GitHub Secret Scanning meldet ihn als Leck) -> neutral erfinden, z. B. test-fake-... statt des Anbieter-Praefixes"
         }

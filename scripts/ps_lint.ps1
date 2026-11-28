@@ -42,8 +42,11 @@ $Findings = if ($LimitToStaged) { @($StagedFiles | ForEach-Object { Invoke-Scrip
             else { @($Targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Recurse -Settings $Settings }) }
 
 if ($Findings.Count -gt 0) {
+    # git nennt die Wurzel mit Schraegstrichen, PSScriptAnalyzer die Datei mit Backslash: erst als Systempfad vergleichen.
+    $rootFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
     $Findings | Sort-Object ScriptPath, Line | ForEach-Object {
-        $rel = $_.ScriptPath.Replace("$RepoRoot\", '')
+        $rel = [System.IO.Path]::GetFullPath($_.ScriptPath)
+        if ($rel.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) { $rel = $rel.Substring($rootFull.Length).TrimStart('\', '/') }
         Write-Host ("{0}:{1} [{2}] {3}" -f $rel, $_.Line, $_.RuleName, $_.Message)
     }
     Write-Host ""

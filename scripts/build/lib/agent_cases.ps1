@@ -6,7 +6,8 @@
 # von Cases (eine Objekt-Wurzel wird als EIN Case gelesen). Die Konsumenten filtern selbst nach der Case-Form:
 #   - lib/catalog.ps1 Get-CaseUtterance: Routing-Cases (Schluessel expected_tool ODER expected_route vorhanden)
 #     als Pool fuer den Example-Drift-Check;
-#   - scripts/mock_lint.ps1: Mock-Tier-Cases (task, kein `kind`; Art route|tool aus dem Erwartungs-Schluessel).
+#   - scripts/mock_lint.ps1: Mock-Tier-Cases (task, kein `kind`; Art route|tool aus dem Erwartungs-Schluessel);
+#   - scripts/contract_lint.ps1: Golden-Case-Abdeckung der Write-Tools (Cases mit expected_tool).
 # Abhaengigkeitsfrei (nur JSON rein, Objekte raus), damit Build und Lint sie dot-sourcen koennen.
 # =====================================================================================================
 

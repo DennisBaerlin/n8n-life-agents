@@ -1,14 +1,16 @@
-# Release-Artefakt-Action (Phase 6b). Auf einen SemVer-Tag baut sie den getrackten Install-Baum als
+# Release-Artefakt-Action. Auf einen SemVer-Tag baut sie den getrackten Install-Baum als
 # reproduzierbares tar.gz + SHA256-Sidecar und laedt beide als Release-Assets hoch, dazu den Bootstrap-
 # Launcher provisioning/install.sh als Asset `install.sh` (stabiler Einstieg .../releases/latest/download/
 # install.sh, nicht main). Oeffentliches Repo: install.sh / provisioning/lib/fetch_release.sh laden die Assets
-# anonym (kein Token). Dazu der Linux-Einrichter als Asset `setup.sh` (provisioning/setup.sh mit dem Abbild-Pin der compose.yml).
+# anonym (kein Token). Dazu der Linux-Einrichter als Asset `setup.sh` (provisioning/setup.sh mit dem Abbild-Pin der compose.yml)
+# und compose.yml. Liegt provisioning/keys/release-signing.gpg im Tag, entsteht nur ein Entwurf; veroeffentlicht wird nach
+# scripts/sign_release.ps1. Die Jobs desktop und desktop-assets haengen DMG, EXE, Herkunftsnachweis und SHA256SUMS an.
 #
-# "Was kommt ins Release" = EINE Wahrheit: die git-archive-Pathspec unten (provisioning packages
+# "Was kommt ins Release" = eine Wahrheit: die git-archive-Pathspec unten (provisioning packages
 # .gitattributes) — genau die Pfade, die provision.sh zur Laufzeit liest (REPO_ROOT/packages = Core-Paket +
 # Pakete inkl. packages/<pkg>/workflows und packages/<pkg>/db, Schema/Migrationen paket-relativ;
 # provisioning/ = der Kern, install.sh + provision.sh inklusive). `git archive` ist deterministisch
-# (mtime = Commit-Zeit) und nimmt NUR
+# (mtime = Commit-Zeit) und nimmt nur
 # getrackte Dateien -> gitignorte Secrets (.env/.local/.claude) koennen strukturell nicht hinein;
 # der Gate-Schritt prueft das zusaetzlich.
 name: release
@@ -81,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           # Release-Text = die Nachricht des annotierten Tags (`git tag -a`, englische Aenderungsliste — oeffentliches Repo,
-          # Owner-Entscheid 2026-10-24: auf der Release-Seite lesen, was sich geaendert hat), ueber die API gelesen (unabhaengig davon, wie der
+          # die Release-Seite zeigt, was sich geaendert hat), ueber die API gelesen (unabhaengig davon, wie der
           # Checkout den Tag holt). Leichtgewichtiger Tag -> nur der Installations-Hinweis.
           obj="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type + " " + .object.sha')"
           : > notes.md
@@ -90,7 +92,7 @@ jobs:
           fi
           # Kurzfassungen fuer die Update-Karte im Chat (core.fn_release_intro): Einleitungsabsatz (englisch) plus ein
           # summary:<lang>-Marker je Systemsprache. Dieselbe Regel wie vor dem Taggen (scripts/release_notes_check.ps1, die
-          # EINE Fassung); laeuft VOR dem Anhaengen des Installations-Hinweises, sonst sahe sie ihn hinter '---'.
+          # eine Fassung); laeuft vor dem Anhaengen des Installations-Hinweises, sonst sahe sie ihn hinter '---'.
           pwsh -NoProfile -File scripts/release_notes_check.ps1 -File notes.md || {
             echo "::error::Die Tag-Nachricht erfuellt die Regel der Update-Karte nicht (Meldung oben). Annotiert taggen: git tag -a ${TAG} --cleanup=whitespace -F <datei>."
             exit 1
@@ -104,7 +106,7 @@ jobs:
           printf '\n---\n%s\n' "${note}" >> notes.md
           # Release ggf. anlegen (existiert bereits -> ueberspringen); Assets mit --clobber neu hoch
           # -> ein erneuter Lauf desselben Tags ist idempotent.
-          # Signierendes Projekt (provisioning/keys/release-signing.gpg im Tag): nur als ENTWURF anlegen — Installationen mit
+          # Signierendes Projekt (provisioning/keys/release-signing.gpg im Tag): nur als Entwurf anlegen — Installationen mit
           # Schluesselbund nehmen nur unterschriebene Releases an, und /releases/latest zeigt nie auf einen Entwurf.
           # Veroeffentlicht wird erst nach der lokalen Unterschrift (scripts/sign_release.ps1 laedt SHA256SUMS.sig hoch).
           draft=()
@@ -118,7 +120,7 @@ jobs:
             "${draft[@]}" \
             "${kind_flags[@]}" \
             --verify-tag || echo "Release ${TAG} existiert bereits — nur Assets aktualisieren."
-          # Schon unterschrieben (SHA256SUMS.sig haengt am Release) -> NICHTS ueberschreiben: ein neu gebauter Tarball (andere
+          # Schon unterschrieben (SHA256SUMS.sig haengt am Release) -> nichts ueberschreiben: ein neu gebauter Tarball (andere
           # gzip-Bytes) passte nicht mehr zur Unterschrift, und jede Installation mit Schluesselbund lehnte das Release ab.
           if gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -qx 'SHA256SUMS.sig'; then
             echo "::error::Release ${TAG} ist bereits unterschrieben — Assets bleiben unveraendert. Neu bauen nur als neues Tag."
@@ -127,12 +129,12 @@ jobs:
           # .sha256-Sidecar bleibt fuer Installationen ohne Schluesselbund (und aeltere CLIs); SHA256SUMS ist die signierte Liste.
           gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh setup.sh compose.yml --clobber
 
-  # Start-App (Plan docker-installer-freunde, Paket 6): DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup, gebaut im selben
+  # Start-App: DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup, gebaut im selben
   # Lauf aus dem Tag-Commit (die eingebaute compose.yml prueft desktop-build.yml gegen die Datei des Tags). Eigene Pruefkette:
   # DMG/EXE sind nicht reproduzierbar, darum bekommen sie einen Herkunftsnachweis von GitHub (attest-build-provenance:
   # Workflow release.yml, dieses Tag), den sign_release.ps1 per `gh attestation verify` prueft, bevor die Liste
-  # unterschrieben wird. SHA256SUMS (Debian-SecureApt-Muster, je "<sha256>  <asset>") entsteht hier erst, wenn alle fuenf
-  # Dateien da sind; unterschrieben wird sie NICHT hier (ein Schluessel als Actions-Secret schuetzte nicht gegen ein
+  # unterschrieben wird. SHA256SUMS (Debian-SecureApt-Muster, je "<sha256>  <asset>") entsteht hier erst, wenn alle sechs
+  # Dateien da sind; unterschrieben wird sie nicht hier (ein Schluessel als Actions-Secret schuetzte nicht gegen ein
   # gekapertes Konto), sondern lokal mit dem Offline-Schluessel: scripts/sign_release.ps1 <tag>.
   desktop:
     uses: ./.github/workflows/desktop-build.yml # zizmor: ignore[self-repository] actionlint 1.7.12 kennt "$/" noch nicht

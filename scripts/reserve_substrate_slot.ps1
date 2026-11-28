@@ -8,13 +8,14 @@
 # Der Name ist der Container, den die Session setzt ($env:N8NTEST_CONTAINER); ein -Parallel-Lauf von run_free_gates.ps1 braucht
 # zusaetzlich <Name>-b (zweiter Platz, bei Limit 2 sperrt er alles andere). Die Leitung sagt zu, die wartende Session darf mit
 # demselben Kommando selbst reservieren (-By = ihr Name) -- aber erst nach der Zusage. -List zeigt neben den Reservierungen die
-# laufenden Substrate (nur `docker ps`, lesend). Sonst wird Docker nicht angefasst.
+# laufenden Substrate; -List und -DbPort/-FreeDbPort lesen `docker ps` (nur lesend), -Container und -Release fassen Docker nicht an.
 #
 # Usage:  .\scripts\reserve_substrate_slot.ps1 -Container n8ntest-xx [-By "Sprint-Leitung"]   # reservieren (erneut = Frist neu)
 #         .\scripts\reserve_substrate_slot.ps1 -Release n8ntest-xx                              # Zusage zurueckziehen
 #         .\scripts\reserve_substrate_slot.ps1 -DbPort 55433 -By lifeagents-dbtest-xx          # DB-Test-Port reservieren (Eintrag dbport-55433)
 #         .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By lifeagents-dbtest-xx             # naechsten freien DB-Port nennen und reservieren
 #         .\scripts\reserve_substrate_slot.ps1 -List                                            # gueltige Reservierungen
+#         -ListFile <pfad> ersetzt die Liste in jedem Modus (Default .claude/substrate_reservations.txt im Haupt-Checkout; fuer Tests).
 # DB-Ports (DBTEST_PG_PORT) laufen ueber dieselbe Liste; bootstrap_test_db.ps1 prueft und traegt den Port beim Start selbst ein.
 # Exit-Code 0 = ok; jeder Fehler bricht per throw bzw. ErrorActionPreference Stop mit Exit 1 ab. Fehlbedienung bricht ab, ohne etwas
 # einzutragen: unbekannter Parameter, mehr als ein Modus, -By bei -Release/-List, Wert mit fuehrendem `-` (Test: substrate_reservation_test.ps1).
@@ -53,15 +54,13 @@ if ($PSBoundParameters.ContainsKey('By') -and $modes -and @('Container', 'DbPort
 
 if ($FreeDbPort -or $DbPort) {
     if (-not $By) { $By = if ($env:DBTEST_CONTAINER) { $env:DBTEST_CONTAINER } else { $env:USERNAME } }
-    $res = @(Read-SlotReservations -File $ListFile)
     $used = @(Get-DockerHostPorts)
     if ($FreeDbPort) {
-        $DbPort = Find-FreeDbPort -Reservations $res -InUse $used -Own $By
+        $DbPort = Add-DbPortReservation -File $ListFile -By $By -InUse $used
         if (-not $DbPort) { throw 'Kein freier DB-Port in 55432..55471.' }
-    } elseif (-not (Test-DbPortFree -Port $DbPort -Reservations $res -InUse $used -Own $By)) {
+    } elseif (-not (Add-DbPortReservation -File $ListFile -By $By -Port $DbPort -InUse $used)) {
         throw "DB-Port $DbPort ist belegt oder von einer anderen Session reserviert (-FreeDbPort nennt einen freien)."
     }
-    Add-SlotReservation -File $ListFile -Container (Get-DbPortEntryName $DbPort) -By $By
     Write-Host ("DB-Port {0} reserviert (von {1}): `$env:DBTEST_PG_PORT='{0}'; verfaellt nach {2} Min." -f $DbPort, $By, $SlotReservationTtlMin) -ForegroundColor Green
     exit 0
 }

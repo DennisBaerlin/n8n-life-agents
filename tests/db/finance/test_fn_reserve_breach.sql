@@ -16,7 +16,7 @@ BEGIN
   -- ===================================================================================
   -- Konto A — nicht im Breach: Reserve +500 (getaggt) + Einnahme +1000 (un-getaggt) -> Saldo 1500, reserviert 500.
   -- ===================================================================================
-  SELECT finance.fn_create_account('{"name":"__rb_a__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_a__","account_type":"cash"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gA__', 5000, current_date + 365, 'active') RETURNING id INTO v_gA;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_a,  500, current_date - 30, 'transfer', v_gA, gen_random_uuid()),   -- Reserve-Zufluss (getaggt)
@@ -36,7 +36,7 @@ BEGIN
   -- Konto B — im Breach: Reserve +500 (getaggt) + Ausgabe -300 (un-getaggt) -> Saldo 200, reserviert 500,
   --   Fehlbetrag 300. fn liefert das Objekt mit korrektem shortfall + native Waehrung im note.
   -- ===================================================================================
-  SELECT finance.fn_create_account('{"name":"__rb_b__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_b := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_b__","account_type":"cash"}'::jsonb) INTO v_res; v_b := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gB__', 5000, current_date + 365, 'active') RETURNING id INTO v_gB;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_b,  500, current_date - 30, 'transfer', v_gB, gen_random_uuid()),   -- Reserve-Zufluss
@@ -56,7 +56,7 @@ BEGIN
   -- ===================================================================================
   -- Konto C — reserved=0-Guard: nur un-getaggte Buchungen, Saldo sogar negativ -> kein Breach (reserved>0-Guard).
   -- ===================================================================================
-  SELECT finance.fn_create_account('{"name":"__rb_c__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_c__","account_type":"cash"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id) VALUES
     (v_c, -100, current_date - 5, 'other', NULL);
   SELECT reserved, breach INTO v_rsv, v_breach FROM finance.account_reserve_status WHERE account_id = v_c;
@@ -76,7 +76,7 @@ BEGIN
   --   Belastung danach erzeugt ihn. Dafuer ein eigenes, sauber aufgebautes Konto.
   -- ===================================================================================
   -- frisches Konto: Reserve +400 (getaggt), getaggte Entnahme -150 (getaggt, selbes Ziel) -> Saldo 250, reserviert 250 -> kein Breach (gleich).
-  SELECT finance.fn_create_account('{"name":"__rb_sc__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_sc__","account_type":"cash"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gSC__', 5000, current_date + 365, 'active') RETURNING id INTO v_gA;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_a,  400, current_date - 30, 'transfer', v_gA, gen_random_uuid()),   -- Reserve-Zufluss (getaggt)
@@ -95,7 +95,7 @@ BEGIN
   -- Nur aktive Ziele: Reserve +500 (getaggt), un-getaggte -400 -> Saldo 100 < 500 -> Breach. Ziel completed ->
   --   reserviert 0 -> kein Breach mehr (das Ziel gibt seine Reserve frei).
   -- ===================================================================================
-  SELECT finance.fn_create_account('{"name":"__rb_comp__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_comp__","account_type":"cash"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gComp__', 500, current_date + 365, 'active') RETURNING id INTO v_gComp;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_c,  500, current_date - 30, 'transfer', v_gComp, gen_random_uuid()),
@@ -113,7 +113,7 @@ BEGIN
   --   500, Fehlbetrag 300 (alles USD, kein FX). note traegt die native Waehrung USD.
   -- ===================================================================================
   PERFORM finance.fn_ensure_currency('USD');   -- USD in finance.currencies registrieren (FK accounts.currency)
-  SELECT finance.fn_create_account('{"name":"__rb_usd__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_usd := (v_res->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rb_usd__","account_type":"cash"}'::jsonb) INTO v_res; v_usd := (v_res->>'account_id')::int;
   UPDATE finance.accounts SET currency = 'USD' WHERE id = v_usd;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gUSD__', 5000, current_date + 365, 'active') RETURNING id INTO v_gUSD;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES

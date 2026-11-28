@@ -4,7 +4,8 @@
 --   traegt es als open_handoffs, damit der Berater vor einem Loesungsvorschlag zu einer Warnung sieht, was schon vereinbart
 --   ist. Eingabe p_domain (Plan-Domain). Rueckgabe jsonb-Array [{kind, text, topic, section_key, status, open_since}] in
 --   Anlage-Reihenfolge, hoechstens 50; status open = wartet auf [Jetzt eintragen], working = per [Jetzt eintragen] gerade beansprucht
---   (auch ein abgelaufener Claim: eingetragen ist es erst bei done); open_since = Anlagetag (core.fn_today). Kein payload,
+--   (ein abgelaufener Claim zaehlt als open, core.fn_handoff_status_now); deferred = zurueckgestellt, weil es technisch noch nicht
+--   eintragbar ist (der Berater schlaegt es nicht neu vor); open_since = Anlagetag (core.fn_today). Kein payload,
 --   keine Person, keine id: der Berater braucht nur den Inhalt; das Eintragen laeuft ueber tool_send_handoff_overview.
 --   Leer ([]) bei per_user-Plan-Kontext (der Snapshot kennt keinen Absender, fail-closed wie core.fn_advisor_read_plan in
 --   einer Frei-SQL-Sitzung) und wenn die Login-Rolle eine Paket-Rolle eines anderen Pakets ist als das der Domain
@@ -22,19 +23,20 @@ AS $$
 DECLARE
     v_ctx    text;
     v_pkg    text;
-    v_caller text := substring(session_user::text from '^([a-z][a-z0-9_]*)_(?:ro|rw)$');
+    v_caller text := core.fn_session_package();
 BEGIN
     SELECT a.plan_context, a.package INTO v_ctx, v_pkg FROM core.advisors a WHERE a.domain = p_domain;
     IF COALESCE((SELECT cs.scope FROM core.context_scopes cs
                   WHERE cs.context_name = COALESCE(v_ctx, p_domain || '_planning')), 'household') <> 'household'
-       OR (v_caller IS NOT NULL AND v_caller <> 'core' AND v_caller IS DISTINCT FROM v_pkg) THEN
+       OR (v_caller IS NOT NULL AND v_caller IS DISTINCT FROM v_pkg) THEN
         RETURN '[]'::jsonb;
     END IF;
     RETURN (SELECT COALESCE(jsonb_agg(jsonb_build_object('kind', t.kind, 'text', t.text, 'topic', t.topic,
-                                                         'section_key', t.section_key, 'status', t.status,
+                                                         'section_key', t.section_key,
+                                                         'status', core.fn_handoff_status_now(t.status, t.claimed_at),
                                                          'open_since', core.fn_today(t.created_at)) ORDER BY t.id), '[]'::jsonb)
               FROM (SELECT * FROM agent.handoff_tasks h
-                     WHERE h.domain = p_domain AND h.status IN ('open', 'working')
+                     WHERE h.domain = p_domain AND h.status IN ('open', 'working', 'deferred')
                      ORDER BY h.id LIMIT 50) t);
 END;
 $$;

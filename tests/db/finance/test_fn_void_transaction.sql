@@ -12,7 +12,7 @@ DECLARE
   v_giro INT; v_loan INT; v_loanacc INT; v_loantx INT; v_remaining INT;
 BEGIN
   -- ===== TEST 1: einfache Cash-Buchung voiden -> Saldo zurueck auf 0 =====
-  SELECT finance.fn_create_account('{"name":"__test_void_cash__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_void_cash__","account_type":"cash"}'::jsonb) INTO v_res;
   v_cash := (v_res->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES (v_cash, 1000, CURRENT_DATE, 'other', 'Testeinlage') RETURNING id INTO v_txid;
@@ -32,9 +32,9 @@ BEGIN
   RAISE NOTICE 'PASS void [Cash-Buchung geloescht, Saldo 0, Audit-Eintrag vorhanden]';
 
   -- ===== TEST 2: Depot-Kauf voiden -> Holding bleibt (shares 0), ISIN nicht geloescht =====
-  SELECT finance.fn_create_account('{"name":"__test_void_settle__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_void_settle__","account_type":"cash"}'::jsonb) INTO v_res;
   v_settle := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account(jsonb_build_object('name','__test_void_depot__','account_type','stocks_depot','account_holder','Test','settlement_id',v_settle)) INTO v_res;
+  SELECT finance.fn_create_account(jsonb_build_object('name','__test_void_depot__','account_type','stocks_depot','settlement_id',v_settle)) INTO v_res;
   v_depot := (v_res->>'account_id')::int;
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name)
   VALUES (v_depot, 'IE00BK5BQT80', 'VWCE', 'Vanguard') RETURNING id INTO v_hid;
@@ -63,10 +63,10 @@ BEGIN
   RAISE NOTICE 'PASS void [Oversell-Guard: Kauf mit abhaengigem Verkauf -> ok:false]';
 
   -- ===== TEST 4: Kredit-Event paarweise -> beide Beine geloescht =====
-  SELECT finance.fn_create_account('{"name":"__test_void_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_void_giro__","account_type":"cash"}'::jsonb) INTO v_res;
   v_giro := (v_res->>'account_id')::int;
   SELECT finance.fn_create_loan(jsonb_build_object(
-    'name','__test_void_loan__','lender','Buchenbank','borrower','Erika','original_amount',100000,
+    'name','__test_void_loan__','lender','Buchenbank','original_amount',100000,
     'disbursement_date',CURRENT_DATE::text,'interest_rate',3.0,'monthly_annuity',1200,
     'schedule_day_of_month',1,'first_payment_date',(CURRENT_DATE + 30)::text,   -- Rate => erstes Ratendatum Pflicht
     'debit_account_id',v_giro,'disbursement_account_id',v_giro
@@ -89,9 +89,9 @@ BEGIN
   DECLARE
     v_ta INT; v_tb INT; v_debit_tx INT; v_grp_remaining INT; v_bala NUMERIC; v_balb NUMERIC;
   BEGIN
-    SELECT finance.fn_create_account('{"name":"__test_void_ta__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+    SELECT finance.fn_create_account('{"name":"__test_void_ta__","account_type":"cash"}'::jsonb) INTO v_res;
     v_ta := (v_res->>'account_id')::int;
-    SELECT finance.fn_create_account('{"name":"__test_void_tb__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+    SELECT finance.fn_create_account('{"name":"__test_void_tb__","account_type":"cash"}'::jsonb) INTO v_res;
     v_tb := (v_res->>'account_id')::int;
     SELECT finance.fn_book_transfer(jsonb_build_object(
       'from_account_id', v_ta, 'to_account_id', v_tb, 'amount', 50, 'transaction_date', CURRENT_DATE::text,
@@ -140,10 +140,10 @@ DECLARE
   v_re      INT;
 BEGIN
   -- Setup Sparziel + goal-verknuepfter Sparplan (Muster test_fn_book_stock_buy TEST 10)
-  SELECT finance.fn_create_account('{"name":"__test_vd_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_vd_settle__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_settle := (v_res->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object('name','__test_vd_depot__','account_type','stocks_depot',
-    'account_holder','Test','currency','EUR','settlement_id',v_settle)) INTO v_res;
+    'currency','EUR','settlement_id',v_settle)) INTO v_res;
   v_depot := (v_res->>'account_id')::int;
   SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_vd_goal__','target_amount',5000,
     'target_date',(CURRENT_DATE + 365)::text,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_settle,'schedule_day_of_month',1,
@@ -191,10 +191,9 @@ BEGIN
   RAISE NOTICE 'PASS void [goal-buy mit freigegebener Reserve -> ok:false, nichts geloescht]';
 
   -- ===== TEST 7: Void einer Abloesung -> Kredit wieder active, Rate laeuft wieder =====
-  SELECT finance.fn_create_account('{"name":"__test_vd_giro__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_vd_giro__","account_type":"cash"}'::jsonb) INTO v_res;
   v_giro := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_kredit__','lender','B','borrower','T',
-    'original_amount',10000,'current_balance',10000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',2,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_kredit__','lender','B','original_amount',10000,'current_balance',10000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',2,
     'monthly_annuity',500,'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   SELECT recurring_payment_id INTO v_loan_rp FROM finance.loans WHERE id = v_loan;
@@ -213,8 +212,7 @@ BEGIN
   RAISE NOTICE 'PASS void [Abloesung rueckgaengig -> Kredit active, Rate laeuft wieder]';
 
   -- ===== TEST 8: Void der Abloesung eines Kredits ohne Rate -> paused (CHECK active_needs_annuity), kein Fehler =====
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_family__','lender','Oma','borrower','T',
-    'original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',0,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_family__','lender','Oma','original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',0,
     'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   PERFORM finance.fn_settle_loan(jsonb_build_object('loan_name','__test_vd_family__','debit_account_id',v_giro,
@@ -228,8 +226,7 @@ BEGIN
 
   -- ===== TEST 8b: Void stellt den Zustand vor der Abloesung exakt wieder her: ein vorher pausierter
   --   Kredit bleibt pausiert, ein vertragliches Raten-Ende (valid_to) bleibt erhalten =====
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_kredit3__','lender','B','borrower','T',
-    'original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',2,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_kredit3__','lender','B','original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',2,
     'monthly_annuity',400,'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   SELECT recurring_payment_id INTO v_loan_rp FROM finance.loans WHERE id = v_loan;
@@ -363,8 +360,7 @@ DO $$
 DECLARE v_giro INT; v_res JSONB; v_loan INT; v_lacc INT; v_rp INT; v_tx INT;
 BEGIN
   v_giro := (finance.fn_create_account('{"name":"__test_void_alt_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
-  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_void_alt_kredit__','lender','B','borrower','T',
-             'current_balance',500,'interest_rate',2,'monthly_annuity',100,
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_void_alt_kredit__','lender','B','current_balance',500,'interest_rate',2,'monthly_annuity',100,
              'first_payment_date',(CURRENT_DATE + 10)::text,'debit_account_id',v_giro));
   v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
   -- Altbestand-Abloesung nachstellen: Kredit paid_off ohne settled_from, Rate pausiert bis zum Abloesetag

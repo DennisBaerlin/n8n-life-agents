@@ -512,7 +512,7 @@ BEGIN
   -- konto-skopiert (robust): die Bestands-Fixtures dieses Tests breachen u. U. eigene Konten -> wir pruefen
   -- nicht die globale Alert-Zahl, sondern ob genau unser Konto im reserve_coverage-Text auftaucht/verschwindet.
   -- Breach erzeugen: Reserve +800 (getaggt) + un-getaggte Ausgabe -500 -> Saldo 300 < reserviert 800.
-  SELECT finance.fn_create_account('{"name":"__rc_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO r; v_acct := (r->>'account_id')::int;
+  SELECT finance.fn_create_account('{"name":"__rc_acct__","account_type":"cash"}'::jsonb) INTO r; v_acct := (r->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rc_goal__', 9000, current_date + 365, 'active') RETURNING id INTO v_goal;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_acct, 800, current_date - 10, 'transfer', v_goal, gen_random_uuid()),
@@ -570,7 +570,7 @@ DECLARE
   v_td  date := current_date + 30;
 BEGIN
   -- gemeinsames Funding-/Cash-Konto
-  SELECT finance.fn_create_account('{"name":"__s3_fund__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO r;
+  SELECT finance.fn_create_account('{"name":"__s3_fund__","account_type":"cash"}'::jsonb) INTO r;
   v_fund := (r->>'account_id')::int;
 
   -- ---------- (S1) Uebererfuellt ----------
@@ -1399,8 +1399,8 @@ ROLLBACK TO SAVEPOINT fx_stale;
 DO $$
 DECLARE v_a int; v_b int; v_rp int; v_due date := core.fn_today() - 40; r jsonb;
 BEGIN
-  v_a := (finance.fn_create_account('{"name":"__adv_bt_a__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_b := (finance.fn_create_account('{"name":"__adv_bt_b__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_a := (finance.fn_create_account('{"name":"__adv_bt_a__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__adv_bt_b__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
     VALUES ('__adv_bt__', v_a, v_b, -30, 'month', 1, v_due, v_due) RETURNING id INTO v_rp;
   INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count, unmatched_out, unmatched_in, skipped)

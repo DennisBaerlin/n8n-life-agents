@@ -7,7 +7,7 @@ DO $$
 DECLARE
   v_acct INT; v_rp INT; v_res JSONB; v_new INT; v_txt TEXT; v_anchor DATE;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__sra_acct__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_acct;
+  SELECT (finance.fn_create_account('{"name":"__sra_acct__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_acct;
   v_res := finance.fn_create_recurring_payment(jsonb_build_object('name','__sra_pay__','account_id',v_acct,'direction','expense',
     'amount',50,'schedule_unit','month','schedule_interval',1,'schedule_day_of_month',1,'first_payment_date','2031-01-01'));
   v_rp := (v_res->>'recurring_payment_id')::int;

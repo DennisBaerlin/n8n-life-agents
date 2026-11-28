@@ -6,6 +6,7 @@
 --   der Vereinbarung, wanted = der beim Vereinbaren gepruefte Aufruf (NULL ohne Vorpruefung), rest = Text des offenen Punkts,
 --   der beim Eintragen offen bleibt (core.fn_handoff_rest); entered_refs/close_reason = Provenienz des Abschlusses (Paket-fns
 --   fuer den Unterschied Soll gegen Ist und die Kartenzeilen, die agent.* nicht sehen). Nur die angefragten ids (der Auftrag nennt sie), keine Personen- oder Domain-Liste.
+--   Paket-Grenze (core.fn_session_package): eine Paket-Rolle liest nur Aufgaben ihres Pakets, fremde ids fehlen wie unbekannte.
 --   SECURITY DEFINER, EXECUTE an <pkg>_ro/_rw via core.fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_handoff_tasks.sql, tests/db/core/test_fn_defer_handoff_task.sql, tests/db/cross/test_role_permissions.sql
 -- ============================================================
@@ -22,7 +23,8 @@ BEGIN
                                                          'rest', core.fn_handoff_rest(t.id), 'entered_refs', t.entered_refs,
                                                          'close_reason', t.close_reason, 'open_point_id', t.open_point_id) ORDER BY t.id), '[]'::jsonb)
               FROM agent.handoff_tasks t
-             WHERE t.id = ANY (COALESCE(p_ids, ARRAY[]::int[])));
+             WHERE t.id = ANY (COALESCE(p_ids, ARRAY[]::int[]))
+               AND (core.fn_session_package() IS NULL OR t.package = core.fn_session_package()));
 END;
 $$;
 REVOKE ALL ON FUNCTION core.fn_handoff_tasks_read(int[]) FROM public;

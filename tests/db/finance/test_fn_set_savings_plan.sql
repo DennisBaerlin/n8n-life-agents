@@ -20,14 +20,13 @@ BEGIN
 
   -- Setup: Verrechnungskonto + Aktiendepot
   SELECT finance.fn_create_account(
-    '{"name":"__test_ssp_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_ssp_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle_id := (v_result->>'account_id')::int;
 
   SELECT finance.fn_create_account(jsonb_build_object(
     'name', '__test_ssp_depot__',
     'account_type', 'stocks_depot',
-    'account_holder', 'Test',
     'currency', 'EUR',
     'settlement_id', v_settle_id
   )) INTO v_result;

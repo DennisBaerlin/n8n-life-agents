@@ -25,8 +25,7 @@ BEGIN
   v_d1 := (v_d0 + interval '1 month')::date;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_mlp_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp_kredit__','lender','B','borrower','T',
-    'original_amount',10000,'current_balance',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp_kredit__','lender','B','original_amount',10000,'current_balance',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
     'monthly_annuity',500,'first_payment_date',v_d0::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -110,8 +109,7 @@ BEGIN
     'currency','EUR'))->>'account_id')::int INTO v_giro;
   -- frischer Kredit (Eroeffnung zum Auszahlungstag): ein laufender buchte seine Restschuld zum Stichtag heute, die
   -- vergangenen Raten d0/d1 steckten dann schon darin (fn_create_loan)
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp2_kredit__','lender','B','borrower','T',
-    'original_amount',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp2_kredit__','lender','B','original_amount',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
     'monthly_annuity',500,'first_payment_date',v_d0::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;
@@ -142,16 +140,13 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_mlp3_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k1__','lender','B','borrower','T',
-    'current_balance',900,'interest_rate',2,'monthly_annuity',100,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k1__','lender','B','current_balance',900,'interest_rate',2,'monthly_annuity',100,
     'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan1;
-  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k2__','lender','B','borrower','T',
-    'current_balance',700,'interest_rate',2,'monthly_annuity',100,
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k2__','lender','B','current_balance',700,'interest_rate',2,'monthly_annuity',100,
     'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan2;
   SELECT recurring_payment_id INTO v_rp1 FROM finance.loans WHERE id = v_loan1;
   SELECT recurring_payment_id INTO v_rp2 FROM finance.loans WHERE id = v_loan2;
-  v_other := (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_fremd__','lender','C','borrower','T',
-    'current_balance',500,'interest_rate',2,'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 5)::text,
+  v_other := (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_fremd__','lender','C','current_balance',500,'interest_rate',2,'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 5)::text,
     'debit_account_id',v_giro))->>'recurring_payment_id')::int;
   IF v_other IS NULL THEN RAISE EXCEPTION 'SETUP FAIL Kettenende [fremder Kredit]'; END IF;
 

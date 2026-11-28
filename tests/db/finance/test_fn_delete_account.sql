@@ -13,16 +13,16 @@ DECLARE
   v_cnt    INT;
 BEGIN
   -- Konto A: leer -> loeschbar
-  SELECT (finance.fn_create_account('{"name":"__test_da_empty__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_empty;
+  SELECT (finance.fn_create_account('{"name":"__test_da_empty__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_empty;
 
   -- Konto B: mit Transaktion -> Guard
-  SELECT (finance.fn_create_account('{"name":"__test_da_tx__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_tx;
+  SELECT (finance.fn_create_account('{"name":"__test_da_tx__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_tx;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
   VALUES (v_tx, -50, CURRENT_DATE, 'other');
 
   -- Konto C: Verrechnungskonto eines aktiven Depots -> Guard
-  SELECT (finance.fn_create_account('{"name":"__test_da_cash__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_cash;
-  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_da_depot__','account_type','stocks_depot','account_holder','T','currency','EUR','settlement_id',v_cash))->>'account_id')::int INTO v_depot;
+  SELECT (finance.fn_create_account('{"name":"__test_da_cash__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_cash;
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_da_depot__','account_type','stocks_depot','currency','EUR','settlement_id',v_cash))->>'account_id')::int INTO v_depot;
 
   -- TEST 1: Hard-DELETE des leeren Kontos (+ balance-Zeile weg)
   SELECT finance.fn_delete_account('{"account_name":"__test_da_empty__"}'::jsonb) INTO v_res;

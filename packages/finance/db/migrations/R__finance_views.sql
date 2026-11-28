@@ -153,7 +153,8 @@ LEFT JOIN core.fn_household_persons() bp ON bp.person_id = l.borrower_person_id;
 -- ============================================================
 -- VIEW: Cashflow-Klassifikation — die eine Quelle fuer Konsum / Tilgung / Sparen
 -- Je regulaer laufender Kette genau ein Glied + Klasse + EUR-Anteile: das massgebliche Glied
--- (fn_recurring_effective), aktiv, nicht beendet, nicht leer, gestartet oder innerhalb fn_recurring_starts_within_cycle
+-- (fn_recurring_effective), aktiv, nicht beendet, nicht leer, nicht einmalig (fn_recurring_is_single: genau ein Termin ist
+-- kein Monatsbetrag), gestartet oder innerhalb fn_recurring_starts_within_cycle
 -- startend (nicht nur „heute gueltig": sonst fehlten frisch erfasste Zahlungen bis zu ihrem ersten Termin in Summen,
 -- Alarmen, Notreserve und Runway). starts_on = erster Termin (fn_recurring_starts_on), nur vor dem Geltungsbeginn, sonst NULL. „Laeuft heute" bleibt
 -- active_recurring_payments, spaeter Startendes steht in upcoming_recurring_payments.
@@ -214,6 +215,7 @@ WITH base AS (
       AND rp.status = 'active'
       AND (rp.valid_to IS NULL OR (rp.valid_to > current_date AND rp.valid_to > rp.valid_from))
       AND finance.fn_recurring_starts_within_cycle(rp.valid_from, rp.schedule_interval, rp.schedule_unit, current_date)
+      AND NOT finance.fn_recurring_is_single(rp.id)
 ),
 -- Spar-Zufluss je Konto (laufende Spar-Ueberweisungen in dieses Konto) vs. Spar-Abfluss von diesem Konto: der
 -- gegenfinanzierte Anteil der dortigen Spar-Raten (LEAST(Zufluss/Abfluss, 1)) zaehlt nicht erneut als Sparen.

@@ -75,6 +75,15 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT LIKE '%tool_sell_real_estate%'
      OR (SELECT status::text FROM finance.real_estate WHERE id = v_re) IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'FAIL [status sold -> ok:false mit Verweis aufs Verkaufs-Tool]: %', r; END IF;
+  -- verkaufte Immobilie: nichts mehr per set aenderbar, auch nicht zurueck auf active (Verkauf rueckgaengig = Buchung stornieren)
+  UPDATE finance.real_estate SET status = 'sold' WHERE id = v_re;
+  r := finance.fn_set_real_estate(jsonb_build_object('real_estate_id', v_re, 'status', 'active'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'code' IS DISTINCT FROM 'property_sold'
+     OR (SELECT status::text FROM finance.real_estate WHERE id = v_re) IS DISTINCT FROM 'sold' THEN
+    RAISE EXCEPTION 'FAIL [verkauft -> active]: %', r; END IF;
+  r := finance.fn_set_real_estate(jsonb_build_object('real_estate_id', v_re, 'current_value', '370.000'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'code' IS DISTINCT FROM 'property_sold' THEN
+    RAISE EXCEPTION 'FAIL [verkauft -> Wert geaendert]: %', r; END IF;
   RAISE NOTICE 'PASS [Immobilie: deutsche Betraege, Verkauf nur ueber das Verkaufs-Tool]';
 END $$;
 

@@ -107,7 +107,7 @@ BEGIN
   -- create_account + book_transaction unter finance_rw (Trigger balance-init + balance-update,
   -- Sequenzen, fn_ensure_currency ON CONFLICT laufen alle in finance unter dieser Rolle).
   v_res := finance.fn_create_account(
-    '{"name":"__iso_rw_acct__","account_type":"cash","account_holder":"Iso","currency":"EUR"}'::jsonb);
+    '{"name":"__iso_rw_acct__","account_type":"cash","currency":"EUR"}'::jsonb);
   IF NOT (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL rw [create_account]: %', v_res; END IF;
   v_acct := (v_res->>'account_id')::int;
 

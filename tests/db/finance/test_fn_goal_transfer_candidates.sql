@@ -13,9 +13,9 @@ DECLARE
   v_goal_rp INT;
   v_c      JSONB;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__test_gtc_from__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from;
-  SELECT (finance.fn_create_account('{"name":"__test_gtc_other__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_other;
-  SELECT (finance.fn_create_account('{"name":"__test_gtc_pot__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__test_gtc_from__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_from;
+  SELECT (finance.fn_create_account('{"name":"__test_gtc_other__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_other;
+  SELECT (finance.fn_create_account('{"name":"__test_gtc_pot__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot;
 
   -- Ziel-eigene Rate in denselben Topf (gehoert einer Entitaet -> nie Kandidat)
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__test_gtc_goal__','target_amount',1200,

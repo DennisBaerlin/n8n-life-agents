@@ -18,12 +18,12 @@ BEGIN
 
   -- Voraussetzungen: Debit-Konto (Ratenzahlung) + Disbursement-Konto (Kreditauszahlung)
   SELECT finance.fn_create_account(
-    '{"name":"__test_loan_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_loan_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
   SELECT finance.fn_create_account(
-    '{"name":"__test_loan_disbursement__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_loan_disbursement__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_disbursement_id := (v_result->>'account_id')::int;
 
@@ -32,7 +32,6 @@ BEGIN
     jsonb_build_object(
       'name',                      '__test_kredit__',
       'lender',                    'TestBank',
-      'borrower',                  'Test',
       'original_amount',           v_amount,
       'disbursement_date',         '2024-01-15',
       'interest_rate',             '3.0',
@@ -306,7 +305,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_clg_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  v_base := jsonb_build_object('lender','__test_clg_bank__','borrower','T','original_amount',9000,
+  v_base := jsonb_build_object('lender','__test_clg_bank__','original_amount',9000,
     'current_balance',9000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',4,
     'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro);
 
@@ -340,19 +339,16 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_cls_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_a__','lender','__test_cls_bank__','borrower','T',
-    'original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_a__','lender','__test_cls_bank__','original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
     'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [Setup Kredit A]: %', v_res; END IF;
 
-  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_b__','lender','__test_cls_bank__','borrower','T',
-    'original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_b__','lender','__test_cls_bank__','original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
     'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
   IF jsonb_array_length(v_res->'card_lines') <> 0 THEN
     RAISE EXCEPTION 'FAIL [Hinweis bei anderem Betrag]: erwartet keinen, got %', v_res->'card_lines'; END IF;
 
-  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_c__','lender','__test_cls_bank__','borrower','T',
-    'current_balance',4000,'interest_rate',3,
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_c__','lender','__test_cls_bank__','current_balance',4000,'interest_rate',3,
     'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
   IF v_res->'card_lines'->0->'params'->>'name' IS DISTINCT FROM '__test_cls_a__' THEN
     RAISE EXCEPTION 'FAIL [Hinweis ohne Betrag, gleiche Rate]: erwartet __test_cls_a__, got %', v_res; END IF;
@@ -368,8 +364,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_clv_giro__','account_type','cash',
     'currency','EUR','opening_balance',500))->>'account_id')::int INTO v_giro;
-  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_clv_kredit__','lender','B','borrower','T',
-    'original_amount',3000,'current_balance',3000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',3,
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_clv_kredit__','lender','B','original_amount',3000,'current_balance',3000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',3,
     'monthly_annuity',150,'first_payment_date',(CURRENT_DATE - 10)::text,'debit_account_id',v_giro));
   SELECT valid_from INTO v_from FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int;
   IF v_from IS DISTINCT FROM core.fn_today() THEN

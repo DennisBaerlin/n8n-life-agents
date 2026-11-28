@@ -39,6 +39,16 @@ BEGIN
   r := finance.fn_handoff_diff_of(w, jsonb_build_array(jsonb_build_object('type','recurring_payment','id',v_rp)));
   IF r IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [2 gleich]: %', r; END IF;
   RAISE NOTICE 'PASS [2 gleich]';
+  -- 2b) beim Vereinbaren fehlte das Ziel-Konto, im Soll blieb der getippte Name; das spaeter angelegte Konto heisst laenger.
+  --     Namen vergleicht der Unterschied ueber dieselbe Aufloesung wie das Eintragen -> keine Dauer-Abweichung.
+  w := jsonb_set(w, '{input,to_account_name}', '"__t_hd_tag"');
+  r := finance.fn_handoff_diff_of(w, jsonb_build_array(jsonb_build_object('type','recurring_payment','id',v_rp)));
+  IF r IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [2b getippter Name, aufgeloest gleich]: %', r; END IF;
+  -- ein anderes Konto bleibt eine Abweichung
+  w := jsonb_set(w, '{input,to_account_name}', '"__t_hd_giro"');
+  r := finance.fn_handoff_diff_of(w, jsonb_build_array(jsonb_build_object('type','recurring_payment','id',v_rp)));
+  IF jsonb_array_length(r) <> 1 OR r->0->>'field' <> 'to_account' THEN RAISE EXCEPTION 'FAIL [2b anderes Konto]: %', r; END IF;
+  RAISE NOTICE 'PASS [2b Namen ueber die Aufloesung]';
 
   -- 3) Zielbetrag kleiner eingetragen als vereinbart -> eine Zeile mit beiden Zahlen
   w := jsonb_build_object('tool','create_savings_goal','input', jsonb_build_object('goal_name','__t_hd_ziel','target_amount',12000,

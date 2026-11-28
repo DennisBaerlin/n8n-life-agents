@@ -43,7 +43,6 @@ $$;
 -- core.package_registry — eine Zeile je installiertem Paket.
 --   status-Lebenszyklus: installing -> active <-> inactive.
 --     installing = Migration/Deploy laeuft (Teil-Install sichtbar);
---     installed  = im CHECK erlaubt, aber von keinem Schreiber gesetzt (toter Wert);
 --     active      = verdrahtet + geroutet;
 --     inactive    = deaktiviert (Daten bleiben! nur Pre-Router-Gate kappt).
 --   `active` wird immer zuletzt gesetzt (atomarer Konvergenz-Deploy).
@@ -53,7 +52,7 @@ CREATE TABLE IF NOT EXISTS core.package_registry (
     version             text        NOT NULL DEFAULT '',          -- SemVer des installierten Pakets
     description         text        NOT NULL DEFAULT '',          -- fuer `lifeagents package catalog`
     status              text        NOT NULL DEFAULT 'installing'
-                        CHECK (status IN ('installing','installed','active','inactive')),
+                        CHECK (status IN ('installing','active','inactive')),
     core_api_at_install text        NOT NULL DEFAULT '',          -- die vom Paket geforderte core_api-Mindestversion (Audit/Re-Check)
     requires            text[]      NOT NULL DEFAULT '{}',        -- Paket-Abhaengigkeiten (Dep-Graph)
     manifest_checksum   text        NOT NULL DEFAULT '',          -- md5 des Manifests (Drift/Update-Erkennung)

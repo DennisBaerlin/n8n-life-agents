@@ -10,7 +10,7 @@ DECLARE
   v_due    DATE := '2026-06-01';
 BEGIN
   SELECT finance.fn_create_account(
-    '{"name":"__test_skiprec_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_skiprec_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 

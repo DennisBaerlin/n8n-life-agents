@@ -8,7 +8,7 @@ DECLARE
   v_t DATE := current_date;
   v_res JSONB; v_giro INT; v_depot INT; v_pen INT; v_rp INT; v_head INT; v_n INT := 0;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__spc_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__spc_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__spc_depot__','account_type','stocks_depot','currency','EUR',
             'settlement_id',v_giro))->>'account_id')::int INTO v_depot;
   PERFORM finance.fn_book_transaction(jsonb_build_object('account_id',v_giro,'amount',9000,'direction','inflow','transaction_date',v_t - 120));

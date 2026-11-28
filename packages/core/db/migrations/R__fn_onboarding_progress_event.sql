@@ -19,8 +19,8 @@
 --   Mitglied = nur per_user-Sektionen (Haushalts-Bereiche richtet der Owner ein). Ohne relevante Sektion nie all_done.
 --   RUECKGABE: {ok:true, all_complete, household_ready, send_all_done, send_learn_offer, member_chats[], members_have_areas}
 --     Unaufgeloester Sender -> {ok:true, all_complete/send_*:false, member_chats:[], household_ready und
---     members_have_areas wie berechnet} (fail-closed: keine Karte an Unbekannte). Nie RAISE, ausser area_completed_now
---     ist kein boolean-Text (Cast).
+--     members_have_areas wie berechnet} (fail-closed: keine Karte an Unbekannte). Nie RAISE (area_completed_now ohne
+--     boolean-Text zaehlt als false).
 --
 --   D10 / Auth: SECURITY DEFINER, gerufen nur von core.sub_onboarding_progress unter der Core-Cred (kein Paket-Grant:
 --   die Paket-Tools rufen den Core-Dienst, nicht die fn). Liest agent.* (Personen, Haushalt), core.notification_state
@@ -38,7 +38,7 @@ AS $$
 DECLARE
     v_chat        text    := NULLIF(p->>'chat_id', '');
     v_pkg         text    := COALESCE(NULLIF(p->>'package', ''), 'core');
-    v_now         boolean := COALESCE((p->>'area_completed_now')::boolean, false);
+    v_now         boolean := lower(btrim(COALESCE(p->>'area_completed_now', ''))) IN ('true', 't', '1', 'yes', 'y', 'on');
     v_sender      jsonb;
     v_pid         text;
     v_owner       boolean;

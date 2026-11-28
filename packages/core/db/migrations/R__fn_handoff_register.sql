@@ -18,7 +18,8 @@
 --   legacy done bleibt falsch: ohne Soll weiss nur der Berater, was gemeint war. Fehlt eine Registry-fn oder wirft sie,
 --   gilt neutral: possible_now=false bzw. keine deviation.
 --   Rueckgabe jsonb-Array in id-Reihenfolge [{task_id, kind, text, why, section_key, topic, status, row_kind, blocked_code,
---   wanted, entered_refs, diff, possible_now, call}]; unaufgeloester Absender -> [].
+--   wanted, entered_refs, diff, possible_now, call}]; unaufgeloester Absender -> [], ebenso fuer die Paket-Rolle eines
+--   anderen Pakets als das der Domain (core.fn_session_package).
 --   Konsumenten: core.fn_plan_rollout_next (step fix, check), core.fn_advisor_progress (rollout_next), core.fn_handle_handoff_cb
 --   (Knopf ...:fix), Berater-Lesefenster.
 --   STABLE, SECURITY DEFINER (liest agent.handoff_tasks + agent.advisor_plans), EXECUTE an <pkg>_ro/_rw via
@@ -45,7 +46,8 @@ DECLARE
     v_out    jsonb := '[]'::jsonb;
 BEGIN
     IF v_pid IS NULL OR COALESCE(p_domain, '') = '' THEN RETURN v_out; END IF;
-    SELECT a.handoff_check_fn, a.handoff_diff_fn, a.plan_context INTO v_adv FROM core.advisors a WHERE a.domain = p_domain;
+    SELECT a.handoff_check_fn, a.handoff_diff_fn, a.plan_context, a.package INTO v_adv FROM core.advisors a WHERE a.domain = p_domain;
+    IF core.fn_session_package() IS NOT NULL AND core.fn_session_package() IS DISTINCT FROM v_adv.package THEN RETURN v_out; END IF;
     v_chkfn := to_regprocedure(v_adv.handoff_check_fn || '(jsonb)');
     v_difffn := to_regprocedure(v_adv.handoff_diff_fn || '(integer)');
     SELECT ap.interview_state INTO v_state FROM agent.advisor_plans ap

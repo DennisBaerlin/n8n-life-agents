@@ -15,7 +15,7 @@ BEGIN
 
   -- Voraussetzung: ein gültiges Debit-Konto (für spätere positive Tests)
   SELECT finance.fn_create_account(
-    '{"name":"__test_atomic_debit__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_atomic_debit__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
@@ -29,7 +29,6 @@ BEGIN
       jsonb_build_object(
         'name',                      v_loan_name,
         'lender',                    'TestBank',
-        'borrower',                  'Test',
         'original_amount',           '100000',
         'disbursement_date',         '2024-01-01',
         'interest_rate',             '3.0',
@@ -57,7 +56,7 @@ BEGIN
 
   -- TEST 2: fn_book_transaction mit ungültiger direction → Rollback auf Fn-Level
   SELECT finance.fn_create_account(
-    '{"name":"__test_atomic_acct__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_atomic_acct__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   DECLARE
     v_acct_id INT := (v_result->>'account_id')::int;

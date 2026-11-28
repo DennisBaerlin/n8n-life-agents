@@ -15,7 +15,7 @@ BEGIN
 
   -- TEST 1: Cash-Konto anlegen
   SELECT finance.fn_create_account(
-    '{"name":"__test_cash__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_cash__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
 
   IF NOT (v_result ? 'account_id') OR (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -34,7 +34,7 @@ BEGIN
 
   -- TEST 2: Settlement-Konto + Depot anlegen (Depot braucht settlement_account_id)
   SELECT finance.fn_create_account(
-    '{"name":"__test_settle__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
+    '{"name":"__test_settle__","account_type":"cash","currency":"EUR"}'::jsonb
   ) INTO v_result;
   v_settle_id := (v_result->>'account_id')::int;
 
@@ -42,7 +42,6 @@ BEGIN
     jsonb_build_object(
       'name',           '__test_depot__',
       'account_type',   'stocks_depot',
-      'account_holder', 'Test',
       'currency',       'EUR',
       'settlement_id',  v_settle_id
     )
@@ -61,7 +60,7 @@ BEGIN
 
   -- TEST 3: Konto mit Zinszeile
   SELECT finance.fn_create_account(
-    '{"name":"__test_festgeld__","account_type":"fixed_deposit","fixed_deposit_maturity_date":"2030-12-31","account_holder":"Test","currency":"EUR","interest_rate":"3.5","interest_credit_unit":"year"}'::jsonb
+    '{"name":"__test_festgeld__","account_type":"fixed_deposit","fixed_deposit_maturity_date":"2030-12-31","currency":"EUR","interest_rate":"3.5","interest_credit_unit":"year"}'::jsonb
   ) INTO v_result;
 
   IF NOT (v_result->>'interest_added' = 'true') THEN
@@ -125,7 +124,7 @@ BEGIN
   DECLARE v_acc_ccy TEXT; BEGIN
     DELETE FROM finance.currencies WHERE code = 'USD';
     SELECT finance.fn_create_account(
-      '{"name":"__test_usd_acct__","account_type":"cash","account_holder":"Test","currency":"usd"}'::jsonb
+      '{"name":"__test_usd_acct__","account_type":"cash","currency":"usd"}'::jsonb
     ) INTO v_result;
     IF NOT (v_result ? 'account_id') THEN
       RAISE EXCEPTION 'FAIL fn_create_account [4 usd]: kein account_id (normalisiert die fn ''usd''->''USD''?), got %', v_result;

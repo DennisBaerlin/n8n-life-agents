@@ -8,12 +8,24 @@
 --   Eingabe: p_kind, p_primary, p_secondary (alle NULL-tolerant, NULL = ''). Format
 --   `<kind>:<slug(primary)>:<slug(secondary)>`; aktuell nur kind='postings' -> primary=Rollen-Titel,
 --   secondary=Ort (Jobsuche maxErgebnisse = Posting-Count).
---   Rueckgabe: text (kein ok-Objekt). Slug = lower(trim) + alles ausser [a-z0-9] (auch Umlaute) -> "-" (gestrippt am Rand):
---   Data Analyst -> data-analyst, Leipzig -> leipzig. IMMUTABLE (kein Tabellen-Read; Muster fn_skill_level_rank).
+--   Rueckgabe: text (kein ok-Objekt). Slug = career.fn_market_slug (Umlaute umgeschrieben, sonst
+--   alles ausser [a-z0-9] -> "-"): Data Analyst -> data-analyst, Köln -> koeln. IMMUTABLE (kein Tabellen-Read; Muster fn_skill_level_rank).
 -- ============================================================
+-- career.fn_market_slug: Slug-Teil des Schluessels. Umlaute und ß umgeschrieben (ä -> ae, ß -> ss), gaengige Akzente auf den
+-- Grundbuchstaben, dann alles ausser [a-z0-9] -> "-" (am Rand gestrippt). Vor dem Umschreiben gespeicherte Schluessel mit
+-- Umlaut ("k-ln") treffen den neuen nicht mehr: der Trend dieses Orts beginnt einmal neu (Markt-Cache, keine Nutzerdaten).
+CREATE OR REPLACE FUNCTION career.fn_market_slug(p_text text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT trim(both '-' from regexp_replace(
+               translate(replace(replace(replace(replace(lower(trim(COALESCE(p_text, ''))),
+                                 'ä', 'ae'), 'ö', 'oe'), 'ü', 'ue'), 'ß', 'ss'),
+                         'àáâãåçèéêëìíîïñòóôõøùúûýÿ', 'aaaaaceeeeiiiinooooouuuyy'),
+               '[^a-z0-9]+', '-', 'g'));
+$$;
+
 CREATE OR REPLACE FUNCTION career.fn_market_scope_key(p_kind text, p_primary text, p_secondary text)
 RETURNS text LANGUAGE sql IMMUTABLE AS $$
     SELECT lower(trim(COALESCE(p_kind, '')))
-        || ':' || trim(both '-' from regexp_replace(lower(trim(COALESCE(p_primary,   ''))), '[^a-z0-9]+', '-', 'g'))
-        || ':' || trim(both '-' from regexp_replace(lower(trim(COALESCE(p_secondary, ''))), '[^a-z0-9]+', '-', 'g'));
+        || ':' || career.fn_market_slug(p_primary)
+        || ':' || career.fn_market_slug(p_secondary);
 $$;

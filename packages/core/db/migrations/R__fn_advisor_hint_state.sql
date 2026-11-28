@@ -1,7 +1,8 @@
 -- ============================================================
 -- core.fn_advisor_hint_state(p_domain) — Lage der Berater-Hinweise fuer die Paket-Leserolle (READ)
 --   Lesefenster fuer den Snapshot des Pakets (INVOKER unter <pkg>_ro, sieht agent.*/core.notification_state nicht):
---     draft_open = es gibt einen Haushalts-Entwurf der Domaene (Plan-Gespraech laeuft: nur urgent-Hinweise ansprechen);
+--     draft_open = es gibt einen frischen Haushalts-Entwurf der Domaene (core.fn_advisor_hot_since; Plan-Gespraech laeuft: nur
+--                  urgent-Hinweise ansprechen; ein pausierter Entwurf haelt nichts zurueck);
 --     deferred   = Hinweis-Keys mit gesetztem Merker "spaeter" (core.notification_state source advisor_hint, key
 --                  '<domain>:<hint key>', nicht abgelaufen; gesetzt von core.fn_advisor_defer_hint_key).
 --   Paket-Grenze wie core.fn_advisor_open_handoffs: eine Paket-Rolle liest nur Domaenen ihres Pakets, nur household.
@@ -22,16 +23,17 @@ AS $$
 DECLARE
     v_ctx    text;
     v_pkg    text;
-    v_caller text := substring(session_user::text from '^([a-z][a-z0-9_]*)_(?:ro|rw)$');
+    v_caller text := core.fn_session_package();
 BEGIN
     SELECT a.plan_context, a.package INTO v_ctx, v_pkg FROM core.advisors a WHERE a.domain = p_domain;
     IF COALESCE((SELECT cs.scope FROM core.context_scopes cs
                   WHERE cs.context_name = COALESCE(v_ctx, p_domain || '_planning')), 'household') <> 'household'
-       OR (v_caller IS NOT NULL AND v_caller <> 'core' AND v_caller IS DISTINCT FROM v_pkg) THEN
+       OR (v_caller IS NOT NULL AND v_caller IS DISTINCT FROM v_pkg) THEN
         RETURN jsonb_build_object('draft_open', false, 'deferred', '[]'::jsonb);
     END IF;
     RETURN jsonb_build_object(
-        'draft_open', EXISTS (SELECT 1 FROM agent.advisor_plans ap WHERE ap.domain = p_domain AND ap.person_id IS NULL AND ap.status = 'draft'),
+        'draft_open', EXISTS (SELECT 1 FROM agent.advisor_plans ap WHERE ap.domain = p_domain AND ap.person_id IS NULL AND ap.status = 'draft'
+                                AND ap.updated_at > core.fn_advisor_hot_since()),
         'deferred', COALESCE((SELECT jsonb_agg(substr(n.key, length(p_domain) + 2) ORDER BY n.key)
                                 FROM core.notification_state n
                                WHERE n.source = 'advisor_hint' AND n.state = 'fired' AND left(n.key, length(p_domain) + 1) = p_domain || ':'
@@ -49,12 +51,12 @@ AS $$
 DECLARE
     v_ctx    text;
     v_pkg    text;
-    v_caller text := substring(session_user::text from '^([a-z][a-z0-9_]*)_(?:ro|rw)$');
+    v_caller text := core.fn_session_package();
 BEGIN
     SELECT a.plan_context, a.package INTO v_ctx, v_pkg FROM core.advisors a WHERE a.domain = p_domain;
     IF COALESCE((SELECT cs.scope FROM core.context_scopes cs
                   WHERE cs.context_name = COALESCE(v_ctx, p_domain || '_planning')), 'household') <> 'household'
-       OR (v_caller IS NOT NULL AND v_caller <> 'core' AND v_caller IS DISTINCT FROM v_pkg) THEN
+       OR (v_caller IS NOT NULL AND v_caller IS DISTINCT FROM v_pkg) THEN
         RETURN ARRAY[]::text[];
     END IF;
     RETURN ARRAY(

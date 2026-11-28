@@ -7,8 +7,9 @@
 --
 -- p = { "prices": { "VWCE": 110.50, "BTC": 60000, ... },  (Pflicht: { symbol -> Kurs })
 --       "currencies": { "VWCE": "EUR", "AAPL": "USD" },    (optional: { symbol -> Yahoo-meta.currency }; gewinnt
---                                                           ueber quote_currency/Holding-Waehrung, ^[A-Z]{3}$-Backstop,
---                                                           wird registriert; Pence 'GBp' normalisiert der Cron)
+--                                                           ueber quote_currency/Holding-Waehrung, wird registriert;
+--                                                           unbrauchbar (kein ^[A-Z]{3}$, Edelmetall) -> Symbol
+--                                                           uebersprungen; Pence 'GBp' normalisiert der Cron)
 --       "as_of":  "2026-06-20",                            (optional, default CURRENT_DATE)
 --       "source": "yahoo" }                                (optional, default 'yahoo' = aktueller Provider-Fallback)
 --
@@ -39,9 +40,9 @@ BEGIN
   -- jede distinkte valide (^[A-Z]{3}$) gefetchte Waehrung registrieren -> FK-Schutz fuer market_prices.currency
   -- (idempotent, ON CONFLICT DO NOTHING in fn_ensure_currency). Pence ('GBp') normalisiert bereits der Cron.
   PERFORM finance.fn_ensure_currency(c)
-  FROM (SELECT DISTINCT value AS c
+  FROM (SELECT DISTINCT btrim(value) AS c
         FROM jsonb_each_text(COALESCE(p->'currencies', '{}'::jsonb))
-        WHERE value ~ '^[A-Z]{3}$') s;
+        WHERE btrim(value) ~ '^[A-Z]{3}$') s;
 
   WITH held AS (
     SELECT symbol, min(COALESCE(quote_currency, currency, 'EUR')) AS currency, min(isin) AS isin
@@ -51,18 +52,17 @@ BEGIN
   ),
   upserted AS (
     INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of, source)
-    -- currency-Praezedenz: gefetchte Yahoo-Waehrung gewinnt (der Preis IST in dieser Waehrung), mit ^[A-Z]{3}$-
-    -- Regex-Backstop (invalider/leerer Fetch -> NULL -> Fallback h.currency = COALESCE(quote_currency,currency)). Ein
-    -- Edelmetall-Code ist keine Kurs-Waehrung (FK-Sperre, finance.currencies.kind) und faellt ebenso zurueck, statt den
-    -- ganzen Lauf per FK-Fehler abzubrechen.
+    -- currency-Praezedenz: gefetchte Yahoo-Waehrung gewinnt (der Preis IST in dieser Waehrung). Ohne gefetchte Waehrung
+    -- gilt h.currency = COALESCE(quote_currency,currency). Eine gefetchte Waehrung, die keine Kurs-Waehrung ist (kein
+    -- ^[A-Z]{3}$ oder Edelmetall-Code, finance.currencies.kind), ueberspringt das Symbol: der Kurs gilt in einer
+    -- unbekannten Einheit, umetikettiert waere er still falsch (0,01 XAU als 0,01 EUR); die Luecke meldet der Kurs-Hinweis.
     SELECT h.symbol, h.isin, ((p->'prices')->>h.symbol)::numeric,
-           COALESCE(
-             CASE WHEN ((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$'
-                       AND NOT finance.fn_is_metal((p->'currencies')->>h.symbol) THEN (p->'currencies')->>h.symbol END,
-             h.currency, 'EUR'),
+           COALESCE(NULLIF(btrim((p->'currencies')->>h.symbol), ''), h.currency, 'EUR'),
            v_as_of, v_source
     FROM held h
     WHERE (p->'prices') ? h.symbol
+      AND (NULLIF(btrim((p->'currencies')->>h.symbol), '') IS NULL
+           OR (btrim((p->'currencies')->>h.symbol) ~ '^[A-Z]{3}$' AND NOT finance.fn_is_metal(btrim((p->'currencies')->>h.symbol))))
       -- numerisch inkl. wissenschaftlicher Notation (JSON.stringify liefert z. B. '1e-7' fuer
       -- sub-microcent-Krypto -> sonst still verworfen). Leading-Zero ist in JSON immer vorhanden.
       -- Erst das Format, dann die Zahl (CASE haelt die Reihenfolge). Grenzen = Spalte numeric(20,8): darunter wuerde der

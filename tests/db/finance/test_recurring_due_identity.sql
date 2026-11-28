@@ -125,8 +125,7 @@ DECLARE v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_rp INT; v_date DATE; 
         v_d DATE := CURRENT_DATE - 20;
 BEGIN
   SELECT (finance.fn_create_account('{"name":"__t_rdi_lgiro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__t_rdi_kredit__','lender','B','borrower','T',
-    'original_amount',200000,'current_balance',200000,'disbursement_date',(v_d - 30)::text,'interest_rate',3.6,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__t_rdi_kredit__','lender','B','original_amount',200000,'current_balance',200000,'disbursement_date',(v_d - 30)::text,'interest_rate',3.6,
     'monthly_annuity',1000,'first_payment_date',v_d::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int;
   SELECT recurring_payment_id INTO v_rp FROM finance.loans WHERE id = v_loan;

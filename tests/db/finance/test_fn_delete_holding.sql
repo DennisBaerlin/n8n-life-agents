@@ -10,10 +10,10 @@ DECLARE
   v_cnt     INT;
 BEGIN
   -- Setup: Verrechnungskonto + Aktiendepot
-  SELECT finance.fn_create_account('{"name":"__test_dh_settle__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_dh_settle__","account_type":"cash"}'::jsonb) INTO v_res;
   v_settle := (v_res->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object('name','__test_dh_depot__','account_type','stocks_depot',
-    'account_holder','Test','settlement_id',v_settle)) INTO v_res;
+    'settlement_id',v_settle)) INTO v_res;
   v_depot := (v_res->>'account_id')::int;
 
   -- Holding A: keine Buchungen -> loeschbar

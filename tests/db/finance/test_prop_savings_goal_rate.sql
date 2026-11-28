@@ -16,8 +16,8 @@ DECLARE
   v_tdate DATE; v_rate NUMERIC; v_rate2 NUMERIC; v_cnt INT; v_n INT := 0; v_nr INT := 0;
   v_doms INT[] := ARRAY[NULL,1,15,28,-1,-2];
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_sgr_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__prop_sgr_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__prop_sgr_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_sgr_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
 
   FOR r IN SELECT * FROM (VALUES (1000.00, 3), (1000.00, 7), (2500.00, 13), (999.99, 11), (10000.00, 36), (50.00, 2), (777.77, 24)) x(target, months) LOOP
     FOREACH v_dom IN ARRAY v_doms LOOP

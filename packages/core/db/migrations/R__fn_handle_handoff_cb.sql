@@ -6,8 +6,8 @@
 --     * nur Privatchat (der Buchhalter-Lauf antwortet in diesem Chat);
 --     * <domain> = Zeile aus core.fn_advisor_plan_status des Tippenden (Plan-Domain, Paket aktiv), nie Caller-Text als
 --       Identifier; can_write=false (Mitglied) -> Toast "pflegt der Owner";
---     * beansprucht atomar (UPDATE ... RETURNING) die Aufgaben DIESER Person und Domain mit id <= max_task_id, die open
---       sind oder deren working-Claim aelter als advisor.handoff_claim_ttl_minutes ist (Default 120): open -> working,
+--     * beansprucht atomar (UPDATE ... RETURNING) die Aufgaben DIESER Person und Domain mit id <= max_task_id, die
+--       core.fn_handoff_status_now als open sieht (auch working mit abgelaufenem Claim): -> working,
 --       claimed_at = now(). Ein Doppeltipp findet nichts mehr -> Toast "nichts mehr offen".
 --     * handoff:<domain>:<max_task_id>:fix = Knopf des Korrektur-Schritts (core.fn_plan_rollout_next, step fix): beansprucht
 --       die Zeilen des Ersatzweg-Registers (core.fn_handoff_register) mit possible_now und task_id <= max: deferred -> working
@@ -37,7 +37,6 @@ DECLARE
     v_pid    text;
     v_lang   text;
     v_row    jsonb;
-    v_ttl    int;
     v_tasks  jsonb;
     v_reg    jsonb;
 BEGIN
@@ -102,12 +101,11 @@ BEGIN
             'tasks', v_tasks);
     END IF;
 
-    v_ttl := core.fn_handoff_claim_ttl();
     WITH c AS (
         UPDATE agent.handoff_tasks t
            SET status = 'working', claimed_at = now()
          WHERE t.domain = v_domain AND t.person_id = v_pid AND t.id <= v_max::int
-           AND (t.status = 'open' OR (t.status = 'working' AND t.claimed_at < now() - make_interval(mins => v_ttl)))
+           AND core.fn_handoff_status_now(t.status, t.claimed_at) = 'open'
         RETURNING t.id, t.kind, t.payload, t.text, t.why, t.wanted
     )
     SELECT jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'payload', c.payload, 'text', c.text, 'why', c.why,

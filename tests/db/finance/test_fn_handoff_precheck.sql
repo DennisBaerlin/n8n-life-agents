@@ -129,6 +129,12 @@ BEGIN
          'name','Ruecklage','from_account_name','__t_hp_giro','to_account_name','__t_hp_tagesgeld','amount',500,'until_amount',2200,
          'schedule_unit','year','first_payment_date','2027-04-01')));
   IF (r->>'unsupported')::boolean IS NOT TRUE OR r->>'blocked_code' <> 'pay_until_amount' THEN RAISE EXCEPTION 'FAIL [6 jaehrlich]: %', r; END IF;
+  -- "bis 0 €" ist ein Tippfehler, keine technische Grenze -> Ablehnung, nicht zurueckgestellt
+  r := finance.fn_handoff_precheck(jsonb_build_object('mode','agree','kind','recurring_transfer','payload', jsonb_build_object(
+         'name','Ruecklage','from_account_name','__t_hp_giro','to_account_name','__t_hp_tagesgeld','amount',500,'until_amount',0,
+         'schedule_unit','month','schedule_day_of_month',1,'first_payment_date','2027-04-01')));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_not_enterable' OR r ? 'unsupported' THEN
+    RAISE EXCEPTION 'FAIL [6 bis 0]: %', r; END IF;
   RAISE NOTICE 'PASS [6 bis Betrag]';
 
   -- 7) weitere "geht noch nicht": Sparziel mit unregelmaessiger Quelle, Sparplan mit Ende beim Anlegen, falsches Werkzeug

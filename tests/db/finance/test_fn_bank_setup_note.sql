@@ -23,12 +23,12 @@ DECLARE
   v_r jsonb; v_rp INT; v_rp_bank INT; v_rp_man INT; v_goal INT;
   v_next DATE := (date_trunc('month', current_date) + interval '1 month')::date;
 BEGIN
-  v_giro   := (finance.fn_create_account('{"name":"__bn_giro__","account_type":"cash","account_holder":"Test","opening_balance":5000}'::jsonb)->>'account_id')::int;
-  v_giro2  := (finance.fn_create_account('{"name":"__bn_giro2__","account_type":"cash","account_holder":"Test","opening_balance":5000}'::jsonb)->>'account_id')::int;
-  v_tg     := (finance.fn_create_account('{"name":"__bn_tg__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_pot    := (finance.fn_create_account('{"name":"__bn_pot__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_pot2   := (finance.fn_create_account('{"name":"__bn_pot2__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_settle := (finance.fn_create_account('{"name":"__bn_settle__","account_type":"cash","account_holder":"Test","opening_balance":3000}'::jsonb)->>'account_id')::int;
+  v_giro   := (finance.fn_create_account('{"name":"__bn_giro__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_giro2  := (finance.fn_create_account('{"name":"__bn_giro2__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_tg     := (finance.fn_create_account('{"name":"__bn_tg__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot    := (finance.fn_create_account('{"name":"__bn_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot2   := (finance.fn_create_account('{"name":"__bn_pot2__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_settle := (finance.fn_create_account('{"name":"__bn_settle__","account_type":"cash","opening_balance":3000}'::jsonb)->>'account_id')::int;
   PERFORM finance.fn_create_account(jsonb_build_object('name','__bn_depot__','account_type','stocks_depot','settlement_id', v_settle));
   UPDATE finance.accounts SET bank = 'Lindenbank' WHERE id = v_giro;
   UPDATE finance.accounts SET bank = 'Testbroker' WHERE name = '__bn_depot__';
@@ -57,7 +57,7 @@ BEGIN
   -- [2] until_free_money: der Workflow-Schlusssatz sagt es schon -> kein zweiter Bank-Satz (anlegen und aendern);
   --     Ziel-Geld auf der Quelle, damit das Ende vor dem Horizont liegt
   DECLARE v_src INT; v_g INT; BEGIN
-    v_src := (finance.fn_create_account('{"name":"__bn_src__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+    v_src := (finance.fn_create_account('{"name":"__bn_src__","account_type":"cash"}'::jsonb)->>'account_id')::int;
     UPDATE finance.accounts SET bank = 'Lindenbank' WHERE id = v_src;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_src, 20000, current_date - 5, 'other');
     INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
@@ -181,10 +181,10 @@ DO $$
 DECLARE
   v_giro INT; v_t1 INT; v_t2 INT; v_t3 INT; v_goal INT; v_r jsonb;
 BEGIN
-  v_giro := (finance.fn_create_account('{"name":"__bn7_giro__","account_type":"cash","account_holder":"Test","opening_balance":2000}'::jsonb)->>'account_id')::int;
-  v_t1   := (finance.fn_create_account('{"name":"__bn7_t1__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_t2   := (finance.fn_create_account('{"name":"__bn7_t2__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
-  v_t3   := (finance.fn_create_account('{"name":"__bn7_t3__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_giro := (finance.fn_create_account('{"name":"__bn7_giro__","account_type":"cash","opening_balance":2000}'::jsonb)->>'account_id')::int;
+  v_t1   := (finance.fn_create_account('{"name":"__bn7_t1__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_t2   := (finance.fn_create_account('{"name":"__bn7_t2__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_t3   := (finance.fn_create_account('{"name":"__bn7_t3__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   v_goal := (finance.fn_create_savings_goal(jsonb_build_object('name','__bn7_goal__','target_amount',5000,
               'target_date',(current_date + 365)::text,'monthly_savings_rate',100,'account_id',v_giro,
               'reserve_account_id',v_t1,'schedule_day_of_month',1,'first_payment_date',current_date::text))->>'goal_id')::int;

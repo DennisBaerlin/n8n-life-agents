@@ -22,8 +22,7 @@ DECLARE
 BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lin_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
-  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lin_kredit__','lender','B','borrower','T',
-    'original_amount',200000,'current_balance',200000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',3.6,
+  SELECT finance.fn_create_loan(jsonb_build_object('name','__test_lin_kredit__','lender','B','original_amount',200000,'current_balance',200000,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',3.6,
     'monthly_annuity',1000,'first_payment_date',v_due::text,'debit_account_id',v_giro)) INTO v_res;
   v_loan := (v_res->>'loan_id')::int;
   v_lacc := (v_res->>'loan_account_id')::int;

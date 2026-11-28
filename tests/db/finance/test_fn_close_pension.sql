@@ -11,7 +11,7 @@ DECLARE
   v_p_c    INT;
   v_cnt    INT; v_status TEXT; v_valid_to DATE; v_rp_status TEXT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_cp_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_cp_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   -- Pension A: mit Beitrag (RP), keine Buchung -> Hard-DELETE

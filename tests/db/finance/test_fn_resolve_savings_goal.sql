@@ -8,7 +8,7 @@ DO $$
 DECLARE
   v_res JSONB; v_acct INT; v_id1 INT; v_id INT; v_count INT;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_rsg_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_rsg_acct__","account_type":"cash"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
   SELECT finance.fn_create_savings_goal(jsonb_build_object('name','__test_sg_dup__','target_amount',5000,'target_date','2027-12-31','monthly_savings_rate',100,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'schedule_day_of_month',1,'first_payment_date','2026-07-01')) INTO v_res;

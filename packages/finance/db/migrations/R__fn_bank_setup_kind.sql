@@ -38,7 +38,7 @@ END $$;
 --   Rueckgabe: [] wenn fn_bank_setup_kind NULL ist, sonst [{kind:'note', value:<key>, params}]; der Key je Anlass, Art
 --   und Namens-Lage steht woertlich in der Tabelle unten (locale_lint prueft nur Literale), bei leerem Institutsnamen
 --   die _generic-Variante (Text sagt "deine Bank"/"dein Broker", params ohne bank). Unbekannter Anlass -> RAISE
---   (Programmierfehler; bei Art NULL vorher []). Der Name kommt aus accounts.bank: Dauerauftrag = Quell-Konto des Kopfs
+--   (Programmierfehler; auch bei Art NULL). Der Name kommt aus accounts.bank: Dauerauftrag = Quell-Konto des Kopfs
 --   (dort richtet man ihn ein), Sparplan = Depot des Sparplans. Ohne Artikel im Text ("bei {bank}"): der Artikel ist
 --   bei Bank-Namen nicht ableitbar. Hat die Kette ein Ende, nennen bank_setup und bank_stop (solange der Termin noch
 --   kommt und die Kette nicht pausiert ist: Pausieren zaehlt als Stoppen) die letzte Ausfuehrung: _until-Variante mit
@@ -55,6 +55,10 @@ DECLARE
     v_last date;
     v_ev   text := p_event;
 BEGIN
+    -- Anlass zuerst pruefen: sonst bliebe ein Tippfehler still, solange die Kette keinen Hinweis braucht (Art NULL)
+    IF p_event IS NULL OR p_event NOT IN ('bank_setup', 'bank_change', 'bank_stop', 'statement_never_seen', 'recurring_never_started') THEN
+        RAISE EXCEPTION 'fn_bank_setup_note: unknown event %', p_event;
+    END IF;
     IF v_kind IS NULL THEN RETURN '[]'::jsonb; END IF;
     v_head := finance.fn_recurring_lineage_head(p_rp_id);
     IF v_kind = 'savings_plan' THEN

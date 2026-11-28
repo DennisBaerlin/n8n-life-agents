@@ -23,7 +23,8 @@
 --     {ok:false, code, reason[, index | max]}; codes invalid_input, no_permission, no_draft, invalid_finding, quote_not_found,
 --     proposal_rejected, check_passes_exhausted {max}.
 --   Familie: agent.fn_prompt_answer_finding(p) = answer_fn der Art finding. Uebersicht: go -> next (ohne Punkte:
---     continue mit Auftrag "veroeffentlichen"), pause -> none. Punkt: accept speichert den Vorschlag ueber
+--     continue mit Auftrag "veroeffentlichen"), pause -> none (die Punkte warten, bis der Berater wieder antwortet,
+--     core.fn_next_chat_prompt). Punkt: accept speichert den Vorschlag ueber
 --     fn_advisor_save_section mit der chat_id des Tippenden (abgelehnt -> Zeile superseded, continue mit Grund), outcome
 --     resolved + changed; keep -> outcome accepted (open_point: deferred). Danach: weitere Punkte des Durchgangs -> next;
 --     sonst continue mit festem Auftrag: zweiter (letzter) Durchgang, wenn ein Punkt Themen geaendert hat und die Grenze

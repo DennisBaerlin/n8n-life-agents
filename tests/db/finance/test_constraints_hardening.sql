@@ -8,9 +8,9 @@ DECLARE
   v_res JSONB; v_cash INT; v_depot INT; v_hid INT;
 BEGIN
   -- Setup
-  SELECT finance.fn_create_account('{"name":"__test_chk_cash__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_chk_cash__","account_type":"cash"}'::jsonb) INTO v_res;
   v_cash := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account(jsonb_build_object('name','__test_chk_depot__','account_type','stocks_depot','account_holder','Test','settlement_id',v_cash)) INTO v_res;
+  SELECT finance.fn_create_account(jsonb_build_object('name','__test_chk_depot__','account_type','stocks_depot','settlement_id',v_cash)) INTO v_res;
   v_depot := (v_res->>'account_id')::int;
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name)
   VALUES (v_depot, 'IE00BK5BQT80', 'VWCE', 'Vanguard') RETURNING id INTO v_hid;

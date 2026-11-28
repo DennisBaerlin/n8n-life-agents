@@ -7,9 +7,9 @@ DECLARE
   v_res JSONB; v_cash INT; v_depot INT; v_hid1 INT; v_hid2 INT;
   v_name TEXT; v_symbol TEXT; v_shares NUMERIC;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_sh_cash__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
+  SELECT finance.fn_create_account('{"name":"__test_sh_cash__","account_type":"cash"}'::jsonb) INTO v_res;
   v_cash := (v_res->>'account_id')::int;
-  SELECT finance.fn_create_account(jsonb_build_object('name','__test_sh_depot__','account_type','stocks_depot','account_holder','Test','settlement_id',v_cash)) INTO v_res;
+  SELECT finance.fn_create_account(jsonb_build_object('name','__test_sh_depot__','account_type','stocks_depot','settlement_id',v_cash)) INTO v_res;
   v_depot := (v_res->>'account_id')::int;
 
   -- Holdings direkt anlegen (shares bleiben 0 -> ohne Buchung; Test prueft nur Metadaten)

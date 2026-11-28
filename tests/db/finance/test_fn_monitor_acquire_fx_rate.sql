@@ -83,6 +83,10 @@ BEGIN
   r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "XAU", "quote": "EUR", "unit": "kg"}, "as_of": "2026-06-10"}');
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR abs((r->>'value')::numeric - 3200 * 1000 / 31.1034768) > 0.1 THEN
     RAISE EXCEPTION 'FAIL [m kg]: %', r; END IF;
+  -- unbekannte Metall-Einheit -> Ablehnung mit Grund
+  r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "XAU", "quote": "EUR", "unit": "pfund"}, "as_of": "2026-06-10"}');
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT LIKE 'unknown unit%' THEN
+    RAISE EXCEPTION 'FAIL [m unbekannte Einheit]: %', r; END IF;
   -- ohne unit (gespeicherte Spec vor der Einheit gibt es nicht, aber die Probe darf sie weglassen) -> Feinunze
   r := finance.fn_monitor_acquire_fx_rate('{"spec": {"base": "XAU", "quote": "EUR"}, "as_of": "2026-06-10"}');
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR abs((r->>'value')::numeric - 3200) > 0.001 THEN

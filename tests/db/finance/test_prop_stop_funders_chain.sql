@@ -13,8 +13,8 @@ DECLARE
   v_t DATE := current_date;
   v_res JSONB; v_giro INT; v_pot INT; v_depot INT; v_goal INT; v_goal_rp INT; v_plan_rp INT; v_planned BOOLEAN; v_n INT := 0; v_cnt INT; v_txt TEXT;
 BEGIN
-  SELECT (finance.fn_create_account('{"name":"__prop_sfc_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_giro;
-  SELECT (finance.fn_create_account('{"name":"__prop_sfc_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int INTO v_pot;
+  SELECT (finance.fn_create_account('{"name":"__prop_sfc_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_account('{"name":"__prop_sfc_topf__","account_type":"cash"}'::jsonb)->>'account_id')::int INTO v_pot;
   SELECT (finance.fn_create_account(jsonb_build_object('name','__prop_sfc_depot__','account_type','stocks_depot','currency','EUR',
             'settlement_id',v_giro))->>'account_id')::int INTO v_depot;
 

@@ -26,9 +26,9 @@ DECLARE
   v_bal_to   NUMERIC;
   v_me      NUMERIC;
 BEGIN
-  SELECT finance.fn_create_account('{"name":"__test_rt_src__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__test_rt_src__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_from := (v_result->>'account_id')::int;
-  SELECT finance.fn_create_account('{"name":"__test_rt_dst__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb) INTO v_result;
+  SELECT finance.fn_create_account('{"name":"__test_rt_dst__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_result;
   v_to := (v_result->>'account_id')::int;
 
   -- create: 200 EUR/Monat von src nach dst

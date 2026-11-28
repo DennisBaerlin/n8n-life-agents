@@ -723,11 +723,10 @@ rt_container_id() { docker inspect -f '{{.Id}}' "$1" 2>/dev/null; }
 #   Neuanlage risse den Pod ab. tailscale haengt im Namensraum von edge; die Compose-Pruefsumme sieht nur `service:edge`, nicht
 #   die Kennung -> nach einer Neuanlage von edge tailscale gezielt neu anlegen. rc 1 = mindestens ein Aufruf scheiterte.
 rt_stack_refresh() {
-  local before after ts=0 rc=0 svcs=(edge gateway)
+  local before after ts=0 rc=0 s svcs=(edge gateway)
   before="$(rt_container_id "${LA_PROJECT}-edge")"
   rt_container_running "${LA_PROJECT}-tailscale" && ts=1
-  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
-  rt_container_running "${LA_PROJECT}-lan" && svcs+=(lan)
+  for s in wan lan; do rt_container_running "${LA_PROJECT}-$s" && svcs+=("$s"); done
   _rt_compose up -d --no-deps "${svcs[@]}" >&2 || rc=1
   if [ "$ts" -eq 1 ]; then
     after="$(rt_container_id "${LA_PROJECT}-edge")"
@@ -755,7 +754,7 @@ rt_app_db_mb() {
 #   Abbruch per die_because pg_major|net, nichts geaendert. Unlesbarer Pin oder Datenstand = keine Aussage (wie upgrade_detect).
 # shellcheck disable=SC2030,SC2031  # bewusst nur in der Teilschale: Ziel-Datei + Ziel-Image fuer genau diese Aufrufe
 rt_target_precheck() {
-  local cf="$1" img="$2" pin data svcs=(postgres n8n gateway edge)
+  local cf="$1" img="$2" pin data s svcs=(postgres n8n gateway edge)
   pin="$( ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; _rt_compose config --format json postgres 2>/dev/null ) \
           | jq -r '.services.postgres.image // empty' 2>/dev/null | sed -nE 's#^.*/##; s/^[^:@]+:([0-9]+).*/\1/p' || true)"
   data="$(pg_su_exec cat /var/lib/postgresql/data/PG_VERSION 2>/dev/null | tr -d '[:space:]' || true)"
@@ -763,8 +762,7 @@ rt_target_precheck() {
     die_because pg_major "Die Datenbank ist PostgreSQL ${data}, dieser Stand erwartet ${pin} — ein Wechsel der Hauptversion braucht eine Umwandlung der Daten; Update abgebrochen, es wurde nichts geändert."
   fi
   rt_container_running "${LA_PROJECT}-tailscale" && svcs+=(tailscale)
-  rt_container_running "${LA_PROJECT}-wan" && svcs+=(wan)
-  rt_container_running "${LA_PROJECT}-lan" && svcs+=(lan)
+  for s in wan lan; do rt_container_running "${LA_PROJECT}-$s" && svcs+=("$s"); done
   ( export LA_MASTER_IMAGE="$img"; LA_COMPOSE_FILE="$cf"; rt_stack_pull "${svcs[@]}" ) \
     || die_because net "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
 }

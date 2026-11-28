@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
+# Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_book_savings_goal_transfer (Einzahlen / Entnehmen / Umschichten) ---
 function Build-BookSavingsGoalTransfer {

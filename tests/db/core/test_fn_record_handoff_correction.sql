@@ -11,6 +11,7 @@ CREATE FUNCTION core.fn_t_corr_check(p jsonb) RETURNS jsonb LANGUAGE plpgsql AS 
 BEGIN
   CASE p->'payload'->>'t'
     WHEN 'unsupported' THEN RETURN '{"ok":true,"unsupported":true,"blocked_code":"tool_missing","call":{"tool":"set_x","input":{"a":2}}}'::jsonb;
+    WHEN 'badcode' THEN RETURN '{"ok":true,"unsupported":true,"blocked_code":"no_such_code"}'::jsonb;
     WHEN 'badflag' THEN RETURN '{"ok":false,"code":"handoff_choice_needed","reason":"pick.","options":[{"key":"x","label_key":"core.t.five","recommended":"yes"}]}'::jsonb;
     WHEN 'ambiguous' THEN RETURN '{"ok":false,"code":"handoff_ref_ambiguous","reason":"two match.","candidates":[{"id":1,"label":"Konto A"},{"id":2,"label":"Konto B"}]}'::jsonb;
     WHEN 'choice' THEN
@@ -67,6 +68,14 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'handoff_choice_needed'
      OR strpos(r->>'reason', 'option=four (recommended): 4 Raten (passt genau); option=five: fuenf Raten') = 0 THEN
     RAISE EXCEPTION 'FAIL [1 Wahl]: %', r; END IF;
+  -- payload kein JSON-Objekt; unbekannter blocked_code der Vorpruefung
+  r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','111','handoff_task_id',v_old,'kind','other','text','x','payload','[1,2]'::jsonb));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'payload must be a JSON object.' THEN RAISE EXCEPTION 'FAIL [1 payload kein Objekt]: %', r; END IF;
+  r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','111','handoff_task_id',v_old,'kind','other','text','x',
+         'payload',jsonb_build_object('t','badcode')));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' <> 'unknown_blocked_code' OR jsonb_typeof(r->'valid_codes') IS NULL THEN
+    RAISE EXCEPTION 'FAIL [1 unknown_blocked_code]: %', r; END IF;
+  IF EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id = v_old) THEN RAISE EXCEPTION 'FAIL [1 Ablehnung schrieb]'; END IF;
   -- eine kaputte Empfehlungs-Markierung der Paket-fn bricht die Ablehnung nicht
   r := agent.fn_record_handoff_correction(jsonb_build_object('chat_id','111','handoff_task_id',v_old,'kind','recurring_payment',
          'payload',jsonb_build_object('t','badflag'),'text','Raten'));

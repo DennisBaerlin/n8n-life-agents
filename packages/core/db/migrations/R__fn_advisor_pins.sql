@@ -4,15 +4,15 @@
 --   in den Laufzeit-Block des Router-Prompts (Regel 3 bzw. 3c in orchestrator_agent_instructions.md).
 --   Massgeblich ist der juengste Entwurf (status draft) der Person, dessen Paket aktiv ist (Join core.advisors +
 --   core.package_registry):
---     interview_advisor = sein advisor_agent, wenn er juenger als 2 Stunden ist (Gespraech laeuft, kurze Antworten
+--     interview_advisor = sein advisor_agent, wenn er frisch ist (core.fn_advisor_hot_since; Gespraech laeuft, kurze Antworten
 --                         gehoeren dem Berater);
---     paused_advisor    = sein advisor_agent, wenn er 2 Stunden oder aelter und juenger als
+--     paused_advisor    = sein advisor_agent, wenn er nicht mehr frisch und juenger als
 --                         advisor.rollout_draft_stale_days (Default 30) ist (eine ausdrueckliche Bitte "weiter mit der
 --                         Beratung" erreicht den Berater). Ein heisser Entwurf laesst paused_advisor leer.
 --   Personen-Regel wie der Interview-Pin: eigener Entwurf (person_id = p.person_id); Haushalts-Entwurf (person_id NULL)
 --   nur fuer role owner. Nie der Entwurf eines anderen Mitglieds.
---     open_prompt_agent = der Agent der offenen Frage dieses Chats (agent.chat_prompts, Art egal), wenn sie juenger als 2 Stunden
---                         ist (wie interview_advisor): Text bei offener Frage ist ihre Antwort oder ein Aenderungswunsch und geht an
+--     open_prompt_agent = der Agent der offenen Frage dieses Chats (agent.chat_prompts, Art egal), wenn sie frisch ist
+--                         (wie interview_advisor): Text bei offener Frage ist ihre Antwort oder ein Aenderungswunsch und geht an
 --                         ihren Agenten (Gewichtung der Flags: Router-Regel im Orchestrator-Prompt); eine liegengebliebene
 --                         Frage kapert das Routing nicht.
 --   Eingabe p: { person_id, role } aus agent.fn_resolve_sender (nie LLM), optional chat_id (ohne -> open_prompt_agent null).
@@ -46,10 +46,10 @@ BEGIN
      LIMIT 1;
     SELECT c.agent INTO v_open FROM agent.chat_prompts c
      WHERE c.chat_id = NULLIF(p->>'chat_id', '') AND c.status = 'open'
-       AND COALESCE(c.sent_at, c.created_at) > now() - interval '2 hours';
+       AND COALESCE(c.sent_at, c.created_at) > core.fn_advisor_hot_since();
     RETURN jsonb_build_object(
-        'interview_advisor', CASE WHEN v_at > now() - interval '2 hours' THEN v_agent END,
-        'paused_advisor',    CASE WHEN v_at <= now() - interval '2 hours' AND v_at > now() - make_interval(days => v_stale)
+        'interview_advisor', CASE WHEN v_at > core.fn_advisor_hot_since() THEN v_agent END,
+        'paused_advisor',    CASE WHEN v_at <= core.fn_advisor_hot_since() AND v_at > now() - make_interval(days => v_stale)
                                   THEN v_agent END,
         'open_prompt_agent', v_open);
 EXCEPTION WHEN OTHERS THEN

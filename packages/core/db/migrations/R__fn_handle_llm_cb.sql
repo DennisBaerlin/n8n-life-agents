@@ -7,12 +7,13 @@
 --            [Erledigt – jetzt nachschauen]; edit keep_text (Knoepfe der Karte weg). Schluessel/Stoerung -> Toast.
 --     wait   (Owner, nur spend_limit mit Datum): owner_choice wait, Nachschau resume_at + 1 Min; reply mit [Limit erhoehen].
 --     check  (Owner): Nachschau sofort faellig; route 'llm_probe' (der Orchestrator ruft core.sub_llm_probe, trigger button).
---     replay (jede Person, nur eigene gemerkte Nachrichten): Texte und Dateien in Reihenfolge zu einem Update zusammengefuehrt
---            (agent.fn_merge_ingress_updates), alle eigenen Zeilen geloescht (Sprachnachrichten werden nicht nachgespielt);
+--     replay (jede Person, nur eigene gemerkte Nachrichten des Vorfalls auf dem Knopf; solange irgendein Vorfall offen ist
+--            -> ok:false paused mit Toast, nichts nachgespielt oder geloescht): Texte und Dateien in Reihenfolge zu einem
+--            Update zusammengefuehrt (agent.fn_merge_ingress_updates), diese Zeilen geloescht (Sprachnachrichten werden nicht nachgespielt);
 --            route 'replay' + update -> der Orchestrator speist es in 'Trigger normalize' wie eine neue Nachricht.
---     drop   (jede Person): eigene gemerkte Nachrichten loeschen.
---   ok:false (immer mit Toast, nie RAISE): invalid (Gruppenchat, unbekannte Aktion, Vorfall-id keine Zahl), owner_only
---   (guide/wait/check von einem Mitglied), over (Vorfall beendet oder unbekannt), no_guide (Schluessel/Stoerung), no_date (wait ohne Datum).
+--     drop   (jede Person): eigene gemerkte Nachrichten des Vorfalls auf dem Knopf loeschen.
+--   ok:false (immer mit Toast, nie RAISE): invalid (Gruppenchat, unbekannte Aktion, Vorfall-id keine Zahl), paused (replay
+--   waehrend einer KI-Pause), owner_only (guide/wait/check von einem Mitglied), over (Vorfall beendet oder unbekannt), no_guide (Schluessel/Stoerung), no_date (wait ohne Datum).
 --   Generische Registry-Felder: toast, edit {keep_text}, reply {text, buttons} (Nachricht an den Tippenden), route + update.
 --   Rueckgabe: {ok, toast?, reply?, edit?, route?, update?, incident_id?} | {ok:false, reason, toast}
 --   Tests: tests/db/core/test_fn_handle_llm_cb.sql
@@ -40,9 +41,14 @@ BEGIN
     END IF;
 
     IF v_action = 'replay' THEN
+        -- in eine noch gesperrte KI nachgespielt kaeme nur die naechste Pausen-Antwort; die Nachrichten bleiben gemerkt
+        IF EXISTS (SELECT 1 FROM core.llm_incidents WHERE closed_at IS NULL) THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'paused', 'toast', core.fn_ui_text('core.llm_pause.member_held', v_lang));
+        END IF;
         SELECT agent.fn_merge_ingress_updates(jsonb_agg(h.payload ORDER BY h.message_id, h.update_id)) INTO v_upd
-          FROM agent.llm_held_messages h WHERE h.chat_id = v_chat AND h.from_id = v_chat AND h.kind <> 'voice';
-        DELETE FROM agent.llm_held_messages WHERE chat_id = v_chat AND from_id = v_chat;
+          FROM agent.llm_held_messages h
+         WHERE h.chat_id = v_chat AND h.from_id = v_chat AND h.incident_id = v_parts[3]::bigint AND h.kind <> 'voice';
+        DELETE FROM agent.llm_held_messages WHERE chat_id = v_chat AND from_id = v_chat AND incident_id = v_parts[3]::bigint;
         IF v_upd IS NULL THEN
             RETURN jsonb_build_object('ok', true, 'toast', core.fn_ui_text('core.llm_pause.toast_nothing', v_lang), 'edit', jsonb_build_object('keep_text', true));
         END IF;
@@ -50,7 +56,7 @@ BEGIN
             'toast', core.fn_ui_text('core.llm_pause.toast_replay', v_lang), 'edit', jsonb_build_object('keep_text', true));
     END IF;
     IF v_action = 'drop' THEN
-        DELETE FROM agent.llm_held_messages WHERE chat_id = v_chat AND from_id = v_chat;
+        DELETE FROM agent.llm_held_messages WHERE chat_id = v_chat AND from_id = v_chat AND incident_id = v_parts[3]::bigint;
         RETURN jsonb_build_object('ok', true, 'toast', core.fn_ui_text('core.llm_pause.toast_dropped', v_lang), 'edit', jsonb_build_object('keep_text', true));
     END IF;
 

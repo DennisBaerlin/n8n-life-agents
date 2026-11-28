@@ -1,8 +1,8 @@
 -- ============================================================
 -- core.fn_advisor_hint_prompt(p_chat_id) — ein brennender Kontohinweis als offene Frage der Art hint (WRITE)
 --   Gerufen von core.fn_next_chat_prompt, wenn im Chat nichts offen ist und nichts wartet. Nur waehrend eines laufenden
---   Plan-Gespraechs (Haushalts-Entwurf einer Domaene mit core.advisors.hints_fn, Paket aktiv, in den letzten 2 Stunden
---   bearbeitet wie der Interview-Pin; ein pausierter Entwurf bringt in fremden Gespraechen keine Karte) und nur fuer den, der den Plan
+--   Plan-Gespraechs (Haushalts-Entwurf einer Domaene mit core.advisors.hints_fn, Paket aktiv, frisch bearbeitet
+--   laut core.fn_advisor_hot_since wie der Interview-Pin; ein pausierter Entwurf bringt in fremden Gespraechen keine Karte) und nur fuer den, der den Plan
 --   schreiben darf (agent.fn_check_write_permission der plan_context-Regel). Je Domaene: Hinweise aus der hints_fn
 --   ({key, class, text_key, params {amount?, currency?, date?}, pending_entry?, kind, account}; kind/account nur in
 --   der payload-summary), Merker "spaeter" (core.notification_state advisor_hint '<domain>:<key>') fuer Hinweise,
@@ -55,7 +55,7 @@ BEGIN
     LOOP
         CONTINUE WHEN COALESCE((SELECT cs.scope FROM core.context_scopes cs WHERE cs.context_name = r.plan_context), 'household') <> 'household';
         SELECT ap.id INTO v_plan FROM agent.advisor_plans ap WHERE ap.domain = r.domain AND ap.person_id IS NULL AND ap.status = 'draft'
-           AND ap.updated_at > now() - interval '2 hours';
+           AND ap.updated_at > core.fn_advisor_hot_since();
         CONTINUE WHEN v_plan IS NULL;
         v_perm := COALESCE((SELECT cs.write_permission FROM core.context_scopes cs WHERE cs.context_name = r.plan_context), 'owner_only');
         CONTINUE WHEN agent.fn_check_write_permission(v_perm, p_chat_id, NULL) IS NOT NULL;

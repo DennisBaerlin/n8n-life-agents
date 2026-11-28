@@ -49,6 +49,9 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL 4 [Nicht-existent nicht abgewiesen]: %', r; END IF;
   RAISE NOTICE 'PASS 4 [nicht existierender Kandidat -> ok:false]';
 
+  -- nicht-numerische Kandidaten-Nummer (kaputte Knopf-Daten) -> Ablehnung statt Abbruch
+  r := agent.fn_reject_learn_candidate(jsonb_build_object('candidate_id', 'abc', 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'candidate_id required' THEN RAISE EXCEPTION 'FAIL [candidate_id keine Zahl]: %', r; END IF;
   RAISE NOTICE 'PASS fn_reject_learn_candidate [all tests passed]';
 END $$;
 

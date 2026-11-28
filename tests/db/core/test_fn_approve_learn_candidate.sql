@@ -97,6 +97,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL 6 [Status expired nicht als expired abgewiesen]: %', r; END IF;
   RAISE NOTICE 'PASS 6 [abgelaufen -> ok:false candidate expired, kein Write]';
 
+  -- nicht-numerische Kandidaten-Nummer (kaputte Knopf-Daten) -> Ablehnung statt Abbruch
+  r := agent.fn_approve_learn_candidate(jsonb_build_object('candidate_id', 'abc', 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'candidate_id required' THEN RAISE EXCEPTION 'FAIL [candidate_id keine Zahl]: %', r; END IF;
   RAISE NOTICE 'PASS fn_approve_learn_candidate [all tests passed]';
 END $$;
 

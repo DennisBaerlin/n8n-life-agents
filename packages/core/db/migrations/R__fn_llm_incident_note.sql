@@ -54,10 +54,10 @@ BEGIN
                                                      WHEN 'credit_empty' THEN 'core.llm_pause.owner_credit_empty'
                                                      ELSE 'core.llm_pause.owner_auth' END, p_lang)];
     IF p_inc.kind IN ('spend_limit', 'credit_empty') THEN
-        SELECT round(sum(v.usd)) INTO v_usd FROM core.v_llm_usage_cost v
+        SELECT sum(v.usd) INTO v_usd FROM core.v_llm_usage_cost v
          WHERE NOT v.unpriced AND v.ts >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
         IF v_usd >= 1 THEN
-            v_parts := v_parts || core.fn_ui_text('core.llm_pause.spent_line', p_lang, jsonb_build_object('usd', core.fn_ui_num(v_usd)));
+            v_parts := v_parts || core.fn_ui_text('core.llm_pause.spent_line', p_lang, jsonb_build_object('usd', core.fn_ui_num(round(v_usd))));
         END IF;
     END IF;
     IF p_inc.kind = 'spend_limit' AND p_inc.resume_at IS NOT NULL THEN

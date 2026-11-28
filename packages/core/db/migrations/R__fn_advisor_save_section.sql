@@ -44,7 +44,8 @@
 --       zurueck, Kandidaten bzw. Optionen auch als Satz im reason (core.fn_handoff_check_hint); wirft die Paket-fn, gilt der Eintrag als ungeprueft (ohne wanted). Angegeben (auch '[]') ersetzt es die OFFENEN
 --       Aufgaben und die beim Vereinbaren zurueckgestellten (deferred ohne claimed_at): mit topic die des Themas plus die
 --       themenlosen des Abschnitts, ohne topic alle des Abschnitts; weggelassen bleiben sie unveraendert; beanspruchte, beim
---       Eintragen zurueckgestellte und abgeschlossene bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
+--       Eintragen zurueckgestellte, abgeschlossene und Korrektur-Aufgaben (follows_task_id) bleiben immer.
+--       Person = Sender (core.fn_handoff_person), package = Paket der
 --       Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
 --   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, status:'draft',
 --     draft_created, sections, section_count, topics, topic_replaced, open_points [{id, text}] (ungeschlossene des gespeicherten
@@ -322,6 +323,8 @@ BEGIN
 
     -- Draft der (Domain, Person) sperren (genau einer moeglich — Partial-UNIQUE (domain, person_id)) oder anlegen.
     -- person_id IS NOT DISTINCT FROM v_pid: household (v_pid NULL) trifft die NULL-Zeilen, per_user die Person.
+    -- ohne Draft sperrt FOR UPDATE nichts: die Sperre reiht zwei gleichzeitige Erst-Speicherungen ein (sonst wirft die UNIQUE)
+    PERFORM pg_advisory_xact_lock(hashtext('advisor_draft:' || v_domain || ':' || COALESCE(v_pid, '')));
     SELECT id, version, interview_state INTO v_plan_id, v_version, v_state
     FROM agent.advisor_plans
     WHERE domain = v_domain AND person_id IS NOT DISTINCT FROM v_pid AND status = 'draft'
@@ -340,12 +343,8 @@ BEGIN
         FROM agent.advisor_plans WHERE domain = v_domain AND person_id IS NOT DISTINCT FROM v_pid;
 
         INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version)
-        VALUES (
-            v_domain, v_pid,
-            COALESCE(NULLIF(trim(p->>'plan_name'), ''), initcap(v_domain) || ' Plan v' || v_version),
-            'draft',
-            v_version
-        )
+        VALUES (v_domain, v_pid, COALESCE(NULLIF(trim(p->>'plan_name'), ''), initcap(v_domain) || ' Plan v' || v_version),
+                'draft', v_version)
         RETURNING id, interview_state INTO v_plan_id, v_state;
         v_created := true;
     END IF;
@@ -461,7 +460,7 @@ BEGIN
     IF v_given THEN
         DELETE FROM agent.handoff_tasks
          WHERE domain = v_domain AND section_key = v_key AND person_id IS NOT DISTINCT FROM v_hpid
-           AND (status = 'open' OR (status = 'deferred' AND claimed_at IS NULL))
+           AND (status = 'open' OR (status = 'deferred' AND claimed_at IS NULL)) AND follows_task_id IS NULL
            AND (v_topic IS NULL OR topic IS NULL OR lower(topic) = lower(v_topic));
     END IF;
     WITH ins AS (

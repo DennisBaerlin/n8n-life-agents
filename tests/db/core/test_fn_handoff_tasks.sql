@@ -241,6 +241,17 @@ BEGIN
      OR (SELECT close_reason FROM agent.handoff_tasks WHERE id = v_id2) <> 'done_elsewhere'
      OR (SELECT entered_refs FROM agent.handoff_tasks WHERE id = v_id2) <> '[{"type":"pension","id":3}]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [8 done_elsewhere aus open]: %', r; END IF;
+  -- „steht schon im System“ ist kein Eintrag: ein weiterer Eintrag darf sich nicht als Teil daran haengen
+  r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id2, 'chat_id', '111'));
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 done_elsewhere gilt als weiterer Teil]: %', r; END IF;
+  -- eine Korrektur-Aufgabe (follows_task_id) ueberlebt eine neue Liste desselben Themas; nur die vereinbarten offenen werden ersetzt
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text, follows_task_id)
+  VALUES ('finance', 'finance', 'erika', 'retirement_pension', 'Allgemein', 'other', 'Rentenbescheid korrigieren', v_id2);
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement_pension','topic','Allgemein',
+         'section_content','r2','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Rentenauskunft anfordern'))));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [8 neue Liste]: %', r; END IF;
+  IF NOT EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE follows_task_id = v_id2 AND status = 'open') THEN
+    RAISE EXCEPTION 'FAIL [8 neue Liste loescht die Korrektur-Aufgabe]'; END IF;
   r := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id3, 'chat_id', '111', 'reason', 'dropped'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [8 schon geschlossen]: %', r; END IF;
   RAISE NOTICE 'PASS [8 cancel]';

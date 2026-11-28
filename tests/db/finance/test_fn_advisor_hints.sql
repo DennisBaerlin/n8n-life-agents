@@ -93,6 +93,9 @@ BEGIN
   UPDATE agent.advisor_plans SET updated_at = now() - interval '3 hours' WHERE domain = 'finance' AND status = 'draft';
   r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','replied',true));
   IF (r->>'send')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [3 pausierter Entwurf]: %', r; END IF;
+  -- dieselbe Regel im Snapshot: ein pausierter Entwurf haelt die nicht dringenden Hinweise nicht mehr zurueck
+  IF (core.fn_advisor_hint_state('finance')->>'draft_open')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'FAIL [3 pausierter Entwurf gilt im Snapshot als offen]: %', core.fn_advisor_hint_state('finance'); END IF;
   UPDATE agent.advisor_plans SET updated_at = now() WHERE domain = 'finance' AND status = 'draft';
   ALTER TABLE agent.advisor_plans ENABLE TRIGGER trg_advisor_plans_touch;
   r := core.fn_next_chat_prompt(jsonb_build_object('chat_id','111','replied',true));

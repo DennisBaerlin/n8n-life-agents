@@ -26,3 +26,4 @@ EXCEPTION WHEN OTHERS THEN
     RETURN '{"ok":true,"marked":false}'::jsonb;
 END;
 $$;
+REVOKE ALL ON FUNCTION core.fn_handoff_overview_mark(jsonb) FROM public;

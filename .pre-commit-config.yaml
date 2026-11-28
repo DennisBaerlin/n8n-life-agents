@@ -685,6 +685,13 @@ repos:
         pass_filenames: false
         files: ^(scripts/(lib/substrate_reservations|reserve_substrate_slot|bootstrap_test_db|dev/(substrate_reservation_test|stop_test_containers))\.ps1|\.claude/hooks/stop_own_substrate\.ps1)$
 
+      - id: dbtest-reuse-test
+        name: dbtest_reuse_test (the test DB is reused only when it was built from this tree; skips without Docker or the local pgvector image)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/dbtest_reuse_test.ps1
+        pass_filenames: false
+        files: ^scripts/(bootstrap_test_db|db_apply|dev/dbtest_reuse_test|lib/(test_common|substrate_reservations))\.ps1$
+
       - id: git-sandbox-test
         name: git_sandbox_test (Initialize-GitSandbox aborts before git init under hook GIT_* variables and never touches the shared config; every caller clears first; throwaway repos, no Docker)
         language: system
